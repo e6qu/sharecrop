@@ -117,6 +117,14 @@ func (healthTaskService) CreateCapabilityToken(context.Context, auth.UserSubject
 	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthTaskService) ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult {
+	return task.ListSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult {
+	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthSubmissionService) Submit(context.Context, submission.SubmitCommand) submission.SubmitResult {
 	return submission.SubmitRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

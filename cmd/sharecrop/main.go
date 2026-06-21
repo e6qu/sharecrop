@@ -19,6 +19,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/mcp"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -49,6 +50,8 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 			return runMigrate(ctx, args[2:], cfg.Value, stdout, logger)
 		case "serve":
 			return runServe(ctx, cfg.Value, logger)
+		case "mcp":
+			return runMCPStdio(ctx, cfg.Value, stdout, logger)
 		default:
 			_, _ = fmt.Fprintf(stderr, "unknown command: %s\n", args[1])
 			return 2
@@ -102,6 +105,45 @@ func runMigrate(ctx context.Context, args []string, cfg app.Config, stdout io.Wr
 	}
 
 	_, _ = fmt.Fprintln(stdout, "migrations applied")
+	return 0
+}
+
+func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *slog.Logger) int {
+	rawToken := os.Getenv("SHARECROP_AGENT_TOKEN")
+	secretResult := agent.ParseSecretPlain(rawToken)
+	secret, secretMatched := secretResult.(agent.SecretPlainAccepted)
+	if !secretMatched {
+		logger.Error("agent credential", "reason", "SHARECROP_AGENT_TOKEN is required and must be a valid agent credential")
+		return 2
+	}
+
+	pool, err := db.Open(ctx, cfg.DatabaseURL())
+	if err != nil {
+		logger.Error("open database", "error", err)
+		return 1
+	}
+	defer pool.Close()
+
+	agentService := agent.NewService(db.NewAgentStore(pool))
+	verifyResult := agentService.Verify(ctx, secret.Value)
+	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+	if !verifiedMatched {
+		logger.Error("verify agent credential", "reason", verifyResult.(agent.VerifyRejected).Reason.Description())
+		return 1
+	}
+
+	organizationService := org.NewService(db.NewOrgStore(pool))
+	taskStore := db.NewTaskStore(pool)
+	taskService := task.NewService(taskStore, organizationService)
+	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore)
+	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
+	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService)
+
+	logger.Info("starting sharecrop mcp stdio transport")
+	if err := mcp.ServeStdio(ctx, mcpServer, verified.Subject, verified.Credential.Scopes, os.Stdin, stdout); err != nil {
+		logger.Error("serve mcp stdio", "error", err)
+		return 1
+	}
 	return 0
 }
 

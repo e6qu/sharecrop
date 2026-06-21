@@ -50,6 +50,8 @@ type TaskService interface {
 	Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	List(context.Context, auth.UserSubject, task.ListScope) task.ListResult
 	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
+	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
+	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 }
 
 type AgentService interface {
@@ -124,13 +126,22 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/refund", server.refundTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/accept", server.acceptSubmission)
 	mux.HandleFunc("GET /api/tasks/{task_id}", server.getTask)
+	mux.HandleFunc("GET /api/task-series", server.listTaskSeries)
+	mux.HandleFunc("GET /api/task-series/{series_id}", server.getTaskSeries)
 	mux.HandleFunc("POST /api/agent-credentials", server.createAgentCredential)
 	mux.HandleFunc("GET /api/agent-credentials", server.listAgentCredentials)
 	mux.HandleFunc("POST /api/agent-credentials/{credential_id}/revoke", server.revokeAgentCredential)
 	mux.HandleFunc("POST /mcp", server.mcpEndpoint)
+	mux.HandleFunc("GET /mcp", server.mcpStreamNotOffered)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 	mux.HandleFunc("GET /", index(staticFiles))
 	return mux
+}
+
+// NewMCPServer builds an MCP server backed by the given domain services so the
+// stdio transport can reuse the same tool surface as the HTTP endpoint.
+func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService) mcp.Server {
+	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService})
 }
 
 func health(w http.ResponseWriter, r *http.Request) {

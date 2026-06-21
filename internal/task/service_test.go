@@ -87,7 +87,8 @@ func TestServiceUsesOrganizationDefaultHiddenVisibility(t *testing.T) {
 }
 
 type taskMemoryStore struct {
-	tasks map[string]Task
+	tasks  map[string]Task
+	series []Series
 }
 
 func newTaskMemoryStore() *taskMemoryStore {
@@ -158,6 +159,19 @@ func (store *taskMemoryStore) CreateCapabilityToken(context.Context, core.TaskCa
 	return CreateCapabilityTokenStoreRejected{Reason: reason}
 }
 
+func (store *taskMemoryStore) ListSeries(context.Context, core.UserID) ListSeriesStoreResult {
+	return ListSeriesStoreAccepted{Values: store.series}
+}
+
+func (store *taskMemoryStore) FindSeries(_ context.Context, seriesID core.TaskSeriesID) FindSeriesStoreResult {
+	for index := range store.series {
+		if store.series[index].ID == seriesID {
+			return FindSeriesStoreAccepted{Value: SeriesDetail{Series: store.series[index], Tasks: nil}}
+		}
+	}
+	return FindSeriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task series missing")}
+}
+
 func (store *taskPermissionStore) grant(organizationID core.OrganizationID, userID core.UserID, roles ...org.Role) {
 	store.grants = append(store.grants, taskPermissionGrant{organizationID: organizationID, userID: userID, roles: roles})
 }
@@ -222,6 +236,51 @@ func acceptedSchemaSource(t *testing.T, raw string) ResponseSchemaSource {
 func testUserSubject(t *testing.T) auth.UserSubject {
 	t.Helper()
 	return auth.UserSubject{ID: testUserID(t)}
+}
+
+func TestGetSeriesAllowsOwner(t *testing.T) {
+	store := newTaskMemoryStore()
+	actor := testUserSubject(t)
+	seriesID := testTaskSeriesID(t)
+	store.series = []Series{{ID: seriesID, Owner: UserOwner{UserID: actor.ID}, Title: acceptedSeriesTitle(t, "My series"), CreatedBy: actor.ID}}
+	service := NewService(store, newTaskPermissionStore())
+
+	result := service.GetSeries(context.Background(), actor, seriesID)
+	if _, matched := result.(SeriesGot); !matched {
+		t.Fatalf("result = %T, want SeriesGot", result)
+	}
+}
+
+func TestGetSeriesDeniesNonOwner(t *testing.T) {
+	store := newTaskMemoryStore()
+	owner := testUserSubject(t)
+	other := testUserSubject(t)
+	seriesID := testTaskSeriesID(t)
+	store.series = []Series{{ID: seriesID, Owner: UserOwner{UserID: owner.ID}, Title: acceptedSeriesTitle(t, "Private series"), CreatedBy: owner.ID}}
+	service := NewService(store, newTaskPermissionStore())
+
+	result := service.GetSeries(context.Background(), other, seriesID)
+	if _, matched := result.(GetSeriesRejected); !matched {
+		t.Fatalf("result = %T, want GetSeriesRejected", result)
+	}
+}
+
+func acceptedSeriesTitle(t *testing.T, raw string) SeriesTitle {
+	t.Helper()
+	accepted, matched := NewSeriesTitle(raw).(SeriesTitleAccepted)
+	if !matched {
+		t.Fatalf("series title rejected")
+	}
+	return accepted.Value
+}
+
+func testTaskSeriesID(t *testing.T) core.TaskSeriesID {
+	t.Helper()
+	created, matched := core.NewTaskSeriesID().(core.TaskSeriesIDCreated)
+	if !matched {
+		t.Fatalf("task series id rejected")
+	}
+	return created.Value
 }
 
 func testUserID(t *testing.T) core.UserID {

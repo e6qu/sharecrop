@@ -459,6 +459,14 @@ func (testTaskService) CreateCapabilityToken(context.Context, auth.UserSubject, 
 	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
+func (testTaskService) ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult {
+	return task.SeriesListed{Values: []task.Series{}}
+}
+
+func (testTaskService) GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult {
+	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
 func (testSubmissionService) Submit(_ context.Context, command submission.SubmitCommand) submission.SubmitResult {
 	idResult := core.NewSubmissionID()
 	idCreated := idResult.(core.SubmissionIDCreated)

@@ -3,8 +3,8 @@ import {
   type AuthBody,
   password,
   type TaskBody,
+  taskRequest,
   uniqueEmail,
-  userTaskRequest,
 } from "./helpers.ts";
 
 test("registering shows the signup grant balance and ledger entry", async ({ page }) => {
@@ -28,7 +28,11 @@ test("funding a task escrows credits and lowers the balance", async ({ page, req
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },
-    data: userTaskRequest("Fund from the browser", registerBody.subject_id),
+    data: taskRequest(
+      "Fund from the browser",
+      registerBody.subject_id,
+      "default",
+    ),
   });
   expect(taskResponse.ok()).toBeTruthy();
   const taskBody = (await taskResponse.json()) as TaskBody;

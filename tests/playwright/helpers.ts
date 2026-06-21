@@ -13,16 +13,17 @@ export function uniqueEmail(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}@example.com`;
 }
 
-export function userTaskRequest(
+export function taskRequest(
   title: string,
   userId: string,
+  visibilityKind: string,
 ): Record<string, unknown> {
   return {
     owner: { kind: "user", user_id: userId, team_id: "", organization_id: "" },
     title,
     description: "A task created from a browser test.",
     visibility: {
-      kind: "default",
+      kind: visibilityKind,
       user_id: "",
       team_id: "",
       organization_id: "",

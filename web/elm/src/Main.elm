@@ -1,8 +1,8 @@
 module Main exposing (main)
 
 import Browser
-import Html exposing (Html, button, div, form, h1, h2, input, label, main_, p, pre, span, table, tbody, td, text, th, thead, tr)
-import Html.Attributes exposing (attribute, checked, class, disabled, placeholder, type_, value)
+import Html exposing (Html, div, form, label, main_, p, span, table, tbody, td, text, th, thead, tr)
+import Html.Attributes exposing (checked, disabled, placeholder, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Http
 import Json.Decode as Decode
@@ -10,7 +10,9 @@ import Json.Encode as Encode
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
+import Sharecrop.Ui as Ui exposing (testId)
 
 
 type alias Flags =
@@ -22,9 +24,16 @@ type Session
     | LoggedIn LoggedInModel
 
 
+type Page
+    = DashboardPage
+    | DiscoveryPage
+    | TaskDetailPage String
+
+
 type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
+    , page : Page
     , balance : Maybe Int
     , entries : List Ledger.LedgerEntryResponse
     , fundTaskId : String
@@ -37,6 +46,11 @@ type alias LoggedInModel =
     , credentials : List Agent.AgentCredentialResponse
     , newCredential : Maybe Agent.AgentCredentialCreatedResponse
     , agentMessage : Maybe String
+    , discoveryTasks : List Task.TaskListItemResponse
+    , detail : Maybe PublicTaskDetail
+    , submissions : List Submission.SubmissionResponse
+    , submitInput : String
+    , submitMessage : Maybe String
     }
 
 
@@ -44,6 +58,17 @@ type alias TaskDetail =
     { id : String
     , state : String
     , responseSchemaJson : String
+    }
+
+
+type alias PublicTaskDetail =
+    { id : String
+    , ownerKind : String
+    , title : String
+    , description : String
+    , state : String
+    , responseSchemaJson : String
+    , createdBy : String
     }
 
 
@@ -79,6 +104,18 @@ type Msg
     | RevokeClicked String
     | AgentRevoked (Result Http.Error Agent.AgentCredentialResponse)
     | LogoutClicked
+    | NavDashboard
+    | NavDiscovery
+    | DiscoveryReceived (Result Http.Error Task.TasksResponse)
+    | DiscoveryViewClicked String
+    | DetailBackClicked
+    | DetailReceived (Result Http.Error PublicTaskDetail)
+    | SubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
+    | SubmitInputChanged String
+    | SubmitClicked
+    | SubmitReceived (Result Http.Error Submission.SubmissionCreatedResponse)
+    | AcceptClicked String
+    | AcceptReceived (Result Http.Error ())
 
 
 main : Program Flags Model Msg
@@ -105,6 +142,7 @@ emptyLoggedIn : Auth.AuthResponse -> LoggedInModel
 emptyLoggedIn response =
     { accessToken = response.accessToken
     , subjectId = response.subjectID
+    , page = DashboardPage
     , balance = Nothing
     , entries = []
     , fundTaskId = ""
@@ -117,6 +155,11 @@ emptyLoggedIn response =
     , credentials = []
     , newCredential = Nothing
     , agentMessage = Nothing
+    , discoveryTasks = []
+    , detail = Nothing
+    , submissions = []
+    , submitInput = ""
+    , submitMessage = Nothing
     }
 
 
@@ -202,6 +245,73 @@ update msg model =
 
         LogoutClicked ->
             ( { model | session = LoggedOut, email = "", password = "" }, Cmd.none )
+
+        NavDashboard ->
+            ( updateLoggedIn model (\state -> { state | page = DashboardPage }), Cmd.none )
+
+        NavDiscovery ->
+            withSession model
+                (\state ->
+                    ( updateLoggedIn model (\s -> { s | page = DiscoveryPage }), fetchDiscovery state.accessToken )
+                )
+
+        DiscoveryReceived result ->
+            ( updateLoggedIn model (\state -> { state | discoveryTasks = tasksFromResult result }), Cmd.none )
+
+        DiscoveryViewClicked taskId ->
+            withSession model
+                (\state ->
+                    ( updateLoggedIn model
+                        (\s ->
+                            { s
+                                | page = TaskDetailPage taskId
+                                , detail = Nothing
+                                , submissions = []
+                                , submitInput = ""
+                                , submitMessage = Nothing
+                            }
+                        )
+                    , Cmd.batch
+                        [ fetchPublicTaskDetail state.accessToken taskId
+                        , fetchSubmissions state.accessToken taskId
+                        ]
+                    )
+                )
+
+        DetailBackClicked ->
+            ( updateLoggedIn model (\state -> { state | page = DiscoveryPage }), Cmd.none )
+
+        DetailReceived (Ok detail) ->
+            ( updateLoggedIn model (\state -> { state | detail = Just detail }), Cmd.none )
+
+        DetailReceived (Err _) ->
+            ( model, Cmd.none )
+
+        SubmissionsReceived (Ok response) ->
+            ( updateLoggedIn model (\state -> { state | submissions = response.submissions }), Cmd.none )
+
+        SubmissionsReceived (Err _) ->
+            ( updateLoggedIn model (\state -> { state | submissions = [] }), Cmd.none )
+
+        SubmitInputChanged value ->
+            ( updateLoggedIn model (\state -> { state | submitInput = value }), Cmd.none )
+
+        SubmitClicked ->
+            withSession model (\state -> submitCommand model state)
+
+        SubmitReceived (Ok created) ->
+            ( updateLoggedIn model (\state -> { state | submitMessage = Just (submitSuccessLabel created) })
+            , refreshDetailSubmissions model
+            )
+
+        SubmitReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | submitMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AcceptClicked submissionId ->
+            withSession model (\state -> acceptCommand model state submissionId)
+
+        AcceptReceived _ ->
+            ( model, refreshAfterAccept model )
 
 
 withSession : Model -> (LoggedInModel -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
@@ -292,6 +402,28 @@ createAgentCommand model state =
         ( updateLoggedIn model (\current -> { current | agentMessage = Nothing, newCredential = Nothing }), postAgent state.accessToken state.agentLabel state.agentScopes )
 
 
+submitCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+submitCommand model state =
+    case state.page of
+        TaskDetailPage taskId ->
+            ( updateLoggedIn model (\current -> { current | submitMessage = Nothing })
+            , postSubmission state.accessToken taskId state.submitInput
+            )
+
+        _ ->
+            ( model, Cmd.none )
+
+
+acceptCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+acceptCommand model state submissionId =
+    case state.page of
+        TaskDetailPage taskId ->
+            ( model, postAccept state.accessToken taskId submissionId )
+
+        _ ->
+            ( model, Cmd.none )
+
+
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
     Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token, fetchCredentials token ]
@@ -312,6 +444,39 @@ refreshCredentials model =
     case model.session of
         LoggedIn state ->
             fetchCredentials state.accessToken
+
+        LoggedOut ->
+            Cmd.none
+
+
+refreshDetailSubmissions : Model -> Cmd Msg
+refreshDetailSubmissions model =
+    case model.session of
+        LoggedIn state ->
+            case state.page of
+                TaskDetailPage taskId ->
+                    fetchSubmissions state.accessToken taskId
+
+                _ ->
+                    Cmd.none
+
+        LoggedOut ->
+            Cmd.none
+
+
+refreshAfterAccept : Model -> Cmd Msg
+refreshAfterAccept model =
+    case model.session of
+        LoggedIn state ->
+            case state.page of
+                TaskDetailPage taskId ->
+                    Cmd.batch
+                        [ fetchSubmissions state.accessToken taskId
+                        , fetchBalance state.accessToken
+                        ]
+
+                _ ->
+                    Cmd.none
 
         LoggedOut ->
             Cmd.none
@@ -359,6 +524,21 @@ fetchTaskDetail token taskId =
     authorizedRequest "GET" token ("/api/tasks/" ++ taskId) Http.emptyBody (Http.expectJson TaskDetailReceived taskDetailDecoder)
 
 
+fetchDiscovery : String -> Cmd Msg
+fetchDiscovery token =
+    authorizedRequest "GET" token "/api/tasks?scope=public" Http.emptyBody (Http.expectJson DiscoveryReceived Task.tasksResponseDecoder)
+
+
+fetchPublicTaskDetail : String -> String -> Cmd Msg
+fetchPublicTaskDetail token taskId =
+    authorizedRequest "GET" token ("/api/tasks/" ++ taskId) Http.emptyBody (Http.expectJson DetailReceived publicTaskDetailDecoder)
+
+
+fetchSubmissions : String -> String -> Cmd Msg
+fetchSubmissions token taskId =
+    authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/submissions") Http.emptyBody (Http.expectJson SubmissionsReceived Submission.submissionsResponseDecoder)
+
+
 postFunding : String -> String -> Int -> Cmd Msg
 postFunding token taskId amount =
     authorizedRequest "POST"
@@ -375,6 +555,24 @@ postAgent token agentLabel scopes =
         "/api/agent-credentials"
         (Http.jsonBody (agentRequestBody agentLabel scopes))
         (Http.expectJson AgentCreated Agent.agentCredentialCreatedResponseDecoder)
+
+
+postSubmission : String -> String -> String -> Cmd Msg
+postSubmission token taskId responseJson =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/submissions")
+        (Http.jsonBody (submissionRequestBody responseJson))
+        (Http.expectJson SubmitReceived Submission.submissionCreatedResponseDecoder)
+
+
+postAccept : String -> String -> String -> Cmd Msg
+postAccept token taskId submissionId =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/accept")
+        (Http.jsonBody (acceptRequestBody submissionId))
+        (Http.expectWhatever AcceptReceived)
 
 
 revokeAgent : String -> String -> Cmd Msg
@@ -402,12 +600,39 @@ agentRequestBody agentLabel scopes =
         ]
 
 
+submissionRequestBody : String -> Encode.Value
+submissionRequestBody responseJson =
+    Encode.object
+        [ ( "response_json", Encode.string responseJson )
+        , ( "wallet_address", Encode.string "" )
+        ]
+
+
+acceptRequestBody : String -> Encode.Value
+acceptRequestBody submissionId =
+    Encode.object
+        [ ( "idempotency_key", Encode.string ("ui-accept:" ++ submissionId) )
+        ]
+
+
 taskDetailDecoder : Decode.Decoder TaskDetail
 taskDetailDecoder =
     Decode.map3 TaskDetail
         (Decode.field "id" Decode.string)
         (Decode.field "state" Decode.string)
         (Decode.field "response_schema_json" Decode.string)
+
+
+publicTaskDetailDecoder : Decode.Decoder PublicTaskDetail
+publicTaskDetailDecoder =
+    Decode.map7 PublicTaskDetail
+        (Decode.field "id" Decode.string)
+        (Decode.field "owner_kind" Decode.string)
+        (Decode.field "title" Decode.string)
+        (Decode.field "description" Decode.string)
+        (Decode.field "state" Decode.string)
+        (Decode.field "response_schema_json" Decode.string)
+        (Decode.field "created_by" Decode.string)
 
 
 authorizedRequest : String -> String -> String -> Http.Body -> Http.Expect Msg -> Cmd Msg
@@ -425,9 +650,9 @@ authorizedRequest method token url body expect =
 
 view : Model -> Html Msg
 view model =
-    main_ [ class "min-h-screen bg-slate-50 p-8 text-slate-950" ]
-        [ div [ class "mx-auto max-w-3xl space-y-6" ]
-            [ h1 [ class "text-3xl font-semibold" ] [ text "Sharecrop" ]
+    main_ [ Html.Attributes.class "min-h-screen bg-slate-50 p-8 text-slate-950" ]
+        [ div [ Html.Attributes.class "mx-auto max-w-3xl space-y-6" ]
+            [ Ui.pageTitle "Sharecrop"
             , sessionView model
             ]
         ]
@@ -440,30 +665,59 @@ sessionView model =
             authView model
 
         LoggedIn state ->
-            dashboardView model.origin state
+            loggedInView model.origin state
 
 
 authView : Model -> Html Msg
 authView model =
     form
-        [ class cardClass, onSubmit LoginClicked ]
-        [ p [ class "text-slate-600" ] [ text "Sign in or create an account to view your credit ledger and set up agents." ]
-        , input [ type_ "email", class fieldClass, placeholder "Email", value model.email, onInput EmailChanged, testId "email" ] []
-        , input [ type_ "password", class fieldClass, placeholder "Password", value model.password, onInput PasswordChanged, testId "password" ] []
-        , div [ class "flex gap-3" ]
-            [ button [ type_ "submit", class primaryButtonClass, testId "login" ] [ text "Log in" ]
-            , button [ type_ "button", class secondaryButtonClass, onClick RegisterClicked, testId "register" ] [ text "Register" ]
+        [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit LoginClicked ]
+        [ p [ Html.Attributes.class "text-slate-600" ] [ text "Sign in or create an account to view your credit ledger and set up agents." ]
+        , Ui.textInput [ type_ "email", placeholder "Email", value model.email, onInput EmailChanged, testId "email" ]
+        , Ui.textInput [ type_ "password", placeholder "Password", value model.password, onInput PasswordChanged, testId "password" ]
+        , div [ Html.Attributes.class "flex gap-3" ]
+            [ Ui.primaryButton [ type_ "submit", testId "login" ] "Log in"
+            , Ui.secondaryButton [ type_ "button", onClick RegisterClicked, testId "register" ] "Register"
             ]
         , maybeError model.authError "auth-error"
         ]
 
 
+loggedInView : String -> LoggedInModel -> Html Msg
+loggedInView origin state =
+    div [ Html.Attributes.class "space-y-6" ]
+        [ navBar
+        , pageView origin state
+        ]
+
+
+navBar : Html Msg
+navBar =
+    div [ Html.Attributes.class "flex gap-3" ]
+        [ Ui.secondaryButton [ type_ "button", onClick NavDashboard, testId "nav-dashboard" ] "Dashboard"
+        , Ui.secondaryButton [ type_ "button", onClick NavDiscovery, testId "nav-discovery" ] "Discovery"
+        ]
+
+
+pageView : String -> LoggedInModel -> Html Msg
+pageView origin state =
+    case state.page of
+        DashboardPage ->
+            dashboardView origin state
+
+        DiscoveryPage ->
+            discoveryView state
+
+        TaskDetailPage _ ->
+            taskDetailPageView state
+
+
 dashboardView : String -> LoggedInModel -> Html Msg
 dashboardView origin state =
-    div [ class "space-y-6" ]
-        [ div [ class "flex items-center justify-between" ]
-            [ h2 [ class "text-xl font-medium" ] [ text "Credit account" ]
-            , button [ class secondaryButtonClass, onClick LogoutClicked, testId "logout" ] [ text "Log out" ]
+    div [ Html.Attributes.class "space-y-6" ]
+        [ div [ Html.Attributes.class "flex items-center justify-between" ]
+            [ Ui.sectionTitle "Credit account"
+            , Ui.secondaryButton [ onClick LogoutClicked, testId "logout" ] "Log out"
             ]
         , balanceView state.balance
         , ledgerView state.entries
@@ -475,9 +729,9 @@ dashboardView origin state =
 
 balanceView : Maybe Int -> Html Msg
 balanceView balance =
-    div [ class cardClass ]
-        [ p [ class labelClass ] [ text "Balance" ]
-        , p [ class "text-3xl font-semibold", testId "balance" ] [ text (balanceLabel balance) ]
+    Ui.card
+        [ Ui.label_ "Balance"
+        , p [ Html.Attributes.class "text-3xl font-semibold", testId "balance" ] [ text (balanceLabel balance) ]
         ]
 
 
@@ -493,13 +747,13 @@ balanceLabel balance =
 
 ledgerView : List Ledger.LedgerEntryResponse -> Html Msg
 ledgerView entries =
-    div [ class cardClass ]
-        [ h2 [ class sectionTitleClass ] [ text "Ledger" ]
-        , table [ class "w-full text-left text-sm" ]
+    Ui.card
+        [ Ui.sectionTitle "Ledger"
+        , table [ Html.Attributes.class "w-full text-left text-sm" ]
             [ thead []
-                [ tr [ class "text-slate-500" ]
-                    [ th [ class "pb-2" ] [ text "Entry" ]
-                    , th [ class "pb-2 text-right" ] [ text "Amount" ]
+                [ tr [ Html.Attributes.class "text-slate-500" ]
+                    [ th [ Html.Attributes.class "pb-2" ] [ text "Entry" ]
+                    , th [ Html.Attributes.class "pb-2 text-right" ] [ text "Amount" ]
                     ]
                 ]
             , tbody [ testId "ledger" ] (List.map ledgerRow entries)
@@ -509,27 +763,27 @@ ledgerView entries =
 
 ledgerRow : Ledger.LedgerEntryResponse -> Html Msg
 ledgerRow entry =
-    tr [ class "border-t border-slate-100", testId "ledger-entry" ]
-        [ td [ class "py-2" ] [ text (kindLabel entry.kind) ]
-        , td [ class "py-2 text-right tabular-nums" ] [ text (String.fromInt entry.amount) ]
+    tr [ Html.Attributes.class "border-t border-slate-100", testId "ledger-entry" ]
+        [ td [ Html.Attributes.class "py-2" ] [ text (kindLabel entry.kind) ]
+        , td [ Html.Attributes.class "py-2 text-right tabular-nums" ] [ text (String.fromInt entry.amount) ]
         ]
 
 
 fundingView : LoggedInModel -> Html Msg
 fundingView state =
-    form [ class cardClass, onSubmit FundClicked ]
-        [ h2 [ class sectionTitleClass ] [ text "Fund a task" ]
-        , input [ type_ "text", class fieldClass, placeholder "Task ID", value state.fundTaskId, onInput FundTaskIdChanged, testId "fund-task-id" ] []
-        , input [ type_ "number", class fieldClass, placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ] []
-        , button [ type_ "submit", class primaryButtonClass, disabled (state.fundTaskId == ""), testId "fund" ] [ text "Fund task" ]
+    form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit FundClicked ]
+        [ Ui.sectionTitle "Fund a task"
+        , Ui.textInput [ type_ "text", placeholder "Task ID", value state.fundTaskId, onInput FundTaskIdChanged, testId "fund-task-id" ]
+        , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
+        , Ui.primaryButton [ type_ "submit", disabled (state.fundTaskId == ""), testId "fund" ] "Fund task"
         , maybeNote state.fundMessage "fund-message"
         ]
 
 
 tasksView : String -> LoggedInModel -> Html Msg
 tasksView origin state =
-    div [ class cardClass ]
-        [ h2 [ class sectionTitleClass ] [ text "My tasks" ]
+    Ui.card
+        [ Ui.sectionTitle "My tasks"
         , tasksList state.tasks
         , taskDetailView origin state
         ]
@@ -538,20 +792,20 @@ tasksView origin state =
 tasksList : List Task.TaskListItemResponse -> Html Msg
 tasksList tasks =
     if List.isEmpty tasks then
-        p [ class "text-sm text-slate-500", testId "tasks-empty" ] [ text "No tasks yet." ]
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "tasks-empty" ] [ text "No tasks yet." ]
 
     else
-        div [ class "divide-y divide-slate-100", testId "tasks" ] (List.map taskRow tasks)
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "tasks" ] (List.map taskRow tasks)
 
 
 taskRow : Task.TaskListItemResponse -> Html Msg
 taskRow item =
-    div [ class "flex items-center justify-between py-2", testId "task-row" ]
+    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "task-row" ]
         [ div []
-            [ p [ class "font-medium" ] [ text item.title ]
-            , p [ class "text-xs text-slate-500" ] [ text (taskStateLabel item.state) ]
+            [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state) ]
             ]
-        , button [ class secondaryButtonClass, onClick (SelectTask item.id), testId "view-task" ] [ text "View" ]
+        , Ui.secondaryButton [ onClick (SelectTask item.id), testId "view-task" ] "View"
         ]
 
 
@@ -559,15 +813,15 @@ taskDetailView : String -> LoggedInModel -> Html Msg
 taskDetailView origin state =
     case state.selectedTask of
         Just detail ->
-            div [ class "mt-4 space-y-3 rounded-md bg-slate-50 p-4", testId "task-detail" ]
-                [ p [ class labelClass ] [ text ("Task " ++ detail.id) ]
-                , p [ class "text-sm" ] [ text ("State: " ++ detail.state) ]
-                , p [ class labelClass ] [ text "Response schema" ]
-                , pre [ class codeBlockClass, testId "task-schema" ] [ text detail.responseSchemaJson ]
-                , p [ class labelClass ] [ text "Submit with the REST API" ]
-                , pre [ class codeBlockClass ] [ text (restSubmitCurl origin detail.id) ]
-                , p [ class labelClass ] [ text "Submit with an MCP agent" ]
-                , pre [ class codeBlockClass, testId "task-mcp-curl" ] [ text (mcpSubmitCurl origin detail.id) ]
+            div [ Html.Attributes.class "mt-4 space-y-3 rounded-md bg-slate-50 p-4", testId "task-detail" ]
+                [ Ui.label_ ("Task " ++ detail.id)
+                , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ detail.state) ]
+                , Ui.label_ "Response schema"
+                , Ui.codeBlock [ testId "task-schema" ] detail.responseSchemaJson
+                , Ui.label_ "Submit with the REST API"
+                , Ui.codeBlock [] (restSubmitCurl origin detail.id)
+                , Ui.label_ "Submit with an MCP agent"
+                , Ui.codeBlock [ testId "task-mcp-curl" ] (mcpSubmitCurl origin detail.id)
                 ]
 
         Nothing ->
@@ -576,13 +830,13 @@ taskDetailView origin state =
 
 agentsView : String -> LoggedInModel -> Html Msg
 agentsView origin state =
-    div [ class cardClass ]
-        [ h2 [ class sectionTitleClass ] [ text "Agent setup" ]
-        , p [ class "text-sm text-slate-600" ] [ text "Create a scoped credential for a local MCP agent." ]
-        , form [ class "mt-3 space-y-3", onSubmit CreateAgentClicked ]
-            [ input [ type_ "text", class fieldClass, placeholder "Agent label", value state.agentLabel, onInput AgentLabelChanged, testId "agent-label" ] []
-            , div [ class "space-y-1" ] (List.map (scopeCheckbox state.agentScopes) allScopes)
-            , button [ type_ "submit", class primaryButtonClass, testId "create-agent" ] [ text "Create credential" ]
+    Ui.card
+        [ Ui.sectionTitle "Agent setup"
+        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Create a scoped credential for a local MCP agent." ]
+        , form [ Html.Attributes.class "mt-3 space-y-3", onSubmit CreateAgentClicked ]
+            [ Ui.textInput [ type_ "text", placeholder "Agent label", value state.agentLabel, onInput AgentLabelChanged, testId "agent-label" ]
+            , div [ Html.Attributes.class "space-y-1" ] (List.map (scopeCheckbox state.agentScopes) allScopes)
+            , Ui.primaryButton [ type_ "submit", testId "create-agent" ] "Create credential"
             , maybeNote state.agentMessage "agent-message"
             ]
         , newCredentialView origin state.newCredential
@@ -592,8 +846,8 @@ agentsView origin state =
 
 scopeCheckbox : List Agent.AgentScope -> Agent.AgentScope -> Html Msg
 scopeCheckbox selected scope =
-    label [ class "flex items-center gap-2 text-sm" ]
-        [ input
+    label [ Html.Attributes.class "flex items-center gap-2 text-sm" ]
+        [ Html.input
             [ type_ "checkbox"
             , checked (List.member scope selected)
             , onClick (ToggleScope scope)
@@ -608,11 +862,11 @@ newCredentialView : String -> Maybe Agent.AgentCredentialCreatedResponse -> Html
 newCredentialView origin created =
     case created of
         Just credential ->
-            div [ class "mt-4 space-y-3 rounded-md bg-slate-50 p-4" ]
-                [ p [ class labelClass ] [ text "New agent token (shown once)" ]
-                , pre [ class codeBlockClass, testId "agent-secret" ] [ text credential.secret ]
-                , p [ class labelClass ] [ text "MCP client configuration" ]
-                , pre [ class codeBlockClass, testId "mcp-config" ] [ text (mcpConfig origin credential.secret) ]
+            div [ Html.Attributes.class "mt-4 space-y-3 rounded-md bg-slate-50 p-4" ]
+                [ Ui.label_ "New agent token (shown once)"
+                , Ui.codeBlock [ testId "agent-secret" ] credential.secret
+                , Ui.label_ "MCP client configuration"
+                , Ui.codeBlock [ testId "mcp-config" ] (mcpConfig origin credential.secret)
                 ]
 
         Nothing ->
@@ -625,15 +879,15 @@ credentialsList credentials =
         text ""
 
     else
-        div [ class "mt-4 divide-y divide-slate-100", testId "credentials" ] (List.map credentialRow credentials)
+        div [ Html.Attributes.class "mt-4 divide-y divide-slate-100", testId "credentials" ] (List.map credentialRow credentials)
 
 
 credentialRow : Agent.AgentCredentialResponse -> Html Msg
 credentialRow credential =
-    div [ class "flex items-center justify-between py-2", testId "credential-row" ]
+    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "credential-row" ]
         [ div []
-            [ p [ class "font-medium" ] [ text credential.label ]
-            , p [ class "text-xs text-slate-500" ] [ text (credentialStateLabel credential.state ++ " · " ++ String.join ", " (List.map scopeTag credential.scopes)) ]
+            [ p [ Html.Attributes.class "font-medium" ] [ text credential.label ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (credentialStateLabel credential.state ++ " · " ++ String.join ", " (List.map scopeTag credential.scopes)) ]
             ]
         , revokeButton credential
         ]
@@ -643,17 +897,136 @@ revokeButton : Agent.AgentCredentialResponse -> Html Msg
 revokeButton credential =
     case credential.state of
         Agent.AgentCredentialStateActive ->
-            button [ class secondaryButtonClass, onClick (RevokeClicked credential.id), testId "revoke-credential" ] [ text "Revoke" ]
+            Ui.secondaryButton [ onClick (RevokeClicked credential.id), testId "revoke-credential" ] "Revoke"
 
         Agent.AgentCredentialStateRevoked ->
-            span [ class "text-xs text-slate-400" ] [ text "revoked" ]
+            span [ Html.Attributes.class "text-xs text-slate-400" ] [ text "revoked" ]
+
+
+
+-- Discovery page
+
+
+discoveryView : LoggedInModel -> Html Msg
+discoveryView state =
+    Ui.card
+        [ Ui.sectionTitle "Discover public tasks"
+        , discoveryList state.discoveryTasks
+        ]
+
+
+discoveryList : List Task.TaskListItemResponse -> Html Msg
+discoveryList tasks =
+    if List.isEmpty tasks then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "discovery-empty" ] [ text "No public tasks available." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "discovery-tasks" ] (List.map discoveryRow tasks)
+
+
+discoveryRow : Task.TaskListItemResponse -> Html Msg
+discoveryRow item =
+    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "discovery-task-row" ]
+        [ div []
+            [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state) ]
+            ]
+        , Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View"
+        ]
+
+
+
+-- Task detail page
+
+
+taskDetailPageView : LoggedInModel -> Html Msg
+taskDetailPageView state =
+    div [ Html.Attributes.class "space-y-6" ]
+        [ Ui.secondaryButton [ onClick DetailBackClicked, testId "detail-back" ] "Back to discovery"
+        , detailCard state
+        , submitCard state
+        , submissionsCard state
+        ]
+
+
+detailCard : LoggedInModel -> Html Msg
+detailCard state =
+    case state.detail of
+        Just detail ->
+            Ui.card
+                [ p [ Html.Attributes.class "text-2xl font-semibold", testId "detail-title" ] [ text detail.title ]
+                , div [ Html.Attributes.class "flex items-center gap-2" ] [ Ui.badge detail.state ]
+                , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
+                , Ui.label_ "Response schema"
+                , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson
+                ]
+
+        Nothing ->
+            Ui.card [ p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading task…" ] ]
+
+
+submitCard : LoggedInModel -> Html Msg
+submitCard state =
+    form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit SubmitClicked ]
+        [ Ui.sectionTitle "Submit a response"
+        , Ui.textarea_
+            [ placeholder "{}"
+            , value state.submitInput
+            , onInput SubmitInputChanged
+            , Html.Attributes.rows 6
+            , testId "detail-submit-input"
+            ]
+        , Ui.primaryButton [ type_ "submit", testId "detail-submit" ] "Submit response"
+        , maybeNote state.submitMessage "detail-submit-message"
+        ]
+
+
+submissionsCard : LoggedInModel -> Html Msg
+submissionsCard state =
+    Ui.card
+        [ Ui.sectionTitle "Submissions"
+        , submissionsList state
+        ]
+
+
+submissionsList : LoggedInModel -> Html Msg
+submissionsList state =
+    if List.isEmpty state.submissions then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "submissions-empty" ] [ text "No submissions to review." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "submissions" ]
+            (List.map (submissionRow state) state.submissions)
+
+
+submissionRow : LoggedInModel -> Submission.SubmissionResponse -> Html Msg
+submissionRow state submission =
+    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "submission-row" ]
+        [ div [ Html.Attributes.class "flex items-center gap-2" ]
+            [ Ui.badge (submissionStateLabel submission.state) ]
+        , acceptButton state submission
+        ]
+
+
+acceptButton : LoggedInModel -> Submission.SubmissionResponse -> Html Msg
+acceptButton _ submission =
+    case submission.state of
+        Submission.SubmissionStateSubmitted ->
+            Ui.primaryButton [ onClick (AcceptClicked submission.id), testId "accept-submission" ] "Accept"
+
+        _ ->
+            text ""
+
+
+
+-- Labels and helpers
 
 
 maybeError : Maybe String -> String -> Html Msg
 maybeError message identifier =
     case message of
         Just value ->
-            p [ class "text-sm text-red-600", testId identifier ] [ text value ]
+            Ui.errorText identifier value
 
         Nothing ->
             text ""
@@ -663,7 +1036,7 @@ maybeNote : Maybe String -> String -> Html Msg
 maybeNote message identifier =
     case message of
         Just value ->
-            p [ class "text-sm text-slate-600", testId identifier ] [ text value ]
+            Ui.noteText identifier value
 
         Nothing ->
             text ""
@@ -699,6 +1072,11 @@ mcpSubmitCurl origin taskId =
 fundSuccessLabel : Ledger.TaskEscrowResponse -> String
 fundSuccessLabel escrow =
     "Escrowed " ++ String.fromInt escrow.amount ++ " credits (" ++ escrowStateLabel escrow.state ++ ")."
+
+
+submitSuccessLabel : Submission.SubmissionCreatedResponse -> String
+submitSuccessLabel created =
+    "Submission " ++ created.submission.id ++ " (" ++ submissionStateLabel created.submission.state ++ ")."
 
 
 allScopes : List Agent.AgentScope
@@ -759,6 +1137,22 @@ taskStateLabel state =
             "expired"
 
 
+submissionStateLabel : Submission.SubmissionState -> String
+submissionStateLabel state =
+    case state of
+        Submission.SubmissionStateSubmitted ->
+            "submitted"
+
+        Submission.SubmissionStateInvalid ->
+            "invalid"
+
+        Submission.SubmissionStateAccepted ->
+            "accepted"
+
+        Submission.SubmissionStateRejected ->
+            "rejected"
+
+
 kindLabel : Ledger.LedgerEntryKind -> String
 kindLabel kind =
     case kind of
@@ -808,43 +1202,3 @@ httpErrorLabel error =
 
         Http.BadBody message ->
             "The response was unexpected: " ++ message
-
-
-testId : String -> Html.Attribute Msg
-testId value =
-    attribute "data-testid" value
-
-
-cardClass : String
-cardClass =
-    "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-
-
-fieldClass : String
-fieldClass =
-    "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-
-
-labelClass : String
-labelClass =
-    "text-sm uppercase tracking-wide text-slate-500"
-
-
-sectionTitleClass : String
-sectionTitleClass =
-    "text-lg font-medium"
-
-
-codeBlockClass : String
-codeBlockClass =
-    "overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100"
-
-
-primaryButtonClass : String
-primaryButtonClass =
-    "rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-
-
-secondaryButtonClass : String
-secondaryButtonClass =
-    "rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"

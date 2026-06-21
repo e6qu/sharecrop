@@ -3,14 +3,15 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
-	"github.com/e6qu/sharecrop/internal/mcp"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -48,6 +49,14 @@ func (services mcpServices) ListTaskSubmissions(ctx context.Context, subject aut
 
 func (services mcpServices) AcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey) ledger.AcceptResult {
 	return services.ledgerService.AcceptSubmission(ctx, requester, taskID, submissionID, key)
+}
+
+func (services mcpServices) ListSeries(ctx context.Context, subject auth.UserSubject) task.ListSeriesResult {
+	return services.taskService.ListSeries(ctx, subject)
+}
+
+func (services mcpServices) GetSeries(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID) task.GetSeriesResult {
+	return services.taskService.GetSeries(ctx, subject, seriesID)
 }
 
 type agentCredentialRequest struct {
@@ -191,6 +200,11 @@ func (server Server) revokeAgentCredential(w http.ResponseWriter, r *http.Reques
 }
 
 func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
+	if !originAllowed(r) {
+		writeError(w, http.StatusForbidden, "origin is not allowed")
+		return
+	}
+
 	verifyResult := server.verifyAgent(r)
 	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
 	if !verifiedMatched {
@@ -198,19 +212,47 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var request mcp.Request
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeMCPResponse(w, mcp.Response{JSONRPC: "2.0", ID: json.RawMessage("null"), Error: &mcp.RPCError{Code: -32700, Message: "request body is not valid JSON-RPC"}})
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxMCPBodyBytes))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "request body could not be read")
 		return
 	}
 
-	if strings.HasPrefix(request.Method, "notifications/") {
+	result := server.mcpServer.HandleRaw(r.Context(), verified.Subject, verified.Credential.Scopes, body)
+	if result.SessionID != "" {
+		w.Header().Set("Mcp-Session-Id", result.SessionID)
+	}
+	if !result.HasResponse {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result.Payload)
+}
 
-	response := server.mcpServer.Handle(r.Context(), verified.Subject, verified.Credential.Scopes, request)
-	writeMCPResponse(w, response)
+// mcpStreamNotOffered answers a GET on the MCP endpoint. This server has no
+// server-initiated messages, so per the Streamable HTTP spec it returns 405.
+func (server Server) mcpStreamNotOffered(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Allow", "POST")
+	writeError(w, http.StatusMethodNotAllowed, "the MCP endpoint does not offer a server-initiated stream")
+}
+
+const maxMCPBodyBytes = 1 << 20
+
+// originAllowed implements the MCP DNS-rebinding protection: requests without
+// an Origin header (non-browser agents) are allowed; a browser Origin must
+// match the server's own host.
+func originAllowed(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return parsed.Host == r.Host
 }
 
 func (server Server) verifyAgent(r *http.Request) agent.VerifyResult {
@@ -225,12 +267,6 @@ func (server Server) verifyAgent(r *http.Request) agent.VerifyResult {
 		return agent.VerifyRejected{Reason: secretResult.(agent.SecretPlainRejected).Reason}
 	}
 	return server.agentService.Verify(r.Context(), secret.Value)
-}
-
-func writeMCPResponse(w http.ResponseWriter, response mcp.Response) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
 }
 
 func credentialToResponse(value agent.Credential) agentCredentialResponse {

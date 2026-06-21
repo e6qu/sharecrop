@@ -8,9 +8,33 @@ func Modules() []Module {
 		organizationModule(),
 		teamModule(),
 		taskModule(),
+		taskSeriesModule(),
 		submissionModule(),
 		ledgerModule(),
 		agentModule(),
+	}
+}
+
+func taskSeriesModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.TaskSeries"),
+		Definitions: []Definition{
+			Product{
+				Name: NewElmTypeName("TaskSeriesResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("ownerKind"), JSONName: NewJSONFieldName("owner_kind"), Type: StringRef{}},
+					{Name: NewElmValueName("title"), JSONName: NewJSONFieldName("title"), Type: StringRef{}},
+					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TaskSeriesListResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("series"), JSONName: NewJSONFieldName("series"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskSeriesResponse")}}},
+				},
+			},
+		},
 	}
 }
 
