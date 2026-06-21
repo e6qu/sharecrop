@@ -13,13 +13,14 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/org"
 )
 
 func TestHealth(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	response := httptest.NewRecorder()
 
-	New(testStaticFiles(), testAuthService()).ServeHTTP(response, request)
+	testHandler().ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
@@ -30,7 +31,7 @@ func TestIndex(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	response := httptest.NewRecorder()
 
-	New(testStaticFiles(), testAuthService()).ServeHTTP(response, request)
+	testHandler().ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
@@ -46,7 +47,7 @@ func TestRegisterEndpoint(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"email":"person@example.com","password":"correct horse battery staple"}`))
 	response := httptest.NewRecorder()
 
-	New(testStaticFiles(), testAuthService()).ServeHTTP(response, request)
+	testHandler().ServeHTTP(response, request)
 
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
@@ -60,7 +61,7 @@ func TestGuestEndpoint(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/guest", nil)
 	response := httptest.NewRecorder()
 
-	New(testStaticFiles(), testAuthService()).ServeHTTP(response, request)
+	testHandler().ServeHTTP(response, request)
 
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
@@ -74,11 +75,46 @@ func TestRefreshEndpointRequiresCookie(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", nil)
 	response := httptest.NewRecorder()
 
-	New(testStaticFiles(), testAuthService()).ServeHTTP(response, request)
+	testHandler().ServeHTTP(response, request)
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
 	}
+}
+
+func TestCreateOrganizationEndpoint(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/organizations", strings.NewReader(`{"name":"Sharecrop Labs"}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
+	}
+
+	var body organizationResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Name != "Sharecrop Labs" {
+		t.Fatalf("name = %q, want Sharecrop Labs", body.Name)
+	}
+}
+
+func TestCreateOrganizationRequiresUserToken(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/organizations", strings.NewReader(`{"name":"Sharecrop Labs"}`))
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+func testHandler() http.Handler {
+	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{})
 }
 
 func testStaticFiles() fs.FS {
@@ -125,6 +161,10 @@ func assertRefreshCookie(t *testing.T, response *httptest.ResponseRecorder) {
 
 type testAuth struct{}
 
+type testVerifier struct{}
+
+type testOrganizationService struct{}
+
 func testAuthService() testAuth {
 	return testAuth{}
 }
@@ -167,6 +207,46 @@ func (testAuth) CreateGuest(context.Context) auth.GuestResult {
 		AccessToken:  testAccessToken(),
 		RefreshToken: testRefreshToken(),
 	}
+}
+
+func (testVerifier) Verify(auth.AccessToken) auth.SubjectVerifyResult {
+	idResult := core.NewUserID()
+	idCreated := idResult.(core.UserIDCreated)
+	return auth.SubjectVerified{Value: auth.UserSubject{ID: idCreated.Value}}
+}
+
+func (testOrganizationService) CreateOrganization(_ context.Context, actor auth.UserSubject, name org.OrganizationName) org.CreateOrganizationResult {
+	idResult := core.NewOrganizationID()
+	idCreated := idResult.(core.OrganizationIDCreated)
+	return org.OrganizationCreated{Value: org.Organization{ID: idCreated.Value, Name: name, CreatedBy: actor.ID}}
+}
+
+func (testOrganizationService) ListOrganizations(context.Context, auth.UserSubject) org.ListOrganizationsResult {
+	return org.OrganizationsListed{Values: []org.Organization{}}
+}
+
+func (testOrganizationService) ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult {
+	membershipIDResult := core.NewOrganizationMembershipID()
+	membershipIDCreated := membershipIDResult.(core.OrganizationMembershipIDCreated)
+	userIDResult := core.NewUserID()
+	userIDCreated := userIDResult.(core.UserIDCreated)
+	organizationIDResult := core.NewOrganizationID()
+	organizationIDCreated := organizationIDResult.(core.OrganizationIDCreated)
+	return org.MemberProvisioned{Value: org.OrganizationMember{ID: membershipIDCreated.Value, OrganizationID: organizationIDCreated.Value, UserID: userIDCreated.Value, Status: org.MembershipStatusActive, Roles: []org.Role{org.RoleMember}}}
+}
+
+func (testOrganizationService) DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult {
+	return org.MemberDeactivationAccepted{}
+}
+
+func (testOrganizationService) CreateOrganizationTeam(_ context.Context, actor auth.UserSubject, organizationID core.OrganizationID, name org.TeamName) org.CreateTeamResult {
+	teamIDResult := core.NewTeamID()
+	teamIDCreated := teamIDResult.(core.TeamIDCreated)
+	return org.TeamCreated{Value: org.Team{ID: teamIDCreated.Value, OrganizationID: organizationID, Name: name, CreatedBy: actor.ID}}
+}
+
+func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult {
+	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 
 func testAccessToken() auth.AccessToken {

@@ -12,6 +12,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -21,7 +22,7 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("static files: %v", err)
 	}
 
-	server := httptest.NewServer(httpserver.New(staticFiles, testAuthService()))
+	server := httptest.NewServer(httpserver.New(staticFiles, testAuthService(), testVerifier{}, testOrganizationService{}))
 	defer server.Close()
 
 	response, err := http.Get(server.URL + "/healthz")
@@ -36,6 +37,10 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 type testAuth struct{}
+
+type testVerifier struct{}
+
+type testOrganizationService struct{}
 
 func testAuthService() testAuth {
 	return testAuth{}
@@ -63,6 +68,36 @@ func (testAuth) CreateGuest(context.Context) auth.GuestResult {
 	idResult := core.NewGuestID()
 	idCreated := idResult.(core.GuestIDCreated)
 	return auth.GuestAccepted{Subject: auth.GuestSubject{ID: idCreated.Value}, AccessToken: testAccessToken(), RefreshToken: testRefreshToken()}
+}
+
+func (testVerifier) Verify(auth.AccessToken) auth.SubjectVerifyResult {
+	idResult := core.NewUserID()
+	idCreated := idResult.(core.UserIDCreated)
+	return auth.SubjectVerified{Value: auth.UserSubject{ID: idCreated.Value}}
+}
+
+func (testOrganizationService) CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult {
+	return org.CreateOrganizationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testOrganizationService) ListOrganizations(context.Context, auth.UserSubject) org.ListOrganizationsResult {
+	return org.OrganizationsListed{Values: []org.Organization{}}
+}
+
+func (testOrganizationService) ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult {
+	return org.ProvisionMemberRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testOrganizationService) DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult {
+	return org.DeactivateMemberRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testOrganizationService) CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult {
+	return org.CreateTeamRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult {
+	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 
 func testAccessToken() auth.AccessToken {

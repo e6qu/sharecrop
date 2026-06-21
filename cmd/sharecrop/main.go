@@ -16,6 +16,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -100,9 +101,12 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		return 2
 	}
 
+	tokenVerifier := auth.NewAccessTokenVerifier(tokenSecret.Value, auth.SystemClock{})
+	organizationService := org.NewService(db.NewOrgStore(pool))
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),
-		Handler:           httpserver.New(staticFiles, authService.Value),
+		Handler:           httpserver.New(staticFiles, authService.Value, tokenVerifier, organizationService),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

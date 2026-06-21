@@ -1,17 +1,17 @@
 # Status
 
-The repository contained the pull request 1 project skeleton and the pull request 2 core domain and quality-gate work.
+The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, and pull request 3 authentication work.
 
-Pull request 3 was active.
+Pull request 4 was active.
 
 Active task:
 
-- Add authentication, sessions, and guest identity.
-- Add registered user creation and login.
-- Add JSON Web Token access tokens.
-- Add opaque rotating refresh tokens.
-- Add guest subject creation.
-- Keep authentication dependencies behind `internal/auth`.
+- Add organizations, teams, and provisioning.
+- Add organization and team domain types.
+- Add organization role and permission domain types.
+- Add PostgreSQL organization/team/provisioning tables and repository code.
+- Add HTTP endpoints for organization creation, listing, members, and teams.
+- Re-evaluate tests for the organization provisioning slice.
 
 Implemented surface:
 
@@ -28,7 +28,7 @@ Implemented surface:
 - Deno smoke test harness.
 - Go HTTP unit tests.
 - HTTP end-to-end smoke tests behind the `http_e2e` build tag.
-- Playwright UI smoke test.
+- Playwright user interface smoke test.
 - Manual screenshot helper.
 - `make` commands for build, test, serve, migration, frontend, and user interface end-to-end.
 - Core domain foundations for errors, IDs, lifecycle states, and visibility scopes.
@@ -40,6 +40,11 @@ Implemented surface:
 - Refresh endpoint using opaque rotating refresh-token cookies.
 - JSON Web Token access tokens signed by local standard-library code.
 - PostgreSQL authentication tables and repository code.
+- Organization and team identifiers.
+- Organization names, team names, membership statuses, roles, and permissions.
+- Organization service methods for creation, listing, member provisioning, member deactivation, team creation, and team listing.
+- PostgreSQL organization, membership, role, team, and team-member tables.
+- HTTP organization endpoints protected by verified bearer access tokens.
 
 The accepted defaults for pull request 1 were:
 
@@ -73,7 +78,8 @@ Last observed checks:
 - `make migrate-up` passed against local Postgres.
 - `docker compose down` passed.
 - Pull request 2 continuous integration passed before merge.
-- Pull request 3 local unit, formatting, type, lint, policy, copy-paste, dead-code, build, and tagged HTTP end-to-end compile checks passed.
+- Pull request 3 continuous integration passed before merge.
+- Pull request 4 local unit, formatting, type, lint, policy, copy-paste, dead-code, build, migration, and HTTP end-to-end checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.

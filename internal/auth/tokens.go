@@ -45,6 +45,19 @@ func NewAccessTokenSecret(raw string) AccessTokenSecretResult {
 	return AccessTokenSecretAccepted{Value: AccessTokenSecret{value: raw}}
 }
 
+type AccessTokenVerifier struct {
+	secret AccessTokenSecret
+	clock  Clock
+}
+
+func NewAccessTokenVerifier(secret AccessTokenSecret, clock Clock) AccessTokenVerifier {
+	return AccessTokenVerifier{secret: secret, clock: clock}
+}
+
+func (verifier AccessTokenVerifier) Verify(token AccessToken) SubjectVerifyResult {
+	return VerifyAccessToken(verifier.secret, token, verifier.clock.Now())
+}
+
 type AccessToken struct {
 	value string
 }
@@ -52,6 +65,29 @@ type AccessToken struct {
 func (token AccessToken) String() string {
 	return token.value
 }
+
+func ParseAccessToken(raw string) AccessTokenParseResult {
+	if strings.TrimSpace(raw) == "" {
+		return AccessTokenParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "access token is required")}
+	}
+	return AccessTokenParsed{Value: AccessToken{value: raw}}
+}
+
+type AccessTokenParseResult interface {
+	accessTokenParseResult()
+}
+
+type AccessTokenParsed struct {
+	Value AccessToken
+}
+
+type AccessTokenParseRejected struct {
+	Reason core.DomainError
+}
+
+func (AccessTokenParsed) accessTokenParseResult() {}
+
+func (AccessTokenParseRejected) accessTokenParseResult() {}
 
 type RefreshTokenPlain struct {
 	value string
@@ -200,6 +236,72 @@ func SignAccessToken(secret AccessTokenSecret, subject Subject, now time.Time) A
 	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return AccessTokenAccepted{Value: AccessToken{value: unsigned + "." + signature}}
 }
+
+func VerifyAccessToken(secret AccessTokenSecret, token AccessToken, now time.Time) SubjectVerifyResult {
+	parts := strings.Split(token.value, ".")
+	if len(parts) != 3 {
+		return SubjectVerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "access token format is invalid")}
+	}
+
+	unsigned := parts[0] + "." + parts[1]
+	mac := hmac.New(sha256.New, []byte(secret.value))
+	_, _ = mac.Write([]byte(unsigned))
+	expected := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(expected), []byte(parts[2])) {
+		return SubjectVerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "access token signature is invalid")}
+	}
+
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return SubjectVerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "access token payload is invalid")}
+	}
+
+	var payload jwtPayload
+	if err := json.Unmarshal(payloadJSON, &payload); err != nil {
+		return SubjectVerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "access token payload is invalid")}
+	}
+
+	if payload.ExpiresAt <= now.Unix() {
+		return SubjectVerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "access token expired")}
+	}
+
+	switch payload.SubjectKind {
+	case "user":
+		userResult := core.ParseUserID(payload.Subject)
+		userCreated, userMatched := userResult.(core.UserIDCreated)
+		if !userMatched {
+			rejected := userResult.(core.UserIDRejected)
+			return SubjectVerifyRejected{Reason: rejected.Reason}
+		}
+		return SubjectVerified{Value: UserSubject{ID: userCreated.Value}}
+	case "guest":
+		guestResult := core.ParseGuestID(payload.Subject)
+		guestCreated, guestMatched := guestResult.(core.GuestIDCreated)
+		if !guestMatched {
+			rejected := guestResult.(core.GuestIDRejected)
+			return SubjectVerifyRejected{Reason: rejected.Reason}
+		}
+		return SubjectVerified{Value: GuestSubject{ID: guestCreated.Value}}
+	default:
+		return SubjectVerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "access token subject kind is invalid")}
+	}
+}
+
+type SubjectVerifyResult interface {
+	subjectVerifyResult()
+}
+
+type SubjectVerified struct {
+	Value Subject
+}
+
+type SubjectVerifyRejected struct {
+	Reason core.DomainError
+}
+
+func (SubjectVerified) subjectVerifyResult() {}
+
+func (SubjectVerifyRejected) subjectVerifyResult() {}
 
 type jwtHeader struct {
 	Algorithm string `json:"alg"`
