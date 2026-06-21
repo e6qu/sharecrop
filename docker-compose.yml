@@ -13,7 +13,7 @@ services:
       timeout: 5s
       retries: 20
     volumes:
-      - sharecrop-postgres:/var/lib/postgresql/data
+      - sharecrop-postgres-18:/var/lib/postgresql
 
 volumes:
-  sharecrop-postgres:
+  sharecrop-postgres-18:

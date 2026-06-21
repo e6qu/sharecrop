@@ -670,6 +670,8 @@
   },
   "workspace": {
     "dependencies": [
+      "npm:@playwright/test@1.61.0",
+      "npm:playwright@1.61.0",
       "npm:tailwindcss@4.3.1"
     ]
   }

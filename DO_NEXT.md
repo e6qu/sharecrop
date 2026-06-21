@@ -2,13 +2,13 @@
 
 Prioritized queue:
 
-1. Verify Docker Compose Postgres and `sharecrop migrate up` when the environment allows Docker approval.
-2. Start PR 2 from [PLAN.md](./PLAN.md#pr-2-core-domain-type-system).
-3. Add strong ID wrappers.
-4. Add UUIDv7 generation behind `internal/core/id`.
-5. Add domain error types.
-6. Add per-type result patterns.
-7. Add strong enum and tagged-union examples.
-8. Add tests for ID parsing, enum parsing, result handling, and lifecycle transitions.
+1. Wait for PR 2 to be merged before starting another task.
+2. After PR 2 is merged, sync local `main` with `origin/main`.
+3. Start PR 3 from [PLAN.md](./PLAN.md#pr-3-auth-sessions-and-guest-identity).
+4. Add user registration/login.
+5. Add JWT access tokens.
+6. Add opaque rotating refresh tokens.
+7. Add guest subject support.
+8. Add auth tests across unit, integration, and HTTP E2E layers.
 
 Before starting, reread [AGENTS.md](./AGENTS.md) and update the continuity files if task scope changes.

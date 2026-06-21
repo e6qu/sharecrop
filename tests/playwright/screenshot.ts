@@ -1,6 +1,10 @@
-import { chromium } from "npm:playwright@1.61.0";
+import { chromium } from "playwright";
 
-const output = Deno.args[0] ?? "/tmp/sharecrop-pr1-shell.png";
+const output = Deno.args[0];
+if (output === undefined || output.length === 0) {
+  console.error("screenshot output path is required");
+  Deno.exit(1);
+}
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
