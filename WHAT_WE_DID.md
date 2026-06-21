@@ -28,6 +28,10 @@ The task workflow was updated again so agents create one git commit at the end o
 
 The task workflow was updated so each task uses its own task branch and pull request.
 
+The pull request workflow was constrained to one open pull request at a time.
+
+New task branches were set to start from synced `origin/main` after the previous task pull request is merged.
+
 UI changes were set to require manual screenshot review when practical.
 
 Playwright UI tests were set to grow as the UI matures and workflows stabilize.

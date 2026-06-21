@@ -57,6 +57,10 @@ Specific rules:
 - Create one pull request for each task.
 - Each task should happen on its own task branch.
 - The task branch should be pushed and opened as a pull request after the task commit is created.
+- Never keep more than one pull request open at a time.
+- Do not start a new task branch while the previous task pull request remains open.
+- After a task pull request is merged, sync local `main` with `origin/main`.
+- Create the next task branch from synced `origin/main`.
 
 ## Documentation Style
 
@@ -181,6 +185,7 @@ For each task:
 8. Record known bugs or skipped checks in [BUGS.md](./BUGS.md).
 9. Commit the task as one commit.
 10. Push the task branch and create one pull request for the task.
+11. Do not start the next task until the open pull request is merged or the user explicitly changes direction.
 
 Do not overwrite unrelated user changes.
 

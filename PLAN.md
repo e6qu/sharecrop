@@ -1251,6 +1251,9 @@ Package intent:
 - Avoid common development ports such as `3000`, `5432`, `8000`, and `8080`.
 - PR task branches use names such as `task/pr-01-skeleton`.
 - Create one pull request for each task.
+- Keep at most one pull request open at any time.
+- After a task pull request is merged, sync local `main` with `origin/main` before starting the next task.
+- Create each new task branch from synced `origin/main`.
 - Create one git commit at the end of each task.
 - Use Go contract definitions and a Go-based generator for Elm.
 - Use `sqlc` from the start where practical.
