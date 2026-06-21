@@ -1,0 +1,136 @@
+package contracts
+
+func Modules() []Module {
+	return []Module{
+		idsModule(),
+		errorModule(),
+		authModule(),
+		organizationModule(),
+		teamModule(),
+	}
+}
+
+func idsModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Ids"),
+		Definitions: []Definition{
+			Alias{Name: NewElmTypeName("UserID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("GuestID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("OrganizationID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("OrganizationMembershipID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("TeamID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("AccessToken"), Type: StringRef{}},
+		},
+	}
+}
+
+func errorModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Error"),
+		Definitions: []Definition{
+			Product{
+				Name: NewElmTypeName("ErrorResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("error"), JSONName: NewJSONFieldName("error"), Type: StringRef{}},
+				},
+			},
+		},
+	}
+}
+
+func authModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Auth"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("SubjectKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("SubjectKindUser"), Tag: "user"},
+					{Name: NewElmTypeName("SubjectKindGuest"), Tag: "guest"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("AuthResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("subjectKind"), JSONName: NewJSONFieldName("subject_kind"), Type: NamedRef{Name: NewElmTypeName("SubjectKind")}},
+					{Name: NewElmValueName("subjectID"), JSONName: NewJSONFieldName("subject_id"), Type: StringRef{}},
+					{Name: NewElmValueName("accessToken"), JSONName: NewJSONFieldName("access_token"), Type: StringRef{}},
+				},
+			},
+		},
+	}
+}
+
+func organizationModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Organization"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("MembershipStatus"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("MembershipStatusActive"), Tag: "active"},
+					{Name: NewElmTypeName("MembershipStatusDeactivated"), Tag: "deactivated"},
+					{Name: NewElmTypeName("MembershipStatusRemoved"), Tag: "removed"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("OrganizationRole"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("OrganizationRoleOwner"), Tag: "owner"},
+					{Name: NewElmTypeName("OrganizationRoleAdmin"), Tag: "admin"},
+					{Name: NewElmTypeName("OrganizationRoleMember"), Tag: "member"},
+					{Name: NewElmTypeName("OrganizationRoleBilling"), Tag: "billing"},
+					{Name: NewElmTypeName("OrganizationRoleReviewer"), Tag: "reviewer"},
+					{Name: NewElmTypeName("OrganizationRolePublicPublisher"), Tag: "public_publisher"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("OrganizationResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("name"), JSONName: NewJSONFieldName("name"), Type: StringRef{}},
+					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("OrganizationsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("organizations"), JSONName: NewJSONFieldName("organizations"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrganizationResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("OrganizationMemberResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("organizationID"), JSONName: NewJSONFieldName("organization_id"), Type: StringRef{}},
+					{Name: NewElmValueName("userID"), JSONName: NewJSONFieldName("user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("status"), JSONName: NewJSONFieldName("status"), Type: NamedRef{Name: NewElmTypeName("MembershipStatus")}},
+					{Name: NewElmValueName("roles"), JSONName: NewJSONFieldName("roles"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrganizationRole")}}},
+				},
+			},
+		},
+	}
+}
+
+func teamModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Team"),
+		Definitions: []Definition{
+			Product{
+				Name: NewElmTypeName("TeamResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("organizationID"), JSONName: NewJSONFieldName("organization_id"), Type: StringRef{}},
+					{Name: NewElmValueName("name"), JSONName: NewJSONFieldName("name"), Type: StringRef{}},
+					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TeamsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("teams"), JSONName: NewJSONFieldName("teams"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TeamResponse")}}},
+				},
+			},
+		},
+	}
+}

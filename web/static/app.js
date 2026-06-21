@@ -4450,6 +4450,7 @@ var $elm$core$Set$toList = function (_v0) {
 	return $elm$core$Dict$keys(dict);
 };
 var $elm$core$Basics$GT = {$: 'GT'};
+var $author$project$Sharecrop$Generated$Auth$SubjectKindGuest = {$: 'SubjectKindGuest'};
 var $elm$core$Result$Err = function (a) {
 	return {$: 'Err', a: a};
 };
@@ -5226,7 +5227,7 @@ var $author$project$Main$main = $elm$browser$Browser$element(
 	{
 		init: function (_v0) {
 			return _Utils_Tuple2(
-				{},
+				{subjectKind: $author$project$Sharecrop$Generated$Auth$SubjectKindGuest},
 				$elm$core$Platform$Cmd$none);
 		},
 		subscriptions: function (_v1) {

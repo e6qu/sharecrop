@@ -3,10 +3,12 @@ module Main exposing (main)
 import Browser
 import Html exposing (Html, div, h1, main_, p, text)
 import Html.Attributes exposing (class)
+import Sharecrop.Generated.Auth as Auth
 
 
 type alias Model =
-    {}
+    { subjectKind : Auth.SubjectKind
+    }
 
 
 type Msg
@@ -16,7 +18,7 @@ type Msg
 main : Program () Model Msg
 main =
     Browser.element
-        { init = \_ -> ( {}, Cmd.none )
+        { init = \_ -> ( { subjectKind = Auth.SubjectKindGuest }, Cmd.none )
         , update = update
         , subscriptions = \_ -> Sub.none
         , view = view

@@ -206,3 +206,45 @@ Pull request 4 verification was performed:
 - `docker compose down` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed with a non-fatal global module stat-cache warning from the sandbox.
+
+Pull request 5 added the Go-to-Elm contract generator:
+
+- Go-owned contract definitions were added under `internal/contracts`.
+- The contract model covered aliases, product types, enums, named type references, string type references, and list type references.
+- Elm generation was added for modules, type aliases, enums, decoders, and encoders.
+- Generated Elm modules were added under `web/elm/src/Sharecrop/Generated/`.
+- First generated contracts covered auth responses, error responses, identifiers, organization responses, organization member responses, team responses, membership statuses, subject kinds, and organization roles.
+- The `sharecrop generate elm-contracts` command was added.
+- The Makefile gained `contracts` and `check-contracts` targets.
+- Frontend builds were changed to generate contracts before compiling Elm.
+- The handwritten Elm app consumed the generated `Sharecrop.Generated.Auth.SubjectKind` type directly.
+
+Pull request 5 test strategy was evaluated:
+
+- Generator unit tests checked generated auth output, deterministic output, and absence of weak generated Elm shapes such as `Bool` and `Dict`.
+- `check-contracts` verified generated files were current and deterministic.
+- Elm compilation verified generated modules worked with Elm 0.19.1.
+- The handwritten Elm app imported a generated module to ensure generated contracts were usable from normal Elm code.
+- Existing HTTP end-to-end tests remained the API behavior checks for this slice.
+- Playwright and manual screenshot checks were run because Elm source changed.
+
+Pull request 5 verification was performed:
+
+- `make check-format` passed.
+- `make check-contracts` passed with `GOCACHE=$PWD/.cache/go-build`.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make check-ts` passed.
+- `make lint` passed.
+- `GOCACHE=$PWD/.cache/go-build make vet` passed.
+- `GOCACHE=$PWD/.cache/go-build make test` passed.
+- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make frontend` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed with a non-fatal global module stat-cache warning from the sandbox.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build go test -run '^$' -tags http_e2e ./tests/http_e2e` passed.
+- `docker compose up -d postgres` passed.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make migrate-up` passed.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make test-http` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build deno task e2e:ui` passed.
+- Manual screenshot review passed for `/tmp/sharecrop-pr5-shell.png`.
+- `docker compose down` passed.

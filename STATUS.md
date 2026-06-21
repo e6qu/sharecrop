@@ -1,17 +1,17 @@
 # Status
 
-The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, and pull request 3 authentication work.
+The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, pull request 3 authentication work, and pull request 4 organization provisioning work.
 
-Pull request 4 was active.
+Pull request 5 was active.
 
 Active task:
 
-- Add organizations, teams, and provisioning.
-- Add organization and team domain types.
-- Add organization role and permission domain types.
-- Add PostgreSQL organization/team/provisioning tables and repository code.
-- Add HTTP endpoints for organization creation, listing, members, and teams.
-- Re-evaluate tests for the organization provisioning slice.
+- Add a Go-to-Elm contract generator.
+- Add Go-owned contract definitions for product types, enums, and tagged unions.
+- Generate Elm modules under `web/elm/src/Sharecrop/Generated/`.
+- Generate decoders and encoders for first auth, organization, team, error, and identifier contracts.
+- Add deterministic generator tests and generated Elm compile checks.
+- Re-evaluate tests for generated code and contract drift.
 
 Implemented surface:
 
@@ -45,6 +45,11 @@ Implemented surface:
 - Organization service methods for creation, listing, member provisioning, member deactivation, team creation, and team listing.
 - PostgreSQL organization, membership, role, team, and team-member tables.
 - HTTP organization endpoints protected by verified bearer access tokens.
+- Go-owned contract definitions under `internal/contracts`.
+- Deterministic Elm contract generation for auth, errors, identifiers, organizations, and teams.
+- Generated Elm modules under `web/elm/src/Sharecrop/Generated/`.
+- The handwritten Elm app directly consumes a generated auth contract type.
+- Makefile contract generation and deterministic contract checks.
 
 The accepted defaults for pull request 1 were:
 
@@ -79,7 +84,8 @@ Last observed checks:
 - `docker compose down` passed.
 - Pull request 2 continuous integration passed before merge.
 - Pull request 3 continuous integration passed before merge.
-- Pull request 4 local unit, formatting, type, lint, policy, copy-paste, dead-code, build, migration, and HTTP end-to-end checks passed.
+- Pull request 4 continuous integration passed before merge.
+- Pull request 5 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, HTTP end-to-end, Playwright, and screenshot checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.
