@@ -124,6 +124,22 @@ func TestParseOrganizationIDRoundTrips(t *testing.T) {
 	}
 }
 
+func TestParseAgentCredentialIDRoundTrips(t *testing.T) {
+	created, matched := NewAgentCredentialID().(AgentCredentialIDCreated)
+	if !matched {
+		t.Fatalf("new agent credential id did not create")
+	}
+
+	parsed, matched := ParseAgentCredentialID(created.Value.String()).(AgentCredentialIDCreated)
+	if !matched {
+		t.Fatalf("parse agent credential id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}
+
 func TestParseCreditAccountIDRoundTrips(t *testing.T) {
 	created, matched := NewCreditAccountID().(CreditAccountIDCreated)
 	if !matched {

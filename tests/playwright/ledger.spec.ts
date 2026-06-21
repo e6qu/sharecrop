@@ -1,41 +1,11 @@
 import { expect, test } from "@playwright/test";
-
-interface AuthBody {
-  access_token: string;
-  subject_id: string;
-}
-
-interface TaskBody {
-  id: string;
-}
-
-const password = "correct horse battery staple";
-
-function uniqueEmail(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}@example.com`;
-}
-
-function userTaskRequest(userId: string): Record<string, unknown> {
-  return {
-    owner: { kind: "user", user_id: userId, team_id: "", organization_id: "" },
-    title: "Fund from the browser",
-    description: "A task funded through the browser interface.",
-    visibility: {
-      kind: "default",
-      user_id: "",
-      team_id: "",
-      organization_id: "",
-    },
-    placement: {
-      kind: "standalone",
-      series_id: "",
-      series_title: "",
-      series_position: 0,
-    },
-    response_schema_json: '{"kind":"freeform"}',
-    payload: { kind: "none", json: "" },
-  };
-}
+import {
+  type AuthBody,
+  password,
+  type TaskBody,
+  uniqueEmail,
+  userTaskRequest,
+} from "./helpers.ts";
 
 test("registering shows the signup grant balance and ledger entry", async ({ page }) => {
   await page.goto("/");
@@ -58,7 +28,7 @@ test("funding a task escrows credits and lowers the balance", async ({ page, req
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },
-    data: userTaskRequest(registerBody.subject_id),
+    data: userTaskRequest("Fund from the browser", registerBody.subject_id),
   });
   expect(taskResponse.ok()).toBeTruthy();
   const taskBody = (await taskResponse.json()) as TaskBody;

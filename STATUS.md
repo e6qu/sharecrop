@@ -1,12 +1,12 @@
 # Status
 
-The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, pull request 3 authentication work, pull request 4 organization provisioning work, pull request 5 contract generation work, pull request 6 schema parsing and validation work, pull request 7 task visibility and capability-token work, and pull request 8 submission, anonymous access, and sensitive-data work.
+The repository contained the pull request 1 through pull request 8 work, plus pull request 9 credits, ledger, escrow, and first accepted submission work.
 
-Pull request 9 was ready for review.
+Pull request 10 was ready for review.
 
 Active task:
 
-- Open pull request 9 and wait for continuous integration to pass.
+- Open pull request 10 and wait for continuous integration to pass.
 
 Implemented surface:
 
@@ -85,6 +85,16 @@ Implemented surface:
 - An interactive Elm app with register/login, a credit balance and ledger view, and a task funding form backed by the API.
 - A separate Postgres-backed integration test tier under the `integration` build tag.
 - continuous integration split into parallel static, unit, build, integration, HTTP end-to-end, and Playwright jobs.
+- Agent credential identifiers, tables, and a child scope table.
+- Agent credential domain types for scopes, lifecycle state, labels, opaque secrets, and scope sets under `internal/agent`.
+- An agent credential service for scoped creation, verification, listing, and revocation, with PostgreSQL repository code.
+- A local MCP JSON-RPC server under `internal/mcp`, implemented from the specification without a Go MCP library, exposing `initialize`, `tools/list`, and `tools/call`.
+- MCP tools for listing tasks, getting a task, getting a task schema, creating a task, submitting a response, getting submission status, listing task submissions, and accepting a submission, each gated by an agent scope.
+- A single-task read endpoint with a task view-permission check.
+- HTTP endpoints for agent credential creation, listing, and revocation, and a `POST /mcp` endpoint authenticated by agent credentials.
+- Generated Elm agent contracts.
+- Browser screens for listing the user's tasks with REST and MCP curl examples, and for creating, viewing, and revoking scoped agent credentials with generated MCP client configuration.
+- Task-series MCP tools are not implemented because no task-series read surface exists yet.
 
 The accepted defaults for pull request 1 were:
 
@@ -125,6 +135,7 @@ Last observed checks:
 - Pull request 7 local unit, formatting, type, lint, policy, copy-paste, dead-code, frontend, build, migration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
 - Pull request 8 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, HTTP end-to-end, Playwright, and Deno checks passed.
 - Pull request 9 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
+- Pull request 10 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.

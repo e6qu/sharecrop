@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
@@ -24,7 +25,7 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("static files: %v", err)
 	}
 
-	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}, healthSubmissionService{}, healthLedgerService{}))
+	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}, healthSubmissionService{}, healthLedgerService{}, healthAgentService{}))
 	defer server.Close()
 
 	response, err := http.Get(server.URL + "/healthz")
@@ -96,6 +97,10 @@ func (healthTaskService) Create(context.Context, task.CreateCommand) task.Create
 	return task.CreateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthTaskService) Get(context.Context, auth.UserSubject, core.TaskID) task.GetResult {
+	return task.GetRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthTaskService) Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
@@ -144,4 +149,22 @@ func (healthLedgerService) Balance(context.Context, core.UserID) ledger.BalanceR
 
 func (healthLedgerService) ListEntries(context.Context, core.UserID) ledger.ListEntriesResult {
 	return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+type healthAgentService struct{}
+
+func (healthAgentService) Create(context.Context, core.UserID, agent.Label, agent.ScopeSet) agent.CreateResult {
+	return agent.CreateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAgentService) Verify(context.Context, agent.SecretPlain) agent.VerifyResult {
+	return agent.VerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAgentService) List(context.Context, core.UserID) agent.ListResult {
+	return agent.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAgentService) Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult {
+	return agent.RevokeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

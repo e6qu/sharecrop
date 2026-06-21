@@ -10,6 +10,7 @@ func Modules() []Module {
 		taskModule(),
 		submissionModule(),
 		ledgerModule(),
+		agentModule(),
 	}
 }
 
@@ -26,6 +27,7 @@ func idsModule() Module {
 			Alias{Name: NewElmTypeName("SubmissionReceiptTokenID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("CreditAccountID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("LedgerEntryID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("AgentCredentialID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationMembershipID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TeamID"), Type: StringRef{}},
@@ -319,6 +321,53 @@ func ledgerModule() Module {
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
 					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("EscrowState")}},
+				},
+			},
+		},
+	}
+}
+
+func agentModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Agent"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("AgentScope"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("AgentScopeTasksRead"), Tag: "tasks_read"},
+					{Name: NewElmTypeName("AgentScopeTasksWrite"), Tag: "tasks_write"},
+					{Name: NewElmTypeName("AgentScopeSubmissionsWrite"), Tag: "submissions_write"},
+					{Name: NewElmTypeName("AgentScopeSubmissionsRead"), Tag: "submissions_read"},
+					{Name: NewElmTypeName("AgentScopeSubmissionsReview"), Tag: "submissions_review"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("AgentCredentialState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("AgentCredentialStateActive"), Tag: "active"},
+					{Name: NewElmTypeName("AgentCredentialStateRevoked"), Tag: "revoked"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("AgentCredentialResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("label"), JSONName: NewJSONFieldName("label"), Type: StringRef{}},
+					{Name: NewElmValueName("scopes"), JSONName: NewJSONFieldName("scopes"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("AgentScope")}}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("AgentCredentialState")}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("AgentCredentialsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("credentials"), JSONName: NewJSONFieldName("credentials"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("AgentCredentialResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("AgentCredentialCreatedResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("credential"), JSONName: NewJSONFieldName("credential"), Type: NamedRef{Name: NewElmTypeName("AgentCredentialResponse")}},
+					{Name: NewElmValueName("secret"), JSONName: NewJSONFieldName("secret"), Type: StringRef{}},
 				},
 			},
 		},

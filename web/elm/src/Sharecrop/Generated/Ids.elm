@@ -104,6 +104,17 @@ ledgerEntryIDEncoder : LedgerEntryID -> Encode.Value
 ledgerEntryIDEncoder ledgerEntryID =
     Encode.string ledgerEntryID
 
+type alias AgentCredentialID =
+    String
+
+agentCredentialIDDecoder : Decoder AgentCredentialID
+agentCredentialIDDecoder =
+    Decode.string
+
+agentCredentialIDEncoder : AgentCredentialID -> Encode.Value
+agentCredentialIDEncoder agentCredentialID =
+    Encode.string agentCredentialID
+
 type alias OrganizationID =
     String
 

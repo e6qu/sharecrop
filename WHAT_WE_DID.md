@@ -421,3 +421,38 @@ Pull request 9 verification was performed:
 - `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell, signup-grant, and browser-funding Playwright tests.
 - Manual screenshot review passed for `/tmp/sharecrop-pr9-shell.png` and `/tmp/sharecrop-pr9-dashboard.png`.
 - `docker compose down` was run after verification.
+
+Pull request 10 added MCP, agent credentials, agent setup, and task discovery surfaces:
+
+- Agent credential identifiers were added to the core identifier set.
+- Agent credential and agent credential scope tables were added.
+- Agent credential domain types were added under `internal/agent` for scopes, lifecycle state, labels, opaque secrets and hashes, scope sets, and scope checks.
+- The agent credential service added scoped creation, verification, listing, and revocation, with PostgreSQL repository code that stored scopes in a child table.
+- A local MCP JSON-RPC server was added under `internal/mcp`, implemented from the MCP specification without a Go MCP library, handling `initialize`, `ping`, `tools/list`, and `tools/call`.
+- MCP tools were added for `sharecrop.list_tasks`, `sharecrop.get_task`, `sharecrop.get_task_schema`, `sharecrop.create_task`, `sharecrop.submit_response`, `sharecrop.get_submission_status`, `sharecrop.list_task_submissions`, and `sharecrop.accept_submission`, each gated by an agent scope and adapted over the existing task, submission, and ledger services.
+- A task service `Get` method and a `GET /api/tasks/{task_id}` endpoint were added with a task view-permission check covering creators, public tasks, user visibility, and organization visibility.
+- HTTP endpoints were added for agent credential creation, listing, and revocation, and a `POST /mcp` endpoint authenticated by agent credentials with per-tool scope enforcement.
+- Generated Elm contracts were extended with the agent credential identifier, agent scopes, agent credential state, and agent credential responses.
+- The browser app gained a task list panel with REST and MCP curl examples per task, and an agent setup panel for creating, viewing, and revoking scoped credentials with generated MCP client configuration and a one-time token.
+- The Elm app was changed to accept an `origin` flag so the generated MCP configuration and curl examples use the live server origin.
+
+Pull request 10 test strategy was evaluated:
+
+- Unit tests covered agent scope parsing, scope-set de-duplication and checks, opaque secret round trips, label validation, and agent service create/verify/revoke.
+- MCP unit tests covered initialize, tools/list, unknown methods, scope enforcement, tool dispatch, unknown tools, and domain rejections surfaced as tool errors.
+- HTTP unit tests covered agent credential creation, unknown-scope rejection, and the MCP endpoint requiring an agent credential.
+- Integration tests covered agent credential create, verify, list, and revoke against PostgreSQL.
+- HTTP end-to-end tests covered the agent discover-submit-status-list-accept flow over MCP with a credit payout, MCP scope enforcement, revoked-credential rejection, and the single-task REST endpoint.
+- Playwright tests covered creating an agent credential through the browser to see the token and MCP configuration, and listing the user's tasks with agent curl examples.
+- Manual screenshot review covered the agent setup panel.
+
+Pull request 10 verification was performed:
+
+- `GOCACHE=$PWD/.cache/go-build go test ./...` passed.
+- `make check-format`, `make check-contracts`, `make check-policy`, `make check-ts`, `make check-copy-paste`, `make check-dead-code`, `make lint`, and `make vet` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed.
+- `docker compose up -d postgres` passed and the agent credentials migration applied.
+- `make test-integration` passed and was idempotency-safe across reruns.
+- `make test-http` passed, including the MCP and agent flows.
+- `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell, ledger, and agent Playwright tests.
+- Manual screenshot review passed for `/tmp/sharecrop-pr10-agents.png`.

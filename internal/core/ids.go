@@ -38,6 +38,10 @@ type OrganizationMembershipID struct {
 	value id.ID
 }
 
+type AgentCredentialID struct {
+	value id.ID
+}
+
 type CreditAccountID struct {
 	value id.ID
 }
@@ -402,6 +406,45 @@ func organizationMembershipIDFromIDResult(result id.IDResult) OrganizationMember
 		return OrganizationMembershipIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return OrganizationMembershipIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type AgentCredentialIDResult interface {
+	agentCredentialIDResult()
+}
+
+type AgentCredentialIDCreated struct {
+	Value AgentCredentialID
+}
+
+type AgentCredentialIDRejected struct {
+	Reason DomainError
+}
+
+func (AgentCredentialIDCreated) agentCredentialIDResult() {}
+
+func (AgentCredentialIDRejected) agentCredentialIDResult() {}
+
+func NewAgentCredentialID() AgentCredentialIDResult {
+	return agentCredentialIDFromIDResult(id.New())
+}
+
+func ParseAgentCredentialID(raw string) AgentCredentialIDResult {
+	return agentCredentialIDFromIDResult(id.Parse(raw))
+}
+
+func (id AgentCredentialID) String() string {
+	return id.value.String()
+}
+
+func agentCredentialIDFromIDResult(result id.IDResult) AgentCredentialIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return AgentCredentialIDCreated{Value: AgentCredentialID{value: typed.Value}}
+	case id.IDRejected:
+		return AgentCredentialIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return AgentCredentialIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 
