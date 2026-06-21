@@ -11,6 +11,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -23,7 +24,7 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("static files: %v", err)
 	}
 
-	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}, healthSubmissionService{}))
+	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}, healthSubmissionService{}, healthLedgerService{}))
 	defer server.Close()
 
 	response, err := http.Get(server.URL + "/healthz")
@@ -121,4 +122,26 @@ func (healthSubmissionService) FindByReceipt(context.Context, submission.Receipt
 
 func (healthSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult {
 	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+type healthLedgerService struct{}
+
+func (healthLedgerService) FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult {
+	return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthLedgerService) AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult {
+	return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthLedgerService) RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult {
+	return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthLedgerService) Balance(context.Context, core.UserID) ledger.BalanceResult {
+	return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthLedgerService) ListEntries(context.Context, core.UserID) ledger.ListEntriesResult {
+	return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

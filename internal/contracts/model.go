@@ -54,6 +54,8 @@ type TypeRef interface {
 
 type StringRef struct{}
 
+type IntRef struct{}
+
 type NamedRef struct {
 	Name ElmTypeName
 }
@@ -63,6 +65,8 @@ type ListRef struct {
 }
 
 func (StringRef) typeRef() {}
+
+func (IntRef) typeRef() {}
 
 func (NamedRef) typeRef() {}
 

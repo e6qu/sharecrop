@@ -38,6 +38,14 @@ type OrganizationMembershipID struct {
 	value id.ID
 }
 
+type CreditAccountID struct {
+	value id.ID
+}
+
+type LedgerEntryID struct {
+	value id.ID
+}
+
 type GuestID struct {
 	value id.ID
 }
@@ -394,6 +402,84 @@ func organizationMembershipIDFromIDResult(result id.IDResult) OrganizationMember
 		return OrganizationMembershipIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return OrganizationMembershipIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type CreditAccountIDResult interface {
+	creditAccountIDResult()
+}
+
+type CreditAccountIDCreated struct {
+	Value CreditAccountID
+}
+
+type CreditAccountIDRejected struct {
+	Reason DomainError
+}
+
+func (CreditAccountIDCreated) creditAccountIDResult() {}
+
+func (CreditAccountIDRejected) creditAccountIDResult() {}
+
+func NewCreditAccountID() CreditAccountIDResult {
+	return creditAccountIDFromIDResult(id.New())
+}
+
+func ParseCreditAccountID(raw string) CreditAccountIDResult {
+	return creditAccountIDFromIDResult(id.Parse(raw))
+}
+
+func (id CreditAccountID) String() string {
+	return id.value.String()
+}
+
+func creditAccountIDFromIDResult(result id.IDResult) CreditAccountIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return CreditAccountIDCreated{Value: CreditAccountID{value: typed.Value}}
+	case id.IDRejected:
+		return CreditAccountIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return CreditAccountIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type LedgerEntryIDResult interface {
+	ledgerEntryIDResult()
+}
+
+type LedgerEntryIDCreated struct {
+	Value LedgerEntryID
+}
+
+type LedgerEntryIDRejected struct {
+	Reason DomainError
+}
+
+func (LedgerEntryIDCreated) ledgerEntryIDResult() {}
+
+func (LedgerEntryIDRejected) ledgerEntryIDResult() {}
+
+func NewLedgerEntryID() LedgerEntryIDResult {
+	return ledgerEntryIDFromIDResult(id.New())
+}
+
+func ParseLedgerEntryID(raw string) LedgerEntryIDResult {
+	return ledgerEntryIDFromIDResult(id.Parse(raw))
+}
+
+func (id LedgerEntryID) String() string {
+	return id.value.String()
+}
+
+func ledgerEntryIDFromIDResult(result id.IDResult) LedgerEntryIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return LedgerEntryIDCreated{Value: LedgerEntryID{value: typed.Value}}
+	case id.IDRejected:
+		return LedgerEntryIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return LedgerEntryIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 

@@ -124,6 +124,38 @@ func TestParseOrganizationIDRoundTrips(t *testing.T) {
 	}
 }
 
+func TestParseCreditAccountIDRoundTrips(t *testing.T) {
+	created, matched := NewCreditAccountID().(CreditAccountIDCreated)
+	if !matched {
+		t.Fatalf("new credit account id did not create")
+	}
+
+	parsed, matched := ParseCreditAccountID(created.Value.String()).(CreditAccountIDCreated)
+	if !matched {
+		t.Fatalf("parse credit account id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}
+
+func TestParseLedgerEntryIDRoundTrips(t *testing.T) {
+	created, matched := NewLedgerEntryID().(LedgerEntryIDCreated)
+	if !matched {
+		t.Fatalf("new ledger entry id did not create")
+	}
+
+	parsed, matched := ParseLedgerEntryID(created.Value.String()).(LedgerEntryIDCreated)
+	if !matched {
+		t.Fatalf("parse ledger entry id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}
+
 func TestParseGuestIDRoundTrips(t *testing.T) {
 	created, matched := NewGuestID().(GuestIDCreated)
 	if !matched {

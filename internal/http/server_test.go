@@ -13,6 +13,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -168,8 +169,65 @@ func TestAuthenticatedSubmissionEndpointReturnsReceipt(t *testing.T) {
 	}
 }
 
+func TestCreditsBalanceEndpoint(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/credits/balance", nil)
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+
+	var body balanceResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Amount != 100 {
+		t.Fatalf("amount = %d, want 100", body.Amount)
+	}
+}
+
+func TestFundTaskEndpointReturnsHeldEscrow(t *testing.T) {
+	taskIDCreated := core.NewTaskID().(core.TaskIDCreated)
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/"+taskIDCreated.Value.String()+"/funding", strings.NewReader(`{"amount":40,"idempotency_key":"fund-1"}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
+	}
+
+	var body taskEscrowResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Amount != 40 {
+		t.Fatalf("amount = %d, want 40", body.Amount)
+	}
+	if body.State != "held" {
+		t.Fatalf("state = %q, want held", body.State)
+	}
+}
+
+func TestFundTaskEndpointRejectsNonPositiveAmount(t *testing.T) {
+	taskIDCreated := core.NewTaskID().(core.TaskIDCreated)
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/"+taskIDCreated.Value.String()+"/funding", strings.NewReader(`{"amount":0,"idempotency_key":"fund-1"}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
 func testHandler() http.Handler {
-	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{})
+	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{}, testLedgerService{})
 }
 
 func testStaticFiles() fs.FS {
@@ -223,6 +281,8 @@ type testOrganizationService struct{}
 type testTaskService struct{}
 
 type testSubmissionService struct{}
+
+type testLedgerService struct{}
 
 func testAuthService() testAuth {
 	return testAuth{}
@@ -365,6 +425,26 @@ func (testSubmissionService) FindByReceipt(context.Context, submission.ReceiptTo
 
 func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
+}
+
+func (testLedgerService) FundTask(_ context.Context, _ core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
+	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
+}
+
+func (testLedgerService) AcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey) ledger.AcceptResult {
+	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}}
+}
+
+func (testLedgerService) RefundTask(_ context.Context, _ core.UserID, taskID core.TaskID, _ ledger.IdempotencyKey) ledger.RefundResult {
+	return ledger.TaskRefunded{Escrow: ledger.TaskEscrow{TaskID: taskID, State: ledger.EscrowStateRefunded}}
+}
+
+func (testLedgerService) Balance(context.Context, core.UserID) ledger.BalanceResult {
+	return ledger.BalanceFound{Value: ledger.NewBalance(100)}
+}
+
+func (testLedgerService) ListEntries(context.Context, core.UserID) ledger.ListEntriesResult {
+	return ledger.EntriesListed{Values: []ledger.LedgerEntry{}}
 }
 
 func testAccessToken() auth.AccessToken {

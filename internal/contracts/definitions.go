@@ -9,6 +9,7 @@ func Modules() []Module {
 		teamModule(),
 		taskModule(),
 		submissionModule(),
+		ledgerModule(),
 	}
 }
 
@@ -23,6 +24,8 @@ func idsModule() Module {
 			Alias{Name: NewElmTypeName("TaskCapabilityTokenID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("SubmissionID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("SubmissionReceiptTokenID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("CreditAccountID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("LedgerEntryID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationMembershipID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TeamID"), Type: StringRef{}},
@@ -261,6 +264,61 @@ func submissionModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("submission"), JSONName: NewJSONFieldName("submission"), Type: NamedRef{Name: NewElmTypeName("SubmissionResponse")}},
 					{Name: NewElmValueName("receiptToken"), JSONName: NewJSONFieldName("receipt_token"), Type: StringRef{}},
+				},
+			},
+		},
+	}
+}
+
+func ledgerModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Ledger"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("LedgerEntryKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("LedgerEntryKindSignupGrant"), Tag: "signup_grant"},
+					{Name: NewElmTypeName("LedgerEntryKindTaskEscrow"), Tag: "task_escrow"},
+					{Name: NewElmTypeName("LedgerEntryKindTaskRefund"), Tag: "task_refund"},
+					{Name: NewElmTypeName("LedgerEntryKindTaskPayout"), Tag: "task_payout"},
+					{Name: NewElmTypeName("LedgerEntryKindManualAdjustment"), Tag: "manual_adjustment"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("EscrowState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("EscrowStateHeld"), Tag: "held"},
+					{Name: NewElmTypeName("EscrowStateReleased"), Tag: "released"},
+					{Name: NewElmTypeName("EscrowStateRefunded"), Tag: "refunded"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("BalanceResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("LedgerEntryResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("LedgerEntryKind")}},
+					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
+					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("LedgerResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("entries"), JSONName: NewJSONFieldName("entries"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("LedgerEntryResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TaskEscrowResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("EscrowState")}},
 				},
 			},
 		},

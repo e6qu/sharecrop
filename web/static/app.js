@@ -4370,7 +4370,182 @@ function _Browser_load(url)
 		}
 	}));
 }
-var $elm$core$Basics$EQ = {$: 'EQ'};
+
+
+
+// SEND REQUEST
+
+var _Http_toTask = F3(function(router, toTask, request)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		function done(response) {
+			callback(toTask(request.expect.a(response)));
+		}
+
+		var xhr = new XMLHttpRequest();
+		xhr.addEventListener('error', function() { done($elm$http$Http$NetworkError_); });
+		xhr.addEventListener('timeout', function() { done($elm$http$Http$Timeout_); });
+		xhr.addEventListener('load', function() { done(_Http_toResponse(request.expect.b, xhr)); });
+		$elm$core$Maybe$isJust(request.tracker) && _Http_track(router, xhr, request.tracker.a);
+
+		try {
+			xhr.open(request.method, request.url, true);
+		} catch (e) {
+			return done($elm$http$Http$BadUrl_(request.url));
+		}
+
+		_Http_configureRequest(xhr, request);
+
+		request.body.a && xhr.setRequestHeader('Content-Type', request.body.a);
+		xhr.send(request.body.b);
+
+		return function() { xhr.c = true; xhr.abort(); };
+	});
+});
+
+
+// CONFIGURE
+
+function _Http_configureRequest(xhr, request)
+{
+	for (var headers = request.headers; headers.b; headers = headers.b) // WHILE_CONS
+	{
+		xhr.setRequestHeader(headers.a.a, headers.a.b);
+	}
+	xhr.timeout = request.timeout.a || 0;
+	xhr.responseType = request.expect.d;
+	xhr.withCredentials = request.allowCookiesFromOtherDomains;
+}
+
+
+// RESPONSES
+
+function _Http_toResponse(toBody, xhr)
+{
+	return A2(
+		200 <= xhr.status && xhr.status < 300 ? $elm$http$Http$GoodStatus_ : $elm$http$Http$BadStatus_,
+		_Http_toMetadata(xhr),
+		toBody(xhr.response)
+	);
+}
+
+
+// METADATA
+
+function _Http_toMetadata(xhr)
+{
+	return {
+		url: xhr.responseURL,
+		statusCode: xhr.status,
+		statusText: xhr.statusText,
+		headers: _Http_parseHeaders(xhr.getAllResponseHeaders())
+	};
+}
+
+
+// HEADERS
+
+function _Http_parseHeaders(rawHeaders)
+{
+	if (!rawHeaders)
+	{
+		return $elm$core$Dict$empty;
+	}
+
+	var headers = $elm$core$Dict$empty;
+	var headerPairs = rawHeaders.split('\r\n');
+	for (var i = headerPairs.length; i--; )
+	{
+		var headerPair = headerPairs[i];
+		var index = headerPair.indexOf(': ');
+		if (index > 0)
+		{
+			var key = headerPair.substring(0, index);
+			var value = headerPair.substring(index + 2);
+
+			headers = A3($elm$core$Dict$update, key, function(oldValue) {
+				return $elm$core$Maybe$Just($elm$core$Maybe$isJust(oldValue)
+					? value + ', ' + oldValue.a
+					: value
+				);
+			}, headers);
+		}
+	}
+	return headers;
+}
+
+
+// EXPECT
+
+var _Http_expect = F3(function(type, toBody, toValue)
+{
+	return {
+		$: 0,
+		d: type,
+		b: toBody,
+		a: toValue
+	};
+});
+
+var _Http_mapExpect = F2(function(func, expect)
+{
+	return {
+		$: 0,
+		d: expect.d,
+		b: expect.b,
+		a: function(x) { return func(expect.a(x)); }
+	};
+});
+
+function _Http_toDataView(arrayBuffer)
+{
+	return new DataView(arrayBuffer);
+}
+
+
+// BODY and PARTS
+
+var _Http_emptyBody = { $: 0 };
+var _Http_pair = F2(function(a, b) { return { $: 0, a: a, b: b }; });
+
+function _Http_toFormData(parts)
+{
+	for (var formData = new FormData(); parts.b; parts = parts.b) // WHILE_CONS
+	{
+		var part = parts.a;
+		formData.append(part.a, part.b);
+	}
+	return formData;
+}
+
+var _Http_bytesToBlob = F2(function(mime, bytes)
+{
+	return new Blob([bytes], { type: mime });
+});
+
+
+// PROGRESS
+
+function _Http_track(router, xhr, tracker)
+{
+	// TODO check out lengthComputable on loadstart event
+
+	xhr.upload.addEventListener('progress', function(event) {
+		if (xhr.c) { return; }
+		_Scheduler_rawSpawn(A2($elm$core$Platform$sendToSelf, router, _Utils_Tuple2(tracker, $elm$http$Http$Sending({
+			sent: event.loaded,
+			size: event.total
+		}))));
+	});
+	xhr.addEventListener('progress', function(event) {
+		if (xhr.c) { return; }
+		_Scheduler_rawSpawn(A2($elm$core$Platform$sendToSelf, router, _Utils_Tuple2(tracker, $elm$http$Http$Receiving({
+			received: event.loaded,
+			size: event.lengthComputable ? $elm$core$Maybe$Just(event.total) : $elm$core$Maybe$Nothing
+		}))));
+	});
+}var $elm$core$Basics$EQ = {$: 'EQ'};
 var $elm$core$Basics$LT = {$: 'LT'};
 var $elm$core$List$cons = _List_cons;
 var $elm$core$Elm$JsArray$foldr = _JsArray_foldr;
@@ -4450,7 +4625,6 @@ var $elm$core$Set$toList = function (_v0) {
 	return $elm$core$Dict$keys(dict);
 };
 var $elm$core$Basics$GT = {$: 'GT'};
-var $author$project$Sharecrop$Generated$Auth$SubjectKindGuest = {$: 'SubjectKindGuest'};
 var $elm$core$Result$Err = function (a) {
 	return {$: 'Err', a: a};
 };
@@ -5160,15 +5334,1292 @@ var $elm$core$Task$perform = F2(
 				A2($elm$core$Task$map, toMessage, task)));
 	});
 var $elm$browser$Browser$element = _Browser_element;
+var $author$project$Main$LoggedOut = {$: 'LoggedOut'};
+var $author$project$Main$initialModel = {authError: $elm$core$Maybe$Nothing, email: '', password: '', session: $author$project$Main$LoggedOut};
 var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
+var $author$project$Main$LoggedIn = function (a) {
+	return {$: 'LoggedIn', a: a};
+};
+var $author$project$Main$balanceFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return $elm$core$Maybe$Just(response.amount);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
+var $author$project$Main$entriesFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return response.entries;
+	} else {
+		return _List_Nil;
+	}
+};
+var $author$project$Main$BalanceReceived = function (a) {
+	return {$: 'BalanceReceived', a: a};
+};
+var $elm$http$Http$Header = F2(
+	function (a, b) {
+		return {$: 'Header', a: a, b: b};
+	});
+var $elm$http$Http$header = $elm$http$Http$Header;
+var $elm$http$Http$Request = function (a) {
+	return {$: 'Request', a: a};
+};
+var $elm$http$Http$State = F2(
+	function (reqs, subs) {
+		return {reqs: reqs, subs: subs};
+	});
+var $elm$core$Dict$RBEmpty_elm_builtin = {$: 'RBEmpty_elm_builtin'};
+var $elm$core$Dict$empty = $elm$core$Dict$RBEmpty_elm_builtin;
+var $elm$http$Http$init = $elm$core$Task$succeed(
+	A2($elm$http$Http$State, $elm$core$Dict$empty, _List_Nil));
+var $elm$http$Http$BadStatus_ = F2(
+	function (a, b) {
+		return {$: 'BadStatus_', a: a, b: b};
+	});
+var $elm$http$Http$BadUrl_ = function (a) {
+	return {$: 'BadUrl_', a: a};
+};
+var $elm$http$Http$GoodStatus_ = F2(
+	function (a, b) {
+		return {$: 'GoodStatus_', a: a, b: b};
+	});
+var $elm$http$Http$NetworkError_ = {$: 'NetworkError_'};
+var $elm$http$Http$Receiving = function (a) {
+	return {$: 'Receiving', a: a};
+};
+var $elm$http$Http$Sending = function (a) {
+	return {$: 'Sending', a: a};
+};
+var $elm$http$Http$Timeout_ = {$: 'Timeout_'};
+var $elm$core$Maybe$isJust = function (maybe) {
+	if (maybe.$ === 'Just') {
+		return true;
+	} else {
+		return false;
+	}
+};
+var $elm$core$Platform$sendToSelf = _Platform_sendToSelf;
+var $elm$core$Basics$compare = _Utils_compare;
+var $elm$core$Dict$get = F2(
+	function (targetKey, dict) {
+		get:
+		while (true) {
+			if (dict.$ === 'RBEmpty_elm_builtin') {
+				return $elm$core$Maybe$Nothing;
+			} else {
+				var key = dict.b;
+				var value = dict.c;
+				var left = dict.d;
+				var right = dict.e;
+				var _v1 = A2($elm$core$Basics$compare, targetKey, key);
+				switch (_v1.$) {
+					case 'LT':
+						var $temp$targetKey = targetKey,
+							$temp$dict = left;
+						targetKey = $temp$targetKey;
+						dict = $temp$dict;
+						continue get;
+					case 'EQ':
+						return $elm$core$Maybe$Just(value);
+					default:
+						var $temp$targetKey = targetKey,
+							$temp$dict = right;
+						targetKey = $temp$targetKey;
+						dict = $temp$dict;
+						continue get;
+				}
+			}
+		}
+	});
+var $elm$core$Dict$Black = {$: 'Black'};
+var $elm$core$Dict$RBNode_elm_builtin = F5(
+	function (a, b, c, d, e) {
+		return {$: 'RBNode_elm_builtin', a: a, b: b, c: c, d: d, e: e};
+	});
+var $elm$core$Dict$Red = {$: 'Red'};
+var $elm$core$Dict$balance = F5(
+	function (color, key, value, left, right) {
+		if ((right.$ === 'RBNode_elm_builtin') && (right.a.$ === 'Red')) {
+			var _v1 = right.a;
+			var rK = right.b;
+			var rV = right.c;
+			var rLeft = right.d;
+			var rRight = right.e;
+			if ((left.$ === 'RBNode_elm_builtin') && (left.a.$ === 'Red')) {
+				var _v3 = left.a;
+				var lK = left.b;
+				var lV = left.c;
+				var lLeft = left.d;
+				var lRight = left.e;
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Red,
+					key,
+					value,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, rK, rV, rLeft, rRight));
+			} else {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					color,
+					rK,
+					rV,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, key, value, left, rLeft),
+					rRight);
+			}
+		} else {
+			if ((((left.$ === 'RBNode_elm_builtin') && (left.a.$ === 'Red')) && (left.d.$ === 'RBNode_elm_builtin')) && (left.d.a.$ === 'Red')) {
+				var _v5 = left.a;
+				var lK = left.b;
+				var lV = left.c;
+				var _v6 = left.d;
+				var _v7 = _v6.a;
+				var llK = _v6.b;
+				var llV = _v6.c;
+				var llLeft = _v6.d;
+				var llRight = _v6.e;
+				var lRight = left.e;
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Red,
+					lK,
+					lV,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, llK, llV, llLeft, llRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, key, value, lRight, right));
+			} else {
+				return A5($elm$core$Dict$RBNode_elm_builtin, color, key, value, left, right);
+			}
+		}
+	});
+var $elm$core$Dict$insertHelp = F3(
+	function (key, value, dict) {
+		if (dict.$ === 'RBEmpty_elm_builtin') {
+			return A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, key, value, $elm$core$Dict$RBEmpty_elm_builtin, $elm$core$Dict$RBEmpty_elm_builtin);
+		} else {
+			var nColor = dict.a;
+			var nKey = dict.b;
+			var nValue = dict.c;
+			var nLeft = dict.d;
+			var nRight = dict.e;
+			var _v1 = A2($elm$core$Basics$compare, key, nKey);
+			switch (_v1.$) {
+				case 'LT':
+					return A5(
+						$elm$core$Dict$balance,
+						nColor,
+						nKey,
+						nValue,
+						A3($elm$core$Dict$insertHelp, key, value, nLeft),
+						nRight);
+				case 'EQ':
+					return A5($elm$core$Dict$RBNode_elm_builtin, nColor, nKey, value, nLeft, nRight);
+				default:
+					return A5(
+						$elm$core$Dict$balance,
+						nColor,
+						nKey,
+						nValue,
+						nLeft,
+						A3($elm$core$Dict$insertHelp, key, value, nRight));
+			}
+		}
+	});
+var $elm$core$Dict$insert = F3(
+	function (key, value, dict) {
+		var _v0 = A3($elm$core$Dict$insertHelp, key, value, dict);
+		if ((_v0.$ === 'RBNode_elm_builtin') && (_v0.a.$ === 'Red')) {
+			var _v1 = _v0.a;
+			var k = _v0.b;
+			var v = _v0.c;
+			var l = _v0.d;
+			var r = _v0.e;
+			return A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, k, v, l, r);
+		} else {
+			var x = _v0;
+			return x;
+		}
+	});
+var $elm$core$Dict$getMin = function (dict) {
+	getMin:
+	while (true) {
+		if ((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) {
+			var left = dict.d;
+			var $temp$dict = left;
+			dict = $temp$dict;
+			continue getMin;
+		} else {
+			return dict;
+		}
+	}
+};
+var $elm$core$Dict$moveRedLeft = function (dict) {
+	if (((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) && (dict.e.$ === 'RBNode_elm_builtin')) {
+		if ((dict.e.d.$ === 'RBNode_elm_builtin') && (dict.e.d.a.$ === 'Red')) {
+			var clr = dict.a;
+			var k = dict.b;
+			var v = dict.c;
+			var _v1 = dict.d;
+			var lClr = _v1.a;
+			var lK = _v1.b;
+			var lV = _v1.c;
+			var lLeft = _v1.d;
+			var lRight = _v1.e;
+			var _v2 = dict.e;
+			var rClr = _v2.a;
+			var rK = _v2.b;
+			var rV = _v2.c;
+			var rLeft = _v2.d;
+			var _v3 = rLeft.a;
+			var rlK = rLeft.b;
+			var rlV = rLeft.c;
+			var rlL = rLeft.d;
+			var rlR = rLeft.e;
+			var rRight = _v2.e;
+			return A5(
+				$elm$core$Dict$RBNode_elm_builtin,
+				$elm$core$Dict$Red,
+				rlK,
+				rlV,
+				A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					rlL),
+				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, rK, rV, rlR, rRight));
+		} else {
+			var clr = dict.a;
+			var k = dict.b;
+			var v = dict.c;
+			var _v4 = dict.d;
+			var lClr = _v4.a;
+			var lK = _v4.b;
+			var lV = _v4.c;
+			var lLeft = _v4.d;
+			var lRight = _v4.e;
+			var _v5 = dict.e;
+			var rClr = _v5.a;
+			var rK = _v5.b;
+			var rV = _v5.c;
+			var rLeft = _v5.d;
+			var rRight = _v5.e;
+			if (clr.$ === 'Black') {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
+			} else {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
+			}
+		}
+	} else {
+		return dict;
+	}
+};
+var $elm$core$Dict$moveRedRight = function (dict) {
+	if (((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) && (dict.e.$ === 'RBNode_elm_builtin')) {
+		if ((dict.d.d.$ === 'RBNode_elm_builtin') && (dict.d.d.a.$ === 'Red')) {
+			var clr = dict.a;
+			var k = dict.b;
+			var v = dict.c;
+			var _v1 = dict.d;
+			var lClr = _v1.a;
+			var lK = _v1.b;
+			var lV = _v1.c;
+			var _v2 = _v1.d;
+			var _v3 = _v2.a;
+			var llK = _v2.b;
+			var llV = _v2.c;
+			var llLeft = _v2.d;
+			var llRight = _v2.e;
+			var lRight = _v1.e;
+			var _v4 = dict.e;
+			var rClr = _v4.a;
+			var rK = _v4.b;
+			var rV = _v4.c;
+			var rLeft = _v4.d;
+			var rRight = _v4.e;
+			return A5(
+				$elm$core$Dict$RBNode_elm_builtin,
+				$elm$core$Dict$Red,
+				lK,
+				lV,
+				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, llK, llV, llLeft, llRight),
+				A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					lRight,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight)));
+		} else {
+			var clr = dict.a;
+			var k = dict.b;
+			var v = dict.c;
+			var _v5 = dict.d;
+			var lClr = _v5.a;
+			var lK = _v5.b;
+			var lV = _v5.c;
+			var lLeft = _v5.d;
+			var lRight = _v5.e;
+			var _v6 = dict.e;
+			var rClr = _v6.a;
+			var rK = _v6.b;
+			var rV = _v6.c;
+			var rLeft = _v6.d;
+			var rRight = _v6.e;
+			if (clr.$ === 'Black') {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
+			} else {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
+			}
+		}
+	} else {
+		return dict;
+	}
+};
+var $elm$core$Dict$removeHelpPrepEQGT = F7(
+	function (targetKey, dict, color, key, value, left, right) {
+		if ((left.$ === 'RBNode_elm_builtin') && (left.a.$ === 'Red')) {
+			var _v1 = left.a;
+			var lK = left.b;
+			var lV = left.c;
+			var lLeft = left.d;
+			var lRight = left.e;
+			return A5(
+				$elm$core$Dict$RBNode_elm_builtin,
+				color,
+				lK,
+				lV,
+				lLeft,
+				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, key, value, lRight, right));
+		} else {
+			_v2$2:
+			while (true) {
+				if ((right.$ === 'RBNode_elm_builtin') && (right.a.$ === 'Black')) {
+					if (right.d.$ === 'RBNode_elm_builtin') {
+						if (right.d.a.$ === 'Black') {
+							var _v3 = right.a;
+							var _v4 = right.d;
+							var _v5 = _v4.a;
+							return $elm$core$Dict$moveRedRight(dict);
+						} else {
+							break _v2$2;
+						}
+					} else {
+						var _v6 = right.a;
+						var _v7 = right.d;
+						return $elm$core$Dict$moveRedRight(dict);
+					}
+				} else {
+					break _v2$2;
+				}
+			}
+			return dict;
+		}
+	});
+var $elm$core$Dict$removeMin = function (dict) {
+	if ((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) {
+		var color = dict.a;
+		var key = dict.b;
+		var value = dict.c;
+		var left = dict.d;
+		var lColor = left.a;
+		var lLeft = left.d;
+		var right = dict.e;
+		if (lColor.$ === 'Black') {
+			if ((lLeft.$ === 'RBNode_elm_builtin') && (lLeft.a.$ === 'Red')) {
+				var _v3 = lLeft.a;
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					color,
+					key,
+					value,
+					$elm$core$Dict$removeMin(left),
+					right);
+			} else {
+				var _v4 = $elm$core$Dict$moveRedLeft(dict);
+				if (_v4.$ === 'RBNode_elm_builtin') {
+					var nColor = _v4.a;
+					var nKey = _v4.b;
+					var nValue = _v4.c;
+					var nLeft = _v4.d;
+					var nRight = _v4.e;
+					return A5(
+						$elm$core$Dict$balance,
+						nColor,
+						nKey,
+						nValue,
+						$elm$core$Dict$removeMin(nLeft),
+						nRight);
+				} else {
+					return $elm$core$Dict$RBEmpty_elm_builtin;
+				}
+			}
+		} else {
+			return A5(
+				$elm$core$Dict$RBNode_elm_builtin,
+				color,
+				key,
+				value,
+				$elm$core$Dict$removeMin(left),
+				right);
+		}
+	} else {
+		return $elm$core$Dict$RBEmpty_elm_builtin;
+	}
+};
+var $elm$core$Dict$removeHelp = F2(
+	function (targetKey, dict) {
+		if (dict.$ === 'RBEmpty_elm_builtin') {
+			return $elm$core$Dict$RBEmpty_elm_builtin;
+		} else {
+			var color = dict.a;
+			var key = dict.b;
+			var value = dict.c;
+			var left = dict.d;
+			var right = dict.e;
+			if (_Utils_cmp(targetKey, key) < 0) {
+				if ((left.$ === 'RBNode_elm_builtin') && (left.a.$ === 'Black')) {
+					var _v4 = left.a;
+					var lLeft = left.d;
+					if ((lLeft.$ === 'RBNode_elm_builtin') && (lLeft.a.$ === 'Red')) {
+						var _v6 = lLeft.a;
+						return A5(
+							$elm$core$Dict$RBNode_elm_builtin,
+							color,
+							key,
+							value,
+							A2($elm$core$Dict$removeHelp, targetKey, left),
+							right);
+					} else {
+						var _v7 = $elm$core$Dict$moveRedLeft(dict);
+						if (_v7.$ === 'RBNode_elm_builtin') {
+							var nColor = _v7.a;
+							var nKey = _v7.b;
+							var nValue = _v7.c;
+							var nLeft = _v7.d;
+							var nRight = _v7.e;
+							return A5(
+								$elm$core$Dict$balance,
+								nColor,
+								nKey,
+								nValue,
+								A2($elm$core$Dict$removeHelp, targetKey, nLeft),
+								nRight);
+						} else {
+							return $elm$core$Dict$RBEmpty_elm_builtin;
+						}
+					}
+				} else {
+					return A5(
+						$elm$core$Dict$RBNode_elm_builtin,
+						color,
+						key,
+						value,
+						A2($elm$core$Dict$removeHelp, targetKey, left),
+						right);
+				}
+			} else {
+				return A2(
+					$elm$core$Dict$removeHelpEQGT,
+					targetKey,
+					A7($elm$core$Dict$removeHelpPrepEQGT, targetKey, dict, color, key, value, left, right));
+			}
+		}
+	});
+var $elm$core$Dict$removeHelpEQGT = F2(
+	function (targetKey, dict) {
+		if (dict.$ === 'RBNode_elm_builtin') {
+			var color = dict.a;
+			var key = dict.b;
+			var value = dict.c;
+			var left = dict.d;
+			var right = dict.e;
+			if (_Utils_eq(targetKey, key)) {
+				var _v1 = $elm$core$Dict$getMin(right);
+				if (_v1.$ === 'RBNode_elm_builtin') {
+					var minKey = _v1.b;
+					var minValue = _v1.c;
+					return A5(
+						$elm$core$Dict$balance,
+						color,
+						minKey,
+						minValue,
+						left,
+						$elm$core$Dict$removeMin(right));
+				} else {
+					return $elm$core$Dict$RBEmpty_elm_builtin;
+				}
+			} else {
+				return A5(
+					$elm$core$Dict$balance,
+					color,
+					key,
+					value,
+					left,
+					A2($elm$core$Dict$removeHelp, targetKey, right));
+			}
+		} else {
+			return $elm$core$Dict$RBEmpty_elm_builtin;
+		}
+	});
+var $elm$core$Dict$remove = F2(
+	function (key, dict) {
+		var _v0 = A2($elm$core$Dict$removeHelp, key, dict);
+		if ((_v0.$ === 'RBNode_elm_builtin') && (_v0.a.$ === 'Red')) {
+			var _v1 = _v0.a;
+			var k = _v0.b;
+			var v = _v0.c;
+			var l = _v0.d;
+			var r = _v0.e;
+			return A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, k, v, l, r);
+		} else {
+			var x = _v0;
+			return x;
+		}
+	});
+var $elm$core$Dict$update = F3(
+	function (targetKey, alter, dictionary) {
+		var _v0 = alter(
+			A2($elm$core$Dict$get, targetKey, dictionary));
+		if (_v0.$ === 'Just') {
+			var value = _v0.a;
+			return A3($elm$core$Dict$insert, targetKey, value, dictionary);
+		} else {
+			return A2($elm$core$Dict$remove, targetKey, dictionary);
+		}
+	});
+var $elm$core$Process$kill = _Scheduler_kill;
+var $elm$core$Process$spawn = _Scheduler_spawn;
+var $elm$http$Http$updateReqs = F3(
+	function (router, cmds, reqs) {
+		updateReqs:
+		while (true) {
+			if (!cmds.b) {
+				return $elm$core$Task$succeed(reqs);
+			} else {
+				var cmd = cmds.a;
+				var otherCmds = cmds.b;
+				if (cmd.$ === 'Cancel') {
+					var tracker = cmd.a;
+					var _v2 = A2($elm$core$Dict$get, tracker, reqs);
+					if (_v2.$ === 'Nothing') {
+						var $temp$router = router,
+							$temp$cmds = otherCmds,
+							$temp$reqs = reqs;
+						router = $temp$router;
+						cmds = $temp$cmds;
+						reqs = $temp$reqs;
+						continue updateReqs;
+					} else {
+						var pid = _v2.a;
+						return A2(
+							$elm$core$Task$andThen,
+							function (_v3) {
+								return A3(
+									$elm$http$Http$updateReqs,
+									router,
+									otherCmds,
+									A2($elm$core$Dict$remove, tracker, reqs));
+							},
+							$elm$core$Process$kill(pid));
+					}
+				} else {
+					var req = cmd.a;
+					return A2(
+						$elm$core$Task$andThen,
+						function (pid) {
+							var _v4 = req.tracker;
+							if (_v4.$ === 'Nothing') {
+								return A3($elm$http$Http$updateReqs, router, otherCmds, reqs);
+							} else {
+								var tracker = _v4.a;
+								return A3(
+									$elm$http$Http$updateReqs,
+									router,
+									otherCmds,
+									A3($elm$core$Dict$insert, tracker, pid, reqs));
+							}
+						},
+						$elm$core$Process$spawn(
+							A3(
+								_Http_toTask,
+								router,
+								$elm$core$Platform$sendToApp(router),
+								req)));
+				}
+			}
+		}
+	});
+var $elm$http$Http$onEffects = F4(
+	function (router, cmds, subs, state) {
+		return A2(
+			$elm$core$Task$andThen,
+			function (reqs) {
+				return $elm$core$Task$succeed(
+					A2($elm$http$Http$State, reqs, subs));
+			},
+			A3($elm$http$Http$updateReqs, router, cmds, state.reqs));
+	});
+var $elm$core$List$maybeCons = F3(
+	function (f, mx, xs) {
+		var _v0 = f(mx);
+		if (_v0.$ === 'Just') {
+			var x = _v0.a;
+			return A2($elm$core$List$cons, x, xs);
+		} else {
+			return xs;
+		}
+	});
+var $elm$core$List$filterMap = F2(
+	function (f, xs) {
+		return A3(
+			$elm$core$List$foldr,
+			$elm$core$List$maybeCons(f),
+			_List_Nil,
+			xs);
+	});
+var $elm$http$Http$maybeSend = F4(
+	function (router, desiredTracker, progress, _v0) {
+		var actualTracker = _v0.a;
+		var toMsg = _v0.b;
+		return _Utils_eq(desiredTracker, actualTracker) ? $elm$core$Maybe$Just(
+			A2(
+				$elm$core$Platform$sendToApp,
+				router,
+				toMsg(progress))) : $elm$core$Maybe$Nothing;
+	});
+var $elm$http$Http$onSelfMsg = F3(
+	function (router, _v0, state) {
+		var tracker = _v0.a;
+		var progress = _v0.b;
+		return A2(
+			$elm$core$Task$andThen,
+			function (_v1) {
+				return $elm$core$Task$succeed(state);
+			},
+			$elm$core$Task$sequence(
+				A2(
+					$elm$core$List$filterMap,
+					A3($elm$http$Http$maybeSend, router, tracker, progress),
+					state.subs)));
+	});
+var $elm$http$Http$Cancel = function (a) {
+	return {$: 'Cancel', a: a};
+};
+var $elm$http$Http$cmdMap = F2(
+	function (func, cmd) {
+		if (cmd.$ === 'Cancel') {
+			var tracker = cmd.a;
+			return $elm$http$Http$Cancel(tracker);
+		} else {
+			var r = cmd.a;
+			return $elm$http$Http$Request(
+				{
+					allowCookiesFromOtherDomains: r.allowCookiesFromOtherDomains,
+					body: r.body,
+					expect: A2(_Http_mapExpect, func, r.expect),
+					headers: r.headers,
+					method: r.method,
+					timeout: r.timeout,
+					tracker: r.tracker,
+					url: r.url
+				});
+		}
+	});
+var $elm$http$Http$MySub = F2(
+	function (a, b) {
+		return {$: 'MySub', a: a, b: b};
+	});
+var $elm$core$Basics$composeR = F3(
+	function (f, g, x) {
+		return g(
+			f(x));
+	});
+var $elm$http$Http$subMap = F2(
+	function (func, _v0) {
+		var tracker = _v0.a;
+		var toMsg = _v0.b;
+		return A2(
+			$elm$http$Http$MySub,
+			tracker,
+			A2($elm$core$Basics$composeR, toMsg, func));
+	});
+_Platform_effectManagers['Http'] = _Platform_createManager($elm$http$Http$init, $elm$http$Http$onEffects, $elm$http$Http$onSelfMsg, $elm$http$Http$cmdMap, $elm$http$Http$subMap);
+var $elm$http$Http$command = _Platform_leaf('Http');
+var $elm$http$Http$subscription = _Platform_leaf('Http');
+var $elm$http$Http$request = function (r) {
+	return $elm$http$Http$command(
+		$elm$http$Http$Request(
+			{allowCookiesFromOtherDomains: false, body: r.body, expect: r.expect, headers: r.headers, method: r.method, timeout: r.timeout, tracker: r.tracker, url: r.url}));
+};
+var $author$project$Main$authorizedRequest = F5(
+	function (method, token, url, body, expect) {
+		return $elm$http$Http$request(
+			{
+				body: body,
+				expect: expect,
+				headers: _List_fromArray(
+					[
+						A2($elm$http$Http$header, 'Authorization', 'Bearer ' + token)
+					]),
+				method: method,
+				timeout: $elm$core$Maybe$Nothing,
+				tracker: $elm$core$Maybe$Nothing,
+				url: url
+			});
+	});
+var $author$project$Sharecrop$Generated$Ledger$BalanceResponse = function (amount) {
+	return {amount: amount};
+};
+var $elm$json$Json$Decode$field = _Json_decodeField;
+var $elm$json$Json$Decode$int = _Json_decodeInt;
+var $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Ledger$BalanceResponse,
+	A2($elm$json$Json$Decode$field, 'amount', $elm$json$Json$Decode$int));
+var $elm$http$Http$emptyBody = _Http_emptyBody;
+var $elm$json$Json$Decode$decodeString = _Json_runOnString;
+var $elm$http$Http$expectStringResponse = F2(
+	function (toMsg, toResult) {
+		return A3(
+			_Http_expect,
+			'',
+			$elm$core$Basics$identity,
+			A2($elm$core$Basics$composeR, toResult, toMsg));
+	});
+var $elm$core$Result$mapError = F2(
+	function (f, result) {
+		if (result.$ === 'Ok') {
+			var v = result.a;
+			return $elm$core$Result$Ok(v);
+		} else {
+			var e = result.a;
+			return $elm$core$Result$Err(
+				f(e));
+		}
+	});
+var $elm$http$Http$BadBody = function (a) {
+	return {$: 'BadBody', a: a};
+};
+var $elm$http$Http$BadStatus = function (a) {
+	return {$: 'BadStatus', a: a};
+};
+var $elm$http$Http$BadUrl = function (a) {
+	return {$: 'BadUrl', a: a};
+};
+var $elm$http$Http$NetworkError = {$: 'NetworkError'};
+var $elm$http$Http$Timeout = {$: 'Timeout'};
+var $elm$http$Http$resolve = F2(
+	function (toResult, response) {
+		switch (response.$) {
+			case 'BadUrl_':
+				var url = response.a;
+				return $elm$core$Result$Err(
+					$elm$http$Http$BadUrl(url));
+			case 'Timeout_':
+				return $elm$core$Result$Err($elm$http$Http$Timeout);
+			case 'NetworkError_':
+				return $elm$core$Result$Err($elm$http$Http$NetworkError);
+			case 'BadStatus_':
+				var metadata = response.a;
+				return $elm$core$Result$Err(
+					$elm$http$Http$BadStatus(metadata.statusCode));
+			default:
+				var body = response.b;
+				return A2(
+					$elm$core$Result$mapError,
+					$elm$http$Http$BadBody,
+					toResult(body));
+		}
+	});
+var $elm$http$Http$expectJson = F2(
+	function (toMsg, decoder) {
+		return A2(
+			$elm$http$Http$expectStringResponse,
+			toMsg,
+			$elm$http$Http$resolve(
+				function (string) {
+					return A2(
+						$elm$core$Result$mapError,
+						$elm$json$Json$Decode$errorToString,
+						A2($elm$json$Json$Decode$decodeString, decoder, string));
+				}));
+	});
+var $author$project$Main$fetchBalance = function (token) {
+	return A5(
+		$author$project$Main$authorizedRequest,
+		'GET',
+		token,
+		'/api/credits/balance',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Main$BalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder));
+};
+var $author$project$Main$LedgerReceived = function (a) {
+	return {$: 'LedgerReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Ledger$LedgerResponse = function (entries) {
+	return {entries: entries};
+};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryResponse = F4(
+	function (id, kind, amount, taskID) {
+		return {amount: amount, id: id, kind: kind, taskID: taskID};
+	});
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindManualAdjustment = {$: 'LedgerEntryKindManualAdjustment'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindSignupGrant = {$: 'LedgerEntryKindSignupGrant'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskEscrow = {$: 'LedgerEntryKindTaskEscrow'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskPayout = {$: 'LedgerEntryKindTaskPayout'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskRefund = {$: 'LedgerEntryKindTaskRefund'};
+var $elm$json$Json$Decode$andThen = _Json_andThen;
+var $elm$json$Json$Decode$fail = _Json_fail;
+var $elm$json$Json$Decode$string = _Json_decodeString;
+var $author$project$Sharecrop$Generated$Ledger$ledgerEntryKindDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'signup_grant':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindSignupGrant);
+			case 'task_escrow':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskEscrow);
+			case 'task_refund':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskRefund);
+			case 'task_payout':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskPayout);
+			case 'manual_adjustment':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindManualAdjustment);
+			default:
+				return $elm$json$Json$Decode$fail('invalid LedgerEntryKind');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $elm$json$Json$Decode$map4 = _Json_map4;
+var $author$project$Sharecrop$Generated$Ledger$ledgerEntryResponseDecoder = A5(
+	$elm$json$Json$Decode$map4,
+	$author$project$Sharecrop$Generated$Ledger$LedgerEntryResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'kind', $author$project$Sharecrop$Generated$Ledger$ledgerEntryKindDecoder),
+	A2($elm$json$Json$Decode$field, 'amount', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string));
+var $elm$json$Json$Decode$list = _Json_decodeList;
+var $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Ledger$LedgerResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'entries',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Ledger$ledgerEntryResponseDecoder)));
+var $author$project$Main$fetchLedger = function (token) {
+	return A5(
+		$author$project$Main$authorizedRequest,
+		'GET',
+		token,
+		'/api/credits/ledger',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Main$LedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
+};
+var $author$project$Main$escrowStateLabel = function (state) {
+	switch (state.$) {
+		case 'EscrowStateHeld':
+			return 'held';
+		case 'EscrowStateReleased':
+			return 'released';
+		default:
+			return 'refunded';
+	}
+};
+var $author$project$Main$fundSuccessLabel = function (escrow) {
+	return 'Escrowed ' + ($elm$core$String$fromInt(escrow.amount) + (' credits (' + ($author$project$Main$escrowStateLabel(escrow.state) + ').')));
+};
+var $author$project$Main$FundReceived = function (a) {
+	return {$: 'FundReceived', a: a};
+};
+var $elm$json$Json$Encode$int = _Json_wrap;
+var $elm$json$Json$Encode$object = function (pairs) {
+	return _Json_wrap(
+		A3(
+			$elm$core$List$foldl,
+			F2(
+				function (_v0, obj) {
+					var k = _v0.a;
+					var v = _v0.b;
+					return A3(_Json_addField, k, v, obj);
+				}),
+			_Json_emptyObject(_Utils_Tuple0),
+			pairs));
+};
+var $elm$json$Json$Encode$string = _Json_wrap;
+var $author$project$Main$fundingRequestBody = F2(
+	function (taskId, amount) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'amount',
+					$elm$json$Json$Encode$int(amount)),
+					_Utils_Tuple2(
+					'idempotency_key',
+					$elm$json$Json$Encode$string('fund:' + taskId))
+				]));
+	});
+var $elm$http$Http$jsonBody = function (value) {
+	return A2(
+		_Http_pair,
+		'application/json',
+		A2($elm$json$Json$Encode$encode, 0, value));
+};
+var $author$project$Sharecrop$Generated$Ledger$TaskEscrowResponse = F3(
+	function (taskID, amount, state) {
+		return {amount: amount, state: state, taskID: taskID};
+	});
+var $author$project$Sharecrop$Generated$Ledger$EscrowStateHeld = {$: 'EscrowStateHeld'};
+var $author$project$Sharecrop$Generated$Ledger$EscrowStateRefunded = {$: 'EscrowStateRefunded'};
+var $author$project$Sharecrop$Generated$Ledger$EscrowStateReleased = {$: 'EscrowStateReleased'};
+var $author$project$Sharecrop$Generated$Ledger$escrowStateDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'held':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$EscrowStateHeld);
+			case 'released':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$EscrowStateReleased);
+			case 'refunded':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$EscrowStateRefunded);
+			default:
+				return $elm$json$Json$Decode$fail('invalid EscrowState');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $elm$json$Json$Decode$map3 = _Json_map3;
+var $author$project$Sharecrop$Generated$Ledger$taskEscrowResponseDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Generated$Ledger$TaskEscrowResponse,
+	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'amount', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Ledger$escrowStateDecoder));
+var $author$project$Main$postFunding = F3(
+	function (token, taskId, amount) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'POST',
+			token,
+			'/api/tasks/' + (taskId + '/funding'),
+			$elm$http$Http$jsonBody(
+				A2($author$project$Main$fundingRequestBody, taskId, amount)),
+			A2($elm$http$Http$expectJson, $author$project$Main$FundReceived, $author$project$Sharecrop$Generated$Ledger$taskEscrowResponseDecoder));
+	});
+var $author$project$Main$updateLoggedIn = F2(
+	function (model, change) {
+		var _v0 = model.session;
+		if (_v0.$ === 'LoggedIn') {
+			var state = _v0.a;
+			return _Utils_update(
+				model,
+				{
+					session: $author$project$Main$LoggedIn(
+						change(state))
+				});
+		} else {
+			return model;
+		}
+	});
+var $author$project$Main$fundTaskCommand = F2(
+	function (model, state) {
+		var _v0 = $elm$core$String$toInt(state.fundAmount);
+		if (_v0.$ === 'Just') {
+			var amount = _v0.a;
+			return _Utils_Tuple2(
+				A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (current) {
+						return _Utils_update(
+							current,
+							{fundMessage: $elm$core$Maybe$Nothing});
+					}),
+				A3($author$project$Main$postFunding, state.accessToken, state.fundTaskId, amount));
+		} else {
+			return _Utils_Tuple2(
+				A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (current) {
+						return _Utils_update(
+							current,
+							{
+								fundMessage: $elm$core$Maybe$Just('Amount must be a whole number of credits.')
+							});
+					}),
+				$elm$core$Platform$Cmd$none);
+		}
+	});
+var $author$project$Main$httpErrorLabel = function (error) {
+	switch (error.$) {
+		case 'BadUrl':
+			var url = error.a;
+			return 'Bad URL: ' + url;
+		case 'Timeout':
+			return 'The request timed out.';
+		case 'NetworkError':
+			return 'A network error occurred.';
+		case 'BadStatus':
+			var status = error.a;
+			return 'The request failed with status ' + ($elm$core$String$fromInt(status) + '.');
+		default:
+			var message = error.a;
+			return 'The response was unexpected: ' + message;
+	}
+};
+var $author$project$Main$AuthReceived = function (a) {
+	return {$: 'AuthReceived', a: a};
+};
+var $author$project$Main$authRequestBody = function (model) {
+	return $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'email',
+				$elm$json$Json$Encode$string(model.email)),
+				_Utils_Tuple2(
+				'password',
+				$elm$json$Json$Encode$string(model.password))
+			]));
+};
+var $author$project$Sharecrop$Generated$Auth$AuthResponse = F3(
+	function (subjectKind, subjectID, accessToken) {
+		return {accessToken: accessToken, subjectID: subjectID, subjectKind: subjectKind};
+	});
+var $author$project$Sharecrop$Generated$Auth$SubjectKindGuest = {$: 'SubjectKindGuest'};
+var $author$project$Sharecrop$Generated$Auth$SubjectKindUser = {$: 'SubjectKindUser'};
+var $author$project$Sharecrop$Generated$Auth$subjectKindDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'user':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Auth$SubjectKindUser);
+			case 'guest':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Auth$SubjectKindGuest);
+			default:
+				return $elm$json$Json$Decode$fail('invalid SubjectKind');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Auth$authResponseDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Generated$Auth$AuthResponse,
+	A2($elm$json$Json$Decode$field, 'subject_kind', $author$project$Sharecrop$Generated$Auth$subjectKindDecoder),
+	A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'access_token', $elm$json$Json$Decode$string));
+var $elm$http$Http$post = function (r) {
+	return $elm$http$Http$request(
+		{body: r.body, expect: r.expect, headers: _List_Nil, method: 'POST', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
+};
+var $author$project$Main$postAuth = F2(
+	function (url, model) {
+		return $elm$http$Http$post(
+			{
+				body: $elm$http$Http$jsonBody(
+					$author$project$Main$authRequestBody(model)),
+				expect: A2($elm$http$Http$expectJson, $author$project$Main$AuthReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
+				url: url
+			});
+	});
+var $author$project$Main$refreshAfterFund = function (model) {
+	var _v0 = model.session;
+	if (_v0.$ === 'LoggedIn') {
+		var state = _v0.a;
+		return $elm$core$Platform$Cmd$batch(
+			_List_fromArray(
+				[
+					$author$project$Main$fetchBalance(state.accessToken),
+					$author$project$Main$fetchLedger(state.accessToken)
+				]));
+	} else {
+		return $elm$core$Platform$Cmd$none;
+	}
+};
 var $author$project$Main$update = F2(
 	function (msg, model) {
-		return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+		switch (msg.$) {
+			case 'EmailChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{email: value}),
+					$elm$core$Platform$Cmd$none);
+			case 'PasswordChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{password: value}),
+					$elm$core$Platform$Cmd$none);
+			case 'RegisterClicked':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{authError: $elm$core$Maybe$Nothing}),
+					A2($author$project$Main$postAuth, '/api/auth/register', model));
+			case 'LoginClicked':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{authError: $elm$core$Maybe$Nothing}),
+					A2($author$project$Main$postAuth, '/api/auth/login', model));
+			case 'AuthReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								authError: $elm$core$Maybe$Nothing,
+								password: '',
+								session: $author$project$Main$LoggedIn(
+									{accessToken: response.accessToken, balance: $elm$core$Maybe$Nothing, entries: _List_Nil, fundAmount: '', fundMessage: $elm$core$Maybe$Nothing, fundTaskId: '', subjectId: response.subjectID})
+							}),
+						$elm$core$Platform$Cmd$batch(
+							_List_fromArray(
+								[
+									$author$project$Main$fetchBalance(response.accessToken),
+									$author$project$Main$fetchLedger(response.accessToken)
+								])));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								authError: $elm$core$Maybe$Just(
+									$author$project$Main$httpErrorLabel(error))
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'BalanceReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									balance: $author$project$Main$balanceFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'LedgerReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									entries: $author$project$Main$entriesFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'FundTaskIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{fundTaskId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'FundAmountChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{fundAmount: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'FundClicked':
+				var _v1 = model.session;
+				if (_v1.$ === 'LoggedIn') {
+					var state = _v1.a;
+					return A2($author$project$Main$fundTaskCommand, model, state);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'FundReceived':
+				if (msg.a.$ === 'Ok') {
+					var escrow = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										fundMessage: $elm$core$Maybe$Just(
+											$author$project$Main$fundSuccessLabel(escrow))
+									});
+							}),
+						$author$project$Main$refreshAfterFund(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										fundMessage: $elm$core$Maybe$Just(
+											$author$project$Main$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			default:
+				return _Utils_Tuple2($author$project$Main$initialModel, $elm$core$Platform$Cmd$none);
+		}
 	});
-var $elm$json$Json$Encode$string = _Json_wrap;
 var $elm$html$Html$Attributes$stringProperty = F2(
 	function (key, string) {
 		return A2(
@@ -5180,10 +6631,524 @@ var $elm$html$Html$Attributes$class = $elm$html$Html$Attributes$stringProperty('
 var $elm$html$Html$div = _VirtualDom_node('div');
 var $elm$html$Html$h1 = _VirtualDom_node('h1');
 var $elm$html$Html$main_ = _VirtualDom_node('main');
+var $author$project$Main$EmailChanged = function (a) {
+	return {$: 'EmailChanged', a: a};
+};
+var $author$project$Main$LoginClicked = {$: 'LoginClicked'};
+var $author$project$Main$PasswordChanged = function (a) {
+	return {$: 'PasswordChanged', a: a};
+};
+var $author$project$Main$RegisterClicked = {$: 'RegisterClicked'};
 var $elm$html$Html$p = _VirtualDom_node('p');
+var $elm$virtual_dom$VirtualDom$attribute = F2(
+	function (key, value) {
+		return A2(
+			_VirtualDom_attribute,
+			_VirtualDom_noOnOrFormAction(key),
+			_VirtualDom_noJavaScriptOrHtmlUri(value));
+	});
+var $elm$html$Html$Attributes$attribute = $elm$virtual_dom$VirtualDom$attribute;
+var $author$project$Main$testId = function (value) {
+	return A2($elm$html$Html$Attributes$attribute, 'data-testid', value);
+};
 var $elm$virtual_dom$VirtualDom$text = _VirtualDom_text;
 var $elm$html$Html$text = $elm$virtual_dom$VirtualDom$text;
-var $author$project$Main$view = function (_v0) {
+var $author$project$Main$authErrorView = function (authError) {
+	if (authError.$ === 'Just') {
+		var message = authError.a;
+		return A2(
+			$elm$html$Html$p,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-sm text-red-600'),
+					$author$project$Main$testId('auth-error')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(message)
+				]));
+	} else {
+		return $elm$html$Html$text('');
+	}
+};
+var $elm$html$Html$button = _VirtualDom_node('button');
+var $author$project$Main$fieldClass = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none';
+var $elm$html$Html$form = _VirtualDom_node('form');
+var $elm$html$Html$input = _VirtualDom_node('input');
+var $elm$virtual_dom$VirtualDom$Normal = function (a) {
+	return {$: 'Normal', a: a};
+};
+var $elm$virtual_dom$VirtualDom$on = _VirtualDom_on;
+var $elm$html$Html$Events$on = F2(
+	function (event, decoder) {
+		return A2(
+			$elm$virtual_dom$VirtualDom$on,
+			event,
+			$elm$virtual_dom$VirtualDom$Normal(decoder));
+	});
+var $elm$html$Html$Events$onClick = function (msg) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'click',
+		$elm$json$Json$Decode$succeed(msg));
+};
+var $elm$html$Html$Events$alwaysStop = function (x) {
+	return _Utils_Tuple2(x, true);
+};
+var $elm$virtual_dom$VirtualDom$MayStopPropagation = function (a) {
+	return {$: 'MayStopPropagation', a: a};
+};
+var $elm$html$Html$Events$stopPropagationOn = F2(
+	function (event, decoder) {
+		return A2(
+			$elm$virtual_dom$VirtualDom$on,
+			event,
+			$elm$virtual_dom$VirtualDom$MayStopPropagation(decoder));
+	});
+var $elm$json$Json$Decode$at = F2(
+	function (fields, decoder) {
+		return A3($elm$core$List$foldr, $elm$json$Json$Decode$field, decoder, fields);
+	});
+var $elm$html$Html$Events$targetValue = A2(
+	$elm$json$Json$Decode$at,
+	_List_fromArray(
+		['target', 'value']),
+	$elm$json$Json$Decode$string);
+var $elm$html$Html$Events$onInput = function (tagger) {
+	return A2(
+		$elm$html$Html$Events$stopPropagationOn,
+		'input',
+		A2(
+			$elm$json$Json$Decode$map,
+			$elm$html$Html$Events$alwaysStop,
+			A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetValue)));
+};
+var $elm$html$Html$Events$alwaysPreventDefault = function (msg) {
+	return _Utils_Tuple2(msg, true);
+};
+var $elm$virtual_dom$VirtualDom$MayPreventDefault = function (a) {
+	return {$: 'MayPreventDefault', a: a};
+};
+var $elm$html$Html$Events$preventDefaultOn = F2(
+	function (event, decoder) {
+		return A2(
+			$elm$virtual_dom$VirtualDom$on,
+			event,
+			$elm$virtual_dom$VirtualDom$MayPreventDefault(decoder));
+	});
+var $elm$html$Html$Events$onSubmit = function (msg) {
+	return A2(
+		$elm$html$Html$Events$preventDefaultOn,
+		'submit',
+		A2(
+			$elm$json$Json$Decode$map,
+			$elm$html$Html$Events$alwaysPreventDefault,
+			$elm$json$Json$Decode$succeed(msg)));
+};
+var $elm$html$Html$Attributes$placeholder = $elm$html$Html$Attributes$stringProperty('placeholder');
+var $author$project$Main$primaryButtonClass = 'rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50';
+var $author$project$Main$secondaryButtonClass = 'rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100';
+var $elm$html$Html$Attributes$type_ = $elm$html$Html$Attributes$stringProperty('type');
+var $elm$html$Html$Attributes$value = $elm$html$Html$Attributes$stringProperty('value');
+var $author$project$Main$authView = function (model) {
+	return A2(
+		$elm$html$Html$form,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm'),
+				$elm$html$Html$Events$onSubmit($author$project$Main$LoginClicked)
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-slate-600')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Sign in or create an account to view your credit ledger.')
+					])),
+				A2(
+				$elm$html$Html$input,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('email'),
+						$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
+						$elm$html$Html$Attributes$placeholder('Email'),
+						$elm$html$Html$Attributes$value(model.email),
+						$elm$html$Html$Events$onInput($author$project$Main$EmailChanged),
+						$author$project$Main$testId('email')
+					]),
+				_List_Nil),
+				A2(
+				$elm$html$Html$input,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('password'),
+						$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
+						$elm$html$Html$Attributes$placeholder('Password'),
+						$elm$html$Html$Attributes$value(model.password),
+						$elm$html$Html$Events$onInput($author$project$Main$PasswordChanged),
+						$author$project$Main$testId('password')
+					]),
+				_List_Nil),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex gap-3')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('submit'),
+								$elm$html$Html$Attributes$class($author$project$Main$primaryButtonClass),
+								$author$project$Main$testId('login')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Log in')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Attributes$class($author$project$Main$secondaryButtonClass),
+								$elm$html$Html$Events$onClick($author$project$Main$RegisterClicked),
+								$author$project$Main$testId('register')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Register')
+							]))
+					])),
+				$author$project$Main$authErrorView(model.authError)
+			]));
+};
+var $author$project$Main$LogoutClicked = {$: 'LogoutClicked'};
+var $author$project$Main$balanceLabel = function (balance) {
+	if (balance.$ === 'Just') {
+		var amount = balance.a;
+		return $elm$core$String$fromInt(amount) + ' credits';
+	} else {
+		return 'Loading…';
+	}
+};
+var $author$project$Main$balanceView = function (balance) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('rounded-lg border border-slate-200 bg-white p-6 shadow-sm')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm uppercase tracking-wide text-slate-500')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Balance')
+					])),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-3xl font-semibold'),
+						$author$project$Main$testId('balance')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						$author$project$Main$balanceLabel(balance))
+					]))
+			]));
+};
+var $author$project$Main$FundAmountChanged = function (a) {
+	return {$: 'FundAmountChanged', a: a};
+};
+var $author$project$Main$FundClicked = {$: 'FundClicked'};
+var $author$project$Main$FundTaskIdChanged = function (a) {
+	return {$: 'FundTaskIdChanged', a: a};
+};
+var $elm$json$Json$Encode$bool = _Json_wrap;
+var $elm$html$Html$Attributes$boolProperty = F2(
+	function (key, bool) {
+		return A2(
+			_VirtualDom_property,
+			key,
+			$elm$json$Json$Encode$bool(bool));
+	});
+var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
+var $author$project$Main$fundMessageView = function (fundMessage) {
+	if (fundMessage.$ === 'Just') {
+		var message = fundMessage.a;
+		return A2(
+			$elm$html$Html$p,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-sm text-slate-600'),
+					$author$project$Main$testId('fund-message')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(message)
+				]));
+	} else {
+		return $elm$html$Html$text('');
+	}
+};
+var $elm$html$Html$h2 = _VirtualDom_node('h2');
+var $author$project$Main$fundingView = function (state) {
+	return A2(
+		$elm$html$Html$form,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm'),
+				$elm$html$Html$Events$onSubmit($author$project$Main$FundClicked)
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$h2,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-lg font-medium')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Fund a task')
+					])),
+				A2(
+				$elm$html$Html$input,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('text'),
+						$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
+						$elm$html$Html$Attributes$placeholder('Task ID'),
+						$elm$html$Html$Attributes$value(state.fundTaskId),
+						$elm$html$Html$Events$onInput($author$project$Main$FundTaskIdChanged),
+						$author$project$Main$testId('fund-task-id')
+					]),
+				_List_Nil),
+				A2(
+				$elm$html$Html$input,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('number'),
+						$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
+						$elm$html$Html$Attributes$placeholder('Amount in credits'),
+						$elm$html$Html$Attributes$value(state.fundAmount),
+						$elm$html$Html$Events$onInput($author$project$Main$FundAmountChanged),
+						$author$project$Main$testId('fund-amount')
+					]),
+				_List_Nil),
+				A2(
+				$elm$html$Html$button,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('submit'),
+						$elm$html$Html$Attributes$class($author$project$Main$primaryButtonClass),
+						$elm$html$Html$Attributes$disabled(state.fundTaskId === ''),
+						$author$project$Main$testId('fund')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Fund task')
+					])),
+				$author$project$Main$fundMessageView(state.fundMessage)
+			]));
+};
+var $author$project$Main$kindLabel = function (kind) {
+	switch (kind.$) {
+		case 'LedgerEntryKindSignupGrant':
+			return 'signup_grant';
+		case 'LedgerEntryKindTaskEscrow':
+			return 'task_escrow';
+		case 'LedgerEntryKindTaskRefund':
+			return 'task_refund';
+		case 'LedgerEntryKindTaskPayout':
+			return 'task_payout';
+		default:
+			return 'manual_adjustment';
+	}
+};
+var $elm$html$Html$td = _VirtualDom_node('td');
+var $elm$html$Html$tr = _VirtualDom_node('tr');
+var $author$project$Main$ledgerRow = function (entry) {
+	return A2(
+		$elm$html$Html$tr,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('border-t border-slate-100'),
+				$author$project$Main$testId('ledger-entry')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$td,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('py-2')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						$author$project$Main$kindLabel(entry.kind))
+					])),
+				A2(
+				$elm$html$Html$td,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('py-2 text-right tabular-nums')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						$elm$core$String$fromInt(entry.amount))
+					]))
+			]));
+};
+var $elm$html$Html$table = _VirtualDom_node('table');
+var $elm$html$Html$tbody = _VirtualDom_node('tbody');
+var $elm$html$Html$th = _VirtualDom_node('th');
+var $elm$html$Html$thead = _VirtualDom_node('thead');
+var $author$project$Main$ledgerView = function (entries) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('rounded-lg border border-slate-200 bg-white p-6 shadow-sm')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$h2,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('mb-3 text-lg font-medium')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Ledger')
+					])),
+				A2(
+				$elm$html$Html$table,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('w-full text-left text-sm')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$thead,
+						_List_Nil,
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$tr,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-slate-500')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('pb-2')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Entry')
+											])),
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('pb-2 text-right')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Amount')
+											]))
+									]))
+							])),
+						A2(
+						$elm$html$Html$tbody,
+						_List_fromArray(
+							[
+								$author$project$Main$testId('ledger')
+							]),
+						A2($elm$core$List$map, $author$project$Main$ledgerRow, entries))
+					]))
+			]));
+};
+var $author$project$Main$dashboardView = function (state) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('space-y-6')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex items-center justify-between')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$h2,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-xl font-medium')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Credit account')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class($author$project$Main$secondaryButtonClass),
+								$elm$html$Html$Events$onClick($author$project$Main$LogoutClicked),
+								$author$project$Main$testId('logout')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Log out')
+							]))
+					])),
+				$author$project$Main$balanceView(state.balance),
+				$author$project$Main$ledgerView(state.entries),
+				$author$project$Main$fundingView(state)
+			]));
+};
+var $author$project$Main$sessionView = function (model) {
+	var _v0 = model.session;
+	if (_v0.$ === 'LoggedOut') {
+		return $author$project$Main$authView(model);
+	} else {
+		var state = _v0.a;
+		return $author$project$Main$dashboardView(state);
+	}
+};
+var $author$project$Main$view = function (model) {
 	return A2(
 		$elm$html$Html$main_,
 		_List_fromArray(
@@ -5196,7 +7161,7 @@ var $author$project$Main$view = function (_v0) {
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('mx-auto max-w-5xl')
+						$elm$html$Html$Attributes$class('mx-auto max-w-3xl space-y-6')
 					]),
 				_List_fromArray(
 					[
@@ -5210,25 +7175,14 @@ var $author$project$Main$view = function (_v0) {
 							[
 								$elm$html$Html$text('Sharecrop')
 							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('mt-2 text-slate-600')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Project skeleton is running.')
-							]))
+						$author$project$Main$sessionView(model)
 					]))
 			]));
 };
 var $author$project$Main$main = $elm$browser$Browser$element(
 	{
 		init: function (_v0) {
-			return _Utils_Tuple2(
-				{subjectKind: $author$project$Sharecrop$Generated$Auth$SubjectKindGuest},
-				$elm$core$Platform$Cmd$none);
+			return _Utils_Tuple2($author$project$Main$initialModel, $elm$core$Platform$Cmd$none);
 		},
 		subscriptions: function (_v1) {
 			return $elm$core$Platform$Sub$none;

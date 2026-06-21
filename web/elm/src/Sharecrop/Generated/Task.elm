@@ -217,7 +217,7 @@ type alias TasksResponse =
 
 tasksResponseDecoder : Decoder TasksResponse
 tasksResponseDecoder =
-    Decode.map1 TasksResponse
+    Decode.map TasksResponse
         (Decode.field "tasks" (Decode.list taskListItemResponseDecoder))
 
 tasksResponseEncoder : TasksResponse -> Encode.Value

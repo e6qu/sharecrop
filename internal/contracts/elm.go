@@ -225,8 +225,8 @@ func writeProductDecoder(builder *strings.Builder, definition Product) {
 	builder.WriteString("\n")
 	builder.WriteString(decoderName)
 	builder.WriteString(" =\n")
-	builder.WriteString("    Decode.map")
-	builder.WriteString(fmt.Sprintf("%d", len(definition.Fields)))
+	builder.WriteString("    ")
+	builder.WriteString(productDecoderMap(len(definition.Fields)))
 	builder.WriteString(" ")
 	builder.WriteString(definition.Name.String())
 	builder.WriteString("\n")
@@ -266,10 +266,22 @@ func writeProductEncoder(builder *strings.Builder, definition Product) {
 	builder.WriteString("\n        ]\n")
 }
 
+// productDecoderMap returns the Elm decoder map function for a record with the
+// given field count. Elm exposes Decode.map for a single field and
+// Decode.mapN for two through eight fields.
+func productDecoderMap(fields int) string {
+	if fields == 1 {
+		return "Decode.map"
+	}
+	return "Decode.map" + fmt.Sprintf("%d", fields)
+}
+
 func typeRef(ref TypeRef) string {
 	switch typed := ref.(type) {
 	case StringRef:
 		return "String"
+	case IntRef:
+		return "Int"
 	case NamedRef:
 		return typed.Name.String()
 	case ListRef:
@@ -283,6 +295,8 @@ func decoderRef(ref TypeRef) string {
 	switch typed := ref.(type) {
 	case StringRef:
 		return "Decode.string"
+	case IntRef:
+		return "Decode.int"
 	case NamedRef:
 		return lowerFirst(typed.Name.String()) + "Decoder"
 	case ListRef:
@@ -296,6 +310,8 @@ func encoderRef(ref TypeRef, value string) string {
 	switch typed := ref.(type) {
 	case StringRef:
 		return "Encode.string " + value
+	case IntRef:
+		return "Encode.int " + value
 	case NamedRef:
 		return lowerFirst(typed.Name.String()) + "Encoder " + value
 	case ListRef:
@@ -309,6 +325,8 @@ func encoderFunction(ref TypeRef) string {
 	switch typed := ref.(type) {
 	case StringRef:
 		return "Encode.string"
+	case IntRef:
+		return "Encode.int"
 	case NamedRef:
 		return lowerFirst(typed.Name.String()) + "Encoder"
 	case ListRef:

@@ -35,7 +35,7 @@ type alias TeamsResponse =
 
 teamsResponseDecoder : Decoder TeamsResponse
 teamsResponseDecoder =
-    Decode.map1 TeamsResponse
+    Decode.map TeamsResponse
         (Decode.field "teams" (Decode.list teamResponseDecoder))
 
 teamsResponseEncoder : TeamsResponse -> Encode.Value

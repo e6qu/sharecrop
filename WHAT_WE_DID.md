@@ -372,3 +372,52 @@ Pull request 6 verification was performed:
 - `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make migrate-up` passed.
 - `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make test-http` passed.
 - `docker compose down` passed.
+
+Pull request 9 added credits, ledger, escrow, first accepted submission, the credit ledger user interface, and an expanded test pyramid:
+
+- Credit account and ledger entry identifiers were added to the core identifier set.
+- Credit account, append-only ledger entry, and task escrow tables were added, along with a single-accepted partial unique index on submissions.
+- Credit domain types were added under `internal/ledger` for positive credit amounts, signed ledger amounts, derived balances, ledger entry kinds, escrow states, idempotency keys, ledger entries, and task escrows.
+- Balance derivation summed the signed amounts of an account's ledger entries.
+- The ledger service added task funding, submission acceptance with payout, task refund, balance lookup, and ledger listing.
+- The PostgreSQL ledger repository performed funding, acceptance, and refund inside row-locked transactions.
+- Each new registered user received a credit account and a `signup_grant` of 100 credits inside the user-creation transaction.
+- Task funding escrowed credits from the funder's account and required sufficient balance and a draft, owner-held task.
+- Submission acceptance was transactional, closed the task, enforced a single accepted submission per task, and paid the accepted authenticated worker from the escrow.
+- Task refund cancelled a funded task and returned escrowed credits to the funder.
+- Fund, accept, and refund used idempotency keys so retries did not double-charge or double-pay.
+- HTTP endpoints were added for credit balance, ledger listing, task funding, submission acceptance, and task refund.
+- The contract generator gained an integer reference type, and a single-field record decoder was changed from `Decode.mapN` to `Decode.map`.
+- Generated Elm contracts were extended with credit account and ledger entry identifiers, ledger entry kinds, escrow states, balance responses, ledger entry responses, ledger responses, and task escrow responses.
+- The Elm app was changed from an app shell into an interactive client with register and login, a credit balance and ledger view, and a task funding form backed by the API.
+- A Postgres-backed integration test tier was added under the `integration` build tag with a `make test-integration` target.
+- continuous integration was split into parallel static, unit, build, integration, HTTP end-to-end, and Playwright jobs.
+
+Pull request 9 test strategy was evaluated:
+
+- Unit tests covered credit amount validation, signed amount parsing, ledger entry kind and escrow state parsing, idempotency key validation, balance derivation, and ledger service delegation.
+- HTTP unit tests covered the credit balance endpoint and task funding request handling with typed test doubles.
+- Integration tests covered the signup grant, funding, single-escrow enforcement, acceptance payout, idempotent acceptance, and refund against PostgreSQL.
+- HTTP end-to-end tests covered the signup grant, the fund-open-submit-accept-payout flow, idempotent acceptance, single-accepted enforcement, refund, insufficient-credit funding, and no-reward acceptance.
+- Playwright tests covered registering through the browser to see the signup grant balance and ledger entry, and funding a task through the browser.
+- Manual screenshot review covered the logged-out shell and the logged-in credit dashboard.
+
+Pull request 9 verification was performed:
+
+- `GOCACHE=$PWD/.cache/go-build go test ./...` passed.
+- `make check-format` passed.
+- `make check-contracts` passed.
+- `make check-policy` passed.
+- `make check-ts` passed.
+- `make check-copy-paste` passed.
+- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
+- `make lint` passed.
+- `GOCACHE=$PWD/.cache/go-build make vet` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed.
+- `docker compose up -d postgres` passed.
+- `DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make migrate-up` applied the credits and ledger migration.
+- `DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make test-integration` passed and was rerun to confirm idempotency safety against a persistent database.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make test-http` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell, signup-grant, and browser-funding Playwright tests.
+- Manual screenshot review passed for `/tmp/sharecrop-pr9-shell.png` and `/tmp/sharecrop-pr9-dashboard.png`.
+- `docker compose down` was run after verification.
