@@ -3,11 +3,11 @@ package app
 import "testing"
 
 func TestLoadConfigRequiresHTTPAddress(t *testing.T) {
-	t.Setenv("SHARECROP_HTTP_ADDR", "")
-	t.Setenv("DATABASE_URL", "postgres://example")
-	t.Setenv("SHARECROP_MIGRATIONS_DIR", "migrations")
-
-	result := LoadConfig()
+	result := ParseConfig(EnvValues{
+		DatabaseURL:       "postgres://example",
+		MigrationsDir:     "migrations",
+		AccessTokenSecret: "01234567890123456789012345678901",
+	})
 
 	_, rejected := result.(ConfigRejected)
 	if !rejected {
@@ -15,12 +15,13 @@ func TestLoadConfigRequiresHTTPAddress(t *testing.T) {
 	}
 }
 
-func TestLoadConfigLoadsExplicitValues(t *testing.T) {
-	t.Setenv("SHARECROP_HTTP_ADDR", ":18080")
-	t.Setenv("DATABASE_URL", "postgres://example")
-	t.Setenv("SHARECROP_MIGRATIONS_DIR", "migrations")
-
-	result := LoadConfig()
+func TestParseConfigLoadsExplicitValues(t *testing.T) {
+	result := ParseConfig(EnvValues{
+		HTTPAddress:       ":18080",
+		DatabaseURL:       "postgres://example",
+		MigrationsDir:     "migrations",
+		AccessTokenSecret: "01234567890123456789012345678901",
+	})
 
 	loaded, matched := result.(ConfigLoaded)
 	if !matched {
@@ -29,5 +30,9 @@ func TestLoadConfigLoadsExplicitValues(t *testing.T) {
 
 	if loaded.Value.HTTPAddress() != ":18080" {
 		t.Fatalf("http address = %q, want :18080", loaded.Value.HTTPAddress())
+	}
+
+	if loaded.Value.AccessTokenSecret() != "01234567890123456789012345678901" {
+		t.Fatalf("access token secret = %q, want explicit value", loaded.Value.AccessTokenSecret())
 	}
 }

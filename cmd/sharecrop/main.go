@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/app"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/web"
@@ -76,9 +77,32 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		return 1
 	}
 
+	tokenSecretResult := auth.NewAccessTokenSecret(cfg.AccessTokenSecret())
+	tokenSecret, tokenSecretMatched := tokenSecretResult.(auth.AccessTokenSecretAccepted)
+	if !tokenSecretMatched {
+		rejected := tokenSecretResult.(auth.AccessTokenSecretRejected)
+		logger.Error("load access token secret", "reason", rejected.Reason.Description())
+		return 2
+	}
+
+	pool, err := db.Open(ctx, cfg.DatabaseURL())
+	if err != nil {
+		logger.Error("open database", "error", err)
+		return 1
+	}
+	defer pool.Close()
+
+	authServiceResult := auth.NewService(db.NewAuthStore(pool), tokenSecret.Value, auth.SystemClock{})
+	authService, authServiceMatched := authServiceResult.(auth.ServiceCreated)
+	if !authServiceMatched {
+		rejected := authServiceResult.(auth.ServiceRejected)
+		logger.Error("create auth service", "reason", rejected.Reason.Description())
+		return 2
+	}
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),
-		Handler:           httpserver.New(staticFiles),
+		Handler:           httpserver.New(staticFiles, authService.Value),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

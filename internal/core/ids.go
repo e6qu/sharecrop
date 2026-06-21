@@ -14,6 +14,14 @@ type OrganizationID struct {
 	value id.ID
 }
 
+type GuestID struct {
+	value id.ID
+}
+
+type RefreshTokenID struct {
+	value id.ID
+}
+
 type UserIDResult interface {
 	userIDResult()
 }
@@ -128,5 +136,83 @@ func organizationIDFromIDResult(result id.IDResult) OrganizationIDResult {
 		return OrganizationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return OrganizationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type GuestIDResult interface {
+	guestIDResult()
+}
+
+type GuestIDCreated struct {
+	Value GuestID
+}
+
+type GuestIDRejected struct {
+	Reason DomainError
+}
+
+func (GuestIDCreated) guestIDResult() {}
+
+func (GuestIDRejected) guestIDResult() {}
+
+func NewGuestID() GuestIDResult {
+	return guestIDFromIDResult(id.New())
+}
+
+func ParseGuestID(raw string) GuestIDResult {
+	return guestIDFromIDResult(id.Parse(raw))
+}
+
+func (id GuestID) String() string {
+	return id.value.String()
+}
+
+func guestIDFromIDResult(result id.IDResult) GuestIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return GuestIDCreated{Value: GuestID{value: typed.Value}}
+	case id.IDRejected:
+		return GuestIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return GuestIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type RefreshTokenIDResult interface {
+	refreshTokenIDResult()
+}
+
+type RefreshTokenIDCreated struct {
+	Value RefreshTokenID
+}
+
+type RefreshTokenIDRejected struct {
+	Reason DomainError
+}
+
+func (RefreshTokenIDCreated) refreshTokenIDResult() {}
+
+func (RefreshTokenIDRejected) refreshTokenIDResult() {}
+
+func NewRefreshTokenID() RefreshTokenIDResult {
+	return refreshTokenIDFromIDResult(id.New())
+}
+
+func ParseRefreshTokenID(raw string) RefreshTokenIDResult {
+	return refreshTokenIDFromIDResult(id.Parse(raw))
+}
+
+func (id RefreshTokenID) String() string {
+	return id.value.String()
+}
+
+func refreshTokenIDFromIDResult(result id.IDResult) RefreshTokenIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return RefreshTokenIDCreated{Value: RefreshTokenID{value: typed.Value}}
+	case id.IDRejected:
+		return RefreshTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return RefreshTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }

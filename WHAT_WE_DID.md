@@ -36,7 +36,7 @@ UI changes were set to require manual screenshot review when practical.
 
 Playwright UI tests were set to grow as the UI matures and workflows stabilize.
 
-The project repository and PR 1 implementation defaults were recorded:
+The project repository and pull request 1 implementation defaults were recorded:
 
 - GitHub project URL: `https://github.com/e6qu/sharecrop`.
 - Canonical SSH remote: `git@github.com:e6qu/sharecrop.git`.
@@ -62,7 +62,7 @@ Vitest was considered and not selected.
 
 Deno's built-in test runner was selected for Deno tooling unless a TypeScript/Vite layer is introduced later.
 
-PR 1 added the project skeleton and build system:
+pull request 1 added the project skeleton and build system:
 
 - The Go module `github.com/e6qu/sharecrop` was created.
 - The `cmd/sharecrop` binary entry point was added.
@@ -76,13 +76,13 @@ PR 1 added the project skeleton and build system:
 - Tailwind was wired through Deno-managed tooling.
 - Deno smoke tests were added.
 - Go HTTP unit tests were added.
-- HTTP E2E smoke tests were added behind the `http_e2e` build tag.
+- HTTP end-to-end smoke tests were added behind the `http_e2e` build tag.
 - Playwright UI smoke tests were added.
 - A manual screenshot helper was added.
-- `make` commands were added for build, test, serve, migration, frontend, and UI E2E.
+- `make` commands were added for build, test, serve, migration, frontend, and user interface end-to-end.
 - Generated local artifacts were excluded through `.gitignore`.
 
-PR 1 verification was performed:
+pull request 1 verification was performed:
 
 - `GOCACHE=$PWD/.cache/go-build go test ./...` passed.
 - `deno task test` passed.
@@ -91,14 +91,14 @@ PR 1 verification was performed:
 - `deno task e2e:ui` passed earlier in the task.
 - Manual screenshot review showed the app shell rendering the Sharecrop heading and skeleton text.
 
-PR 1 verification gaps were recorded:
+pull request 1 verification gaps were recorded:
 
 - Docker Compose Postgres startup was not verified because the environment rejected Docker approval.
 - `sharecrop migrate up` against live Postgres was not verified for the same reason.
 - Final rerun of `deno task e2e:ui` was not performed because local-network/browser permissions had already been exhausted in this environment after an earlier successful run.
 - `make build` with both `GOCACHE` and `GOMODCACHE` isolated inside the workspace could not fetch `pgx` because network access was restricted. The build had passed earlier with the existing module cache.
 
-PR 2 added core domain foundations and CI quality gates:
+pull request 2 added core domain foundations and continuous integration quality gates:
 
 - Core domain errors were added.
 - Strong ID wrappers were added for users, tasks, and organizations.
@@ -106,13 +106,13 @@ PR 2 added core domain foundations and CI quality gates:
 - Lifecycle state parsing was added.
 - Visibility scope variants and parsing were added.
 - Per-type result variants were used instead of generic result types.
-- CI was added for formatting, TypeScript checks, policy checks, copy-paste detection, dead-code detection, Deno linting, Go vet, unit tests, frontend build, binary build, migrations, HTTP E2E, and UI E2E.
-- CI was limited to pull requests targeting `main`, without direct `main` push runs or bare branch push runs.
+- continuous integration was added for formatting, TypeScript checks, policy checks, copy-paste detection, dead-code detection, Deno linting, Go vet, unit tests, frontend build, binary build, migrations, HTTP end-to-end, and user interface end-to-end.
+- continuous integration was limited to pull requests targeting `main`, without direct `main` push runs or bare branch push runs.
 - The Elm build tool was changed to require explicit `ELM_BIN`.
 - Config loading was changed to require explicit environment variables instead of fallback values.
 - Docker Compose was fixed for PostgreSQL 18 by mounting the volume at `/var/lib/postgresql`.
 
-PR 2 verification was performed:
+pull request 2 verification was performed:
 
 - `make check-format` passed.
 - `make check-policy` passed.
@@ -126,11 +126,46 @@ PR 2 verification was performed:
 - `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod make build` passed.
 - `make test-http` passed with local listener permission.
 - `deno task e2e:ui` passed with local browser permission.
-- Manual screenshot review showed the app shell rendering without visible layout issues after PR 2 changes.
+- Manual screenshot review showed the app shell rendering without visible layout issues after pull request 2 changes.
 - `docker compose up -d postgres` passed.
 - `make migrate-up` passed against local Postgres.
 - `docker compose down` passed.
 
-PR 2 verification gaps were recorded:
+pull request 2 verification gaps were recorded:
 
 - Aggregate `make ci` was not run locally because the environment approval request timed out twice.
+
+Pull request 3 added authentication, sessions, and guest identity:
+
+- Guest and refresh-token identifiers were added to the core identifier set.
+- Authentication value types were added for email addresses, password secrets, access-token secrets, refresh tokens, subjects, and session results.
+- Password hashing was implemented with standard-library PBKDF2 and SHA-256 behind `internal/auth`.
+- JSON Web Token access-token signing was implemented with standard-library HMAC SHA-256 behind `internal/auth`.
+- Opaque refresh-token generation and hashing were added.
+- The authentication service added registered user creation, login, guest subject creation, refresh-token rotation, and refresh-token reuse rejection.
+- PostgreSQL tables were added for users, guest subjects, password credentials, and refresh tokens.
+- The PostgreSQL authentication repository was added under `internal/db`.
+- HTTP endpoints were added for registration, login, refresh, and guest session creation.
+- Refresh tokens were returned as HttpOnly cookies.
+- Config parsing was split into pure `ParseConfig` and the environment-reading `LoadConfig` shell.
+- `SHARECROP_ACCESS_TOKEN_SECRET` was added as an explicit required environment variable.
+- Dead-code detection was changed from `go run ...@latest` to a declared Go tool dependency invoked through `go tool deadcode`.
+
+Pull request 3 verification was performed:
+
+- `make check-format` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make check-ts` passed.
+- `make lint` passed.
+- `GOCACHE=$PWD/.cache/go-build make vet` passed.
+- `GOCACHE=$PWD/.cache/go-build make test` passed.
+- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build go test -run '^$' -tags http_e2e ./tests/http_e2e` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed with a non-fatal global module stat-cache warning from the sandbox.
+
+Pull request 3 verification gaps were recorded:
+
+- Runtime HTTP end-to-end tests were not run locally because the environment rejected the required local listener and PostgreSQL approval after the usage limit was reached.
+- Playwright browser tests were not rerun locally because the user interface was not changed and the environment could not grant further browser/listener approval.
