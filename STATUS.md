@@ -1,17 +1,17 @@
 # Status
 
-The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, pull request 3 authentication work, and pull request 4 organization provisioning work.
+The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, pull request 3 authentication work, pull request 4 organization provisioning work, and pull request 5 contract generation work.
 
-Pull request 5 was active.
+Pull request 6 was active.
 
 Active task:
 
-- Add a Go-to-Elm contract generator.
-- Add Go-owned contract definitions for product types, enums, and tagged unions.
-- Generate Elm modules under `web/elm/src/Sharecrop/Generated/`.
-- Generate decoders and encoders for first auth, organization, team, error, and identifier contracts.
-- Add deterministic generator tests and generated Elm compile checks.
-- Re-evaluate tests for generated code and contract drift.
+- Add the local Sharecrop schema parser and validator.
+- Add schema domain types for object, array, string, integer, decimal string, enum, literal, union, and freeform schemas.
+- Parse untrusted schema JSON into boundary DTOs, then typed schema values.
+- Validate response payloads against typed schemas.
+- Index sensitive fields and redact sensitive values.
+- Re-evaluate tests for parser, validator, redaction, unsupported constructs, and freeform mode.
 
 Implemented surface:
 
@@ -50,6 +50,11 @@ Implemented surface:
 - Generated Elm modules under `web/elm/src/Sharecrop/Generated/`.
 - The handwritten Elm app directly consumes a generated auth contract type.
 - Makefile contract generation and deterministic contract checks.
+- Local Sharecrop schema domain types under `internal/schema`.
+- Schema JSON parsing for object, array, string, integer, decimal string, enum, literal, union, and freeform schemas.
+- Response payload parsing into Sharecrop-owned value types.
+- Schema validation with typed validation errors and field paths.
+- Sensitive-field indexing and redaction for typed response values.
 
 The accepted defaults for pull request 1 were:
 
@@ -85,7 +90,8 @@ Last observed checks:
 - Pull request 2 continuous integration passed before merge.
 - Pull request 3 continuous integration passed before merge.
 - Pull request 4 continuous integration passed before merge.
-- Pull request 5 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, HTTP end-to-end, Playwright, and screenshot checks passed.
+- Pull request 5 continuous integration passed before merge.
+- Pull request 6 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, and HTTP end-to-end checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.
