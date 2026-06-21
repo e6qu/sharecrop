@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/app"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/contracts"
@@ -140,10 +141,11 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	taskService := task.NewService(taskStore, organizationService)
 	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
+	agentService := agent.NewService(db.NewAgentStore(pool))
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),
-		Handler:           httpserver.New(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService),
+		Handler:           httpserver.New(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

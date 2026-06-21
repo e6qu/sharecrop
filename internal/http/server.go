@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/mcp"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/schema"
 	"github.com/e6qu/sharecrop/internal/submission"
@@ -43,10 +45,18 @@ type OrganizationService interface {
 
 type TaskService interface {
 	Create(context.Context, task.CreateCommand) task.CreateResult
+	Get(context.Context, auth.UserSubject, core.TaskID) task.GetResult
 	Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	List(context.Context, auth.UserSubject, task.ListScope) task.ListResult
 	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
+}
+
+type AgentService interface {
+	Create(context.Context, core.UserID, agent.Label, agent.ScopeSet) agent.CreateResult
+	Verify(context.Context, agent.SecretPlain) agent.VerifyResult
+	List(context.Context, core.UserID) agent.ListResult
+	Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult
 }
 
 type SubmissionService interface {
@@ -71,10 +81,22 @@ type Server struct {
 	taskService         TaskService
 	submissionService   SubmissionService
 	ledgerService       LedgerService
+	agentService        AgentService
+	mcpServer           mcp.Server
 }
 
-func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService) http.Handler {
-	server := Server{staticFiles: staticFiles, authService: authService, subjectVerifier: subjectVerifier, organizationService: organizationService, taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}
+func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService) http.Handler {
+	server := Server{
+		staticFiles:         staticFiles,
+		authService:         authService,
+		subjectVerifier:     subjectVerifier,
+		organizationService: organizationService,
+		taskService:         taskService,
+		submissionService:   submissionService,
+		ledgerService:       ledgerService,
+		agentService:        agentService,
+		mcpServer:           mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}),
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("POST /api/auth/register", server.register)
@@ -101,6 +123,11 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/funding", server.fundTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/refund", server.refundTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/accept", server.acceptSubmission)
+	mux.HandleFunc("GET /api/tasks/{task_id}", server.getTask)
+	mux.HandleFunc("POST /api/agent-credentials", server.createAgentCredential)
+	mux.HandleFunc("GET /api/agent-credentials", server.listAgentCredentials)
+	mux.HandleFunc("POST /api/agent-credentials/{credential_id}/revoke", server.revokeAgentCredential)
+	mux.HandleFunc("POST /mcp", server.mcpEndpoint)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 	mux.HandleFunc("GET /", index(staticFiles))
 	return mux

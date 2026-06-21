@@ -147,6 +147,80 @@ func (service Service) changeState(ctx context.Context, actor auth.UserSubject, 
 	return TaskStateChanged{Value: changed.Value}
 }
 
+type GetResult interface {
+	getResult()
+}
+
+type TaskGot struct {
+	Value Task
+}
+
+type GetRejected struct {
+	Reason core.DomainError
+}
+
+func (TaskGot) getResult() {}
+
+func (GetRejected) getResult() {}
+
+func (service Service) Get(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) GetResult {
+	taskResult := service.store.FindTask(ctx, taskID)
+	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
+	if !taskMatched {
+		rejected := taskResult.(FindTaskStoreRejected)
+		return GetRejected{Reason: rejected.Reason}
+	}
+
+	viewPermission := service.requireViewPermission(ctx, actor, taskFound.Value)
+	if rejected, matched := viewPermission.(viewPermissionRejected); matched {
+		return GetRejected{Reason: rejected.reason}
+	}
+	return TaskGot{Value: taskFound.Value}
+}
+
+type viewPermissionResult interface {
+	viewPermissionResult()
+}
+
+type viewPermissionAccepted struct{}
+
+type viewPermissionRejected struct {
+	reason core.DomainError
+}
+
+func (viewPermissionAccepted) viewPermissionResult() {}
+
+func (viewPermissionRejected) viewPermissionResult() {}
+
+func (service Service) requireViewPermission(ctx context.Context, actor auth.UserSubject, value Task) viewPermissionResult {
+	if value.CreatedBy == actor.ID {
+		return viewPermissionAccepted{}
+	}
+	switch typed := value.Visibility.(type) {
+	case PublicVisibility:
+		return viewPermissionAccepted{}
+	case UserVisibility:
+		if typed.UserID == actor.ID {
+			return viewPermissionAccepted{}
+		}
+		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task view access denied")}
+	case OrganizationVisibility:
+		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, actor.ID)
+	case OrganizationTeamVisibility:
+		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, actor.ID)
+	default:
+		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task view access denied")}
+	}
+}
+
+func (service Service) requireOrganizationViewPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) viewPermissionResult {
+	check := service.organizationPermissions.CheckOrganizationPermission(ctx, organizationID, userID, org.PermissionCreateOrganizationTask)
+	if rejected, matched := check.(org.PermissionDenied); matched {
+		return viewPermissionRejected{reason: rejected.Reason}
+	}
+	return viewPermissionAccepted{}
+}
+
 type ListScope interface {
 	listScope()
 }

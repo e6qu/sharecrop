@@ -10,7 +10,10 @@
     <main id="app"></main>
     <script src="/static/app.js"></script>
     <script>
-      Elm.Main.init({ node: document.getElementById("app") });
+      Elm.Main.init({
+        node: document.getElementById("app"),
+        flags: { origin: window.location.origin },
+      });
     </script>
   </body>
 </html>

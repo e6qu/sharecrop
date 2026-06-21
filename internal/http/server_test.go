@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
@@ -226,8 +227,53 @@ func TestFundTaskEndpointRejectsNonPositiveAmount(t *testing.T) {
 	}
 }
 
+func TestCreateAgentCredentialReturnsSecret(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-credentials", strings.NewReader(`{"label":"Local agent","scopes":["tasks_read","submissions_write"]}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
+	}
+	var body agentCredentialCreatedResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !strings.HasPrefix(body.Secret, "scrop_agent_") {
+		t.Fatalf("secret = %q, want scrop_agent_ prefix", body.Secret)
+	}
+	if len(body.Credential.Scopes) != 2 {
+		t.Fatalf("scope count = %d, want 2", len(body.Credential.Scopes))
+	}
+}
+
+func TestCreateAgentCredentialRejectsUnknownScope(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-credentials", strings.NewReader(`{"label":"Local agent","scopes":["everything"]}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
+func TestMCPEndpointRequiresAgentCredential(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
 func testHandler() http.Handler {
-	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{}, testLedgerService{})
+	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{}, testLedgerService{}, testAgentService{})
 }
 
 func testStaticFiles() fs.FS {
@@ -385,6 +431,18 @@ func (testTaskService) Create(_ context.Context, command task.CreateCommand) tas
 	}}
 }
 
+func (testTaskService) Get(_ context.Context, actor auth.UserSubject, taskID core.TaskID) task.GetResult {
+	return task.TaskGot{Value: task.Task{
+		ID:         taskID,
+		Owner:      task.UserOwner{UserID: actor.ID},
+		State:      task.StateOpen,
+		Visibility: task.UserVisibility{UserID: actor.ID},
+		Placement:  task.StandalonePlacement{},
+		Payload:    task.NoDataPayload{},
+		CreatedBy:  actor.ID,
+	}}
+}
+
 func (testTaskService) Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
@@ -445,6 +503,31 @@ func (testLedgerService) Balance(context.Context, core.UserID) ledger.BalanceRes
 
 func (testLedgerService) ListEntries(context.Context, core.UserID) ledger.ListEntriesResult {
 	return ledger.EntriesListed{Values: []ledger.LedgerEntry{}}
+}
+
+type testAgentService struct{}
+
+func (testAgentService) Create(_ context.Context, owner core.UserID, label agent.Label, scopes agent.ScopeSet) agent.CreateResult {
+	idCreated := core.NewAgentCredentialID().(core.AgentCredentialIDCreated)
+	secretCreated := agent.NewSecretPlain().(agent.SecretPlainAccepted)
+	return agent.CredentialCreated{
+		Value:  agent.Credential{ID: idCreated.Value, UserID: owner, Label: label, Scopes: scopes, State: agent.StateActive},
+		Secret: secretCreated.Value,
+	}
+}
+
+func (testAgentService) Verify(context.Context, agent.SecretPlain) agent.VerifyResult {
+	idCreated := core.NewUserID().(core.UserIDCreated)
+	return agent.VerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test agent service for user "+idCreated.Value.String())}
+}
+
+func (testAgentService) List(context.Context, core.UserID) agent.ListResult {
+	return agent.CredentialsListed{Values: []agent.Credential{}}
+}
+
+func (testAgentService) Revoke(_ context.Context, owner core.UserID, id core.AgentCredentialID) agent.RevokeResult {
+	labelAccepted := agent.NewLabel("Test agent").(agent.LabelAccepted)
+	return agent.CredentialRevoked{Value: agent.Credential{ID: id, UserID: owner, Label: labelAccepted.Value, Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateRevoked}}
 }
 
 func testAccessToken() auth.AccessToken {
