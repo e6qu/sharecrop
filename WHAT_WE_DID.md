@@ -97,3 +97,40 @@ PR 1 verification gaps were recorded:
 - `sharecrop migrate up` against live Postgres was not verified for the same reason.
 - Final rerun of `deno task e2e:ui` was not performed because local-network/browser permissions had already been exhausted in this environment after an earlier successful run.
 - `make build` with both `GOCACHE` and `GOMODCACHE` isolated inside the workspace could not fetch `pgx` because network access was restricted. The build had passed earlier with the existing module cache.
+
+PR 2 added core domain foundations and CI quality gates:
+
+- Core domain errors were added.
+- Strong ID wrappers were added for users, tasks, and organizations.
+- UUIDv7 generation and parsing were isolated behind `internal/core/id`.
+- Lifecycle state parsing was added.
+- Visibility scope variants and parsing were added.
+- Per-type result variants were used instead of generic result types.
+- CI was added for formatting, TypeScript checks, policy checks, copy-paste detection, dead-code detection, Deno linting, Go vet, unit tests, frontend build, binary build, migrations, HTTP E2E, and UI E2E.
+- CI was limited to pull requests targeting `main`, without direct `main` push runs or bare branch push runs.
+- The Elm build tool was changed to require explicit `ELM_BIN`.
+- Config loading was changed to require explicit environment variables instead of fallback values.
+- Docker Compose was fixed for PostgreSQL 18 by mounting the volume at `/var/lib/postgresql`.
+
+PR 2 verification was performed:
+
+- `make check-format` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make check-ts` passed.
+- `make lint` passed.
+- `GOCACHE=$PWD/.cache/go-build make vet` passed.
+- `GOCACHE=$PWD/.cache/go-build make test` passed.
+- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod make build` passed.
+- `make test-http` passed with local listener permission.
+- `deno task e2e:ui` passed with local browser permission.
+- Manual screenshot review showed the app shell rendering without visible layout issues after PR 2 changes.
+- `docker compose up -d postgres` passed.
+- `make migrate-up` passed against local Postgres.
+- `docker compose down` passed.
+
+PR 2 verification gaps were recorded:
+
+- Aggregate `make ci` was not run locally because the environment approval request timed out twice.

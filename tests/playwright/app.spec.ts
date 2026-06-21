@@ -1,4 +1,4 @@
-import { expect, test } from "npm:@playwright/test";
+import { expect, test } from "@playwright/test";
 
 test("app shell loads", async ({ page }) => {
   await page.goto("/");

@@ -13,6 +13,10 @@ See:
 ## Local Commands
 
 ```sh
+export ELM_BIN=/opt/homebrew/bin/elm
+export SHARECROP_HTTP_ADDR=:18080
+export DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
+export SHARECROP_MIGRATIONS_DIR=migrations
 make build
 make test
 make serve

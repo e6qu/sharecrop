@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: sharecrop
+          POSTGRES_USER: sharecrop
+          POSTGRES_PASSWORD: sharecrop
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -U sharecrop -d sharecrop"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
+      ELM_BIN: /usr/local/bin/elm
+      SHARECROP_HTTP_ADDR: :18080
+      SHARECROP_MIGRATIONS_DIR: migrations
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.14
+
+      - name: Install Elm
+        run: |
+          curl -L https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz -o elm.gz
+          gunzip elm.gz
+          chmod +x elm
+          sudo mv elm /usr/local/bin/elm
+
+      - name: Install Playwright Chromium
+        run: deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:playwright@1.61.0 install chromium
+
+      - name: Check formatting
+        run: make check-format
+
+      - name: Check TypeScript
+        run: make check-ts
+
+      - name: Check project policy
+        run: make check-policy
+
+      - name: Check copy-paste
+        run: make check-copy-paste
+
+      - name: Check dead code
+        run: make check-dead-code
+
+      - name: Lint
+        run: make lint
+
+      - name: Vet
+        run: make vet
+
+      - name: Test
+        run: make test
+
+      - name: Build frontend
+        run: make frontend
+
+      - name: Build binary
+        run: make build
+
+      - name: Run migrations
+        run: make migrate-up
+
+      - name: HTTP E2E
+        run: make test-http
+
+      - name: UI E2E
+        run: make e2e-ui

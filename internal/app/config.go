@@ -2,23 +2,50 @@ package app
 
 import "os"
 
-const (
-	defaultHTTPAddress = ":18080"
-	defaultDatabaseURL = "postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable"
-	defaultMigrations  = "migrations"
-)
-
 type Config struct {
 	httpAddress   string
 	databaseURL   string
 	migrationsDir string
 }
 
-func LoadConfig() Config {
-	return Config{
-		httpAddress:   valueOrDefault(os.Getenv("SHARECROP_HTTP_ADDR"), defaultHTTPAddress),
-		databaseURL:   valueOrDefault(os.Getenv("DATABASE_URL"), defaultDatabaseURL),
-		migrationsDir: valueOrDefault(os.Getenv("SHARECROP_MIGRATIONS_DIR"), defaultMigrations),
+type ConfigResult interface {
+	configResult()
+}
+
+type ConfigLoaded struct {
+	Value Config
+}
+
+type ConfigRejected struct {
+	Reason string
+}
+
+func (ConfigLoaded) configResult() {}
+
+func (ConfigRejected) configResult() {}
+
+func LoadConfig() ConfigResult {
+	httpAddress := os.Getenv("SHARECROP_HTTP_ADDR")
+	if httpAddress == "" {
+		return ConfigRejected{Reason: "SHARECROP_HTTP_ADDR is required"}
+	}
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return ConfigRejected{Reason: "DATABASE_URL is required"}
+	}
+
+	migrationsDir := os.Getenv("SHARECROP_MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		return ConfigRejected{Reason: "SHARECROP_MIGRATIONS_DIR is required"}
+	}
+
+	return ConfigLoaded{
+		Value: Config{
+			httpAddress:   httpAddress,
+			databaseURL:   databaseURL,
+			migrationsDir: migrationsDir,
+		},
 	}
 }
 
@@ -32,12 +59,4 @@ func (c Config) DatabaseURL() string {
 
 func (c Config) MigrationsDir() string {
 	return c.migrationsDir
-}
-
-func valueOrDefault(value string, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-
-	return value
 }

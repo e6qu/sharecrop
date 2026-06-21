@@ -61,6 +61,8 @@ Specific rules:
 - Do not start a new task branch while the previous task pull request remains open.
 - After a task pull request is merged, sync local `main` with `origin/main`.
 - Create the next task branch from synced `origin/main`.
+- CI should run only for pull requests targeting `main`.
+- CI should not run on direct pushes to `main` or on bare branch pushes.
 
 ## Documentation Style
 
@@ -134,6 +136,10 @@ Rules:
 - Avoid nullable timestamp fields that secretly encode lifecycle state such as activated, deleted, revoked, or disabled.
 - Model lifecycle through explicit states and transition events.
 - Timestamps should record facts or event times, not act as hidden status flags.
+- Do not add fallbacks, workarounds, fake behavior, false behavior, or disabled tests instead of fixing the underlying issue.
+- Do not introduce fallback behavior unless it is required for an explicit reliability mechanism such as retry/backoff.
+- If fallback behavior seems necessary, stop and ask the user before adding it.
+- Treat fallbacks as risky because they can hide bugs, dead code, and functionally dead code.
 
 Low-level dependencies may expose booleans, nils, generic data, or weak shapes. Keep those at boundaries and convert them into Sharecrop domain types before application logic runs.
 
@@ -160,6 +166,16 @@ Use the test pyramid:
 - HTTP end-to-end tests for the API.
 - Playwright end-to-end tests for browser UI workflows.
 - Manual screenshot review for UI changes.
+
+CI and local checks should also include:
+
+- Strict format checks.
+- Linters.
+- Type checks.
+- Project-specific weak-typing checks.
+- Dead-code detection.
+- Copy-paste detection.
+- Dependency-boundary checks.
 
 Any behavior required by the UI should have API-level coverage before or alongside Playwright coverage.
 

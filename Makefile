@@ -1,9 +1,27 @@
 APP := bin/sharecrop
 
-.PHONY: build css docker-down docker-up e2e-ui elm frontend migrate-up serve test test-deno test-go test-http
+.PHONY: build check-copy-paste check-dead-code check-format check-policy check-ts ci css docker-down docker-up e2e-ui elm fmt frontend lint migrate-up serve test test-deno test-go test-http vet
 
 build: frontend
 	go build -o $(APP) ./cmd/sharecrop
+
+check-format:
+	test -z "$$(gofmt -l cmd internal tests web | grep -E '\\.go$$')"
+	deno fmt --check deno.json tools tests
+
+check-policy:
+	deno task check:policy
+
+check-ts:
+	deno task check:ts
+
+check-copy-paste:
+	deno run --allow-read tools/check_copy_paste.ts
+
+check-dead-code:
+	go run golang.org/x/tools/cmd/deadcode@latest -test ./...
+
+ci: check-format check-policy check-ts check-copy-paste check-dead-code lint vet test frontend test-http
 
 css:
 	deno task css:build
@@ -18,10 +36,19 @@ e2e-ui:
 	deno task e2e:ui
 
 elm:
-	deno task elm:build
+	test -n "$(ELM_BIN)"
+	ELM_BIN=$(ELM_BIN) deno task elm:build
+
+fmt:
+	gofmt -w cmd internal tests web
+	deno fmt deno.json tools tests
 
 frontend:
-	deno task frontend:build
+	test -n "$(ELM_BIN)"
+	ELM_BIN=$(ELM_BIN) deno task frontend:build
+
+lint:
+	deno task lint
 
 migrate-up:
 	go run ./cmd/sharecrop migrate up
@@ -39,3 +66,6 @@ test-go:
 
 test-http:
 	go test -tags http_e2e ./tests/http_e2e
+
+vet:
+	go vet ./...

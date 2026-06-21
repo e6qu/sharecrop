@@ -231,6 +231,9 @@ Sharecrop should model the domain aggressively with strong types so that large c
 - Avoid nullable timestamp fields that secretly encode lifecycle state such as activated, deleted, revoked, or disabled.
 - Model lifecycle through explicit states and transition events.
 - Timestamps should record facts or event times, not act as hidden status flags.
+- Do not add fallback behavior unless it is explicitly required for reliability behavior such as retry/backoff.
+- Do not add workarounds, fake behavior, false behavior, disabled tests, or quick fixes instead of fixing the underlying issue.
+- Ask before introducing fallback behavior.
 - Prefer explicit `Result`-style construction and service outcomes, even though this is not idiomatic Go.
 
 Low-level dependencies may expose booleans, nils, or generic data. Those must be contained at boundaries and converted into Sharecrop domain types before application logic runs.
@@ -1253,6 +1256,8 @@ Package intent:
 - Create one pull request for each task.
 - Keep at most one pull request open at any time.
 - After a task pull request is merged, sync local `main` with `origin/main` before starting the next task.
+- CI runs only for pull requests targeting `main`.
+- CI does not run on direct pushes to `main` or bare branch pushes.
 - Create each new task branch from synced `origin/main`.
 - Create one git commit at the end of each task.
 - Use Go contract definitions and a Go-based generator for Elm.

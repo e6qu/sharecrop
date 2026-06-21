@@ -23,22 +23,28 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
-	cfg := app.LoadConfig()
 	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
+	cfgResult := app.LoadConfig()
+	cfg, loaded := cfgResult.(app.ConfigLoaded)
+	if !loaded {
+		rejected := cfgResult.(app.ConfigRejected)
+		logger.Error("load config", "reason", rejected.Reason)
+		return 2
+	}
 
 	if len(args) > 1 {
 		switch args[1] {
 		case "migrate":
-			return runMigrate(ctx, args[2:], cfg, stdout, logger)
+			return runMigrate(ctx, args[2:], cfg.Value, stdout, logger)
 		case "serve":
-			return runServe(ctx, cfg, logger)
+			return runServe(ctx, cfg.Value, logger)
 		default:
 			_, _ = fmt.Fprintf(stderr, "unknown command: %s\n", args[1])
 			return 2
 		}
 	}
 
-	return runServe(ctx, cfg, logger)
+	return runServe(ctx, cfg.Value, logger)
 }
 
 func runMigrate(ctx context.Context, args []string, cfg app.Config, stdout io.Writer, logger *slog.Logger) int {

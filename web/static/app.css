@@ -173,6 +173,9 @@
   .visible {
     visibility: visible;
   }
+  .fixed {
+    position: fixed;
+  }
   .static {
     position: static;
   }
@@ -181,6 +184,9 @@
   }
   .mt-2 {
     margin-top: calc(var(--spacing) * 2);
+  }
+  .block {
+    display: block;
   }
   .hidden {
     display: none;
