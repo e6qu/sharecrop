@@ -28,6 +28,38 @@ func TestParseTaskIDRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestParseTaskSeriesIDRoundTrips(t *testing.T) {
+	created, matched := NewTaskSeriesID().(TaskSeriesIDCreated)
+	if !matched {
+		t.Fatalf("new task series id did not create")
+	}
+
+	parsed, matched := ParseTaskSeriesID(created.Value.String()).(TaskSeriesIDCreated)
+	if !matched {
+		t.Fatalf("parse task series id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}
+
+func TestParseTaskCapabilityTokenIDRoundTrips(t *testing.T) {
+	created, matched := NewTaskCapabilityTokenID().(TaskCapabilityTokenIDCreated)
+	if !matched {
+		t.Fatalf("new task capability token id did not create")
+	}
+
+	parsed, matched := ParseTaskCapabilityTokenID(created.Value.String()).(TaskCapabilityTokenIDCreated)
+	if !matched {
+		t.Fatalf("parse task capability token id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}
+
 func TestParseUserIDRoundTrips(t *testing.T) {
 	created, matched := NewUserID().(UserIDCreated)
 	if !matched {

@@ -258,6 +258,47 @@ Pull request 6 added the Sharecrop schema parser and validator:
 - Schema JSON parsing converted boundary data into Sharecrop-owned schema types.
 - Response payload JSON parsing converted payloads into Sharecrop-owned value types without using generic maps.
 - Schema validation produced typed validation errors with field paths.
+- Sensitive-field indexing and redaction were added for typed response values.
+
+Pull request 7 added task series, tasks, visibility, and capability tokens:
+
+- Task-series, task, task-visibility-scope, and task-capability-token migrations were added.
+- Task-series and task-capability-token identifiers were added to the core identifier set.
+- Task owner, task state, task series placement, task visibility, task payload, and task capability-token lifecycle types were added under `internal/task`.
+- Opaque task capability-token generation and hashing were added without encoding task identifiers into token strings.
+- The task service added task creation, opening, cancellation, listing, and capability-token creation.
+- Organization-owned tasks required organization task-creation permission.
+- Public organization tasks required organization public-publisher permission.
+- Default task visibility mapped user-owned tasks to user visibility and organization-owned tasks to organization visibility.
+- PostgreSQL task repository code was added under `internal/db`.
+- HTTP task endpoints were added for creation, listing, opening, cancellation, and capability-token creation.
+- Task response schemas were parsed with the local Sharecrop schema parser during task creation.
+- Generated Elm contracts were extended with task identifiers, task enums, task list items, task lists, and task capability-token responses.
+
+Pull request 7 test strategy was evaluated:
+
+- Unit tests covered task state transitions, capability-token opacity, capability-token parsers, identifier round trips, and organization public-publishing permission behavior.
+- HTTP unit tests covered task request parsing and default user visibility.
+- HTTP end-to-end tests covered task creation, user-scoped listing, task opening, task cancellation, capability-token creation, and organization public-publishing permissions against PostgreSQL.
+- Playwright and manual screenshot checks were run because generated Elm source changed.
+
+Pull request 7 verification was performed:
+
+- `GOCACHE=$PWD/.cache/go-build go test ./...` passed.
+- `make check-format` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `deno task check:ts` passed.
+- `deno task lint` passed.
+- `GOCACHE=$PWD/.cache/go-build make vet` passed.
+- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make frontend` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed with a non-fatal global module stat-cache warning from the sandbox.
+- `docker compose up -d postgres` passed.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build go run ./cmd/sharecrop migrate up` passed.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build go test -tags http_e2e ./tests/http_e2e` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build deno task e2e:ui` passed.
+- Manual screenshot review passed for `/tmp/sharecrop-pr7-shell.png`.
 - Sensitive-field indexing located sensitive values in submitted payloads.
 - Redaction replaced or removed sensitive fields according to schema policy.
 

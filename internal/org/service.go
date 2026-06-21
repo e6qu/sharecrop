@@ -235,3 +235,7 @@ func (service Service) requirePermission(ctx context.Context, organizationID cor
 	}
 	return CheckPermission(rolesFound.Roles, permission)
 }
+
+func (service Service) CheckOrganizationPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, permission Permission) PermissionCheck {
+	return service.requirePermission(ctx, organizationID, userID, permission)
+}

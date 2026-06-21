@@ -17,6 +17,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -111,7 +112,8 @@ func newAuthHTTPServer(t *testing.T, ctx context.Context) *httptest.Server {
 
 	verifier := auth.NewAccessTokenVerifier(secretAccepted.Value, auth.SystemClock{})
 	organizationService := org.NewService(db.NewOrgStore(pool))
-	return httptest.NewServer(httpserver.New(staticFiles, serviceCreated.Value, verifier, organizationService))
+	taskService := task.NewService(db.NewTaskStore(pool), organizationService)
+	return httptest.NewServer(httpserver.New(staticFiles, serviceCreated.Value, verifier, organizationService, taskService))
 }
 
 func postEmptyJSON(t *testing.T, url string, cookies []*http.Cookie) *http.Response {

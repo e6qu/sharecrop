@@ -10,6 +10,14 @@ type TaskID struct {
 	value id.ID
 }
 
+type TaskSeriesID struct {
+	value id.ID
+}
+
+type TaskCapabilityTokenID struct {
+	value id.ID
+}
+
 type OrganizationID struct {
 	value id.ID
 }
@@ -105,6 +113,84 @@ func taskIDFromIDResult(result id.IDResult) TaskIDResult {
 		return TaskIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return TaskIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type TaskSeriesIDResult interface {
+	taskSeriesIDResult()
+}
+
+type TaskSeriesIDCreated struct {
+	Value TaskSeriesID
+}
+
+type TaskSeriesIDRejected struct {
+	Reason DomainError
+}
+
+func (TaskSeriesIDCreated) taskSeriesIDResult() {}
+
+func (TaskSeriesIDRejected) taskSeriesIDResult() {}
+
+func NewTaskSeriesID() TaskSeriesIDResult {
+	return taskSeriesIDFromIDResult(id.New())
+}
+
+func ParseTaskSeriesID(raw string) TaskSeriesIDResult {
+	return taskSeriesIDFromIDResult(id.Parse(raw))
+}
+
+func (id TaskSeriesID) String() string {
+	return id.value.String()
+}
+
+func taskSeriesIDFromIDResult(result id.IDResult) TaskSeriesIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return TaskSeriesIDCreated{Value: TaskSeriesID{value: typed.Value}}
+	case id.IDRejected:
+		return TaskSeriesIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return TaskSeriesIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type TaskCapabilityTokenIDResult interface {
+	taskCapabilityTokenIDResult()
+}
+
+type TaskCapabilityTokenIDCreated struct {
+	Value TaskCapabilityTokenID
+}
+
+type TaskCapabilityTokenIDRejected struct {
+	Reason DomainError
+}
+
+func (TaskCapabilityTokenIDCreated) taskCapabilityTokenIDResult() {}
+
+func (TaskCapabilityTokenIDRejected) taskCapabilityTokenIDResult() {}
+
+func NewTaskCapabilityTokenID() TaskCapabilityTokenIDResult {
+	return taskCapabilityTokenIDFromIDResult(id.New())
+}
+
+func ParseTaskCapabilityTokenID(raw string) TaskCapabilityTokenIDResult {
+	return taskCapabilityTokenIDFromIDResult(id.Parse(raw))
+}
+
+func (id TaskCapabilityTokenID) String() string {
+	return id.value.String()
+}
+
+func taskCapabilityTokenIDFromIDResult(result id.IDResult) TaskCapabilityTokenIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return TaskCapabilityTokenIDCreated{Value: TaskCapabilityTokenID{value: typed.Value}}
+	case id.IDRejected:
+		return TaskCapabilityTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return TaskCapabilityTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 

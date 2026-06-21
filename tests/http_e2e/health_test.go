@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -22,7 +22,7 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("static files: %v", err)
 	}
 
-	server := httptest.NewServer(httpserver.New(staticFiles, testAuthService(), testVerifier{}, testOrganizationService{}))
+	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}))
 	defer server.Close()
 
 	response, err := http.Get(server.URL + "/healthz")
@@ -36,82 +36,74 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
-type testAuth struct{}
+type healthTaskService struct{}
 
-type testVerifier struct{}
+type healthAuthService struct{}
 
-type testOrganizationService struct{}
+type healthVerifier struct{}
 
-func testAuthService() testAuth {
-	return testAuth{}
+type healthOrganizationService struct{}
+
+func (healthAuthService) Register(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.RegisterResult {
+	return auth.RegisterRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testAuth) Register(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.RegisterResult {
-	idResult := core.NewUserID()
-	idCreated := idResult.(core.UserIDCreated)
-	return auth.RegisterAccepted{Subject: auth.UserSubject{ID: idCreated.Value}, AccessToken: testAccessToken(), RefreshToken: testRefreshToken()}
+func (healthAuthService) Login(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.LoginResult {
+	return auth.LoginRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testAuth) Login(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.LoginResult {
-	idResult := core.NewUserID()
-	idCreated := idResult.(core.UserIDCreated)
-	return auth.LoginAccepted{Subject: auth.UserSubject{ID: idCreated.Value}, AccessToken: testAccessToken(), RefreshToken: testRefreshToken()}
+func (healthAuthService) Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult {
+	return auth.RefreshRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testAuth) Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult {
-	idResult := core.NewUserID()
-	idCreated := idResult.(core.UserIDCreated)
-	return auth.RefreshAccepted{Subject: auth.UserSubject{ID: idCreated.Value}, AccessToken: testAccessToken(), RefreshToken: testRefreshToken()}
+func (healthAuthService) CreateGuest(context.Context) auth.GuestResult {
+	return auth.GuestRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testAuth) CreateGuest(context.Context) auth.GuestResult {
-	idResult := core.NewGuestID()
-	idCreated := idResult.(core.GuestIDCreated)
-	return auth.GuestAccepted{Subject: auth.GuestSubject{ID: idCreated.Value}, AccessToken: testAccessToken(), RefreshToken: testRefreshToken()}
+func (healthVerifier) Verify(auth.AccessToken) auth.SubjectVerifyResult {
+	return auth.SubjectVerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testVerifier) Verify(auth.AccessToken) auth.SubjectVerifyResult {
-	idResult := core.NewUserID()
-	idCreated := idResult.(core.UserIDCreated)
-	return auth.SubjectVerified{Value: auth.UserSubject{ID: idCreated.Value}}
-}
-
-func (testOrganizationService) CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult {
+func (healthOrganizationService) CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult {
 	return org.CreateOrganizationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testOrganizationService) ListOrganizations(context.Context, auth.UserSubject) org.ListOrganizationsResult {
-	return org.OrganizationsListed{Values: []org.Organization{}}
+func (healthOrganizationService) ListOrganizations(context.Context, auth.UserSubject) org.ListOrganizationsResult {
+	return org.ListOrganizationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testOrganizationService) ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult {
+func (healthOrganizationService) ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult {
 	return org.ProvisionMemberRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testOrganizationService) DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult {
+func (healthOrganizationService) DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult {
 	return org.DeactivateMemberRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testOrganizationService) CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult {
+func (healthOrganizationService) CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult {
 	return org.CreateTeamRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult {
-	return org.OrganizationTeamsListed{Values: []org.Team{}}
+func (healthOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult {
+	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func testAccessToken() auth.AccessToken {
-	secretResult := auth.NewAccessTokenSecret("01234567890123456789012345678901")
-	secretAccepted := secretResult.(auth.AccessTokenSecretAccepted)
-	idResult := core.NewUserID()
-	idCreated := idResult.(core.UserIDCreated)
-	tokenResult := auth.SignAccessToken(secretAccepted.Value, auth.UserSubject{ID: idCreated.Value}, time.Unix(1_700_000_000, 0).UTC())
-	tokenAccepted := tokenResult.(auth.AccessTokenAccepted)
-	return tokenAccepted.Value
+func (healthTaskService) Create(context.Context, task.CreateCommand) task.CreateResult {
+	return task.CreateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func testRefreshToken() auth.RefreshTokenPlain {
-	tokenResult := auth.ParseRefreshTokenPlain("test-refresh-token")
-	tokenAccepted := tokenResult.(auth.RefreshTokenPlainAccepted)
-	return tokenAccepted.Value
+func (healthTaskService) Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) List(context.Context, auth.UserSubject, task.ListScope) task.ListResult {
+	return task.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult {
+	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

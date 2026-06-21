@@ -7,6 +7,7 @@ func Modules() []Module {
 		authModule(),
 		organizationModule(),
 		teamModule(),
+		taskModule(),
 	}
 }
 
@@ -16,6 +17,9 @@ func idsModule() Module {
 		Definitions: []Definition{
 			Alias{Name: NewElmTypeName("UserID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("GuestID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("TaskID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("TaskSeriesID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("TaskCapabilityTokenID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationMembershipID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TeamID"), Type: StringRef{}},
@@ -129,6 +133,76 @@ func teamModule() Module {
 				Name: NewElmTypeName("TeamsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("teams"), JSONName: NewJSONFieldName("teams"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TeamResponse")}}},
+				},
+			},
+		},
+	}
+}
+
+func taskModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Task"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("TaskState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskStateDraft"), Tag: "draft"},
+					{Name: NewElmTypeName("TaskStateOpen"), Tag: "open"},
+					{Name: NewElmTypeName("TaskStateClosed"), Tag: "closed"},
+					{Name: NewElmTypeName("TaskStateCancelled"), Tag: "cancelled"},
+					{Name: NewElmTypeName("TaskStateExpired"), Tag: "expired"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("TaskOwnerKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskOwnerKindUser"), Tag: "user"},
+					{Name: NewElmTypeName("TaskOwnerKindTeam"), Tag: "team"},
+					{Name: NewElmTypeName("TaskOwnerKindOrganization"), Tag: "organization"},
+					{Name: NewElmTypeName("TaskOwnerKindOrganizationTeam"), Tag: "organization_team"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("TaskVisibilityKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskVisibilityKindPublic"), Tag: "public"},
+					{Name: NewElmTypeName("TaskVisibilityKindUser"), Tag: "user"},
+					{Name: NewElmTypeName("TaskVisibilityKindTeam"), Tag: "team"},
+					{Name: NewElmTypeName("TaskVisibilityKindOrganization"), Tag: "organization"},
+					{Name: NewElmTypeName("TaskVisibilityKindOrganizationTeam"), Tag: "organization_team"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("TaskCapabilityTokenState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskCapabilityTokenStateActive"), Tag: "active"},
+					{Name: NewElmTypeName("TaskCapabilityTokenStateRevoked"), Tag: "revoked"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TaskListItemResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("ownerKind"), JSONName: NewJSONFieldName("owner_kind"), Type: NamedRef{Name: NewElmTypeName("TaskOwnerKind")}},
+					{Name: NewElmValueName("title"), JSONName: NewJSONFieldName("title"), Type: StringRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskState")}},
+					{Name: NewElmValueName("visibilityKind"), JSONName: NewJSONFieldName("visibility_kind"), Type: NamedRef{Name: NewElmTypeName("TaskVisibilityKind")}},
+					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TasksResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("tasks"), JSONName: NewJSONFieldName("tasks"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskListItemResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TaskCapabilityTokenResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskCapabilityTokenState")}},
+					{Name: NewElmValueName("token"), JSONName: NewJSONFieldName("token"), Type: StringRef{}},
 				},
 			},
 		},
