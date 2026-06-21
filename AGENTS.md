@@ -54,6 +54,9 @@ Specific rules:
 - Create one commit at the end of each task.
 - Use one commit per task unless the user explicitly asks for a different commit structure.
 - The task commit should include code, tests, and continuity-file updates for that task.
+- Create one pull request for each task.
+- Each task should happen on its own task branch.
+- The task branch should be pushed and opened as a pull request after the task commit is created.
 
 ## Documentation Style
 
@@ -177,6 +180,7 @@ For each task:
 7. Update continuity docs after the task, in past tense.
 8. Record known bugs or skipped checks in [BUGS.md](./BUGS.md).
 9. Commit the task as one commit.
+10. Push the task branch and create one pull request for the task.
 
 Do not overwrite unrelated user changes.
 

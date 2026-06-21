@@ -26,6 +26,8 @@ Testing was set to happen throughout each task and again before finishing the ta
 
 The task workflow was updated again so agents create one git commit at the end of each task by default.
 
+The task workflow was updated so each task uses its own task branch and pull request.
+
 UI changes were set to require manual screenshot review when practical.
 
 Playwright UI tests were set to grow as the UI matures and workflows stabilize.

@@ -1250,6 +1250,7 @@ Package intent:
 - Default local PostgreSQL port is `15432`.
 - Avoid common development ports such as `3000`, `5432`, `8000`, and `8080`.
 - PR task branches use names such as `task/pr-01-skeleton`.
+- Create one pull request for each task.
 - Create one git commit at the end of each task.
 - Use Go contract definitions and a Go-based generator for Elm.
 - Use `sqlc` from the start where practical.
