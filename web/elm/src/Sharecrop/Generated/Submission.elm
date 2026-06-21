@@ -133,7 +133,7 @@ type alias SubmissionsResponse =
 
 submissionsResponseDecoder : Decoder SubmissionsResponse
 submissionsResponseDecoder =
-    Decode.map1 SubmissionsResponse
+    Decode.map SubmissionsResponse
         (Decode.field "submissions" (Decode.list submissionResponseDecoder))
 
 submissionsResponseEncoder : SubmissionsResponse -> Encode.Value

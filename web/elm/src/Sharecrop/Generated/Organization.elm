@@ -127,7 +127,7 @@ type alias OrganizationsResponse =
 
 organizationsResponseDecoder : Decoder OrganizationsResponse
 organizationsResponseDecoder =
-    Decode.map1 OrganizationsResponse
+    Decode.map OrganizationsResponse
         (Decode.field "organizations" (Decode.list organizationResponseDecoder))
 
 organizationsResponseEncoder : OrganizationsResponse -> Encode.Value

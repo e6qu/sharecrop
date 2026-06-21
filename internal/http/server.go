@@ -10,6 +10,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/schema"
 	"github.com/e6qu/sharecrop/internal/submission"
@@ -54,6 +55,14 @@ type SubmissionService interface {
 	ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
 }
 
+type LedgerService interface {
+	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
+	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
+	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
+	Balance(context.Context, core.UserID) ledger.BalanceResult
+	ListEntries(context.Context, core.UserID) ledger.ListEntriesResult
+}
+
 type Server struct {
 	staticFiles         fs.FS
 	authService         AuthService
@@ -61,10 +70,11 @@ type Server struct {
 	organizationService OrganizationService
 	taskService         TaskService
 	submissionService   SubmissionService
+	ledgerService       LedgerService
 }
 
-func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService) http.Handler {
-	server := Server{staticFiles: staticFiles, authService: authService, subjectVerifier: subjectVerifier, organizationService: organizationService, taskService: taskService, submissionService: submissionService}
+func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService) http.Handler {
+	server := Server{staticFiles: staticFiles, authService: authService, subjectVerifier: subjectVerifier, organizationService: organizationService, taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("POST /api/auth/register", server.register)
@@ -86,6 +96,11 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("GET /api/tasks/{task_id}/submissions", server.listTaskSubmissions)
 	mux.HandleFunc("POST /api/public/tasks/{task_id}/submissions", server.createAnonymousSubmission)
 	mux.HandleFunc("GET /api/submission-receipts/{receipt_token}", server.findSubmissionReceipt)
+	mux.HandleFunc("GET /api/credits/balance", server.creditsBalance)
+	mux.HandleFunc("GET /api/credits/ledger", server.creditsLedger)
+	mux.HandleFunc("POST /api/tasks/{task_id}/funding", server.fundTask)
+	mux.HandleFunc("POST /api/tasks/{task_id}/refund", server.refundTask)
+	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/accept", server.acceptSubmission)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 	mux.HandleFunc("GET /", index(staticFiles))
 	return mux
@@ -267,6 +282,56 @@ type submissionCreatedResponse struct {
 type emptyResponse struct {
 	Status string `json:"status"`
 }
+
+type fundingRequest struct {
+	Amount         int64  `json:"amount"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type idempotentRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type writableResponse interface {
+	writableResponse()
+}
+
+type balanceResponse struct {
+	Amount int64 `json:"amount"`
+}
+
+type ledgerEntryResponse struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Amount int64  `json:"amount"`
+	TaskID string `json:"task_id"`
+}
+
+type ledgerListResponse struct {
+	Entries []ledgerEntryResponse `json:"entries"`
+}
+
+type taskEscrowResponse struct {
+	TaskID string `json:"task_id"`
+	Amount int64  `json:"amount"`
+	State  string `json:"state"`
+}
+
+type acceptSubmissionResponse struct {
+	TaskID       string `json:"task_id"`
+	SubmissionID string `json:"submission_id"`
+	PayoutKind   string `json:"payout_kind"`
+	PayoutAmount int64  `json:"payout_amount"`
+	WorkerUserID string `json:"worker_user_id"`
+}
+
+func (balanceResponse) writableResponse() {}
+
+func (ledgerListResponse) writableResponse() {}
+
+func (taskEscrowResponse) writableResponse() {}
+
+func (acceptSubmissionResponse) writableResponse() {}
 
 type authRequestResult interface {
 	authRequestResult()
@@ -834,6 +899,222 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 		response.Submissions = append(response.Submissions, submissionToResponse(value))
 	}
 	writeSubmissionsResponse(w, http.StatusOK, response)
+}
+
+func (server Server) creditsBalance(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	result := server.ledgerService.Balance(r.Context(), actor.subject.ID)
+	found, matched := result.(ledger.BalanceFound)
+	if !matched {
+		rejected := result.(ledger.BalanceRejected)
+		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, balanceResponse{Amount: found.Value.Int64()})
+}
+
+func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID)
+	listed, matched := result.(ledger.EntriesListed)
+	if !matched {
+		rejected := result.(ledger.ListEntriesRejected)
+		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		return
+	}
+
+	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, len(listed.Values))}
+	for index := range listed.Values {
+		response.Entries = append(response.Entries, ledgerEntryToResponse(listed.Values[index]))
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (server Server) fundTask(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		return
+	}
+
+	var request fundingRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+
+	amountResult := ledger.NewCreditAmount(request.Amount)
+	amount, amountMatched := amountResult.(ledger.CreditAmountAccepted)
+	if !amountMatched {
+		writeError(w, http.StatusBadRequest, amountResult.(ledger.CreditAmountRejected).Reason.Description())
+		return
+	}
+
+	keyResult := ledger.NewIdempotencyKey(request.IdempotencyKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		writeError(w, http.StatusBadRequest, keyResult.(ledger.IdempotencyKeyRejected).Reason.Description())
+		return
+	}
+
+	result := server.ledgerService.FundTask(r.Context(), actor.subject.ID, taskIDAccepted.value, amount.Value, key.Value)
+	funded, matched := result.(ledger.TaskFunded)
+	if !matched {
+		writeError(w, http.StatusBadRequest, result.(ledger.FundRejected).Reason.Description())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, escrowToResponse(funded.Escrow))
+}
+
+func (server Server) refundTask(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		return
+	}
+
+	var request idempotentRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+
+	keyResult := ledger.NewIdempotencyKey(request.IdempotencyKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		writeError(w, http.StatusBadRequest, keyResult.(ledger.IdempotencyKeyRejected).Reason.Description())
+		return
+	}
+
+	result := server.ledgerService.RefundTask(r.Context(), actor.subject.ID, taskIDAccepted.value, key.Value)
+	refunded, matched := result.(ledger.TaskRefunded)
+	if !matched {
+		writeError(w, http.StatusBadRequest, result.(ledger.RefundRejected).Reason.Description())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, escrowToResponse(refunded.Escrow))
+}
+
+func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		return
+	}
+
+	submissionIDResult := core.ParseSubmissionID(r.PathValue("submission_id"))
+	submissionIDAccepted, submissionIDMatched := submissionIDResult.(core.SubmissionIDCreated)
+	if !submissionIDMatched {
+		writeError(w, http.StatusBadRequest, submissionIDResult.(core.SubmissionIDRejected).Reason.Description())
+		return
+	}
+
+	var request idempotentRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+
+	keyResult := ledger.NewIdempotencyKey(request.IdempotencyKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		writeError(w, http.StatusBadRequest, keyResult.(ledger.IdempotencyKeyRejected).Reason.Description())
+		return
+	}
+
+	result := server.ledgerService.AcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value)
+	accepted, matched := result.(ledger.SubmissionAccepted)
+	if !matched {
+		writeError(w, http.StatusBadRequest, result.(ledger.AcceptRejected).Reason.Description())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, acceptToResponse(accepted))
+}
+
+func ledgerEntryToResponse(entry ledger.LedgerEntry) ledgerEntryResponse {
+	taskID := ""
+	if referenced, matched := entry.TaskRef.(ledger.TaskReferenced); matched {
+		taskID = referenced.TaskID.String()
+	}
+	return ledgerEntryResponse{
+		ID:     entry.ID.String(),
+		Kind:   entry.Kind.String(),
+		Amount: entry.Amount.Int64(),
+		TaskID: taskID,
+	}
+}
+
+func escrowToResponse(escrow ledger.TaskEscrow) taskEscrowResponse {
+	return taskEscrowResponse{
+		TaskID: escrow.TaskID.String(),
+		Amount: escrow.Amount.Int64(),
+		State:  escrow.State.String(),
+	}
+}
+
+func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionResponse {
+	response := acceptSubmissionResponse{
+		TaskID:       accepted.TaskID.String(),
+		SubmissionID: accepted.SubmissionID.String(),
+		PayoutKind:   "none",
+	}
+	if payout, matched := accepted.Payout.(ledger.CreditPayout); matched {
+		response.PayoutKind = "credit"
+		response.PayoutAmount = payout.Amount.Int64()
+		response.WorkerUserID = payout.WorkerUserID.String()
+	}
+	return response
+}
+
+func writeJSON(w http.ResponseWriter, status int, value writableResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func decodeAuthRequest(r *http.Request) authRequestResult {

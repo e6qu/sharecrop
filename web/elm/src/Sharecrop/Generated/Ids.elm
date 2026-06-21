@@ -82,6 +82,28 @@ submissionReceiptTokenIDEncoder : SubmissionReceiptTokenID -> Encode.Value
 submissionReceiptTokenIDEncoder submissionReceiptTokenID =
     Encode.string submissionReceiptTokenID
 
+type alias CreditAccountID =
+    String
+
+creditAccountIDDecoder : Decoder CreditAccountID
+creditAccountIDDecoder =
+    Decode.string
+
+creditAccountIDEncoder : CreditAccountID -> Encode.Value
+creditAccountIDEncoder creditAccountID =
+    Encode.string creditAccountID
+
+type alias LedgerEntryID =
+    String
+
+ledgerEntryIDDecoder : Decoder LedgerEntryID
+ledgerEntryIDDecoder =
+    Decode.string
+
+ledgerEntryIDEncoder : LedgerEntryID -> Encode.Value
+ledgerEntryIDEncoder ledgerEntryID =
+    Encode.string ledgerEntryID
+
 type alias OrganizationID =
     String
 

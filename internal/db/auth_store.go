@@ -7,6 +7,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,6 +41,11 @@ func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID,
 	_, err = tx.Exec(ctx, "insert into password_credentials (user_id, password_hash) values ($1, $2)", id.String(), passwordHash.String())
 	if err != nil {
 		return auth.StoreUserRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "insert password credential failed")}
+	}
+
+	grantResult := insertSignupGrant(ctx, tx, id)
+	if rejected, matched := grantResult.(signupGrantRejected); matched {
+		return auth.StoreUserRejected{Reason: rejected.reason}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -182,6 +188,50 @@ func consumeGuestRefreshToken(rawGuestID string) auth.ConsumeRefreshTokenResult 
 	}
 
 	return auth.RefreshTokenConsumed{Subject: auth.GuestSubject{ID: created.Value}}
+}
+
+type signupGrantResult interface {
+	signupGrantResult()
+}
+
+type signupGrantInserted struct{}
+
+type signupGrantRejected struct {
+	reason core.DomainError
+}
+
+func (signupGrantInserted) signupGrantResult() {}
+
+func (signupGrantRejected) signupGrantResult() {}
+
+// insertSignupGrant creates the user's credit account and the signup grant
+// ledger entry inside the user-creation transaction.
+func insertSignupGrant(ctx context.Context, tx pgx.Tx, userID core.UserID) signupGrantResult {
+	accountResult := core.NewCreditAccountID()
+	account, accountMatched := accountResult.(core.CreditAccountIDCreated)
+	if !accountMatched {
+		return signupGrantRejected{reason: accountResult.(core.CreditAccountIDRejected).Reason}
+	}
+
+	entryResult := core.NewLedgerEntryID()
+	entry, entryMatched := entryResult.(core.LedgerEntryIDCreated)
+	if !entryMatched {
+		return signupGrantRejected{reason: entryResult.(core.LedgerEntryIDRejected).Reason}
+	}
+
+	if _, err := tx.Exec(ctx, "insert into credit_accounts (id, owner_kind, user_id) values ($1, 'user', $2)", account.Value.String(), userID.String()); err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert credit account failed")}
+	}
+
+	_, err := tx.Exec(ctx, `
+		insert into ledger_entries (id, account_id, kind, amount, idempotency_key)
+		values ($1, $2, 'signup_grant', $3, $4)
+	`, entry.Value.String(), account.Value.String(), ledger.SignupGrantAmount().Int64(), "signup_grant:"+userID.String())
+	if err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert signup grant ledger entry failed")}
+	}
+
+	return signupGrantInserted{}
 }
 
 func isUniqueViolation(err error) bool {

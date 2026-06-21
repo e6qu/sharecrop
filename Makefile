@@ -1,6 +1,6 @@
 APP := bin/sharecrop
 
-.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-policy check-ts ci contracts css docker-down docker-up e2e-ui elm fmt frontend lint migrate-up serve test test-deno test-go test-http vet
+.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-policy check-ts ci contracts css docker-down docker-up e2e-ui elm fmt frontend lint migrate-up serve test test-deno test-go test-http test-integration vet
 
 build: frontend
 	go build -o $(APP) ./cmd/sharecrop
@@ -28,7 +28,7 @@ check-copy-paste:
 check-dead-code:
 	go tool deadcode -test ./...
 
-ci: check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test frontend test-http
+ci: check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test frontend build test-integration test-http e2e-ui
 
 css:
 	deno task css:build
@@ -73,6 +73,9 @@ test-go:
 
 test-http:
 	go test -tags http_e2e ./tests/http_e2e
+
+test-integration:
+	go test -tags integration ./tests/integration
 
 vet:
 	go vet ./...

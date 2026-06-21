@@ -1,12 +1,12 @@
 # Status
 
-The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, pull request 3 authentication work, pull request 4 organization provisioning work, pull request 5 contract generation work, pull request 6 schema parsing and validation work, and pull request 7 task visibility and capability-token work.
+The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, pull request 3 authentication work, pull request 4 organization provisioning work, pull request 5 contract generation work, pull request 6 schema parsing and validation work, pull request 7 task visibility and capability-token work, and pull request 8 submission, anonymous access, and sensitive-data work.
 
-Pull request 8 was ready for review.
+Pull request 9 was ready for review.
 
 Active task:
 
-- Open pull request 8 and wait for continuous integration to pass.
+- Open pull request 9 and wait for continuous integration to pass.
 
 Implemented surface:
 
@@ -27,7 +27,7 @@ Implemented surface:
 - Manual screenshot helper.
 - `make` commands for build, test, serve, migration, frontend, and user interface end-to-end.
 - Core domain foundations for errors, IDs, lifecycle states, and visibility scopes.
-- continuous integration workflow for pull requests targeting `main`, covering formatting, type checks, policy checks, copy-paste detection, dead-code detection, linting, vet, tests, frontend build, binary build, migrations, HTTP end-to-end, and user interface end-to-end.
+- continuous integration workflow for pull requests targeting `main`, split into parallel jobs: static checks (formatting, contracts, policy, type checks, copy-paste, dead-code, lint, vet), unit tests, frontend and binary build, Postgres integration tests, HTTP end-to-end tests, and Playwright user interface end-to-end tests.
 - Explicit configuration loading without fallback values.
 - Authentication domain and boundary code under `internal/auth`.
 - Registered user creation and login endpoints.
@@ -69,6 +69,22 @@ Implemented surface:
 - Submission responses are validated against the task response schema and invalid responses are recorded with validation errors.
 - Receipt lookup redacts sensitive fields from response JSON.
 - Generated Elm submission contracts.
+- Credit account and ledger identifiers.
+- Credit account, append-only ledger entry, and task escrow tables.
+- A single-accepted partial unique index on submissions.
+- Credit domain types for positive credit amounts, signed ledger amounts, derived balances, ledger entry kinds, escrow states, and idempotency keys.
+- A ledger service for task funding, submission acceptance with payout, task refund, balance lookup, and ledger listing.
+- Each new registered user receives a credit account and a `signup_grant` of 100 credits in the user-creation transaction.
+- Task funding escrows credits from the funder and requires sufficient balance.
+- Submission acceptance is transactional, enforces a single accepted submission per task, and pays the accepted authenticated worker from the escrow.
+- Task refund cancels a funded task and returns escrowed credits to the funder.
+- Fund, accept, and refund use idempotency keys.
+- HTTP endpoints for credit balance, ledger listing, task funding, submission acceptance, and task refund.
+- An integer reference type in the contract generator and a single-field record decoder fix.
+- Generated Elm ledger contracts.
+- An interactive Elm app with register/login, a credit balance and ledger view, and a task funding form backed by the API.
+- A separate Postgres-backed integration test tier under the `integration` build tag.
+- continuous integration split into parallel static, unit, build, integration, HTTP end-to-end, and Playwright jobs.
 
 The accepted defaults for pull request 1 were:
 
@@ -108,6 +124,7 @@ Last observed checks:
 - Pull request 6 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, and HTTP end-to-end checks passed before merge.
 - Pull request 7 local unit, formatting, type, lint, policy, copy-paste, dead-code, frontend, build, migration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
 - Pull request 8 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, HTTP end-to-end, Playwright, and Deno checks passed.
+- Pull request 9 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.

@@ -11,7 +11,7 @@ type alias ErrorResponse =
 
 errorResponseDecoder : Decoder ErrorResponse
 errorResponseDecoder =
-    Decode.map1 ErrorResponse
+    Decode.map ErrorResponse
         (Decode.field "error" Decode.string)
 
 errorResponseEncoder : ErrorResponse -> Encode.Value
