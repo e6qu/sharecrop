@@ -1,16 +1,17 @@
 # Status
 
-The repository contained the PR 1 project skeleton.
+The repository contained the pull request 1 project skeleton and the pull request 2 core domain and quality-gate work.
 
-PR 2 was active.
+Pull request 3 was active.
 
 Active task:
 
-- Add core domain type foundations.
-- Add a CI quality gate with tests, format checks, strict linting, type checks, and project-specific architecture checks.
-- Keep the UI/API and functional-core/imperative-shell rules enforceable through local checks and CI.
-- Add dead-code and copy-paste detection.
-- Enforce the no-fallback rule in docs and tooling.
+- Add authentication, sessions, and guest identity.
+- Add registered user creation and login.
+- Add JSON Web Token access tokens.
+- Add opaque rotating refresh tokens.
+- Add guest subject creation.
+- Keep authentication dependencies behind `internal/auth`.
 
 Implemented surface:
 
@@ -26,15 +27,21 @@ Implemented surface:
 - Tailwind build through Deno-managed tooling.
 - Deno smoke test harness.
 - Go HTTP unit tests.
-- HTTP E2E smoke tests behind the `http_e2e` build tag.
+- HTTP end-to-end smoke tests behind the `http_e2e` build tag.
 - Playwright UI smoke test.
 - Manual screenshot helper.
-- `make` commands for build, test, serve, migration, frontend, and UI E2E.
+- `make` commands for build, test, serve, migration, frontend, and user interface end-to-end.
 - Core domain foundations for errors, IDs, lifecycle states, and visibility scopes.
-- CI workflow for pull requests targeting `main`, covering formatting, type checks, policy checks, copy-paste detection, dead-code detection, linting, vet, tests, frontend build, binary build, migrations, HTTP E2E, and UI E2E.
+- continuous integration workflow for pull requests targeting `main`, covering formatting, type checks, policy checks, copy-paste detection, dead-code detection, linting, vet, tests, frontend build, binary build, migrations, HTTP end-to-end, and user interface end-to-end.
 - Explicit configuration loading without fallback values.
+- Authentication domain and boundary code under `internal/auth`.
+- Registered user creation and login endpoints.
+- Guest subject creation endpoint.
+- Refresh endpoint using opaque rotating refresh-token cookies.
+- JSON Web Token access tokens signed by local standard-library code.
+- PostgreSQL authentication tables and repository code.
 
-The accepted defaults for PR 1 were:
+The accepted defaults for pull request 1 were:
 
 - Go module path: `github.com/e6qu/sharecrop`.
 - Local Postgres through Docker Compose.
@@ -61,11 +68,12 @@ Last observed checks:
 - `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod make build` passed.
 - `make test-http` passed with local listener permission.
 - `deno task e2e:ui` passed with local browser permission.
-- Manual screenshot review passed for the app shell after PR 2 changes.
+- Manual screenshot review passed for the app shell after pull request 2 changes.
 - `docker compose up -d postgres` passed.
 - `make migrate-up` passed against local Postgres.
 - `docker compose down` passed.
-- Aggregate `make ci` was not run because the environment approval request timed out twice.
+- Pull request 2 continuous integration passed before merge.
+- Pull request 3 local unit, formatting, type, lint, policy, copy-paste, dead-code, build, and tagged HTTP end-to-end compile checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.

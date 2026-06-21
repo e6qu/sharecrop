@@ -2,13 +2,10 @@
 
 Prioritized queue:
 
-1. Wait for PR 2 to be merged before starting another task.
-2. After PR 2 is merged, sync local `main` with `origin/main`.
-3. Start PR 3 from [PLAN.md](./PLAN.md#pr-3-auth-sessions-and-guest-identity).
-4. Add user registration/login.
-5. Add JWT access tokens.
-6. Add opaque rotating refresh tokens.
-7. Add guest subject support.
-8. Add auth tests across unit, integration, and HTTP E2E layers.
+1. Open pull request 3 and wait for continuous integration to pass.
+2. After pull request 3 is merged, sync local `main` with `origin/main`.
+3. Start the next task branch from synced `origin/main`.
+4. Continue from [PLAN.md](./PLAN.md) with task and organization domain modeling.
+5. Keep splitting imperative-shell code away from pure typed domain functions.
 
 Before starting, reread [AGENTS.md](./AGENTS.md) and update the continuity files if task scope changes.

@@ -28,7 +28,8 @@ jobs:
       DATABASE_URL: postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
       ELM_BIN: /usr/local/bin/elm
       SHARECROP_HTTP_ADDR: :18080
-      SHARECROP_MIGRATIONS_DIR: migrations
+      SHARECROP_ACCESS_TOKEN_SECRET: "01234567890123456789012345678901"
+      SHARECROP_MIGRATIONS_DIR: ${{ github.workspace }}/migrations
 
     steps:
       - uses: actions/checkout@v4

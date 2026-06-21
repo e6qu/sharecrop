@@ -59,3 +59,35 @@ func TestParseOrganizationIDRoundTrips(t *testing.T) {
 		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
 	}
 }
+
+func TestParseGuestIDRoundTrips(t *testing.T) {
+	created, matched := NewGuestID().(GuestIDCreated)
+	if !matched {
+		t.Fatalf("new guest id did not create")
+	}
+
+	parsed, matched := ParseGuestID(created.Value.String()).(GuestIDCreated)
+	if !matched {
+		t.Fatalf("parse guest id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}
+
+func TestParseRefreshTokenIDRoundTrips(t *testing.T) {
+	created, matched := NewRefreshTokenID().(RefreshTokenIDCreated)
+	if !matched {
+		t.Fatalf("new refresh token id did not create")
+	}
+
+	parsed, matched := ParseRefreshTokenID(created.Value.String()).(RefreshTokenIDCreated)
+	if !matched {
+		t.Fatalf("parse refresh token id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}

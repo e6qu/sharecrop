@@ -4,7 +4,8 @@ No confirmed application defects were known.
 
 Test gaps:
 
-- Aggregate `make ci` was not run locally because the environment approval request timed out twice.
+- Pull request 3 runtime HTTP end-to-end tests were not run locally because the environment rejected the required local listener and PostgreSQL approval after the usage limit was reached.
+- Pull request 3 Playwright browser tests were not rerun locally because the user interface was not changed and the environment could not grant further browser/listener approval.
 
 Known risks:
 

@@ -19,7 +19,7 @@ check-copy-paste:
 	deno run --allow-read tools/check_copy_paste.ts
 
 check-dead-code:
-	go run golang.org/x/tools/cmd/deadcode@latest -test ./...
+	go tool deadcode -test ./...
 
 ci: check-format check-policy check-ts check-copy-paste check-dead-code lint vet test frontend test-http
 
