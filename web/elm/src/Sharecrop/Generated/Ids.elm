@@ -27,6 +27,39 @@ guestIDEncoder : GuestID -> Encode.Value
 guestIDEncoder guestID =
     Encode.string guestID
 
+type alias TaskID =
+    String
+
+taskIDDecoder : Decoder TaskID
+taskIDDecoder =
+    Decode.string
+
+taskIDEncoder : TaskID -> Encode.Value
+taskIDEncoder taskID =
+    Encode.string taskID
+
+type alias TaskSeriesID =
+    String
+
+taskSeriesIDDecoder : Decoder TaskSeriesID
+taskSeriesIDDecoder =
+    Decode.string
+
+taskSeriesIDEncoder : TaskSeriesID -> Encode.Value
+taskSeriesIDEncoder taskSeriesID =
+    Encode.string taskSeriesID
+
+type alias TaskCapabilityTokenID =
+    String
+
+taskCapabilityTokenIDDecoder : Decoder TaskCapabilityTokenID
+taskCapabilityTokenIDDecoder =
+    Decode.string
+
+taskCapabilityTokenIDEncoder : TaskCapabilityTokenID -> Encode.Value
+taskCapabilityTokenIDEncoder taskCapabilityTokenID =
+    Encode.string taskCapabilityTokenID
+
 type alias OrganizationID =
     String
 

@@ -14,6 +14,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/task"
 )
 
 func TestHealth(t *testing.T) {
@@ -113,8 +114,39 @@ func TestCreateOrganizationRequiresUserToken(t *testing.T) {
 	}
 }
 
+func TestCreateTaskEndpointUsesDefaultUserVisibility(t *testing.T) {
+	userIDResult := core.NewUserID()
+	userIDCreated := userIDResult.(core.UserIDCreated)
+	requestBody := `{
+		"owner":{"kind":"user","user_id":"` + userIDCreated.Value.String() + `","team_id":"","organization_id":""},
+		"title":"Collect examples",
+		"description":"Find small examples for schema tests.",
+		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks", strings.NewReader(requestBody))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
+	}
+
+	var body taskResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.VisibilityKind != task.VisibilityKindUser.String() {
+		t.Fatalf("visibility kind = %q, want user", body.VisibilityKind)
+	}
+}
+
 func testHandler() http.Handler {
-	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{})
+	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{})
 }
 
 func testStaticFiles() fs.FS {
@@ -164,6 +196,8 @@ type testAuth struct{}
 type testVerifier struct{}
 
 type testOrganizationService struct{}
+
+type testTaskService struct{}
 
 func testAuthService() testAuth {
 	return testAuth{}
@@ -247,6 +281,39 @@ func (testOrganizationService) CreateOrganizationTeam(_ context.Context, actor a
 
 func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult {
 	return org.OrganizationTeamsListed{Values: []org.Team{}}
+}
+
+func (testTaskService) Create(_ context.Context, command task.CreateCommand) task.CreateResult {
+	idResult := core.NewTaskID()
+	idCreated := idResult.(core.TaskIDCreated)
+	return task.TaskCreated{Value: task.Task{
+		ID:             idCreated.Value,
+		Owner:          command.Owner,
+		Title:          command.Title,
+		Description:    command.Description,
+		State:          task.StateDraft,
+		Visibility:     command.Visibility,
+		Placement:      command.Placement,
+		ResponseSchema: command.ResponseSchema,
+		Payload:        command.Payload,
+		CreatedBy:      command.Actor.ID,
+	}}
+}
+
+func (testTaskService) Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
+func (testTaskService) Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
+func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope) task.ListResult {
+	return task.TasksListed{Values: []task.Task{}}
+}
+
+func (testTaskService) CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult {
+	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
 func testAccessToken() auth.AccessToken {
