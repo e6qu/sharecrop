@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 import {
   type AuthBody,
   password,
+  taskRequest,
   uniqueEmail,
-  userTaskRequest,
 } from "./helpers.ts";
 
 test("creating an agent credential shows the token and MCP config", async ({ page }) => {
@@ -35,9 +35,10 @@ test("tasks panel lists user tasks and shows agent curl examples", async ({ page
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },
-    data: userTaskRequest(
+    data: taskRequest(
       "Agent task from the browser",
       registerBody.subject_id,
+      "default",
     ),
   });
   expect(taskResponse.ok()).toBeTruthy();

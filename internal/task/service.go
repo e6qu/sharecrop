@@ -14,6 +14,8 @@ type Store interface {
 	ChangeTaskState(context.Context, core.TaskID, State) ChangeTaskStateStoreResult
 	ListTasks(context.Context, ListScope) ListTasksStoreResult
 	CreateCapabilityToken(context.Context, core.TaskCapabilityTokenID, core.TaskID, CapabilityTokenHash) CreateCapabilityTokenStoreResult
+	ListSeries(context.Context, core.UserID) ListSeriesStoreResult
+	FindSeries(context.Context, core.TaskSeriesID) FindSeriesStoreResult
 }
 
 type OrganizationPermissions interface {

@@ -21,6 +21,8 @@ type Services interface {
 	GetSubmissionStatus(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListTaskSubmissions(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
 	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
+	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
+	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 }
 
 type Server struct {
@@ -118,6 +120,10 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.UserSubject,
 		return server.callListTaskSubmissions(ctx, subject, arguments)
 	case toolAcceptSubmission:
 		return server.callAcceptSubmission(ctx, subject, arguments)
+	case toolListTaskSeries:
+		return server.callListTaskSeries(ctx, subject)
+	case toolGetTaskSeries:
+		return server.callGetTaskSeries(ctx, subject, arguments)
 	default:
 		return toolProtocolError{code: codeInvalidParams, message: "unknown tool: " + name}
 	}

@@ -456,3 +456,37 @@ Pull request 10 verification was performed:
 - `make test-http` passed, including the MCP and agent flows.
 - `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell, ledger, and agent Playwright tests.
 - Manual screenshot review passed for `/tmp/sharecrop-pr10-agents.png`.
+
+Pull request 11 added deferred backend gaps, MCP transports, and user interface polish with new screens:
+
+- UUIDv7 generation was verified in code for version 7 and time ordering, and a parser-rejection test was added.
+- HTTP contract fixture tests were added to pin the wire JSON shape of representative API responses.
+- A task-series read API was added: `task` service `ListSeries` and `GetSeries` with a series view-permission check, PostgreSQL `ListSeries` and `FindSeries` repository code, `GET /api/task-series` and `GET /api/task-series/{id}` endpoints, and generated Elm task-series contracts.
+- The MCP server gained `sharecrop.list_task_series` and `sharecrop.get_task_series` tools.
+- The MCP server gained JSON-RPC batch handling through a shared `HandleRaw` entry point used by both transports.
+- The MCP HTTP endpoint was hardened toward Streamable HTTP: a `Mcp-Session-Id` header on initialize, `Origin` validation for DNS-rebinding protection, a `405` response on `GET`, and a request body size limit.
+- A stdio MCP transport was added through a `sharecrop mcp` command that authenticates with `SHARECROP_AGENT_TOKEN`, verifies the agent credential, and drives the same MCP server over newline-delimited JSON-RPC on stdin and stdout. This is the transport local agent clients launch.
+- The transport surface was chosen from what Claude Code and Codex both implement as MCP clients: stdio and Streamable HTTP with a static bearer token. HTTP/1.1 and HTTP/2 are negotiated by the web server, and HTTP/3 and raw sockets were intentionally not added.
+- A reusable shadcn-inspired Elm component module was added under `Sharecrop.Ui` with cards, buttons, inputs, badges, code blocks, and labels, and the app was refactored to use it.
+- Browser page navigation was added with a public task discovery screen and a task detail screen that submits responses and lets task owners review and accept submissions.
+
+Pull request 11 test strategy was evaluated:
+
+- Unit tests covered UUIDv7 version and ordering, contract wire shapes, the series view-permission check, the MCP series tools, JSON-RPC batch and notification handling, and the stdio loop.
+- Integration tests covered the task-series store list and find against PostgreSQL.
+- HTTP end-to-end tests covered the series REST endpoints, the MCP series tools, MCP batch requests, the `GET` `405`, and the `Mcp-Session-Id` header.
+- The stdio command was smoke-tested end to end against PostgreSQL by piping `initialize` and `tools/list` to `sharecrop mcp`.
+- Playwright tests covered discovering a public task, submitting through the browser, and an owner reviewing and accepting the submission, while preserving the existing dashboard and agent-setup tests.
+- Manual screenshot review covered the task detail screen.
+
+Pull request 11 verification was performed:
+
+- `make check-format`, `make check-contracts`, `make check-policy`, `make check-ts`, `make check-copy-paste`, `make check-dead-code`, `make lint`, and `make vet` passed.
+- `GOCACHE=$PWD/.cache/go-build make test` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed.
+- `docker compose up -d postgres` passed and the existing migrations applied.
+- `make test-integration` passed and remained idempotency-safe across reruns.
+- `make test-http` passed, including the series and MCP transport tests.
+- `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell, ledger, agent, and screens Playwright tests.
+- `SHARECROP_AGENT_TOKEN=... go run ./cmd/sharecrop mcp` returned the initialize result and tool list over stdio.
+- Manual screenshot review passed for `/tmp/sharecrop-pr11-detail.png`.

@@ -15,6 +15,8 @@ const (
 	toolGetSubmissionStatus = "sharecrop.get_submission_status"
 	toolListTaskSubmissions = "sharecrop.list_task_submissions"
 	toolAcceptSubmission    = "sharecrop.accept_submission"
+	toolListTaskSeries      = "sharecrop.list_task_series"
+	toolGetTaskSeries       = "sharecrop.get_task_series"
 )
 
 type toolDefinition struct {
@@ -73,6 +75,18 @@ func toolDefinitions() []toolDefinition {
 			Description: "Accept a submission for a task owned by the agent's user, paying the escrowed reward when present.",
 			Scope:       agent.ScopeSubmissionsReview,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"}},"required":["task_id","submission_id","idempotency_key"]}`),
+		},
+		{
+			Name:        toolListTaskSeries,
+			Description: "List the task series the agent's user owns.",
+			Scope:       agent.ScopeTasksRead,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+		},
+		{
+			Name:        toolGetTaskSeries,
+			Description: "Get a task series and its ordered tasks.",
+			Scope:       agent.ScopeTasksRead,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
 		},
 	}
 }

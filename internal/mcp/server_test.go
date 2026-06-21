@@ -174,6 +174,14 @@ func (services fakeServices) AcceptSubmission(_ context.Context, _ core.UserID, 
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}}
 }
 
+func (services fakeServices) ListSeries(_ context.Context, _ auth.UserSubject) task.ListSeriesResult {
+	return task.SeriesListed{Values: []task.Series{}}
+}
+
+func (services fakeServices) GetSeries(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID) task.GetSeriesResult {
+	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
 func request(id string, method string, params string) Request {
 	return Request{JSONRPC: jsonRPCVersion, ID: json.RawMessage(id), Method: method, Params: json.RawMessage(params)}
 }

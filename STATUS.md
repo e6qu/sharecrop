@@ -1,12 +1,12 @@
 # Status
 
-The repository contained the pull request 1 through pull request 8 work, plus pull request 9 credits, ledger, escrow, and first accepted submission work.
+The repository contained the pull request 1 through pull request 9 work, plus pull request 10 MCP, agent credentials, and agent setup work.
 
-Pull request 10 was ready for review.
+Pull request 11 was ready for review.
 
 Active task:
 
-- Open pull request 10 and wait for continuous integration to pass.
+- Open pull request 11 and wait for continuous integration to pass.
 
 Implemented surface:
 
@@ -94,7 +94,15 @@ Implemented surface:
 - HTTP endpoints for agent credential creation, listing, and revocation, and a `POST /mcp` endpoint authenticated by agent credentials.
 - Generated Elm agent contracts.
 - Browser screens for listing the user's tasks with REST and MCP curl examples, and for creating, viewing, and revoking scoped agent credentials with generated MCP client configuration.
-- Task-series MCP tools are not implemented because no task-series read surface exists yet.
+- Task-series read API with `GET /api/task-series` and `GET /api/task-series/{id}` and a series view-permission check.
+- `list_task_series` and `get_task_series` MCP tools.
+- JSON-RPC batch handling in the MCP server.
+- A stdio MCP transport through the `sharecrop mcp` command, authenticated by `SHARECROP_AGENT_TOKEN`, driving the same MCP server as the HTTP endpoint.
+- Streamable HTTP hardening on `/mcp`: `Mcp-Session-Id` on initialize, `Origin` validation, a `405` on `GET`, and a request body limit.
+- UUIDv7 generation verified in code for version and time ordering.
+- HTTP contract fixture tests pinning response wire shapes.
+- A reusable shadcn-inspired Elm component module under `Sharecrop.Ui`.
+- Browser page navigation with a public task discovery screen and a task detail screen with response submission and owner submission review and acceptance.
 
 The accepted defaults for pull request 1 were:
 
@@ -136,6 +144,7 @@ Last observed checks:
 - Pull request 8 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, HTTP end-to-end, Playwright, and Deno checks passed.
 - Pull request 9 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
 - Pull request 10 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
+- Pull request 11 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, stdio MCP smoke, and manual screenshot checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.

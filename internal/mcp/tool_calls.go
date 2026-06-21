@@ -311,6 +311,68 @@ func (server Server) callAcceptSubmission(ctx context.Context, subject auth.User
 	return marshalPayload(payload)
 }
 
+type seriesSummary struct {
+	ID        string `json:"id"`
+	OwnerKind string `json:"owner_kind"`
+	Title     string `json:"title"`
+	CreatedBy string `json:"created_by"`
+}
+
+type seriesListPayload struct {
+	Series []seriesSummary `json:"series"`
+}
+
+type seriesDetailPayload struct {
+	Series seriesSummary `json:"series"`
+	Tasks  []taskSummary `json:"tasks"`
+}
+
+func (server Server) callListTaskSeries(ctx context.Context, subject auth.UserSubject) toolResult {
+	result := server.services.ListSeries(ctx, subject)
+	listed, matched := result.(task.SeriesListed)
+	if !matched {
+		return toolFailed{message: result.(task.ListSeriesRejected).Reason.Description()}
+	}
+	summaries := make([]seriesSummary, 0, len(listed.Values))
+	for index := range listed.Values {
+		summaries = append(summaries, seriesToSummary(listed.Values[index]))
+	}
+	return marshalPayload(seriesListPayload{Series: summaries})
+}
+
+func (server Server) callGetTaskSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		SeriesID string `json:"series_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	seriesIDResult := core.ParseTaskSeriesID(args.SeriesID)
+	seriesID, idMatched := seriesIDResult.(core.TaskSeriesIDCreated)
+	if !idMatched {
+		return toolProtocolError{code: codeInvalidParams, message: seriesIDResult.(core.TaskSeriesIDRejected).Reason.Description()}
+	}
+	result := server.services.GetSeries(ctx, subject, seriesID.Value)
+	got, matched := result.(task.SeriesGot)
+	if !matched {
+		return toolFailed{message: result.(task.GetSeriesRejected).Reason.Description()}
+	}
+	tasks := make([]taskSummary, 0, len(got.Value.Tasks))
+	for index := range got.Value.Tasks {
+		tasks = append(tasks, taskToSummary(got.Value.Tasks[index]))
+	}
+	return marshalPayload(seriesDetailPayload{Series: seriesToSummary(got.Value.Series), Tasks: tasks})
+}
+
+func seriesToSummary(value task.Series) seriesSummary {
+	return seriesSummary{
+		ID:        value.ID.String(),
+		OwnerKind: ownerKind(value.Owner),
+		Title:     value.Title.String(),
+		CreatedBy: value.CreatedBy.String(),
+	}
+}
+
 func parseTaskID(arguments json.RawMessage) (core.TaskID, toolResult) {
 	var args struct {
 		TaskID string `json:"task_id"`
@@ -355,6 +417,10 @@ func (statusPayload) payloadValue() {}
 func (submissionsPayload) payloadValue() {}
 
 func (acceptPayload) payloadValue() {}
+
+func (seriesListPayload) payloadValue() {}
+
+func (seriesDetailPayload) payloadValue() {}
 
 func taskToSummary(value task.Task) taskSummary {
 	return taskSummary{

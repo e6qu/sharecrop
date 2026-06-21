@@ -5345,116 +5345,17 @@ var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
 var $elm$json$Json$Decode$string = _Json_decodeString;
+var $author$project$Main$DashboardPage = {$: 'DashboardPage'};
+var $author$project$Main$DiscoveryPage = {$: 'DiscoveryPage'};
 var $author$project$Main$LoggedIn = function (a) {
 	return {$: 'LoggedIn', a: a};
 };
-var $author$project$Main$balanceFromResult = function (result) {
-	if (result.$ === 'Ok') {
-		var response = result.a;
-		return $elm$core$Maybe$Just(response.amount);
-	} else {
-		return $elm$core$Maybe$Nothing;
-	}
+var $author$project$Main$TaskDetailPage = function (a) {
+	return {$: 'TaskDetailPage', a: a};
 };
-var $elm$core$List$isEmpty = function (xs) {
-	if (!xs.b) {
-		return true;
-	} else {
-		return false;
-	}
+var $author$project$Main$AcceptReceived = function (a) {
+	return {$: 'AcceptReceived', a: a};
 };
-var $author$project$Main$AgentCreated = function (a) {
-	return {$: 'AgentCreated', a: a};
-};
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse = F2(
-	function (credential, secret) {
-		return {credential: credential, secret: secret};
-	});
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialResponse = F4(
-	function (id, label, scopes, state) {
-		return {id: id, label: label, scopes: scopes, state: state};
-	});
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive = {$: 'AgentCredentialStateActive'};
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked = {$: 'AgentCredentialStateRevoked'};
-var $elm$json$Json$Decode$fail = _Json_fail;
-var $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'active':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive);
-			case 'revoked':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked);
-			default:
-				return $elm$json$Json$Decode$fail('invalid AgentCredentialState');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead = {$: 'AgentScopeSubmissionsRead'};
-var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview = {$: 'AgentScopeSubmissionsReview'};
-var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite = {$: 'AgentScopeSubmissionsWrite'};
-var $author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead = {$: 'AgentScopeTasksRead'};
-var $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite = {$: 'AgentScopeTasksWrite'};
-var $author$project$Sharecrop$Generated$Agent$agentScopeDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'tasks_read':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead);
-			case 'tasks_write':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite);
-			case 'submissions_write':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite);
-			case 'submissions_read':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead);
-			case 'submissions_review':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview);
-			default:
-				return $elm$json$Json$Decode$fail('invalid AgentScope');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $elm$json$Json$Decode$list = _Json_decodeList;
-var $elm$json$Json$Decode$map4 = _Json_map4;
-var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A5(
-	$elm$json$Json$Decode$map4,
-	$author$project$Sharecrop$Generated$Agent$AgentCredentialResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'label', $elm$json$Json$Decode$string),
-	A2(
-		$elm$json$Json$Decode$field,
-		'scopes',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Agent$agentScopeDecoder)),
-	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder));
-var $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder = A3(
-	$elm$json$Json$Decode$map2,
-	$author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse,
-	A2($elm$json$Json$Decode$field, 'credential', $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder),
-	A2($elm$json$Json$Decode$field, 'secret', $elm$json$Json$Decode$string));
-var $elm$json$Json$Encode$string = _Json_wrap;
-var $author$project$Sharecrop$Generated$Agent$agentScopeEncoder = function (agentScope) {
-	switch (agentScope.$) {
-		case 'AgentScopeTasksRead':
-			return $elm$json$Json$Encode$string('tasks_read');
-		case 'AgentScopeTasksWrite':
-			return $elm$json$Json$Encode$string('tasks_write');
-		case 'AgentScopeSubmissionsWrite':
-			return $elm$json$Json$Encode$string('submissions_write');
-		case 'AgentScopeSubmissionsRead':
-			return $elm$json$Json$Encode$string('submissions_read');
-		default:
-			return $elm$json$Json$Encode$string('submissions_review');
-	}
-};
-var $elm$json$Json$Encode$list = F2(
-	function (func, entries) {
-		return _Json_wrap(
-			A3(
-				$elm$core$List$foldl,
-				_Json_addEntry(func),
-				_Json_emptyArray(_Utils_Tuple0),
-				entries));
-	});
 var $elm$json$Json$Encode$object = function (pairs) {
 	return _Json_wrap(
 		A3(
@@ -5468,19 +5369,16 @@ var $elm$json$Json$Encode$object = function (pairs) {
 			_Json_emptyObject(_Utils_Tuple0),
 			pairs));
 };
-var $author$project$Main$agentRequestBody = F2(
-	function (agentLabel, scopes) {
-		return $elm$json$Json$Encode$object(
-			_List_fromArray(
-				[
-					_Utils_Tuple2(
-					'label',
-					$elm$json$Json$Encode$string(agentLabel)),
-					_Utils_Tuple2(
-					'scopes',
-					A2($elm$json$Json$Encode$list, $author$project$Sharecrop$Generated$Agent$agentScopeEncoder, scopes))
-				]));
-	});
+var $elm$json$Json$Encode$string = _Json_wrap;
+var $author$project$Main$acceptRequestBody = function (submissionId) {
+	return $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'idempotency_key',
+				$elm$json$Json$Encode$string('ui-accept:' + submissionId))
+			]));
+};
 var $elm$http$Http$Header = F2(
 	function (a, b) {
 		return {$: 'Header', a: a, b: b};
@@ -6217,25 +6115,13 @@ var $author$project$Main$authorizedRequest = F5(
 				url: url
 			});
 	});
-var $elm$json$Json$Decode$decodeString = _Json_runOnString;
-var $elm$http$Http$expectStringResponse = F2(
+var $elm$http$Http$expectBytesResponse = F2(
 	function (toMsg, toResult) {
 		return A3(
 			_Http_expect,
-			'',
-			$elm$core$Basics$identity,
+			'arraybuffer',
+			_Http_toDataView,
 			A2($elm$core$Basics$composeR, toResult, toMsg));
-	});
-var $elm$core$Result$mapError = F2(
-	function (f, result) {
-		if (result.$ === 'Ok') {
-			var v = result.a;
-			return $elm$core$Result$Ok(v);
-		} else {
-			var e = result.a;
-			return $elm$core$Result$Err(
-				f(e));
-		}
 	});
 var $elm$http$Http$BadBody = function (a) {
 	return {$: 'BadBody', a: a};
@@ -6248,6 +6134,17 @@ var $elm$http$Http$BadUrl = function (a) {
 };
 var $elm$http$Http$NetworkError = {$: 'NetworkError'};
 var $elm$http$Http$Timeout = {$: 'Timeout'};
+var $elm$core$Result$mapError = F2(
+	function (f, result) {
+		if (result.$ === 'Ok') {
+			var v = result.a;
+			return $elm$core$Result$Ok(v);
+		} else {
+			var e = result.a;
+			return $elm$core$Result$Err(
+				f(e));
+		}
+	});
 var $elm$http$Http$resolve = F2(
 	function (toResult, response) {
 		switch (response.$) {
@@ -6271,6 +6168,172 @@ var $elm$http$Http$resolve = F2(
 					toResult(body));
 		}
 	});
+var $elm$http$Http$expectWhatever = function (toMsg) {
+	return A2(
+		$elm$http$Http$expectBytesResponse,
+		toMsg,
+		$elm$http$Http$resolve(
+			function (_v0) {
+				return $elm$core$Result$Ok(_Utils_Tuple0);
+			}));
+};
+var $elm$http$Http$jsonBody = function (value) {
+	return A2(
+		_Http_pair,
+		'application/json',
+		A2($elm$json$Json$Encode$encode, 0, value));
+};
+var $author$project$Main$postAccept = F3(
+	function (token, taskId, submissionId) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'POST',
+			token,
+			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/accept'))),
+			$elm$http$Http$jsonBody(
+				$author$project$Main$acceptRequestBody(submissionId)),
+			$elm$http$Http$expectWhatever($author$project$Main$AcceptReceived));
+	});
+var $author$project$Main$acceptCommand = F3(
+	function (model, state, submissionId) {
+		var _v0 = state.page;
+		if (_v0.$ === 'TaskDetailPage') {
+			var taskId = _v0.a;
+			return _Utils_Tuple2(
+				model,
+				A3($author$project$Main$postAccept, state.accessToken, taskId, submissionId));
+		} else {
+			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+		}
+	});
+var $author$project$Main$balanceFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return $elm$core$Maybe$Just(response.amount);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
+var $elm$core$List$isEmpty = function (xs) {
+	if (!xs.b) {
+		return true;
+	} else {
+		return false;
+	}
+};
+var $author$project$Main$AgentCreated = function (a) {
+	return {$: 'AgentCreated', a: a};
+};
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse = F2(
+	function (credential, secret) {
+		return {credential: credential, secret: secret};
+	});
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialResponse = F4(
+	function (id, label, scopes, state) {
+		return {id: id, label: label, scopes: scopes, state: state};
+	});
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive = {$: 'AgentCredentialStateActive'};
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked = {$: 'AgentCredentialStateRevoked'};
+var $elm$json$Json$Decode$fail = _Json_fail;
+var $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'active':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive);
+			case 'revoked':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked);
+			default:
+				return $elm$json$Json$Decode$fail('invalid AgentCredentialState');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead = {$: 'AgentScopeSubmissionsRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview = {$: 'AgentScopeSubmissionsReview'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite = {$: 'AgentScopeSubmissionsWrite'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead = {$: 'AgentScopeTasksRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite = {$: 'AgentScopeTasksWrite'};
+var $author$project$Sharecrop$Generated$Agent$agentScopeDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'tasks_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead);
+			case 'tasks_write':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite);
+			case 'submissions_write':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite);
+			case 'submissions_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead);
+			case 'submissions_review':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview);
+			default:
+				return $elm$json$Json$Decode$fail('invalid AgentScope');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $elm$json$Json$Decode$list = _Json_decodeList;
+var $elm$json$Json$Decode$map4 = _Json_map4;
+var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A5(
+	$elm$json$Json$Decode$map4,
+	$author$project$Sharecrop$Generated$Agent$AgentCredentialResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'label', $elm$json$Json$Decode$string),
+	A2(
+		$elm$json$Json$Decode$field,
+		'scopes',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Agent$agentScopeDecoder)),
+	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder));
+var $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse,
+	A2($elm$json$Json$Decode$field, 'credential', $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder),
+	A2($elm$json$Json$Decode$field, 'secret', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Agent$agentScopeEncoder = function (agentScope) {
+	switch (agentScope.$) {
+		case 'AgentScopeTasksRead':
+			return $elm$json$Json$Encode$string('tasks_read');
+		case 'AgentScopeTasksWrite':
+			return $elm$json$Json$Encode$string('tasks_write');
+		case 'AgentScopeSubmissionsWrite':
+			return $elm$json$Json$Encode$string('submissions_write');
+		case 'AgentScopeSubmissionsRead':
+			return $elm$json$Json$Encode$string('submissions_read');
+		default:
+			return $elm$json$Json$Encode$string('submissions_review');
+	}
+};
+var $elm$json$Json$Encode$list = F2(
+	function (func, entries) {
+		return _Json_wrap(
+			A3(
+				$elm$core$List$foldl,
+				_Json_addEntry(func),
+				_Json_emptyArray(_Utils_Tuple0),
+				entries));
+	});
+var $author$project$Main$agentRequestBody = F2(
+	function (agentLabel, scopes) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'label',
+					$elm$json$Json$Encode$string(agentLabel)),
+					_Utils_Tuple2(
+					'scopes',
+					A2($elm$json$Json$Encode$list, $author$project$Sharecrop$Generated$Agent$agentScopeEncoder, scopes))
+				]));
+	});
+var $elm$json$Json$Decode$decodeString = _Json_runOnString;
+var $elm$http$Http$expectStringResponse = F2(
+	function (toMsg, toResult) {
+		return A3(
+			_Http_expect,
+			'',
+			$elm$core$Basics$identity,
+			A2($elm$core$Basics$composeR, toResult, toMsg));
+	});
 var $elm$http$Http$expectJson = F2(
 	function (toMsg, decoder) {
 		return A2(
@@ -6284,12 +6347,6 @@ var $elm$http$Http$expectJson = F2(
 						A2($elm$json$Json$Decode$decodeString, decoder, string));
 				}));
 	});
-var $elm$http$Http$jsonBody = function (value) {
-	return A2(
-		_Http_pair,
-		'application/json',
-		A2($elm$json$Json$Encode$encode, 0, value));
-};
 var $author$project$Main$postAgent = F3(
 	function (token, agentLabel, scopes) {
 		return A5(
@@ -6357,13 +6414,19 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 			[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite]),
 		balance: $elm$core$Maybe$Nothing,
 		credentials: _List_Nil,
+		detail: $elm$core$Maybe$Nothing,
+		discoveryTasks: _List_Nil,
 		entries: _List_Nil,
 		fundAmount: '',
 		fundMessage: $elm$core$Maybe$Nothing,
 		fundTaskId: '',
 		newCredential: $elm$core$Maybe$Nothing,
+		page: $author$project$Main$DashboardPage,
 		selectedTask: $elm$core$Maybe$Nothing,
 		subjectId: response.subjectID,
+		submissions: _List_Nil,
+		submitInput: '',
+		submitMessage: $elm$core$Maybe$Nothing,
 		tasks: _List_Nil
 	};
 };
@@ -6375,10 +6438,227 @@ var $author$project$Main$entriesFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Main$DiscoveryReceived = function (a) {
+	return {$: 'DiscoveryReceived', a: a};
+};
+var $elm$http$Http$emptyBody = _Http_emptyBody;
+var $author$project$Sharecrop$Generated$Task$TasksResponse = function (tasks) {
+	return {tasks: tasks};
+};
+var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = F6(
+	function (id, ownerKind, title, state, visibilityKind, createdBy) {
+		return {createdBy: createdBy, id: id, ownerKind: ownerKind, state: state, title: title, visibilityKind: visibilityKind};
+	});
+var $elm$json$Json$Decode$map6 = _Json_map6;
+var $author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganization = {$: 'TaskOwnerKindOrganization'};
+var $author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganizationTeam = {$: 'TaskOwnerKindOrganizationTeam'};
+var $author$project$Sharecrop$Generated$Task$TaskOwnerKindTeam = {$: 'TaskOwnerKindTeam'};
+var $author$project$Sharecrop$Generated$Task$TaskOwnerKindUser = {$: 'TaskOwnerKindUser'};
+var $author$project$Sharecrop$Generated$Task$taskOwnerKindDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'user':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindUser);
+			case 'team':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindTeam);
+			case 'organization':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganization);
+			case 'organization_team':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganizationTeam);
+			default:
+				return $elm$json$Json$Decode$fail('invalid TaskOwnerKind');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Task$TaskStateCancelled = {$: 'TaskStateCancelled'};
+var $author$project$Sharecrop$Generated$Task$TaskStateClosed = {$: 'TaskStateClosed'};
+var $author$project$Sharecrop$Generated$Task$TaskStateDraft = {$: 'TaskStateDraft'};
+var $author$project$Sharecrop$Generated$Task$TaskStateExpired = {$: 'TaskStateExpired'};
+var $author$project$Sharecrop$Generated$Task$TaskStateOpen = {$: 'TaskStateOpen'};
+var $author$project$Sharecrop$Generated$Task$taskStateDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'draft':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateDraft);
+			case 'open':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateOpen);
+			case 'closed':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateClosed);
+			case 'cancelled':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateCancelled);
+			case 'expired':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateExpired);
+			default:
+				return $elm$json$Json$Decode$fail('invalid TaskState');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganization = {$: 'TaskVisibilityKindOrganization'};
+var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganizationTeam = {$: 'TaskVisibilityKindOrganizationTeam'};
+var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindPublic = {$: 'TaskVisibilityKindPublic'};
+var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindTeam = {$: 'TaskVisibilityKindTeam'};
+var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindUser = {$: 'TaskVisibilityKindUser'};
+var $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'public':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindPublic);
+			case 'user':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindUser);
+			case 'team':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindTeam);
+			case 'organization':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganization);
+			case 'organization_team':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganizationTeam);
+			default:
+				return $elm$json$Json$Decode$fail('invalid TaskVisibilityKind');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
+	$author$project$Sharecrop$Generated$Task$TaskListItemResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'owner_kind', $author$project$Sharecrop$Generated$Task$taskOwnerKindDecoder),
+	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskStateDecoder),
+	A2($elm$json$Json$Decode$field, 'visibility_kind', $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder),
+	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Task$tasksResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Task$TasksResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'tasks',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder)));
+var $author$project$Main$fetchDiscovery = function (token) {
+	return A5(
+		$author$project$Main$authorizedRequest,
+		'GET',
+		token,
+		'/api/tasks?scope=public',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Main$DiscoveryReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
+};
+var $author$project$Main$DetailReceived = function (a) {
+	return {$: 'DetailReceived', a: a};
+};
+var $author$project$Main$PublicTaskDetail = F7(
+	function (id, ownerKind, title, description, state, responseSchemaJson, createdBy) {
+		return {createdBy: createdBy, description: description, id: id, ownerKind: ownerKind, responseSchemaJson: responseSchemaJson, state: state, title: title};
+	});
+var $elm$json$Json$Decode$map7 = _Json_map7;
+var $author$project$Main$publicTaskDetailDecoder = A8(
+	$elm$json$Json$Decode$map7,
+	$author$project$Main$PublicTaskDetail,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'description', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'response_schema_json', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+var $author$project$Main$fetchPublicTaskDetail = F2(
+	function (token, taskId) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'GET',
+			token,
+			'/api/tasks/' + taskId,
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Main$DetailReceived, $author$project$Main$publicTaskDetailDecoder));
+	});
+var $author$project$Main$SubmissionsReceived = function (a) {
+	return {$: 'SubmissionsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionsResponse = function (submissions) {
+	return {submissions: submissions};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F6(
+	function (id, taskID, submitterKind, state, responseJSON, validationErrors) {
+		return {id: id, responseJSON: responseJSON, state: state, submitterKind: submitterKind, taskID: taskID, validationErrors: validationErrors};
+	});
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateRejected = {$: 'SubmissionStateRejected'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted = {$: 'SubmissionStateSubmitted'};
+var $author$project$Sharecrop$Generated$Submission$submissionStateDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'submitted':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted);
+			case 'invalid':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid);
+			case 'accepted':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted);
+			case 'rejected':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateRejected);
+			default:
+				return $elm$json$Json$Decode$fail('invalid SubmissionState');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse = F2(
+	function (path, message) {
+		return {message: message, path: path};
+	});
+var $author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse,
+	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Submission$SubmitterKindAnonymous = {$: 'SubmitterKindAnonymous'};
+var $author$project$Sharecrop$Generated$Submission$SubmitterKindAuthenticated = {$: 'SubmitterKindAuthenticated'};
+var $author$project$Sharecrop$Generated$Submission$submitterKindDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'authenticated':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmitterKindAuthenticated);
+			case 'anonymous':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmitterKindAnonymous);
+			default:
+				return $elm$json$Json$Decode$fail('invalid SubmitterKind');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
+	$author$project$Sharecrop$Generated$Submission$SubmissionResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'submitter_kind', $author$project$Sharecrop$Generated$Submission$submitterKindDecoder),
+	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Submission$submissionStateDecoder),
+	A2($elm$json$Json$Decode$field, 'response_json', $elm$json$Json$Decode$string),
+	A2(
+		$elm$json$Json$Decode$field,
+		'validation_errors',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder)));
+var $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Submission$SubmissionsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'submissions',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionResponseDecoder)));
+var $author$project$Main$fetchSubmissions = F2(
+	function (token, taskId) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'GET',
+			token,
+			'/api/tasks/' + (taskId + '/submissions'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Main$SubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
+	});
 var $author$project$Main$TaskDetailReceived = function (a) {
 	return {$: 'TaskDetailReceived', a: a};
 };
-var $elm$http$Http$emptyBody = _Http_emptyBody;
 var $author$project$Main$TaskDetail = F3(
 	function (id, state, responseSchemaJson) {
 		return {id: id, responseSchemaJson: responseSchemaJson, state: state};
@@ -6618,99 +6898,6 @@ var $author$project$Main$fetchLedger = function (token) {
 var $author$project$Main$TasksReceived = function (a) {
 	return {$: 'TasksReceived', a: a};
 };
-var $author$project$Sharecrop$Generated$Task$TasksResponse = function (tasks) {
-	return {tasks: tasks};
-};
-var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = F6(
-	function (id, ownerKind, title, state, visibilityKind, createdBy) {
-		return {createdBy: createdBy, id: id, ownerKind: ownerKind, state: state, title: title, visibilityKind: visibilityKind};
-	});
-var $elm$json$Json$Decode$map6 = _Json_map6;
-var $author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganization = {$: 'TaskOwnerKindOrganization'};
-var $author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganizationTeam = {$: 'TaskOwnerKindOrganizationTeam'};
-var $author$project$Sharecrop$Generated$Task$TaskOwnerKindTeam = {$: 'TaskOwnerKindTeam'};
-var $author$project$Sharecrop$Generated$Task$TaskOwnerKindUser = {$: 'TaskOwnerKindUser'};
-var $author$project$Sharecrop$Generated$Task$taskOwnerKindDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'user':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindUser);
-			case 'team':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindTeam);
-			case 'organization':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganization);
-			case 'organization_team':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganizationTeam);
-			default:
-				return $elm$json$Json$Decode$fail('invalid TaskOwnerKind');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Task$TaskStateCancelled = {$: 'TaskStateCancelled'};
-var $author$project$Sharecrop$Generated$Task$TaskStateClosed = {$: 'TaskStateClosed'};
-var $author$project$Sharecrop$Generated$Task$TaskStateDraft = {$: 'TaskStateDraft'};
-var $author$project$Sharecrop$Generated$Task$TaskStateExpired = {$: 'TaskStateExpired'};
-var $author$project$Sharecrop$Generated$Task$TaskStateOpen = {$: 'TaskStateOpen'};
-var $author$project$Sharecrop$Generated$Task$taskStateDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'draft':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateDraft);
-			case 'open':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateOpen);
-			case 'closed':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateClosed);
-			case 'cancelled':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateCancelled);
-			case 'expired':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskStateExpired);
-			default:
-				return $elm$json$Json$Decode$fail('invalid TaskState');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganization = {$: 'TaskVisibilityKindOrganization'};
-var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganizationTeam = {$: 'TaskVisibilityKindOrganizationTeam'};
-var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindPublic = {$: 'TaskVisibilityKindPublic'};
-var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindTeam = {$: 'TaskVisibilityKindTeam'};
-var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindUser = {$: 'TaskVisibilityKindUser'};
-var $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'public':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindPublic);
-			case 'user':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindUser);
-			case 'team':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindTeam);
-			case 'organization':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganization);
-			case 'organization_team':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganizationTeam);
-			default:
-				return $elm$json$Json$Decode$fail('invalid TaskVisibilityKind');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder = A7(
-	$elm$json$Json$Decode$map6,
-	$author$project$Sharecrop$Generated$Task$TaskListItemResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'owner_kind', $author$project$Sharecrop$Generated$Task$taskOwnerKindDecoder),
-	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskStateDecoder),
-	A2($elm$json$Json$Decode$field, 'visibility_kind', $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder),
-	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Task$tasksResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Task$TasksResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'tasks',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder)));
 var $author$project$Main$fetchTasks = function (token) {
 	return A5(
 		$author$project$Main$authorizedRequest,
@@ -6784,11 +6971,46 @@ var $author$project$Main$postAuth = F2(
 				url: url
 			});
 	});
+var $author$project$Main$refreshAfterAccept = function (model) {
+	var _v0 = model.session;
+	if (_v0.$ === 'LoggedIn') {
+		var state = _v0.a;
+		var _v1 = state.page;
+		if (_v1.$ === 'TaskDetailPage') {
+			var taskId = _v1.a;
+			return $elm$core$Platform$Cmd$batch(
+				_List_fromArray(
+					[
+						A2($author$project$Main$fetchSubmissions, state.accessToken, taskId),
+						$author$project$Main$fetchBalance(state.accessToken)
+					]));
+		} else {
+			return $elm$core$Platform$Cmd$none;
+		}
+	} else {
+		return $elm$core$Platform$Cmd$none;
+	}
+};
 var $author$project$Main$refreshCredentials = function (model) {
 	var _v0 = model.session;
 	if (_v0.$ === 'LoggedIn') {
 		var state = _v0.a;
 		return $author$project$Main$fetchCredentials(state.accessToken);
+	} else {
+		return $elm$core$Platform$Cmd$none;
+	}
+};
+var $author$project$Main$refreshDetailSubmissions = function (model) {
+	var _v0 = model.session;
+	if (_v0.$ === 'LoggedIn') {
+		var state = _v0.a;
+		var _v1 = state.page;
+		if (_v1.$ === 'TaskDetailPage') {
+			var taskId = _v1.a;
+			return A2($author$project$Main$fetchSubmissions, state.accessToken, taskId);
+		} else {
+			return $elm$core$Platform$Cmd$none;
+		}
 	} else {
 		return $elm$core$Platform$Cmd$none;
 	}
@@ -6821,6 +7043,75 @@ var $author$project$Main$revokeAgent = F2(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Main$AgentRevoked, $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder));
 	});
+var $author$project$Main$SubmitReceived = function (a) {
+	return {$: 'SubmitReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionCreatedResponse = F2(
+	function (submission, receiptToken) {
+		return {receiptToken: receiptToken, submission: submission};
+	});
+var $author$project$Sharecrop$Generated$Submission$submissionCreatedResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Submission$SubmissionCreatedResponse,
+	A2($elm$json$Json$Decode$field, 'submission', $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder),
+	A2($elm$json$Json$Decode$field, 'receipt_token', $elm$json$Json$Decode$string));
+var $author$project$Main$submissionRequestBody = function (responseJson) {
+	return $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'response_json',
+				$elm$json$Json$Encode$string(responseJson)),
+				_Utils_Tuple2(
+				'wallet_address',
+				$elm$json$Json$Encode$string(''))
+			]));
+};
+var $author$project$Main$postSubmission = F3(
+	function (token, taskId, responseJson) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'POST',
+			token,
+			'/api/tasks/' + (taskId + '/submissions'),
+			$elm$http$Http$jsonBody(
+				$author$project$Main$submissionRequestBody(responseJson)),
+			A2($elm$http$Http$expectJson, $author$project$Main$SubmitReceived, $author$project$Sharecrop$Generated$Submission$submissionCreatedResponseDecoder));
+	});
+var $author$project$Main$submitCommand = F2(
+	function (model, state) {
+		var _v0 = state.page;
+		if (_v0.$ === 'TaskDetailPage') {
+			var taskId = _v0.a;
+			return _Utils_Tuple2(
+				A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (current) {
+						return _Utils_update(
+							current,
+							{submitMessage: $elm$core$Maybe$Nothing});
+					}),
+				A3($author$project$Main$postSubmission, state.accessToken, taskId, state.submitInput));
+		} else {
+			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+		}
+	});
+var $author$project$Main$submissionStateLabel = function (state) {
+	switch (state.$) {
+		case 'SubmissionStateSubmitted':
+			return 'submitted';
+		case 'SubmissionStateInvalid':
+			return 'invalid';
+		case 'SubmissionStateAccepted':
+			return 'accepted';
+		default:
+			return 'rejected';
+	}
+};
+var $author$project$Main$submitSuccessLabel = function (created) {
+	return 'Submission ' + (created.submission.id + (' (' + ($author$project$Main$submissionStateLabel(created.submission.state) + ').')));
+};
 var $author$project$Main$tasksFromResult = function (result) {
 	if (result.$ === 'Ok') {
 		var response = result.a;
@@ -7169,12 +7460,198 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					model,
 					$author$project$Main$refreshCredentials(model));
-			default:
+			case 'LogoutClicked':
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
 						{email: '', password: '', session: $author$project$Main$LoggedOut}),
 					$elm$core$Platform$Cmd$none);
+			case 'NavDashboard':
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{page: $author$project$Main$DashboardPage});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'NavDiscovery':
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Main$updateLoggedIn,
+								model,
+								function (s) {
+									return _Utils_update(
+										s,
+										{page: $author$project$Main$DiscoveryPage});
+								}),
+							$author$project$Main$fetchDiscovery(state.accessToken));
+					});
+			case 'DiscoveryReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									discoveryTasks: $author$project$Main$tasksFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'DiscoveryViewClicked':
+				var taskId = msg.a;
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Main$updateLoggedIn,
+								model,
+								function (s) {
+									return _Utils_update(
+										s,
+										{
+											detail: $elm$core$Maybe$Nothing,
+											page: $author$project$Main$TaskDetailPage(taskId),
+											submissions: _List_Nil,
+											submitInput: '',
+											submitMessage: $elm$core$Maybe$Nothing
+										});
+								}),
+							$elm$core$Platform$Cmd$batch(
+								_List_fromArray(
+									[
+										A2($author$project$Main$fetchPublicTaskDetail, state.accessToken, taskId),
+										A2($author$project$Main$fetchSubmissions, state.accessToken, taskId)
+									])));
+					});
+			case 'DetailBackClicked':
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{page: $author$project$Main$DiscoveryPage});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'DetailReceived':
+				if (msg.a.$ === 'Ok') {
+					var detail = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										detail: $elm$core$Maybe$Just(detail)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'SubmissionsReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{submissions: response.submissions});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{submissions: _List_Nil});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'SubmitInputChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{submitInput: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SubmitClicked':
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return A2($author$project$Main$submitCommand, model, state);
+					});
+			case 'SubmitReceived':
+				if (msg.a.$ === 'Ok') {
+					var created = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										submitMessage: $elm$core$Maybe$Just(
+											$author$project$Main$submitSuccessLabel(created))
+									});
+							}),
+						$author$project$Main$refreshDetailSubmissions(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										submitMessage: $elm$core$Maybe$Just(
+											$author$project$Main$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AcceptClicked':
+				var submissionId = msg.a;
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return A3($author$project$Main$acceptCommand, model, state, submissionId);
+					});
+			default:
+				return _Utils_Tuple2(
+					model,
+					$author$project$Main$refreshAfterAccept(model));
 		}
 	});
 var $elm$html$Html$Attributes$stringProperty = F2(
@@ -7186,8 +7663,22 @@ var $elm$html$Html$Attributes$stringProperty = F2(
 	});
 var $elm$html$Html$Attributes$class = $elm$html$Html$Attributes$stringProperty('className');
 var $elm$html$Html$div = _VirtualDom_node('div');
-var $elm$html$Html$h1 = _VirtualDom_node('h1');
 var $elm$html$Html$main_ = _VirtualDom_node('main');
+var $elm$html$Html$h1 = _VirtualDom_node('h1');
+var $elm$virtual_dom$VirtualDom$text = _VirtualDom_text;
+var $elm$html$Html$text = $elm$virtual_dom$VirtualDom$text;
+var $author$project$Sharecrop$Ui$pageTitle = function (title) {
+	return A2(
+		$elm$html$Html$h1,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-3xl font-semibold')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(title)
+			]));
+};
 var $author$project$Main$EmailChanged = function (a) {
 	return {$: 'EmailChanged', a: a};
 };
@@ -7196,11 +7687,7 @@ var $author$project$Main$PasswordChanged = function (a) {
 	return {$: 'PasswordChanged', a: a};
 };
 var $author$project$Main$RegisterClicked = {$: 'RegisterClicked'};
-var $elm$html$Html$button = _VirtualDom_node('button');
-var $author$project$Main$cardClass = 'space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm';
-var $author$project$Main$fieldClass = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none';
 var $elm$html$Html$form = _VirtualDom_node('form');
-var $elm$html$Html$input = _VirtualDom_node('input');
 var $elm$html$Html$p = _VirtualDom_node('p');
 var $elm$virtual_dom$VirtualDom$attribute = F2(
 	function (key, value) {
@@ -7210,26 +7697,28 @@ var $elm$virtual_dom$VirtualDom$attribute = F2(
 			_VirtualDom_noJavaScriptOrHtmlUri(value));
 	});
 var $elm$html$Html$Attributes$attribute = $elm$virtual_dom$VirtualDom$attribute;
-var $author$project$Main$testId = function (value) {
+var $author$project$Sharecrop$Ui$testId = function (value) {
 	return A2($elm$html$Html$Attributes$attribute, 'data-testid', value);
 };
-var $elm$virtual_dom$VirtualDom$text = _VirtualDom_text;
-var $elm$html$Html$text = $elm$virtual_dom$VirtualDom$text;
+var $author$project$Sharecrop$Ui$errorText = F2(
+	function (identifier, message) {
+		return A2(
+			$elm$html$Html$p,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-sm text-red-600'),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(message)
+				]));
+	});
 var $author$project$Main$maybeError = F2(
 	function (message, identifier) {
 		if (message.$ === 'Just') {
 			var value = message.a;
-			return A2(
-				$elm$html$Html$p,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('text-sm text-red-600'),
-						$author$project$Main$testId(identifier)
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text(value)
-					]));
+			return A2($author$project$Sharecrop$Ui$errorText, identifier, value);
 		} else {
 			return $elm$html$Html$text('');
 		}
@@ -7305,8 +7794,46 @@ var $elm$html$Html$Events$onSubmit = function (msg) {
 			$elm$json$Json$Decode$succeed(msg)));
 };
 var $elm$html$Html$Attributes$placeholder = $elm$html$Html$Attributes$stringProperty('placeholder');
-var $author$project$Main$primaryButtonClass = 'rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50';
-var $author$project$Main$secondaryButtonClass = 'rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100';
+var $elm$html$Html$button = _VirtualDom_node('button');
+var $author$project$Sharecrop$Ui$primaryButtonClass = 'rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50';
+var $author$project$Sharecrop$Ui$primaryButton = F2(
+	function (attrs, labelText) {
+		return A2(
+			$elm$html$Html$button,
+			A2(
+				$elm$core$List$cons,
+				$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$primaryButtonClass),
+				attrs),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(labelText)
+				]));
+	});
+var $author$project$Sharecrop$Ui$secondaryButtonClass = 'rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100';
+var $author$project$Sharecrop$Ui$secondaryButton = F2(
+	function (attrs, labelText) {
+		return A2(
+			$elm$html$Html$button,
+			A2(
+				$elm$core$List$cons,
+				$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+				attrs),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(labelText)
+				]));
+	});
+var $author$project$Sharecrop$Ui$fieldClass = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none';
+var $elm$html$Html$input = _VirtualDom_node('input');
+var $author$project$Sharecrop$Ui$textInput = function (attrs) {
+	return A2(
+		$elm$html$Html$input,
+		A2(
+			$elm$core$List$cons,
+			$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+			attrs),
+		_List_Nil);
+};
 var $elm$html$Html$Attributes$type_ = $elm$html$Html$Attributes$stringProperty('type');
 var $elm$html$Html$Attributes$value = $elm$html$Html$Attributes$stringProperty('value');
 var $author$project$Main$authView = function (model) {
@@ -7314,7 +7841,7 @@ var $author$project$Main$authView = function (model) {
 		$elm$html$Html$form,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class($author$project$Main$cardClass),
+				$elm$html$Html$Attributes$class('space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm'),
 				$elm$html$Html$Events$onSubmit($author$project$Main$LoginClicked)
 			]),
 		_List_fromArray(
@@ -7329,30 +7856,24 @@ var $author$project$Main$authView = function (model) {
 					[
 						$elm$html$Html$text('Sign in or create an account to view your credit ledger and set up agents.')
 					])),
-				A2(
-				$elm$html$Html$input,
+				$author$project$Sharecrop$Ui$textInput(
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$type_('email'),
-						$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
 						$elm$html$Html$Attributes$placeholder('Email'),
 						$elm$html$Html$Attributes$value(model.email),
 						$elm$html$Html$Events$onInput($author$project$Main$EmailChanged),
-						$author$project$Main$testId('email')
-					]),
-				_List_Nil),
-				A2(
-				$elm$html$Html$input,
+						$author$project$Sharecrop$Ui$testId('email')
+					])),
+				$author$project$Sharecrop$Ui$textInput(
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$type_('password'),
-						$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
 						$elm$html$Html$Attributes$placeholder('Password'),
 						$elm$html$Html$Attributes$value(model.password),
 						$elm$html$Html$Events$onInput($author$project$Main$PasswordChanged),
-						$author$project$Main$testId('password')
-					]),
-				_List_Nil),
+						$author$project$Sharecrop$Ui$testId('password')
+					])),
 				A2(
 				$elm$html$Html$div,
 				_List_fromArray(
@@ -7362,34 +7883,55 @@ var $author$project$Main$authView = function (model) {
 				_List_fromArray(
 					[
 						A2(
-						$elm$html$Html$button,
+						$author$project$Sharecrop$Ui$primaryButton,
 						_List_fromArray(
 							[
 								$elm$html$Html$Attributes$type_('submit'),
-								$elm$html$Html$Attributes$class($author$project$Main$primaryButtonClass),
-								$author$project$Main$testId('login')
+								$author$project$Sharecrop$Ui$testId('login')
 							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Log in')
-							])),
+						'Log in'),
 						A2(
-						$elm$html$Html$button,
+						$author$project$Sharecrop$Ui$secondaryButton,
 						_List_fromArray(
 							[
 								$elm$html$Html$Attributes$type_('button'),
-								$elm$html$Html$Attributes$class($author$project$Main$secondaryButtonClass),
 								$elm$html$Html$Events$onClick($author$project$Main$RegisterClicked),
-								$author$project$Main$testId('register')
+								$author$project$Sharecrop$Ui$testId('register')
 							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Register')
-							]))
+						'Register')
 					])),
 				A2($author$project$Main$maybeError, model.authError, 'auth-error')
 			]));
 };
+var $author$project$Main$NavDashboard = {$: 'NavDashboard'};
+var $author$project$Main$NavDiscovery = {$: 'NavDiscovery'};
+var $author$project$Main$navBar = A2(
+	$elm$html$Html$div,
+	_List_fromArray(
+		[
+			$elm$html$Html$Attributes$class('flex gap-3')
+		]),
+	_List_fromArray(
+		[
+			A2(
+			$author$project$Sharecrop$Ui$secondaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('button'),
+					$elm$html$Html$Events$onClick($author$project$Main$NavDashboard),
+					$author$project$Sharecrop$Ui$testId('nav-dashboard')
+				]),
+			'Dashboard'),
+			A2(
+			$author$project$Sharecrop$Ui$secondaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('button'),
+					$elm$html$Html$Events$onClick($author$project$Main$NavDiscovery),
+					$author$project$Sharecrop$Ui$testId('nav-discovery')
+				]),
+			'Discovery')
+		]));
 var $author$project$Main$LogoutClicked = {$: 'LogoutClicked'};
 var $author$project$Main$AgentLabelChanged = function (a) {
 	return {$: 'AgentLabelChanged', a: a};
@@ -7397,6 +7939,15 @@ var $author$project$Main$AgentLabelChanged = function (a) {
 var $author$project$Main$CreateAgentClicked = {$: 'CreateAgentClicked'};
 var $author$project$Main$allScopes = _List_fromArray(
 	[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview]);
+var $author$project$Sharecrop$Ui$card = function (children) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm')
+			]),
+		children);
+};
 var $author$project$Main$credentialStateLabel = function (state) {
 	if (state.$ === 'AgentCredentialStateActive') {
 		return 'active';
@@ -7412,18 +7963,14 @@ var $author$project$Main$revokeButton = function (credential) {
 	var _v0 = credential.state;
 	if (_v0.$ === 'AgentCredentialStateActive') {
 		return A2(
-			$elm$html$Html$button,
+			$author$project$Sharecrop$Ui$secondaryButton,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class($author$project$Main$secondaryButtonClass),
 					$elm$html$Html$Events$onClick(
 					$author$project$Main$RevokeClicked(credential.id)),
-					$author$project$Main$testId('revoke-credential')
+					$author$project$Sharecrop$Ui$testId('revoke-credential')
 				]),
-			_List_fromArray(
-				[
-					$elm$html$Html$text('Revoke')
-				]));
+			'Revoke');
 	} else {
 		return A2(
 			$elm$html$Html$span,
@@ -7457,7 +8004,7 @@ var $author$project$Main$credentialRow = function (credential) {
 		_List_fromArray(
 			[
 				$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
-				$author$project$Main$testId('credential-row')
+				$author$project$Sharecrop$Ui$testId('credential-row')
 			]),
 		_List_fromArray(
 			[
@@ -7500,37 +8047,64 @@ var $author$project$Main$credentialsList = function (credentials) {
 		_List_fromArray(
 			[
 				$elm$html$Html$Attributes$class('mt-4 divide-y divide-slate-100'),
-				$author$project$Main$testId('credentials')
+				$author$project$Sharecrop$Ui$testId('credentials')
 			]),
 		A2($elm$core$List$map, $author$project$Main$credentialRow, credentials));
 };
-var $elm$html$Html$h2 = _VirtualDom_node('h2');
+var $author$project$Sharecrop$Ui$noteText = F2(
+	function (identifier, message) {
+		return A2(
+			$elm$html$Html$p,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-sm text-slate-600'),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(message)
+				]));
+	});
 var $author$project$Main$maybeNote = F2(
 	function (message, identifier) {
 		if (message.$ === 'Just') {
 			var value = message.a;
-			return A2(
-				$elm$html$Html$p,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('text-sm text-slate-600'),
-						$author$project$Main$testId(identifier)
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text(value)
-					]));
+			return A2($author$project$Sharecrop$Ui$noteText, identifier, value);
 		} else {
 			return $elm$html$Html$text('');
 		}
 	});
-var $author$project$Main$codeBlockClass = 'overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100';
-var $author$project$Main$labelClass = 'text-sm uppercase tracking-wide text-slate-500';
+var $author$project$Sharecrop$Ui$codeBlockClass = 'overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100';
+var $elm$html$Html$pre = _VirtualDom_node('pre');
+var $author$project$Sharecrop$Ui$codeBlock = F2(
+	function (attrs, value) {
+		return A2(
+			$elm$html$Html$pre,
+			A2(
+				$elm$core$List$cons,
+				$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$codeBlockClass),
+				attrs),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(value)
+				]));
+	});
+var $author$project$Sharecrop$Ui$label_ = function (value) {
+	return A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-sm uppercase tracking-wide text-slate-500')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(value)
+			]));
+};
 var $author$project$Main$mcpConfig = F2(
 	function (origin, secret) {
 		return '{\n  \"mcpServers\": {\n    \"sharecrop\": {\n      \"url\": \"' + (origin + ('/mcp\",\n      \"headers\": { \"Authorization\": \"Bearer ' + (secret + '\" }\n    }\n  }\n}')));
 	});
-var $elm$html$Html$pre = _VirtualDom_node('pre');
 var $author$project$Main$newCredentialView = F2(
 	function (origin, created) {
 		if (created.$ === 'Just') {
@@ -7543,49 +8117,22 @@ var $author$project$Main$newCredentialView = F2(
 					]),
 				_List_fromArray(
 					[
+						$author$project$Sharecrop$Ui$label_('New agent token (shown once)'),
 						A2(
-						$elm$html$Html$p,
+						$author$project$Sharecrop$Ui$codeBlock,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class($author$project$Main$labelClass)
+								$author$project$Sharecrop$Ui$testId('agent-secret')
 							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('New agent token (shown once)')
-							])),
+						credential.secret),
+						$author$project$Sharecrop$Ui$label_('MCP client configuration'),
 						A2(
-						$elm$html$Html$pre,
+						$author$project$Sharecrop$Ui$codeBlock,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class($author$project$Main$codeBlockClass),
-								$author$project$Main$testId('agent-secret')
+								$author$project$Sharecrop$Ui$testId('mcp-config')
 							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(credential.secret)
-							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class($author$project$Main$labelClass)
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('MCP client configuration')
-							])),
-						A2(
-						$elm$html$Html$pre,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class($author$project$Main$codeBlockClass),
-								$author$project$Main$testId('mcp-config')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								A2($author$project$Main$mcpConfig, origin, credential.secret))
-							]))
+						A2($author$project$Main$mcpConfig, origin, credential.secret))
 					]));
 		} else {
 			return $elm$html$Html$text('');
@@ -7623,7 +8170,7 @@ var $author$project$Main$scopeCheckbox = F2(
 							A2($elm$core$List$member, scope, selected)),
 							$elm$html$Html$Events$onClick(
 							$author$project$Main$ToggleScope(scope)),
-							$author$project$Main$testId(
+							$author$project$Sharecrop$Ui$testId(
 							'scope-' + $author$project$Main$scopeTag(scope))
 						]),
 					_List_Nil),
@@ -7637,27 +8184,25 @@ var $author$project$Main$scopeCheckbox = F2(
 						]))
 				]));
 	});
-var $author$project$Main$sectionTitleClass = 'text-lg font-medium';
+var $elm$html$Html$h2 = _VirtualDom_node('h2');
+var $author$project$Sharecrop$Ui$sectionTitle = function (title) {
+	return A2(
+		$elm$html$Html$h2,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-lg font-medium')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(title)
+			]));
+};
 var $author$project$Main$agentsView = F2(
 	function (origin, state) {
-		return A2(
-			$elm$html$Html$div,
+		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class($author$project$Main$cardClass)
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$h2,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class($author$project$Main$sectionTitleClass)
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text('Agent setup')
-						])),
+					$author$project$Sharecrop$Ui$sectionTitle('Agent setup'),
 					A2(
 					$elm$html$Html$p,
 					_List_fromArray(
@@ -7677,18 +8222,15 @@ var $author$project$Main$agentsView = F2(
 						]),
 					_List_fromArray(
 						[
-							A2(
-							$elm$html$Html$input,
+							$author$project$Sharecrop$Ui$textInput(
 							_List_fromArray(
 								[
 									$elm$html$Html$Attributes$type_('text'),
-									$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
 									$elm$html$Html$Attributes$placeholder('Agent label'),
 									$elm$html$Html$Attributes$value(state.agentLabel),
 									$elm$html$Html$Events$onInput($author$project$Main$AgentLabelChanged),
-									$author$project$Main$testId('agent-label')
-								]),
-							_List_Nil),
+									$author$project$Sharecrop$Ui$testId('agent-label')
+								])),
 							A2(
 							$elm$html$Html$div,
 							_List_fromArray(
@@ -7700,17 +8242,13 @@ var $author$project$Main$agentsView = F2(
 								$author$project$Main$scopeCheckbox(state.agentScopes),
 								$author$project$Main$allScopes)),
 							A2(
-							$elm$html$Html$button,
+							$author$project$Sharecrop$Ui$primaryButton,
 							_List_fromArray(
 								[
 									$elm$html$Html$Attributes$type_('submit'),
-									$elm$html$Html$Attributes$class($author$project$Main$primaryButtonClass),
-									$author$project$Main$testId('create-agent')
+									$author$project$Sharecrop$Ui$testId('create-agent')
 								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Create credential')
-								])),
+							'Create credential'),
 							A2($author$project$Main$maybeNote, state.agentMessage, 'agent-message')
 						])),
 					A2($author$project$Main$newCredentialView, origin, state.newCredential),
@@ -7726,30 +8264,16 @@ var $author$project$Main$balanceLabel = function (balance) {
 	}
 };
 var $author$project$Main$balanceView = function (balance) {
-	return A2(
-		$elm$html$Html$div,
+	return $author$project$Sharecrop$Ui$card(
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class($author$project$Main$cardClass)
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$p,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class($author$project$Main$labelClass)
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Balance')
-					])),
+				$author$project$Sharecrop$Ui$label_('Balance'),
 				A2(
 				$elm$html$Html$p,
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$class('text-3xl font-semibold'),
-						$author$project$Main$testId('balance')
+						$author$project$Sharecrop$Ui$testId('balance')
 					]),
 				_List_fromArray(
 					[
@@ -7771,58 +8295,39 @@ var $author$project$Main$fundingView = function (state) {
 		$elm$html$Html$form,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class($author$project$Main$cardClass),
+				$elm$html$Html$Attributes$class('space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm'),
 				$elm$html$Html$Events$onSubmit($author$project$Main$FundClicked)
 			]),
 		_List_fromArray(
 			[
-				A2(
-				$elm$html$Html$h2,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class($author$project$Main$sectionTitleClass)
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Fund a task')
-					])),
-				A2(
-				$elm$html$Html$input,
+				$author$project$Sharecrop$Ui$sectionTitle('Fund a task'),
+				$author$project$Sharecrop$Ui$textInput(
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$type_('text'),
-						$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
 						$elm$html$Html$Attributes$placeholder('Task ID'),
 						$elm$html$Html$Attributes$value(state.fundTaskId),
 						$elm$html$Html$Events$onInput($author$project$Main$FundTaskIdChanged),
-						$author$project$Main$testId('fund-task-id')
-					]),
-				_List_Nil),
-				A2(
-				$elm$html$Html$input,
+						$author$project$Sharecrop$Ui$testId('fund-task-id')
+					])),
+				$author$project$Sharecrop$Ui$textInput(
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$type_('number'),
-						$elm$html$Html$Attributes$class($author$project$Main$fieldClass),
 						$elm$html$Html$Attributes$placeholder('Amount in credits'),
 						$elm$html$Html$Attributes$value(state.fundAmount),
 						$elm$html$Html$Events$onInput($author$project$Main$FundAmountChanged),
-						$author$project$Main$testId('fund-amount')
-					]),
-				_List_Nil),
+						$author$project$Sharecrop$Ui$testId('fund-amount')
+					])),
 				A2(
-				$elm$html$Html$button,
+				$author$project$Sharecrop$Ui$primaryButton,
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$type_('submit'),
-						$elm$html$Html$Attributes$class($author$project$Main$primaryButtonClass),
 						$elm$html$Html$Attributes$disabled(state.fundTaskId === ''),
-						$author$project$Main$testId('fund')
+						$author$project$Sharecrop$Ui$testId('fund')
 					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Fund task')
-					])),
+				'Fund task'),
 				A2($author$project$Main$maybeNote, state.fundMessage, 'fund-message')
 			]));
 };
@@ -7848,7 +8353,7 @@ var $author$project$Main$ledgerRow = function (entry) {
 		_List_fromArray(
 			[
 				$elm$html$Html$Attributes$class('border-t border-slate-100'),
-				$author$project$Main$testId('ledger-entry')
+				$author$project$Sharecrop$Ui$testId('ledger-entry')
 			]),
 		_List_fromArray(
 			[
@@ -7881,24 +8386,10 @@ var $elm$html$Html$tbody = _VirtualDom_node('tbody');
 var $elm$html$Html$th = _VirtualDom_node('th');
 var $elm$html$Html$thead = _VirtualDom_node('thead');
 var $author$project$Main$ledgerView = function (entries) {
-	return A2(
-		$elm$html$Html$div,
+	return $author$project$Sharecrop$Ui$card(
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class($author$project$Main$cardClass)
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$h2,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class($author$project$Main$sectionTitleClass)
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Ledger')
-					])),
+				$author$project$Sharecrop$Ui$sectionTitle('Ledger'),
 				A2(
 				$elm$html$Html$table,
 				_List_fromArray(
@@ -7946,7 +8437,7 @@ var $author$project$Main$ledgerView = function (entries) {
 						$elm$html$Html$tbody,
 						_List_fromArray(
 							[
-								$author$project$Main$testId('ledger')
+								$author$project$Sharecrop$Ui$testId('ledger')
 							]),
 						A2($elm$core$List$map, $author$project$Main$ledgerRow, entries))
 					]))
@@ -7970,20 +8461,11 @@ var $author$project$Main$taskDetailView = F2(
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$class('mt-4 space-y-3 rounded-md bg-slate-50 p-4'),
-						$author$project$Main$testId('task-detail')
+						$author$project$Sharecrop$Ui$testId('task-detail')
 					]),
 				_List_fromArray(
 					[
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class($author$project$Main$labelClass)
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Task ' + detail.id)
-							])),
+						$author$project$Sharecrop$Ui$label_('Task ' + detail.id),
 						A2(
 						$elm$html$Html$p,
 						_List_fromArray(
@@ -7994,70 +8476,27 @@ var $author$project$Main$taskDetailView = F2(
 							[
 								$elm$html$Html$text('State: ' + detail.state)
 							])),
+						$author$project$Sharecrop$Ui$label_('Response schema'),
 						A2(
-						$elm$html$Html$p,
+						$author$project$Sharecrop$Ui$codeBlock,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class($author$project$Main$labelClass)
+								$author$project$Sharecrop$Ui$testId('task-schema')
 							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Response schema')
-							])),
+						detail.responseSchemaJson),
+						$author$project$Sharecrop$Ui$label_('Submit with the REST API'),
 						A2(
-						$elm$html$Html$pre,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class($author$project$Main$codeBlockClass),
-								$author$project$Main$testId('task-schema')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(detail.responseSchemaJson)
-							])),
+						$author$project$Sharecrop$Ui$codeBlock,
+						_List_Nil,
+						A2($author$project$Main$restSubmitCurl, origin, detail.id)),
+						$author$project$Sharecrop$Ui$label_('Submit with an MCP agent'),
 						A2(
-						$elm$html$Html$p,
+						$author$project$Sharecrop$Ui$codeBlock,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class($author$project$Main$labelClass)
+								$author$project$Sharecrop$Ui$testId('task-mcp-curl')
 							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Submit with the REST API')
-							])),
-						A2(
-						$elm$html$Html$pre,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class($author$project$Main$codeBlockClass)
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								A2($author$project$Main$restSubmitCurl, origin, detail.id))
-							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class($author$project$Main$labelClass)
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Submit with an MCP agent')
-							])),
-						A2(
-						$elm$html$Html$pre,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class($author$project$Main$codeBlockClass),
-								$author$project$Main$testId('task-mcp-curl')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								A2($author$project$Main$mcpSubmitCurl, origin, detail.id))
-							]))
+						A2($author$project$Main$mcpSubmitCurl, origin, detail.id))
 					]));
 		} else {
 			return $elm$html$Html$text('');
@@ -8086,7 +8525,7 @@ var $author$project$Main$taskRow = function (item) {
 		_List_fromArray(
 			[
 				$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
-				$author$project$Main$testId('task-row')
+				$author$project$Sharecrop$Ui$testId('task-row')
 			]),
 		_List_fromArray(
 			[
@@ -8118,18 +8557,14 @@ var $author$project$Main$taskRow = function (item) {
 							]))
 					])),
 				A2(
-				$elm$html$Html$button,
+				$author$project$Sharecrop$Ui$secondaryButton,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class($author$project$Main$secondaryButtonClass),
 						$elm$html$Html$Events$onClick(
 						$author$project$Main$SelectTask(item.id)),
-						$author$project$Main$testId('view-task')
+						$author$project$Sharecrop$Ui$testId('view-task')
 					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('View')
-					]))
+				'View')
 			]));
 };
 var $author$project$Main$tasksList = function (tasks) {
@@ -8138,7 +8573,7 @@ var $author$project$Main$tasksList = function (tasks) {
 		_List_fromArray(
 			[
 				$elm$html$Html$Attributes$class('text-sm text-slate-500'),
-				$author$project$Main$testId('tasks-empty')
+				$author$project$Sharecrop$Ui$testId('tasks-empty')
 			]),
 		_List_fromArray(
 			[
@@ -8148,30 +8583,16 @@ var $author$project$Main$tasksList = function (tasks) {
 		_List_fromArray(
 			[
 				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
-				$author$project$Main$testId('tasks')
+				$author$project$Sharecrop$Ui$testId('tasks')
 			]),
 		A2($elm$core$List$map, $author$project$Main$taskRow, tasks));
 };
 var $author$project$Main$tasksView = F2(
 	function (origin, state) {
-		return A2(
-			$elm$html$Html$div,
+		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class($author$project$Main$cardClass)
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$h2,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class($author$project$Main$sectionTitleClass)
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text('My tasks')
-						])),
+					$author$project$Sharecrop$Ui$sectionTitle('My tasks'),
 					$author$project$Main$tasksList(state.tasks),
 					A2($author$project$Main$taskDetailView, origin, state)
 				]));
@@ -8194,28 +8615,15 @@ var $author$project$Main$dashboardView = F2(
 						]),
 					_List_fromArray(
 						[
+							$author$project$Sharecrop$Ui$sectionTitle('Credit account'),
 							A2(
-							$elm$html$Html$h2,
+							$author$project$Sharecrop$Ui$secondaryButton,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('text-xl font-medium')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Credit account')
-								])),
-							A2(
-							$elm$html$Html$button,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class($author$project$Main$secondaryButtonClass),
 									$elm$html$Html$Events$onClick($author$project$Main$LogoutClicked),
-									$author$project$Main$testId('logout')
+									$author$project$Sharecrop$Ui$testId('logout')
 								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Log out')
-								]))
+							'Log out')
 						])),
 					$author$project$Main$balanceView(state.balance),
 					$author$project$Main$ledgerView(state.entries),
@@ -8224,13 +8632,345 @@ var $author$project$Main$dashboardView = F2(
 					A2($author$project$Main$agentsView, origin, state)
 				]));
 	});
+var $author$project$Main$DiscoveryViewClicked = function (a) {
+	return {$: 'DiscoveryViewClicked', a: a};
+};
+var $author$project$Main$discoveryRow = function (item) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
+				$author$project$Sharecrop$Ui$testId('discovery-task-row')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_Nil,
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('font-medium')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(item.title)
+							])),
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-xs text-slate-500')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								$author$project$Main$taskStateLabel(item.state))
+							]))
+					])),
+				A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Events$onClick(
+						$author$project$Main$DiscoveryViewClicked(item.id)),
+						$author$project$Sharecrop$Ui$testId('discovery-view')
+					]),
+				'View')
+			]));
+};
+var $author$project$Main$discoveryList = function (tasks) {
+	return $elm$core$List$isEmpty(tasks) ? A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+				$author$project$Sharecrop$Ui$testId('discovery-empty')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text('No public tasks available.')
+			])) : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+				$author$project$Sharecrop$Ui$testId('discovery-tasks')
+			]),
+		A2($elm$core$List$map, $author$project$Main$discoveryRow, tasks));
+};
+var $author$project$Main$discoveryView = function (state) {
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Discover public tasks'),
+				$author$project$Main$discoveryList(state.discoveryTasks)
+			]));
+};
+var $author$project$Main$DetailBackClicked = {$: 'DetailBackClicked'};
+var $author$project$Sharecrop$Ui$badge = function (value) {
+	return A2(
+		$elm$html$Html$span,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(value)
+			]));
+};
+var $author$project$Main$detailCard = function (state) {
+	var _v0 = state.detail;
+	if (_v0.$ === 'Just') {
+		var detail = _v0.a;
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-2xl font-semibold'),
+							$author$project$Sharecrop$Ui$testId('detail-title')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(detail.title)
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex items-center gap-2')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$badge(detail.state)
+						])),
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-700')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(detail.description)
+						])),
+					$author$project$Sharecrop$Ui$label_('Response schema'),
+					A2(
+					$author$project$Sharecrop$Ui$codeBlock,
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$testId('detail-schema')
+						]),
+					detail.responseSchemaJson)
+				]));
+	} else {
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Loading task…')
+						]))
+				]));
+	}
+};
+var $author$project$Main$AcceptClicked = function (a) {
+	return {$: 'AcceptClicked', a: a};
+};
+var $author$project$Main$acceptButton = F2(
+	function (_v0, submission) {
+		var _v1 = submission.state;
+		if (_v1.$ === 'SubmissionStateSubmitted') {
+			return A2(
+				$author$project$Sharecrop$Ui$primaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Events$onClick(
+						$author$project$Main$AcceptClicked(submission.id)),
+						$author$project$Sharecrop$Ui$testId('accept-submission')
+					]),
+				'Accept');
+		} else {
+			return $elm$html$Html$text('');
+		}
+	});
+var $author$project$Main$submissionRow = F2(
+	function (state, submission) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
+					$author$project$Sharecrop$Ui$testId('submission-row')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex items-center gap-2')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$badge(
+							$author$project$Main$submissionStateLabel(submission.state))
+						])),
+					A2($author$project$Main$acceptButton, state, submission)
+				]));
+	});
+var $author$project$Main$submissionsList = function (state) {
+	return $elm$core$List$isEmpty(state.submissions) ? A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+				$author$project$Sharecrop$Ui$testId('submissions-empty')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text('No submissions to review.')
+			])) : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+				$author$project$Sharecrop$Ui$testId('submissions')
+			]),
+		A2(
+			$elm$core$List$map,
+			$author$project$Main$submissionRow(state),
+			state.submissions));
+};
+var $author$project$Main$submissionsCard = function (state) {
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Submissions'),
+				$author$project$Main$submissionsList(state)
+			]));
+};
+var $author$project$Main$SubmitClicked = {$: 'SubmitClicked'};
+var $author$project$Main$SubmitInputChanged = function (a) {
+	return {$: 'SubmitInputChanged', a: a};
+};
+var $elm$html$Html$Attributes$rows = function (n) {
+	return A2(
+		_VirtualDom_attribute,
+		'rows',
+		$elm$core$String$fromInt(n));
+};
+var $elm$html$Html$textarea = _VirtualDom_node('textarea');
+var $author$project$Sharecrop$Ui$textareaClass = 'w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-slate-500 focus:outline-none';
+var $author$project$Sharecrop$Ui$textarea_ = function (attrs) {
+	return A2(
+		$elm$html$Html$textarea,
+		A2(
+			$elm$core$List$cons,
+			$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$textareaClass),
+			attrs),
+		_List_Nil);
+};
+var $author$project$Main$submitCard = function (state) {
+	return A2(
+		$elm$html$Html$form,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm'),
+				$elm$html$Html$Events$onSubmit($author$project$Main$SubmitClicked)
+			]),
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Submit a response'),
+				$author$project$Sharecrop$Ui$textarea_(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$placeholder('{}'),
+						$elm$html$Html$Attributes$value(state.submitInput),
+						$elm$html$Html$Events$onInput($author$project$Main$SubmitInputChanged),
+						$elm$html$Html$Attributes$rows(6),
+						$author$project$Sharecrop$Ui$testId('detail-submit-input')
+					])),
+				A2(
+				$author$project$Sharecrop$Ui$primaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('submit'),
+						$author$project$Sharecrop$Ui$testId('detail-submit')
+					]),
+				'Submit response'),
+				A2($author$project$Main$maybeNote, state.submitMessage, 'detail-submit-message')
+			]));
+};
+var $author$project$Main$taskDetailPageView = function (state) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('space-y-6')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Events$onClick($author$project$Main$DetailBackClicked),
+						$author$project$Sharecrop$Ui$testId('detail-back')
+					]),
+				'Back to discovery'),
+				$author$project$Main$detailCard(state),
+				$author$project$Main$submitCard(state),
+				$author$project$Main$submissionsCard(state)
+			]));
+};
+var $author$project$Main$pageView = F2(
+	function (origin, state) {
+		var _v0 = state.page;
+		switch (_v0.$) {
+			case 'DashboardPage':
+				return A2($author$project$Main$dashboardView, origin, state);
+			case 'DiscoveryPage':
+				return $author$project$Main$discoveryView(state);
+			default:
+				return $author$project$Main$taskDetailPageView(state);
+		}
+	});
+var $author$project$Main$loggedInView = F2(
+	function (origin, state) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-6')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Main$navBar,
+					A2($author$project$Main$pageView, origin, state)
+				]));
+	});
 var $author$project$Main$sessionView = function (model) {
 	var _v0 = model.session;
 	if (_v0.$ === 'LoggedOut') {
 		return $author$project$Main$authView(model);
 	} else {
 		var state = _v0.a;
-		return A2($author$project$Main$dashboardView, model.origin, state);
+		return A2($author$project$Main$loggedInView, model.origin, state);
 	}
 };
 var $author$project$Main$view = function (model) {
@@ -8250,16 +8990,7 @@ var $author$project$Main$view = function (model) {
 					]),
 				_List_fromArray(
 					[
-						A2(
-						$elm$html$Html$h1,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-3xl font-semibold')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Sharecrop')
-							])),
+						$author$project$Sharecrop$Ui$pageTitle('Sharecrop'),
 						$author$project$Main$sessionView(model)
 					]))
 			]));
