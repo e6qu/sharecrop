@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+@source "../elm/src/**/*.elm";
+@source "../static/index.html";

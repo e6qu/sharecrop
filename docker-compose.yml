@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:18.4
+    environment:
+      POSTGRES_DB: sharecrop
+      POSTGRES_USER: sharecrop
+      POSTGRES_PASSWORD: sharecrop
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharecrop -d sharecrop"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - sharecrop-postgres:/var/lib/postgresql/data
+
+volumes:
+  sharecrop-postgres:
