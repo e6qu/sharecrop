@@ -137,28 +137,39 @@ func (store *taskMemoryStore) ListTasks(context.Context, ListScope) ListTasksSto
 	return ListTasksStoreAccepted{Values: values}
 }
 
-func (store *taskMemoryStore) CreateCapabilityToken(context.Context, core.TaskCapabilityTokenID, core.TaskID, CapabilityTokenHash) CreateCapabilityTokenStoreResult {
-	return CreateCapabilityTokenStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+type taskPermissionStore struct {
+	grants []taskPermissionGrant
 }
 
-type taskPermissionStore struct {
-	roles map[string][]org.Role
+type taskPermissionGrant struct {
+	organizationID core.OrganizationID
+	userID         core.UserID
+	roles          []org.Role
 }
+
+var taskPermissionSeed = []taskPermissionGrant{}
 
 func newTaskPermissionStore() *taskPermissionStore {
-	return &taskPermissionStore{roles: make(map[string][]org.Role)}
+	return &taskPermissionStore{grants: taskPermissionSeed}
+}
+
+func (store *taskMemoryStore) CreateCapabilityToken(context.Context, core.TaskCapabilityTokenID, core.TaskID, CapabilityTokenHash) CreateCapabilityTokenStoreResult {
+	reason := core.NewDomainError(core.ErrorCodeInvalidState, "not used")
+	return CreateCapabilityTokenStoreRejected{Reason: reason}
 }
 
 func (store *taskPermissionStore) grant(organizationID core.OrganizationID, userID core.UserID, roles ...org.Role) {
-	store.roles[organizationID.String()+":"+userID.String()] = roles
+	store.grants = append(store.grants, taskPermissionGrant{organizationID: organizationID, userID: userID, roles: roles})
 }
 
 func (store *taskPermissionStore) CheckOrganizationPermission(_ context.Context, organizationID core.OrganizationID, userID core.UserID, permission org.Permission) org.PermissionCheck {
-	roles, matched := store.roles[organizationID.String()+":"+userID.String()]
-	if !matched {
-		return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "roles missing")}
+	for grantIndex := range store.grants {
+		grant := store.grants[grantIndex]
+		if grant.organizationID == organizationID && grant.userID == userID {
+			return org.CheckPermission(grant.roles, permission)
+		}
 	}
-	return org.CheckPermission(roles, permission)
+	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "roles missing")}
 }
 
 func testCreateCommand(t *testing.T, actor auth.UserSubject, owner Owner, visibility Visibility) CreateCommand {

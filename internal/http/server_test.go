@@ -14,6 +14,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -145,8 +146,30 @@ func TestCreateTaskEndpointUsesDefaultUserVisibility(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedSubmissionEndpointReturnsReceipt(t *testing.T) {
+	taskIDResult := core.NewTaskID()
+	taskIDCreated := taskIDResult.(core.TaskIDCreated)
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/"+taskIDCreated.Value.String()+"/submissions", strings.NewReader(`{"response_json":"{\"answer\":\"done\"}","wallet_address":""}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
+	}
+
+	var body submissionCreatedResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ReceiptToken == "" {
+		t.Fatalf("receipt token is empty")
+	}
+}
+
 func testHandler() http.Handler {
-	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{})
+	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{})
 }
 
 func testStaticFiles() fs.FS {
@@ -198,6 +221,8 @@ type testVerifier struct{}
 type testOrganizationService struct{}
 
 type testTaskService struct{}
+
+type testSubmissionService struct{}
 
 func testAuthService() testAuth {
 	return testAuth{}
@@ -314,6 +339,32 @@ func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope) t
 
 func (testTaskService) CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult {
 	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
+func (testSubmissionService) Submit(_ context.Context, command submission.SubmitCommand) submission.SubmitResult {
+	idResult := core.NewSubmissionID()
+	idCreated := idResult.(core.SubmissionIDCreated)
+	tokenResult := submission.NewReceiptTokenPlain()
+	tokenCreated := tokenResult.(submission.ReceiptTokenPlainAccepted)
+	return submission.SubmissionCreated{
+		Value: submission.Submission{
+			ID:             idCreated.Value,
+			TaskID:         command.TaskID,
+			Submitter:      command.Submitter,
+			State:          submission.StateSubmitted,
+			ResponseSource: command.ResponseSource,
+			Validation:     submission.ValidationPassed{},
+		},
+		ReceiptToken: tokenCreated.Value,
+	}
+}
+
+func (testSubmissionService) FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult {
+	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test submission service")}
+}
+
+func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult {
+	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
 func testAccessToken() auth.AccessToken {

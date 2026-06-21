@@ -8,6 +8,7 @@ func Modules() []Module {
 		organizationModule(),
 		teamModule(),
 		taskModule(),
+		submissionModule(),
 	}
 }
 
@@ -20,6 +21,8 @@ func idsModule() Module {
 			Alias{Name: NewElmTypeName("TaskID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TaskSeriesID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TaskCapabilityTokenID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("SubmissionID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("SubmissionReceiptTokenID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationMembershipID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TeamID"), Type: StringRef{}},
@@ -203,6 +206,61 @@ func taskModule() Module {
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskCapabilityTokenState")}},
 					{Name: NewElmValueName("token"), JSONName: NewJSONFieldName("token"), Type: StringRef{}},
+				},
+			},
+		},
+	}
+}
+
+func submissionModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Submission"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("SubmissionState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("SubmissionStateSubmitted"), Tag: "submitted"},
+					{Name: NewElmTypeName("SubmissionStateInvalid"), Tag: "invalid"},
+					{Name: NewElmTypeName("SubmissionStateAccepted"), Tag: "accepted"},
+					{Name: NewElmTypeName("SubmissionStateRejected"), Tag: "rejected"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("SubmitterKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("SubmitterKindAuthenticated"), Tag: "authenticated"},
+					{Name: NewElmTypeName("SubmitterKindAnonymous"), Tag: "anonymous"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("SubmissionValidationErrorResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("path"), JSONName: NewJSONFieldName("path"), Type: StringRef{}},
+					{Name: NewElmValueName("message"), JSONName: NewJSONFieldName("message"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("SubmissionResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					{Name: NewElmValueName("submitterKind"), JSONName: NewJSONFieldName("submitter_kind"), Type: NamedRef{Name: NewElmTypeName("SubmitterKind")}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("SubmissionState")}},
+					{Name: NewElmValueName("responseJSON"), JSONName: NewJSONFieldName("response_json"), Type: StringRef{}},
+					{Name: NewElmValueName("validationErrors"), JSONName: NewJSONFieldName("validation_errors"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionValidationErrorResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("SubmissionsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("submissions"), JSONName: NewJSONFieldName("submissions"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("SubmissionCreatedResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("submission"), JSONName: NewJSONFieldName("submission"), Type: NamedRef{Name: NewElmTypeName("SubmissionResponse")}},
+					{Name: NewElmValueName("receiptToken"), JSONName: NewJSONFieldName("receipt_token"), Type: StringRef{}},
 				},
 			},
 		},

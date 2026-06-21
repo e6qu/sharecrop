@@ -60,6 +60,38 @@ func TestParseTaskCapabilityTokenIDRoundTrips(t *testing.T) {
 	}
 }
 
+func TestParseSubmissionIDRoundTrips(t *testing.T) {
+	created, matched := NewSubmissionID().(SubmissionIDCreated)
+	if !matched {
+		t.Fatalf("new submission id did not create")
+	}
+
+	parsed, matched := ParseSubmissionID(created.Value.String()).(SubmissionIDCreated)
+	if !matched {
+		t.Fatalf("parse submission id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}
+
+func TestParseSubmissionReceiptTokenIDRoundTrips(t *testing.T) {
+	created, matched := NewSubmissionReceiptTokenID().(SubmissionReceiptTokenIDCreated)
+	if !matched {
+		t.Fatalf("new submission receipt token id did not create")
+	}
+
+	parsed, matched := ParseSubmissionReceiptTokenID(created.Value.String()).(SubmissionReceiptTokenIDCreated)
+	if !matched {
+		t.Fatalf("parse submission receipt token id did not create")
+	}
+
+	if parsed.Value.String() != created.Value.String() {
+		t.Fatalf("parsed = %q, want %q", parsed.Value.String(), created.Value.String())
+	}
+}
+
 func TestParseUserIDRoundTrips(t *testing.T) {
 	created, matched := NewUserID().(UserIDCreated)
 	if !matched {

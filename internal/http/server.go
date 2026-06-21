@@ -12,6 +12,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/schema"
+	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -47,16 +48,23 @@ type TaskService interface {
 	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
 }
 
+type SubmissionService interface {
+	Submit(context.Context, submission.SubmitCommand) submission.SubmitResult
+	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
+	ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
+}
+
 type Server struct {
 	staticFiles         fs.FS
 	authService         AuthService
 	subjectVerifier     SubjectVerifier
 	organizationService OrganizationService
 	taskService         TaskService
+	submissionService   SubmissionService
 }
 
-func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService) http.Handler {
-	server := Server{staticFiles: staticFiles, authService: authService, subjectVerifier: subjectVerifier, organizationService: organizationService, taskService: taskService}
+func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService) http.Handler {
+	server := Server{staticFiles: staticFiles, authService: authService, subjectVerifier: subjectVerifier, organizationService: organizationService, taskService: taskService, submissionService: submissionService}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("POST /api/auth/register", server.register)
@@ -74,6 +82,10 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/open", server.openTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/cancel", server.cancelTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/capability-tokens", server.createTaskCapabilityToken)
+	mux.HandleFunc("POST /api/tasks/{task_id}/submissions", server.createAuthenticatedSubmission)
+	mux.HandleFunc("GET /api/tasks/{task_id}/submissions", server.listTaskSubmissions)
+	mux.HandleFunc("POST /api/public/tasks/{task_id}/submissions", server.createAnonymousSubmission)
+	mux.HandleFunc("GET /api/submission-receipts/{receipt_token}", server.findSubmissionReceipt)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 	mux.HandleFunc("GET /", index(staticFiles))
 	return mux
@@ -166,6 +178,11 @@ type taskRequest struct {
 	Payload            taskPayloadRequest    `json:"payload"`
 }
 
+type submissionRequest struct {
+	ResponseJSON  string `json:"response_json"`
+	WalletAddress string `json:"wallet_address"`
+}
+
 type organizationResponse struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -222,6 +239,29 @@ type taskCapabilityTokenResponse struct {
 	TaskID string `json:"task_id"`
 	State  string `json:"state"`
 	Token  string `json:"token"`
+}
+
+type submissionValidationErrorResponse struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
+type submissionResponse struct {
+	ID               string                              `json:"id"`
+	TaskID           string                              `json:"task_id"`
+	SubmitterKind    string                              `json:"submitter_kind"`
+	State            string                              `json:"state"`
+	ResponseJSON     string                              `json:"response_json"`
+	ValidationErrors []submissionValidationErrorResponse `json:"validation_errors"`
+}
+
+type submissionsResponse struct {
+	Submissions []submissionResponse `json:"submissions"`
+}
+
+type submissionCreatedResponse struct {
+	Submission   submissionResponse `json:"submission"`
+	ReceiptToken string             `json:"receipt_token"`
 }
 
 type emptyResponse struct {
@@ -679,6 +719,121 @@ func (server Server) createTaskCapabilityToken(w http.ResponseWriter, r *http.Re
 		State:  created.Value.State.String(),
 		Token:  created.Plain.String(),
 	})
+}
+
+func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		rejected := taskIDResult.(taskIDRejected)
+		writeError(w, http.StatusBadRequest, rejected.reason)
+		return
+	}
+
+	requestResult := decodeAuthenticatedSubmissionRequest(r, actor.subject, taskIDAccepted.value)
+	requestAccepted, requestMatched := requestResult.(submissionRequestAccepted)
+	if !requestMatched {
+		rejected := requestResult.(submissionRequestRejected)
+		writeError(w, http.StatusBadRequest, rejected.reason)
+		return
+	}
+
+	server.submitResponse(w, r, requestAccepted.command)
+}
+
+func (server Server) createAnonymousSubmission(w http.ResponseWriter, r *http.Request) {
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		rejected := taskIDResult.(taskIDRejected)
+		writeError(w, http.StatusBadRequest, rejected.reason)
+		return
+	}
+
+	requestResult := decodeAnonymousSubmissionRequest(r, taskIDAccepted.value)
+	requestAccepted, requestMatched := requestResult.(submissionRequestAccepted)
+	if !requestMatched {
+		rejected := requestResult.(submissionRequestRejected)
+		writeError(w, http.StatusBadRequest, rejected.reason)
+		return
+	}
+
+	server.submitResponse(w, r, requestAccepted.command)
+}
+
+func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, command submission.SubmitCommand) {
+	result := server.submissionService.Submit(r.Context(), command)
+	created, matched := result.(submission.SubmissionCreated)
+	if !matched {
+		rejected := result.(submission.SubmitRejected)
+		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		return
+	}
+
+	writeSubmissionCreatedResponse(w, http.StatusCreated, submissionCreatedResponse{
+		Submission:   submissionToResponse(created.Value),
+		ReceiptToken: created.ReceiptToken.String(),
+	})
+}
+
+func (server Server) findSubmissionReceipt(w http.ResponseWriter, r *http.Request) {
+	tokenResult := submission.ParseReceiptTokenPlain(r.PathValue("receipt_token"))
+	tokenAccepted, tokenMatched := tokenResult.(submission.ReceiptTokenPlainAccepted)
+	if !tokenMatched {
+		rejected := tokenResult.(submission.ReceiptTokenPlainRejected)
+		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		return
+	}
+
+	result := server.submissionService.FindByReceipt(r.Context(), tokenAccepted.Value)
+	found, matched := result.(submission.ReceiptStatusFound)
+	if !matched {
+		rejected := result.(submission.ReceiptStatusRejected)
+		writeError(w, http.StatusNotFound, rejected.Reason.Description())
+		return
+	}
+
+	writeSubmissionResponse(w, http.StatusOK, submissionToResponse(found.Value))
+}
+
+func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		rejected := taskIDResult.(taskIDRejected)
+		writeError(w, http.StatusBadRequest, rejected.reason)
+		return
+	}
+
+	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value)
+	listed, matched := result.(submission.SubmissionsListed)
+	if !matched {
+		rejected := result.(submission.ListRejected)
+		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		return
+	}
+
+	response := submissionsResponse{Submissions: make([]submissionResponse, 0, len(listed.Values))}
+	for _, value := range listed.Values {
+		response.Submissions = append(response.Submissions, submissionToResponse(value))
+	}
+	writeSubmissionsResponse(w, http.StatusOK, response)
 }
 
 func decodeAuthRequest(r *http.Request) authRequestResult {
@@ -1205,6 +1360,69 @@ func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeRe
 	}
 }
 
+type submissionRequestResult interface {
+	submissionRequestResult()
+}
+
+type submissionRequestAccepted struct {
+	command submission.SubmitCommand
+}
+
+type submissionRequestRejected struct {
+	reason string
+}
+
+func (submissionRequestAccepted) submissionRequestResult() {}
+
+func (submissionRequestRejected) submissionRequestResult() {}
+
+func decodeAuthenticatedSubmissionRequest(r *http.Request, actor auth.UserSubject, taskID core.TaskID) submissionRequestResult {
+	var request submissionRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return submissionRequestRejected{reason: "request body is invalid"}
+	}
+
+	sourceResult := submission.NewResponseSource(request.ResponseJSON)
+	source, sourceMatched := sourceResult.(submission.ResponseSourceAccepted)
+	if !sourceMatched {
+		rejected := sourceResult.(submission.ResponseSourceRejected)
+		return submissionRequestRejected{reason: rejected.Reason.Description()}
+	}
+
+	return submissionRequestAccepted{command: submission.SubmitCommand{
+		TaskID:         taskID,
+		Submitter:      submission.AuthenticatedSubmitter{UserID: actor.ID},
+		ResponseSource: source.Value,
+	}}
+}
+
+func decodeAnonymousSubmissionRequest(r *http.Request, taskID core.TaskID) submissionRequestResult {
+	var request submissionRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return submissionRequestRejected{reason: "request body is invalid"}
+	}
+
+	walletResult := submission.NewWalletAddress(request.WalletAddress)
+	wallet, walletMatched := walletResult.(submission.WalletAddressAccepted)
+	if !walletMatched {
+		rejected := walletResult.(submission.WalletAddressRejected)
+		return submissionRequestRejected{reason: rejected.Reason.Description()}
+	}
+
+	sourceResult := submission.NewResponseSource(request.ResponseJSON)
+	source, sourceMatched := sourceResult.(submission.ResponseSourceAccepted)
+	if !sourceMatched {
+		rejected := sourceResult.(submission.ResponseSourceRejected)
+		return submissionRequestRejected{reason: rejected.Reason.Description()}
+	}
+
+	return submissionRequestAccepted{command: submission.SubmitCommand{
+		TaskID:         taskID,
+		Submitter:      submission.AnonymousSubmitter{WalletAddress: wallet.Value},
+		ResponseSource: source.Value,
+	}}
+}
+
 type authResponseResult interface {
 	authResponseResult()
 }
@@ -1352,6 +1570,42 @@ func taskPayloadResponseParts(payload task.DataPayload) responseParts {
 	}
 }
 
+func submissionToResponse(value submission.Submission) submissionResponse {
+	errors := submissionValidationErrorsToResponse(value.Validation)
+	return submissionResponse{
+		ID:               value.ID.String(),
+		TaskID:           value.TaskID.String(),
+		SubmitterKind:    submitterKindForResponse(value.Submitter),
+		State:            value.State.String(),
+		ResponseJSON:     value.ResponseSource.String(),
+		ValidationErrors: errors,
+	}
+}
+
+func submitterKindForResponse(submitter submission.Submitter) string {
+	switch submitter.(type) {
+	case submission.AuthenticatedSubmitter:
+		return submission.SubmitterKindAuthenticated.String()
+	case submission.AnonymousSubmitter:
+		return submission.SubmitterKindAnonymous.String()
+	default:
+		return ""
+	}
+}
+
+func submissionValidationErrorsToResponse(outcome submission.ValidationOutcome) []submissionValidationErrorResponse {
+	failed, matched := outcome.(submission.ValidationFailed)
+	if !matched {
+		return []submissionValidationErrorResponse{}
+	}
+	errors := make([]submissionValidationErrorResponse, 0, len(failed.Errors))
+	for errorIndex := range failed.Errors {
+		validationError := failed.Errors[errorIndex]
+		errors = append(errors, submissionValidationErrorResponse{Path: validationError.Path, Message: validationError.Message})
+	}
+	return errors
+}
+
 func writeAuthResponse(w http.ResponseWriter, status int, response authResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -1401,6 +1655,24 @@ func writeTasksResponse(w http.ResponseWriter, status int, response tasksRespons
 }
 
 func writeTaskCapabilityTokenResponse(w http.ResponseWriter, status int, response taskCapabilityTokenResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func writeSubmissionCreatedResponse(w http.ResponseWriter, status int, response submissionCreatedResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func writeSubmissionResponse(w http.ResponseWriter, status int, response submissionResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func writeSubmissionsResponse(w http.ResponseWriter, status int, response submissionsResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)

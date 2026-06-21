@@ -18,6 +18,14 @@ type TaskCapabilityTokenID struct {
 	value id.ID
 }
 
+type SubmissionID struct {
+	value id.ID
+}
+
+type SubmissionReceiptTokenID struct {
+	value id.ID
+}
+
 type OrganizationID struct {
 	value id.ID
 }
@@ -191,6 +199,84 @@ func taskCapabilityTokenIDFromIDResult(result id.IDResult) TaskCapabilityTokenID
 		return TaskCapabilityTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return TaskCapabilityTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type SubmissionIDResult interface {
+	submissionIDResult()
+}
+
+type SubmissionIDCreated struct {
+	Value SubmissionID
+}
+
+type SubmissionIDRejected struct {
+	Reason DomainError
+}
+
+func (SubmissionIDCreated) submissionIDResult() {}
+
+func (SubmissionIDRejected) submissionIDResult() {}
+
+func NewSubmissionID() SubmissionIDResult {
+	return submissionIDFromIDResult(id.New())
+}
+
+func ParseSubmissionID(raw string) SubmissionIDResult {
+	return submissionIDFromIDResult(id.Parse(raw))
+}
+
+func (id SubmissionID) String() string {
+	return id.value.String()
+}
+
+func submissionIDFromIDResult(result id.IDResult) SubmissionIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return SubmissionIDCreated{Value: SubmissionID{value: typed.Value}}
+	case id.IDRejected:
+		return SubmissionIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return SubmissionIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type SubmissionReceiptTokenIDResult interface {
+	submissionReceiptTokenIDResult()
+}
+
+type SubmissionReceiptTokenIDCreated struct {
+	Value SubmissionReceiptTokenID
+}
+
+type SubmissionReceiptTokenIDRejected struct {
+	Reason DomainError
+}
+
+func (SubmissionReceiptTokenIDCreated) submissionReceiptTokenIDResult() {}
+
+func (SubmissionReceiptTokenIDRejected) submissionReceiptTokenIDResult() {}
+
+func NewSubmissionReceiptTokenID() SubmissionReceiptTokenIDResult {
+	return submissionReceiptTokenIDFromIDResult(id.New())
+}
+
+func ParseSubmissionReceiptTokenID(raw string) SubmissionReceiptTokenIDResult {
+	return submissionReceiptTokenIDFromIDResult(id.Parse(raw))
+}
+
+func (id SubmissionReceiptTokenID) String() string {
+	return id.value.String()
+}
+
+func submissionReceiptTokenIDFromIDResult(result id.IDResult) SubmissionReceiptTokenIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return SubmissionReceiptTokenIDCreated{Value: SubmissionReceiptTokenID{value: typed.Value}}
+	case id.IDRejected:
+		return SubmissionReceiptTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return SubmissionReceiptTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 
