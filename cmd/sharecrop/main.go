@@ -14,6 +14,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/app"
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/contracts"
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -26,6 +27,10 @@ func main() {
 
 func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
 	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
+	if len(args) > 1 && args[1] == "generate" {
+		return runGenerate(args[2:], stdout, logger)
+	}
+
 	cfgResult := app.LoadConfig()
 	cfg, loaded := cfgResult.(app.ConfigLoaded)
 	if !loaded {
@@ -47,6 +52,31 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	}
 
 	return runServe(ctx, cfg.Value, logger)
+}
+
+func runGenerate(args []string, stdout io.Writer, logger *slog.Logger) int {
+	if len(args) != 1 || args[0] != "elm-contracts" {
+		_, _ = fmt.Fprintln(stdout, "usage: sharecrop generate elm-contracts")
+		return 2
+	}
+
+	filesResult := contracts.GenerateElmFiles(contracts.Modules())
+	filesGenerated, filesMatched := filesResult.(contracts.ElmFilesGenerated)
+	if !filesMatched {
+		rejected := filesResult.(contracts.ElmFilesRejected)
+		logger.Error("generate elm contracts", "reason", rejected.Reason)
+		return 1
+	}
+
+	writeResult := contracts.WriteElmFiles(filesGenerated.Files)
+	if _, written := writeResult.(contracts.ElmFilesWritten); !written {
+		rejected := writeResult.(contracts.WriteElmFilesRejected)
+		logger.Error("write elm contracts", "reason", rejected.Reason)
+		return 1
+	}
+
+	_, _ = fmt.Fprintln(stdout, "elm contracts generated")
+	return 0
 }
 
 func runMigrate(ctx context.Context, args []string, cfg app.Config, stdout io.Writer, logger *slog.Logger) int {
