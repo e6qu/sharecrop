@@ -14,6 +14,14 @@ type OrganizationID struct {
 	value id.ID
 }
 
+type TeamID struct {
+	value id.ID
+}
+
+type OrganizationMembershipID struct {
+	value id.ID
+}
+
 type GuestID struct {
 	value id.ID
 }
@@ -136,6 +144,84 @@ func organizationIDFromIDResult(result id.IDResult) OrganizationIDResult {
 		return OrganizationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return OrganizationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type TeamIDResult interface {
+	teamIDResult()
+}
+
+type TeamIDCreated struct {
+	Value TeamID
+}
+
+type TeamIDRejected struct {
+	Reason DomainError
+}
+
+func (TeamIDCreated) teamIDResult() {}
+
+func (TeamIDRejected) teamIDResult() {}
+
+func NewTeamID() TeamIDResult {
+	return teamIDFromIDResult(id.New())
+}
+
+func ParseTeamID(raw string) TeamIDResult {
+	return teamIDFromIDResult(id.Parse(raw))
+}
+
+func (id TeamID) String() string {
+	return id.value.String()
+}
+
+func teamIDFromIDResult(result id.IDResult) TeamIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return TeamIDCreated{Value: TeamID{value: typed.Value}}
+	case id.IDRejected:
+		return TeamIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return TeamIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type OrganizationMembershipIDResult interface {
+	organizationMembershipIDResult()
+}
+
+type OrganizationMembershipIDCreated struct {
+	Value OrganizationMembershipID
+}
+
+type OrganizationMembershipIDRejected struct {
+	Reason DomainError
+}
+
+func (OrganizationMembershipIDCreated) organizationMembershipIDResult() {}
+
+func (OrganizationMembershipIDRejected) organizationMembershipIDResult() {}
+
+func NewOrganizationMembershipID() OrganizationMembershipIDResult {
+	return organizationMembershipIDFromIDResult(id.New())
+}
+
+func ParseOrganizationMembershipID(raw string) OrganizationMembershipIDResult {
+	return organizationMembershipIDFromIDResult(id.Parse(raw))
+}
+
+func (id OrganizationMembershipID) String() string {
+	return id.value.String()
+}
+
+func organizationMembershipIDFromIDResult(result id.IDResult) OrganizationMembershipIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return OrganizationMembershipIDCreated{Value: OrganizationMembershipID{value: typed.Value}}
+	case id.IDRejected:
+		return OrganizationMembershipIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return OrganizationMembershipIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 

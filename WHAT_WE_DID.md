@@ -13,7 +13,7 @@ The continuity-file policy was clarified:
 - [WHAT_WE_DID.md](./WHAT_WE_DID.md) was set to remain append-oriented while allowing old or irrelevant parts to be compressed.
 - [DO_NEXT.md](./DO_NEXT.md) was set to hold a prioritized queue.
 - [BUGS.md](./BUGS.md) was set to include confirmed defects, test gaps, and open risks.
-- PR descriptions were set to be precise and timeless without reproducing code.
+- pull request descriptions were set to be precise and timeless without reproducing code.
 
 The remaining agent-practice questions were resolved:
 
@@ -32,9 +32,9 @@ The pull request workflow was constrained to one open pull request at a time.
 
 New task branches were set to start from synced `origin/main` after the previous task pull request is merged.
 
-UI changes were set to require manual screenshot review when practical.
+user interface changes were set to require manual screenshot review when practical.
 
-Playwright UI tests were set to grow as the UI matures and workflows stabilize.
+Playwright user interface tests were set to grow as the user interface matures and workflows stabilize.
 
 The project repository and pull request 1 implementation defaults were recorded:
 
@@ -77,7 +77,7 @@ pull request 1 added the project skeleton and build system:
 - Deno smoke tests were added.
 - Go HTTP unit tests were added.
 - HTTP end-to-end smoke tests were added behind the `http_e2e` build tag.
-- Playwright UI smoke tests were added.
+- Playwright user interface smoke tests were added.
 - A manual screenshot helper was added.
 - `make` commands were added for build, test, serve, migration, frontend, and user interface end-to-end.
 - Generated local artifacts were excluded through `.gitignore`.
@@ -169,3 +169,40 @@ Pull request 3 verification gaps were recorded:
 
 - Runtime HTTP end-to-end tests were not run locally because the environment rejected the required local listener and PostgreSQL approval after the usage limit was reached.
 - Playwright browser tests were not rerun locally because the user interface was not changed and the environment could not grant further browser/listener approval.
+
+Pull request 4 added organizations, teams, and provisioning:
+
+- Team and organization membership identifiers were added to the core identifier set.
+- Organization names, team names, organization membership statuses, organization roles, and organization permissions were added under `internal/org`.
+- Organization public-publisher permission was modeled separately from reviewer and billing roles.
+- Organization service methods were added for organization creation, organization listing, member provisioning, member deactivation, team creation, and team listing.
+- Access-token verification was added to the authentication boundary.
+- PostgreSQL tables were added for organizations, organization memberships, organization membership roles, teams, and team members.
+- PostgreSQL organization repository code was added under `internal/db`.
+- HTTP endpoints were added for organization creation, organization listing, organization member provisioning, organization member deactivation, organization team creation, and organization team listing.
+- Organization HTTP endpoints required verified bearer access tokens and service-level permission checks.
+
+Pull request 4 test strategy was evaluated:
+
+- Domain constructors, enums, permissions, and service permission checks were covered by unit tests.
+- HTTP handler mapping was covered with unit tests using typed test doubles.
+- API and PostgreSQL behavior were covered by HTTP end-to-end tests using the real migration runner, repository, service, access tokens, and PostgreSQL.
+- Browser user interface tests were not expanded because this task did not change browser user interface source.
+
+Pull request 4 verification was performed:
+
+- `make check-format` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make check-ts` passed.
+- `make lint` passed.
+- `GOCACHE=$PWD/.cache/go-build make vet` passed.
+- `GOCACHE=$PWD/.cache/go-build make test` passed.
+- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build go test -run '^$' -tags http_e2e ./tests/http_e2e` passed.
+- `docker compose up -d postgres` passed.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make migrate-up` passed.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make test-http` passed.
+- `docker compose down` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed with a non-fatal global module stat-cache warning from the sandbox.

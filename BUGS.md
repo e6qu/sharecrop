@@ -4,8 +4,8 @@ No confirmed application defects were known.
 
 Test gaps:
 
-- Pull request 3 runtime HTTP end-to-end tests were not run locally because the environment rejected the required local listener and PostgreSQL approval after the usage limit was reached.
-- Pull request 3 Playwright browser tests were not rerun locally because the user interface was not changed and the environment could not grant further browser/listener approval.
+- Pull request 4 did not add browser user interface pages for organization and team lists. The next contract-generation task should make those pages easier to type safely.
+- Pull request 4 did not run local Playwright browser tests or screenshot review because no browser user interface source changed. Continuous integration still runs the existing Playwright smoke test.
 
 Known risks:
 

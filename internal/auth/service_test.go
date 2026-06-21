@@ -38,6 +38,42 @@ func TestAccessTokenIsSignedJWT(t *testing.T) {
 	}
 }
 
+func TestAccessTokenVerifiesUserSubject(t *testing.T) {
+	userResult := core.NewUserID()
+	userCreated := userResult.(core.UserIDCreated)
+	secret := acceptedAccessTokenSecret(t)
+	tokenResult := SignAccessToken(secret, UserSubject{ID: userCreated.Value}, fixedTestTime())
+	tokenAccepted := tokenResult.(AccessTokenAccepted)
+
+	verifyResult := VerifyAccessToken(secret, tokenAccepted.Value, fixedTestTime())
+	verified, matched := verifyResult.(SubjectVerified)
+	if !matched {
+		t.Fatalf("verify result = %T, want SubjectVerified", verifyResult)
+	}
+
+	subject, matched := verified.Value.(UserSubject)
+	if !matched {
+		t.Fatalf("subject = %T, want UserSubject", verified.Value)
+	}
+
+	if subject.ID.String() != userCreated.Value.String() {
+		t.Fatalf("subject id = %q, want %q", subject.ID.String(), userCreated.Value.String())
+	}
+}
+
+func TestAccessTokenRejectsExpiredToken(t *testing.T) {
+	userResult := core.NewUserID()
+	userCreated := userResult.(core.UserIDCreated)
+	secret := acceptedAccessTokenSecret(t)
+	tokenResult := SignAccessToken(secret, UserSubject{ID: userCreated.Value}, fixedTestTime())
+	tokenAccepted := tokenResult.(AccessTokenAccepted)
+
+	verifyResult := VerifyAccessToken(secret, tokenAccepted.Value, fixedTestTime().Add(16*time.Minute))
+	if _, matched := verifyResult.(SubjectVerifyRejected); !matched {
+		t.Fatalf("verify result = %T, want SubjectVerifyRejected", verifyResult)
+	}
+}
+
 func TestServiceRegistersLogsInAndRefreshesUser(t *testing.T) {
 	store := newMemoryStore()
 	service := acceptedService(t, store)
