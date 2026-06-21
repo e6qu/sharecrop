@@ -1,0 +1,13 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "tailwindcss": "npm:tailwindcss@4.3.1"
+  },
+  "tasks": {
+    "elm:build": "/opt/homebrew/bin/elm make web/elm/src/Main.elm --output=web/static/app.js",
+    "css:build": "deno run --allow-env --allow-read --allow-write --allow-ffi npm:@tailwindcss/cli@4.3.1 --cwd . -i web/styles/input.css -o web/static/app.css",
+    "frontend:build": "deno task elm:build && deno task css:build",
+    "test": "deno test --allow-read tests/deno",
+    "e2e:ui": "deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts"
+  }
+}
