@@ -2,11 +2,11 @@
 
 The repository contained the pull request 1 project skeleton, pull request 2 core domain and quality-gate work, pull request 3 authentication work, pull request 4 organization provisioning work, pull request 5 contract generation work, pull request 6 schema parsing and validation work, and pull request 7 task visibility and capability-token work.
 
-Pull request 7 was ready for review.
+Pull request 8 was ready for review.
 
 Active task:
 
-- Open pull request 7 and wait for continuous integration to pass.
+- Open pull request 8 and wait for continuous integration to pass.
 
 Implemented surface:
 
@@ -59,6 +59,16 @@ Implemented surface:
 - Public organization tasks require the organization public-publisher permission.
 - Task response schemas are parsed by the local Sharecrop schema parser during task creation.
 - Generated Elm task contract enums and list-item read models.
+- Submission and submission receipt-token identifiers.
+- Submission, receipt-token, validation-error, and sensitive-field-index tables.
+- Submission domain types for authenticated submitters, anonymous wallet submitters, lifecycle states, validation outcomes, and receipt tokens.
+- Submission service methods for authenticated submission, anonymous public submission, receipt lookup, and requester submission listing.
+- Submission PostgreSQL repository code.
+- HTTP submission endpoints for authenticated submission, anonymous public submission, receipt lookup, and task submission listing.
+- Anonymous submissions require public tasks and store payout wallet addresses without user linkage.
+- Submission responses are validated against the task response schema and invalid responses are recorded with validation errors.
+- Receipt lookup redacts sensitive fields from response JSON.
+- Generated Elm submission contracts.
 
 The accepted defaults for pull request 1 were:
 
@@ -97,6 +107,7 @@ Last observed checks:
 - Pull request 5 continuous integration passed before merge.
 - Pull request 6 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, and HTTP end-to-end checks passed before merge.
 - Pull request 7 local unit, formatting, type, lint, policy, copy-paste, dead-code, frontend, build, migration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
+- Pull request 8 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, HTTP end-to-end, Playwright, and Deno checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.

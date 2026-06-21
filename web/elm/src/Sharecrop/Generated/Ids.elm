@@ -60,6 +60,28 @@ taskCapabilityTokenIDEncoder : TaskCapabilityTokenID -> Encode.Value
 taskCapabilityTokenIDEncoder taskCapabilityTokenID =
     Encode.string taskCapabilityTokenID
 
+type alias SubmissionID =
+    String
+
+submissionIDDecoder : Decoder SubmissionID
+submissionIDDecoder =
+    Decode.string
+
+submissionIDEncoder : SubmissionID -> Encode.Value
+submissionIDEncoder submissionID =
+    Encode.string submissionID
+
+type alias SubmissionReceiptTokenID =
+    String
+
+submissionReceiptTokenIDDecoder : Decoder SubmissionReceiptTokenID
+submissionReceiptTokenIDDecoder =
+    Decode.string
+
+submissionReceiptTokenIDEncoder : SubmissionReceiptTokenID -> Encode.Value
+submissionReceiptTokenIDEncoder submissionReceiptTokenID =
+    Encode.string submissionReceiptTokenID
+
 type alias OrganizationID =
     String
 

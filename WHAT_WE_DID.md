@@ -299,6 +299,50 @@ Pull request 7 verification was performed:
 - `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build go test -tags http_e2e ./tests/http_e2e` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build deno task e2e:ui` passed.
 - Manual screenshot review passed for `/tmp/sharecrop-pr7-shell.png`.
+
+Pull request 8 added submissions, anonymous access, and sensitive-field handling:
+
+- Submission and submission receipt-token identifiers were added to the core identifier set.
+- Submission tables were added for submissions, receipt tokens, validation errors, and sensitive-field index rows.
+- Submission domain types were added for authenticated submitters, anonymous wallet submitters, submission states, validation outcomes, response JSON, wallet addresses, and receipt tokens.
+- Opaque receipt-token generation and hashing were added.
+- The submission service added authenticated submission, anonymous public submission, receipt lookup, and requester submission listing.
+- Anonymous submissions were limited to public tasks.
+- Anonymous submitters stored payout wallet addresses without linking them to user identifiers.
+- Submitted response JSON was parsed and validated against the task response schema.
+- Schema-invalid submissions were recorded with `invalid` state and validation-error rows.
+- Sensitive submitted fields were indexed from the task response schema.
+- Receipt lookup returned redacted response JSON for sensitive fields.
+- PostgreSQL submission repository code was added under `internal/db`.
+- HTTP endpoints were added for authenticated task submissions, anonymous public task submissions, receipt status, and requester submission listing.
+- Generated Elm contracts were extended with submission identifiers, submission states, submitter kinds, validation-error responses, submission responses, submission lists, and submission-created responses.
+
+Pull request 8 test strategy was evaluated:
+
+- Unit tests covered anonymous/public submission permission, receipt-token creation, invalid submission recording, sensitive redaction for receipt lookup, and identifier round trips.
+- HTTP unit tests covered authenticated submission request handling and receipt-token response shape.
+- HTTP end-to-end tests were added for anonymous public submission, receipt redaction, invalid response recording, and requester submission listing.
+- Browser user interface tests were not expanded because pull request 8 did not add visible submission screens.
+
+Pull request 8 verification was performed:
+
+- `GOCACHE=$PWD/.cache/go-build go test ./...` passed.
+- `make check-format` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `deno task check:ts` passed.
+- `deno task lint` passed.
+- `GOCACHE=$PWD/.cache/go-build go vet ./...` passed.
+- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
+- `go run ./cmd/sharecrop generate elm-contracts` regenerated identical generated Elm contracts.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make frontend` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed.
+- `docker compose up -d postgres` passed.
+- `DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build go run ./cmd/sharecrop migrate up` applied the submission migration.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make test-http` passed, including anonymous submission, receipt redaction, invalid-response recording, and requester listing tests.
+- `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell Playwright smoke test.
+- `deno task test` passed.
+- `docker compose down` passed.
 - Sensitive-field indexing located sensitive values in submitted payloads.
 - Redaction replaced or removed sensitive fields according to schema policy.
 
