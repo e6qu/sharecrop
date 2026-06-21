@@ -248,3 +248,42 @@ Pull request 5 verification was performed:
 - `ELM_BIN=/opt/homebrew/bin/elm SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build deno task e2e:ui` passed.
 - Manual screenshot review passed for `/tmp/sharecrop-pr5-shell.png`.
 - `docker compose down` passed.
+
+Pull request 6 added the Sharecrop schema parser and validator:
+
+- Local schema domain types were added under `internal/schema`.
+- Schema kinds were added for object, array, string, integer, decimal string, enum, literal, union, and freeform schemas.
+- Field presence was modeled as explicit `required` and `may_omit` values.
+- Sensitivity categories, retention policies, and redaction policies were modeled as typed values.
+- Schema JSON parsing converted boundary data into Sharecrop-owned schema types.
+- Response payload JSON parsing converted payloads into Sharecrop-owned value types without using generic maps.
+- Schema validation produced typed validation errors with field paths.
+- Sensitive-field indexing located sensitive values in submitted payloads.
+- Redaction replaced or removed sensitive fields according to schema policy.
+
+Pull request 6 test strategy was evaluated:
+
+- Parser tests covered typed parsing, unsupported schema kinds, freeform mode, union schemas, and enum rejection.
+- Validator tests covered required field failures and valid object payloads.
+- Sensitive-data tests covered sensitive path indexing, replacement redaction, and remove redaction.
+- Existing HTTP end-to-end tests remained the API behavior checks for this slice because task and submission endpoints are not implemented yet.
+- Browser user interface tests were not expanded because this task did not change browser user interface source.
+
+Pull request 6 verification was performed:
+
+- `make check-format` passed.
+- `make check-contracts` passed with `GOCACHE=$PWD/.cache/go-build`.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make check-ts` passed.
+- `make lint` passed.
+- `GOCACHE=$PWD/.cache/go-build make vet` passed.
+- `GOCACHE=$PWD/.cache/go-build make test` passed.
+- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make frontend` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed with a non-fatal global module stat-cache warning from the sandbox.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build go test -run '^$' -tags http_e2e ./tests/http_e2e` passed.
+- `docker compose up -d postgres` passed.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make migrate-up` passed.
+- `SHARECROP_ACCESS_TOKEN_SECRET=... DATABASE_URL=... SHARECROP_MIGRATIONS_DIR=$PWD/migrations GOCACHE=$PWD/.cache/go-build make test-http` passed.
+- `docker compose down` passed.
