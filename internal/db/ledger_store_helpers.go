@@ -102,17 +102,19 @@ func lockOrganizationAccount(ctx context.Context, tx pgx.Tx, organizationID core
 func lockTaskOwnedByOrganization(ctx context.Context, tx pgx.Tx, taskID core.TaskID, organizationID core.OrganizationID) taskLockResult {
 	var state string
 	var rawOrganizationID string
-	scanErr := tx.QueryRow(ctx, "select state, coalesce(organization_id::text, '') from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawOrganizationID)
+	var rewardKind string
+	var rewardCreditAmount int64
+	scanErr := tx.QueryRow(ctx, "select state, coalesce(organization_id::text, ''), reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawOrganizationID, &rewardKind, &rewardCreditAmount)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task was not found")}
+		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	if scanErr != nil {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock task failed")}
 	}
 	if rawOrganizationID != organizationID.String() {
-		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task is not owned by the organization")}
+		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task is not owned by the organization")}
 	}
-	return taskLocked{state: state}
+	return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
 }
 
 type taskLockResult interface {
@@ -120,7 +122,9 @@ type taskLockResult interface {
 }
 
 type taskLocked struct {
-	state string
+	state              string
+	rewardKind         string
+	rewardCreditAmount int64
 }
 
 type taskLockRejected struct {
@@ -134,17 +138,43 @@ func (taskLockRejected) taskLockResult() {}
 func lockTaskOwnedBy(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID, action string) taskLockResult {
 	var state string
 	var rawCreatedBy string
-	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawCreatedBy)
+	var rewardKind string
+	var rewardCreditAmount int64
+	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text, reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawCreatedBy, &rewardKind, &rewardCreditAmount)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task was not found")}
+		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	if scanErr != nil {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock task failed")}
 	}
 	if rawCreatedBy != requester.String() {
-		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "only the task owner can "+action+" the task")}
+		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner can "+action+" the task")}
 	}
-	return taskLocked{state: state}
+	return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+}
+
+type fundingRewardResult interface {
+	fundingRewardResult()
+}
+
+type fundingRewardAccepted struct{}
+
+type fundingRewardRejected struct {
+	reason core.DomainError
+}
+
+func (fundingRewardAccepted) fundingRewardResult() {}
+
+func (fundingRewardRejected) fundingRewardResult() {}
+
+func requireCreditRewardFunding(taskRow taskLocked, amount ledger.CreditAmount) fundingRewardResult {
+	if taskRow.rewardKind != "credit" {
+		return fundingRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "task does not declare a credit reward")}
+	}
+	if taskRow.rewardCreditAmount != amount.Int64() {
+		return fundingRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "funding amount must match the declared credit reward")}
+	}
+	return fundingRewardAccepted{}
 }
 
 // findEscrowForKey returns a non-nil FundResult when a fund command with the

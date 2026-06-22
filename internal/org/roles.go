@@ -94,7 +94,7 @@ func CheckPermission(roles []Role, permission Permission) PermissionCheck {
 			return PermissionGranted{}
 		}
 	}
-	return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization permission denied")}
+	return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization permission denied")}
 }
 
 func roleGrantsPermission(role Role, permission Permission) PermissionCheck {
@@ -110,7 +110,7 @@ func roleGrantsPermission(role Role, permission Permission) PermissionCheck {
 	case RolePublicPublisher:
 		return publisherPermission(permission)
 	default:
-		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "role does not grant permission")}
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "role does not grant permission")}
 	}
 }
 
@@ -119,7 +119,7 @@ func adminPermission(permission Permission) PermissionCheck {
 	case PermissionManageMembers, PermissionManageTeams, PermissionCreateOrganizationTask, PermissionReviewSubmissions, PermissionSwitchTaskVisibility:
 		return PermissionGranted{}
 	default:
-		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "admin role does not grant permission")}
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "admin role does not grant permission")}
 	}
 }
 
@@ -128,7 +128,7 @@ func billingPermission(permission Permission) PermissionCheck {
 	case PermissionManageBilling:
 		return PermissionGranted{}
 	default:
-		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "billing role does not grant permission")}
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "billing role does not grant permission")}
 	}
 }
 
@@ -137,7 +137,7 @@ func reviewerPermission(permission Permission) PermissionCheck {
 	case PermissionReviewSubmissions:
 		return PermissionGranted{}
 	default:
-		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reviewer role does not grant permission")}
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "reviewer role does not grant permission")}
 	}
 }
 
@@ -146,6 +146,6 @@ func publisherPermission(permission Permission) PermissionCheck {
 	case PermissionPublishPublicTask, PermissionSwitchTaskVisibility:
 		return PermissionGranted{}
 	default:
-		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "public publisher role does not grant permission")}
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "public publisher role does not grant permission")}
 	}
 }

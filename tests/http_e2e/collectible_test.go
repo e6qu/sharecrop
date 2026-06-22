@@ -93,7 +93,7 @@ func TestMintRejectsIssuerControlledRewardOnFunding(t *testing.T) {
 	task := createPublicUserTask(t, server, owner)
 	fundResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/collectible-reward", []byte(`{"collectible_id":"`+collectible.ID+`"}`), owner.AccessToken)
 	defer fundResponse.Body.Close()
-	assertStatus(t, fundResponse, http.StatusBadRequest)
+	assertStatus(t, fundResponse, http.StatusConflict)
 }
 
 type collectibleHTTPResponse struct {

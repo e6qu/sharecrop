@@ -10,10 +10,13 @@ type DomainError struct {
 }
 
 var (
-	ErrorCodeInvalidID       = ErrorCode{value: "invalid_id"}
-	ErrorCodeInvalidEnum     = ErrorCode{value: "invalid_enum"}
-	ErrorCodeInvalidState    = ErrorCode{value: "invalid_state"}
-	ErrorCodeInvalidArgument = ErrorCode{value: "invalid_argument"}
+	ErrorCodeInvalidID        = ErrorCode{value: "invalid_id"}
+	ErrorCodeInvalidEnum      = ErrorCode{value: "invalid_enum"}
+	ErrorCodeInvalidState     = ErrorCode{value: "invalid_state"}
+	ErrorCodeInvalidArgument  = ErrorCode{value: "invalid_argument"}
+	ErrorCodeNotFound         = ErrorCode{value: "not_found"}
+	ErrorCodePermissionDenied = ErrorCode{value: "permission_denied"}
+	ErrorCodeConflict         = ErrorCode{value: "conflict"}
 )
 
 func NewDomainError(code ErrorCode, description string) DomainError {

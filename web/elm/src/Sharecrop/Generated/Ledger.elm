@@ -167,3 +167,33 @@ taskEscrowResponseEncoder taskEscrowResponse =
         , ( "amount", Encode.int taskEscrowResponse.amount )
         , ( "state", escrowStateEncoder taskEscrowResponse.state )
         ]
+
+type alias AcceptSubmissionResponse =
+    { taskID : String
+    , submissionID : String
+    , payoutKind : String
+    , payoutAmount : Int
+    , workerUserID : String
+    , collectibleID : String
+    }
+
+acceptSubmissionResponseDecoder : Decoder AcceptSubmissionResponse
+acceptSubmissionResponseDecoder =
+    Decode.map6 AcceptSubmissionResponse
+        (Decode.field "task_id" Decode.string)
+        (Decode.field "submission_id" Decode.string)
+        (Decode.field "payout_kind" Decode.string)
+        (Decode.field "payout_amount" Decode.int)
+        (Decode.field "worker_user_id" Decode.string)
+        (Decode.field "collectible_id" Decode.string)
+
+acceptSubmissionResponseEncoder : AcceptSubmissionResponse -> Encode.Value
+acceptSubmissionResponseEncoder acceptSubmissionResponse =
+    Encode.object
+        [ ( "task_id", Encode.string acceptSubmissionResponse.taskID )
+        , ( "submission_id", Encode.string acceptSubmissionResponse.submissionID )
+        , ( "payout_kind", Encode.string acceptSubmissionResponse.payoutKind )
+        , ( "payout_amount", Encode.int acceptSubmissionResponse.payoutAmount )
+        , ( "worker_user_id", Encode.string acceptSubmissionResponse.workerUserID )
+        , ( "collectible_id", Encode.string acceptSubmissionResponse.collectibleID )
+        ]

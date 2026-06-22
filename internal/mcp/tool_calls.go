@@ -16,6 +16,8 @@ type taskSummary struct {
 	ID             string `json:"id"`
 	OwnerKind      string `json:"owner_kind"`
 	Title          string `json:"title"`
+	RewardKind     string `json:"reward_kind"`
+	RewardAmount   int64  `json:"reward_credit_amount"`
 	State          string `json:"state"`
 	VisibilityKind string `json:"visibility_kind"`
 	CreatedBy      string `json:"created_by"`
@@ -26,6 +28,8 @@ type taskDetail struct {
 	OwnerKind          string `json:"owner_kind"`
 	Title              string `json:"title"`
 	Description        string `json:"description"`
+	RewardKind         string `json:"reward_kind"`
+	RewardAmount       int64  `json:"reward_credit_amount"`
 	State              string `json:"state"`
 	VisibilityKind     string `json:"visibility_kind"`
 	ResponseSchemaJSON string `json:"response_schema_json"`
@@ -138,6 +142,8 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		Description        string `json:"description"`
 		ResponseSchemaJSON string `json:"response_schema_json"`
 		Visibility         string `json:"visibility"`
+		RewardKind         string `json:"reward_kind"`
+		RewardCreditAmount int64  `json:"reward_credit_amount"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
@@ -164,12 +170,17 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 
 	var visibility task.Visibility
 	switch args.Visibility {
-	case "", "user":
+	case "user":
 		visibility = task.UserVisibility{UserID: subject.ID}
 	case "public":
 		visibility = task.PublicVisibility{}
 	default:
 		return toolProtocolError{code: codeInvalidParams, message: "visibility must be user or public"}
+	}
+	rewardResult := parseMCPReward(args.RewardKind, args.RewardCreditAmount)
+	reward, rewardMatched := rewardResult.(mcpRewardAccepted)
+	if !rewardMatched {
+		return toolProtocolError{code: codeInvalidParams, message: rewardResult.(mcpRewardRejected).reason}
 	}
 
 	command := task.CreateCommand{
@@ -177,6 +188,7 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		Owner:          task.UserOwner{UserID: subject.ID},
 		Title:          titleAccepted.Value,
 		Description:    descriptionAccepted.Value,
+		Reward:         reward.value,
 		Visibility:     visibility,
 		Placement:      task.StandalonePlacement{},
 		ResponseSchema: schemaSourceAccepted.Value,
@@ -188,6 +200,38 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		return toolFailed{message: result.(task.CreateRejected).Reason.Description()}
 	}
 	return marshalPayload(taskToDetail(created.Value))
+}
+
+type mcpRewardResult interface {
+	mcpRewardResult()
+}
+
+type mcpRewardAccepted struct {
+	value task.RewardSpec
+}
+
+type mcpRewardRejected struct {
+	reason string
+}
+
+func (mcpRewardAccepted) mcpRewardResult() {}
+
+func (mcpRewardRejected) mcpRewardResult() {}
+
+func parseMCPReward(kind string, creditAmount int64) mcpRewardResult {
+	switch kind {
+	case task.RewardKindNone.String():
+		return mcpRewardAccepted{value: task.NoRewardSpec{}}
+	case task.RewardKindCredit.String():
+		amountResult := task.NewCreditRewardAmount(creditAmount)
+		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
+		if !matched {
+			return mcpRewardRejected{reason: amountResult.(task.CreditRewardAmountRejected).Reason.Description()}
+		}
+		return mcpRewardAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
+	default:
+		return mcpRewardRejected{reason: "reward_kind must be none or credit"}
+	}
 }
 
 func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -423,10 +467,13 @@ func (seriesListPayload) payloadValue() {}
 func (seriesDetailPayload) payloadValue() {}
 
 func taskToSummary(value task.Task) taskSummary {
+	rewardKind, rewardAmount := rewardParts(value.Reward)
 	return taskSummary{
 		ID:             value.ID.String(),
 		OwnerKind:      ownerKind(value.Owner),
 		Title:          value.Title.String(),
+		RewardKind:     rewardKind,
+		RewardAmount:   rewardAmount,
 		State:          value.State.String(),
 		VisibilityKind: visibilityKind(value.Visibility),
 		CreatedBy:      value.CreatedBy.String(),
@@ -435,17 +482,31 @@ func taskToSummary(value task.Task) taskSummary {
 
 func taskToDetail(value task.Task) taskDetail {
 	payloadKind, payloadJSON := payloadParts(value.Payload)
+	rewardKind, rewardAmount := rewardParts(value.Reward)
 	return taskDetail{
 		ID:                 value.ID.String(),
 		OwnerKind:          ownerKind(value.Owner),
 		Title:              value.Title.String(),
 		Description:        value.Description.String(),
+		RewardKind:         rewardKind,
+		RewardAmount:       rewardAmount,
 		State:              value.State.String(),
 		VisibilityKind:     visibilityKind(value.Visibility),
 		ResponseSchemaJSON: value.ResponseSchema.String(),
 		PayloadKind:        payloadKind,
 		PayloadJSON:        payloadJSON,
 		CreatedBy:          value.CreatedBy.String(),
+	}
+}
+
+func rewardParts(reward task.RewardSpec) (string, int64) {
+	switch typed := reward.(type) {
+	case task.NoRewardSpec:
+		return task.RewardKindNone.String(), 0
+	case task.CreditRewardSpec:
+		return task.RewardKindCredit.String(), typed.Amount.Int64()
+	default:
+		return "", 0
 	}
 }
 

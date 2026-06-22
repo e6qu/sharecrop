@@ -29,6 +29,8 @@ create table if not exists tasks (
 	organization_id uuid references organizations(id),
 	title text not null,
 	description text not null,
+	reward_kind text not null default 'none',
+	reward_credit_amount integer,
 	state text not null,
 	response_schema_json jsonb not null,
 	data_payload_kind text not null,

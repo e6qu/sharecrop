@@ -9,6 +9,10 @@ const (
 	serverVersion   = "0.1.0"
 )
 
+func ProtocolVersion() string {
+	return protocolVersion
+}
+
 const (
 	codeParseError     = -32700
 	codeInvalidRequest = -32600

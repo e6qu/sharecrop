@@ -35,15 +35,16 @@ func (store TaskStore) CreateTask(ctx context.Context, seriesID core.TaskSeriesI
 	seriesColumns := seriesResult.(insertSeriesAccepted)
 	ownerColumns := ownerSQLColumns(command.Owner)
 	payloadColumns := payloadSQLColumns(command.Payload)
+	rewardColumns := rewardSQLColumns(command.Reward)
 
 	_, err = tx.Exec(ctx, `
 		insert into tasks (
 			id, series_id, series_position, owner_kind, user_id, team_id, organization_id, title, description,
-			state, response_schema_json, data_payload_kind, data_payload_json, created_by_user_id
+			reward_kind, reward_credit_amount, state, response_schema_json, data_payload_kind, data_payload_json, created_by_user_id
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13::jsonb, $14)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15::jsonb, $16)
 	`, taskID.String(), seriesColumns.seriesID, seriesColumns.position, ownerColumns.kind, ownerColumns.userID, ownerColumns.teamID, ownerColumns.organizationID,
-		command.Title.String(), command.Description.String(), task.StateDraft.String(), command.ResponseSchema.String(), payloadColumns.kind, payloadColumns.source, command.Actor.ID.String())
+		command.Title.String(), command.Description.String(), rewardColumns.kind, rewardColumns.creditAmount, task.StateDraft.String(), command.ResponseSchema.String(), payloadColumns.kind, payloadColumns.source, command.Actor.ID.String())
 	if err != nil {
 		return task.CreateTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task failed")}
 	}
@@ -90,6 +91,12 @@ func (store TaskStore) FindTask(ctx context.Context, taskID core.TaskID) task.Fi
 }
 
 func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, state task.State) task.ChangeTaskStateStoreResult {
+	if state == task.StateOpen {
+		escrowResult := store.requireOpenableReward(ctx, taskID)
+		if rejected, matched := escrowResult.(openableRewardRejected); matched {
+			return task.ChangeTaskStateStoreRejected{Reason: rejected.reason}
+		}
+	}
 	commandTag, err := store.pool.Exec(ctx, `
 		update tasks
 		set state = $2, state_recorded_at = now()
@@ -108,6 +115,42 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 		return task.ChangeTaskStateStoreRejected{Reason: rejected.Reason}
 	}
 	return task.ChangeTaskStateStoreAccepted{Value: value.Value}
+}
+
+type openableRewardResult interface {
+	openableRewardResult()
+}
+
+type openableRewardAccepted struct{}
+
+type openableRewardRejected struct {
+	reason core.DomainError
+}
+
+func (openableRewardAccepted) openableRewardResult() {}
+
+func (openableRewardRejected) openableRewardResult() {}
+
+func (store TaskStore) requireOpenableReward(ctx context.Context, taskID core.TaskID) openableRewardResult {
+	var rewardKind string
+	var creditAmount int64
+	err := store.pool.QueryRow(ctx, "select reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1", taskID.String()).Scan(&rewardKind, &creditAmount)
+	if err != nil {
+		return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if rewardKind != task.RewardKindCredit.String() {
+		return openableRewardAccepted{}
+	}
+	var heldAmount int64
+	var escrowState string
+	escrowErr := store.pool.QueryRow(ctx, "select amount, state from task_escrows where task_id = $1", taskID.String()).Scan(&heldAmount, &escrowState)
+	if escrowErr != nil {
+		return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward must be funded before opening")}
+	}
+	if escrowState != "held" || heldAmount != creditAmount {
+		return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "held escrow must match the declared credit reward")}
+	}
+	return openableRewardAccepted{}
 }
 
 func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope) task.ListTasksStoreResult {
@@ -236,6 +279,23 @@ type payloadSQL struct {
 	source *string
 }
 
+type rewardSQL struct {
+	kind         string
+	creditAmount *int64
+}
+
+func rewardSQLColumns(reward task.RewardSpec) rewardSQL {
+	switch typed := reward.(type) {
+	case task.NoRewardSpec:
+		return rewardSQL{kind: task.RewardKindNone.String()}
+	case task.CreditRewardSpec:
+		amount := typed.Amount.Int64()
+		return rewardSQL{kind: task.RewardKindCredit.String(), creditAmount: &amount}
+	default:
+		return rewardSQL{}
+	}
+}
+
 func payloadSQLColumns(payload task.DataPayload) payloadSQL {
 	switch typed := payload.(type) {
 	case task.NoDataPayload:
@@ -259,6 +319,7 @@ func taskSelectSQL() string {
 	return `
 		select tasks.id::text, tasks.owner_kind, coalesce(tasks.user_id::text, ''), coalesce(tasks.team_id::text, ''),
 			coalesce(tasks.organization_id::text, ''), tasks.title, tasks.description, tasks.state,
+			tasks.reward_kind, coalesce(tasks.reward_credit_amount, 0),
 			task_visibility_scopes.visibility_kind, coalesce(task_visibility_scopes.user_id::text, ''),
 			coalesce(task_visibility_scopes.team_id::text, ''), coalesce(task_visibility_scopes.organization_id::text, ''),
 			coalesce(tasks.series_id::text, ''), coalesce(tasks.series_position, 0), tasks.response_schema_json::text,
@@ -356,6 +417,8 @@ func scanTaskRow(rows pgx.Rows) taskRowResult {
 	var rawTitle string
 	var rawDescription string
 	var rawState string
+	var rawRewardKind string
+	var rawRewardCreditAmount int64
 	var rawVisibilityKind string
 	var rawVisibilityUserID string
 	var rawVisibilityTeamID string
@@ -366,13 +429,13 @@ func scanTaskRow(rows pgx.Rows) taskRowResult {
 	var rawPayloadKind string
 	var rawPayload string
 	var rawCreatedBy string
-	if err := rows.Scan(&rawTaskID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawDescription, &rawState, &rawVisibilityKind, &rawVisibilityUserID, &rawVisibilityTeamID, &rawVisibilityOrganizationID, &rawSeriesID, &rawSeriesPosition, &rawResponseSchema, &rawPayloadKind, &rawPayload, &rawCreatedBy); err != nil {
+	if err := rows.Scan(&rawTaskID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawDescription, &rawState, &rawRewardKind, &rawRewardCreditAmount, &rawVisibilityKind, &rawVisibilityUserID, &rawVisibilityTeamID, &rawVisibilityOrganizationID, &rawSeriesID, &rawSeriesPosition, &rawResponseSchema, &rawPayloadKind, &rawPayload, &rawCreatedBy); err != nil {
 		return taskRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
-	return parseTaskRow(rawTaskID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawDescription, rawState, rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID, rawSeriesID, rawSeriesPosition, rawResponseSchema, rawPayloadKind, rawPayload, rawCreatedBy)
+	return parseTaskRow(rawTaskID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawDescription, rawState, rawRewardKind, rawRewardCreditAmount, rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID, rawSeriesID, rawSeriesPosition, rawResponseSchema, rawPayloadKind, rawPayload, rawCreatedBy)
 }
 
-func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawState string, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string) taskRowResult {
+func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string) taskRowResult {
 	taskIDResult := core.ParseTaskID(rawTaskID)
 	taskID, taskIDMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskIDMatched {
@@ -402,6 +465,12 @@ func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, 
 	if !stateMatched {
 		rejected := stateResult.(task.StateRejected)
 		return taskRowRejected{reason: rejected.Reason}
+	}
+	rewardResult := parseRewardSpec(rawRewardKind, rawRewardCreditAmount)
+	reward, rewardMatched := rewardResult.(rewardSpecAccepted)
+	if !rewardMatched {
+		rejected := rewardResult.(rewardSpecRejected)
+		return taskRowRejected{reason: rejected.reason}
 	}
 	visibilityResult := parseTaskVisibility(rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID)
 	visibility, visibilityMatched := visibilityResult.(taskVisibilityAccepted)
@@ -433,5 +502,37 @@ func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, 
 		rejected := createdByResult.(core.UserIDRejected)
 		return taskRowRejected{reason: rejected.Reason}
 	}
-	return taskRowAccepted{value: task.Task{ID: taskID.Value, Owner: owner.value, Title: title.Value, Description: description.Value, State: state.Value, Visibility: visibility.value, Placement: placement.value, ResponseSchema: schemaSource.Value, Payload: payload.value, CreatedBy: createdBy.Value}}
+	return taskRowAccepted{value: task.Task{ID: taskID.Value, Owner: owner.value, Title: title.Value, Description: description.Value, Reward: reward.value, State: state.Value, Visibility: visibility.value, Placement: placement.value, ResponseSchema: schemaSource.Value, Payload: payload.value, CreatedBy: createdBy.Value}}
+}
+
+type rewardSpecResult interface {
+	rewardSpecResult()
+}
+
+type rewardSpecAccepted struct {
+	value task.RewardSpec
+}
+
+type rewardSpecRejected struct {
+	reason core.DomainError
+}
+
+func (rewardSpecAccepted) rewardSpecResult() {}
+
+func (rewardSpecRejected) rewardSpecResult() {}
+
+func parseRewardSpec(rawKind string, rawCreditAmount int64) rewardSpecResult {
+	switch rawKind {
+	case task.RewardKindNone.String():
+		return rewardSpecAccepted{value: task.NoRewardSpec{}}
+	case task.RewardKindCredit.String():
+		amountResult := task.NewCreditRewardAmount(rawCreditAmount)
+		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
+		if !matched {
+			return rewardSpecRejected{reason: amountResult.(task.CreditRewardAmountRejected).Reason}
+		}
+		return rewardSpecAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
+	default:
+		return rewardSpecRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task reward kind is invalid")}
+	}
 }

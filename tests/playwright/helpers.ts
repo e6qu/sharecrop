@@ -17,6 +17,7 @@ export function taskRequest(
   title: string,
   userId: string,
   visibilityKind: string,
+  rewardAmount = 0,
 ): Record<string, unknown> {
   return {
     owner: { kind: "user", user_id: userId, team_id: "", organization_id: "" },
@@ -34,6 +35,9 @@ export function taskRequest(
       series_title: "",
       series_position: 0,
     },
+    reward: rewardAmount > 0
+      ? { kind: "credit", credit_amount: rewardAmount }
+      : { kind: "none", credit_amount: 0 },
     response_schema_json: '{"kind":"freeform"}',
     payload: { kind: "none", json: "" },
   };

@@ -138,6 +138,7 @@ func createSeriesTask(t *testing.T, server *httptest.Server, owner authHTTPRespo
 		"owner":{"kind":"user","user_id":"` + owner.SubjectID + `","team_id":"","organization_id":""},
 		"title":"Series task",
 		"description":"A task placed in a new series.",
+		"reward":{"kind":"none","credit_amount":0},
 		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"new_series","series_id":"","series_title":"Browser series","series_position":1},
 		"response_schema_json":"{\"kind\":\"freeform\"}",

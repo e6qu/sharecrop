@@ -36,6 +36,9 @@ func (server Server) HandleRaw(ctx context.Context, subject auth.UserSubject, sc
 	if err := json.Unmarshal(trimmed, &request); err != nil {
 		return singleResponse(errorResponse(json.RawMessage("null"), codeParseError, "request body is not valid JSON-RPC"))
 	}
+	if isClientResponse(trimmed) {
+		return RawResult{HasResponse: false}
+	}
 	if isNotification(request) {
 		return RawResult{HasResponse: false}
 	}
@@ -84,7 +87,19 @@ func singleResponse(response Response) RawResult {
 }
 
 func isNotification(request Request) bool {
-	return len(request.ID) == 0 || string(request.ID) == "null"
+	return len(request.ID) == 0
+}
+
+func isClientResponse(body []byte) bool {
+	var raw struct {
+		Method string          `json:"method"`
+		Result json.RawMessage `json:"result"`
+		Error  json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return false
+	}
+	return raw.Method == "" && (len(raw.Result) > 0 || len(raw.Error) > 0)
 }
 
 func newSessionID() string {

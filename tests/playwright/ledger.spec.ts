@@ -32,6 +32,7 @@ test("funding a task escrows credits and lowers the balance", async ({ page, req
       "Fund from the browser",
       registerBody.subject_id,
       "default",
+      40,
     ),
   });
   expect(taskResponse.ok()).toBeTruthy();

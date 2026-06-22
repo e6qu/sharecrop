@@ -26,7 +26,7 @@ func (server Server) fundTaskFromOrganization(w http.ResponseWriter, r *http.Req
 	result := server.ledgerService.FundTaskFromOrganization(r.Context(), organizationID.Value, taskID, amount, key)
 	funded, matched := result.(ledger.TaskFunded)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(ledger.FundRejected).Reason.Description())
+		writeDomainError(w, result.(ledger.FundRejected).Reason)
 		return
 	}
 

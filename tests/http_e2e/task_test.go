@@ -5,6 +5,7 @@ package http_e2e_test
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -128,6 +129,20 @@ func userTaskRequestJSON(userID string) string {
 		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
 		"title":"Review schema samples",
 		"description":"Review response examples against the local schema parser.",
+		"reward":{"kind":"none","credit_amount":0},
+		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+}
+
+func userCreditTaskRequestJSON(userID string, amount int64) string {
+	return `{
+		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
+		"title":"Credit reward task",
+		"description":"Review response examples for a credit reward.",
+		"reward":{"kind":"credit","credit_amount":` + strconv.FormatInt(amount, 10) + `},
 		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"freeform\"}",
@@ -140,6 +155,7 @@ func organizationPublicTaskRequestJSON(organizationID string) string {
 		"owner":{"kind":"organization","user_id":"","team_id":"","organization_id":"` + organizationID + `"},
 		"title":"Publish public task",
 		"description":"Publish a task that can be discovered publicly.",
+		"reward":{"kind":"none","credit_amount":0},
 		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"freeform\"}",

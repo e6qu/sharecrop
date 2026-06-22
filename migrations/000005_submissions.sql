@@ -6,6 +6,7 @@ create table if not exists submissions (
 	wallet_address text,
 	state text not null,
 	response_json jsonb not null,
+	accepted_idempotency_key text,
 	created_at timestamptz not null default now(),
 	state_recorded_at timestamptz not null default now(),
 	constraint submissions_submitter_kind_check check (submitter_kind in ('authenticated', 'anonymous')),

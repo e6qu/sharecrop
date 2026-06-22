@@ -39,7 +39,7 @@ func TestFundAcceptPayoutFlow(t *testing.T) {
 	owner := registerUser(t, server, "ledger-owner")
 	worker := registerUser(t, server, "ledger-worker")
 
-	task := createUserTask(t, server, owner)
+	task := createPublicCreditUserTask(t, server, owner, 40)
 
 	escrow := fundTask(t, server, owner.AccessToken, task.ID, 40, "fund-"+task.ID)
 	if escrow.State != "held" {
@@ -52,6 +52,7 @@ func TestFundAcceptPayoutFlow(t *testing.T) {
 	openTask(t, server, owner.AccessToken, task.ID)
 
 	submission := submitAuthenticated(t, server, worker.AccessToken, task.ID)
+	other := submitAuthenticated(t, server, worker.AccessToken, task.ID)
 
 	accept := acceptSubmission(t, server, owner.AccessToken, task.ID, submission.Submission.ID, "accept-"+submission.Submission.ID)
 	if accept.PayoutKind != "credit" {
@@ -77,10 +78,9 @@ func TestFundAcceptPayoutFlow(t *testing.T) {
 	}
 
 	// A second submission cannot become the accepted one.
-	other := submitAuthenticated(t, server, worker.AccessToken, task.ID)
 	otherAccept := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/submissions/"+other.Submission.ID+"/accept", []byte(`{"idempotency_key":"accept-other"}`), owner.AccessToken)
 	defer otherAccept.Body.Close()
-	assertStatus(t, otherAccept, http.StatusBadRequest)
+	assertStatus(t, otherAccept, http.StatusConflict)
 }
 
 func TestRefundReturnsCredits(t *testing.T) {
@@ -88,7 +88,7 @@ func TestRefundReturnsCredits(t *testing.T) {
 	defer server.Close()
 
 	owner := registerUser(t, server, "ledger-refund")
-	task := createUserTask(t, server, owner)
+	task := createCreditUserTask(t, server, owner, 30)
 
 	fundTask(t, server, owner.AccessToken, task.ID, 30, "fund-"+task.ID)
 	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 70 {
@@ -113,7 +113,7 @@ func TestFundRejectsInsufficientCredits(t *testing.T) {
 	defer server.Close()
 
 	owner := registerUser(t, server, "ledger-insufficient")
-	task := createUserTask(t, server, owner)
+	task := createCreditUserTask(t, server, owner, 101)
 
 	response := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/funding", []byte(`{"amount":101,"idempotency_key":"fund-too-much"}`), owner.AccessToken)
 	defer response.Body.Close()
@@ -130,7 +130,7 @@ func TestAcceptWithoutEscrowHasNoPayout(t *testing.T) {
 
 	owner := registerUser(t, server, "ledger-noreward")
 	worker := registerUser(t, server, "ledger-noreward-worker")
-	task := createUserTask(t, server, owner)
+	task := createPublicUserTask(t, server, owner)
 	openTask(t, server, owner.AccessToken, task.ID)
 
 	submission := submitAuthenticated(t, server, worker.AccessToken, task.ID)
@@ -187,6 +187,14 @@ func registerUser(t *testing.T, server *httptest.Server, prefix string) authHTTP
 func createUserTask(t *testing.T, server *httptest.Server, owner authHTTPResponse) taskHTTPResponse {
 	t.Helper()
 	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(userTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+	return decodeTaskHTTPResponse(t, response)
+}
+
+func createCreditUserTask(t *testing.T, server *httptest.Server, owner authHTTPResponse, amount int64) taskHTTPResponse {
+	t.Helper()
+	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(userCreditTaskRequestJSON(owner.SubjectID, amount)), owner.AccessToken)
 	defer response.Body.Close()
 	assertStatus(t, response, http.StatusCreated)
 	return decodeTaskHTTPResponse(t, response)

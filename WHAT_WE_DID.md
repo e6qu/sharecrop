@@ -526,3 +526,38 @@ Pull request 12 verification was performed:
 - `make test-integration` and `make test-http` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell, ledger, agent, screens, and collectible Playwright tests.
 - Manual screenshot review passed for `/tmp/sharecrop-pr12-collectibles.png`.
+
+Pull request 13 fixed reward, lifecycle, requester, contract, HTTP, MCP, and session issues found during review:
+
+- Tasks gained an explicit reward specification for no-reward and credit-reward tasks, with response fields for reward kind and credit amount.
+- Credit escrow funding now requires the task to declare a matching credit reward, and credit-reward tasks cannot be opened until matching escrow is held.
+- Submission acceptance stores the accept idempotency key, same-key retries return the accepted outcome without paying twice, and different-key re-accepts are rejected.
+- Submission creation now requires an open visible task, and requester submission listing allows the task creator or organization reviewers.
+- Domain errors now distinguish missing resources, permission denials, conflicts, and invalid states so HTTP handlers can return `404`, `403`, and `409` where applicable.
+- Organization and collectible funding endpoints use the shared domain HTTP status mapping.
+- Generated Elm product decoders now support records larger than eight fields, and generated task and ledger contracts include task detail and accept-submission response shapes.
+- MCP task creation requires reward arguments, tool output includes reward details, raw JSON-RPC handling responds to `id:null`, client response objects are ignored as server input, and `/mcp` validates `Accept` and `MCP-Protocol-Version`.
+- Browser routing moved to `Browser.application` with dashboard, discovery, and task detail routes.
+- Browser auth restores sessions through refresh cookies and clears the refresh cookie through `POST /api/auth/logout`.
+- The dashboard gained task creation with optional credit rewards, funding prefill for newly created credit-reward tasks, open and refund controls, task detail viewing, submission detail review, and accept controls.
+- Browser task rows and detail screens show reward labels.
+
+Pull request 13 test strategy was evaluated:
+
+- Unit tests covered reward parsing and service-level submission visibility/open-state behavior, organization reviewer submission listing, MCP raw handling, and logout cookie clearing.
+- Integration tests covered credit reward funding, acceptance, idempotent re-accept, and refund persistence against PostgreSQL.
+- HTTP end-to-end tests covered credit-reward funding and payout, no-reward acceptance, organization credit funding, collectible funding status mapping, task lifecycle status mapping, MCP reward-aware flows, and submission visibility/open-state behavior.
+- Playwright tests covered browser task funding with declared rewards, task discovery, worker submission, owner review and acceptance, session switching through logout, and the existing dashboard, agent, ledger, and collectible workflows.
+- Manual screenshot review covered the updated dashboard.
+
+Pull request 13 verification was performed:
+
+- `docker compose up -d postgres` passed.
+- `GOCACHE=$PWD/.cache/go-build go test ./internal/org ./internal/task ./internal/submission ./internal/http ./internal/db ./internal/mcp` passed.
+- `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=$PWD/.cache/go-build make test-integration` passed.
+- `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 GOCACHE=$PWD/.cache/go-build make test-http` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make frontend` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 GOCACHE=$PWD/.cache/go-build make e2e-ui` passed.
+- Manual screenshot review passed for `/tmp/sharecrop-dashboard.png`.
+- `ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 GOCACHE=$PWD/.cache/go-build make ci` passed before the logout endpoint was added.
+- After the logout endpoint was added, the equivalent final local check set passed in target groups: `make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test frontend build`, `make test-integration`, `make test-http`, and `make e2e-ui`.

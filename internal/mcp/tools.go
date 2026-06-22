@@ -48,9 +48,9 @@ func toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolCreateTask,
-			Description: "Create a user-owned task. Visibility is \"user\" (default) or \"public\".",
+			Description: "Create a user-owned task. Visibility is \"user\" or \"public\". Reward kind is \"none\" or \"credit\".",
 			Scope:       agent.ScopeTasksWrite,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"visibility":{"type":"string","enum":["user","public"]}},"required":["title","description","response_schema_json"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"visibility":{"type":"string","enum":["user","public"]},"reward_kind":{"type":"string","enum":["none","credit"]},"reward_credit_amount":{"type":"integer","minimum":1}},"required":["title","description","response_schema_json","visibility","reward_kind"]}`),
 		},
 		{
 			Name:        toolSubmitResponse,

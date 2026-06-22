@@ -1,12 +1,10 @@
 # Status
 
-The repository contained the pull request 1 through pull request 10 work, plus pull request 11 MCP transports, task-series read, and user interface polish work.
-
-Pull request 12 was ready for review.
+The repository contains pull request 1 through pull request 12 work. Pull request 12 was merged into `main`.
 
 Active task:
 
-- Open pull request 12 and wait for continuous integration to pass.
+- Pull request 13 review fixes are implemented on `task/pr-13-review-and-fixes` and are ready for pull request review.
 
 Implemented surface:
 
@@ -109,6 +107,17 @@ Implemented surface:
 - Collectible minting, collectible task rewards with escrow, transfer to the accepted worker on acceptance, and refund.
 - HTTP endpoints for minting and listing collectibles, funding and refunding collectible rewards, and an organization credit balance.
 - Generated Elm collectible contracts and a browser collectibles panel for minting, holdings, and awarding a collectible to a task.
+- Task reward specifications for no-reward and credit-reward tasks.
+- Task create, list, and detail responses expose reward kind and credit amount.
+- Credit escrow funding requires a matching declared credit reward, and credit-reward tasks require matching held escrow before opening.
+- Accept-submission idempotency is stored per accepted submission and same-key retries do not pay twice.
+- Submission creation requires an open visible task, and requester submission listing allows the creator or organization reviewers.
+- Domain HTTP errors map missing resources, permission denials, invalid state, and conflicts to `404`, `403`, and `409` where applicable.
+- Generated Elm contract decoding supports products larger than eight fields.
+- MCP create-task arguments include reward fields, MCP raw handling responds to `id:null`, client response messages are not dispatched as server requests, and `/mcp` validates `Accept` and `MCP-Protocol-Version`.
+- Browser routing uses `Browser.application` with dashboard, discovery, and task detail routes.
+- Browser auth restores sessions through the refresh cookie on load and clears the refresh cookie on logout.
+- The browser dashboard can create tasks with optional credit rewards, prefill funding for newly created credit-reward tasks, open and refund tasks, and review submission details before accepting.
 
 The accepted defaults for pull request 1 were:
 
@@ -125,33 +134,14 @@ The accepted defaults for pull request 1 were:
 
 Last observed checks:
 
-- `make check-format` passed.
-- `make check-policy` passed.
-- `make check-copy-paste` passed.
-- `make check-ts` passed.
-- `make lint` passed.
-- `GOCACHE=$PWD/.cache/go-build make vet` passed.
-- `GOCACHE=$PWD/.cache/go-build make test` passed.
-- `GOCACHE=$PWD/.cache/go-build make check-dead-code` passed.
-- `ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
-- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod make build` passed.
-- `make test-http` passed with local listener permission.
-- `deno task e2e:ui` passed with local browser permission.
-- Manual screenshot review passed for the app shell after pull request 2 changes.
-- `docker compose up -d postgres` passed.
-- `make migrate-up` passed against local Postgres.
-- `docker compose down` passed.
-- Pull request 2 continuous integration passed before merge.
-- Pull request 3 continuous integration passed before merge.
-- Pull request 4 continuous integration passed before merge.
-- Pull request 5 continuous integration passed before merge.
-- Pull request 6 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, and HTTP end-to-end checks passed before merge.
-- Pull request 7 local unit, formatting, type, lint, policy, copy-paste, dead-code, frontend, build, migration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
-- Pull request 8 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, HTTP end-to-end, Playwright, and Deno checks passed.
-- Pull request 9 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
-- Pull request 10 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
-- Pull request 11 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, stdio MCP smoke, and manual screenshot checks passed.
-- Pull request 12 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
+- Pull request 12 GitHub continuous integration passed before merge.
+- `ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 GOCACHE=$PWD/.cache/go-build make ci` passed for pull request 13 before the logout endpoint was added.
+- After the logout endpoint was added, the equivalent final local check set passed in target groups: static/unit/frontend/build, `make test-integration`, `make test-http`, and `make e2e-ui`.
+- Manual screenshot review passed for `/tmp/sharecrop-dashboard.png` after pull request 13 changes.
+
+Blocking issues:
+
+- None known.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.
