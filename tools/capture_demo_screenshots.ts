@@ -22,6 +22,46 @@ const cases: ScreenshotCase[] = [
     themeLabel: "Corporate",
   },
   {
+    name: "desktop-discover-corporate-light",
+    width: 1440,
+    height: 1100,
+    mode: "Light",
+    theme: "corporate",
+    themeLabel: "Corporate",
+  },
+  {
+    name: "desktop-requester-corporate-light",
+    width: 1440,
+    height: 1100,
+    mode: "Light",
+    theme: "corporate",
+    themeLabel: "Corporate",
+  },
+  {
+    name: "desktop-review-corporate-light",
+    width: 1440,
+    height: 1100,
+    mode: "Light",
+    theme: "corporate",
+    themeLabel: "Corporate",
+  },
+  {
+    name: "desktop-integrations-corporate-light",
+    width: 1440,
+    height: 1100,
+    mode: "Light",
+    theme: "corporate",
+    themeLabel: "Corporate",
+  },
+  {
+    name: "desktop-settings-corporate-light",
+    width: 1440,
+    height: 1100,
+    mode: "Light",
+    theme: "corporate",
+    themeLabel: "Corporate",
+  },
+  {
     name: "desktop-blocky-dark",
     width: 1440,
     height: 1100,
@@ -57,6 +97,21 @@ for (const item of cases) {
   await page.goto(demoUrl);
   await page.getByRole("button", { name: item.mode }).click();
   await page.getByRole("button", { name: new RegExp(item.themeLabel) }).click();
+  if (item.name.includes("discover")) {
+    await page.getByRole("button", { name: "Discover" }).click();
+  }
+  if (item.name.includes("requester")) {
+    await page.getByRole("button", { name: "Requester" }).click();
+  }
+  if (item.name.includes("review")) {
+    await page.getByRole("button", { name: "Review" }).click();
+  }
+  if (item.name.includes("integrations")) {
+    await page.getByRole("button", { name: "API & MCP" }).click();
+  }
+  if (item.name.includes("settings")) {
+    await page.getByRole("button", { name: "Demo settings" }).click();
+  }
   await page.screenshot({
     path: `${outputDirectory}/${item.name}.png`,
     fullPage: true,
