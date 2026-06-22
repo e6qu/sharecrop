@@ -4,7 +4,7 @@ The repository contains pull request 1 through pull request 19 work. Pull reques
 
 Active task:
 
-- No implementation branch is active. The next implementation task should be selected from [DO_NEXT.md](./DO_NEXT.md).
+- Active branch `task/ui-themes-demo` added the UI user-story map, a GitHub Pages root landing page, `/demo/` static localStorage demo, `/docs/` placeholder, demo theme and mode selection, demo user switching, mock provider sign-in buttons, demo state reset, a Pages deployment workflow, Playwright coverage, and screenshot review. The branch is ready for pull request creation.
 
 Implemented surface:
 
@@ -145,6 +145,11 @@ Implemented surface:
 - Streamable HTTP MCP supports initialized `Mcp-Session-Id` sessions, session enforcement on later POST requests, `GET /mcp` server-sent event streams, response event IDs, `Last-Event-ID` replay for recent session events, live delivery of later POST responses to open SSE streams, and `DELETE /mcp` session termination.
 - Browser task detail submission review controls expose review note, partial payout, tip, ban, accept, request-changes, and reject actions.
 - Browser task detail MCP curl examples show initialize plus session-aware tool calls.
+- [docs/user_stories.md](./docs/user_stories.md) maps the current browser, demo, HTTP API, MCP, requester, implementor, organization, and agent-operator stories.
+- The GitHub Pages static site under `site/` has a root landing page, `/demo/` interactive localStorage-backed demo, and `/docs/` placeholder.
+- The static demo supports light and dark modes plus corporate, rustic, blocky, and showcase themes.
+- The static demo supports demo user selection, mock provider sign-in buttons, local task workflow edits, and a visible clear-state control.
+- GitHub Actions has a Pages workflow that publishes `site/` on pushes to `main` and manual dispatch.
 
 Planned defaults:
 
@@ -172,6 +177,20 @@ Last observed checks for pull request 19:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test-deno` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - GitHub CI passed before pull request 19 was merged: static checks, unit tests, build, integration tests, HTTP end-to-end tests, and Playwright user interface end-to-end tests.
+
+Last observed checks on `task/ui-themes-demo`:
+
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for corporate light, blocky dark, rustic light, and showcase dark demo states.
 
 Blocking issues:
 
