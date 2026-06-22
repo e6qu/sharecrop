@@ -6,6 +6,7 @@ Confirmed defects:
 
 Test gaps:
 
+- GitHub Pages deployment cannot be observed from pull request CI because the Pages workflow publishes after pushes to `main` or manual dispatch.
 - Anonymous workers were removed. The anonymous worker identity and payout model is deferred; submissions are registered-users-only.
 - Browser task creation supports user assignees but does not yet expose organization-team assignee selection.
 - Review tips are credit-only. Collectible or inventory-based tips remain deferred.

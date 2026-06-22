@@ -707,3 +707,34 @@ The MCP workflow and Streamable HTTP SSE branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test-deno` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - Manual screenshot review was skipped; Playwright UI coverage passed.
+
+The UI themes and GitHub Pages demo branch added static demo and documentation surfaces:
+
+- [docs/user_stories.md](./docs/user_stories.md) was added to map demo visitor, requester, implementor, organization operator, agent operator, platform reviewer, and deferred stories.
+- A GitHub Pages static site was added under `site/`.
+- The Pages root serves the project landing page.
+- `/demo/` serves an interactive static demo with localStorage-backed state.
+- `/docs/` serves a documentation placeholder.
+- The demo supports light and dark mode selection.
+- The demo supports corporate, rustic, blocky, and showcase themes.
+- The demo supports demo user selection for requester, implementor, organization reviewer, and agent operator perspectives.
+- The demo includes mock Google, Apple, Microsoft, Facebook, and X.com sign-in buttons without implementing provider authentication.
+- The demo includes a visible clear-state control.
+- The demo maps requester creation, discovery, reservation, approval, submission, review, partial payout, tip, ban, REST instruction, and MCP instruction stories into one static workflow surface.
+- A GitHub Actions Pages workflow was added to publish `site/` after pushes to `main` or manual dispatch.
+- Playwright coverage was added for static demo theme switching, user switching, local state persistence, and state reset.
+- A screenshot helper was added under `tools/` for repeatable demo screenshots.
+
+The UI themes and GitHub Pages demo branch verification was performed:
+
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
+- Screenshot review was performed for `/tmp/sharecrop-screens/desktop-corporate-light.png`, `/tmp/sharecrop-screens/desktop-blocky-dark.png`, `/tmp/sharecrop-screens/mobile-rustic-light.png`, and `/tmp/sharecrop-screens/mobile-showcase-dark.png`.
