@@ -9,6 +9,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
+import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
@@ -51,6 +52,13 @@ type alias LoggedInModel =
     , submissions : List Submission.SubmissionResponse
     , submitInput : String
     , submitMessage : Maybe String
+    , collectibles : List Collectible.CollectibleResponse
+    , collectibleName : String
+    , collectibleKind : Collectible.CollectibleKind
+    , collectiblePolicy : Collectible.CollectibleTransferPolicy
+    , collectibleMessage : Maybe String
+    , awardTaskId : String
+    , awardMessage : Maybe String
     }
 
 
@@ -116,6 +124,15 @@ type Msg
     | SubmitReceived (Result Http.Error Submission.SubmissionCreatedResponse)
     | AcceptClicked String
     | AcceptReceived (Result Http.Error ())
+    | CollectibleNameChanged String
+    | CollectibleKindChosen Collectible.CollectibleKind
+    | CollectiblePolicyChosen Collectible.CollectibleTransferPolicy
+    | MintClicked
+    | MintReceived (Result Http.Error Collectible.CollectibleResponse)
+    | CollectiblesReceived (Result Http.Error Collectible.CollectiblesResponse)
+    | AwardTaskIdChanged String
+    | AwardClicked String
+    | AwardReceived (Result Http.Error Collectible.CollectibleResponse)
 
 
 main : Program Flags Model Msg
@@ -160,6 +177,13 @@ emptyLoggedIn response =
     , submissions = []
     , submitInput = ""
     , submitMessage = Nothing
+    , collectibles = []
+    , collectibleName = ""
+    , collectibleKind = Collectible.CollectibleKindBadge
+    , collectiblePolicy = Collectible.CollectibleTransferPolicyNonTransferableExceptPayout
+    , collectibleMessage = Nothing
+    , awardTaskId = ""
+    , awardMessage = Nothing
     }
 
 
@@ -313,6 +337,47 @@ update msg model =
         AcceptReceived _ ->
             ( model, refreshAfterAccept model )
 
+        CollectibleNameChanged value ->
+            ( updateLoggedIn model (\state -> { state | collectibleName = value }), Cmd.none )
+
+        CollectibleKindChosen kind ->
+            ( updateLoggedIn model (\state -> { state | collectibleKind = kind }), Cmd.none )
+
+        CollectiblePolicyChosen policy ->
+            ( updateLoggedIn model (\state -> { state | collectiblePolicy = policy }), Cmd.none )
+
+        MintClicked ->
+            withSession model (\state -> mintCommand model state)
+
+        MintReceived (Ok collectible) ->
+            ( updateLoggedIn model
+                (\state ->
+                    { state
+                        | collectibleName = ""
+                        , collectibleMessage = Just (mintSuccessLabel collectible)
+                    }
+                )
+            , refreshCollectibles model
+            )
+
+        MintReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | collectibleMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        CollectiblesReceived result ->
+            ( updateLoggedIn model (\state -> { state | collectibles = collectiblesFromResult result }), Cmd.none )
+
+        AwardTaskIdChanged value ->
+            ( updateLoggedIn model (\state -> { state | awardTaskId = value }), Cmd.none )
+
+        AwardClicked collectibleId ->
+            withSession model (\state -> awardCommand model state collectibleId)
+
+        AwardReceived (Ok collectible) ->
+            ( updateLoggedIn model (\state -> { state | awardMessage = Just (awardSuccessLabel collectible) }), refreshCollectibles model )
+
+        AwardReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
+
 
 withSession : Model -> (LoggedInModel -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
 withSession model run =
@@ -374,6 +439,16 @@ credentialsFromResult result =
             []
 
 
+collectiblesFromResult : Result Http.Error Collectible.CollectiblesResponse -> List Collectible.CollectibleResponse
+collectiblesFromResult result =
+    case result of
+        Ok response ->
+            response.collectibles
+
+        Err _ ->
+            []
+
+
 toggleScope : Agent.AgentScope -> List Agent.AgentScope -> List Agent.AgentScope
 toggleScope scope scopes =
     if List.member scope scopes then
@@ -424,9 +499,41 @@ acceptCommand model state submissionId =
             ( model, Cmd.none )
 
 
+mintCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+mintCommand model state =
+    if String.isEmpty (String.trim state.collectibleName) then
+        ( updateLoggedIn model (\current -> { current | collectibleMessage = Just "Name is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | collectibleMessage = Nothing })
+        , postCollectible state.accessToken state.collectibleName state.collectibleKind state.collectiblePolicy
+        )
+
+
+awardCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+awardCommand model state collectibleId =
+    if String.isEmpty (String.trim state.awardTaskId) then
+        ( updateLoggedIn model (\current -> { current | awardMessage = Just "Task ID is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | awardMessage = Nothing })
+        , postCollectibleReward state.accessToken state.awardTaskId collectibleId
+        )
+
+
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token, fetchCredentials token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token, fetchCredentials token, fetchCollectibles token ]
+
+
+refreshCollectibles : Model -> Cmd Msg
+refreshCollectibles model =
+    case model.session of
+        LoggedIn state ->
+            fetchCollectibles state.accessToken
+
+        LoggedOut ->
+            Cmd.none
 
 
 refreshLedger : Model -> Cmd Msg
@@ -575,6 +682,29 @@ postAccept token taskId submissionId =
         (Http.expectWhatever AcceptReceived)
 
 
+fetchCollectibles : String -> Cmd Msg
+fetchCollectibles token =
+    authorizedRequest "GET" token "/api/collectibles" Http.emptyBody (Http.expectJson CollectiblesReceived Collectible.collectiblesResponseDecoder)
+
+
+postCollectible : String -> String -> Collectible.CollectibleKind -> Collectible.CollectibleTransferPolicy -> Cmd Msg
+postCollectible token name kind policy =
+    authorizedRequest "POST"
+        token
+        "/api/collectibles"
+        (Http.jsonBody (collectibleRequestBody name kind policy))
+        (Http.expectJson MintReceived Collectible.collectibleResponseDecoder)
+
+
+postCollectibleReward : String -> String -> String -> Cmd Msg
+postCollectibleReward token taskId collectibleId =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/collectible-reward")
+        (Http.jsonBody (collectibleRewardRequestBody collectibleId))
+        (Http.expectJson AwardReceived Collectible.collectibleResponseDecoder)
+
+
 revokeAgent : String -> String -> Cmd Msg
 revokeAgent token credentialId =
     authorizedRequest "POST"
@@ -604,7 +734,6 @@ submissionRequestBody : String -> Encode.Value
 submissionRequestBody responseJson =
     Encode.object
         [ ( "response_json", Encode.string responseJson )
-        , ( "wallet_address", Encode.string "" )
         ]
 
 
@@ -612,6 +741,22 @@ acceptRequestBody : String -> Encode.Value
 acceptRequestBody submissionId =
     Encode.object
         [ ( "idempotency_key", Encode.string ("ui-accept:" ++ submissionId) )
+        ]
+
+
+collectibleRequestBody : String -> Collectible.CollectibleKind -> Collectible.CollectibleTransferPolicy -> Encode.Value
+collectibleRequestBody name kind policy =
+    Encode.object
+        [ ( "name", Encode.string name )
+        , ( "kind", Collectible.collectibleKindEncoder kind )
+        , ( "transfer_policy", Collectible.collectibleTransferPolicyEncoder policy )
+        ]
+
+
+collectibleRewardRequestBody : String -> Encode.Value
+collectibleRewardRequestBody collectibleId =
+    Encode.object
+        [ ( "collectible_id", Encode.string collectibleId )
         ]
 
 
@@ -724,6 +869,7 @@ dashboardView origin state =
         , fundingView state
         , tasksView origin state
         , agentsView origin state
+        , collectiblesView state
         ]
 
 
@@ -904,6 +1050,99 @@ revokeButton credential =
 
 
 
+-- Collectibles panel
+
+
+collectiblesView : LoggedInModel -> Html Msg
+collectiblesView state =
+    Ui.card
+        [ Ui.sectionTitle "Collectibles"
+        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Mint collectibles and award them to tasks." ]
+        , mintForm state
+        , awardForm state
+        , collectiblesList state
+        ]
+
+
+mintForm : LoggedInModel -> Html Msg
+mintForm state =
+    form [ Html.Attributes.class "mt-3 space-y-3", onSubmit MintClicked ]
+        [ Ui.textInput [ type_ "text", placeholder "Collectible name", value state.collectibleName, onInput CollectibleNameChanged, testId "collectible-name" ]
+        , Ui.label_ "Kind"
+        , div [ Html.Attributes.class "flex gap-2" ] (List.map (kindButton state.collectibleKind) allKinds)
+        , Ui.label_ "Transfer policy"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (policyButton state.collectiblePolicy) allPolicies)
+        , Ui.primaryButton [ type_ "submit", testId "mint-collectible" ] "Mint collectible"
+        , maybeNote state.collectibleMessage "collectible-message"
+        ]
+
+
+kindButton : Collectible.CollectibleKind -> Collectible.CollectibleKind -> Html Msg
+kindButton selected kind =
+    chooserButton (selected == kind)
+        (CollectibleKindChosen kind)
+        ("collectible-kind-" ++ collectibleKindTag kind)
+        (collectibleKindLabel kind)
+
+
+policyButton : Collectible.CollectibleTransferPolicy -> Collectible.CollectibleTransferPolicy -> Html Msg
+policyButton selected policy =
+    chooserButton (selected == policy)
+        (CollectiblePolicyChosen policy)
+        ("collectible-policy-" ++ collectiblePolicyTag policy)
+        (collectiblePolicyLabel policy)
+
+
+chooserButton : Bool -> Msg -> String -> String -> Html Msg
+chooserButton isSelected msg identifier labelText =
+    if isSelected then
+        Ui.primaryButton [ type_ "button", onClick msg, testId identifier ] labelText
+
+    else
+        Ui.secondaryButton [ type_ "button", onClick msg, testId identifier ] labelText
+
+
+awardForm : LoggedInModel -> Html Msg
+awardForm state =
+    div [ Html.Attributes.class "mt-4 space-y-3" ]
+        [ Ui.label_ "Award to a task"
+        , Ui.textInput [ type_ "text", placeholder "Task ID", value state.awardTaskId, onInput AwardTaskIdChanged, testId "award-task-id" ]
+        , maybeNote state.awardMessage "award-message"
+        ]
+
+
+collectiblesList : LoggedInModel -> Html Msg
+collectiblesList state =
+    if List.isEmpty state.collectibles then
+        p [ Html.Attributes.class "mt-4 text-sm text-slate-500", testId "collectibles-empty" ] [ text "No collectibles yet." ]
+
+    else
+        div [ Html.Attributes.class "mt-4 divide-y divide-slate-100", testId "collectibles" ] (List.map collectibleRow state.collectibles)
+
+
+collectibleRow : Collectible.CollectibleResponse -> Html Msg
+collectibleRow collectible =
+    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "collectible-row" ]
+        [ div [ Html.Attributes.class "flex items-center gap-2" ]
+            [ p [ Html.Attributes.class "font-medium" ] [ text collectible.name ]
+            , Ui.badge (collectibleStateLabel collectible.state)
+            , span [ Html.Attributes.class "text-xs text-slate-500" ] [ text (collectibleKindLabel collectible.kind) ]
+            ]
+        , awardCollectibleButton collectible
+        ]
+
+
+awardCollectibleButton : Collectible.CollectibleResponse -> Html Msg
+awardCollectibleButton collectible =
+    case collectible.state of
+        Collectible.CollectibleStateMinted ->
+            Ui.secondaryButton [ type_ "button", onClick (AwardClicked collectible.id), testId "award-collectible" ] "Award"
+
+        _ ->
+            text ""
+
+
+
 -- Discovery page
 
 
@@ -1077,6 +1316,85 @@ fundSuccessLabel escrow =
 submitSuccessLabel : Submission.SubmissionCreatedResponse -> String
 submitSuccessLabel created =
     "Submission " ++ created.submission.id ++ " (" ++ submissionStateLabel created.submission.state ++ ")."
+
+
+mintSuccessLabel : Collectible.CollectibleResponse -> String
+mintSuccessLabel collectible =
+    "Minted " ++ collectible.name ++ " (" ++ collectibleStateLabel collectible.state ++ ")."
+
+
+awardSuccessLabel : Collectible.CollectibleResponse -> String
+awardSuccessLabel collectible =
+    "Awarded " ++ collectible.name ++ " (" ++ collectibleStateLabel collectible.state ++ ")."
+
+
+allKinds : List Collectible.CollectibleKind
+allKinds =
+    [ Collectible.CollectibleKindUnique
+    , Collectible.CollectibleKindEdition
+    , Collectible.CollectibleKindBadge
+    ]
+
+
+allPolicies : List Collectible.CollectibleTransferPolicy
+allPolicies =
+    [ Collectible.CollectibleTransferPolicyNonTransferableExceptPayout
+    , Collectible.CollectibleTransferPolicyTransferableBetweenUsers
+    , Collectible.CollectibleTransferPolicyTransferableWithinOrganization
+    , Collectible.CollectibleTransferPolicyIssuerControlled
+    ]
+
+
+collectibleKindTag : Collectible.CollectibleKind -> String
+collectibleKindTag kind =
+    case kind of
+        Collectible.CollectibleKindUnique ->
+            "unique"
+
+        Collectible.CollectibleKindEdition ->
+            "edition"
+
+        Collectible.CollectibleKindBadge ->
+            "badge"
+
+
+collectibleKindLabel : Collectible.CollectibleKind -> String
+collectibleKindLabel =
+    collectibleKindTag
+
+
+collectiblePolicyTag : Collectible.CollectibleTransferPolicy -> String
+collectiblePolicyTag policy =
+    case policy of
+        Collectible.CollectibleTransferPolicyNonTransferableExceptPayout ->
+            "non_transferable_except_payout"
+
+        Collectible.CollectibleTransferPolicyTransferableBetweenUsers ->
+            "transferable_between_users"
+
+        Collectible.CollectibleTransferPolicyTransferableWithinOrganization ->
+            "transferable_within_organization"
+
+        Collectible.CollectibleTransferPolicyIssuerControlled ->
+            "issuer_controlled"
+
+
+collectiblePolicyLabel : Collectible.CollectibleTransferPolicy -> String
+collectiblePolicyLabel =
+    collectiblePolicyTag
+
+
+collectibleStateLabel : Collectible.CollectibleState -> String
+collectibleStateLabel state =
+    case state of
+        Collectible.CollectibleStateMinted ->
+            "minted"
+
+        Collectible.CollectibleStateEscrowed ->
+            "escrowed"
+
+        Collectible.CollectibleStateAwarded ->
+            "awarded"
 
 
 allScopes : List Agent.AgentScope

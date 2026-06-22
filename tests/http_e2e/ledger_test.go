@@ -165,11 +165,12 @@ type escrowHTTPResponse struct {
 }
 
 type acceptHTTPResponse struct {
-	TaskID       string `json:"task_id"`
-	SubmissionID string `json:"submission_id"`
-	PayoutKind   string `json:"payout_kind"`
-	PayoutAmount int64  `json:"payout_amount"`
-	WorkerUserID string `json:"worker_user_id"`
+	TaskID        string `json:"task_id"`
+	SubmissionID  string `json:"submission_id"`
+	PayoutKind    string `json:"payout_kind"`
+	PayoutAmount  int64  `json:"payout_amount"`
+	WorkerUserID  string `json:"worker_user_id"`
+	CollectibleID string `json:"collectible_id"`
 }
 
 func registerUser(t *testing.T, server *httptest.Server, prefix string) authHTTPResponse {
@@ -200,7 +201,7 @@ func openTask(t *testing.T, server *httptest.Server, accessToken string, taskID 
 
 func submitAuthenticated(t *testing.T, server *httptest.Server, accessToken string, taskID string) submissionCreatedHTTPResponse {
 	t.Helper()
-	response := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/submissions", []byte(`{"response_json":"{\"answer\":\"done\"}","wallet_address":""}`), accessToken)
+	response := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/submissions", []byte(`{"response_json":"{\"answer\":\"done\"}"}`), accessToken)
 	defer response.Body.Close()
 	assertStatus(t, response, http.StatusCreated)
 	return decodeSubmissionCreatedHTTPResponse(t, response)

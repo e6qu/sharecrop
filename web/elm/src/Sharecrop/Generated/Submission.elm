@@ -49,36 +49,6 @@ submissionStateEncoder submissionState =
             Encode.string "rejected"
 
 
-type SubmitterKind
-    = SubmitterKindAuthenticated
-    | SubmitterKindAnonymous
-
-submitterKindDecoder : Decoder SubmitterKind
-submitterKindDecoder =
-    Decode.string
-        |> Decode.andThen
-            (\value ->
-                case value of
-                    "authenticated" ->
-                        Decode.succeed SubmitterKindAuthenticated
-
-                    "anonymous" ->
-                        Decode.succeed SubmitterKindAnonymous
-
-                    _ ->
-                        Decode.fail "invalid SubmitterKind"
-            )
-
-submitterKindEncoder : SubmitterKind -> Encode.Value
-submitterKindEncoder submitterKind =
-    case submitterKind of
-        SubmitterKindAuthenticated ->
-            Encode.string "authenticated"
-
-        SubmitterKindAnonymous ->
-            Encode.string "anonymous"
-
-
 type alias SubmissionValidationErrorResponse =
     { path : String
     , message : String
@@ -100,7 +70,7 @@ submissionValidationErrorResponseEncoder submissionValidationErrorResponse =
 type alias SubmissionResponse =
     { id : String
     , taskID : String
-    , submitterKind : SubmitterKind
+    , submitterID : String
     , state : SubmissionState
     , responseJSON : String
     , validationErrors : List SubmissionValidationErrorResponse
@@ -111,7 +81,7 @@ submissionResponseDecoder =
     Decode.map6 SubmissionResponse
         (Decode.field "id" Decode.string)
         (Decode.field "task_id" Decode.string)
-        (Decode.field "submitter_kind" submitterKindDecoder)
+        (Decode.field "submitter_id" Decode.string)
         (Decode.field "state" submissionStateDecoder)
         (Decode.field "response_json" Decode.string)
         (Decode.field "validation_errors" (Decode.list submissionValidationErrorResponseDecoder))
@@ -121,7 +91,7 @@ submissionResponseEncoder submissionResponse =
     Encode.object
         [ ( "id", Encode.string submissionResponse.id )
         , ( "task_id", Encode.string submissionResponse.taskID )
-        , ( "submitter_kind", submitterKindEncoder submissionResponse.submitterKind )
+        , ( "submitter_id", Encode.string submissionResponse.submitterID )
         , ( "state", submissionStateEncoder submissionResponse.state )
         , ( "response_json", Encode.string submissionResponse.responseJSON )
         , ( "validation_errors", Encode.list submissionValidationErrorResponseEncoder submissionResponse.validationErrors )

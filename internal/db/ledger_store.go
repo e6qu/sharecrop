@@ -44,48 +44,50 @@ func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreC
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft tasks can be funded")}
 	}
 
-	var escrowExists bool
-	if err := tx.QueryRow(ctx, "select exists(select 1 from task_escrows where task_id = $1)", command.TaskID.String()).Scan(&escrowExists); err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check existing escrow failed")}
+	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient credits to fund the task")
+}
+
+func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command ledger.OrganizationFundStoreCommand) ledger.FundResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin fund task transaction failed")}
 	}
-	if escrowExists {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task is already funded")}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if existing := findEscrowForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID); existing != nil {
+		return existing
 	}
 
+	accountResult := lockOrganizationAccount(ctx, tx, command.OrganizationID)
+	account, matched := accountResult.(accountLocked)
+	if !matched {
+		return ledger.FundRejected{Reason: accountResult.(accountLockRejected).reason}
+	}
+
+	taskResult := lockTaskOwnedByOrganization(ctx, tx, command.TaskID, command.OrganizationID)
+	taskRow, taskMatched := taskResult.(taskLocked)
+	if !taskMatched {
+		return ledger.FundRejected{Reason: taskResult.(taskLockRejected).reason}
+	}
+	if taskRow.state != "draft" {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft tasks can be funded")}
+	}
+
+	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient organization credits to fund the task")
+}
+
+func (store LedgerStore) OrganizationBalance(ctx context.Context, organizationID core.OrganizationID) ledger.BalanceResult {
 	var balance int64
-	if err := tx.QueryRow(ctx, "select coalesce(sum(amount), 0) from ledger_entries where account_id = $1", account.id).Scan(&balance); err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read account balance failed")}
-	}
-	if balance < command.Amount.Int64() {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "insufficient credits to fund the task")}
-	}
-
-	_, err = tx.Exec(ctx, `
-		insert into task_escrows (task_id, funder_account_id, amount, state)
-		values ($1, $2, $3, 'held')
-	`, command.TaskID.String(), account.id, command.Amount.Int64())
+	err := store.pool.QueryRow(ctx, `
+		select coalesce(sum(ledger_entries.amount), 0)
+		from ledger_entries
+		join credit_accounts on credit_accounts.id = ledger_entries.account_id
+		where credit_accounts.organization_id = $1
+	`, organizationID.String()).Scan(&balance)
 	if err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task escrow failed")}
+		return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read organization balance failed")}
 	}
-
-	_, err = tx.Exec(ctx, `
-		insert into ledger_entries (id, account_id, kind, amount, task_id, idempotency_key)
-		values ($1, $2, 'task_escrow', $3, $4, $5)
-	`, command.EntryID.String(), account.id, -command.Amount.Int64(), command.TaskID.String(), command.IdempotencyKey.String())
-	if err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task escrow ledger entry failed")}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit fund task transaction failed")}
-	}
-
-	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{
-		TaskID:          command.TaskID,
-		FunderAccountID: account.parsedID,
-		Amount:          command.Amount,
-		State:           ledger.EscrowStateHeld,
-	}}
+	return ledger.BalanceFound{Value: ledger.NewBalance(balance)}
 }
 
 func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.AcceptStoreCommand) ledger.AcceptResult {
@@ -102,13 +104,12 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	}
 
 	var submissionState string
-	var submitterKind string
 	var rawWorkerID string
 	scanErr := tx.QueryRow(ctx, `
-		select state, submitter_kind, coalesce(user_id::text, '')
+		select state, user_id::text
 		from submissions
 		where id = $1 and task_id = $2
-	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &submitterKind, &rawWorkerID)
+	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "submission was not found for the task")}
 	}
@@ -117,7 +118,7 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	}
 
 	if submissionState == "accepted" {
-		return idempotentAccept(ctx, tx, command, submitterKind, rawWorkerID)
+		return idempotentAccept(ctx, tx, command, rawWorkerID)
 	}
 	if submissionState != "submitted" {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only valid submissions can be accepted")}
@@ -137,17 +138,27 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "close task failed")}
 	}
 
-	payoutResult := payOutEscrow(ctx, tx, command, submitterKind, rawWorkerID)
+	payoutResult := payOutEscrow(ctx, tx, command, rawWorkerID)
 	payout, payoutMatched := payoutResult.(payoutResolved)
 	if !payoutMatched {
 		return ledger.AcceptRejected{Reason: payoutResult.(payoutRejected).reason}
+	}
+
+	outcome := payout.outcome
+	if _, noPayout := outcome.(ledger.NoPayout); noPayout {
+		collectibleResult := payOutCollectible(ctx, tx, command.TaskID, rawWorkerID)
+		collectible, collectibleMatched := collectibleResult.(payoutResolved)
+		if !collectibleMatched {
+			return ledger.AcceptRejected{Reason: collectibleResult.(payoutRejected).reason}
+		}
+		outcome = collectible.outcome
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit accept submission transaction failed")}
 	}
 
-	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: payout.outcome}
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome}
 }
 
 func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundStoreCommand) ledger.RefundResult {

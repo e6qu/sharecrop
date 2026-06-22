@@ -57,10 +57,10 @@ type statusPayload struct {
 }
 
 type submissionSummary struct {
-	ID            string `json:"id"`
-	TaskID        string `json:"task_id"`
-	SubmitterKind string `json:"submitter_kind"`
-	State         string `json:"state"`
+	ID          string `json:"id"`
+	TaskID      string `json:"task_id"`
+	SubmitterID string `json:"submitter_id"`
+	State       string `json:"state"`
 }
 
 type submissionsPayload struct {
@@ -211,7 +211,7 @@ func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSu
 
 	command := submission.SubmitCommand{
 		TaskID:         taskID.Value,
-		Submitter:      submission.AuthenticatedSubmitter{UserID: subject.ID},
+		SubmitterID:    subject.ID,
 		ResponseSource: source.Value,
 	}
 	result := server.services.SubmitResponse(ctx, command)
@@ -451,10 +451,10 @@ func taskToDetail(value task.Task) taskDetail {
 
 func submissionToSummary(value submission.Submission) submissionSummary {
 	return submissionSummary{
-		ID:            value.ID.String(),
-		TaskID:        value.TaskID.String(),
-		SubmitterKind: submitterKind(value.Submitter),
-		State:         value.State.String(),
+		ID:          value.ID.String(),
+		TaskID:      value.TaskID.String(),
+		SubmitterID: value.SubmitterID.String(),
+		State:       value.State.String(),
 	}
 }
 
@@ -498,16 +498,5 @@ func payloadParts(payload task.DataPayload) (string, string) {
 		return "json", typed.Source.String()
 	default:
 		return "", ""
-	}
-}
-
-func submitterKind(submitter submission.Submitter) string {
-	switch submitter.(type) {
-	case submission.AuthenticatedSubmitter:
-		return submission.SubmitterKindAuthenticated.String()
-	case submission.AnonymousSubmitter:
-		return submission.SubmitterKindAnonymous.String()
-	default:
-		return ""
 	}
 }

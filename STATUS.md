@@ -1,12 +1,12 @@
 # Status
 
-The repository contained the pull request 1 through pull request 9 work, plus pull request 10 MCP, agent credentials, and agent setup work.
+The repository contained the pull request 1 through pull request 10 work, plus pull request 11 MCP transports, task-series read, and user interface polish work.
 
-Pull request 11 was ready for review.
+Pull request 12 was ready for review.
 
 Active task:
 
-- Open pull request 11 and wait for continuous integration to pass.
+- Open pull request 12 and wait for continuous integration to pass.
 
 Implemented surface:
 
@@ -103,6 +103,12 @@ Implemented surface:
 - HTTP contract fixture tests pinning response wire shapes.
 - A reusable shadcn-inspired Elm component module under `Sharecrop.Ui`.
 - Browser page navigation with a public task discovery screen and a task detail screen with response submission and owner submission review and acceptance.
+- Submissions are restricted to registered users; anonymous wallet-based submission was removed.
+- Organization credit accounts: organizations receive a credit account and grant on creation, fund organization-owned tasks from the organization account behind the billing permission, and expose an organization credit balance.
+- Platform collectibles under `internal/assets` with kinds, lifecycle states, transfer-policy variants, and a policy check for reward payout.
+- Collectible minting, collectible task rewards with escrow, transfer to the accepted worker on acceptance, and refund.
+- HTTP endpoints for minting and listing collectibles, funding and refunding collectible rewards, and an organization credit balance.
+- Generated Elm collectible contracts and a browser collectibles panel for minting, holdings, and awarding a collectible to a task.
 
 The accepted defaults for pull request 1 were:
 
@@ -145,6 +151,7 @@ Last observed checks:
 - Pull request 9 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
 - Pull request 10 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
 - Pull request 11 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, stdio MCP smoke, and manual screenshot checks passed.
+- Pull request 12 local unit, formatting, type, lint, policy, copy-paste, dead-code, contract determinism, frontend, build, migration, Postgres integration, HTTP end-to-end, Playwright, and manual screenshot checks passed.
 
 See [PLAN.md](./PLAN.md) for the product and architecture plan.
 See [DO_NEXT.md](./DO_NEXT.md) for the next tasks.

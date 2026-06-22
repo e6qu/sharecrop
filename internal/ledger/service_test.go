@@ -149,7 +149,15 @@ func (store *memoryStore) RefundTask(_ context.Context, command RefundStoreComma
 	return TaskRefunded{Escrow: TaskEscrow{TaskID: command.TaskID, State: EscrowStateRefunded}}
 }
 
+func (store *memoryStore) FundTaskFromOrganization(_ context.Context, command OrganizationFundStoreCommand) FundResult {
+	return TaskFunded{Escrow: TaskEscrow{TaskID: command.TaskID, Amount: command.Amount, State: EscrowStateHeld}}
+}
+
 func (store *memoryStore) Balance(_ context.Context, _ core.UserID) BalanceResult {
+	return BalanceFound{Value: NewBalance(0)}
+}
+
+func (store *memoryStore) OrganizationBalance(_ context.Context, _ core.OrganizationID) BalanceResult {
 	return BalanceFound{Value: NewBalance(0)}
 }
 

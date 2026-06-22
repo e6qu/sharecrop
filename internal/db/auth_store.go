@@ -234,6 +234,36 @@ func insertSignupGrant(ctx context.Context, tx pgx.Tx, userID core.UserID) signu
 	return signupGrantInserted{}
 }
 
+// insertOrganizationCreditGrant creates an organization credit account and its
+// initial grant inside the organization-creation transaction.
+func insertOrganizationCreditGrant(ctx context.Context, tx pgx.Tx, organizationID core.OrganizationID) signupGrantResult {
+	accountResult := core.NewCreditAccountID()
+	account, accountMatched := accountResult.(core.CreditAccountIDCreated)
+	if !accountMatched {
+		return signupGrantRejected{reason: accountResult.(core.CreditAccountIDRejected).Reason}
+	}
+
+	entryResult := core.NewLedgerEntryID()
+	entry, entryMatched := entryResult.(core.LedgerEntryIDCreated)
+	if !entryMatched {
+		return signupGrantRejected{reason: entryResult.(core.LedgerEntryIDRejected).Reason}
+	}
+
+	if _, err := tx.Exec(ctx, "insert into credit_accounts (id, owner_kind, organization_id) values ($1, 'organization', $2)", account.Value.String(), organizationID.String()); err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization credit account failed")}
+	}
+
+	_, err := tx.Exec(ctx, `
+		insert into ledger_entries (id, account_id, kind, amount, idempotency_key)
+		values ($1, $2, 'signup_grant', $3, $4)
+	`, entry.Value.String(), account.Value.String(), ledger.SignupGrantAmount().Int64(), "org_grant:"+organizationID.String())
+	if err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization credit grant failed")}
+	}
+
+	return signupGrantInserted{}
+}
+
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {

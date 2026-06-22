@@ -12,7 +12,7 @@ type validationErrorDTO struct {
 	Message string `json:"message"`
 }
 
-func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawSubmitterKind string, rawUserID string, rawWalletAddress string, rawState string, rawResponse string, rawValidationErrors string) submissionRowResult {
+func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawValidationErrors string) submissionRowResult {
 	submissionIDResult := core.ParseSubmissionID(rawSubmissionID)
 	submissionID, submissionIDMatched := submissionIDResult.(core.SubmissionIDCreated)
 	if !submissionIDMatched {
@@ -27,11 +27,11 @@ func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawSubmitterKi
 		return submissionRowRejected{reason: rejected.Reason}
 	}
 
-	submitterResult := parseSubmitter(rawSubmitterKind, rawUserID, rawWalletAddress)
-	submitter, submitterMatched := submitterResult.(submitterAccepted)
+	submitterResult := core.ParseUserID(rawUserID)
+	submitterID, submitterMatched := submitterResult.(core.UserIDCreated)
 	if !submitterMatched {
-		rejected := submitterResult.(submitterRejected)
-		return submissionRowRejected{reason: rejected.reason}
+		rejected := submitterResult.(core.UserIDRejected)
+		return submissionRowRejected{reason: rejected.Reason}
 	}
 
 	stateResult := submission.ParseState(rawState)
@@ -58,50 +58,11 @@ func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawSubmitterKi
 	return submissionRowAccepted{value: submission.Submission{
 		ID:             submissionID.Value,
 		TaskID:         taskID.Value,
-		Submitter:      submitter.value,
+		SubmitterID:    submitterID.Value,
 		State:          state.Value,
 		ResponseSource: source.Value,
 		Validation:     outcome.value,
 	}}
-}
-
-type submitterResult interface {
-	submitterResult()
-}
-
-type submitterAccepted struct {
-	value submission.Submitter
-}
-
-type submitterRejected struct {
-	reason core.DomainError
-}
-
-func (submitterAccepted) submitterResult() {}
-
-func (submitterRejected) submitterResult() {}
-
-func parseSubmitter(kind string, rawUserID string, rawWalletAddress string) submitterResult {
-	switch kind {
-	case submission.SubmitterKindAuthenticated.String():
-		userIDResult := core.ParseUserID(rawUserID)
-		userID, matched := userIDResult.(core.UserIDCreated)
-		if !matched {
-			rejected := userIDResult.(core.UserIDRejected)
-			return submitterRejected{reason: rejected.Reason}
-		}
-		return submitterAccepted{value: submission.AuthenticatedSubmitter{UserID: userID.Value}}
-	case submission.SubmitterKindAnonymous.String():
-		walletResult := submission.NewWalletAddress(rawWalletAddress)
-		wallet, matched := walletResult.(submission.WalletAddressAccepted)
-		if !matched {
-			rejected := walletResult.(submission.WalletAddressRejected)
-			return submitterRejected{reason: rejected.Reason}
-		}
-		return submitterAccepted{value: submission.AnonymousSubmitter{WalletAddress: wallet.Value}}
-	default:
-		return submitterRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "submission submitter kind is invalid")}
-	}
 }
 
 type validationOutcomeResult interface {

@@ -115,6 +115,17 @@ agentCredentialIDEncoder : AgentCredentialID -> Encode.Value
 agentCredentialIDEncoder agentCredentialID =
     Encode.string agentCredentialID
 
+type alias CollectibleID =
+    String
+
+collectibleIDDecoder : Decoder CollectibleID
+collectibleIDDecoder =
+    Decode.string
+
+collectibleIDEncoder : CollectibleID -> Encode.Value
+collectibleIDEncoder collectibleID =
+    Encode.string collectibleID
+
 type alias OrganizationID =
     String
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
@@ -151,7 +152,7 @@ func TestCreateTaskEndpointUsesDefaultUserVisibility(t *testing.T) {
 func TestAuthenticatedSubmissionEndpointReturnsReceipt(t *testing.T) {
 	taskIDResult := core.NewTaskID()
 	taskIDCreated := taskIDResult.(core.TaskIDCreated)
-	request := httptest.NewRequest(http.MethodPost, "/api/tasks/"+taskIDCreated.Value.String()+"/submissions", strings.NewReader(`{"response_json":"{\"answer\":\"done\"}","wallet_address":""}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/"+taskIDCreated.Value.String()+"/submissions", strings.NewReader(`{"response_json":"{\"answer\":\"done\"}"}`))
 	request.Header.Set("Authorization", "Bearer test-access-token")
 	response := httptest.NewRecorder()
 
@@ -273,7 +274,7 @@ func TestMCPEndpointRequiresAgentCredential(t *testing.T) {
 }
 
 func testHandler() http.Handler {
-	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{}, testLedgerService{}, testAgentService{})
+	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{}, testLedgerService{}, testAgentService{}, testAssetService{})
 }
 
 func testStaticFiles() fs.FS {
@@ -414,6 +415,10 @@ func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserS
 	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 
+func (testOrganizationService) CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck {
+	return org.PermissionGranted{}
+}
+
 func (testTaskService) Create(_ context.Context, command task.CreateCommand) task.CreateResult {
 	idResult := core.NewTaskID()
 	idCreated := idResult.(core.TaskIDCreated)
@@ -476,7 +481,7 @@ func (testSubmissionService) Submit(_ context.Context, command submission.Submit
 		Value: submission.Submission{
 			ID:             idCreated.Value,
 			TaskID:         command.TaskID,
-			Submitter:      command.Submitter,
+			SubmitterID:    command.SubmitterID,
 			State:          submission.StateSubmitted,
 			ResponseSource: command.ResponseSource,
 			Validation:     submission.ValidationPassed{},
@@ -495,6 +500,14 @@ func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core
 
 func (testLedgerService) FundTask(_ context.Context, _ core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
 	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
+}
+
+func (testLedgerService) FundTaskFromOrganization(_ context.Context, _ core.OrganizationID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
+	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
+}
+
+func (testLedgerService) OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult {
+	return ledger.BalanceFound{Value: ledger.NewBalance(100)}
 }
 
 func (testLedgerService) AcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey) ledger.AcceptResult {
@@ -531,6 +544,25 @@ func (testAgentService) Verify(context.Context, agent.SecretPlain) agent.VerifyR
 
 func (testAgentService) List(context.Context, core.UserID) agent.ListResult {
 	return agent.CredentialsListed{Values: []agent.Credential{}}
+}
+
+type testAssetService struct{}
+
+func (testAssetService) Mint(_ context.Context, owner core.UserID, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy) assets.MintResult {
+	idCreated := core.NewCollectibleID().(core.CollectibleIDCreated)
+	return assets.CollectibleMinted{Value: assets.Collectible{ID: idCreated.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerID: owner}}
+}
+
+func (testAssetService) ListCollectibles(context.Context, core.UserID) assets.ListResult {
+	return assets.CollectiblesListed{Values: []assets.Collectible{}}
+}
+
+func (testAssetService) FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult {
+	return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
+}
+
+func (testAssetService) RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult {
+	return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
 }
 
 func (testAgentService) Revoke(_ context.Context, owner core.UserID, id core.AgentCredentialID) agent.RevokeResult {

@@ -43,6 +43,11 @@ func (store OrgStore) CreateOrganization(ctx context.Context, organizationID cor
 		return org.CreateOrganizationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization owner role failed")}
 	}
 
+	grantResult := insertOrganizationCreditGrant(ctx, tx, organizationID)
+	if rejected, matched := grantResult.(signupGrantRejected); matched {
+		return org.CreateOrganizationStoreRejected{Reason: rejected.reason}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return org.CreateOrganizationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit create organization transaction failed")}
 	}
