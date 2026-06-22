@@ -181,14 +181,246 @@ taskCapabilityTokenStateEncoder taskCapabilityTokenState =
             Encode.string "revoked"
 
 
+type TaskParticipationPolicy
+    = TaskParticipationPolicyOpen
+    | TaskParticipationPolicyReservationRequired
+    | TaskParticipationPolicyApprovalRequired
+
+taskParticipationPolicyDecoder : Decoder TaskParticipationPolicy
+taskParticipationPolicyDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "open" ->
+                        Decode.succeed TaskParticipationPolicyOpen
+
+                    "reservation_required" ->
+                        Decode.succeed TaskParticipationPolicyReservationRequired
+
+                    "approval_required" ->
+                        Decode.succeed TaskParticipationPolicyApprovalRequired
+
+                    _ ->
+                        Decode.fail "invalid TaskParticipationPolicy"
+            )
+
+taskParticipationPolicyEncoder : TaskParticipationPolicy -> Encode.Value
+taskParticipationPolicyEncoder taskParticipationPolicy =
+    case taskParticipationPolicy of
+        TaskParticipationPolicyOpen ->
+            Encode.string "open"
+
+        TaskParticipationPolicyReservationRequired ->
+            Encode.string "reservation_required"
+
+        TaskParticipationPolicyApprovalRequired ->
+            Encode.string "approval_required"
+
+
+type TaskAssigneeScope
+    = TaskAssigneeScopeUser
+    | TaskAssigneeScopeOrganizationTeam
+
+taskAssigneeScopeDecoder : Decoder TaskAssigneeScope
+taskAssigneeScopeDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "user" ->
+                        Decode.succeed TaskAssigneeScopeUser
+
+                    "organization_team" ->
+                        Decode.succeed TaskAssigneeScopeOrganizationTeam
+
+                    _ ->
+                        Decode.fail "invalid TaskAssigneeScope"
+            )
+
+taskAssigneeScopeEncoder : TaskAssigneeScope -> Encode.Value
+taskAssigneeScopeEncoder taskAssigneeScope =
+    case taskAssigneeScope of
+        TaskAssigneeScopeUser ->
+            Encode.string "user"
+
+        TaskAssigneeScopeOrganizationTeam ->
+            Encode.string "organization_team"
+
+
+type TaskAvailabilityKind
+    = TaskAvailabilityKindAvailable
+    | TaskAvailabilityKindReserved
+    | TaskAvailabilityKindAwaitingApproval
+    | TaskAvailabilityKindClosed
+
+taskAvailabilityKindDecoder : Decoder TaskAvailabilityKind
+taskAvailabilityKindDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "available" ->
+                        Decode.succeed TaskAvailabilityKindAvailable
+
+                    "reserved" ->
+                        Decode.succeed TaskAvailabilityKindReserved
+
+                    "awaiting_approval" ->
+                        Decode.succeed TaskAvailabilityKindAwaitingApproval
+
+                    "closed" ->
+                        Decode.succeed TaskAvailabilityKindClosed
+
+                    _ ->
+                        Decode.fail "invalid TaskAvailabilityKind"
+            )
+
+taskAvailabilityKindEncoder : TaskAvailabilityKind -> Encode.Value
+taskAvailabilityKindEncoder taskAvailabilityKind =
+    case taskAvailabilityKind of
+        TaskAvailabilityKindAvailable ->
+            Encode.string "available"
+
+        TaskAvailabilityKindReserved ->
+            Encode.string "reserved"
+
+        TaskAvailabilityKindAwaitingApproval ->
+            Encode.string "awaiting_approval"
+
+        TaskAvailabilityKindClosed ->
+            Encode.string "closed"
+
+
+type TaskViewerAction
+    = TaskViewerActionSubmit
+    | TaskViewerActionReserve
+    | TaskViewerActionRequestApproval
+    | TaskViewerActionWait
+    | TaskViewerActionNone
+
+taskViewerActionDecoder : Decoder TaskViewerAction
+taskViewerActionDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "submit" ->
+                        Decode.succeed TaskViewerActionSubmit
+
+                    "reserve" ->
+                        Decode.succeed TaskViewerActionReserve
+
+                    "request_approval" ->
+                        Decode.succeed TaskViewerActionRequestApproval
+
+                    "wait" ->
+                        Decode.succeed TaskViewerActionWait
+
+                    "none" ->
+                        Decode.succeed TaskViewerActionNone
+
+                    _ ->
+                        Decode.fail "invalid TaskViewerAction"
+            )
+
+taskViewerActionEncoder : TaskViewerAction -> Encode.Value
+taskViewerActionEncoder taskViewerAction =
+    case taskViewerAction of
+        TaskViewerActionSubmit ->
+            Encode.string "submit"
+
+        TaskViewerActionReserve ->
+            Encode.string "reserve"
+
+        TaskViewerActionRequestApproval ->
+            Encode.string "request_approval"
+
+        TaskViewerActionWait ->
+            Encode.string "wait"
+
+        TaskViewerActionNone ->
+            Encode.string "none"
+
+
+type TaskReservationState
+    = TaskReservationStateRequested
+    | TaskReservationStateActive
+    | TaskReservationStateDeclined
+    | TaskReservationStateCancelledByRequester
+    | TaskReservationStateCancelledByWorker
+    | TaskReservationStateExpired
+    | TaskReservationStateSubmitted
+
+taskReservationStateDecoder : Decoder TaskReservationState
+taskReservationStateDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "requested" ->
+                        Decode.succeed TaskReservationStateRequested
+
+                    "active" ->
+                        Decode.succeed TaskReservationStateActive
+
+                    "declined" ->
+                        Decode.succeed TaskReservationStateDeclined
+
+                    "cancelled_by_requester" ->
+                        Decode.succeed TaskReservationStateCancelledByRequester
+
+                    "cancelled_by_worker" ->
+                        Decode.succeed TaskReservationStateCancelledByWorker
+
+                    "expired" ->
+                        Decode.succeed TaskReservationStateExpired
+
+                    "submitted" ->
+                        Decode.succeed TaskReservationStateSubmitted
+
+                    _ ->
+                        Decode.fail "invalid TaskReservationState"
+            )
+
+taskReservationStateEncoder : TaskReservationState -> Encode.Value
+taskReservationStateEncoder taskReservationState =
+    case taskReservationState of
+        TaskReservationStateRequested ->
+            Encode.string "requested"
+
+        TaskReservationStateActive ->
+            Encode.string "active"
+
+        TaskReservationStateDeclined ->
+            Encode.string "declined"
+
+        TaskReservationStateCancelledByRequester ->
+            Encode.string "cancelled_by_requester"
+
+        TaskReservationStateCancelledByWorker ->
+            Encode.string "cancelled_by_worker"
+
+        TaskReservationStateExpired ->
+            Encode.string "expired"
+
+        TaskReservationStateSubmitted ->
+            Encode.string "submitted"
+
+
 type alias TaskListItemResponse =
     { id : String
     , ownerKind : TaskOwnerKind
     , title : String
     , rewardKind : String
     , rewardCreditAmount : Int
+    , participationPolicy : TaskParticipationPolicy
+    , assigneeScope : TaskAssigneeScope
+    , reservationExpiryHours : Int
     , state : TaskState
     , visibilityKind : TaskVisibilityKind
+    , availabilityKind : TaskAvailabilityKind
+    , viewerAction : TaskViewerAction
     , createdBy : String
     }
 
@@ -200,9 +432,18 @@ taskListItemResponseDecoder =
         (Decode.field "title" Decode.string)
         (Decode.field "reward_kind" Decode.string)
         (Decode.field "reward_credit_amount" Decode.int)
-        (Decode.field "state" taskStateDecoder)
-        (Decode.field "visibility_kind" taskVisibilityKindDecoder)
-        (Decode.field "created_by" Decode.string)
+        (Decode.field "participation_policy" taskParticipationPolicyDecoder)
+        (Decode.field "assignee_scope" taskAssigneeScopeDecoder)
+        (Decode.field "reservation_expiry_hours" Decode.int)
+        |> Decode.andThen
+            (\finish ->
+                Decode.map5 finish
+                    (Decode.field "state" taskStateDecoder)
+                    (Decode.field "visibility_kind" taskVisibilityKindDecoder)
+                    (Decode.field "availability_kind" taskAvailabilityKindDecoder)
+                    (Decode.field "viewer_action" taskViewerActionDecoder)
+                    (Decode.field "created_by" Decode.string)
+            )
 
 taskListItemResponseEncoder : TaskListItemResponse -> Encode.Value
 taskListItemResponseEncoder taskListItemResponse =
@@ -212,8 +453,13 @@ taskListItemResponseEncoder taskListItemResponse =
         , ( "title", Encode.string taskListItemResponse.title )
         , ( "reward_kind", Encode.string taskListItemResponse.rewardKind )
         , ( "reward_credit_amount", Encode.int taskListItemResponse.rewardCreditAmount )
+        , ( "participation_policy", taskParticipationPolicyEncoder taskListItemResponse.participationPolicy )
+        , ( "assignee_scope", taskAssigneeScopeEncoder taskListItemResponse.assigneeScope )
+        , ( "reservation_expiry_hours", Encode.int taskListItemResponse.reservationExpiryHours )
         , ( "state", taskStateEncoder taskListItemResponse.state )
         , ( "visibility_kind", taskVisibilityKindEncoder taskListItemResponse.visibilityKind )
+        , ( "availability_kind", taskAvailabilityKindEncoder taskListItemResponse.availabilityKind )
+        , ( "viewer_action", taskViewerActionEncoder taskListItemResponse.viewerAction )
         , ( "created_by", Encode.string taskListItemResponse.createdBy )
         ]
 
@@ -225,9 +471,14 @@ type alias TaskResponse =
     , description : String
     , rewardKind : String
     , rewardCreditAmount : Int
+    , participationPolicy : TaskParticipationPolicy
+    , assigneeScope : TaskAssigneeScope
+    , reservationExpiryHours : Int
     , state : TaskState
     , visibilityKind : TaskVisibilityKind
     , visibilityID : String
+    , availabilityKind : TaskAvailabilityKind
+    , viewerAction : TaskViewerAction
     , seriesKind : String
     , seriesID : String
     , seriesPosition : Int
@@ -247,22 +498,27 @@ taskResponseDecoder =
         (Decode.field "description" Decode.string)
         (Decode.field "reward_kind" Decode.string)
         (Decode.field "reward_credit_amount" Decode.int)
-        (Decode.field "state" taskStateDecoder)
+        (Decode.field "participation_policy" taskParticipationPolicyDecoder)
         |> Decode.andThen
             (\finish ->
                 Decode.map8 finish
+                    (Decode.field "assignee_scope" taskAssigneeScopeDecoder)
+                    (Decode.field "reservation_expiry_hours" Decode.int)
+                    (Decode.field "state" taskStateDecoder)
                     (Decode.field "visibility_kind" taskVisibilityKindDecoder)
                     (Decode.field "visibility_id" Decode.string)
+                    (Decode.field "availability_kind" taskAvailabilityKindDecoder)
+                    (Decode.field "viewer_action" taskViewerActionDecoder)
                     (Decode.field "series_kind" Decode.string)
+            )
+        |> Decode.andThen
+            (\finish ->
+                Decode.map6 finish
                     (Decode.field "series_id" Decode.string)
                     (Decode.field "series_position" Decode.int)
                     (Decode.field "response_schema_json" Decode.string)
                     (Decode.field "payload_kind" Decode.string)
                     (Decode.field "payload_json" Decode.string)
-            )
-        |> Decode.andThen
-            (\finish ->
-                Decode.map finish
                     (Decode.field "created_by" Decode.string)
             )
 
@@ -276,9 +532,14 @@ taskResponseEncoder taskResponse =
         , ( "description", Encode.string taskResponse.description )
         , ( "reward_kind", Encode.string taskResponse.rewardKind )
         , ( "reward_credit_amount", Encode.int taskResponse.rewardCreditAmount )
+        , ( "participation_policy", taskParticipationPolicyEncoder taskResponse.participationPolicy )
+        , ( "assignee_scope", taskAssigneeScopeEncoder taskResponse.assigneeScope )
+        , ( "reservation_expiry_hours", Encode.int taskResponse.reservationExpiryHours )
         , ( "state", taskStateEncoder taskResponse.state )
         , ( "visibility_kind", taskVisibilityKindEncoder taskResponse.visibilityKind )
         , ( "visibility_id", Encode.string taskResponse.visibilityID )
+        , ( "availability_kind", taskAvailabilityKindEncoder taskResponse.availabilityKind )
+        , ( "viewer_action", taskViewerActionEncoder taskResponse.viewerAction )
         , ( "series_kind", Encode.string taskResponse.seriesKind )
         , ( "series_id", Encode.string taskResponse.seriesID )
         , ( "series_position", Encode.int taskResponse.seriesPosition )
@@ -301,6 +562,51 @@ tasksResponseEncoder : TasksResponse -> Encode.Value
 tasksResponseEncoder tasksResponse =
     Encode.object
         [ ( "tasks", Encode.list taskListItemResponseEncoder tasksResponse.tasks )
+        ]
+
+type alias TaskReservationResponse =
+    { id : String
+    , taskID : String
+    , assigneeKind : TaskAssigneeScope
+    , assigneeID : String
+    , state : TaskReservationState
+    , requestedBy : String
+    }
+
+taskReservationResponseDecoder : Decoder TaskReservationResponse
+taskReservationResponseDecoder =
+    Decode.map6 TaskReservationResponse
+        (Decode.field "id" Decode.string)
+        (Decode.field "task_id" Decode.string)
+        (Decode.field "assignee_kind" taskAssigneeScopeDecoder)
+        (Decode.field "assignee_id" Decode.string)
+        (Decode.field "state" taskReservationStateDecoder)
+        (Decode.field "requested_by" Decode.string)
+
+taskReservationResponseEncoder : TaskReservationResponse -> Encode.Value
+taskReservationResponseEncoder taskReservationResponse =
+    Encode.object
+        [ ( "id", Encode.string taskReservationResponse.id )
+        , ( "task_id", Encode.string taskReservationResponse.taskID )
+        , ( "assignee_kind", taskAssigneeScopeEncoder taskReservationResponse.assigneeKind )
+        , ( "assignee_id", Encode.string taskReservationResponse.assigneeID )
+        , ( "state", taskReservationStateEncoder taskReservationResponse.state )
+        , ( "requested_by", Encode.string taskReservationResponse.requestedBy )
+        ]
+
+type alias TaskReservationsResponse =
+    { reservations : List TaskReservationResponse
+    }
+
+taskReservationsResponseDecoder : Decoder TaskReservationsResponse
+taskReservationsResponseDecoder =
+    Decode.map TaskReservationsResponse
+        (Decode.field "reservations" (Decode.list taskReservationResponseDecoder))
+
+taskReservationsResponseEncoder : TaskReservationsResponse -> Encode.Value
+taskReservationsResponseEncoder taskReservationsResponse =
+    Encode.object
+        [ ( "reservations", Encode.list taskReservationResponseEncoder taskReservationsResponse.reservations )
         ]
 
 type alias TaskCapabilityTokenResponse =

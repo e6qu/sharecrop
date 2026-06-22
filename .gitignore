@@ -1,5 +1,6 @@
 bin/
 .cache/
+.gocache/
 elm-stuff/
 node_modules/
 test-results/

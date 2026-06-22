@@ -36,6 +36,15 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 	}
 
 	_, err = tx.Exec(ctx, `
+		update task_reservations
+		set state = 'submitted', state_recorded_at = now()
+		where task_id = $1 and assignee_kind = 'user' and user_id = $2 and state = 'active'
+	`, command.TaskID.String(), command.SubmitterID.String())
+	if err != nil {
+		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "mark task reservation submitted failed")}
+	}
+
+	_, err = tx.Exec(ctx, `
 		insert into submission_receipt_tokens (id, submission_id, token_hash)
 		values ($1, $2, $3)
 	`, receiptID.String(), submissionID.String(), receiptHash.String())

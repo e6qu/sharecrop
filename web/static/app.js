@@ -7168,10 +7168,70 @@ var $author$project$Main$TasksReceived = function (a) {
 var $author$project$Sharecrop$Generated$Task$TasksResponse = function (tasks) {
 	return {tasks: tasks};
 };
-var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = F8(
-	function (id, ownerKind, title, rewardKind, rewardCreditAmount, state, visibilityKind, createdBy) {
-		return {createdBy: createdBy, id: id, ownerKind: ownerKind, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, state: state, title: title, visibilityKind: visibilityKind};
-	});
+var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = function (id) {
+	return function (ownerKind) {
+		return function (title) {
+			return function (rewardKind) {
+				return function (rewardCreditAmount) {
+					return function (participationPolicy) {
+						return function (assigneeScope) {
+							return function (reservationExpiryHours) {
+								return function (state) {
+									return function (visibilityKind) {
+										return function (availabilityKind) {
+											return function (viewerAction) {
+												return function (createdBy) {
+													return {assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, id: id, ownerKind: ownerKind, participationPolicy: participationPolicy, reservationExpiryHours: reservationExpiryHours, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, state: state, title: title, viewerAction: viewerAction, visibilityKind: visibilityKind};
+												};
+											};
+										};
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};
+var $elm$json$Json$Decode$map5 = _Json_map5;
+var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeOrganizationTeam = {$: 'TaskAssigneeScopeOrganizationTeam'};
+var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser = {$: 'TaskAssigneeScopeUser'};
+var $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'user':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser);
+			case 'organization_team':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskAssigneeScopeOrganizationTeam);
+			default:
+				return $elm$json$Json$Decode$fail('invalid TaskAssigneeScope');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Task$TaskAvailabilityKindAvailable = {$: 'TaskAvailabilityKindAvailable'};
+var $author$project$Sharecrop$Generated$Task$TaskAvailabilityKindAwaitingApproval = {$: 'TaskAvailabilityKindAwaitingApproval'};
+var $author$project$Sharecrop$Generated$Task$TaskAvailabilityKindClosed = {$: 'TaskAvailabilityKindClosed'};
+var $author$project$Sharecrop$Generated$Task$TaskAvailabilityKindReserved = {$: 'TaskAvailabilityKindReserved'};
+var $author$project$Sharecrop$Generated$Task$taskAvailabilityKindDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'available':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskAvailabilityKindAvailable);
+			case 'reserved':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskAvailabilityKindReserved);
+			case 'awaiting_approval':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskAvailabilityKindAwaitingApproval);
+			case 'closed':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskAvailabilityKindClosed);
+			default:
+				return $elm$json$Json$Decode$fail('invalid TaskAvailabilityKind');
+		}
+	},
+	$elm$json$Json$Decode$string);
 var $author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganization = {$: 'TaskOwnerKindOrganization'};
 var $author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganizationTeam = {$: 'TaskOwnerKindOrganizationTeam'};
 var $author$project$Sharecrop$Generated$Task$TaskOwnerKindTeam = {$: 'TaskOwnerKindTeam'};
@@ -7190,6 +7250,24 @@ var $author$project$Sharecrop$Generated$Task$taskOwnerKindDecoder = A2(
 				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskOwnerKindOrganizationTeam);
 			default:
 				return $elm$json$Json$Decode$fail('invalid TaskOwnerKind');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyApprovalRequired = {$: 'TaskParticipationPolicyApprovalRequired'};
+var $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen = {$: 'TaskParticipationPolicyOpen'};
+var $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyReservationRequired = {$: 'TaskParticipationPolicyReservationRequired'};
+var $author$project$Sharecrop$Generated$Task$taskParticipationPolicyDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'open':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen);
+			case 'reservation_required':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyReservationRequired);
+			case 'approval_required':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyApprovalRequired);
+			default:
+				return $elm$json$Json$Decode$fail('invalid TaskParticipationPolicy');
 		}
 	},
 	$elm$json$Json$Decode$string);
@@ -7217,6 +7295,30 @@ var $author$project$Sharecrop$Generated$Task$taskStateDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Task$TaskViewerActionNone = {$: 'TaskViewerActionNone'};
+var $author$project$Sharecrop$Generated$Task$TaskViewerActionRequestApproval = {$: 'TaskViewerActionRequestApproval'};
+var $author$project$Sharecrop$Generated$Task$TaskViewerActionReserve = {$: 'TaskViewerActionReserve'};
+var $author$project$Sharecrop$Generated$Task$TaskViewerActionSubmit = {$: 'TaskViewerActionSubmit'};
+var $author$project$Sharecrop$Generated$Task$TaskViewerActionWait = {$: 'TaskViewerActionWait'};
+var $author$project$Sharecrop$Generated$Task$taskViewerActionDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'submit':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskViewerActionSubmit);
+			case 'reserve':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskViewerActionReserve);
+			case 'request_approval':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskViewerActionRequestApproval);
+			case 'wait':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskViewerActionWait);
+			case 'none':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Task$TaskViewerActionNone);
+			default:
+				return $elm$json$Json$Decode$fail('invalid TaskViewerAction');
+		}
+	},
+	$elm$json$Json$Decode$string);
 var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganization = {$: 'TaskVisibilityKindOrganization'};
 var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindOrganizationTeam = {$: 'TaskVisibilityKindOrganizationTeam'};
 var $author$project$Sharecrop$Generated$Task$TaskVisibilityKindPublic = {$: 'TaskVisibilityKindPublic'};
@@ -7241,17 +7343,29 @@ var $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder = A9(
-	$elm$json$Json$Decode$map8,
-	$author$project$Sharecrop$Generated$Task$TaskListItemResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'owner_kind', $author$project$Sharecrop$Generated$Task$taskOwnerKindDecoder),
-	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'reward_kind', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'reward_credit_amount', $elm$json$Json$Decode$int),
-	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskStateDecoder),
-	A2($elm$json$Json$Decode$field, 'visibility_kind', $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder),
-	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (finish) {
+		return A6(
+			$elm$json$Json$Decode$map5,
+			finish,
+			A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskStateDecoder),
+			A2($elm$json$Json$Decode$field, 'visibility_kind', $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder),
+			A2($elm$json$Json$Decode$field, 'availability_kind', $author$project$Sharecrop$Generated$Task$taskAvailabilityKindDecoder),
+			A2($elm$json$Json$Decode$field, 'viewer_action', $author$project$Sharecrop$Generated$Task$taskViewerActionDecoder),
+			A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+	},
+	A9(
+		$elm$json$Json$Decode$map8,
+		$author$project$Sharecrop$Generated$Task$TaskListItemResponse,
+		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'owner_kind', $author$project$Sharecrop$Generated$Task$taskOwnerKindDecoder),
+		A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'reward_kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'reward_credit_amount', $elm$json$Json$Decode$int),
+		A2($elm$json$Json$Decode$field, 'participation_policy', $author$project$Sharecrop$Generated$Task$taskParticipationPolicyDecoder),
+		A2($elm$json$Json$Decode$field, 'assignee_scope', $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder),
+		A2($elm$json$Json$Decode$field, 'reservation_expiry_hours', $elm$json$Json$Decode$int)));
 var $author$project$Sharecrop$Generated$Task$tasksResponseDecoder = A2(
 	$elm$json$Json$Decode$map,
 	$author$project$Sharecrop$Generated$Task$TasksResponse,

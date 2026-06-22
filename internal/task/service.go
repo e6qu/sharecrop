@@ -16,6 +16,10 @@ type Store interface {
 	CreateCapabilityToken(context.Context, core.TaskCapabilityTokenID, core.TaskID, CapabilityTokenHash) CreateCapabilityTokenStoreResult
 	ListSeries(context.Context, core.UserID) ListSeriesStoreResult
 	FindSeries(context.Context, core.TaskSeriesID) FindSeriesStoreResult
+	CreateReservation(context.Context, core.TaskReservationID, ReservationCommand) CreateReservationStoreResult
+	ChangeReservationState(context.Context, core.TaskReservationID, ReservationState) ChangeReservationStateStoreResult
+	ListReservations(context.Context, core.TaskID) ListReservationsStoreResult
+	CheckSubmissionEligibility(context.Context, core.TaskID, core.UserID) SubmissionEligibilityStoreResult
 }
 
 type OrganizationPermissions interface {
@@ -37,6 +41,9 @@ type CreateCommand struct {
 	Title          Title
 	Description    Description
 	Reward         RewardSpec
+	Participation  ParticipationPolicy
+	AssigneeScope  AssigneeScope
+	ReservationTTL ReservationTTL
 	Visibility     Visibility
 	Placement      SeriesPlacement
 	ResponseSchema ResponseSchemaSource
@@ -228,15 +235,20 @@ type ListScope interface {
 	listScope()
 }
 
-type PublicListScope struct{}
+type PublicListScope struct {
+	ViewerID        core.UserID
+	IncludeReserved bool
+}
 
 type UserListScope struct {
-	UserID core.UserID
+	UserID          core.UserID
+	IncludeReserved bool
 }
 
 type OrganizationListScope struct {
 	OrganizationID core.OrganizationID
 	UserID         core.UserID
+	IncludeReserved bool
 }
 
 func (PublicListScope) listScope() {}
@@ -274,6 +286,161 @@ func (service Service) List(ctx context.Context, actor auth.UserSubject, scope L
 		return ListRejected{Reason: rejected.Reason}
 	}
 	return TasksListed{Values: listed.Values}
+}
+
+type ReservationCommand struct {
+	TaskID      core.TaskID
+	Assignee    Assignee
+	RequestedBy core.UserID
+}
+
+type ReservationResult interface {
+	reservationResult()
+}
+
+type ReservationCreated struct {
+	Value Reservation
+}
+
+type ReservationRejected struct {
+	Reason core.DomainError
+}
+
+func (ReservationCreated) reservationResult() {}
+
+func (ReservationRejected) reservationResult() {}
+
+func (service Service) Reserve(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ReservationResult {
+	taskResult := service.store.FindTask(ctx, taskID)
+	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
+	if !taskMatched {
+		rejected := taskResult.(FindTaskStoreRejected)
+		return ReservationRejected{Reason: rejected.Reason}
+	}
+	if taskFound.Value.State != StateOpen {
+		return ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can be reserved")}
+	}
+	if taskFound.Value.AssigneeScope != AssigneeScopeUser {
+		return ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "this task does not accept user reservations")}
+	}
+	if rejected, matched := service.requireViewPermission(ctx, actor, taskFound.Value).(viewPermissionRejected); matched {
+		return ReservationRejected{Reason: rejected.reason}
+	}
+	if taskFound.Value.CreatedBy == actor.ID {
+		return ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task requester cannot reserve their own task")}
+	}
+
+	reservationIDResult := core.NewTaskReservationID()
+	reservationIDCreated, reservationIDMatched := reservationIDResult.(core.TaskReservationIDCreated)
+	if !reservationIDMatched {
+		rejected := reservationIDResult.(core.TaskReservationIDRejected)
+		return ReservationRejected{Reason: rejected.Reason}
+	}
+
+	storeResult := service.store.CreateReservation(ctx, reservationIDCreated.Value, ReservationCommand{
+		TaskID:      taskID,
+		Assignee:    UserAssignee{UserID: actor.ID},
+		RequestedBy: actor.ID,
+	})
+	created, matched := storeResult.(CreateReservationStoreAccepted)
+	if !matched {
+		rejected := storeResult.(CreateReservationStoreRejected)
+		return ReservationRejected{Reason: rejected.Reason}
+	}
+	return ReservationCreated{Value: created.Value}
+}
+
+type ReservationStateChangeResult interface {
+	reservationStateChangeResult()
+}
+
+type ReservationStateChanged struct {
+	Value Reservation
+}
+
+type ReservationStateChangeRejected struct {
+	Reason core.DomainError
+}
+
+func (ReservationStateChanged) reservationStateChangeResult() {}
+
+func (ReservationStateChangeRejected) reservationStateChangeResult() {}
+
+func (service Service) ApproveReservation(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
+	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateActive)
+}
+
+func (service Service) DeclineReservation(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
+	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateDeclined)
+}
+
+func (service Service) CancelReservation(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
+	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateCancelledByRequester)
+}
+
+func (service Service) changeReservationByRequester(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState) ReservationStateChangeResult {
+	taskResult := service.store.FindTask(ctx, taskID)
+	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
+	if !taskMatched {
+		rejected := taskResult.(FindTaskStoreRejected)
+		return ReservationStateChangeRejected{Reason: rejected.Reason}
+	}
+	ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
+	if rejected, matched := ownerPermission.(ownerPermissionRejected); matched {
+		return ReservationStateChangeRejected{Reason: rejected.reason}
+	}
+
+	storeResult := service.store.ChangeReservationState(ctx, reservationID, state)
+	changed, matched := storeResult.(ChangeReservationStateStoreAccepted)
+	if !matched {
+		rejected := storeResult.(ChangeReservationStateStoreRejected)
+		return ReservationStateChangeRejected{Reason: rejected.Reason}
+	}
+	if changed.Value.TaskID != taskID {
+		return ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "reservation was not found for the task")}
+	}
+	return ReservationStateChanged{Value: changed.Value}
+}
+
+type ReservationsListResult interface {
+	reservationsListResult()
+}
+
+type ReservationsListed struct {
+	Values []Reservation
+}
+
+type ReservationsListRejected struct {
+	Reason core.DomainError
+}
+
+func (ReservationsListed) reservationsListResult() {}
+
+func (ReservationsListRejected) reservationsListResult() {}
+
+func (service Service) ListReservations(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ReservationsListResult {
+	taskResult := service.store.FindTask(ctx, taskID)
+	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
+	if !taskMatched {
+		rejected := taskResult.(FindTaskStoreRejected)
+		return ReservationsListRejected{Reason: rejected.Reason}
+	}
+	ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
+	if rejected, matched := ownerPermission.(ownerPermissionRejected); matched {
+		return ReservationsListRejected{Reason: rejected.reason}
+	}
+
+	storeResult := service.store.ListReservations(ctx, taskID)
+	listed, matched := storeResult.(ListReservationsStoreAccepted)
+	if !matched {
+		rejected := storeResult.(ListReservationsStoreRejected)
+		return ReservationsListRejected{Reason: rejected.Reason}
+	}
+	return ReservationsListed{Values: listed.Values}
+}
+
+func (service Service) CheckSubmissionEligibility(ctx context.Context, taskID core.TaskID, submitterID core.UserID) SubmissionEligibilityStoreResult {
+	return service.store.CheckSubmissionEligibility(ctx, taskID, submitterID)
 }
 
 type CreateCapabilityTokenResult interface {

@@ -40,11 +40,12 @@ func (store TaskStore) CreateTask(ctx context.Context, seriesID core.TaskSeriesI
 	_, err = tx.Exec(ctx, `
 		insert into tasks (
 			id, series_id, series_position, owner_kind, user_id, team_id, organization_id, title, description,
-			reward_kind, reward_credit_amount, state, response_schema_json, data_payload_kind, data_payload_json, created_by_user_id
+			reward_kind, reward_credit_amount, participation_policy, assignee_scope, reservation_expires_after_hours,
+			state, response_schema_json, data_payload_kind, data_payload_json, created_by_user_id
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15::jsonb, $16)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19)
 	`, taskID.String(), seriesColumns.seriesID, seriesColumns.position, ownerColumns.kind, ownerColumns.userID, ownerColumns.teamID, ownerColumns.organizationID,
-		command.Title.String(), command.Description.String(), rewardColumns.kind, rewardColumns.creditAmount, task.StateDraft.String(), command.ResponseSchema.String(), payloadColumns.kind, payloadColumns.source, command.Actor.ID.String())
+		command.Title.String(), command.Description.String(), rewardColumns.kind, rewardColumns.creditAmount, command.Participation.String(), command.AssigneeScope.String(), command.ReservationTTL.Hours(), task.StateDraft.String(), command.ResponseSchema.String(), payloadColumns.kind, payloadColumns.source, command.Actor.ID.String())
 	if err != nil {
 		return task.CreateTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task failed")}
 	}
@@ -154,6 +155,10 @@ func (store TaskStore) requireOpenableReward(ctx context.Context, taskID core.Ta
 }
 
 func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope) task.ListTasksStoreResult {
+	if err := store.releaseExpiredReservations(ctx); err != nil {
+		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
+	}
+
 	queryResult := listQueryForScope(scope)
 	query, matched := queryResult.(listQueryAccepted)
 	if !matched {
@@ -161,19 +166,55 @@ func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope) task
 		return task.ListTasksStoreRejected{Reason: rejected.reason}
 	}
 
-	rows, err := store.pool.Query(ctx, query.sql, query.argument)
-	if err != nil {
-		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
+	rowsResult := store.queryTaskRows(ctx, query)
+	rows, matched := rowsResult.(taskRowsQueried)
+	if !matched {
+		return task.ListTasksStoreRejected{Reason: rowsResult.(taskRowsQueryRejected).reason}
 	}
-	defer rows.Close()
+	defer rows.rows.Close()
 
-	valuesResult := scanTaskRows(rows)
-	values, valuesMatched := valuesResult.(taskRowsAccepted)
-	if !valuesMatched {
+	valuesResult := scanTaskRows(rows.rows)
+	values, matched := valuesResult.(taskRowsAccepted)
+	if !matched {
 		rejected := valuesResult.(taskRowsRejected)
 		return task.ListTasksStoreRejected{Reason: rejected.reason}
 	}
 	return task.ListTasksStoreAccepted{Values: values.values}
+}
+
+type taskRowsQueryResult interface {
+	taskRowsQueryResult()
+}
+
+type taskRowsQueried struct {
+	rows pgx.Rows
+}
+
+type taskRowsQueryRejected struct {
+	reason core.DomainError
+}
+
+func (taskRowsQueried) taskRowsQueryResult() {}
+
+func (taskRowsQueryRejected) taskRowsQueryResult() {}
+
+func (store TaskStore) queryTaskRows(ctx context.Context, query listQueryAccepted) taskRowsQueryResult {
+	switch arguments := query.arguments.(type) {
+	case publicListQueryArguments:
+		rows, err := store.pool.Query(ctx, query.sql, arguments.visibilityKind, arguments.includeReserved, arguments.viewerID)
+		if err != nil {
+			return taskRowsQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
+		}
+		return taskRowsQueried{rows: rows}
+	case singleListQueryArgument:
+		rows, err := store.pool.Query(ctx, query.sql, arguments.value)
+		if err != nil {
+			return taskRowsQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
+		}
+		return taskRowsQueried{rows: rows}
+	default:
+		return taskRowsQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list query arguments are invalid")}
+	}
 }
 
 func (store TaskStore) CreateCapabilityToken(ctx context.Context, tokenID core.TaskCapabilityTokenID, taskID core.TaskID, hash task.CapabilityTokenHash) task.CreateCapabilityTokenStoreResult {
@@ -187,6 +228,168 @@ func (store TaskStore) CreateCapabilityToken(ctx context.Context, tokenID core.T
 		return task.CreateCapabilityTokenStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task capability token failed")}
 	}
 	return task.CreateCapabilityTokenStoreAccepted{Value: task.CapabilityToken{ID: tokenID, TaskID: taskID, State: task.CapabilityTokenStateActive}}
+}
+
+func (store TaskStore) CreateReservation(ctx context.Context, reservationID core.TaskReservationID, command task.ReservationCommand) task.CreateReservationStoreResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create reservation transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, expireReservationsSQL); err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
+	}
+
+	var policy string
+	var state string
+	var ttlHours int
+	if err := tx.QueryRow(ctx, "select participation_policy, state, reservation_expires_after_hours from tasks where id = $1 for update", command.TaskID.String()).Scan(&policy, &state, &ttlHours); err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if state != task.StateOpen.String() {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can be reserved")}
+	}
+
+	reservationStateResult := reservationInitialState(policy)
+	reservationState, reservationStateMatched := reservationStateResult.(reservationInitialStateAccepted)
+	if !reservationStateMatched {
+		return task.CreateReservationStoreRejected{Reason: reservationStateResult.(reservationInitialStateRejected).reason}
+	}
+
+	assigneeColumns := assigneeSQLColumns(command.Assignee)
+	var banned bool
+	if err := tx.QueryRow(ctx, `
+		select exists(
+			select 1 from task_implementor_bans
+			where task_id = $1 and assignee_kind = $2
+			and coalesce(user_id::text, '') = coalesce($3::text, '')
+			and coalesce(team_id::text, '') = coalesce($4::text, '')
+			and coalesce(organization_id::text, '') = coalesce($5::text, '')
+		)
+	`, command.TaskID.String(), assigneeColumns.kind, assigneeColumns.userID, assigneeColumns.teamID, assigneeColumns.organizationID).Scan(&banned); err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check task implementor ban failed")}
+	}
+	if banned {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "implementor is banned from the task")}
+	}
+
+	var existing bool
+	if err := tx.QueryRow(ctx, `
+		select exists(
+			select 1 from task_reservations
+			where task_id = $1 and assignee_kind = $2
+			and coalesce(user_id::text, '') = coalesce($3::text, '')
+			and coalesce(team_id::text, '') = coalesce($4::text, '')
+			and coalesce(organization_id::text, '') = coalesce($5::text, '')
+			and state in ('requested', 'active')
+		)
+	`, command.TaskID.String(), assigneeColumns.kind, assigneeColumns.userID, assigneeColumns.teamID, assigneeColumns.organizationID).Scan(&existing); err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check existing reservation failed")}
+	}
+	if existing {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "assignee already has an active or pending reservation")}
+	}
+
+	_, err = tx.Exec(ctx, `
+		insert into task_reservations (
+			id, task_id, assignee_kind, user_id, team_id, organization_id, state, requested_by_user_id, expires_at
+		)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, now() + make_interval(hours => $9))
+	`, reservationID.String(), command.TaskID.String(), assigneeColumns.kind, assigneeColumns.userID, assigneeColumns.teamID, assigneeColumns.organizationID, reservationState.value.String(), command.RequestedBy.String(), ttlHours)
+	if err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task already has an active reservation")}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit create reservation transaction failed")}
+	}
+
+	result := store.findReservation(ctx, reservationID)
+	found, matched := result.(reservationFound)
+	if !matched {
+		return task.CreateReservationStoreRejected{Reason: result.(reservationMissing).reason}
+	}
+	return task.CreateReservationStoreAccepted{Value: found.value}
+}
+
+func (store TaskStore) ChangeReservationState(ctx context.Context, reservationID core.TaskReservationID, state task.ReservationState) task.ChangeReservationStateStoreResult {
+	if err := store.releaseExpiredReservations(ctx); err != nil {
+		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
+	}
+
+	commandTag, err := store.pool.Exec(ctx, `
+		update task_reservations
+		set state = $2, state_recorded_at = now()
+		where id = $1 and state in ('requested', 'active')
+	`, reservationID.String(), state.String())
+	if err != nil {
+		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation state was not changed")}
+	}
+	if commandTag.RowsAffected() != 1 {
+		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation is not pending or active")}
+	}
+
+	result := store.findReservation(ctx, reservationID)
+	found, matched := result.(reservationFound)
+	if !matched {
+		return task.ChangeReservationStateStoreRejected{Reason: result.(reservationMissing).reason}
+	}
+	return task.ChangeReservationStateStoreAccepted{Value: found.value}
+}
+
+func (store TaskStore) ListReservations(ctx context.Context, taskID core.TaskID) task.ListReservationsStoreResult {
+	if err := store.releaseExpiredReservations(ctx); err != nil {
+		return task.ListReservationsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
+	}
+
+	rows, err := store.pool.Query(ctx, reservationSelectSQL()+`
+		where task_reservations.task_id = $1
+		order by task_reservations.created_at
+	`, taskID.String())
+	if err != nil {
+		return task.ListReservationsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list reservations failed")}
+	}
+	defer rows.Close()
+
+	valuesResult := scanReservationRows(rows)
+	values, matched := valuesResult.(reservationRowsAccepted)
+	if !matched {
+		return task.ListReservationsStoreRejected{Reason: valuesResult.(reservationRowsRejected).reason}
+	}
+	return task.ListReservationsStoreAccepted{Values: values.values}
+}
+
+func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID core.TaskID, submitterID core.UserID) task.SubmissionEligibilityStoreResult {
+	if err := store.releaseExpiredReservations(ctx); err != nil {
+		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
+	}
+
+	var policy string
+	err := store.pool.QueryRow(ctx, "select participation_policy from tasks where id = $1", taskID.String()).Scan(&policy)
+	if err != nil {
+		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if policy == task.ParticipationPolicyOpen.String() {
+		return task.SubmissionEligible{}
+	}
+
+	var activeForUser bool
+	if err := store.pool.QueryRow(ctx, `
+		select exists(
+			select 1 from task_reservations
+			where task_id = $1
+			and state = 'active'
+			and assignee_kind = 'user'
+			and user_id = $2
+		)
+	`, taskID.String(), submitterID.String()).Scan(&activeForUser); err != nil {
+		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check active reservation failed")}
+	}
+	if activeForUser {
+		return task.SubmissionEligible{}
+	}
+	return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task requires an active reservation for the submitter")}
 }
 
 type insertSeriesResult interface {
@@ -279,6 +482,24 @@ type payloadSQL struct {
 	source *string
 }
 
+type assigneeSQL struct {
+	kind           string
+	userID         *string
+	teamID         *string
+	organizationID *string
+}
+
+func assigneeSQLColumns(assignee task.Assignee) assigneeSQL {
+	switch typed := assignee.(type) {
+	case task.UserAssignee:
+		return assigneeSQL{kind: task.AssigneeScopeUser.String(), userID: stringPointer(typed.UserID.String())}
+	case task.OrganizationTeamAssignee:
+		return assigneeSQL{kind: task.AssigneeScopeOrganizationTeam.String(), teamID: stringPointer(typed.TeamID.String()), organizationID: stringPointer(typed.OrganizationID.String())}
+	default:
+		return assigneeSQL{}
+	}
+}
+
 type rewardSQL struct {
 	kind         string
 	creditAmount *int64
@@ -315,11 +536,52 @@ func intPointer(value int) *int {
 	return &value
 }
 
+const expireReservationsSQL = `
+	update task_reservations
+	set state = 'expired', state_recorded_at = now()
+	where state in ('requested', 'active') and expires_at <= now()
+`
+
+func (store TaskStore) releaseExpiredReservations(ctx context.Context) error {
+	_, err := store.pool.Exec(ctx, expireReservationsSQL)
+	return err
+}
+
+type reservationInitialStateResult interface {
+	reservationInitialStateResult()
+}
+
+type reservationInitialStateAccepted struct {
+	value task.ReservationState
+}
+
+type reservationInitialStateRejected struct {
+	reason core.DomainError
+}
+
+func (reservationInitialStateAccepted) reservationInitialStateResult() {}
+
+func (reservationInitialStateRejected) reservationInitialStateResult() {}
+
+func reservationInitialState(policy string) reservationInitialStateResult {
+	switch policy {
+	case task.ParticipationPolicyReservationRequired.String():
+		return reservationInitialStateAccepted{value: task.ReservationStateActive}
+	case task.ParticipationPolicyApprovalRequired.String():
+		return reservationInitialStateAccepted{value: task.ReservationStateRequested}
+	case task.ParticipationPolicyOpen.String():
+		return reservationInitialStateRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "task does not require reservation")}
+	default:
+		return reservationInitialStateRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task participation policy is invalid")}
+	}
+}
+
 func taskSelectSQL() string {
 	return `
 		select tasks.id::text, tasks.owner_kind, coalesce(tasks.user_id::text, ''), coalesce(tasks.team_id::text, ''),
 			coalesce(tasks.organization_id::text, ''), tasks.title, tasks.description, tasks.state,
 			tasks.reward_kind, coalesce(tasks.reward_credit_amount, 0),
+			tasks.participation_policy, tasks.assignee_scope, tasks.reservation_expires_after_hours,
 			task_visibility_scopes.visibility_kind, coalesce(task_visibility_scopes.user_id::text, ''),
 			coalesce(task_visibility_scopes.team_id::text, ''), coalesce(task_visibility_scopes.organization_id::text, ''),
 			coalesce(tasks.series_id::text, ''), coalesce(tasks.series_position, 0), tasks.response_schema_json::text,
@@ -334,8 +596,8 @@ type listQueryResult interface {
 }
 
 type listQueryAccepted struct {
-	sql      string
-	argument string
+	sql       string
+	arguments listQueryArguments
 }
 
 type listQueryRejected struct {
@@ -346,14 +608,50 @@ func (listQueryAccepted) listQueryResult() {}
 
 func (listQueryRejected) listQueryResult() {}
 
+type listQueryArguments interface {
+	listQueryArguments()
+}
+
+type publicListQueryArguments struct {
+	visibilityKind  string
+	includeReserved bool
+	viewerID        string
+}
+
+type singleListQueryArgument struct {
+	value string
+}
+
+func (publicListQueryArguments) listQueryArguments() {}
+
+func (singleListQueryArgument) listQueryArguments() {}
+
 func listQueryForScope(scope task.ListScope) listQueryResult {
 	switch typed := scope.(type) {
 	case task.PublicListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.visibility_kind = $1 order by tasks.created_at desc", argument: task.VisibilityKindPublic.String()}
+		return listQueryAccepted{sql: taskSelectSQL() + `
+			where task_visibility_scopes.visibility_kind = $1
+			and (
+				$2::boolean
+				or not exists (
+					select 1 from task_reservations
+					where task_reservations.task_id = tasks.id
+					and task_reservations.state = 'active'
+				)
+				or exists (
+					select 1 from task_reservations
+					where task_reservations.task_id = tasks.id
+					and task_reservations.state = 'active'
+					and task_reservations.assignee_kind = 'user'
+					and task_reservations.user_id = $3
+				)
+				or tasks.created_by_user_id = $3
+			)
+			order by tasks.created_at desc`, arguments: publicListQueryArguments{visibilityKind: task.VisibilityKindPublic.String(), includeReserved: typed.IncludeReserved, viewerID: typed.ViewerID.String()}}
 	case task.UserListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.user_id = $1 order by tasks.created_at desc", argument: typed.UserID.String()}
+		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.user_id = $1 order by tasks.created_at desc", arguments: singleListQueryArgument{value: typed.UserID.String()}}
 	case task.OrganizationListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.organization_id = $1 order by tasks.created_at desc", argument: typed.OrganizationID.String()}
+		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.organization_id = $1 order by tasks.created_at desc", arguments: singleListQueryArgument{value: typed.OrganizationID.String()}}
 	default:
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list scope is invalid")}
 	}
@@ -419,6 +717,9 @@ func scanTaskRow(rows pgx.Rows) taskRowResult {
 	var rawState string
 	var rawRewardKind string
 	var rawRewardCreditAmount int64
+	var rawParticipationPolicy string
+	var rawAssigneeScope string
+	var rawReservationTTLHours int
 	var rawVisibilityKind string
 	var rawVisibilityUserID string
 	var rawVisibilityTeamID string
@@ -429,13 +730,13 @@ func scanTaskRow(rows pgx.Rows) taskRowResult {
 	var rawPayloadKind string
 	var rawPayload string
 	var rawCreatedBy string
-	if err := rows.Scan(&rawTaskID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawDescription, &rawState, &rawRewardKind, &rawRewardCreditAmount, &rawVisibilityKind, &rawVisibilityUserID, &rawVisibilityTeamID, &rawVisibilityOrganizationID, &rawSeriesID, &rawSeriesPosition, &rawResponseSchema, &rawPayloadKind, &rawPayload, &rawCreatedBy); err != nil {
+	if err := rows.Scan(&rawTaskID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawDescription, &rawState, &rawRewardKind, &rawRewardCreditAmount, &rawParticipationPolicy, &rawAssigneeScope, &rawReservationTTLHours, &rawVisibilityKind, &rawVisibilityUserID, &rawVisibilityTeamID, &rawVisibilityOrganizationID, &rawSeriesID, &rawSeriesPosition, &rawResponseSchema, &rawPayloadKind, &rawPayload, &rawCreatedBy); err != nil {
 		return taskRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
-	return parseTaskRow(rawTaskID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawDescription, rawState, rawRewardKind, rawRewardCreditAmount, rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID, rawSeriesID, rawSeriesPosition, rawResponseSchema, rawPayloadKind, rawPayload, rawCreatedBy)
+	return parseTaskRow(rawTaskID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawDescription, rawState, rawRewardKind, rawRewardCreditAmount, rawParticipationPolicy, rawAssigneeScope, rawReservationTTLHours, rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID, rawSeriesID, rawSeriesPosition, rawResponseSchema, rawPayloadKind, rawPayload, rawCreatedBy)
 }
 
-func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string) taskRowResult {
+func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawParticipationPolicy string, rawAssigneeScope string, rawReservationTTLHours int, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string) taskRowResult {
 	taskIDResult := core.ParseTaskID(rawTaskID)
 	taskID, taskIDMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskIDMatched {
@@ -472,6 +773,24 @@ func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, 
 		rejected := rewardResult.(rewardSpecRejected)
 		return taskRowRejected{reason: rejected.reason}
 	}
+	participationResult := task.ParseParticipationPolicy(rawParticipationPolicy)
+	participation, participationMatched := participationResult.(task.ParticipationPolicyAccepted)
+	if !participationMatched {
+		rejected := participationResult.(task.ParticipationPolicyRejected)
+		return taskRowRejected{reason: rejected.Reason}
+	}
+	assigneeScopeResult := task.ParseAssigneeScope(rawAssigneeScope)
+	assigneeScope, assigneeScopeMatched := assigneeScopeResult.(task.AssigneeScopeAccepted)
+	if !assigneeScopeMatched {
+		rejected := assigneeScopeResult.(task.AssigneeScopeRejected)
+		return taskRowRejected{reason: rejected.Reason}
+	}
+	ttlResult := task.NewReservationTTL(rawReservationTTLHours)
+	ttl, ttlMatched := ttlResult.(task.ReservationTTLAccepted)
+	if !ttlMatched {
+		rejected := ttlResult.(task.ReservationTTLRejected)
+		return taskRowRejected{reason: rejected.Reason}
+	}
 	visibilityResult := parseTaskVisibility(rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID)
 	visibility, visibilityMatched := visibilityResult.(taskVisibilityAccepted)
 	if !visibilityMatched {
@@ -502,7 +821,7 @@ func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, 
 		rejected := createdByResult.(core.UserIDRejected)
 		return taskRowRejected{reason: rejected.Reason}
 	}
-	return taskRowAccepted{value: task.Task{ID: taskID.Value, Owner: owner.value, Title: title.Value, Description: description.Value, Reward: reward.value, State: state.Value, Visibility: visibility.value, Placement: placement.value, ResponseSchema: schemaSource.Value, Payload: payload.value, CreatedBy: createdBy.Value}}
+	return taskRowAccepted{value: task.Task{ID: taskID.Value, Owner: owner.value, Title: title.Value, Description: description.Value, Reward: reward.value, Participation: participation.Value, AssigneeScope: assigneeScope.Value, ReservationTTL: ttl.Value, State: state.Value, Visibility: visibility.value, Placement: placement.value, ResponseSchema: schemaSource.Value, Payload: payload.value, CreatedBy: createdBy.Value}}
 }
 
 type rewardSpecResult interface {
@@ -534,5 +853,181 @@ func parseRewardSpec(rawKind string, rawCreditAmount int64) rewardSpecResult {
 		return rewardSpecAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
 	default:
 		return rewardSpecRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task reward kind is invalid")}
+	}
+}
+
+func reservationSelectSQL() string {
+	return `
+		select id::text, task_id::text, assignee_kind, coalesce(user_id::text, ''),
+			coalesce(team_id::text, ''), coalesce(organization_id::text, ''), state, requested_by_user_id::text
+		from task_reservations
+	`
+}
+
+type reservationLookupResult interface {
+	reservationLookupResult()
+}
+
+type reservationFound struct {
+	value task.Reservation
+}
+
+type reservationMissing struct {
+	reason core.DomainError
+}
+
+func (reservationFound) reservationLookupResult() {}
+
+func (reservationMissing) reservationLookupResult() {}
+
+func (store TaskStore) findReservation(ctx context.Context, reservationID core.TaskReservationID) reservationLookupResult {
+	rows, err := store.pool.Query(ctx, reservationSelectSQL()+" where id = $1", reservationID.String())
+	if err != nil {
+		return reservationMissing{reason: core.NewDomainError(core.ErrorCodeInvalidState, "find reservation failed")}
+	}
+	defer rows.Close()
+
+	valuesResult := scanReservationRows(rows)
+	values, matched := valuesResult.(reservationRowsAccepted)
+	if !matched {
+		return reservationMissing{reason: valuesResult.(reservationRowsRejected).reason}
+	}
+	if len(values.values) != 1 {
+		return reservationMissing{reason: core.NewDomainError(core.ErrorCodeNotFound, "reservation was not found")}
+	}
+	return reservationFound{value: values.values[0]}
+}
+
+type reservationRowsResult interface {
+	reservationRowsResult()
+}
+
+type reservationRowsAccepted struct {
+	values []task.Reservation
+}
+
+type reservationRowsRejected struct {
+	reason core.DomainError
+}
+
+func (reservationRowsAccepted) reservationRowsResult() {}
+
+func (reservationRowsRejected) reservationRowsResult() {}
+
+func scanReservationRows(rows pgx.Rows) reservationRowsResult {
+	values := make([]task.Reservation, 0)
+	for rows.Next() {
+		parsed := scanReservationRow(rows)
+		accepted, matched := parsed.(reservationRowAccepted)
+		if !matched {
+			return reservationRowsRejected{reason: parsed.(reservationRowRejected).reason}
+		}
+		values = append(values, accepted.value)
+	}
+	if err := rows.Err(); err != nil {
+		return reservationRowsRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read reservations failed")}
+	}
+	return reservationRowsAccepted{values: values}
+}
+
+type reservationRowResult interface {
+	reservationRowResult()
+}
+
+type reservationRowAccepted struct {
+	value task.Reservation
+}
+
+type reservationRowRejected struct {
+	reason core.DomainError
+}
+
+func (reservationRowAccepted) reservationRowResult() {}
+
+func (reservationRowRejected) reservationRowResult() {}
+
+func scanReservationRow(rows pgx.Rows) reservationRowResult {
+	var rawID string
+	var rawTaskID string
+	var rawAssigneeKind string
+	var rawUserID string
+	var rawTeamID string
+	var rawOrganizationID string
+	var rawState string
+	var rawRequestedBy string
+	if err := rows.Scan(&rawID, &rawTaskID, &rawAssigneeKind, &rawUserID, &rawTeamID, &rawOrganizationID, &rawState, &rawRequestedBy); err != nil {
+		return reservationRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan reservation failed")}
+	}
+	return parseReservationRow(rawID, rawTaskID, rawAssigneeKind, rawUserID, rawTeamID, rawOrganizationID, rawState, rawRequestedBy)
+}
+
+func parseReservationRow(rawID string, rawTaskID string, rawAssigneeKind string, rawUserID string, rawTeamID string, rawOrganizationID string, rawState string, rawRequestedBy string) reservationRowResult {
+	idResult := core.ParseTaskReservationID(rawID)
+	idAccepted, idMatched := idResult.(core.TaskReservationIDCreated)
+	if !idMatched {
+		return reservationRowRejected{reason: idResult.(core.TaskReservationIDRejected).Reason}
+	}
+	taskIDResult := core.ParseTaskID(rawTaskID)
+	taskIDAccepted, taskIDMatched := taskIDResult.(core.TaskIDCreated)
+	if !taskIDMatched {
+		return reservationRowRejected{reason: taskIDResult.(core.TaskIDRejected).Reason}
+	}
+	assigneeResult := parseReservationAssignee(rawAssigneeKind, rawUserID, rawTeamID, rawOrganizationID)
+	assigneeAccepted, assigneeMatched := assigneeResult.(reservationAssigneeAccepted)
+	if !assigneeMatched {
+		return reservationRowRejected{reason: assigneeResult.(reservationAssigneeRejected).reason}
+	}
+	stateResult := task.ParseReservationState(rawState)
+	stateAccepted, stateMatched := stateResult.(task.ReservationStateAccepted)
+	if !stateMatched {
+		return reservationRowRejected{reason: stateResult.(task.ReservationStateRejected).Reason}
+	}
+	requestedByResult := core.ParseUserID(rawRequestedBy)
+	requestedByAccepted, requestedByMatched := requestedByResult.(core.UserIDCreated)
+	if !requestedByMatched {
+		return reservationRowRejected{reason: requestedByResult.(core.UserIDRejected).Reason}
+	}
+	return reservationRowAccepted{value: task.Reservation{ID: idAccepted.Value, TaskID: taskIDAccepted.Value, Assignee: assigneeAccepted.value, State: stateAccepted.Value, RequestedBy: requestedByAccepted.Value}}
+}
+
+type reservationAssigneeResult interface {
+	reservationAssigneeResult()
+}
+
+type reservationAssigneeAccepted struct {
+	value task.Assignee
+}
+
+type reservationAssigneeRejected struct {
+	reason core.DomainError
+}
+
+func (reservationAssigneeAccepted) reservationAssigneeResult() {}
+
+func (reservationAssigneeRejected) reservationAssigneeResult() {}
+
+func parseReservationAssignee(rawKind string, rawUserID string, rawTeamID string, rawOrganizationID string) reservationAssigneeResult {
+	switch rawKind {
+	case task.AssigneeScopeUser.String():
+		userIDResult := core.ParseUserID(rawUserID)
+		userIDAccepted, matched := userIDResult.(core.UserIDCreated)
+		if !matched {
+			return reservationAssigneeRejected{reason: userIDResult.(core.UserIDRejected).Reason}
+		}
+		return reservationAssigneeAccepted{value: task.UserAssignee{UserID: userIDAccepted.Value}}
+	case task.AssigneeScopeOrganizationTeam.String():
+		organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
+		organizationIDAccepted, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
+		if !organizationMatched {
+			return reservationAssigneeRejected{reason: organizationIDResult.(core.OrganizationIDRejected).Reason}
+		}
+		teamIDResult := core.ParseTeamID(rawTeamID)
+		teamIDAccepted, teamMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamMatched {
+			return reservationAssigneeRejected{reason: teamIDResult.(core.TeamIDRejected).Reason}
+		}
+		return reservationAssigneeAccepted{value: task.OrganizationTeamAssignee{OrganizationID: organizationIDAccepted.Value, TeamID: teamIDAccepted.Value}}
+	default:
+		return reservationAssigneeRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "reservation assignee kind is invalid")}
 	}
 }

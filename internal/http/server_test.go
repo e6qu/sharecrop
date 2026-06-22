@@ -448,6 +448,10 @@ func (testTaskService) Create(_ context.Context, command task.CreateCommand) tas
 		Owner:          command.Owner,
 		Title:          command.Title,
 		Description:    command.Description,
+		Reward:         command.Reward,
+		Participation:  command.Participation,
+		AssigneeScope:  command.AssigneeScope,
+		ReservationTTL: command.ReservationTTL,
 		State:          task.StateDraft,
 		Visibility:     command.Visibility,
 		Placement:      command.Placement,
@@ -459,13 +463,16 @@ func (testTaskService) Create(_ context.Context, command task.CreateCommand) tas
 
 func (testTaskService) Get(_ context.Context, actor auth.UserSubject, taskID core.TaskID) task.GetResult {
 	return task.TaskGot{Value: task.Task{
-		ID:         taskID,
-		Owner:      task.UserOwner{UserID: actor.ID},
-		State:      task.StateOpen,
-		Visibility: task.UserVisibility{UserID: actor.ID},
-		Placement:  task.StandalonePlacement{},
-		Payload:    task.NoDataPayload{},
-		CreatedBy:  actor.ID,
+		ID:             taskID,
+		Owner:          task.UserOwner{UserID: actor.ID},
+		Participation:  task.ParticipationPolicyOpen,
+		AssigneeScope:  task.AssigneeScopeUser,
+		ReservationTTL: task.DefaultReservationTTL(),
+		State:          task.StateOpen,
+		Visibility:     task.UserVisibility{UserID: actor.ID},
+		Placement:      task.StandalonePlacement{},
+		Payload:        task.NoDataPayload{},
+		CreatedBy:      actor.ID,
 	}}
 }
 
@@ -483,6 +490,33 @@ func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope) t
 
 func (testTaskService) CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult {
 	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
+func (testTaskService) Reserve(_ context.Context, actor auth.UserSubject, taskID core.TaskID) task.ReservationResult {
+	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
+	return task.ReservationCreated{Value: task.Reservation{
+		ID:          reservationID.Value,
+		TaskID:      taskID,
+		Assignee:    task.UserAssignee{UserID: actor.ID},
+		State:       task.ReservationStateActive,
+		RequestedBy: actor.ID,
+	}}
+}
+
+func (testTaskService) ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
+func (testTaskService) DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
+func (testTaskService) CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
+func (testTaskService) ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult {
+	return task.ReservationsListed{Values: []task.Reservation{}}
 }
 
 func (testTaskService) ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult {

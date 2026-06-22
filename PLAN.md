@@ -1740,11 +1740,11 @@ Acceptance checks:
 - Asset policies use variants, not booleans.
 - The model can later plug into escrow.
 
-## Post-PR13 Roadmap
+## Current Roadmap
 
-The codebase has implemented through pull request 13. The next work should use the following sequence.
+The codebase has implemented through pull request 14 on `main`. The reservation foundation branch is the next implementation pull request.
 
-### PR 14: Reservation, Approval, And Discovery Availability Foundations
+### Reservation, Approval, And Discovery Availability Foundations
 
 Goal:
 
@@ -1769,7 +1769,7 @@ Tasks:
 - Add task availability and viewer-action read models.
 - Add HTTP APIs for reserve, request approval, approve, decline, cancel, and list reservations.
 - Update task list/detail responses and discovery filters for availability and include-reserved behavior.
-- Add unit, integration, HTTP end-to-end, and Playwright coverage for reservation and approval flows.
+- Add unit and HTTP end-to-end coverage for reservation and approval flows. Browser coverage follows when the browser workflow is added.
 
 Acceptance checks:
 

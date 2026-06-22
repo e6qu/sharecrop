@@ -18,6 +18,7 @@ type Store interface {
 
 type TaskFinder interface {
 	FindTask(context.Context, core.TaskID) task.FindTaskStoreResult
+	CheckSubmissionEligibility(context.Context, core.TaskID, core.UserID) task.SubmissionEligibilityStoreResult
 }
 
 type OrganizationPermissions interface {
@@ -69,6 +70,10 @@ func (service Service) Submit(ctx context.Context, command SubmitCommand) Submit
 	}
 	if rejected, matched := service.requireViewPermission(ctx, command.SubmitterID, taskFound.Value).(viewPermissionRejected); matched {
 		return SubmitRejected{Reason: rejected.reason}
+	}
+	eligibility := service.taskStore.CheckSubmissionEligibility(ctx, command.TaskID, command.SubmitterID)
+	if rejected, matched := eligibility.(task.SubmissionEligibilityRejected); matched {
+		return SubmitRejected{Reason: rejected.Reason}
 	}
 
 	schemaResult := schema.ParseSchemaJSON([]byte(taskFound.Value.ResponseSchema.String()))

@@ -85,6 +85,22 @@ func TestSubmitRejectsClosedTask(t *testing.T) {
 	}
 }
 
+func TestSubmitRejectsIneligibleReservation(t *testing.T) {
+	store := newSubmissionMemoryStore()
+	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
+	taskStore.eligible = false
+	service := NewService(store, taskStore, submissionPermissionStore{})
+	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
+
+	result := service.Submit(context.Background(), command)
+	if _, matched := result.(SubmitRejected); !matched {
+		t.Fatalf("result = %T, want SubmitRejected", result)
+	}
+	if len(store.valuesByID) != 0 {
+		t.Fatalf("submissions stored = %d, want 0", len(store.valuesByID))
+	}
+}
+
 func TestSubmitRejectsTaskHiddenFromSubmitter(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	ownerID := submissionTestUserID(t)
@@ -146,7 +162,8 @@ func (store *submissionMemoryStore) FindByReceiptToken(_ context.Context, hash R
 }
 
 type submissionTaskStore struct {
-	value task.Task
+	value    task.Task
+	eligible bool
 }
 
 func newSubmissionTaskStore(t *testing.T, visibility task.Visibility, schemaSource string) *submissionTaskStore {
@@ -157,13 +174,16 @@ func newSubmissionTaskStore(t *testing.T, visibility task.Visibility, schemaSour
 		Title:          acceptedTaskTitle(t),
 		Description:    acceptedTaskDescription(t),
 		Reward:         task.NoRewardSpec{},
+		Participation:  task.ParticipationPolicyOpen,
+		AssigneeScope:  task.AssigneeScopeUser,
+		ReservationTTL: task.DefaultReservationTTL(),
 		State:          task.StateOpen,
 		Visibility:     visibility,
 		Placement:      task.StandalonePlacement{},
 		ResponseSchema: acceptedTaskSchema(t, schemaSource),
 		Payload:        task.NoDataPayload{},
 		CreatedBy:      submissionTestUserID(t),
-	}}
+	}, eligible: true}
 }
 
 type submissionPermissionStore struct {
@@ -183,6 +203,13 @@ func (store *submissionTaskStore) FindTask(_ context.Context, taskID core.TaskID
 		return task.FindTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task missing")}
 	}
 	return task.FindTaskStoreAccepted{Value: store.value}
+}
+
+func (store *submissionTaskStore) CheckSubmissionEligibility(context.Context, core.TaskID, core.UserID) task.SubmissionEligibilityStoreResult {
+	if !store.eligible {
+		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submitter does not hold the active task reservation")}
+	}
+	return task.SubmissionEligible{}
 }
 
 func testSubmitCommand(t *testing.T, taskID core.TaskID, response string) SubmitCommand {
