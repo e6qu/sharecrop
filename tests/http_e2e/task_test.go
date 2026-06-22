@@ -168,9 +168,12 @@ func TestReservationRequiredTaskDiscoveryAndSubmission(t *testing.T) {
 }
 
 type taskHTTPResponse struct {
-	ID             string `json:"id"`
-	State          string `json:"state"`
-	VisibilityKind string `json:"visibility_kind"`
+	ID                     string `json:"id"`
+	State                  string `json:"state"`
+	VisibilityKind         string `json:"visibility_kind"`
+	RewardKind             string `json:"reward_kind"`
+	RewardCreditAmount     int64  `json:"reward_credit_amount"`
+	RewardCollectibleCount int    `json:"reward_collectible_count"`
 }
 
 type tasksHTTPResponse struct {
@@ -207,6 +210,19 @@ func userCreditTaskRequestJSON(userID string, amount int64) string {
 		"title":"Credit reward task",
 		"description":"Review response examples for a credit reward.",
 		"reward":{"kind":"credit","credit_amount":` + strconv.FormatInt(amount, 10) + `},
+		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+}
+
+func userBundleTaskRequestJSON(userID string, amount int64) string {
+	return `{
+		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
+		"title":"Bundle reward task",
+		"description":"Review response examples for a bundled reward.",
+		"reward":{"kind":"bundle","credit_amount":` + strconv.FormatInt(amount, 10) + `},
 		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"freeform\"}",

@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 16 work. Pull request 16 was merged into `main`.
+The repository contains pull request 1 through pull request 17 work. Pull request 17 was merged into `main`.
 
 Active task:
 
-- Active branch `task/review-outcomes` implemented requester review outcomes for submitted work and is awaiting pull request creation.
+- Active branch `task/reward-bundles` implements reward bundles and is awaiting pull request creation.
 
 Implemented surface:
 
@@ -107,9 +107,12 @@ Implemented surface:
 - Collectible minting, collectible task rewards with escrow, transfer to the accepted worker on acceptance, and refund.
 - HTTP endpoints for minting and listing collectibles, funding and refunding collectible rewards, and an organization credit balance.
 - Generated Elm collectible contracts and a browser collectibles panel for minting, holdings, and awarding a collectible to a task.
-- Task reward specifications for no-reward and credit-reward tasks.
-- Task create, list, and detail responses expose reward kind and credit amount.
-- Credit escrow funding requires a matching declared credit reward, and credit-reward tasks require matching held escrow before opening.
+- Task reward specifications for no-reward, credit-reward, collectible-reward, and bundled credit-plus-collectible tasks.
+- Task create, list, detail, MCP summary, and MCP detail responses expose reward kind, credit amount, and collectible reward count.
+- Credit escrow funding requires a matching declared credit reward, and credit or bundled tasks require matching held escrow before opening.
+- Collectible-reward and bundled tasks require a held collectible reward before opening.
+- Submission acceptance can pay no reward, credits, a collectible, or a bundled credit-plus-collectible payout.
+- Bundled reward refunds return held credits and the held collectible together.
 - Accept-submission idempotency is stored per accepted submission and same-key retries do not pay twice.
 - Submission creation requires an open visible task, and requester submission listing allows the creator or organization reviewers.
 - Domain HTTP errors map missing resources, permission denials, invalid state, and conflicts to `404`, `403`, and `409` where applicable.
@@ -143,7 +146,6 @@ Implemented surface:
 Planned defaults:
 
 - Public-team assignment is deferred unless public teams already exist; first implementation supports users and same-organization teams.
-- Reward bundles may contain credits, collectibles, both, or neither.
 - Full MCP Streamable HTTP SSE remains planned.
 
 The accepted defaults for pull request 1 were:
@@ -159,14 +161,16 @@ The accepted defaults for pull request 1 were:
 - Default app port: `18080`.
 - Default local Postgres port: `15432`.
 
-Last observed checks:
+Last observed checks on `task/reward-bundles`:
 
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed on `task/review-outcomes`.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-integration` passed after review outcome integration coverage was added.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-http` passed after the HTTP and MCP review endpoints were added.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod make check-format check-policy check-ts check-copy-paste lint vet frontend build` passed.
-- `make check-dead-code` could not be rerun after the final frontend and handler refactor because the required network escalation for downloading `golang.org/x/tools` was rejected by the approval system.
-- A final rerun of `make test-integration`, `make test-http`, and UI screenshot checks could not be performed after the final frontend and handler refactor because database/browser escalation was rejected by the approval system.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags integration ./tests/integration` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-policy check-ts check-copy-paste lint vet test-deno check-dead-code frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
+- `make check-contracts` regenerated the intended Elm contract changes and failed before commit because the generated files differ from `HEAD`; rerun after committing.
 
 Blocking issues:
 

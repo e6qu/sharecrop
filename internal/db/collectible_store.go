@@ -125,6 +125,9 @@ func (store CollectibleStore) RefundCollectibleReward(ctx context.Context, comma
 	if taskRow.state != "draft" && taskRow.state != "open" {
 		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft or open tasks can be refunded")}
 	}
+	if taskRow.rewardKind == "bundle" {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "bundled rewards must be refunded together")}
+	}
 
 	var rawCollectibleID string
 	var rewardState string
@@ -162,19 +165,12 @@ func (store CollectibleStore) RefundCollectibleReward(ctx context.Context, comma
 }
 
 func taskAlreadyFunded(ctx context.Context, tx pgx.Tx, taskID core.TaskID) (core.DomainError, bool) {
-	var creditExists bool
-	if err := tx.QueryRow(ctx, "select exists(select 1 from task_escrows where task_id = $1)", taskID.String()).Scan(&creditExists); err != nil {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "check existing escrow failed"), true
-	}
-	if creditExists {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "task is already funded"), true
-	}
 	var rewardExists bool
 	if err := tx.QueryRow(ctx, "select exists(select 1 from task_collectible_rewards where task_id = $1)", taskID.String()).Scan(&rewardExists); err != nil {
 		return core.NewDomainError(core.ErrorCodeInvalidState, "check existing reward failed"), true
 	}
 	if rewardExists {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "task is already funded"), true
+		return core.NewDomainError(core.ErrorCodeInvalidState, "task already has a collectible reward"), true
 	}
 	return core.DomainError{}, false
 }

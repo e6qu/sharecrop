@@ -136,7 +136,7 @@ func (server Server) refundCollectibleReward(w http.ResponseWriter, r *http.Requ
 	result := server.assetService.RefundReward(r.Context(), actor.ID, taskID)
 	refunded, matched := result.(assets.RewardRefunded)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(assets.RefundRewardRejected).Reason.Description())
+		writeDomainError(w, result.(assets.RefundRewardRejected).Reason)
 		return
 	}
 	writeJSON(w, http.StatusOK, collectibleToResponse(refunded.Value))

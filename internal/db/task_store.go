@@ -139,17 +139,26 @@ func (store TaskStore) requireOpenableReward(ctx context.Context, taskID core.Ta
 	if err != nil {
 		return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
-	if rewardKind != task.RewardKindCredit.String() {
-		return openableRewardAccepted{}
+	if rewardKind == task.RewardKindCredit.String() || rewardKind == task.RewardKindBundle.String() {
+		var heldAmount int64
+		var escrowState string
+		escrowErr := store.pool.QueryRow(ctx, "select amount, state from task_escrows where task_id = $1", taskID.String()).Scan(&heldAmount, &escrowState)
+		if escrowErr != nil {
+			return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward must be funded before opening")}
+		}
+		if escrowState != "held" || heldAmount != creditAmount {
+			return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "held escrow must match the declared credit reward")}
+		}
 	}
-	var heldAmount int64
-	var escrowState string
-	escrowErr := store.pool.QueryRow(ctx, "select amount, state from task_escrows where task_id = $1", taskID.String()).Scan(&heldAmount, &escrowState)
-	if escrowErr != nil {
-		return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward must be funded before opening")}
-	}
-	if escrowState != "held" || heldAmount != creditAmount {
-		return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "held escrow must match the declared credit reward")}
+	if rewardKind == task.RewardKindCollectible.String() || rewardKind == task.RewardKindBundle.String() {
+		var heldCollectibles int
+		err := store.pool.QueryRow(ctx, "select count(*) from task_collectible_rewards where task_id = $1 and state = 'held'", taskID.String()).Scan(&heldCollectibles)
+		if err != nil {
+			return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "check collectible reward funding failed")}
+		}
+		if heldCollectibles != 1 {
+			return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "collectible reward must be funded before opening")}
+		}
 	}
 	return openableRewardAccepted{}
 }
@@ -526,6 +535,11 @@ func rewardSQLColumns(reward task.RewardSpec) rewardSQL {
 	case task.CreditRewardSpec:
 		amount := typed.Amount.Int64()
 		return rewardSQL{kind: task.RewardKindCredit.String(), creditAmount: &amount}
+	case task.CollectibleRewardSpec:
+		return rewardSQL{kind: task.RewardKindCollectible.String()}
+	case task.BundleRewardSpec:
+		amount := typed.Credit.Int64()
+		return rewardSQL{kind: task.RewardKindBundle.String(), creditAmount: &amount}
 	default:
 		return rewardSQL{}
 	}
@@ -595,6 +609,12 @@ func taskSelectSQL() string {
 		select tasks.id::text, tasks.owner_kind, coalesce(tasks.user_id::text, ''), coalesce(tasks.team_id::text, ''),
 			coalesce(tasks.organization_id::text, ''), tasks.title, tasks.description, tasks.state,
 			tasks.reward_kind, coalesce(tasks.reward_credit_amount, 0),
+			coalesce((
+				select count(*)
+				from task_collectible_rewards
+				where task_collectible_rewards.task_id = tasks.id
+				and task_collectible_rewards.state in ('held', 'released')
+			), 0),
 			tasks.participation_policy, tasks.assignee_scope, tasks.reservation_expires_after_hours,
 			task_visibility_scopes.visibility_kind, coalesce(task_visibility_scopes.user_id::text, ''),
 			coalesce(task_visibility_scopes.team_id::text, ''), coalesce(task_visibility_scopes.organization_id::text, ''),
@@ -731,6 +751,7 @@ func scanTaskRow(rows pgx.Rows) taskRowResult {
 	var rawState string
 	var rawRewardKind string
 	var rawRewardCreditAmount int64
+	var rawRewardCollectibleCount int
 	var rawParticipationPolicy string
 	var rawAssigneeScope string
 	var rawReservationTTLHours int
@@ -744,13 +765,13 @@ func scanTaskRow(rows pgx.Rows) taskRowResult {
 	var rawPayloadKind string
 	var rawPayload string
 	var rawCreatedBy string
-	if err := rows.Scan(&rawTaskID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawDescription, &rawState, &rawRewardKind, &rawRewardCreditAmount, &rawParticipationPolicy, &rawAssigneeScope, &rawReservationTTLHours, &rawVisibilityKind, &rawVisibilityUserID, &rawVisibilityTeamID, &rawVisibilityOrganizationID, &rawSeriesID, &rawSeriesPosition, &rawResponseSchema, &rawPayloadKind, &rawPayload, &rawCreatedBy); err != nil {
+	if err := rows.Scan(&rawTaskID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawDescription, &rawState, &rawRewardKind, &rawRewardCreditAmount, &rawRewardCollectibleCount, &rawParticipationPolicy, &rawAssigneeScope, &rawReservationTTLHours, &rawVisibilityKind, &rawVisibilityUserID, &rawVisibilityTeamID, &rawVisibilityOrganizationID, &rawSeriesID, &rawSeriesPosition, &rawResponseSchema, &rawPayloadKind, &rawPayload, &rawCreatedBy); err != nil {
 		return taskRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
-	return parseTaskRow(rawTaskID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawDescription, rawState, rawRewardKind, rawRewardCreditAmount, rawParticipationPolicy, rawAssigneeScope, rawReservationTTLHours, rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID, rawSeriesID, rawSeriesPosition, rawResponseSchema, rawPayloadKind, rawPayload, rawCreatedBy)
+	return parseTaskRow(rawTaskID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawDescription, rawState, rawRewardKind, rawRewardCreditAmount, rawRewardCollectibleCount, rawParticipationPolicy, rawAssigneeScope, rawReservationTTLHours, rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID, rawSeriesID, rawSeriesPosition, rawResponseSchema, rawPayloadKind, rawPayload, rawCreatedBy)
 }
 
-func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawParticipationPolicy string, rawAssigneeScope string, rawReservationTTLHours int, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string) taskRowResult {
+func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawRewardCollectibleCount int, rawParticipationPolicy string, rawAssigneeScope string, rawReservationTTLHours int, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string) taskRowResult {
 	taskIDResult := core.ParseTaskID(rawTaskID)
 	taskID, taskIDMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskIDMatched {
@@ -781,7 +802,7 @@ func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, 
 		rejected := stateResult.(task.StateRejected)
 		return taskRowRejected{reason: rejected.Reason}
 	}
-	rewardResult := parseRewardSpec(rawRewardKind, rawRewardCreditAmount)
+	rewardResult := parseRewardSpec(rawRewardKind, rawRewardCreditAmount, rawRewardCollectibleCount)
 	reward, rewardMatched := rewardResult.(rewardSpecAccepted)
 	if !rewardMatched {
 		rejected := rewardResult.(rewardSpecRejected)
@@ -854,9 +875,12 @@ func (rewardSpecAccepted) rewardSpecResult() {}
 
 func (rewardSpecRejected) rewardSpecResult() {}
 
-func parseRewardSpec(rawKind string, rawCreditAmount int64) rewardSpecResult {
+func parseRewardSpec(rawKind string, rawCreditAmount int64, rawCollectibleCount int) rewardSpecResult {
 	switch rawKind {
 	case task.RewardKindNone.String():
+		if rawCollectibleCount > 0 {
+			return collectibleRewardSpec(rawCollectibleCount)
+		}
 		return rewardSpecAccepted{value: task.NoRewardSpec{}}
 	case task.RewardKindCredit.String():
 		amountResult := task.NewCreditRewardAmount(rawCreditAmount)
@@ -864,10 +888,49 @@ func parseRewardSpec(rawKind string, rawCreditAmount int64) rewardSpecResult {
 		if !matched {
 			return rewardSpecRejected{reason: amountResult.(task.CreditRewardAmountRejected).Reason}
 		}
+		if rawCollectibleCount > 0 {
+			countResult := collectibleRewardSpec(rawCollectibleCount)
+			count, countMatched := countResult.(rewardSpecAccepted)
+			if !countMatched {
+				return countResult
+			}
+			return rewardSpecAccepted{value: task.BundleRewardSpec{Credit: amount.Value, Collectible: count.value.(task.CollectibleRewardSpec).Count}}
+		}
 		return rewardSpecAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
+	case task.RewardKindCollectible.String():
+		count := rawCollectibleCount
+		if count == 0 {
+			count = 1
+		}
+		return collectibleRewardSpec(count)
+	case task.RewardKindBundle.String():
+		amountResult := task.NewCreditRewardAmount(rawCreditAmount)
+		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
+		if !matched {
+			return rewardSpecRejected{reason: amountResult.(task.CreditRewardAmountRejected).Reason}
+		}
+		count := rawCollectibleCount
+		if count == 0 {
+			count = 1
+		}
+		countResult := collectibleRewardSpec(count)
+		collectible, collectibleMatched := countResult.(rewardSpecAccepted)
+		if !collectibleMatched {
+			return countResult
+		}
+		return rewardSpecAccepted{value: task.BundleRewardSpec{Credit: amount.Value, Collectible: collectible.value.(task.CollectibleRewardSpec).Count}}
 	default:
 		return rewardSpecRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task reward kind is invalid")}
 	}
+}
+
+func collectibleRewardSpec(rawCount int) rewardSpecResult {
+	countResult := task.NewCollectibleRewardCount(rawCount)
+	count, matched := countResult.(task.CollectibleRewardCountAccepted)
+	if !matched {
+		return rewardSpecRejected{reason: countResult.(task.CollectibleRewardCountRejected).Reason}
+	}
+	return rewardSpecAccepted{value: task.CollectibleRewardSpec{Count: count.Value}}
 }
 
 func reservationSelectSQL() string {

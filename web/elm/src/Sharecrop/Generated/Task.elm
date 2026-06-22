@@ -414,6 +414,7 @@ type alias TaskListItemResponse =
     , title : String
     , rewardKind : String
     , rewardCreditAmount : Int
+    , rewardCollectibleCount : Int
     , participationPolicy : TaskParticipationPolicy
     , assigneeScope : TaskAssigneeScope
     , reservationExpiryHours : Int
@@ -432,12 +433,13 @@ taskListItemResponseDecoder =
         (Decode.field "title" Decode.string)
         (Decode.field "reward_kind" Decode.string)
         (Decode.field "reward_credit_amount" Decode.int)
+        (Decode.field "reward_collectible_count" Decode.int)
         (Decode.field "participation_policy" taskParticipationPolicyDecoder)
         (Decode.field "assignee_scope" taskAssigneeScopeDecoder)
-        (Decode.field "reservation_expiry_hours" Decode.int)
         |> Decode.andThen
             (\finish ->
-                Decode.map5 finish
+                Decode.map6 finish
+                    (Decode.field "reservation_expiry_hours" Decode.int)
                     (Decode.field "state" taskStateDecoder)
                     (Decode.field "visibility_kind" taskVisibilityKindDecoder)
                     (Decode.field "availability_kind" taskAvailabilityKindDecoder)
@@ -453,6 +455,7 @@ taskListItemResponseEncoder taskListItemResponse =
         , ( "title", Encode.string taskListItemResponse.title )
         , ( "reward_kind", Encode.string taskListItemResponse.rewardKind )
         , ( "reward_credit_amount", Encode.int taskListItemResponse.rewardCreditAmount )
+        , ( "reward_collectible_count", Encode.int taskListItemResponse.rewardCollectibleCount )
         , ( "participation_policy", taskParticipationPolicyEncoder taskListItemResponse.participationPolicy )
         , ( "assignee_scope", taskAssigneeScopeEncoder taskListItemResponse.assigneeScope )
         , ( "reservation_expiry_hours", Encode.int taskListItemResponse.reservationExpiryHours )
@@ -471,6 +474,7 @@ type alias TaskResponse =
     , description : String
     , rewardKind : String
     , rewardCreditAmount : Int
+    , rewardCollectibleCount : Int
     , participationPolicy : TaskParticipationPolicy
     , assigneeScope : TaskAssigneeScope
     , reservationExpiryHours : Int
@@ -498,10 +502,11 @@ taskResponseDecoder =
         (Decode.field "description" Decode.string)
         (Decode.field "reward_kind" Decode.string)
         (Decode.field "reward_credit_amount" Decode.int)
-        (Decode.field "participation_policy" taskParticipationPolicyDecoder)
+        (Decode.field "reward_collectible_count" Decode.int)
         |> Decode.andThen
             (\finish ->
                 Decode.map8 finish
+                    (Decode.field "participation_policy" taskParticipationPolicyDecoder)
                     (Decode.field "assignee_scope" taskAssigneeScopeDecoder)
                     (Decode.field "reservation_expiry_hours" Decode.int)
                     (Decode.field "state" taskStateDecoder)
@@ -509,11 +514,11 @@ taskResponseDecoder =
                     (Decode.field "visibility_id" Decode.string)
                     (Decode.field "availability_kind" taskAvailabilityKindDecoder)
                     (Decode.field "viewer_action" taskViewerActionDecoder)
-                    (Decode.field "series_kind" Decode.string)
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map6 finish
+                Decode.map7 finish
+                    (Decode.field "series_kind" Decode.string)
                     (Decode.field "series_id" Decode.string)
                     (Decode.field "series_position" Decode.int)
                     (Decode.field "response_schema_json" Decode.string)
@@ -532,6 +537,7 @@ taskResponseEncoder taskResponse =
         , ( "description", Encode.string taskResponse.description )
         , ( "reward_kind", Encode.string taskResponse.rewardKind )
         , ( "reward_credit_amount", Encode.int taskResponse.rewardCreditAmount )
+        , ( "reward_collectible_count", Encode.int taskResponse.rewardCollectibleCount )
         , ( "participation_policy", taskParticipationPolicyEncoder taskResponse.participationPolicy )
         , ( "assignee_scope", taskAssigneeScopeEncoder taskResponse.assigneeScope )
         , ( "reservation_expiry_hours", Encode.int taskResponse.reservationExpiryHours )

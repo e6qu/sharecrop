@@ -318,6 +318,7 @@ type taskResponse struct {
 	Description            string `json:"description"`
 	RewardKind             string `json:"reward_kind"`
 	RewardCreditAmount     int64  `json:"reward_credit_amount"`
+	RewardCollectibleCount int    `json:"reward_collectible_count"`
 	ParticipationPolicy    string `json:"participation_policy"`
 	AssigneeScope          string `json:"assignee_scope"`
 	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
@@ -1479,6 +1480,11 @@ func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionRespon
 		response.PayoutKind = "collectible"
 		response.CollectibleID = payout.CollectibleID.String()
 		response.WorkerUserID = payout.WorkerUserID.String()
+	case ledger.BundlePayout:
+		response.PayoutKind = "bundle"
+		response.PayoutAmount = payout.Amount.Int64()
+		response.CollectibleID = payout.CollectibleID.String()
+		response.WorkerUserID = payout.WorkerUserID.String()
 	}
 	if tip, matched := accepted.Tip.(ledger.CreditTip); matched {
 		response.TipAmount = tip.Amount.Int64()
@@ -1492,6 +1498,11 @@ func reviewOutcomeToResponse(payout ledger.PayoutOutcome, tip ledger.TipOutcome)
 		response.PayoutKind = "credit"
 		response.PayoutAmount = credit.Amount.Int64()
 		response.WorkerUserID = credit.WorkerUserID.String()
+	}
+	if bundle, matched := payout.(ledger.BundlePayout); matched {
+		response.PayoutKind = "bundle"
+		response.PayoutAmount = bundle.Amount.Int64()
+		response.WorkerUserID = bundle.WorkerUserID.String()
 	}
 	if creditTip, matched := tip.(ledger.CreditTip); matched {
 		response.TipAmount = creditTip.Amount.Int64()
@@ -1917,6 +1928,20 @@ func parseTaskRewardRequest(request taskRewardRequest) taskRewardResult {
 			return taskRewardRejected{reason: rejected.Reason.Description()}
 		}
 		return taskRewardAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
+	case task.RewardKindCollectible.String():
+		countResult := task.NewCollectibleRewardCount(1)
+		count := countResult.(task.CollectibleRewardCountAccepted)
+		return taskRewardAccepted{value: task.CollectibleRewardSpec{Count: count.Value}}
+	case task.RewardKindBundle.String():
+		amountResult := task.NewCreditRewardAmount(request.CreditAmount)
+		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
+		if !matched {
+			rejected := amountResult.(task.CreditRewardAmountRejected)
+			return taskRewardRejected{reason: rejected.Reason.Description()}
+		}
+		countResult := task.NewCollectibleRewardCount(1)
+		count := countResult.(task.CollectibleRewardCountAccepted)
+		return taskRewardAccepted{value: task.BundleRewardSpec{Credit: amount.Value, Collectible: count.Value}}
 	default:
 		return taskRewardRejected{reason: "task reward kind is invalid"}
 	}
@@ -2364,6 +2389,7 @@ func taskToResponse(value task.Task) taskResponse {
 		Description:            value.Description.String(),
 		RewardKind:             reward.kind,
 		RewardCreditAmount:     reward.amount,
+		RewardCollectibleCount: reward.collectibleCount,
 		ParticipationPolicy:    value.Participation.String(),
 		AssigneeScope:          value.AssigneeScope.String(),
 		ReservationExpiryHours: value.ReservationTTL.Hours(),
@@ -2432,8 +2458,9 @@ func reservationAssigneeResponseParts(assignee task.Assignee) responseParts {
 }
 
 type rewardResponseParts struct {
-	kind   string
-	amount int64
+	kind             string
+	amount           int64
+	collectibleCount int
 }
 
 func taskRewardResponseParts(reward task.RewardSpec) rewardResponseParts {
@@ -2442,6 +2469,10 @@ func taskRewardResponseParts(reward task.RewardSpec) rewardResponseParts {
 		return rewardResponseParts{kind: task.RewardKindNone.String()}
 	case task.CreditRewardSpec:
 		return rewardResponseParts{kind: task.RewardKindCredit.String(), amount: typed.Amount.Int64()}
+	case task.CollectibleRewardSpec:
+		return rewardResponseParts{kind: task.RewardKindCollectible.String(), collectibleCount: typed.Count.Int()}
+	case task.BundleRewardSpec:
+		return rewardResponseParts{kind: task.RewardKindBundle.String(), amount: typed.Credit.Int64(), collectibleCount: typed.Collectible.Int()}
 	default:
 		return rewardResponseParts{}
 	}

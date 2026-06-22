@@ -168,7 +168,7 @@ func (fundingRewardAccepted) fundingRewardResult() {}
 func (fundingRewardRejected) fundingRewardResult() {}
 
 func requireCreditRewardFunding(taskRow taskLocked, amount ledger.CreditAmount) fundingRewardResult {
-	if taskRow.rewardKind != "credit" {
+	if taskRow.rewardKind != "credit" && taskRow.rewardKind != "bundle" {
 		return fundingRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "task does not declare a credit reward")}
 	}
 	if taskRow.rewardCreditAmount != amount.Int64() {
@@ -441,6 +441,58 @@ func payOutCollectible(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWo
 	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleID: collectibleID.Value}}
 }
 
+func releasedCollectiblePayout(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
+	var rawCollectibleID string
+	var rewardState string
+	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1", taskID.String()).Scan(&rawCollectibleID, &rewardState)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return payoutResolved{outcome: ledger.NoPayout{}}
+	}
+	if scanErr != nil {
+		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")}
+	}
+	if rewardState != "released" {
+		return payoutResolved{outcome: ledger.NoPayout{}}
+	}
+
+	workerResult := core.ParseUserID(rawWorkerID)
+	worker, workerMatched := workerResult.(core.UserIDCreated)
+	if !workerMatched {
+		return payoutRejected{reason: workerResult.(core.UserIDRejected).Reason}
+	}
+	collectibleResult := core.ParseCollectibleID(rawCollectibleID)
+	collectibleID, collectibleMatched := collectibleResult.(core.CollectibleIDCreated)
+	if !collectibleMatched {
+		return payoutRejected{reason: collectibleResult.(core.CollectibleIDRejected).Reason}
+	}
+	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleID: collectibleID.Value}}
+}
+
+func refundHeldCollectibleReward(ctx context.Context, tx pgx.Tx, taskID core.TaskID) (core.DomainError, bool) {
+	var rawCollectibleID string
+	var rewardState string
+	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1 for update", taskID.String()).Scan(&rawCollectibleID, &rewardState)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return core.DomainError{}, false
+	}
+	if scanErr != nil {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed"), true
+	}
+	if rewardState == "refunded" {
+		return core.DomainError{}, false
+	}
+	if rewardState != "held" {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "collectible reward is not held"), true
+	}
+	if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", rawCollectibleID); err != nil {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed"), true
+	}
+	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1", taskID.String()); err != nil {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "update collectible reward failed"), true
+	}
+	return core.DomainError{}, false
+}
+
 // idempotentAccept returns the prior acceptance outcome when a submission is
 // already accepted, so accept commands can be retried safely.
 func idempotentAccept(ctx context.Context, tx pgx.Tx, command ledger.AcceptStoreCommand, rawWorkerID string) ledger.AcceptResult {
@@ -448,21 +500,31 @@ func idempotentAccept(ctx context.Context, tx pgx.Tx, command ledger.AcceptStore
 	var amount int64
 	scanErr := tx.QueryRow(ctx, "select state, amount from task_escrows where task_id = $1", command.TaskID.String()).Scan(&escrowState, &amount)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
+		collectibleResult := releasedCollectiblePayout(ctx, tx, command.TaskID, rawWorkerID)
+		collectible, matched := collectibleResult.(payoutResolved)
+		if !matched {
+			return ledger.AcceptRejected{Reason: collectibleResult.(payoutRejected).reason}
+		}
+		return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: collectible.outcome, Tip: ledger.NoTip{}}
 	}
 	if scanErr != nil {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task escrow failed")}
 	}
-	if escrowState != "released" {
-		return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
-	}
 
+	outcome := ledger.PayoutOutcome(ledger.NoPayout{})
 	worker, workerMatched := core.ParseUserID(rawWorkerID).(core.UserIDCreated)
 	amountAccepted, amountMatched := ledger.NewCreditAmount(amount).(ledger.CreditAmountAccepted)
-	if !workerMatched || !amountMatched {
-		return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
+	if escrowState == "released" && workerMatched && amountMatched {
+		outcome = ledger.CreditPayout{WorkerUserID: worker.Value, Amount: amountAccepted.Value}
 	}
-	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.CreditPayout{WorkerUserID: worker.Value, Amount: amountAccepted.Value}, Tip: ledger.NoTip{}}
+
+	collectibleResult := releasedCollectiblePayout(ctx, tx, command.TaskID, rawWorkerID)
+	collectible, collectibleMatched := collectibleResult.(payoutResolved)
+	if !collectibleMatched {
+		return ledger.AcceptRejected{Reason: collectibleResult.(payoutRejected).reason}
+	}
+	outcome = combinePayouts(outcome, collectible.outcome)
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: ledger.NoTip{}}
 }
 
 type escrowBuildResult interface {

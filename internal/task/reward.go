@@ -32,3 +32,34 @@ func NewCreditRewardAmount(value int64) CreditRewardAmountResult {
 func (amount CreditRewardAmount) Int64() int64 {
 	return amount.value
 }
+
+type CollectibleRewardCount struct {
+	value int
+}
+
+type CollectibleRewardCountResult interface {
+	collectibleRewardCountResult()
+}
+
+type CollectibleRewardCountAccepted struct {
+	Value CollectibleRewardCount
+}
+
+type CollectibleRewardCountRejected struct {
+	Reason core.DomainError
+}
+
+func (CollectibleRewardCountAccepted) collectibleRewardCountResult() {}
+
+func (CollectibleRewardCountRejected) collectibleRewardCountResult() {}
+
+func NewCollectibleRewardCount(value int) CollectibleRewardCountResult {
+	if value <= 0 {
+		return CollectibleRewardCountRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible reward count must be positive")}
+	}
+	return CollectibleRewardCountAccepted{Value: CollectibleRewardCount{value: value}}
+}
+
+func (count CollectibleRewardCount) Int() int {
+	return count.value
+}

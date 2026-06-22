@@ -86,6 +86,7 @@ type alias TaskDetail =
     , state : Task.TaskState
     , rewardKind : String
     , rewardCreditAmount : Int
+    , rewardCollectibleCount : Int
     , participationPolicy : Task.TaskParticipationPolicy
     , assigneeScope : Task.TaskAssigneeScope
     , reservationExpiryHours : Int
@@ -1302,6 +1303,7 @@ taskDetailFromResponse response =
     , state = response.state
     , rewardKind = response.rewardKind
     , rewardCreditAmount = response.rewardCreditAmount
+    , rewardCollectibleCount = response.rewardCollectibleCount
     , participationPolicy = response.participationPolicy
     , assigneeScope = response.assigneeScope
     , reservationExpiryHours = response.reservationExpiryHours
@@ -1516,7 +1518,7 @@ taskPicker identifier selectedTaskId change tasks =
 taskOption : String -> Task.TaskListItemResponse -> Html Msg
 taskOption selectedTaskId item =
     option [ value item.id, selected (selectedTaskId == item.id) ]
-        [ text (item.title ++ " · " ++ taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount) ]
+        [ text (item.title ++ " · " ++ taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount) ]
 
 
 tasksView : String -> LoggedInModel -> Html Msg
@@ -1542,7 +1544,7 @@ taskRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount) ]
             ]
         , Ui.secondaryButton [ onClick (SelectTask item.id), testId "view-task" ] "View"
         ]
@@ -1557,7 +1559,7 @@ taskDetailView origin state =
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
                 , Ui.label_ ("Task " ++ detail.id)
                 , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ taskStateLabel detail.state) ]
-                , p [ Html.Attributes.class "text-sm" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount) ]
+                , p [ Html.Attributes.class "text-sm" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
                 , p [ Html.Attributes.class "text-sm" ] [ text ("Participation: " ++ participationPolicyLabel detail.participationPolicy) ]
                 , p [ Html.Attributes.class "text-sm" ] [ text ("Reservation expiry: " ++ String.fromInt detail.reservationExpiryHours ++ " hours") ]
                 , div [ Html.Attributes.class "flex gap-2" ]
@@ -1772,7 +1774,7 @@ discoveryRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "discovery-task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount ++ " · " ++ participationPolicyLabel item.participationPolicy) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy) ]
             ]
         , Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View"
         ]
@@ -1804,7 +1806,7 @@ detailCard origin state =
                     , Ui.badge (availabilityKindLabel detail.availabilityKind)
                     , Ui.badge (participationPolicyLabel detail.participationPolicy)
                     ]
-                , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount) ]
+                , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
                 , Ui.label_ "Response schema"
                 , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson
@@ -2401,13 +2403,20 @@ escrowStateLabel state =
             "refunded"
 
 
-rewardLabel : String -> Int -> String
-rewardLabel kind amount =
-    if kind == "credit" then
-        String.fromInt amount ++ " credits"
+rewardLabel : String -> Int -> Int -> String
+rewardLabel kind amount collectibleCount =
+    case kind of
+        "credit" ->
+            String.fromInt amount ++ " credits"
 
-    else
-        "no reward"
+        "collectible" ->
+            String.fromInt collectibleCount ++ " collectible"
+
+        "bundle" ->
+            String.fromInt amount ++ " credits + " ++ String.fromInt collectibleCount ++ " collectible"
+
+        _ ->
+            "no reward"
 
 
 httpErrorLabel : Http.Error -> String

@@ -79,17 +79,32 @@ type CreditRewardSpec struct {
 	Amount CreditRewardAmount
 }
 
+type CollectibleRewardSpec struct {
+	Count CollectibleRewardCount
+}
+
+type BundleRewardSpec struct {
+	Credit      CreditRewardAmount
+	Collectible CollectibleRewardCount
+}
+
 func (NoRewardSpec) rewardSpec() {}
 
 func (CreditRewardSpec) rewardSpec() {}
+
+func (CollectibleRewardSpec) rewardSpec() {}
+
+func (BundleRewardSpec) rewardSpec() {}
 
 type RewardKind struct {
 	value string
 }
 
 var (
-	RewardKindNone   = RewardKind{value: "none"}
-	RewardKindCredit = RewardKind{value: "credit"}
+	RewardKindNone        = RewardKind{value: "none"}
+	RewardKindCredit      = RewardKind{value: "credit"}
+	RewardKindCollectible = RewardKind{value: "collectible"}
+	RewardKindBundle      = RewardKind{value: "bundle"}
 )
 
 func (kind RewardKind) String() string {
@@ -294,10 +309,10 @@ type AvailabilityKind struct {
 }
 
 var (
-	AvailabilityAvailable       = AvailabilityKind{value: "available"}
-	AvailabilityReserved        = AvailabilityKind{value: "reserved"}
+	AvailabilityAvailable        = AvailabilityKind{value: "available"}
+	AvailabilityReserved         = AvailabilityKind{value: "reserved"}
 	AvailabilityAwaitingApproval = AvailabilityKind{value: "awaiting_approval"}
-	AvailabilityClosed          = AvailabilityKind{value: "closed"}
+	AvailabilityClosed           = AvailabilityKind{value: "closed"}
 )
 
 func (kind AvailabilityKind) String() string {
