@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 14 work. Pull request 14 was merged into `main`.
+The repository contains pull request 1 through pull request 15 work. Pull request 15 was merged into `main`.
 
 Active task:
 
-- Active branch `task/reservation-approval-foundation` contains the reservation, approval, and discovery availability foundation and is ready for pull-request validation.
+- Active branch `task/requester-ergonomics-instructions` is implementing requester ergonomics, task discovery controls, reservation actions, and task-page API/MCP instructions.
 
 Implemented surface:
 
@@ -126,6 +126,11 @@ Implemented surface:
 - Submission creation checks reservation eligibility before storing a response.
 - Public discovery hides actively reserved tasks from unrelated workers by default and shows them with `include_reserved=true`, while keeping them visible to the requester and active assignee.
 - Task create, list, and detail responses expose participation policy, assignee scope, reservation expiry, availability kind, and viewer action.
+- Browser task creation exposes participation policy and reservation expiry controls.
+- Browser funding and collectible-award forms select from the requester's task list instead of requiring manual task identifiers.
+- Browser discovery exposes an include-reserved control.
+- Browser task detail pages expose reserve/request-approval actions, requester reservation review controls, and task-specific REST and MCP examples.
+- Requester task lists include tasks created by the requester even when the task is publicly visible.
 
 Planned defaults:
 
@@ -151,12 +156,13 @@ The accepted defaults for pull request 1 were:
 
 Last observed checks:
 
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed on the reservation foundation branch.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-policy check-ts check-copy-paste check-dead-code lint vet test frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed on the requester ergonomics branch.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test frontend` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-integration` passed with local Postgres access.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-http` passed with local Postgres access.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
+- Manual screenshot review passed for `/tmp/sharecrop-requester-ergonomics.png`.
 
 Blocking issues:
 

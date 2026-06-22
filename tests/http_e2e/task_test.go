@@ -124,6 +124,11 @@ func TestReservationRequiredTaskDiscoveryAndSubmission(t *testing.T) {
 	taskBody := decodeTaskHTTPResponse(t, createTaskResponse)
 	openTask(t, server, owner.AccessToken, taskBody.ID)
 
+	ownerTasksResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user", owner.AccessToken)
+	defer ownerTasksResponse.Body.Close()
+	assertStatus(t, ownerTasksResponse, http.StatusOK)
+	assertTaskPresent(t, decodeTasksHTTPResponse(t, ownerTasksResponse), taskBody.ID)
+
 	reserveResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/reservations", []byte(`{}`), worker.AccessToken)
 	defer reserveResponse.Body.Close()
 	assertStatus(t, reserveResponse, http.StatusCreated)

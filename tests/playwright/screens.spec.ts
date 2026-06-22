@@ -96,3 +96,58 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await page.getByTestId("accept-submission").click();
   await expect(page.getByTestId("accept-submission")).toHaveCount(0);
 });
+
+test("requesters configure reservations and workers include reserved tasks", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "reservation-ui-owner");
+  const title = `Reserved UI ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill(
+    "Reservation required from the browser.",
+  );
+  await page.getByTestId("create-participation-reservation_required").click();
+  await page.getByTestId("create-public").click();
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+
+  const ownerRow = page.getByTestId("task-row").filter({ hasText: title });
+  await expect(ownerRow).toHaveCount(1);
+  await ownerRow.getByTestId("view-task").click();
+  await expect(page.getByTestId("task-instructions")).toContainText(
+    "sharecrop.get_task_schema",
+  );
+  await page.getByTestId("open-task").click();
+  await expect(page.getByTestId("create-message")).toContainText("Task opened");
+
+  const worker = await registerViaApi(request, "reservation-ui-worker");
+  await page.getByTestId("logout").click();
+  await loginViaUi(page, worker.email);
+  await page.getByTestId("nav-discovery").click();
+  const workerRow = page.getByTestId("discovery-task-row").filter({
+    hasText: title,
+  });
+  await expect(workerRow).toHaveCount(1);
+  await workerRow.getByTestId("discovery-view").click();
+  await expect(page.getByTestId("reserve-task")).toBeVisible();
+  await page.getByTestId("reserve-task").click();
+  await expect(page.getByTestId("reservation-message")).toContainText(
+    "active",
+  );
+
+  const other = await registerViaApi(request, "reservation-ui-other");
+  await page.getByTestId("detail-back").click();
+  await page.getByTestId("nav-dashboard").click();
+  await page.getByTestId("logout").click();
+  await loginViaUi(page, other.email);
+  await page.getByTestId("nav-discovery").click();
+  await expect(
+    page.getByTestId("discovery-task-row").filter({ hasText: title }),
+  ).toHaveCount(0);
+  await page.getByTestId("include-reserved").click();
+  await expect(
+    page.getByTestId("discovery-task-row").filter({ hasText: title }),
+  ).toHaveCount(1);
+});

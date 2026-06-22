@@ -1742,7 +1742,7 @@ Acceptance checks:
 
 ## Current Roadmap
 
-The codebase has implemented through pull request 14 on `main`. The reservation foundation branch is the next implementation pull request.
+The codebase has implemented through pull request 15 on `main`. The requester ergonomics and task-page instructions branch is the next implementation pull request.
 
 ### Reservation, Approval, And Discovery Availability Foundations
 
@@ -1780,7 +1780,7 @@ Acceptance checks:
 - Reserved tasks appear with `include_reserved`.
 - Reservation expiry releases the task automatically.
 
-### PR 15: Requester Ergonomics And Task Page Instructions
+### Requester Ergonomics And Task Page Instructions
 
 Goal:
 

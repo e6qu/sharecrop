@@ -7,9 +7,9 @@ Confirmed defects:
 Test gaps:
 
 - Anonymous workers were removed. The anonymous worker identity and payout model is deferred; submissions are registered-users-only.
-- The task funding form takes a task identifier as text; it is not yet wired to pick a task from the discovery or task list screens.
 - Reward bundles are planned but not implemented; current rewards are no reward, credits, or platform collectibles through separate flows.
-- Browser controls for participation policy, reservation expiry, reservation actions, approval panels, and include-reserved discovery are not implemented yet.
+- Browser task creation supports user assignees but does not yet expose organization-team assignee selection.
+- Browser task detail pages show task-specific REST and MCP examples, but MCP workflow tools for reservation and approval are not implemented yet.
 - Task-local implementor bans have storage but do not yet have requester review actions that write bans.
 - Request-changes, partial rewards, and tips are planned but not implemented.
 - Reservation availability is exposed on task responses, but the current read model does not yet expose the active reservation assignee on each task list item.
