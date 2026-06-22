@@ -257,6 +257,20 @@ func publicReservationTaskRequestJSON(userID string) string {
 	}`
 }
 
+func publicApprovalTaskRequestJSON(userID string) string {
+	return `{
+		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
+		"title":"Approval public task",
+		"description":"Request approval before submitting a response.",
+		"reward":{"kind":"none","credit_amount":0},
+		"participation":{"policy":"approval_required","assignee_scope":"user","reservation_expiry_hours":48},
+		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+}
+
 func assertTaskPresent(t *testing.T, body tasksHTTPResponse, taskID string) {
 	t.Helper()
 	for _, value := range body.Tasks {

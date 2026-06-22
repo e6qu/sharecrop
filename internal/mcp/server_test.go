@@ -77,6 +77,18 @@ func TestToolsCallListTasks(t *testing.T) {
 	}
 }
 
+func TestToolsCallReserveTask(t *testing.T) {
+	server := NewServer(fakeServices{})
+	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
+	content := decodeToolText(t, response)
+	if !strings.Contains(content, "\"reservation\"") {
+		t.Fatalf("reserve content missing reservation key: %s", content)
+	}
+	if !strings.Contains(content, "\"state\":\"active\"") {
+		t.Fatalf("reserve content missing active state: %s", content)
+	}
+}
+
 func TestToolsCallSubmitResponseReturnsReceipt(t *testing.T) {
 	server := NewServer(fakeServices{})
 	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.submit_response","arguments":{"task_id":"`+testTaskID(t)+`","response_json":"{\"answer\":\"done\"}"}}`))
@@ -193,6 +205,50 @@ func (services fakeServices) ListSeries(_ context.Context, _ auth.UserSubject) t
 
 func (services fakeServices) GetSeries(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID) task.GetSeriesResult {
 	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (services fakeServices) ReserveTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
+	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
+	return task.ReservationCreated{Value: task.Reservation{
+		ID:          reservationID.Value,
+		TaskID:      taskID,
+		Assignee:    task.UserAssignee{UserID: subject.ID},
+		State:       task.ReservationStateActive,
+		RequestedBy: subject.ID,
+	}}
+}
+
+func (services fakeServices) ListReservations(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationsListResult {
+	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
+	return task.ReservationsListed{Values: []task.Reservation{{
+		ID:          reservationID.Value,
+		TaskID:      taskID,
+		Assignee:    task.UserAssignee{UserID: subject.ID},
+		State:       task.ReservationStateRequested,
+		RequestedBy: subject.ID,
+	}}}
+}
+
+func (services fakeServices) ApproveReservation(_ context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+	return fakeReservationStateChange(subject, taskID, reservationID, task.ReservationStateActive)
+}
+
+func (services fakeServices) DeclineReservation(_ context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+	return fakeReservationStateChange(subject, taskID, reservationID, task.ReservationStateDeclined)
+}
+
+func (services fakeServices) CancelReservation(_ context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+	return fakeReservationStateChange(subject, taskID, reservationID, task.ReservationStateCancelledByRequester)
+}
+
+func fakeReservationStateChange(subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState) task.ReservationStateChangeResult {
+	return task.ReservationStateChanged{Value: task.Reservation{
+		ID:          reservationID,
+		TaskID:      taskID,
+		Assignee:    task.UserAssignee{UserID: subject.ID},
+		State:       state,
+		RequestedBy: subject.ID,
+	}}
 }
 
 func request(id string, method string, params string) Request {

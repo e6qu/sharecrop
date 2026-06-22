@@ -105,6 +105,7 @@ type Server struct {
 	agentService        AgentService
 	assetService        AssetService
 	mcpServer           mcp.Server
+	mcpSessions         *mcpHTTPSessionStore
 }
 
 func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService) http.Handler {
@@ -119,6 +120,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		agentService:        agentService,
 		assetService:        assetService,
 		mcpServer:           mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}),
+		mcpSessions:         newMCPHTTPSessionStore(),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
@@ -165,7 +167,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("GET /api/agent-credentials", server.listAgentCredentials)
 	mux.HandleFunc("POST /api/agent-credentials/{credential_id}/revoke", server.revokeAgentCredential)
 	mux.HandleFunc("POST /mcp", server.mcpEndpoint)
-	mux.HandleFunc("GET /mcp", server.mcpStreamNotOffered)
+	mux.HandleFunc("GET /mcp", server.mcpStream)
+	mux.HandleFunc("DELETE /mcp", server.mcpDeleteSession)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 	mux.HandleFunc("GET /", index(staticFiles))
 	return mux

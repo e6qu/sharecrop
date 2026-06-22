@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 17 work. Pull request 17 was merged into `main`.
+The repository contains pull request 1 through pull request 18 work. Pull request 18 was merged into `main`.
 
 Active task:
 
-- Active branch `task/reward-bundles` implements reward bundles and is awaiting pull request creation.
+- Active branch `task/mcp-workflow-sse` implemented remaining MCP workflow tools and Streamable HTTP SSE support and is awaiting pull request creation.
 
 Implemented surface:
 
@@ -141,12 +141,14 @@ Implemented surface:
 - Task-local implementor bans block later direct submissions as well as later reservations for the same task.
 - HTTP review endpoints exist for accept, request changes, and reject.
 - MCP review tools support accept with optional payout/tip, request changes, and reject with optional partial payout/tip/ban.
+- MCP reservation tools support reserve/request-approval, list task reservations, approve reservation, decline reservation, and cancel reservation.
+- Streamable HTTP MCP supports initialized `Mcp-Session-Id` sessions, session enforcement on later POST requests, `GET /mcp` server-sent event streams, response event IDs, `Last-Event-ID` replay for recent session events, live delivery of later POST responses to open SSE streams, and `DELETE /mcp` session termination.
 - Browser task detail submission review controls expose review note, partial payout, tip, ban, accept, request-changes, and reject actions.
+- Browser task detail MCP curl examples show initialize plus session-aware tool calls.
 
 Planned defaults:
 
 - Public-team assignment is deferred unless public teams already exist; first implementation supports users and same-organization teams.
-- Full MCP Streamable HTTP SSE remains planned.
 
 The accepted defaults for pull request 1 were:
 
@@ -161,16 +163,14 @@ The accepted defaults for pull request 1 were:
 - Default app port: `18080`.
 - Default local Postgres port: `15432`.
 
-Last observed checks on `task/reward-bundles`:
+Last observed checks on `task/mcp-workflow-sse`:
 
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e` passed with local Postgres access.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags integration ./tests/integration` passed with local Postgres access.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-policy check-ts check-copy-paste lint vet test-deno check-dead-code frontend` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
-- `make check-contracts` regenerated the intended Elm contract changes and failed before commit because the generated files differ from `HEAD`; rerun after committing.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 
 Blocking issues:
 

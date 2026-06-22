@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -70,6 +71,26 @@ func (services mcpServices) ListSeries(ctx context.Context, subject auth.UserSub
 
 func (services mcpServices) GetSeries(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID) task.GetSeriesResult {
 	return services.taskService.GetSeries(ctx, subject, seriesID)
+}
+
+func (services mcpServices) ReserveTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
+	return services.taskService.Reserve(ctx, subject, taskID)
+}
+
+func (services mcpServices) ListReservations(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationsListResult {
+	return services.taskService.ListReservations(ctx, subject, taskID)
+}
+
+func (services mcpServices) ApproveReservation(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+	return services.taskService.ApproveReservation(ctx, subject, taskID, reservationID)
+}
+
+func (services mcpServices) DeclineReservation(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+	return services.taskService.DeclineReservation(ctx, subject, taskID, reservationID)
+}
+
+func (services mcpServices) CancelReservation(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+	return services.taskService.CancelReservation(ctx, subject, taskID, reservationID)
 }
 
 type agentCredentialRequest struct {
@@ -226,6 +247,17 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxMCPBodyBytes))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "request body could not be read")
+		return
+	}
+	requestInfo := classifyMCPBody(body)
+	if requestInfo.invalid {
+		writeError(w, http.StatusBadRequest, "request body is not valid JSON-RPC")
+		return
+	}
+
 	verifyResult := server.verifyAgent(r)
 	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
 	if !verifiedMatched {
@@ -233,19 +265,39 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxMCPBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "request body could not be read")
+	sessionID := r.Header.Get(mcpSessionHeader)
+	if requestInfo.initializes {
+		if sessionID != "" {
+			writeError(w, http.StatusBadRequest, "initialize requests must not include an MCP session id")
+			return
+		}
+	} else if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "MCP session id is required")
+		return
+	} else if !server.mcpSessions.existsForSubject(sessionID, verified.Subject.ID.String()) {
+		writeError(w, http.StatusNotFound, "MCP session was not found")
 		return
 	}
 
 	result := server.mcpServer.HandleRaw(r.Context(), verified.Subject, verified.Credential.Scopes, body)
 	if result.SessionID != "" {
-		w.Header().Set("Mcp-Session-Id", result.SessionID)
+		server.mcpSessions.create(result.SessionID, verified.Subject.ID.String())
+		w.Header().Set(mcpSessionHeader, result.SessionID)
+	} else if requestInfo.initializes {
+		generatedSessionID := newMCPHTTPSessionID()
+		if generatedSessionID == "" {
+			writeError(w, http.StatusInternalServerError, "MCP session could not be created")
+			return
+		}
+		server.mcpSessions.create(generatedSessionID, verified.Subject.ID.String())
+		w.Header().Set(mcpSessionHeader, generatedSessionID)
 	}
 	if !result.HasResponse {
 		w.WriteHeader(http.StatusAccepted)
 		return
+	}
+	if sessionID != "" {
+		_, _ = server.mcpSessions.appendEvent(sessionID, result.Payload)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -269,14 +321,136 @@ func mcpProtocolVersionAllowed(raw string) bool {
 	return raw == "" || raw == mcp.ProtocolVersion()
 }
 
-// mcpStreamNotOffered answers a GET on the MCP endpoint. This server has no
-// server-initiated messages, so per the Streamable HTTP spec it returns 405.
-func (server Server) mcpStreamNotOffered(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Allow", "POST")
-	writeError(w, http.StatusMethodNotAllowed, "the MCP endpoint does not offer a server-initiated stream")
+func (server Server) mcpStream(w http.ResponseWriter, r *http.Request) {
+	if !originAllowed(r) {
+		writeError(w, http.StatusForbidden, "origin is not allowed")
+		return
+	}
+	if !mcpStreamAcceptAllowed(r.Header.Get("Accept")) {
+		writeError(w, http.StatusNotAcceptable, "MCP stream requires an Accept header allowing text/event-stream")
+		return
+	}
+	if !mcpProtocolVersionAllowed(r.Header.Get("MCP-Protocol-Version")) {
+		writeError(w, http.StatusBadRequest, "MCP protocol version is unsupported")
+		return
+	}
+	verifyResult := server.verifyAgent(r)
+	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+	if !verifiedMatched {
+		writeError(w, http.StatusUnauthorized, verifyResult.(agent.VerifyRejected).Reason.Description())
+		return
+	}
+	sessionID := r.Header.Get(mcpSessionHeader)
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "MCP session id is required")
+		return
+	}
+	if !server.mcpSessions.existsForSubject(sessionID, verified.Subject.ID.String()) {
+		writeError(w, http.StatusNotFound, "MCP session was not found")
+		return
+	}
+	events, liveEvents, cancel, ok := server.mcpSessions.replayAndSubscribe(sessionID, r.Header.Get(mcpLastEventIDHeader))
+	if !ok {
+		writeError(w, http.StatusNotFound, "MCP session was not found")
+		return
+	}
+	defer cancel()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	if len(events) == 0 {
+		_, _ = w.Write([]byte(": sharecrop mcp stream ready\n\n"))
+	}
+	for index := range events {
+		writeSSEEvent(w, events[index])
+	}
+	if flusher, matched := w.(http.Flusher); matched {
+		flusher.Flush()
+	}
+	for {
+		select {
+		case event, open := <-liveEvents:
+			if !open {
+				return
+			}
+			writeSSEEvent(w, event)
+			if flusher, matched := w.(http.Flusher); matched {
+				flusher.Flush()
+			}
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+func (server Server) mcpDeleteSession(w http.ResponseWriter, r *http.Request) {
+	if !originAllowed(r) {
+		writeError(w, http.StatusForbidden, "origin is not allowed")
+		return
+	}
+	verifyResult := server.verifyAgent(r)
+	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+	if !verifiedMatched {
+		writeError(w, http.StatusUnauthorized, verifyResult.(agent.VerifyRejected).Reason.Description())
+		return
+	}
+	sessionID := r.Header.Get(mcpSessionHeader)
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "MCP session id is required")
+		return
+	}
+	if !server.mcpSessions.existsForSubject(sessionID, verified.Subject.ID.String()) {
+		writeError(w, http.StatusNotFound, "MCP session was not found")
+		return
+	}
+	if !server.mcpSessions.terminate(sessionID) {
+		writeError(w, http.StatusNotFound, "MCP session was not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 const maxMCPBodyBytes = 1 << 20
+
+type mcpBodyInfo struct {
+	initializes bool
+	invalid     bool
+}
+
+func classifyMCPBody(body []byte) mcpBodyInfo {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return mcpBodyInfo{invalid: true}
+	}
+	if trimmed[0] == '[' {
+		var requests []mcp.Request
+		if err := json.Unmarshal(trimmed, &requests); err != nil {
+			return mcpBodyInfo{invalid: true}
+		}
+		for index := range requests {
+			if len(requests[index].ID) > 0 && requests[index].Method != "initialize" && !mcpRawClientResponse(requests[index]) {
+				return mcpBodyInfo{}
+			}
+		}
+		for index := range requests {
+			if requests[index].Method == "initialize" {
+				return mcpBodyInfo{initializes: true}
+			}
+		}
+		return mcpBodyInfo{}
+	}
+	var request mcp.Request
+	if err := json.Unmarshal(trimmed, &request); err != nil {
+		return mcpBodyInfo{invalid: true}
+	}
+	return mcpBodyInfo{initializes: request.Method == "initialize"}
+}
+
+func mcpRawClientResponse(request mcp.Request) bool {
+	return request.Method == "" && len(request.ID) > 0
+}
 
 // originAllowed implements the MCP DNS-rebinding protection: requests without
 // an Origin header (non-browser agents) are allowed; a browser Origin must
@@ -291,6 +465,19 @@ func originAllowed(r *http.Request) bool {
 		return false
 	}
 	return parsed.Host == r.Host
+}
+
+func mcpStreamAcceptAllowed(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	for _, value := range strings.Split(raw, ",") {
+		mediaType := strings.TrimSpace(strings.Split(value, ";")[0])
+		if mediaType == "text/event-stream" || mediaType == "*/*" {
+			return true
+		}
+	}
+	return false
 }
 
 func (server Server) verifyAgent(r *http.Request) agent.VerifyResult {
