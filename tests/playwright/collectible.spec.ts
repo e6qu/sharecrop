@@ -44,7 +44,7 @@ test("minting a collectible and awarding it to a task through the browser", asyn
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("minted");
 
-  await page.getByTestId("award-task-id").fill(task.id);
+  await page.getByTestId("award-task-id").selectOption(task.id);
   await row.getByTestId("award-collectible").click();
 
   await expect(page.getByTestId("award-message")).toBeVisible();

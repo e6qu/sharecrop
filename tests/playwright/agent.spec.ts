@@ -53,8 +53,8 @@ test("tasks panel lists user tasks and shows agent curl examples", async ({ page
     "Agent task from the browser",
   );
   await page.getByTestId("view-task").click();
-  await expect(page.getByTestId("task-mcp-curl")).toContainText("/mcp");
-  await expect(page.getByTestId("task-mcp-curl")).toContainText(
+  await expect(page.getByTestId("task-mcp-submit")).toContainText("/mcp");
+  await expect(page.getByTestId("task-mcp-submit")).toContainText(
     "sharecrop.submit_response",
   );
 });

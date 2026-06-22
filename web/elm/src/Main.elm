@@ -2,8 +2,8 @@ module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Nav
-import Html exposing (Html, div, form, label, main_, p, span, table, tbody, td, text, th, thead, tr)
-import Html.Attributes exposing (checked, disabled, placeholder, type_, value)
+import Html exposing (Html, div, form, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
+import Html.Attributes exposing (checked, disabled, placeholder, selected, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Http
 import Json.Decode as Decode
@@ -43,6 +43,8 @@ type alias LoggedInModel =
     , createDescription : String
     , createRewardAmount : String
     , createPublic : Bool
+    , createParticipationPolicy : String
+    , createReservationHours : String
     , createMessage : Maybe String
     , fundTaskId : String
     , fundAmount : String
@@ -55,7 +57,10 @@ type alias LoggedInModel =
     , newCredential : Maybe Agent.AgentCredentialCreatedResponse
     , agentMessage : Maybe String
     , discoveryTasks : List Task.TaskListItemResponse
+    , discoveryIncludeReserved : Bool
     , detail : Maybe PublicTaskDetail
+    , reservations : List Task.TaskReservationResponse
+    , reservationMessage : Maybe String
     , submissions : List Submission.SubmissionResponse
     , submitInput : String
     , submitMessage : Maybe String
@@ -73,23 +78,21 @@ type alias TaskDetail =
     { id : String
     , title : String
     , description : String
-    , state : String
+    , state : Task.TaskState
     , rewardKind : String
     , rewardCreditAmount : Int
+    , participationPolicy : Task.TaskParticipationPolicy
+    , assigneeScope : Task.TaskAssigneeScope
+    , reservationExpiryHours : Int
+    , availabilityKind : Task.TaskAvailabilityKind
+    , viewerAction : Task.TaskViewerAction
     , responseSchemaJson : String
+    , createdBy : String
     }
 
 
 type alias PublicTaskDetail =
-    { id : String
-    , title : String
-    , description : String
-    , state : String
-    , rewardKind : String
-    , rewardCreditAmount : Int
-    , responseSchemaJson : String
-    , createdBy : String
-    }
+    TaskDetail
 
 
 type alias Model =
@@ -117,6 +120,8 @@ type Msg
     | CreateDescriptionChanged String
     | CreateRewardAmountChanged String
     | CreatePublicChanged Bool
+    | CreateParticipationChanged String
+    | CreateReservationHoursChanged String
     | CreateTaskClicked
     | CreateTaskReceived (Result Http.Error TaskDetail)
     | CredentialsReceived (Result Http.Error Agent.AgentCredentialsResponse)
@@ -140,10 +145,18 @@ type Msg
     | LogoutReceived (Result Http.Error ())
     | NavDashboard
     | NavDiscovery
+    | DiscoveryIncludeReservedChanged Bool
     | DiscoveryReceived (Result Http.Error Task.TasksResponse)
     | DiscoveryViewClicked String
     | DetailBackClicked
     | DetailReceived (Result Http.Error PublicTaskDetail)
+    | ReserveClicked String
+    | ReservationReceived (Result Http.Error Task.TaskReservationResponse)
+    | ReservationsReceived (Result Http.Error Task.TaskReservationsResponse)
+    | ApproveReservationClicked String
+    | DeclineReservationClicked String
+    | CancelReservationClicked String
+    | ReservationChangeReceived (Result Http.Error Task.TaskReservationResponse)
     | SubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
     | SubmitInputChanged String
     | SubmitClicked
@@ -198,6 +211,8 @@ emptyLoggedIn response =
     , createDescription = ""
     , createRewardAmount = ""
     , createPublic = False
+    , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
+    , createReservationHours = "48"
     , createMessage = Nothing
     , fundTaskId = ""
     , fundAmount = ""
@@ -210,7 +225,10 @@ emptyLoggedIn response =
     , newCredential = Nothing
     , agentMessage = Nothing
     , discoveryTasks = []
+    , discoveryIncludeReserved = False
     , detail = Nothing
+    , reservations = []
+    , reservationMessage = Nothing
     , submissions = []
     , submitInput = ""
     , submitMessage = Nothing
@@ -298,6 +316,12 @@ update msg model =
         CreatePublicChanged value ->
             ( updateLoggedIn model (\state -> { state | createPublic = value }), Cmd.none )
 
+        CreateParticipationChanged value ->
+            ( updateLoggedIn model (\state -> { state | createParticipationPolicy = value }), Cmd.none )
+
+        CreateReservationHoursChanged value ->
+            ( updateLoggedIn model (\state -> { state | createReservationHours = value }), Cmd.none )
+
         CreateTaskClicked ->
             withSession model (\state -> createTaskCommand model state)
 
@@ -307,6 +331,8 @@ update msg model =
                     { state
                         | createTitle = ""
                         , createDescription = ""
+                        , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
+                        , createReservationHours = "48"
                         , createMessage = Just ("Created task " ++ created.id)
                         , fundTaskId = created.id
                         , fundAmount =
@@ -405,6 +431,16 @@ update msg model =
         NavDiscovery ->
             ( model, Nav.pushUrl model.key "/discovery" )
 
+        DiscoveryIncludeReservedChanged value ->
+            withSession model
+                (\state ->
+                    let
+                        nextState =
+                            { state | discoveryIncludeReserved = value }
+                    in
+                    ( updateLoggedIn model (\_ -> nextState), fetchDiscovery state.accessToken value )
+                )
+
         DiscoveryReceived result ->
             ( updateLoggedIn model (\state -> { state | discoveryTasks = tasksFromResult result }), Cmd.none )
 
@@ -416,15 +452,14 @@ update msg model =
                             { s
                                 | page = TaskDetailPage taskId
                                 , detail = Nothing
+                                , reservations = []
+                                , reservationMessage = Nothing
                                 , submissions = []
                                 , submitInput = ""
                                 , submitMessage = Nothing
                             }
                         )
-                    , Cmd.batch
-                        [ fetchPublicTaskDetail state.accessToken taskId
-                        , fetchSubmissions state.accessToken taskId
-                        ]
+                    , fetchDetailCommands state.accessToken taskId
                     )
                 )
 
@@ -436,6 +471,40 @@ update msg model =
 
         DetailReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | submitMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        ReserveClicked taskId ->
+            withSession model (\state -> ( updateLoggedIn model (\current -> { current | reservationMessage = Nothing }), postReservation state.accessToken taskId ))
+
+        ReservationReceived (Ok reservation) ->
+            ( updateLoggedIn model (\state -> { state | reservationMessage = Just (reservationSuccessLabel reservation) })
+            , refreshDetailReservations model
+            )
+
+        ReservationReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | reservationMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        ReservationsReceived (Ok response) ->
+            ( updateLoggedIn model (\state -> { state | reservations = response.reservations }), Cmd.none )
+
+        ReservationsReceived (Err _) ->
+            ( updateLoggedIn model (\state -> { state | reservations = [] }), Cmd.none )
+
+        ApproveReservationClicked reservationId ->
+            withSession model (\state -> reservationChangeCommand model state reservationId "approve")
+
+        DeclineReservationClicked reservationId ->
+            withSession model (\state -> reservationChangeCommand model state reservationId "decline")
+
+        CancelReservationClicked reservationId ->
+            withSession model (\state -> reservationChangeCommand model state reservationId "cancel")
+
+        ReservationChangeReceived (Ok reservation) ->
+            ( updateLoggedIn model (\state -> { state | reservationMessage = Just (reservationSuccessLabel reservation) })
+            , refreshDetailReservations model
+            )
+
+        ReservationChangeReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | reservationMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         SubmissionsReceived (Ok response) ->
             ( updateLoggedIn model (\state -> { state | submissions = response.submissions }), Cmd.none )
@@ -597,6 +666,15 @@ collectiblesFromResult result =
             []
 
 
+boolQuery : Bool -> String
+boolQuery value =
+    if value then
+        "true"
+
+    else
+        "false"
+
+
 toggleScope : Agent.AgentScope -> List Agent.AgentScope -> List Agent.AgentScope
 toggleScope scope scopes =
     if List.member scope scopes then
@@ -630,6 +708,9 @@ createTaskCommand model state =
     if String.isEmpty (String.trim state.createTitle) || String.isEmpty (String.trim state.createDescription) then
         ( updateLoggedIn model (\current -> { current | createMessage = Just "Title and description are required." }), Cmd.none )
 
+    else if reservationHoursValue state.createReservationHours < 1 || reservationHoursValue state.createReservationHours > 720 then
+        ( updateLoggedIn model (\current -> { current | createMessage = Just "Reservation expiry must be between 1 and 720 hours." }), Cmd.none )
+
     else
         ( updateLoggedIn model (\current -> { current | createMessage = Nothing })
         , postCreateTask state
@@ -653,6 +734,18 @@ acceptCommand model state submissionId =
     case state.page of
         TaskDetailPage taskId ->
             ( model, postAccept state.accessToken taskId submissionId )
+
+        _ ->
+            ( model, Cmd.none )
+
+
+reservationChangeCommand : Model -> LoggedInModel -> String -> String -> ( Model, Cmd Msg )
+reservationChangeCommand model state reservationId action =
+    case state.page of
+        TaskDetailPage taskId ->
+            ( updateLoggedIn model (\current -> { current | reservationMessage = Nothing })
+            , postReservationChange state.accessToken taskId reservationId action
+            )
 
         _ ->
             ( model, Cmd.none )
@@ -719,7 +812,7 @@ refreshTasksAndDiscovery : Model -> Cmd Msg
 refreshTasksAndDiscovery model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken, fetchDiscovery state.accessToken ]
+            Cmd.batch [ fetchTasks state.accessToken, fetchDiscovery state.accessToken state.discoveryIncludeReserved ]
 
         LoggedOut ->
             Cmd.none
@@ -732,10 +825,10 @@ routeLoadCmd token page =
             Cmd.none
 
         DiscoveryPage ->
-            fetchDiscovery token
+            fetchDiscovery token False
 
         TaskDetailPage taskId ->
-            Cmd.batch [ fetchPublicTaskDetail token taskId, fetchSubmissions token taskId ]
+            fetchDetailCommands token taskId
 
 
 refreshCredentials : Model -> Cmd Msg
@@ -761,6 +854,26 @@ refreshDetailSubmissions model =
 
         LoggedOut ->
             Cmd.none
+
+
+refreshDetailReservations : Model -> Cmd Msg
+refreshDetailReservations model =
+    case model.session of
+        LoggedIn state ->
+            case state.page of
+                TaskDetailPage taskId ->
+                    Cmd.batch [ fetchPublicTaskDetail state.accessToken taskId, fetchReservations state.accessToken taskId ]
+
+                _ ->
+                    Cmd.none
+
+        LoggedOut ->
+            Cmd.none
+
+
+fetchDetailCommands : String -> String -> Cmd Msg
+fetchDetailCommands token taskId =
+    Cmd.batch [ fetchPublicTaskDetail token taskId, fetchSubmissions token taskId, fetchReservations token taskId ]
 
 
 refreshAfterAccept : Model -> Cmd Msg
@@ -850,9 +963,9 @@ postCreateTask state =
         (Http.expectJson CreateTaskReceived taskDetailDecoder)
 
 
-fetchDiscovery : String -> Cmd Msg
-fetchDiscovery token =
-    authorizedRequest "GET" token "/api/tasks?scope=public" Http.emptyBody (Http.expectJson DiscoveryReceived Task.tasksResponseDecoder)
+fetchDiscovery : String -> Bool -> Cmd Msg
+fetchDiscovery token includeReserved =
+    authorizedRequest "GET" token ("/api/tasks?scope=public&include_reserved=" ++ boolQuery includeReserved) Http.emptyBody (Http.expectJson DiscoveryReceived Task.tasksResponseDecoder)
 
 
 fetchPublicTaskDetail : String -> String -> Cmd Msg
@@ -863,6 +976,11 @@ fetchPublicTaskDetail token taskId =
 fetchSubmissions : String -> String -> Cmd Msg
 fetchSubmissions token taskId =
     authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/submissions") Http.emptyBody (Http.expectJson SubmissionsReceived Submission.submissionsResponseDecoder)
+
+
+fetchReservations : String -> String -> Cmd Msg
+fetchReservations token taskId =
+    authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/reservations") Http.emptyBody (Http.expectJson ReservationsReceived Task.taskReservationsResponseDecoder)
 
 
 postFunding : String -> String -> Int -> Cmd Msg
@@ -890,6 +1008,24 @@ postRefundTask token taskId =
         ("/api/tasks/" ++ taskId ++ "/refund")
         (Http.jsonBody (Encode.object [ ( "idempotency_key", Encode.string ("ui-refund:" ++ taskId) ) ]))
         (Http.expectJson RefundTaskReceived Ledger.taskEscrowResponseDecoder)
+
+
+postReservation : String -> String -> Cmd Msg
+postReservation token taskId =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/reservations")
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson ReservationReceived Task.taskReservationResponseDecoder)
+
+
+postReservationChange : String -> String -> String -> String -> Cmd Msg
+postReservationChange token taskId reservationId action =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/reservations/" ++ reservationId ++ "/" ++ action)
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson ReservationChangeReceived Task.taskReservationResponseDecoder)
 
 
 postAgent : String -> String -> List Agent.AgentScope -> Cmd Msg
@@ -966,6 +1102,7 @@ createTaskRequestBody state =
         , ( "title", Encode.string state.createTitle )
         , ( "description", Encode.string state.createDescription )
         , ( "reward", createRewardBody state.createRewardAmount )
+        , ( "participation", createParticipationBody state )
         , ( "visibility", Encode.object [ ( "kind", Encode.string (if state.createPublic then "public" else "default") ), ( "user_id", Encode.string "" ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string "" ) ] )
         , ( "placement", Encode.object [ ( "kind", Encode.string "standalone" ), ( "series_id", Encode.string "" ), ( "series_title", Encode.string "" ), ( "series_position", Encode.int 0 ) ] )
         , ( "response_schema_json", Encode.string "{\"kind\":\"freeform\"}" )
@@ -985,6 +1122,25 @@ createRewardBody rawAmount =
 
         Nothing ->
             Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ) ]
+
+
+createParticipationBody : LoggedInModel -> Encode.Value
+createParticipationBody state =
+    Encode.object
+        [ ( "policy", Encode.string state.createParticipationPolicy )
+        , ( "assignee_scope", Encode.string (assigneeScopeTag Task.TaskAssigneeScopeUser) )
+        , ( "reservation_expiry_hours", Encode.int (reservationHoursValue state.createReservationHours) )
+        ]
+
+
+reservationHoursValue : String -> Int
+reservationHoursValue raw =
+    case String.toInt raw of
+        Just hours ->
+            hours
+
+        Nothing ->
+            48
 
 
 agentRequestBody : String -> List Agent.AgentScope -> Encode.Value
@@ -1027,27 +1183,35 @@ collectibleRewardRequestBody collectibleId =
 
 taskDetailDecoder : Decode.Decoder TaskDetail
 taskDetailDecoder =
-    Decode.map7 TaskDetail
-        (Decode.field "id" Decode.string)
-        (Decode.field "title" Decode.string)
-        (Decode.field "description" Decode.string)
-        (Decode.field "state" Decode.string)
-        (Decode.field "reward_kind" Decode.string)
-        (Decode.field "reward_credit_amount" Decode.int)
-        (Decode.field "response_schema_json" Decode.string)
+    Decode.map taskDetailFromResponse Task.taskResponseDecoder
 
 
 publicTaskDetailDecoder : Decode.Decoder PublicTaskDetail
 publicTaskDetailDecoder =
-    Decode.map8 PublicTaskDetail
-        (Decode.field "id" Decode.string)
-        (Decode.field "title" Decode.string)
-        (Decode.field "description" Decode.string)
-        (Decode.field "state" Decode.string)
-        (Decode.field "reward_kind" Decode.string)
-        (Decode.field "reward_credit_amount" Decode.int)
-        (Decode.field "response_schema_json" Decode.string)
-        (Decode.field "created_by" Decode.string)
+    Decode.map publicTaskDetailFromResponse Task.taskResponseDecoder
+
+
+taskDetailFromResponse : Task.TaskResponse -> TaskDetail
+taskDetailFromResponse response =
+    { id = response.id
+    , title = response.title
+    , description = response.description
+    , state = response.state
+    , rewardKind = response.rewardKind
+    , rewardCreditAmount = response.rewardCreditAmount
+    , participationPolicy = response.participationPolicy
+    , assigneeScope = response.assigneeScope
+    , reservationExpiryHours = response.reservationExpiryHours
+    , availabilityKind = response.availabilityKind
+    , viewerAction = response.viewerAction
+    , responseSchemaJson = response.responseSchemaJSON
+    , createdBy = response.createdBy
+    }
+
+
+publicTaskDetailFromResponse : Task.TaskResponse -> PublicTaskDetail
+publicTaskDetailFromResponse response =
+    taskDetailFromResponse response
 
 
 
@@ -1129,7 +1293,7 @@ pageView origin state =
             discoveryView state
 
         TaskDetailPage _ ->
-            taskDetailPageView state
+            taskDetailPageView origin state
 
 
 dashboardView : String -> LoggedInModel -> Html Msg
@@ -1180,6 +1344,9 @@ createTaskView state =
             , testId "create-description"
             ]
         , Ui.textInput [ type_ "number", placeholder "Credit reward amount (blank for no reward)", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ]
+        , Ui.label_ "Participation"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (participationButton state.createParticipationPolicy) allParticipationPolicies)
+        , Ui.textInput [ type_ "number", placeholder "Reservation expiry hours", value state.createReservationHours, onInput CreateReservationHoursChanged, testId "create-reservation-hours" ]
         , label [ Html.Attributes.class "flex items-center gap-2 text-sm" ]
             [ Html.input [ type_ "checkbox", checked state.createPublic, onClick (CreatePublicChanged (not state.createPublic)), testId "create-public" ] []
             , span [] [ text "Publish publicly" ]
@@ -1187,6 +1354,14 @@ createTaskView state =
         , Ui.primaryButton [ type_ "submit", testId "create-task" ] "Create task"
         , maybeNote state.createMessage "create-message"
         ]
+
+
+participationButton : String -> Task.TaskParticipationPolicy -> Html Msg
+participationButton selectedPolicy policy =
+    chooserButton (selectedPolicy == participationPolicyTag policy)
+        (CreateParticipationChanged (participationPolicyTag policy))
+        ("create-participation-" ++ participationPolicyTag policy)
+        (participationPolicyLabel policy)
 
 
 ledgerView : List Ledger.LedgerEntryResponse -> Html Msg
@@ -1217,11 +1392,28 @@ fundingView : LoggedInModel -> Html Msg
 fundingView state =
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit FundClicked ]
         [ Ui.sectionTitle "Fund a task"
-        , Ui.textInput [ type_ "text", placeholder "Task ID", value state.fundTaskId, onInput FundTaskIdChanged, testId "fund-task-id" ]
+        , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged state.tasks
         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
         , Ui.primaryButton [ type_ "submit", disabled (state.fundTaskId == ""), testId "fund" ] "Fund task"
         , maybeNote state.fundMessage "fund-message"
         ]
+
+
+taskPicker : String -> String -> (String -> Msg) -> List Task.TaskListItemResponse -> Html Msg
+taskPicker identifier selectedTaskId change tasks =
+    select
+        [ Html.Attributes.class Ui.fieldClass
+        , value selectedTaskId
+        , onInput change
+        , testId identifier
+        ]
+        (option [ value "" ] [ text "Select task" ] :: List.map (taskOption selectedTaskId) tasks)
+
+
+taskOption : String -> Task.TaskListItemResponse -> Html Msg
+taskOption selectedTaskId item =
+    option [ value item.id, selected (selectedTaskId == item.id) ]
+        [ text (item.title ++ " · " ++ taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount) ]
 
 
 tasksView : String -> LoggedInModel -> Html Msg
@@ -1261,8 +1453,10 @@ taskDetailView origin state =
                 [ Ui.label_ detail.title
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
                 , Ui.label_ ("Task " ++ detail.id)
-                , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ detail.state) ]
+                , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ taskStateLabel detail.state) ]
                 , p [ Html.Attributes.class "text-sm" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount) ]
+                , p [ Html.Attributes.class "text-sm" ] [ text ("Participation: " ++ participationPolicyLabel detail.participationPolicy) ]
+                , p [ Html.Attributes.class "text-sm" ] [ text ("Reservation expiry: " ++ String.fromInt detail.reservationExpiryHours ++ " hours") ]
                 , div [ Html.Attributes.class "flex gap-2" ]
                     [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
                     , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
@@ -1270,10 +1464,7 @@ taskDetailView origin state =
                 , Ui.label_ "Response schema"
                 , Ui.codeBlock [ testId "task-schema" ] detail.responseSchemaJson
                 , submissionsList state
-                , Ui.label_ "Submit with the REST API"
-                , Ui.codeBlock [] (restSubmitCurl origin detail.id)
-                , Ui.label_ "Submit with an MCP agent"
-                , Ui.codeBlock [ testId "task-mcp-curl" ] (mcpSubmitCurl origin detail.id)
+                , taskInstructions origin detail.id
                 ]
 
         Nothing ->
@@ -1412,7 +1603,7 @@ awardForm : LoggedInModel -> Html Msg
 awardForm state =
     div [ Html.Attributes.class "mt-4 space-y-3" ]
         [ Ui.label_ "Award to a task"
-        , Ui.textInput [ type_ "text", placeholder "Task ID", value state.awardTaskId, onInput AwardTaskIdChanged, testId "award-task-id" ]
+        , taskPicker "award-task-id" state.awardTaskId AwardTaskIdChanged state.tasks
         , maybeNote state.awardMessage "award-message"
         ]
 
@@ -1456,6 +1647,10 @@ discoveryView : LoggedInModel -> Html Msg
 discoveryView state =
     Ui.card
         [ Ui.sectionTitle "Discover public tasks"
+        , label [ Html.Attributes.class "flex items-center gap-2 text-sm" ]
+            [ Html.input [ type_ "checkbox", checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] []
+            , span [] [ text "Include reserved" ]
+            ]
         , discoveryList state.discoveryTasks
         ]
 
@@ -1474,7 +1669,7 @@ discoveryRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "discovery-task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount ++ " · " ++ participationPolicyLabel item.participationPolicy) ]
             ]
         , Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View"
         ]
@@ -1484,31 +1679,104 @@ discoveryRow item =
 -- Task detail page
 
 
-taskDetailPageView : LoggedInModel -> Html Msg
-taskDetailPageView state =
+taskDetailPageView : String -> LoggedInModel -> Html Msg
+taskDetailPageView origin state =
     div [ Html.Attributes.class "space-y-6" ]
         [ Ui.secondaryButton [ onClick DetailBackClicked, testId "detail-back" ] "Back to discovery"
-        , detailCard state
+        , detailCard origin state
+        , reservationCard state
         , submitCard state
         , submissionsCard state
         ]
 
 
-detailCard : LoggedInModel -> Html Msg
-detailCard state =
+detailCard : String -> LoggedInModel -> Html Msg
+detailCard origin state =
     case state.detail of
         Just detail ->
             Ui.card
                 [ p [ Html.Attributes.class "text-2xl font-semibold", testId "detail-title" ] [ text detail.title ]
-                , div [ Html.Attributes.class "flex items-center gap-2" ] [ Ui.badge detail.state ]
+                , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+                    [ Ui.badge (taskStateLabel detail.state)
+                    , Ui.badge (availabilityKindLabel detail.availabilityKind)
+                    , Ui.badge (participationPolicyLabel detail.participationPolicy)
+                    ]
                 , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount) ]
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
                 , Ui.label_ "Response schema"
                 , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson
+                , taskInstructions origin detail.id
                 ]
 
         Nothing ->
             Ui.card [ p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading task…" ] ]
+
+
+reservationCard : LoggedInModel -> Html Msg
+reservationCard state =
+    case state.detail of
+        Just detail ->
+            Ui.card
+                [ Ui.sectionTitle "Reservation"
+                , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+                    [ Ui.badge (viewerActionLabel detail.viewerAction)
+                    , Ui.badge (assigneeScopeLabel detail.assigneeScope)
+                    ]
+                , reservationAction detail
+                , reservationsList state.reservations
+                , maybeNote state.reservationMessage "reservation-message"
+                ]
+
+        Nothing ->
+            text ""
+
+
+reservationAction : PublicTaskDetail -> Html Msg
+reservationAction detail =
+    case detail.viewerAction of
+        Task.TaskViewerActionReserve ->
+            Ui.primaryButton [ type_ "button", onClick (ReserveClicked detail.id), testId "reserve-task" ] "Reserve"
+
+        Task.TaskViewerActionRequestApproval ->
+            Ui.primaryButton [ type_ "button", onClick (ReserveClicked detail.id), testId "request-approval" ] "Request approval"
+
+        _ ->
+            text ""
+
+
+reservationsList : List Task.TaskReservationResponse -> Html Msg
+reservationsList reservations =
+    if List.isEmpty reservations then
+        text ""
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "reservations" ] (List.map reservationRow reservations)
+
+
+reservationRow : Task.TaskReservationResponse -> Html Msg
+reservationRow reservation =
+    div [ Html.Attributes.class "flex items-center justify-between gap-3 py-2", testId "reservation-row" ]
+        [ div []
+            [ p [ Html.Attributes.class "text-sm font-medium" ] [ text (reservation.assigneeID ++ " · " ++ assigneeScopeLabel reservation.assigneeKind) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (reservationStateLabel reservation.state) ]
+            ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (reservationButtons reservation)
+        ]
+
+
+reservationButtons : Task.TaskReservationResponse -> List (Html Msg)
+reservationButtons reservation =
+    case reservation.state of
+        Task.TaskReservationStateRequested ->
+            [ Ui.primaryButton [ type_ "button", onClick (ApproveReservationClicked reservation.id), testId "approve-reservation" ] "Approve"
+            , Ui.secondaryButton [ type_ "button", onClick (DeclineReservationClicked reservation.id), testId "decline-reservation" ] "Decline"
+            ]
+
+        Task.TaskReservationStateActive ->
+            [ Ui.secondaryButton [ type_ "button", onClick (CancelReservationClicked reservation.id), testId "cancel-reservation" ] "Cancel" ]
+
+        _ ->
+            []
 
 
 submitCard : LoggedInModel -> Html Msg
@@ -1612,7 +1880,19 @@ mcpConfig origin secret =
         ++ origin
         ++ "/mcp\",\n      \"headers\": { \"Authorization\": \"Bearer "
         ++ secret
-        ++ "\" }\n    }\n  }\n}"
+    ++ "\" }\n    }\n  }\n}"
+
+
+taskInstructions : String -> String -> Html Msg
+taskInstructions origin taskId =
+    div [ Html.Attributes.class "space-y-3", testId "task-instructions" ]
+        [ Ui.label_ "REST API"
+        , Ui.codeBlock [ testId "task-rest-submit" ] (restSubmitCurl origin taskId)
+        , Ui.codeBlock [ testId "task-rest-reserve" ] (restReserveCurl origin taskId)
+        , Ui.label_ "MCP"
+        , Ui.codeBlock [ testId "task-mcp-submit" ] (mcpSubmitCurl origin taskId)
+        , Ui.codeBlock [ testId "task-mcp-schema" ] (mcpSchemaCurl origin taskId)
+        ]
 
 
 restSubmitCurl : String -> String -> String
@@ -1624,6 +1904,15 @@ restSubmitCurl origin taskId =
         ++ "/submissions \\\n  -H \"Authorization: Bearer <ACCESS_TOKEN>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"response_json\":\"{}\"}'"
 
 
+restReserveCurl : String -> String -> String
+restReserveCurl origin taskId =
+    "curl -X POST "
+        ++ origin
+        ++ "/api/tasks/"
+        ++ taskId
+        ++ "/reservations \\\n  -H \"Authorization: Bearer <ACCESS_TOKEN>\""
+
+
 mcpSubmitCurl : String -> String -> String
 mcpSubmitCurl origin taskId =
     "curl -X POST "
@@ -1631,6 +1920,15 @@ mcpSubmitCurl origin taskId =
         ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.submit_response\",\"arguments\":{\"task_id\":\""
         ++ taskId
         ++ "\",\"response_json\":\"{}\"}}}'"
+
+
+mcpSchemaCurl : String -> String -> String
+mcpSchemaCurl origin taskId =
+    "curl -X POST "
+        ++ origin
+        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.get_task_schema\",\"arguments\":{\"task_id\":\""
+        ++ taskId
+        ++ "\"}}}'"
 
 
 fundSuccessLabel : Ledger.TaskEscrowResponse -> String
@@ -1653,6 +1951,11 @@ awardSuccessLabel collectible =
     "Awarded " ++ collectible.name ++ " (" ++ collectibleStateLabel collectible.state ++ ")."
 
 
+reservationSuccessLabel : Task.TaskReservationResponse -> String
+reservationSuccessLabel reservation =
+    "Reservation " ++ reservationStateLabel reservation.state ++ "."
+
+
 allKinds : List Collectible.CollectibleKind
 allKinds =
     [ Collectible.CollectibleKindUnique
@@ -1667,6 +1970,14 @@ allPolicies =
     , Collectible.CollectibleTransferPolicyTransferableBetweenUsers
     , Collectible.CollectibleTransferPolicyTransferableWithinOrganization
     , Collectible.CollectibleTransferPolicyIssuerControlled
+    ]
+
+
+allParticipationPolicies : List Task.TaskParticipationPolicy
+allParticipationPolicies =
+    [ Task.TaskParticipationPolicyOpen
+    , Task.TaskParticipationPolicyReservationRequired
+    , Task.TaskParticipationPolicyApprovalRequired
     ]
 
 
@@ -1720,6 +2031,112 @@ collectibleStateLabel state =
 
         Collectible.CollectibleStateAwarded ->
             "awarded"
+
+
+participationPolicyTag : Task.TaskParticipationPolicy -> String
+participationPolicyTag policy =
+    case policy of
+        Task.TaskParticipationPolicyOpen ->
+            "open"
+
+        Task.TaskParticipationPolicyReservationRequired ->
+            "reservation_required"
+
+        Task.TaskParticipationPolicyApprovalRequired ->
+            "approval_required"
+
+
+participationPolicyLabel : Task.TaskParticipationPolicy -> String
+participationPolicyLabel policy =
+    case policy of
+        Task.TaskParticipationPolicyOpen ->
+            "open submissions"
+
+        Task.TaskParticipationPolicyReservationRequired ->
+            "reservation required"
+
+        Task.TaskParticipationPolicyApprovalRequired ->
+            "approval required"
+
+
+assigneeScopeTag : Task.TaskAssigneeScope -> String
+assigneeScopeTag scope =
+    case scope of
+        Task.TaskAssigneeScopeUser ->
+            "user"
+
+        Task.TaskAssigneeScopeOrganizationTeam ->
+            "organization_team"
+
+
+assigneeScopeLabel : Task.TaskAssigneeScope -> String
+assigneeScopeLabel scope =
+    case scope of
+        Task.TaskAssigneeScopeUser ->
+            "user"
+
+        Task.TaskAssigneeScopeOrganizationTeam ->
+            "organization team"
+
+
+availabilityKindLabel : Task.TaskAvailabilityKind -> String
+availabilityKindLabel kind =
+    case kind of
+        Task.TaskAvailabilityKindAvailable ->
+            "available"
+
+        Task.TaskAvailabilityKindReserved ->
+            "reserved"
+
+        Task.TaskAvailabilityKindAwaitingApproval ->
+            "awaiting approval"
+
+        Task.TaskAvailabilityKindClosed ->
+            "closed"
+
+
+viewerActionLabel : Task.TaskViewerAction -> String
+viewerActionLabel action =
+    case action of
+        Task.TaskViewerActionSubmit ->
+            "submit"
+
+        Task.TaskViewerActionReserve ->
+            "reserve"
+
+        Task.TaskViewerActionRequestApproval ->
+            "request approval"
+
+        Task.TaskViewerActionWait ->
+            "wait"
+
+        Task.TaskViewerActionNone ->
+            "none"
+
+
+reservationStateLabel : Task.TaskReservationState -> String
+reservationStateLabel state =
+    case state of
+        Task.TaskReservationStateRequested ->
+            "requested"
+
+        Task.TaskReservationStateActive ->
+            "active"
+
+        Task.TaskReservationStateDeclined ->
+            "declined"
+
+        Task.TaskReservationStateCancelledByRequester ->
+            "cancelled by requester"
+
+        Task.TaskReservationStateCancelledByWorker ->
+            "cancelled by worker"
+
+        Task.TaskReservationStateExpired ->
+            "expired"
+
+        Task.TaskReservationStateSubmitted ->
+            "submitted"
 
 
 allScopes : List Agent.AgentScope

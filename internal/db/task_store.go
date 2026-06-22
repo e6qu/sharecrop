@@ -649,7 +649,7 @@ func listQueryForScope(scope task.ListScope) listQueryResult {
 			)
 			order by tasks.created_at desc`, arguments: publicListQueryArguments{visibilityKind: task.VisibilityKindPublic.String(), includeReserved: typed.IncludeReserved, viewerID: typed.ViewerID.String()}}
 	case task.UserListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.user_id = $1 order by tasks.created_at desc", arguments: singleListQueryArgument{value: typed.UserID.String()}}
+		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.user_id = $1 or tasks.created_by_user_id = $1 order by tasks.created_at desc", arguments: singleListQueryArgument{value: typed.UserID.String()}}
 	case task.OrganizationListScope:
 		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.organization_id = $1 order by tasks.created_at desc", arguments: singleListQueryArgument{value: typed.OrganizationID.String()}}
 	default:
