@@ -561,3 +561,16 @@ Pull request 13 verification was performed:
 - Manual screenshot review passed for `/tmp/sharecrop-dashboard.png`.
 - `ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 GOCACHE=$PWD/.cache/go-build make ci` passed before the logout endpoint was added.
 - After the logout endpoint was added, the equivalent final local check set passed in target groups: `make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test frontend build`, `make test-integration`, `make test-http`, and `make e2e-ui`.
+
+The post-PR13 workflow plan was updated:
+
+- Task rewards were planned as bundles that can contain credits, collectibles, both, or neither.
+- Reservation-required and requester-approval-required task flows were planned.
+- The default reservation expiry was set to 48 hours, with automatic release on expiry.
+- Tasks were planned to allow exactly one active assignee: one user or one team.
+- First implementation of team assignment was scoped to users and same-organization teams; public teams remain deferred until public-team modeling exists.
+- Reserved tasks were planned to disappear from default discovery and reappear only when the viewer selects include-reserved, except for the active assignee and requester.
+- Request changes was planned to require requester notes and keep the same assignee exclusive.
+- Review outcomes were planned for accept, request changes, reject with optional partial reward, reject without reward, optional task-local implementor ban, and optional tips from requester balance or inventory.
+- MCP work was planned to add workflow tools and full Streamable HTTP SSE with `GET /mcp`, `DELETE /mcp`, session enforcement, event IDs, and replay where practical.
+- The next implementation sequence was recorded as PR 14 reservation/approval foundations, PR 15 requester ergonomics and task-page instructions, PR 16 review outcomes, PR 17 reward bundles, and PR 18 MCP workflow tools plus full SSE.

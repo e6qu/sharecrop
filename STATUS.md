@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 12 work. Pull request 12 was merged into `main`.
+The repository contains pull request 1 through pull request 13 work. Pull request 13 was merged into `main`.
 
 Active task:
 
-- Pull request 13 review fixes are implemented on `task/pr-13-review-and-fixes` and are ready for pull request review.
+- Planning is updated for reservation, approval, review outcomes, reward bundles, requester ergonomics, task discovery, and full MCP Streamable HTTP SSE.
 
 Implemented surface:
 
@@ -119,6 +119,21 @@ Implemented surface:
 - Browser auth restores sessions through the refresh cookie on load and clears the refresh cookie on logout.
 - The browser dashboard can create tasks with optional credit rewards, prefill funding for newly created credit-reward tasks, open and refund tasks, and review submission details before accepting.
 
+Planned defaults:
+
+- Reservation expiry defaults to 48 hours.
+- Expired reservations automatically release the task.
+- A task can have at most one active assignee: one user or one team.
+- Approval-required tasks approve exactly one user or team.
+- Public-team assignment is deferred unless public teams already exist; first implementation supports users and same-organization teams.
+- Reserved tasks are hidden from default discovery and shown only with an include-reserved control, except to the active assignee and requester.
+- Requesting changes requires requester notes and keeps the reservation exclusive for the same assignee.
+- Rejected submitted work may receive a requester-selected partial reward.
+- Requesters may tip from current balance and inventory at review time.
+- Task-local bans block the same implementor from the same task only.
+- Reward bundles may contain credits, collectibles, both, or neither.
+- Full MCP Streamable HTTP SSE remains planned.
+
 The accepted defaults for pull request 1 were:
 
 - Go module path: `github.com/e6qu/sharecrop`.
@@ -134,10 +149,8 @@ The accepted defaults for pull request 1 were:
 
 Last observed checks:
 
-- Pull request 12 GitHub continuous integration passed before merge.
-- `ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 GOCACHE=$PWD/.cache/go-build make ci` passed for pull request 13 before the logout endpoint was added.
-- After the logout endpoint was added, the equivalent final local check set passed in target groups: static/unit/frontend/build, `make test-integration`, `make test-http`, and `make e2e-ui`.
-- Manual screenshot review passed for `/tmp/sharecrop-dashboard.png` after pull request 13 changes.
+- Pull request 13 GitHub continuous integration passed before merge.
+- Local `main` is synced to `origin/main` at merge commit `7ce8fbb`.
 
 Blocking issues:
 

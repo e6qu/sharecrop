@@ -2,7 +2,7 @@
 
 ## Product Thesis
 
-Sharecrop is a coordination layer where people, organizations, teams, anonymous workers, scripts, and local AI agents can discover requested work, submit responses, and receive rewards when a requester accepts a result.
+Sharecrop is a coordination layer where people, organizations, teams, scripts, and local AI agents can discover requested work, reserve or request approval for work when required, submit responses, and receive rewards when a requester accepts or partially rewards a result.
 
 The platform does not execute tasks itself. It provides the web UI, HTTP API, MCP interface, task discovery, response validation, submission tracking, scoped access tokens, escrow accounting, and payout workflow. Work happens outside the platform.
 
@@ -11,13 +11,14 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Sharecrop serves both a public marketplace and private organization/team workflows.
 - Sharecrop is not a managed task runner.
 - REST/curl and MCP are both first-class interfaces.
-- A task may receive any number of submissions.
-- Only the first accepted submission earns the task reward.
+- A task may receive any number of submissions when its participation policy allows them.
+- Some tasks require an exclusive reservation or requester approval before submission.
+- A task may have at most one active assignee: one user or one team.
+- Only one submission can become the accepted result, but rejected work may receive a requester-selected partial reward.
 - Requesters can manually accept submissions.
+- Requesters can request changes, reject work, decline or cancel reservations, ban an implementor from a task, pay partial rewards, and add tips from their own balance or inventory.
 - Auto-accept can exist later, but must be constrained by validation, escrow, limits, and owner policy.
-- Anonymous workers can submit to public tasks without an account.
-- Anonymous workers provide a payout wallet address, including a Sharecrop wallet address.
-- Anonymous wallet addresses must not be linkable back to registered users by application design.
+- Anonymous workers are deferred until the anonymous worker identity and payout model is redesigned.
 - Task responses can be Sharecrop-schema validated or freeform.
 - Task series are ordered lists of tasks.
 - Tasks can be public or scoped to specific users, teams, organizations, organization users, or organization teams.
@@ -25,9 +26,10 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Users and organizations can hold wallets and Sharecrop credit accounts.
 - Each new registered user receives 100 Sharecrop credits.
 - Sharecrop credits are represented through an append-only ledger, not as a mutable balance field alone.
+- Task rewards are bundles that may contain Sharecrop credits, collectibles, both, or neither.
 - Users and organizations may later mint individualized reward tokens.
 - Sharecrop may sell platform-issued collectibles such as special emojis, graphics, badges, or other reward items.
-- User/org tokens and collectibles may be held, traded, hoarded, or attached as task rewards.
+- User/org tokens and collectibles may be held, traded, hoarded, or attached as task rewards when the relevant asset model supports escrow and payout.
 
 ## Software Stack
 
@@ -72,7 +74,6 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Refresh token reuse should revoke the token family.
 - Browser auth should use secure, HttpOnly cookies.
 - Agent credentials are separate from user session auth.
-- Anonymous submission receipt tokens are separate from user auth.
 - Task/capability tokens are opaque random tokens linked server-side to tasks, scopes, and optional subjects.
 
 ### Validation
@@ -305,7 +306,11 @@ Use sealed interfaces with unexported marker methods for variants such as:
 - `OwnerRef`
 - `SubmitterRef`
 - `VisibilityScope`
-- `RewardSpec`
+- `RewardBundle`
+- `ParticipationPolicy`
+- `AssigneeScope`
+- `ReservationState`
+- `ReviewOutcome`
 - `ResponseSpec`
 - `PayoutTarget`
 - `TaskState`
@@ -315,12 +320,16 @@ Use sealed interfaces with unexported marker methods for variants such as:
 Examples of intended variants:
 
 - `OwnerRef`: user, team, organization, organization team.
-- `SubmitterRef`: registered user, agent credential, anonymous worker.
+- `SubmitterRef`: registered user, agent credential.
 - `VisibilityScope`: public, scoped users, scoped teams, scoped organizations, scoped organization users, scoped organization teams.
-- `RewardSpec`: no reward, Sharecrop credit reward, crypto reward metadata.
+- `RewardBundle`: empty reward, Sharecrop credits, collectibles, Sharecrop credits plus collectibles, later token and crypto metadata items.
 - `RewardAsset`: Sharecrop credits, user token, organization token, platform collectible, crypto metadata.
+- `ParticipationPolicy`: open submissions, reservation required, requester approval required.
+- `AssigneeScope`: one user, one public Sharecrop team, one organization team in the same organization.
+- `ReservationState`: requested, active, declined, cancelled by requester, cancelled by worker, expired, submitted.
+- `ReviewOutcome`: accept, request changes, reject with partial reward, reject without reward.
 - `ResponseSpec`: Sharecrop schema response, freeform response.
-- `PayoutTarget`: user credit account, organization credit account, anonymous wallet.
+- `PayoutTarget`: user credit account, organization credit account, team payout target where supported.
 
 ### State Modeling
 
@@ -414,8 +423,8 @@ A worker may be:
 
 - An authenticated user.
 - A local AI agent acting through MCP/API credentials.
-- An anonymous submitter with a wallet address.
 - A script or curl client.
+- A public Sharecrop team or an organization team acting through an eligible member where the task allows team assignment.
 
 ### Organizations And Teams
 
@@ -482,14 +491,9 @@ Wallets can be owned by:
 
 - Users.
 - Organizations.
-- Anonymous submissions.
+- Deferred anonymous submissions.
 
-Anonymous wallet privacy rules:
-
-- Store anonymous submission wallets separately from user-linked wallets.
-- Do not enrich anonymous wallet addresses into identities.
-- Avoid correlating anonymous wallet addresses with account identifiers in application logs.
-- Do not treat a wallet address as proof of a registered user identity.
+Anonymous wallet privacy rules are deferred until anonymous submission is redesigned.
 
 ### Credit Accounts And Ledger
 
@@ -593,8 +597,11 @@ Tasks contain:
 - Optional input payload.
 - Response specification.
 - Sensitive-field policy.
-- Reward specification.
+- Reward bundle.
 - Acceptance policy.
+- Participation policy.
+- Assignee scope.
+- Reservation expiry policy.
 - Expiration policy.
 
 Visibility variants:
@@ -641,14 +648,46 @@ Sensitivity metadata should support:
 
 The server should build and store a sensitive-field index for submitted responses when possible. That index allows the platform to retrieve, redact, censor, export, or delete sensitive fields without relying on ad hoc payload inspection later.
 
-Reward variants:
+Reward bundles:
 
-- No reward.
-- Sharecrop credit reward.
-- User-issued token reward.
-- Organization-issued token reward.
-- Platform collectible reward.
-- Crypto reward metadata.
+- Empty bundle: no declared reward.
+- Sharecrop credit amount.
+- One or more platform collectibles.
+- Sharecrop credits plus platform collectibles.
+- Later: user-issued token reward items.
+- Later: organization-issued token reward items.
+- Later: crypto reward metadata items.
+
+Participation policies:
+
+- Open submissions: any visible registered user can submit while the task is open.
+- Reservation required: a worker or eligible team must reserve the task before submitting.
+- Requester approval required: a worker or eligible team requests approval, and the requester approves exactly one active assignee before submission.
+
+Assignee scope:
+
+- One user.
+- One public Sharecrop team.
+- One organization team in the same organization as an organization-owned or organization-visible task.
+
+Reservation defaults and rules:
+
+- Default reservation expiry is 48 hours.
+- Requesters may choose a different expiry duration.
+- Expiry automatically releases the task for other workers.
+- A task may have at most one active reservation.
+- A reservation keeps the task exclusive for the assignee.
+- Requesting changes keeps the reservation active and exclusive.
+- Requester cancellation or rejection without a continuing revision path releases the task unless the task is closed.
+- Requesters may ban a user or team from the same task after rejection or cancellation.
+- Task-local bans do not ban the worker globally.
+
+Discovery rules:
+
+- Reserved tasks are hidden from default discovery for other workers.
+- Discovery can include reserved tasks when the client passes an explicit include-reserved option.
+- Reserved tasks remain visible and actionable to the active assignee.
+- Requesters can see their own reserved and pending-approval tasks.
 
 Task lifecycle:
 
@@ -666,13 +705,13 @@ Submission submitter variants:
 
 - Registered user.
 - Agent credential.
-- Anonymous worker.
 
 Submission lifecycle:
 
 - Received.
 - Schema invalid.
 - Valid.
+- Changes requested.
 - Rejected.
 - Accepted.
 - Superseded.
@@ -682,7 +721,12 @@ Rules:
 - Only one submission can become accepted.
 - Acceptance must be transactional.
 - Accepting one submission closes reward-bearing acceptance for the task.
-- Later submissions may exist but cannot receive the first-accepted reward.
+- Later submissions may exist when the requester requests changes from the same assignee.
+- Requesting changes requires requester notes.
+- Rejected work can receive a requester-selected partial reward only after a submitted response exists.
+- Requesters can tip from current balance and inventory at review time; tips are not pre-funded escrow.
+- Partial collectible rewards may award any subset of escrowed collectibles plus optional extra collectibles from requester inventory.
+- Extra credit tips are paid from the requester balance at review time.
 - Submitted responses should record any detected sensitive field paths based on the task response schema.
 
 ### Sensitive Data Handling
@@ -772,7 +816,6 @@ Capability scopes include:
 
 - Task view.
 - Task submit.
-- Anonymous task submit.
 - Task review.
 - Submission accept.
 - Task series continue.
@@ -783,7 +826,7 @@ Use cases:
 
 - Public task submit links.
 - Private task invite links.
-- Anonymous submission receipts.
+- Deferred anonymous submission receipts.
 - Task-series continuation.
 - MCP agent task access.
 - Limited-use review links.
@@ -796,14 +839,14 @@ Sharecrop credits are the preferred MVP reward mechanism.
 
 Flow:
 
-1. Requester creates a task with a credit reward.
-2. Requester funds the task from a user or organization credit account.
+1. Requester creates a task with a reward bundle that may include credits.
+2. Requester funds the credit portion from a user or organization credit account when credits are declared.
 3. The platform inserts task escrow ledger entries.
 4. Task becomes open.
-5. Workers submit responses.
-6. Requester accepts one valid submission, or an allowed auto-accept policy accepts one.
-7. Platform inserts task payout ledger entries.
-8. Task reward status becomes paid.
+5. Workers submit directly, reserve, or request approval depending on the task participation policy.
+6. Requester accepts one valid submission, requests changes, rejects it, or rejects it with a partial reward.
+7. Platform inserts task payout ledger entries for accepted, partial, or tip credit payouts.
+8. Task reward status records paid, partially paid, refunded, or retained reward outcomes.
 
 Cancellation:
 
@@ -827,12 +870,12 @@ They should be introduced after the Sharecrop credit ledger and escrow model is 
 
 Reward flow should mirror credits:
 
-1. Requester selects a token or collectible reward.
+1. Requester selects a token or collectible reward item as part of the reward bundle.
 2. Platform verifies ownership, transfer policy, and requester permission.
 3. Platform escrows the asset.
 4. Task becomes open.
-5. Requester accepts one submission.
-6. Platform transfers the escrowed asset to the accepted worker or their selected payout/holding account.
+5. Requester accepts one submission or rejects with a partial reward.
+6. Platform transfers the requester-selected subset of escrowed assets, and optional extra assets from requester inventory, to the worker or team holding account.
 
 Collectible rewards may be:
 
@@ -856,24 +899,17 @@ Auto-accept should not be enabled by default for crypto payouts.
 
 ## Anonymous Access
 
-Anonymous workers can submit to public tasks without logging in.
+Anonymous workers are deferred.
 
-Rules:
+Before anonymous submission returns, Sharecrop needs a design for:
 
-- Anonymous workers provide a payout wallet address.
-- They receive a receipt token for status checks.
-- The receipt token must not expose requester-private data.
-- Anonymous wallets are not linked to registered users.
+- Anonymous worker identity.
+- Anonymous payout targets.
+- Privacy boundaries between anonymous payout addresses and registered users.
+- Receipt-token status access.
+- Abuse controls such as rate limits and optional CAPTCHA.
 
-Recommended controls:
-
-- Rate limits by IP and task.
-- Payload size limits.
-- Optional CAPTCHA for web submissions.
-- Optional task-level submission caps.
-- Owner ability to close or hide noisy public tasks.
-
-Guest visitors may also receive an opaque browser token for non-account continuity. That guest token is not a wallet identity and should not be used to link anonymous payout wallets to registered accounts.
+Guest visitors may later receive an opaque browser token for non-account continuity. That guest token is not a wallet identity and must not be used to link anonymous payout targets to registered accounts.
 
 ## API Surface
 
@@ -883,8 +919,8 @@ Supported modes:
 
 - Browser session using JWT access token and opaque refresh token cookies.
 - API token or agent credential for MCP/local agents.
-- Anonymous task capability tokens.
-- Anonymous submission receipt tokens.
+- Deferred: anonymous task capability tokens.
+- Deferred: anonymous submission receipt tokens.
 
 ### Tasks
 
@@ -905,6 +941,9 @@ Filters:
 - Reward asset.
 - Reward type.
 - Response mode.
+- Availability.
+- Include reserved tasks.
+- Participation policy.
 
 ### Task Series
 
@@ -921,11 +960,21 @@ Filters:
 - `GET /api/submissions/{submission_id}`
 - `POST /api/submissions/{submission_id}/accept`
 - `POST /api/submissions/{submission_id}/reject`
+- `POST /api/submissions/{submission_id}/request-changes`
 
-Anonymous:
+Deferred anonymous:
 
 - `POST /api/public/tasks/{task_id}/submissions`
 - `GET /api/public/submissions/status/{receipt_token}`
+
+### Reservations And Approval
+
+- `POST /api/tasks/{task_id}/reservations`
+- `GET /api/tasks/{task_id}/reservations`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/approve`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/decline`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel`
+- `POST /api/tasks/{task_id}/bans`
 
 ### Rewards And Ledger
 
@@ -964,6 +1013,9 @@ Initial MCP tools:
 - `sharecrop.list_tasks`
 - `sharecrop.get_task`
 - `sharecrop.get_task_schema`
+- `sharecrop.reserve_task`
+- `sharecrop.request_task_approval`
+- `sharecrop.cancel_my_reservation`
 - `sharecrop.submit_response`
 - `sharecrop.get_submission_status`
 - `sharecrop.list_task_series`
@@ -975,12 +1027,30 @@ Authenticated/requester tools:
 - `sharecrop.list_org_tasks`
 - `sharecrop.create_task`
 - `sharecrop.create_task_series`
+- `sharecrop.list_task_reservations`
+- `sharecrop.approve_task_reservation`
+- `sharecrop.decline_task_reservation`
+- `sharecrop.request_submission_changes`
 - `sharecrop.accept_submission`
 - `sharecrop.reject_submission`
 
 MCP should be an adapter over the same domain services as the HTTP API.
 
 Do not use a Go MCP library. Implement the MCP protocol handling locally and use the official MCP specification as the source of truth.
+
+Streamable HTTP completion:
+
+- `POST /mcp` requires an `Accept` header that supports `application/json` and `text/event-stream`.
+- `POST /mcp` may return a single `application/json` JSON-RPC response or a `text/event-stream` response.
+- `POST /mcp` returns `202 Accepted` with no body for accepted JSON-RPC notifications or client responses.
+- `GET /mcp` opens a server-sent events stream when the client accepts `text/event-stream`.
+- `DELETE /mcp` terminates the current MCP session when the client provides `Mcp-Session-Id`.
+- Initialize returns `Mcp-Session-Id`; later HTTP MCP requests must include that session header.
+- Unknown or expired MCP sessions return `404`.
+- SSE events have event IDs.
+- `Last-Event-ID` supports replay for retained events where practical.
+- SSE notifications can include task, reservation, and submission changes.
+- The server must not broadcast the same MCP message across multiple concurrent streams.
 
 ## UI Plan
 
@@ -1000,21 +1070,32 @@ Important flows:
 
 - Browse pending public and scoped work.
 - View task detail.
+- View task availability and reservation status.
+- Include reserved tasks in discovery with an explicit checkbox.
+- Reserve a task or request approval where required.
 - Submit response.
 - Create task.
+- Configure reward bundles containing credits, collectibles, both, or neither.
+- Configure participation policy, assignee scope, and reservation expiry.
 - Scope task visibility to users, teams, organizations, organization users, or organization teams.
 - Publish organization task publicly when permitted.
 - Edit Sharecrop schema directly.
 - Mark schema fields as sensitive/PII.
 - Later: schema builder UI.
 - Review submissions.
+- Review reservations and approval requests.
 - Accept one submission.
+- Request changes with required notes.
+- Reject work with or without a requester-selected partial reward.
+- Ban an implementor from the same task.
 - Fund task with credits.
-- Fund task with user/org tokens or collectibles later.
+- Fund task with collectibles.
+- Fund task with user/org tokens later.
 - View ledger.
 - Create shareable task capability links.
 - Configure local agent/MCP.
 - Copy curl examples.
+- Show REST and MCP instructions on every task detail page for worker result submission.
 
 ## Security And Correctness Requirements
 
@@ -1053,7 +1134,7 @@ Testing layers:
 
 - Unit tests for domain constructors, strong enums, tagged unions, lifecycle transitions, schema parsing, validation, redaction, token generation, and ledger arithmetic.
 - Integration tests for repositories, migrations, Postgres transactions, auth session storage, escrow, acceptance, visibility checks, and sensitive-field indexing.
-- HTTP end-to-end tests for the public API, authenticated API, anonymous submission API, receipt-status API, and agent/MCP-facing flows.
+- HTTP end-to-end tests for the public API, authenticated API, receipt-status API where enabled, and agent/MCP-facing flows.
 - Playwright end-to-end tests for browser UI workflows.
 
 TDD expectations:
@@ -1179,7 +1260,7 @@ Package intent:
 - Sensitive-field indexing for submitted responses.
 - Freeform response mode.
 - Authenticated submissions.
-- Anonymous submissions.
+- Deferred anonymous submissions.
 - Receipt-token status checks.
 - Submission review.
 
@@ -1233,7 +1314,7 @@ Package intent:
 
 - Should first-version organization-scoped tasks be visible to all organization members by default, or only selected organization users/teams?
 - Which crypto networks/assets should be supported first as metadata?
-- Should anonymous workers be able to message requesters, or only submit responses?
+- What anonymous worker identity and payout model should be used before anonymous submissions return?
 - Should user/org token minting be open to all users/orgs or gated by credits, collectibles, permissions, or platform policy?
 - Should platform collectibles be transferable immediately, or should some collectibles be account-bound?
 
@@ -1291,16 +1372,17 @@ Build the MVP around the central task/reward loop and Sharecrop credits:
 - Public and scoped tasks.
 - Task series as ordered lists.
 - Sharecrop schema and freeform responses.
-- Unlimited submissions per task.
-- First accepted submission receives the reward.
-- Authenticated and anonymous submissions.
-- Anonymous wallet address collection.
-- Receipt-token status checks.
+- Submissions governed by participation policy.
+- One accepted submission receives the final accepted reward.
+- Rejected submitted work may receive a requester-selected partial reward.
+- Authenticated submissions.
+- Deferred anonymous submission identity and payout model.
+- Receipt-token status checks where anonymous or capability-token flows require them.
 - Opaque task capability tokens.
 - REST/curl support.
 - MCP support for listing tasks, reading schemas, and submitting responses.
 
-Crypto payout automation and token/collectible reward execution should come after the core task, validation, escrow, acceptance, token, and ledger models are reliable.
+Crypto payout automation and user/org token reward execution should come after the core task, validation, reservation, escrow, review, asset, and ledger models are reliable.
 
 ## PR Roadmap
 
@@ -1521,11 +1603,11 @@ Acceptance checks:
 - Capability tokens do not encode task IDs.
 - Revocation is lifecycle/event based, not nullable timestamp based.
 
-### PR 8: Submissions, Anonymous Access, And Sensitive Data
+### PR 8: Submissions And Sensitive Data
 
 Goal:
 
-- Implement authenticated and anonymous submissions with schema validation, receipt tokens, and sensitive-field handling.
+- Implement authenticated submissions with schema validation, receipt tokens where needed, and sensitive-field handling.
 
 Tasks:
 
@@ -1535,20 +1617,17 @@ Tasks:
 - Add submitter tagged unions.
 - Add submission lifecycle states.
 - Add authenticated submission endpoint.
-- Add anonymous public submission endpoint.
 - Add receipt status endpoint.
 - Add schema validation integration.
 - Add sensitive-field extraction and storage.
 - Add redacted response output based on viewer permission.
 - Add submission review UI.
-- Add anonymous submission UI.
-- Add unit, integration, HTTP E2E, and Playwright coverage for anonymous submission and receipt status.
+- Add unit, integration, HTTP E2E, and Playwright coverage for submission and receipt status.
 
 Acceptance checks:
 
-- Public tasks can receive anonymous submissions.
-- Anonymous submissions require payout wallet address.
-- Receipt token can check status without login.
+- Public tasks can receive authenticated submissions.
+- Receipt token can check status without exposing requester-private data where receipt flows are enabled.
 - Schema-invalid submissions are recorded with typed validation errors.
 - Sensitive fields are redacted from unauthorized responses.
 
@@ -1636,28 +1715,166 @@ Acceptance checks:
 - Tailwind build is deterministic.
 - No React runtime is introduced.
 
-### PR 12: Asset Economy Design Skeleton
+### PR 12: Asset Economy Foundation
 
 Goal:
 
-- Add the non-MVP skeleton for user/org tokens and platform collectibles without enabling reward execution yet.
+- Add organization credit accounts and platform collectibles, and keep user/org tokens deferred.
 
 Tasks:
 
 - Add `internal/assets`.
-- Add token issuer domain types.
 - Add transfer policy variants.
 - Add collectible kind and collectible state types.
 - Add asset ownership model.
-- Add draft migrations if needed behind disabled routes.
 - Add generated contracts for asset read models.
-- Add placeholder UI pages for collectibles/tokens if useful.
+- Add browser collectible minting and awarding flows.
 - Add policy tests.
 - Add unit tests for token and collectible policy variants.
 
 Acceptance checks:
 
-- Token/collectible model compiles and is type-safe.
-- No asset reward execution is enabled yet.
+- Collectible model compiles and is type-safe.
+- Platform collectible reward execution is enabled.
+- User/org token reward execution remains deferred.
 - Asset policies use variants, not booleans.
 - The model can later plug into escrow.
+
+## Post-PR13 Roadmap
+
+The codebase has implemented through pull request 13. The next work should use the following sequence.
+
+### PR 14: Reservation, Approval, And Discovery Availability Foundations
+
+Goal:
+
+- Add the domain and API foundation for exclusive task assignment by user or team.
+
+Defaults:
+
+- Reservation expiry defaults to 48 hours.
+- Expired reservations automatically release the task.
+- A task can have at most one active assignee.
+- Reserved tasks are hidden from default discovery and shown only when the client explicitly includes reserved tasks.
+- Requesting changes keeps the reservation exclusive for the same assignee.
+- Task-local bans block the same user or team from the same task only.
+
+Tasks:
+
+- Add participation policy domain types: open submissions, reservation required, requester approval required.
+- Add assignee scope domain types: one user, one public Sharecrop team, one organization team in the same organization.
+- Add reservation lifecycle types and migrations.
+- Add task-local implementor ban types and migrations.
+- Add reservation expiry release logic.
+- Add task availability and viewer-action read models.
+- Add HTTP APIs for reserve, request approval, approve, decline, cancel, and list reservations.
+- Update task list/detail responses and discovery filters for availability and include-reserved behavior.
+- Add unit, integration, HTTP end-to-end, and Playwright coverage for reservation and approval flows.
+
+Acceptance checks:
+
+- Open tasks still allow direct submission.
+- Reservation-required tasks only allow the active assignee to submit.
+- Approval-required tasks only allow the approved assignee to submit.
+- Reserved tasks are hidden from default discovery for other workers.
+- Reserved tasks appear with `include_reserved`.
+- Reservation expiry releases the task automatically.
+
+### PR 15: Requester Ergonomics And Task Page Instructions
+
+Goal:
+
+- Improve browser workflows for requesters and workers.
+
+Tasks:
+
+- Replace raw task-ID entry in funding and collectible-award forms with task selection from the user's task list.
+- Add participation-policy, assignee-scope, and reservation-expiry controls to task creation.
+- Add reservation and approval panels to requester task detail.
+- Add worker reserve/apply/submit actions to task detail.
+- Add include-reserved discovery control.
+- Show REST and MCP instructions on task pages for reserving/applying/submitting results.
+- Show schema-derived example response JSON where practical.
+- Add Playwright coverage and manual screenshot review for requester and worker task-detail flows.
+
+Acceptance checks:
+
+- Requesters can work from task selectors instead of copying task IDs.
+- Workers can see exactly how to submit by API or MCP from the task page.
+- Reserved tasks appear only when requested or when the current viewer is the active assignee/requester.
+
+### PR 16: Review Outcomes, Partial Rewards, Tips, And Bans
+
+Goal:
+
+- Add requester review outcomes beyond accept/reject.
+
+Defaults:
+
+- Request changes requires notes.
+- Rejected-work fair reward is allowed only after a submitted response exists.
+- Tips come from requester balance and inventory at review time, not prefunded escrow.
+- Collectible payout can include any subset of escrowed collectibles plus optional extra collectibles from requester inventory.
+
+Tasks:
+
+- Add review outcome domain types.
+- Add request-changes state transition with required notes.
+- Add reject-with-partial-reward and reject-without-reward commands.
+- Add accepted payout command support for partial/full declared reward and optional tips.
+- Add credit balance checks for extra credit tips.
+- Add collectible inventory checks for extra collectible tips.
+- Add task-local implementor ban controls.
+- Update ledger and asset transfer records for partial rewards and tips.
+- Add HTTP, integration, and Playwright coverage.
+
+Acceptance checks:
+
+- Request changes keeps the assignee exclusive.
+- Rejecting can release the task and optionally ban the assignee.
+- Partial credit and collectible rewards are paid only when requester balance/inventory permits.
+- Tips do not require prefunding.
+
+### PR 17: Reward Bundles
+
+Goal:
+
+- Replace single-kind reward handling with reward bundles.
+
+Tasks:
+
+- Model reward bundles containing credits, collectibles, both, or neither.
+- Update task creation, funding, opening, acceptance, refund, and cancellation around bundled rewards.
+- Support multiple collectible reward items.
+- Update generated contracts, HTTP responses, MCP output, and browser reward displays.
+- Add migration compatibility for existing credit and collectible reward data.
+
+Acceptance checks:
+
+- Credit-only, collectible-only, combined, and no-reward tasks work.
+- Tasks with declared rewards require matching escrow before opening.
+- Refunds return all remaining escrowed reward items.
+
+### PR 18: MCP Workflow Tools And Full Streamable HTTP SSE
+
+Goal:
+
+- Finish MCP workflow coverage and Streamable HTTP behavior.
+
+Tasks:
+
+- Add MCP tools for reservation, approval, cancellation, request changes, reject, partial payout, and task-local bans.
+- Update MCP task tools to include reward bundle, participation policy, availability, viewer action, and API instructions.
+- Enforce Streamable HTTP session IDs after initialize.
+- Add `GET /mcp` server-sent events streams.
+- Add `DELETE /mcp` session termination.
+- Add SSE event IDs and retained-event replay using `Last-Event-ID` where practical.
+- Emit task, reservation, and submission notifications over SSE.
+- Add protocol tests from the official MCP Streamable HTTP requirements.
+
+Acceptance checks:
+
+- JSON-only MCP clients still work over POST.
+- Streamable HTTP clients can use GET SSE streams.
+- Session lifecycle and protocol-version behavior match the official MCP specification.
+- MCP workflow tools enforce the same permissions as HTTP APIs.
