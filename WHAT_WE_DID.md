@@ -681,3 +681,29 @@ The reward bundles branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
 - `make check-contracts` regenerated the intended Elm contract changes and failed before commit because the generated files differed from `HEAD`; it should be rerun after the reward bundles commit.
 - Manual screenshot review was skipped; Playwright UI coverage passed.
+
+The MCP workflow and Streamable HTTP SSE branch added the remaining MCP workflow surface:
+
+- MCP services and tools gained task reservation support: reserve/request approval, list task reservations, approve reservation, decline reservation, and cancel reservation.
+- Reservation tool results return reservation identifiers, task identifiers, assignee kind and identifier, state, and requester identifier.
+- Streamable HTTP MCP now stores initialized HTTP sessions and requires `Mcp-Session-Id` on later non-initialize POST requests.
+- `GET /mcp` now serves `text/event-stream`, replays recent session response events after `Last-Event-ID`, stays open, and streams later POST responses to connected clients with event IDs.
+- `DELETE /mcp` terminates the current session and later requests with that session ID fail.
+- MCP sessions and recent response events are kept in the app process memory.
+- Browser task detail MCP curl examples now show initialize first, then session-aware `submit_response` and `get_task_schema` tool calls.
+
+The MCP workflow and Streamable HTTP SSE branch test coverage was updated:
+
+- MCP unit tests cover the new reservation tool dispatch path.
+- HTTP end-to-end MCP tests now initialize sessions, include `Mcp-Session-Id` on tool calls, cover reserve/list/approve reservation tools, cover SSE replay, cover live SSE delivery after a later POST, and cover session deletion.
+- Existing MCP series tool HTTP tests now use initialized sessions.
+
+The MCP workflow and Streamable HTTP SSE branch verification was performed:
+
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags integration ./tests/integration` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- Manual screenshot review was skipped; Playwright UI coverage passed.

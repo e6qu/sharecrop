@@ -19,6 +19,11 @@ const (
 	toolRejectSubmission    = "sharecrop.reject_submission"
 	toolListTaskSeries      = "sharecrop.list_task_series"
 	toolGetTaskSeries       = "sharecrop.get_task_series"
+	toolReserveTask         = "sharecrop.reserve_task"
+	toolListReservations    = "sharecrop.list_task_reservations"
+	toolApproveReservation  = "sharecrop.approve_task_reservation"
+	toolDeclineReservation  = "sharecrop.decline_task_reservation"
+	toolCancelReservation   = "sharecrop.cancel_task_reservation"
 )
 
 type toolDefinition struct {
@@ -101,6 +106,36 @@ func toolDefinitions() []toolDefinition {
 			Description: "Get a task series and its ordered tasks.",
 			Scope:       agent.ScopeTasksRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
+		},
+		{
+			Name:        toolReserveTask,
+			Description: "Reserve a task or request requester approval, depending on the task participation policy.",
+			Scope:       agent.ScopeSubmissionsWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"]}`),
+		},
+		{
+			Name:        toolListReservations,
+			Description: "List reservation requests for a task owned by the agent's user.",
+			Scope:       agent.ScopeSubmissionsRead,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"]}`),
+		},
+		{
+			Name:        toolApproveReservation,
+			Description: "Approve a reservation request for a task owned by the agent's user.",
+			Scope:       agent.ScopeSubmissionsReview,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"reservation_id":{"type":"string"}},"required":["task_id","reservation_id"]}`),
+		},
+		{
+			Name:        toolDeclineReservation,
+			Description: "Decline a reservation request for a task owned by the agent's user.",
+			Scope:       agent.ScopeSubmissionsReview,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"reservation_id":{"type":"string"}},"required":["task_id","reservation_id"]}`),
+		},
+		{
+			Name:        toolCancelReservation,
+			Description: "Cancel an active reservation for a task owned by the agent's user.",
+			Scope:       agent.ScopeSubmissionsReview,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"reservation_id":{"type":"string"}},"required":["task_id","reservation_id"]}`),
 		},
 	}
 }

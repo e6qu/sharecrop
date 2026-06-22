@@ -93,6 +93,23 @@ type reviewPayload struct {
 	TipAmount    int64  `json:"tip_amount"`
 }
 
+type reservationSummary struct {
+	ID           string `json:"id"`
+	TaskID       string `json:"task_id"`
+	AssigneeKind string `json:"assignee_kind"`
+	AssigneeID   string `json:"assignee_id"`
+	State        string `json:"state"`
+	RequestedBy  string `json:"requested_by"`
+}
+
+type reservationPayload struct {
+	Reservation reservationSummary `json:"reservation"`
+}
+
+type reservationsPayload struct {
+	Reservations []reservationSummary `json:"reservations"`
+}
+
 func (server Server) callListTasks(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
 		Scope string `json:"scope"`
@@ -549,6 +566,51 @@ func (server Server) callGetTaskSeries(ctx context.Context, subject auth.UserSub
 	return marshalPayload(seriesDetailPayload{Series: seriesToSummary(got.Value.Series), Tasks: tasks})
 }
 
+func (server Server) callReserveTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	taskID, problem := parseTaskID(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.ReserveTask(ctx, subject, taskID)
+	created, matched := result.(task.ReservationCreated)
+	if !matched {
+		return toolFailed{message: result.(task.ReservationRejected).Reason.Description()}
+	}
+	return marshalPayload(reservationPayload{Reservation: reservationToSummary(created.Value)})
+}
+
+func (server Server) callListReservations(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	taskID, problem := parseTaskID(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.ListReservations(ctx, subject, taskID)
+	listed, matched := result.(task.ReservationsListed)
+	if !matched {
+		return toolFailed{message: result.(task.ReservationsListRejected).Reason.Description()}
+	}
+	reservations := make([]reservationSummary, 0, len(listed.Values))
+	for index := range listed.Values {
+		reservations = append(reservations, reservationToSummary(listed.Values[index]))
+	}
+	return marshalPayload(reservationsPayload{Reservations: reservations})
+}
+
+type mcpReservationChanger func(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+
+func (server Server) callChangeReservation(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage, changer mcpReservationChanger) toolResult {
+	ids := parseTaskReservationIDs(arguments)
+	if ids.problem != nil {
+		return ids.problem
+	}
+	result := changer(ctx, subject, ids.taskID, ids.reservationID)
+	changed, matched := result.(task.ReservationStateChanged)
+	if !matched {
+		return toolFailed{message: result.(task.ReservationStateChangeRejected).Reason.Description()}
+	}
+	return marshalPayload(reservationPayload{Reservation: reservationToSummary(changed.Value)})
+}
+
 func seriesToSummary(value task.Series) seriesSummary {
 	return seriesSummary{
 		ID:        value.ID.String(),
@@ -556,6 +618,33 @@ func seriesToSummary(value task.Series) seriesSummary {
 		Title:     value.Title.String(),
 		CreatedBy: value.CreatedBy.String(),
 	}
+}
+
+type parsedTaskReservationIDs struct {
+	taskID        core.TaskID
+	reservationID core.TaskReservationID
+	problem       toolResult
+}
+
+func parseTaskReservationIDs(arguments json.RawMessage) parsedTaskReservationIDs {
+	var args struct {
+		TaskID        string `json:"task_id"`
+		ReservationID string `json:"reservation_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return parsedTaskReservationIDs{problem: invalidArguments()}
+	}
+	taskIDResult := core.ParseTaskID(args.TaskID)
+	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
+	if !taskMatched {
+		return parsedTaskReservationIDs{problem: toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}}
+	}
+	reservationIDResult := core.ParseTaskReservationID(args.ReservationID)
+	reservationID, reservationMatched := reservationIDResult.(core.TaskReservationIDCreated)
+	if !reservationMatched {
+		return parsedTaskReservationIDs{problem: toolProtocolError{code: codeInvalidParams, message: reservationIDResult.(core.TaskReservationIDRejected).Reason.Description()}}
+	}
+	return parsedTaskReservationIDs{taskID: taskID.Value, reservationID: reservationID.Value}
 }
 
 func parseTaskID(arguments json.RawMessage) (core.TaskID, toolResult) {
@@ -604,6 +693,10 @@ func (submissionsPayload) payloadValue() {}
 func (acceptPayload) payloadValue() {}
 
 func (reviewPayload) payloadValue() {}
+
+func (reservationPayload) payloadValue() {}
+
+func (reservationsPayload) payloadValue() {}
 
 func (seriesListPayload) payloadValue() {}
 
@@ -685,6 +778,29 @@ func submissionToSummary(value submission.Submission) submissionSummary {
 		TaskID:      value.TaskID.String(),
 		SubmitterID: value.SubmitterID.String(),
 		State:       value.State.String(),
+	}
+}
+
+func reservationToSummary(value task.Reservation) reservationSummary {
+	assigneeKind, assigneeID := reservationAssigneeParts(value.Assignee)
+	return reservationSummary{
+		ID:           value.ID.String(),
+		TaskID:       value.TaskID.String(),
+		AssigneeKind: assigneeKind,
+		AssigneeID:   assigneeID,
+		State:        value.State.String(),
+		RequestedBy:  value.RequestedBy.String(),
+	}
+}
+
+func reservationAssigneeParts(assignee task.Assignee) (string, string) {
+	switch typed := assignee.(type) {
+	case task.UserAssignee:
+		return task.AssigneeScopeUser.String(), typed.UserID.String()
+	case task.OrganizationTeamAssignee:
+		return task.AssigneeScopeOrganizationTeam.String(), typed.TeamID.String()
+	default:
+		return "", ""
 	}
 }
 

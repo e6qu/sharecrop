@@ -26,6 +26,11 @@ type Services interface {
 	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
+	ReserveTask(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
+	ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult
+	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 }
 
 type Server struct {
@@ -131,6 +136,16 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.UserSubject,
 		return server.callListTaskSeries(ctx, subject)
 	case toolGetTaskSeries:
 		return server.callGetTaskSeries(ctx, subject, arguments)
+	case toolReserveTask:
+		return server.callReserveTask(ctx, subject, arguments)
+	case toolListReservations:
+		return server.callListReservations(ctx, subject, arguments)
+	case toolApproveReservation:
+		return server.callChangeReservation(ctx, subject, arguments, server.services.ApproveReservation)
+	case toolDeclineReservation:
+		return server.callChangeReservation(ctx, subject, arguments, server.services.DeclineReservation)
+	case toolCancelReservation:
+		return server.callChangeReservation(ctx, subject, arguments, server.services.CancelReservation)
 	default:
 		return toolProtocolError{code: codeInvalidParams, message: "unknown tool: " + name}
 	}

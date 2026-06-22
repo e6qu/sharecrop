@@ -2042,6 +2042,7 @@ taskInstructions origin taskId =
         , Ui.codeBlock [ testId "task-rest-submit" ] (restSubmitCurl origin taskId)
         , Ui.codeBlock [ testId "task-rest-reserve" ] (restReserveCurl origin taskId)
         , Ui.label_ "MCP"
+        , Ui.codeBlock [ testId "task-mcp-initialize" ] (mcpInitializeCurl origin)
         , Ui.codeBlock [ testId "task-mcp-submit" ] (mcpSubmitCurl origin taskId)
         , Ui.codeBlock [ testId "task-mcp-schema" ] (mcpSchemaCurl origin taskId)
         ]
@@ -2065,11 +2066,18 @@ restReserveCurl origin taskId =
         ++ "/reservations \\\n  -H \"Authorization: Bearer <ACCESS_TOKEN>\""
 
 
+mcpInitializeCurl : String -> String
+mcpInitializeCurl origin =
+    "curl -i -X POST "
+        ++ origin
+        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}'"
+
+
 mcpSubmitCurl : String -> String -> String
 mcpSubmitCurl origin taskId =
     "curl -X POST "
         ++ origin
-        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.submit_response\",\"arguments\":{\"task_id\":\""
+        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Mcp-Session-Id: <MCP_SESSION_ID>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.submit_response\",\"arguments\":{\"task_id\":\""
         ++ taskId
         ++ "\",\"response_json\":\"{}\"}}}'"
 
@@ -2078,7 +2086,7 @@ mcpSchemaCurl : String -> String -> String
 mcpSchemaCurl origin taskId =
     "curl -X POST "
         ++ origin
-        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.get_task_schema\",\"arguments\":{\"task_id\":\""
+        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Mcp-Session-Id: <MCP_SESSION_ID>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.get_task_schema\",\"arguments\":{\"task_id\":\""
         ++ taskId
         ++ "\"}}}'"
 
