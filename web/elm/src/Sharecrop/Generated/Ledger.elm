@@ -10,6 +10,7 @@ type LedgerEntryKind
     | LedgerEntryKindTaskEscrow
     | LedgerEntryKindTaskRefund
     | LedgerEntryKindTaskPayout
+    | LedgerEntryKindTaskTip
     | LedgerEntryKindManualAdjustment
 
 ledgerEntryKindDecoder : Decoder LedgerEntryKind
@@ -29,6 +30,9 @@ ledgerEntryKindDecoder =
 
                     "task_payout" ->
                         Decode.succeed LedgerEntryKindTaskPayout
+
+                    "task_tip" ->
+                        Decode.succeed LedgerEntryKindTaskTip
 
                     "manual_adjustment" ->
                         Decode.succeed LedgerEntryKindManualAdjustment
@@ -51,6 +55,9 @@ ledgerEntryKindEncoder ledgerEntryKind =
 
         LedgerEntryKindTaskPayout ->
             Encode.string "task_payout"
+
+        LedgerEntryKindTaskTip ->
+            Encode.string "task_tip"
 
         LedgerEntryKindManualAdjustment ->
             Encode.string "manual_adjustment"
@@ -175,17 +182,19 @@ type alias AcceptSubmissionResponse =
     , payoutAmount : Int
     , workerUserID : String
     , collectibleID : String
+    , tipAmount : Int
     }
 
 acceptSubmissionResponseDecoder : Decoder AcceptSubmissionResponse
 acceptSubmissionResponseDecoder =
-    Decode.map6 AcceptSubmissionResponse
+    Decode.map7 AcceptSubmissionResponse
         (Decode.field "task_id" Decode.string)
         (Decode.field "submission_id" Decode.string)
         (Decode.field "payout_kind" Decode.string)
         (Decode.field "payout_amount" Decode.int)
         (Decode.field "worker_user_id" Decode.string)
         (Decode.field "collectible_id" Decode.string)
+        (Decode.field "tip_amount" Decode.int)
 
 acceptSubmissionResponseEncoder : AcceptSubmissionResponse -> Encode.Value
 acceptSubmissionResponseEncoder acceptSubmissionResponse =
@@ -196,4 +205,41 @@ acceptSubmissionResponseEncoder acceptSubmissionResponse =
         , ( "payout_amount", Encode.int acceptSubmissionResponse.payoutAmount )
         , ( "worker_user_id", Encode.string acceptSubmissionResponse.workerUserID )
         , ( "collectible_id", Encode.string acceptSubmissionResponse.collectibleID )
+        , ( "tip_amount", Encode.int acceptSubmissionResponse.tipAmount )
+        ]
+
+type alias ReviewSubmissionResponse =
+    { taskID : String
+    , submissionID : String
+    , state : String
+    , reviewNote : String
+    , payoutKind : String
+    , payoutAmount : Int
+    , workerUserID : String
+    , tipAmount : Int
+    }
+
+reviewSubmissionResponseDecoder : Decoder ReviewSubmissionResponse
+reviewSubmissionResponseDecoder =
+    Decode.map8 ReviewSubmissionResponse
+        (Decode.field "task_id" Decode.string)
+        (Decode.field "submission_id" Decode.string)
+        (Decode.field "state" Decode.string)
+        (Decode.field "review_note" Decode.string)
+        (Decode.field "payout_kind" Decode.string)
+        (Decode.field "payout_amount" Decode.int)
+        (Decode.field "worker_user_id" Decode.string)
+        (Decode.field "tip_amount" Decode.int)
+
+reviewSubmissionResponseEncoder : ReviewSubmissionResponse -> Encode.Value
+reviewSubmissionResponseEncoder reviewSubmissionResponse =
+    Encode.object
+        [ ( "task_id", Encode.string reviewSubmissionResponse.taskID )
+        , ( "submission_id", Encode.string reviewSubmissionResponse.submissionID )
+        , ( "state", Encode.string reviewSubmissionResponse.state )
+        , ( "review_note", Encode.string reviewSubmissionResponse.reviewNote )
+        , ( "payout_kind", Encode.string reviewSubmissionResponse.payoutKind )
+        , ( "payout_amount", Encode.int reviewSubmissionResponse.payoutAmount )
+        , ( "worker_user_id", Encode.string reviewSubmissionResponse.workerUserID )
+        , ( "tip_amount", Encode.int reviewSubmissionResponse.tipAmount )
         ]

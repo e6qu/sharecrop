@@ -21,6 +21,9 @@ type Services interface {
 	GetSubmissionStatus(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListTaskSubmissions(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
 	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
+	ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection) ledger.AcceptResult
+	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, submission.ReviewNote) ledger.RequestChangesResult
+	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 }
@@ -120,6 +123,10 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.UserSubject,
 		return server.callListTaskSubmissions(ctx, subject, arguments)
 	case toolAcceptSubmission:
 		return server.callAcceptSubmission(ctx, subject, arguments)
+	case toolRequestChanges:
+		return server.callRequestChanges(ctx, subject, arguments)
+	case toolRejectSubmission:
+		return server.callRejectSubmission(ctx, subject, arguments)
 	case toolListTaskSeries:
 		return server.callListTaskSeries(ctx, subject)
 	case toolGetTaskSeries:

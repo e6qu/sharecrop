@@ -49,6 +49,7 @@ type SubmissionAccepted struct {
 	TaskID       core.TaskID
 	SubmissionID core.SubmissionID
 	Payout       PayoutOutcome
+	Tip          TipOutcome
 }
 
 type AcceptRejected struct {
@@ -58,6 +59,58 @@ type AcceptRejected struct {
 func (SubmissionAccepted) acceptResult() {}
 
 func (AcceptRejected) acceptResult() {}
+
+type TipOutcome interface {
+	tipOutcome()
+}
+
+type NoTip struct{}
+
+type CreditTip struct {
+	WorkerUserID core.UserID
+	Amount       CreditAmount
+}
+
+func (NoTip) tipOutcome() {}
+
+func (CreditTip) tipOutcome() {}
+
+type RequestChangesResult interface {
+	requestChangesResult()
+}
+
+type ChangesRequested struct {
+	TaskID       core.TaskID
+	SubmissionID core.SubmissionID
+	ReviewNote   string
+}
+
+type RequestChangesRejected struct {
+	Reason core.DomainError
+}
+
+func (ChangesRequested) requestChangesResult() {}
+
+func (RequestChangesRejected) requestChangesResult() {}
+
+type RejectResult interface {
+	rejectResult()
+}
+
+type SubmissionRejected struct {
+	TaskID       core.TaskID
+	SubmissionID core.SubmissionID
+	Payout       PayoutOutcome
+	Tip          TipOutcome
+}
+
+type RejectRejected struct {
+	Reason core.DomainError
+}
+
+func (SubmissionRejected) rejectResult() {}
+
+func (RejectRejected) rejectResult() {}
 
 type RefundResult interface {
 	refundResult()

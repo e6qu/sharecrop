@@ -12,7 +12,7 @@ type validationErrorDTO struct {
 	Message string `json:"message"`
 }
 
-func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawValidationErrors string) submissionRowResult {
+func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawReviewNote string, rawValidationErrors string) submissionRowResult {
 	submissionIDResult := core.ParseSubmissionID(rawSubmissionID)
 	submissionID, submissionIDMatched := submissionIDResult.(core.SubmissionIDCreated)
 	if !submissionIDMatched {
@@ -55,6 +55,13 @@ func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID stri
 		return submissionRowRejected{reason: rejected.reason}
 	}
 
+	noteResult := submission.NewStoredReviewNote(rawReviewNote)
+	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
+	if !noteMatched {
+		rejected := noteResult.(submission.ReviewNoteRejected)
+		return submissionRowRejected{reason: rejected.Reason}
+	}
+
 	return submissionRowAccepted{value: submission.Submission{
 		ID:             submissionID.Value,
 		TaskID:         taskID.Value,
@@ -62,6 +69,7 @@ func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID stri
 		State:          state.Value,
 		ResponseSource: source.Value,
 		Validation:     outcome.value,
+		ReviewNote:     note.Value,
 	}}
 }
 

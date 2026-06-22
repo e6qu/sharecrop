@@ -77,6 +77,18 @@ type acceptPayload struct {
 	PayoutKind   string `json:"payout_kind"`
 	PayoutAmount int64  `json:"payout_amount"`
 	WorkerUserID string `json:"worker_user_id"`
+	TipAmount    int64  `json:"tip_amount"`
+}
+
+type reviewPayload struct {
+	TaskID       string `json:"task_id"`
+	SubmissionID string `json:"submission_id"`
+	State        string `json:"state"`
+	ReviewNote   string `json:"review_note"`
+	PayoutKind   string `json:"payout_kind"`
+	PayoutAmount int64  `json:"payout_amount"`
+	WorkerUserID string `json:"worker_user_id"`
+	TipAmount    int64  `json:"tip_amount"`
 }
 
 func (server Server) callListTasks(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -317,27 +329,33 @@ func (server Server) callAcceptSubmission(ctx context.Context, subject auth.User
 		TaskID         string `json:"task_id"`
 		SubmissionID   string `json:"submission_id"`
 		IdempotencyKey string `json:"idempotency_key"`
+		PayoutAmount   int64  `json:"payout_amount"`
+		TipAmount      int64  `json:"tip_amount"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	taskIDResult := core.ParseTaskID(args.TaskID)
-	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
-	if !taskMatched {
-		return toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}
-	}
-	submissionIDResult := core.ParseSubmissionID(args.SubmissionID)
-	submissionID, submissionMatched := submissionIDResult.(core.SubmissionIDCreated)
-	if !submissionMatched {
-		return toolProtocolError{code: codeInvalidParams, message: submissionIDResult.(core.SubmissionIDRejected).Reason.Description()}
+	ids := parseTaskSubmissionIDs(args.TaskID, args.SubmissionID)
+	if ids.problem != nil {
+		return ids.problem
 	}
 	keyResult := ledger.NewIdempotencyKey(args.IdempotencyKey)
 	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
 	if !keyMatched {
 		return toolProtocolError{code: codeInvalidParams, message: keyResult.(ledger.IdempotencyKeyRejected).Reason.Description()}
 	}
+	creditSelectionResult := acceptCreditSelection(args.PayoutAmount)
+	creditSelection, creditSelectionMatched := creditSelectionResult.(mcpCreditSelectionAccepted)
+	if !creditSelectionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: creditSelectionResult.(mcpCreditSelectionRejected).message}
+	}
+	tipSelectionResult := mcpTipSelection(args.TipAmount)
+	tipSelection, tipSelectionMatched := tipSelectionResult.(mcpTipSelectionAccepted)
+	if !tipSelectionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: tipSelectionResult.(mcpTipSelectionRejected).message}
+	}
 
-	result := server.services.AcceptSubmission(ctx, subject.ID, taskID.Value, submissionID.Value, key.Value)
+	result := server.services.ReviewAcceptSubmission(ctx, subject.ID, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		return toolFailed{message: result.(ledger.AcceptRejected).Reason.Description()}
@@ -351,6 +369,111 @@ func (server Server) callAcceptSubmission(ctx context.Context, subject auth.User
 		payload.PayoutKind = "credit"
 		payload.PayoutAmount = payout.Amount.Int64()
 		payload.WorkerUserID = payout.WorkerUserID.String()
+	}
+	if tip, tipMatched := accepted.Tip.(ledger.CreditTip); tipMatched {
+		payload.TipAmount = tip.Amount.Int64()
+		if payload.WorkerUserID == "" {
+			payload.WorkerUserID = tip.WorkerUserID.String()
+		}
+	}
+	return marshalPayload(payload)
+}
+
+func (server Server) callRequestChanges(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		TaskID       string `json:"task_id"`
+		SubmissionID string `json:"submission_id"`
+		ReviewNote   string `json:"review_note"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	ids := parseTaskSubmissionIDs(args.TaskID, args.SubmissionID)
+	if ids.problem != nil {
+		return ids.problem
+	}
+	noteResult := submission.NewRequiredReviewNote(args.ReviewNote)
+	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
+	if !noteMatched {
+		return toolProtocolError{code: codeInvalidParams, message: noteResult.(submission.ReviewNoteRejected).Reason.Description()}
+	}
+	result := server.services.RequestChanges(ctx, subject.ID, ids.taskID, ids.submissionID, note.Value)
+	changed, matched := result.(ledger.ChangesRequested)
+	if !matched {
+		return toolFailed{message: result.(ledger.RequestChangesRejected).Reason.Description()}
+	}
+	return marshalPayload(reviewPayload{
+		TaskID:       changed.TaskID.String(),
+		SubmissionID: changed.SubmissionID.String(),
+		State:        "changes_requested",
+		ReviewNote:   changed.ReviewNote,
+		PayoutKind:   "none",
+	})
+}
+
+func (server Server) callRejectSubmission(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		TaskID              string `json:"task_id"`
+		SubmissionID        string `json:"submission_id"`
+		IdempotencyKey      string `json:"idempotency_key"`
+		ReviewNote          string `json:"review_note"`
+		PartialCreditAmount int64  `json:"partial_credit_amount"`
+		TipAmount           int64  `json:"tip_amount"`
+		BanImplementor      bool   `json:"ban_implementor"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	ids := parseTaskSubmissionIDs(args.TaskID, args.SubmissionID)
+	if ids.problem != nil {
+		return ids.problem
+	}
+	keyResult := ledger.NewIdempotencyKey(args.IdempotencyKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		return toolProtocolError{code: codeInvalidParams, message: keyResult.(ledger.IdempotencyKeyRejected).Reason.Description()}
+	}
+	noteResult := submission.NewRequiredReviewNote(args.ReviewNote)
+	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
+	if !noteMatched {
+		return toolProtocolError{code: codeInvalidParams, message: noteResult.(submission.ReviewNoteRejected).Reason.Description()}
+	}
+	creditSelectionResult := rejectCreditSelection(args.PartialCreditAmount)
+	creditSelection, creditSelectionMatched := creditSelectionResult.(mcpCreditSelectionAccepted)
+	if !creditSelectionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: creditSelectionResult.(mcpCreditSelectionRejected).message}
+	}
+	tipSelectionResult := mcpTipSelection(args.TipAmount)
+	tipSelection, tipSelectionMatched := tipSelectionResult.(mcpTipSelectionAccepted)
+	if !tipSelectionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: tipSelectionResult.(mcpTipSelectionRejected).message}
+	}
+	banSelection := ledger.BanSelection(ledger.NoBanSelection{})
+	if args.BanImplementor {
+		banSelection = ledger.BanImplementorSelection{}
+	}
+	result := server.services.RejectSubmission(ctx, subject.ID, ids.taskID, ids.submissionID, key.Value, note.Value, creditSelection.value, tipSelection.value, banSelection)
+	rejected, matched := result.(ledger.SubmissionRejected)
+	if !matched {
+		return toolFailed{message: result.(ledger.RejectRejected).Reason.Description()}
+	}
+	payload := reviewPayload{
+		TaskID:       rejected.TaskID.String(),
+		SubmissionID: rejected.SubmissionID.String(),
+		State:        "rejected",
+		ReviewNote:   note.Value.String(),
+		PayoutKind:   "none",
+	}
+	if payout, payoutMatched := rejected.Payout.(ledger.CreditPayout); payoutMatched {
+		payload.PayoutKind = "credit"
+		payload.PayoutAmount = payout.Amount.Int64()
+		payload.WorkerUserID = payout.WorkerUserID.String()
+	}
+	if tip, tipMatched := rejected.Tip.(ledger.CreditTip); tipMatched {
+		payload.TipAmount = tip.Amount.Int64()
+		if payload.WorkerUserID == "" {
+			payload.WorkerUserID = tip.WorkerUserID.String()
+		}
 	}
 	return marshalPayload(payload)
 }
@@ -462,9 +585,31 @@ func (submissionsPayload) payloadValue() {}
 
 func (acceptPayload) payloadValue() {}
 
+func (reviewPayload) payloadValue() {}
+
 func (seriesListPayload) payloadValue() {}
 
 func (seriesDetailPayload) payloadValue() {}
+
+type parsedTaskSubmissionIDs struct {
+	taskID       core.TaskID
+	submissionID core.SubmissionID
+	problem      toolResult
+}
+
+func parseTaskSubmissionIDs(rawTaskID string, rawSubmissionID string) parsedTaskSubmissionIDs {
+	taskIDResult := core.ParseTaskID(rawTaskID)
+	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
+	if !taskMatched {
+		return parsedTaskSubmissionIDs{problem: toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}}
+	}
+	submissionIDResult := core.ParseSubmissionID(rawSubmissionID)
+	submissionID, submissionMatched := submissionIDResult.(core.SubmissionIDCreated)
+	if !submissionMatched {
+		return parsedTaskSubmissionIDs{problem: toolProtocolError{code: codeInvalidParams, message: submissionIDResult.(core.SubmissionIDRejected).Reason.Description()}}
+	}
+	return parsedTaskSubmissionIDs{taskID: taskID.Value, submissionID: submissionID.Value}
+}
 
 func taskToSummary(value task.Task) taskSummary {
 	rewardKind, rewardAmount := rewardParts(value.Reward)
@@ -517,6 +662,83 @@ func submissionToSummary(value submission.Submission) submissionSummary {
 		SubmitterID: value.SubmitterID.String(),
 		State:       value.State.String(),
 	}
+}
+
+type mcpCreditSelectionResult interface {
+	mcpCreditSelectionResult()
+}
+
+type mcpCreditSelectionAccepted struct {
+	value ledger.CreditReviewSelection
+}
+
+type mcpCreditSelectionRejected struct {
+	message string
+}
+
+func (mcpCreditSelectionAccepted) mcpCreditSelectionResult() {}
+
+func (mcpCreditSelectionRejected) mcpCreditSelectionResult() {}
+
+func acceptCreditSelection(amount int64) mcpCreditSelectionResult {
+	if amount < 0 {
+		return mcpCreditSelectionRejected{message: "payout amount cannot be negative"}
+	}
+	if amount == 0 {
+		return mcpCreditSelectionAccepted{value: ledger.FullCreditReviewSelection{}}
+	}
+	creditResult := ledger.NewCreditAmount(amount)
+	credit, matched := creditResult.(ledger.CreditAmountAccepted)
+	if !matched {
+		return mcpCreditSelectionRejected{message: creditResult.(ledger.CreditAmountRejected).Reason.Description()}
+	}
+	return mcpCreditSelectionAccepted{value: ledger.PartialCreditReviewSelection{Amount: credit.Value}}
+}
+
+func rejectCreditSelection(amount int64) mcpCreditSelectionResult {
+	if amount < 0 {
+		return mcpCreditSelectionRejected{message: "partial credit amount cannot be negative"}
+	}
+	if amount == 0 {
+		return mcpCreditSelectionAccepted{value: ledger.NoCreditReviewSelection{}}
+	}
+	creditResult := ledger.NewCreditAmount(amount)
+	credit, matched := creditResult.(ledger.CreditAmountAccepted)
+	if !matched {
+		return mcpCreditSelectionRejected{message: creditResult.(ledger.CreditAmountRejected).Reason.Description()}
+	}
+	return mcpCreditSelectionAccepted{value: ledger.PartialCreditReviewSelection{Amount: credit.Value}}
+}
+
+type mcpTipSelectionResult interface {
+	mcpTipSelectionResult()
+}
+
+type mcpTipSelectionAccepted struct {
+	value ledger.TipSelection
+}
+
+type mcpTipSelectionRejected struct {
+	message string
+}
+
+func (mcpTipSelectionAccepted) mcpTipSelectionResult() {}
+
+func (mcpTipSelectionRejected) mcpTipSelectionResult() {}
+
+func mcpTipSelection(amount int64) mcpTipSelectionResult {
+	if amount < 0 {
+		return mcpTipSelectionRejected{message: "tip amount cannot be negative"}
+	}
+	if amount == 0 {
+		return mcpTipSelectionAccepted{value: ledger.NoTipSelection{}}
+	}
+	creditResult := ledger.NewCreditAmount(amount)
+	credit, matched := creditResult.(ledger.CreditAmountAccepted)
+	if !matched {
+		return mcpTipSelectionRejected{message: creditResult.(ledger.CreditAmountRejected).Reason.Description()}
+	}
+	return mcpTipSelectionAccepted{value: ledger.CreditTipSelection{Amount: credit.Value}}
 }
 
 func ownerKind(owner task.Owner) string {
