@@ -86,13 +86,67 @@ func TestServiceUsesOrganizationDefaultHiddenVisibility(t *testing.T) {
 	}
 }
 
+func TestServiceReserveCreatesUserReservation(t *testing.T) {
+	store := newTaskMemoryStore()
+	service := NewService(store, newTaskPermissionStore())
+	requester := testUserSubject(t)
+	worker := testUserSubject(t)
+	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
+	created := service.Create(context.Background(), command).(TaskCreated)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+
+	result := service.Reserve(context.Background(), worker, created.Value.ID)
+	reserved, matched := result.(ReservationCreated)
+	if !matched {
+		t.Fatalf("result = %T, want ReservationCreated", result)
+	}
+	assignee, matched := reserved.Value.Assignee.(UserAssignee)
+	if !matched {
+		t.Fatalf("assignee = %T, want UserAssignee", reserved.Value.Assignee)
+	}
+	if assignee.UserID != worker.ID {
+		t.Fatalf("assignee user = %s, want %s", assignee.UserID.String(), worker.ID.String())
+	}
+}
+
+func TestServiceReserveRejectsRequester(t *testing.T) {
+	store := newTaskMemoryStore()
+	service := NewService(store, newTaskPermissionStore())
+	requester := testUserSubject(t)
+	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
+	created := service.Create(context.Background(), command).(TaskCreated)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+
+	result := service.Reserve(context.Background(), requester, created.Value.ID)
+	if _, matched := result.(ReservationRejected); !matched {
+		t.Fatalf("result = %T, want ReservationRejected", result)
+	}
+}
+
+func TestServiceReserveRejectsOrganizationTeamAssigneeScope(t *testing.T) {
+	store := newTaskMemoryStore()
+	service := NewService(store, newTaskPermissionStore())
+	requester := testUserSubject(t)
+	worker := testUserSubject(t)
+	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
+	command.AssigneeScope = AssigneeScopeOrganizationTeam
+	created := service.Create(context.Background(), command).(TaskCreated)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+
+	result := service.Reserve(context.Background(), worker, created.Value.ID)
+	if _, matched := result.(ReservationRejected); !matched {
+		t.Fatalf("result = %T, want ReservationRejected", result)
+	}
+}
+
 type taskMemoryStore struct {
-	tasks  map[string]Task
-	series []Series
+	tasks        map[string]Task
+	reservations map[string]Reservation
+	series       []Series
 }
 
 func newTaskMemoryStore() *taskMemoryStore {
-	return &taskMemoryStore{tasks: make(map[string]Task)}
+	return &taskMemoryStore{tasks: make(map[string]Task), reservations: make(map[string]Reservation)}
 }
 
 func (store *taskMemoryStore) CreateTask(_ context.Context, seriesID core.TaskSeriesID, taskID core.TaskID, command CreateCommand) CreateTaskStoreResult {
@@ -102,6 +156,9 @@ func (store *taskMemoryStore) CreateTask(_ context.Context, seriesID core.TaskSe
 		Title:          command.Title,
 		Description:    command.Description,
 		Reward:         command.Reward,
+		Participation:  command.Participation,
+		AssigneeScope:  command.AssigneeScope,
+		ReservationTTL: command.ReservationTTL,
 		State:          StateDraft,
 		Visibility:     command.Visibility,
 		Placement:      command.Placement,
@@ -137,6 +194,43 @@ func (store *taskMemoryStore) ListTasks(context.Context, ListScope) ListTasksSto
 		values = append(values, store.tasks[taskKey])
 	}
 	return ListTasksStoreAccepted{Values: values}
+}
+
+func (store *taskMemoryStore) CreateReservation(_ context.Context, reservationID core.TaskReservationID, command ReservationCommand) CreateReservationStoreResult {
+	value := Reservation{
+		ID:          reservationID,
+		TaskID:      command.TaskID,
+		Assignee:    command.Assignee,
+		State:       ReservationStateActive,
+		RequestedBy: command.RequestedBy,
+	}
+	store.reservations[reservationID.String()] = value
+	return CreateReservationStoreAccepted{Value: value}
+}
+
+func (store *taskMemoryStore) ChangeReservationState(_ context.Context, reservationID core.TaskReservationID, state ReservationState) ChangeReservationStateStoreResult {
+	value, matched := store.reservations[reservationID.String()]
+	if !matched {
+		return ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reservation missing")}
+	}
+	value.State = state
+	store.reservations[reservationID.String()] = value
+	return ChangeReservationStateStoreAccepted{Value: value}
+}
+
+func (store *taskMemoryStore) ListReservations(_ context.Context, taskID core.TaskID) ListReservationsStoreResult {
+	values := make([]Reservation, 0)
+	for reservationKey := range store.reservations {
+		value := store.reservations[reservationKey]
+		if value.TaskID == taskID {
+			values = append(values, value)
+		}
+	}
+	return ListReservationsStoreAccepted{Values: values}
+}
+
+func (store *taskMemoryStore) CheckSubmissionEligibility(context.Context, core.TaskID, core.UserID) SubmissionEligibilityStoreResult {
+	return SubmissionEligible{}
 }
 
 type taskPermissionStore struct {
@@ -198,6 +292,9 @@ func testCreateCommand(t *testing.T, actor auth.UserSubject, owner Owner, visibi
 		Title:          title,
 		Description:    description,
 		Reward:         NoRewardSpec{},
+		Participation:  ParticipationPolicyOpen,
+		AssigneeScope:  AssigneeScopeUser,
+		ReservationTTL: DefaultReservationTTL(),
 		Visibility:     visibility,
 		Placement:      StandalonePlacement{},
 		ResponseSchema: schemaSource,

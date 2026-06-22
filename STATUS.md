@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 13 work. Pull request 13 was merged into `main`.
+The repository contains pull request 1 through pull request 14 work. Pull request 14 was merged into `main`.
 
 Active task:
 
-- Planning is updated for reservation, approval, review outcomes, reward bundles, requester ergonomics, task discovery, and full MCP Streamable HTTP SSE.
+- Active branch `task/reservation-approval-foundation` contains the reservation, approval, and discovery availability foundation and is ready for pull-request validation.
 
 Implemented surface:
 
@@ -118,19 +118,21 @@ Implemented surface:
 - Browser routing uses `Browser.application` with dashboard, discovery, and task detail routes.
 - Browser auth restores sessions through the refresh cookie on load and clears the refresh cookie on logout.
 - The browser dashboard can create tasks with optional credit rewards, prefill funding for newly created credit-reward tasks, open and refund tasks, and review submission details before accepting.
+- Task participation policies: open submissions, reservation required, and requester approval required.
+- Task assignee scopes for users and organization teams.
+- Task reservation identifiers, reservation lifecycle states, and reservation expiry values with a 48-hour default.
+- PostgreSQL task reservation storage, one-active-reservation enforcement, expired-reservation release, and task-local implementor-ban storage.
+- HTTP reservation APIs for reserve, approve, decline, cancel, and list reservations.
+- Submission creation checks reservation eligibility before storing a response.
+- Public discovery hides actively reserved tasks from unrelated workers by default and shows them with `include_reserved=true`, while keeping them visible to the requester and active assignee.
+- Task create, list, and detail responses expose participation policy, assignee scope, reservation expiry, availability kind, and viewer action.
 
 Planned defaults:
 
-- Reservation expiry defaults to 48 hours.
-- Expired reservations automatically release the task.
-- A task can have at most one active assignee: one user or one team.
-- Approval-required tasks approve exactly one user or team.
 - Public-team assignment is deferred unless public teams already exist; first implementation supports users and same-organization teams.
-- Reserved tasks are hidden from default discovery and shown only with an include-reserved control, except to the active assignee and requester.
 - Requesting changes requires requester notes and keeps the reservation exclusive for the same assignee.
 - Rejected submitted work may receive a requester-selected partial reward.
 - Requesters may tip from current balance and inventory at review time.
-- Task-local bans block the same implementor from the same task only.
 - Reward bundles may contain credits, collectibles, both, or neither.
 - Full MCP Streamable HTTP SSE remains planned.
 
@@ -149,8 +151,12 @@ The accepted defaults for pull request 1 were:
 
 Last observed checks:
 
-- Pull request 13 GitHub continuous integration passed before merge.
-- Local `main` is synced to `origin/main` at merge commit `7ce8fbb`.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed on the reservation foundation branch.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-policy check-ts check-copy-paste check-dead-code lint vet test frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-integration` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-http` passed with local Postgres access.
 
 Blocking issues:
 

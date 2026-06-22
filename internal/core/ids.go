@@ -18,6 +18,10 @@ type TaskCapabilityTokenID struct {
 	value id.ID
 }
 
+type TaskReservationID struct {
+	value id.ID
+}
+
 type SubmissionID struct {
 	value id.ID
 }
@@ -215,6 +219,45 @@ func taskCapabilityTokenIDFromIDResult(result id.IDResult) TaskCapabilityTokenID
 		return TaskCapabilityTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return TaskCapabilityTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type TaskReservationIDResult interface {
+	taskReservationIDResult()
+}
+
+type TaskReservationIDCreated struct {
+	Value TaskReservationID
+}
+
+type TaskReservationIDRejected struct {
+	Reason DomainError
+}
+
+func (TaskReservationIDCreated) taskReservationIDResult() {}
+
+func (TaskReservationIDRejected) taskReservationIDResult() {}
+
+func NewTaskReservationID() TaskReservationIDResult {
+	return taskReservationIDFromIDResult(id.New())
+}
+
+func ParseTaskReservationID(raw string) TaskReservationIDResult {
+	return taskReservationIDFromIDResult(id.Parse(raw))
+}
+
+func (id TaskReservationID) String() string {
+	return id.value.String()
+}
+
+func taskReservationIDFromIDResult(result id.IDResult) TaskReservationIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return TaskReservationIDCreated{Value: TaskReservationID{value: typed.Value}}
+	case id.IDRejected:
+		return TaskReservationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return TaskReservationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 

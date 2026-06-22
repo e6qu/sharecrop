@@ -574,3 +574,27 @@ The post-PR13 workflow plan was updated:
 - Review outcomes were planned for accept, request changes, reject with optional partial reward, reject without reward, optional task-local implementor ban, and optional tips from requester balance or inventory.
 - MCP work was planned to add workflow tools and full Streamable HTTP SSE with `GET /mcp`, `DELETE /mcp`, session enforcement, event IDs, and replay where practical.
 - The next implementation sequence was recorded as PR 14 reservation/approval foundations, PR 15 requester ergonomics and task-page instructions, PR 16 review outcomes, PR 17 reward bundles, and PR 18 MCP workflow tools plus full SSE.
+
+The reservation, approval, and discovery availability foundation branch added backend task assignment support:
+
+- A task reservation identifier was added to the core identifier set.
+- Task domain models gained participation policies, assignee scopes, reservation expiry, assignee variants, reservation lifecycle states, availability kinds, and viewer actions.
+- Task creation commands and HTTP task creation requests gained participation policy, assignee scope, and reservation expiry values with defaults of open participation, user assignees, and 48 hours.
+- PostgreSQL migrations added task participation fields, task reservations, and task-local implementor-ban storage.
+- PostgreSQL task storage creates and reads participation fields, releases expired reservations, enforces one active reservation per task, rejects duplicate pending or active reservations by the same assignee, and gates submission eligibility to the active user reservation for reservation-required and approval-required tasks.
+- Public task discovery hides actively reserved tasks from unrelated workers by default and shows them when `include_reserved=true`, while keeping them visible to the requester and active assignee.
+- HTTP APIs were added for reserving a task, listing task reservations, approving a reservation, declining a reservation, and requester cancellation.
+- Submission creation checks task reservation eligibility before validating and storing a response.
+- Submission storage marks an active user reservation as submitted when that assignee submits.
+- Generated Elm task contracts gained participation, assignee, availability, viewer-action, and reservation response types.
+- Unit tests covered reservation service rules and submission eligibility rejection.
+- HTTP end-to-end coverage was added for a reservation-required public task: reserve, unrelated submit rejection, default discovery hiding, include-reserved discovery, requester and active-assignee discovery visibility, and active-assignee submission.
+
+The reservation foundation branch verification was performed:
+
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-policy check-ts check-copy-paste check-dead-code lint vet test frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e -run TestReservationRequiredTaskDiscoveryAndSubmission` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-integration` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-http` passed with local Postgres access.

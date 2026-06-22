@@ -81,3 +81,65 @@ type CreateCapabilityTokenStoreRejected struct {
 func (CreateCapabilityTokenStoreAccepted) createCapabilityTokenStoreResult() {}
 
 func (CreateCapabilityTokenStoreRejected) createCapabilityTokenStoreResult() {}
+
+type CreateReservationStoreResult interface {
+	createReservationStoreResult()
+}
+
+type CreateReservationStoreAccepted struct {
+	Value Reservation
+}
+
+type CreateReservationStoreRejected struct {
+	Reason core.DomainError
+}
+
+func (CreateReservationStoreAccepted) createReservationStoreResult() {}
+
+func (CreateReservationStoreRejected) createReservationStoreResult() {}
+
+type ChangeReservationStateStoreResult interface {
+	changeReservationStateStoreResult()
+}
+
+type ChangeReservationStateStoreAccepted struct {
+	Value Reservation
+}
+
+type ChangeReservationStateStoreRejected struct {
+	Reason core.DomainError
+}
+
+func (ChangeReservationStateStoreAccepted) changeReservationStateStoreResult() {}
+
+func (ChangeReservationStateStoreRejected) changeReservationStateStoreResult() {}
+
+type ListReservationsStoreResult interface {
+	listReservationsStoreResult()
+}
+
+type ListReservationsStoreAccepted struct {
+	Values []Reservation
+}
+
+type ListReservationsStoreRejected struct {
+	Reason core.DomainError
+}
+
+func (ListReservationsStoreAccepted) listReservationsStoreResult() {}
+
+func (ListReservationsStoreRejected) listReservationsStoreResult() {}
+
+type SubmissionEligibilityStoreResult interface {
+	submissionEligibilityStoreResult()
+}
+
+type SubmissionEligible struct{}
+
+type SubmissionEligibilityRejected struct {
+	Reason core.DomainError
+}
+
+func (SubmissionEligible) submissionEligibilityStoreResult() {}
+
+func (SubmissionEligibilityRejected) submissionEligibilityStoreResult() {}

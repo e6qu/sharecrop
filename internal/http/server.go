@@ -54,6 +54,11 @@ type TaskService interface {
 	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
 	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
+	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
+	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult
 }
 
 type AgentService interface {
@@ -132,6 +137,11 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/capability-tokens", server.createTaskCapabilityToken)
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions", server.createAuthenticatedSubmission)
 	mux.HandleFunc("GET /api/tasks/{task_id}/submissions", server.listTaskSubmissions)
+	mux.HandleFunc("POST /api/tasks/{task_id}/reservations", server.reserveTask)
+	mux.HandleFunc("GET /api/tasks/{task_id}/reservations", server.listTaskReservations)
+	mux.HandleFunc("POST /api/tasks/{task_id}/reservations/{reservation_id}/approve", server.approveTaskReservation)
+	mux.HandleFunc("POST /api/tasks/{task_id}/reservations/{reservation_id}/decline", server.declineTaskReservation)
+	mux.HandleFunc("POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel", server.cancelTaskReservation)
 	mux.HandleFunc("GET /api/submission-receipts/{receipt_token}", server.findSubmissionReceipt)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/credits/balance", server.organizationCreditsBalance)
 	mux.HandleFunc("GET /api/credits/balance", server.creditsBalance)
@@ -240,19 +250,26 @@ type taskPayloadRequest struct {
 }
 
 type taskRequest struct {
-	Owner              taskOwnerRequest      `json:"owner"`
-	Title              string                `json:"title"`
-	Description        string                `json:"description"`
-	Reward             taskRewardRequest     `json:"reward"`
-	Visibility         taskVisibilityRequest `json:"visibility"`
-	Placement          taskPlacementRequest  `json:"placement"`
-	ResponseSchemaJSON string                `json:"response_schema_json"`
-	Payload            taskPayloadRequest    `json:"payload"`
+	Owner              taskOwnerRequest         `json:"owner"`
+	Title              string                   `json:"title"`
+	Description        string                   `json:"description"`
+	Reward             taskRewardRequest        `json:"reward"`
+	Participation      taskParticipationRequest `json:"participation"`
+	Visibility         taskVisibilityRequest    `json:"visibility"`
+	Placement          taskPlacementRequest     `json:"placement"`
+	ResponseSchemaJSON string                   `json:"response_schema_json"`
+	Payload            taskPayloadRequest       `json:"payload"`
 }
 
 type taskRewardRequest struct {
 	Kind         string `json:"kind"`
 	CreditAmount int64  `json:"credit_amount"`
+}
+
+type taskParticipationRequest struct {
+	Policy                 string `json:"policy"`
+	AssigneeScope          string `json:"assignee_scope"`
+	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
 }
 
 type submissionRequest struct {
@@ -289,23 +306,28 @@ type teamsResponse struct {
 }
 
 type taskResponse struct {
-	ID                 string `json:"id"`
-	OwnerKind          string `json:"owner_kind"`
-	OwnerID            string `json:"owner_id"`
-	Title              string `json:"title"`
-	Description        string `json:"description"`
-	RewardKind         string `json:"reward_kind"`
-	RewardCreditAmount int64  `json:"reward_credit_amount"`
-	State              string `json:"state"`
-	VisibilityKind     string `json:"visibility_kind"`
-	VisibilityID       string `json:"visibility_id"`
-	SeriesKind         string `json:"series_kind"`
-	SeriesID           string `json:"series_id"`
-	SeriesPosition     int    `json:"series_position"`
-	ResponseSchemaJSON string `json:"response_schema_json"`
-	PayloadKind        string `json:"payload_kind"`
-	PayloadJSON        string `json:"payload_json"`
-	CreatedBy          string `json:"created_by"`
+	ID                     string `json:"id"`
+	OwnerKind              string `json:"owner_kind"`
+	OwnerID                string `json:"owner_id"`
+	Title                  string `json:"title"`
+	Description            string `json:"description"`
+	RewardKind             string `json:"reward_kind"`
+	RewardCreditAmount     int64  `json:"reward_credit_amount"`
+	ParticipationPolicy    string `json:"participation_policy"`
+	AssigneeScope          string `json:"assignee_scope"`
+	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
+	State                  string `json:"state"`
+	VisibilityKind         string `json:"visibility_kind"`
+	VisibilityID           string `json:"visibility_id"`
+	SeriesKind             string `json:"series_kind"`
+	SeriesID               string `json:"series_id"`
+	SeriesPosition         int    `json:"series_position"`
+	ResponseSchemaJSON     string `json:"response_schema_json"`
+	PayloadKind            string `json:"payload_kind"`
+	PayloadJSON            string `json:"payload_json"`
+	CreatedBy              string `json:"created_by"`
+	AvailabilityKind       string `json:"availability_kind"`
+	ViewerAction           string `json:"viewer_action"`
 }
 
 type tasksResponse struct {
@@ -317,6 +339,19 @@ type taskCapabilityTokenResponse struct {
 	TaskID string `json:"task_id"`
 	State  string `json:"state"`
 	Token  string `json:"token"`
+}
+
+type reservationResponse struct {
+	ID           string `json:"id"`
+	TaskID       string `json:"task_id"`
+	AssigneeKind string `json:"assignee_kind"`
+	AssigneeID   string `json:"assignee_id"`
+	State        string `json:"state"`
+	RequestedBy  string `json:"requested_by"`
+}
+
+type reservationsResponse struct {
+	Reservations []reservationResponse `json:"reservations"`
 }
 
 type submissionValidationErrorResponse struct {
@@ -397,6 +432,10 @@ func (ledgerListResponse) writableResponse() {}
 func (taskEscrowResponse) writableResponse() {}
 
 func (acceptSubmissionResponse) writableResponse() {}
+
+func (reservationResponse) writableResponse() {}
+
+func (reservationsResponse) writableResponse() {}
 
 type authRequestResult interface {
 	authRequestResult()
@@ -791,6 +830,99 @@ func (server Server) openTask(w http.ResponseWriter, r *http.Request) {
 
 func (server Server) cancelTask(w http.ResponseWriter, r *http.Request) {
 	server.changeTaskState(w, r, server.taskService.Cancel)
+}
+
+func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		return
+	}
+
+	result := server.taskService.Reserve(r.Context(), actor.subject, taskIDAccepted.value)
+	created, matched := result.(task.ReservationCreated)
+	if !matched {
+		writeDomainError(w, result.(task.ReservationRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusCreated, reservationToResponse(created.Value))
+}
+
+func (server Server) listTaskReservations(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		return
+	}
+
+	result := server.taskService.ListReservations(r.Context(), actor.subject, taskIDAccepted.value)
+	listed, matched := result.(task.ReservationsListed)
+	if !matched {
+		writeDomainError(w, result.(task.ReservationsListRejected).Reason)
+		return
+	}
+	response := reservationsResponse{Reservations: make([]reservationResponse, 0, len(listed.Values))}
+	for _, value := range listed.Values {
+		response.Reservations = append(response.Reservations, reservationToResponse(value))
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (server Server) approveTaskReservation(w http.ResponseWriter, r *http.Request) {
+	server.changeTaskReservation(w, r, server.taskService.ApproveReservation)
+}
+
+func (server Server) declineTaskReservation(w http.ResponseWriter, r *http.Request) {
+	server.changeTaskReservation(w, r, server.taskService.DeclineReservation)
+}
+
+func (server Server) cancelTaskReservation(w http.ResponseWriter, r *http.Request) {
+	server.changeTaskReservation(w, r, server.taskService.CancelReservation)
+}
+
+type taskReservationChanger func(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+
+func (server Server) changeTaskReservation(w http.ResponseWriter, r *http.Request, changer taskReservationChanger) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		return
+	}
+	reservationIDResult := parseReservationPathValue(r)
+	reservationIDAccepted, reservationIDMatched := reservationIDResult.(reservationIDAccepted)
+	if !reservationIDMatched {
+		writeError(w, http.StatusBadRequest, reservationIDResult.(reservationIDRejected).reason)
+		return
+	}
+
+	result := changer(r.Context(), actor.subject, taskIDAccepted.value, reservationIDAccepted.value)
+	changed, matched := result.(task.ReservationStateChanged)
+	if !matched {
+		writeDomainError(w, result.(task.ReservationStateChangeRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusOK, reservationToResponse(changed.Value))
 }
 
 type taskStateChanger func(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
@@ -1369,6 +1501,13 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		return taskRequestRejected{reason: rejected.reason}
 	}
 
+	participationResult := parseTaskParticipationRequest(request.Participation)
+	participationAccepted, participationMatched := participationResult.(taskParticipationAccepted)
+	if !participationMatched {
+		rejected := participationResult.(taskParticipationRejected)
+		return taskRequestRejected{reason: rejected.reason}
+	}
+
 	visibilityResult := parseTaskVisibilityRequest(request.Visibility, ownerAccepted.value)
 	visibilityAccepted, visibilityMatched := visibilityResult.(taskVisibilityAccepted)
 	if !visibilityMatched {
@@ -1409,11 +1548,69 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		Title:          titleAccepted.Value,
 		Description:    descriptionAccepted.Value,
 		Reward:         rewardAccepted.value,
+		Participation:  participationAccepted.policy,
+		AssigneeScope:  participationAccepted.assigneeScope,
+		ReservationTTL: participationAccepted.ttl,
 		Visibility:     visibilityAccepted.value,
 		Placement:      placementAccepted.value,
 		ResponseSchema: schemaSourceAccepted.Value,
 		Payload:        payloadAccepted.value,
 	}}
+}
+
+type taskParticipationResult interface {
+	taskParticipationResult()
+}
+
+type taskParticipationAccepted struct {
+	policy        task.ParticipationPolicy
+	assigneeScope task.AssigneeScope
+	ttl           task.ReservationTTL
+}
+
+type taskParticipationRejected struct {
+	reason string
+}
+
+func (taskParticipationAccepted) taskParticipationResult() {}
+
+func (taskParticipationRejected) taskParticipationResult() {}
+
+func parseTaskParticipationRequest(request taskParticipationRequest) taskParticipationResult {
+	rawPolicy := request.Policy
+	if rawPolicy == "" {
+		rawPolicy = task.ParticipationPolicyOpen.String()
+	}
+	policyResult := task.ParseParticipationPolicy(rawPolicy)
+	policyAccepted, policyMatched := policyResult.(task.ParticipationPolicyAccepted)
+	if !policyMatched {
+		rejected := policyResult.(task.ParticipationPolicyRejected)
+		return taskParticipationRejected{reason: rejected.Reason.Description()}
+	}
+
+	rawAssigneeScope := request.AssigneeScope
+	if rawAssigneeScope == "" {
+		rawAssigneeScope = task.AssigneeScopeUser.String()
+	}
+	assigneeScopeResult := task.ParseAssigneeScope(rawAssigneeScope)
+	assigneeScopeAccepted, assigneeScopeMatched := assigneeScopeResult.(task.AssigneeScopeAccepted)
+	if !assigneeScopeMatched {
+		rejected := assigneeScopeResult.(task.AssigneeScopeRejected)
+		return taskParticipationRejected{reason: rejected.Reason.Description()}
+	}
+
+	ttl := task.DefaultReservationTTL()
+	if request.ReservationExpiryHours != 0 {
+		ttlResult := task.NewReservationTTL(request.ReservationExpiryHours)
+		ttlAccepted, ttlMatched := ttlResult.(task.ReservationTTLAccepted)
+		if !ttlMatched {
+			rejected := ttlResult.(task.ReservationTTLRejected)
+			return taskParticipationRejected{reason: rejected.Reason.Description()}
+		}
+		ttl = ttlAccepted.Value
+	}
+
+	return taskParticipationAccepted{policy: policyAccepted.Value, assigneeScope: assigneeScopeAccepted.Value, ttl: ttl}
 }
 
 type taskRewardResult interface {
@@ -1706,6 +1903,32 @@ func parseTaskPathValue(r *http.Request) taskIDResult {
 	return taskIDAccepted{value: accepted.Value}
 }
 
+type reservationIDResult interface {
+	reservationIDResult()
+}
+
+type reservationIDAccepted struct {
+	value core.TaskReservationID
+}
+
+type reservationIDRejected struct {
+	reason string
+}
+
+func (reservationIDAccepted) reservationIDResult() {}
+
+func (reservationIDRejected) reservationIDResult() {}
+
+func parseReservationPathValue(r *http.Request) reservationIDResult {
+	result := core.ParseTaskReservationID(r.PathValue("reservation_id"))
+	accepted, matched := result.(core.TaskReservationIDCreated)
+	if !matched {
+		rejected := result.(core.TaskReservationIDRejected)
+		return reservationIDRejected{reason: rejected.Reason.Description()}
+	}
+	return reservationIDAccepted{value: accepted.Value}
+}
+
 type taskListScopeResult interface {
 	taskListScopeResult()
 }
@@ -1724,11 +1947,12 @@ func (taskListScopeRejected) taskListScopeResult() {}
 
 func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeResult {
 	scope := r.URL.Query().Get("scope")
+	includeReserved := r.URL.Query().Get("include_reserved") == "true"
 	switch scope {
 	case "public":
-		return taskListScopeAccepted{value: task.PublicListScope{}}
+		return taskListScopeAccepted{value: task.PublicListScope{ViewerID: actor.ID, IncludeReserved: includeReserved}}
 	case "user":
-		return taskListScopeAccepted{value: task.UserListScope{UserID: actor.ID}}
+		return taskListScopeAccepted{value: task.UserListScope{UserID: actor.ID, IncludeReserved: includeReserved}}
 	case "organization":
 		organizationIDResult := core.ParseOrganizationID(r.URL.Query().Get("organization_id"))
 		organizationID, matched := organizationIDResult.(core.OrganizationIDCreated)
@@ -1736,7 +1960,7 @@ func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeRe
 			rejected := organizationIDResult.(core.OrganizationIDRejected)
 			return taskListScopeRejected{reason: rejected.Reason.Description()}
 		}
-		return taskListScopeAccepted{value: task.OrganizationListScope{OrganizationID: organizationID.Value, UserID: actor.ID}}
+		return taskListScopeAccepted{value: task.OrganizationListScope{OrganizationID: organizationID.Value, UserID: actor.ID, IncludeReserved: includeReserved}}
 	default:
 		return taskListScopeRejected{reason: "task list scope is invalid"}
 	}
@@ -1857,23 +2081,77 @@ func taskToResponse(value task.Task) taskResponse {
 	payload := taskPayloadResponseParts(value.Payload)
 	reward := taskRewardResponseParts(value.Reward)
 	return taskResponse{
-		ID:                 value.ID.String(),
-		OwnerKind:          owner.kind,
-		OwnerID:            owner.id,
-		Title:              value.Title.String(),
-		Description:        value.Description.String(),
-		RewardKind:         reward.kind,
-		RewardCreditAmount: reward.amount,
-		State:              value.State.String(),
-		VisibilityKind:     visibility.kind,
-		VisibilityID:       visibility.id,
-		SeriesKind:         placement.kind,
-		SeriesID:           placement.id,
-		SeriesPosition:     placement.position,
-		ResponseSchemaJSON: value.ResponseSchema.String(),
-		PayloadKind:        payload.kind,
-		PayloadJSON:        payload.source,
-		CreatedBy:          value.CreatedBy.String(),
+		ID:                     value.ID.String(),
+		OwnerKind:              owner.kind,
+		OwnerID:                owner.id,
+		Title:                  value.Title.String(),
+		Description:            value.Description.String(),
+		RewardKind:             reward.kind,
+		RewardCreditAmount:     reward.amount,
+		ParticipationPolicy:    value.Participation.String(),
+		AssigneeScope:          value.AssigneeScope.String(),
+		ReservationExpiryHours: value.ReservationTTL.Hours(),
+		State:                  value.State.String(),
+		VisibilityKind:         visibility.kind,
+		VisibilityID:           visibility.id,
+		SeriesKind:             placement.kind,
+		SeriesID:               placement.id,
+		SeriesPosition:         placement.position,
+		ResponseSchemaJSON:     value.ResponseSchema.String(),
+		PayloadKind:            payload.kind,
+		PayloadJSON:            payload.source,
+		CreatedBy:              value.CreatedBy.String(),
+		AvailabilityKind:       taskAvailabilityKind(value).String(),
+		ViewerAction:           taskViewerAction(value).String(),
+	}
+}
+
+func taskAvailabilityKind(value task.Task) task.AvailabilityKind {
+	if value.State != task.StateOpen {
+		return task.AvailabilityClosed
+	}
+	if value.Participation == task.ParticipationPolicyApprovalRequired {
+		return task.AvailabilityAwaitingApproval
+	}
+	return task.AvailabilityAvailable
+}
+
+func taskViewerAction(value task.Task) task.ViewerAction {
+	if value.State != task.StateOpen {
+		return task.ViewerActionNone
+	}
+	switch value.Participation {
+	case task.ParticipationPolicyOpen:
+		return task.ViewerActionSubmit
+	case task.ParticipationPolicyReservationRequired:
+		return task.ViewerActionReserve
+	case task.ParticipationPolicyApprovalRequired:
+		return task.ViewerActionRequestApproval
+	default:
+		return task.ViewerActionNone
+	}
+}
+
+func reservationToResponse(value task.Reservation) reservationResponse {
+	assignee := reservationAssigneeResponseParts(value.Assignee)
+	return reservationResponse{
+		ID:           value.ID.String(),
+		TaskID:       value.TaskID.String(),
+		AssigneeKind: assignee.kind,
+		AssigneeID:   assignee.id,
+		State:        value.State.String(),
+		RequestedBy:  value.RequestedBy.String(),
+	}
+}
+
+func reservationAssigneeResponseParts(assignee task.Assignee) responseParts {
+	switch typed := assignee.(type) {
+	case task.UserAssignee:
+		return responseParts{kind: task.AssigneeScopeUser.String(), id: typed.UserID.String()}
+	case task.OrganizationTeamAssignee:
+		return responseParts{kind: task.AssigneeScopeOrganizationTeam.String(), id: typed.TeamID.String()}
+	default:
+		return responseParts{}
 	}
 }
 

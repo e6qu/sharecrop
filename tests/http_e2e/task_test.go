@@ -110,6 +110,58 @@ func TestOrganizationPublicTaskRequiresPublisherRole(t *testing.T) {
 	assertStatus(t, acceptedResponse, http.StatusCreated)
 }
 
+func TestReservationRequiredTaskDiscoveryAndSubmission(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "reservation-owner")
+	worker := registerUser(t, server, "reservation-worker")
+	other := registerUser(t, server, "reservation-other")
+
+	createTaskResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicReservationTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
+	defer createTaskResponse.Body.Close()
+	assertStatus(t, createTaskResponse, http.StatusCreated)
+	taskBody := decodeTaskHTTPResponse(t, createTaskResponse)
+	openTask(t, server, owner.AccessToken, taskBody.ID)
+
+	reserveResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/reservations", []byte(`{}`), worker.AccessToken)
+	defer reserveResponse.Body.Close()
+	assertStatus(t, reserveResponse, http.StatusCreated)
+	reservationBody := decodeReservationHTTPResponse(t, reserveResponse)
+	if reservationBody.State != "active" {
+		t.Fatalf("reservation state = %q, want active", reservationBody.State)
+	}
+	if reservationBody.AssigneeID != worker.SubjectID {
+		t.Fatalf("reservation assignee = %q, want %q", reservationBody.AssigneeID, worker.SubjectID)
+	}
+
+	otherSubmitResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"answer\":\"done\"}"}`), other.AccessToken)
+	defer otherSubmitResponse.Body.Close()
+	assertStatus(t, otherSubmitResponse, http.StatusForbidden)
+
+	otherListResponse := getWithBearer(t, server.URL+"/api/tasks?scope=public", other.AccessToken)
+	defer otherListResponse.Body.Close()
+	assertStatus(t, otherListResponse, http.StatusOK)
+	assertTaskAbsent(t, decodeTasksHTTPResponse(t, otherListResponse), taskBody.ID)
+
+	includeReservedResponse := getWithBearer(t, server.URL+"/api/tasks?scope=public&include_reserved=true", other.AccessToken)
+	defer includeReservedResponse.Body.Close()
+	assertStatus(t, includeReservedResponse, http.StatusOK)
+	assertTaskPresent(t, decodeTasksHTTPResponse(t, includeReservedResponse), taskBody.ID)
+
+	workerListResponse := getWithBearer(t, server.URL+"/api/tasks?scope=public", worker.AccessToken)
+	defer workerListResponse.Body.Close()
+	assertStatus(t, workerListResponse, http.StatusOK)
+	assertTaskPresent(t, decodeTasksHTTPResponse(t, workerListResponse), taskBody.ID)
+
+	ownerListResponse := getWithBearer(t, server.URL+"/api/tasks?scope=public", owner.AccessToken)
+	defer ownerListResponse.Body.Close()
+	assertStatus(t, ownerListResponse, http.StatusOK)
+	assertTaskPresent(t, decodeTasksHTTPResponse(t, ownerListResponse), taskBody.ID)
+
+	submitAuthenticated(t, server, worker.AccessToken, taskBody.ID)
+}
+
 type taskHTTPResponse struct {
 	ID             string `json:"id"`
 	State          string `json:"state"`
@@ -122,6 +174,13 @@ type tasksHTTPResponse struct {
 
 type taskCapabilityTokenHTTPResponse struct {
 	Token string `json:"token"`
+}
+
+type reservationHTTPResponse struct {
+	ID           string `json:"id"`
+	AssigneeKind string `json:"assignee_kind"`
+	AssigneeID   string `json:"assignee_id"`
+	State        string `json:"state"`
 }
 
 func userTaskRequestJSON(userID string) string {
@@ -161,6 +220,39 @@ func organizationPublicTaskRequestJSON(organizationID string) string {
 		"response_schema_json":"{\"kind\":\"freeform\"}",
 		"payload":{"kind":"none","json":""}
 	}`
+}
+
+func publicReservationTaskRequestJSON(userID string) string {
+	return `{
+		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
+		"title":"Reserve public task",
+		"description":"Reserve before submitting a response.",
+		"reward":{"kind":"none","credit_amount":0},
+		"participation":{"policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48},
+		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+}
+
+func assertTaskPresent(t *testing.T, body tasksHTTPResponse, taskID string) {
+	t.Helper()
+	for _, value := range body.Tasks {
+		if value.ID == taskID {
+			return
+		}
+	}
+	t.Fatalf("task %s was not present", taskID)
+}
+
+func assertTaskAbsent(t *testing.T, body tasksHTTPResponse, taskID string) {
+	t.Helper()
+	for _, value := range body.Tasks {
+		if value.ID == taskID {
+			t.Fatalf("task %s was present", taskID)
+		}
+	}
 }
 
 func getWithBearer(t *testing.T, url string, accessToken string) *http.Response {
@@ -207,6 +299,18 @@ func decodeTaskCapabilityTokenHTTPResponse(t *testing.T, response *http.Response
 	}
 	if body.Token == "" {
 		t.Fatalf("capability token is empty")
+	}
+	return body
+}
+
+func decodeReservationHTTPResponse(t *testing.T, response *http.Response) reservationHTTPResponse {
+	t.Helper()
+	var body reservationHTTPResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode reservation response: %v", err)
+	}
+	if body.ID == "" {
+		t.Fatalf("reservation id is empty")
 	}
 	return body
 }

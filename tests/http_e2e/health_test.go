@@ -130,6 +130,26 @@ func (healthTaskService) GetSeries(context.Context, auth.UserSubject, core.TaskS
 	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthTaskService) Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult {
+	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult {
+	return task.ReservationsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthSubmissionService) Submit(context.Context, submission.SubmitCommand) submission.SubmitResult {
 	return submission.SubmitRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

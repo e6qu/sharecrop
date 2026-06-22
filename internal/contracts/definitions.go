@@ -263,6 +263,52 @@ func taskModule() Module {
 					{Name: NewElmTypeName("TaskCapabilityTokenStateRevoked"), Tag: "revoked"},
 				},
 			},
+			Enum{
+				Name: NewElmTypeName("TaskParticipationPolicy"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskParticipationPolicyOpen"), Tag: "open"},
+					{Name: NewElmTypeName("TaskParticipationPolicyReservationRequired"), Tag: "reservation_required"},
+					{Name: NewElmTypeName("TaskParticipationPolicyApprovalRequired"), Tag: "approval_required"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("TaskAssigneeScope"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskAssigneeScopeUser"), Tag: "user"},
+					{Name: NewElmTypeName("TaskAssigneeScopeOrganizationTeam"), Tag: "organization_team"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("TaskAvailabilityKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskAvailabilityKindAvailable"), Tag: "available"},
+					{Name: NewElmTypeName("TaskAvailabilityKindReserved"), Tag: "reserved"},
+					{Name: NewElmTypeName("TaskAvailabilityKindAwaitingApproval"), Tag: "awaiting_approval"},
+					{Name: NewElmTypeName("TaskAvailabilityKindClosed"), Tag: "closed"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("TaskViewerAction"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskViewerActionSubmit"), Tag: "submit"},
+					{Name: NewElmTypeName("TaskViewerActionReserve"), Tag: "reserve"},
+					{Name: NewElmTypeName("TaskViewerActionRequestApproval"), Tag: "request_approval"},
+					{Name: NewElmTypeName("TaskViewerActionWait"), Tag: "wait"},
+					{Name: NewElmTypeName("TaskViewerActionNone"), Tag: "none"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("TaskReservationState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskReservationStateRequested"), Tag: "requested"},
+					{Name: NewElmTypeName("TaskReservationStateActive"), Tag: "active"},
+					{Name: NewElmTypeName("TaskReservationStateDeclined"), Tag: "declined"},
+					{Name: NewElmTypeName("TaskReservationStateCancelledByRequester"), Tag: "cancelled_by_requester"},
+					{Name: NewElmTypeName("TaskReservationStateCancelledByWorker"), Tag: "cancelled_by_worker"},
+					{Name: NewElmTypeName("TaskReservationStateExpired"), Tag: "expired"},
+					{Name: NewElmTypeName("TaskReservationStateSubmitted"), Tag: "submitted"},
+				},
+			},
 			Product{
 				Name: NewElmTypeName("TaskListItemResponse"),
 				Fields: []Field{
@@ -271,8 +317,13 @@ func taskModule() Module {
 					{Name: NewElmValueName("title"), JSONName: NewJSONFieldName("title"), Type: StringRef{}},
 					{Name: NewElmValueName("rewardKind"), JSONName: NewJSONFieldName("reward_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("rewardCreditAmount"), JSONName: NewJSONFieldName("reward_credit_amount"), Type: IntRef{}},
+					{Name: NewElmValueName("participationPolicy"), JSONName: NewJSONFieldName("participation_policy"), Type: NamedRef{Name: NewElmTypeName("TaskParticipationPolicy")}},
+					{Name: NewElmValueName("assigneeScope"), JSONName: NewJSONFieldName("assignee_scope"), Type: NamedRef{Name: NewElmTypeName("TaskAssigneeScope")}},
+					{Name: NewElmValueName("reservationExpiryHours"), JSONName: NewJSONFieldName("reservation_expiry_hours"), Type: IntRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskState")}},
 					{Name: NewElmValueName("visibilityKind"), JSONName: NewJSONFieldName("visibility_kind"), Type: NamedRef{Name: NewElmTypeName("TaskVisibilityKind")}},
+					{Name: NewElmValueName("availabilityKind"), JSONName: NewJSONFieldName("availability_kind"), Type: NamedRef{Name: NewElmTypeName("TaskAvailabilityKind")}},
+					{Name: NewElmValueName("viewerAction"), JSONName: NewJSONFieldName("viewer_action"), Type: NamedRef{Name: NewElmTypeName("TaskViewerAction")}},
 					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
 				},
 			},
@@ -286,9 +337,14 @@ func taskModule() Module {
 					{Name: NewElmValueName("description"), JSONName: NewJSONFieldName("description"), Type: StringRef{}},
 					{Name: NewElmValueName("rewardKind"), JSONName: NewJSONFieldName("reward_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("rewardCreditAmount"), JSONName: NewJSONFieldName("reward_credit_amount"), Type: IntRef{}},
+					{Name: NewElmValueName("participationPolicy"), JSONName: NewJSONFieldName("participation_policy"), Type: NamedRef{Name: NewElmTypeName("TaskParticipationPolicy")}},
+					{Name: NewElmValueName("assigneeScope"), JSONName: NewJSONFieldName("assignee_scope"), Type: NamedRef{Name: NewElmTypeName("TaskAssigneeScope")}},
+					{Name: NewElmValueName("reservationExpiryHours"), JSONName: NewJSONFieldName("reservation_expiry_hours"), Type: IntRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskState")}},
 					{Name: NewElmValueName("visibilityKind"), JSONName: NewJSONFieldName("visibility_kind"), Type: NamedRef{Name: NewElmTypeName("TaskVisibilityKind")}},
 					{Name: NewElmValueName("visibilityID"), JSONName: NewJSONFieldName("visibility_id"), Type: StringRef{}},
+					{Name: NewElmValueName("availabilityKind"), JSONName: NewJSONFieldName("availability_kind"), Type: NamedRef{Name: NewElmTypeName("TaskAvailabilityKind")}},
+					{Name: NewElmValueName("viewerAction"), JSONName: NewJSONFieldName("viewer_action"), Type: NamedRef{Name: NewElmTypeName("TaskViewerAction")}},
 					{Name: NewElmValueName("seriesKind"), JSONName: NewJSONFieldName("series_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("seriesID"), JSONName: NewJSONFieldName("series_id"), Type: StringRef{}},
 					{Name: NewElmValueName("seriesPosition"), JSONName: NewJSONFieldName("series_position"), Type: IntRef{}},
@@ -302,6 +358,23 @@ func taskModule() Module {
 				Name: NewElmTypeName("TasksResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("tasks"), JSONName: NewJSONFieldName("tasks"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskListItemResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TaskReservationResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					{Name: NewElmValueName("assigneeKind"), JSONName: NewJSONFieldName("assignee_kind"), Type: NamedRef{Name: NewElmTypeName("TaskAssigneeScope")}},
+					{Name: NewElmValueName("assigneeID"), JSONName: NewJSONFieldName("assignee_id"), Type: StringRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskReservationState")}},
+					{Name: NewElmValueName("requestedBy"), JSONName: NewJSONFieldName("requested_by"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TaskReservationsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("reservations"), JSONName: NewJSONFieldName("reservations"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskReservationResponse")}}},
 				},
 			},
 			Product{
