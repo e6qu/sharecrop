@@ -30,9 +30,16 @@ type CreditPayout struct {
 	Amount       CreditAmount
 }
 
+type CollectiblePayout struct {
+	WorkerUserID  core.UserID
+	CollectibleID core.CollectibleID
+}
+
 func (NoPayout) payoutOutcome() {}
 
 func (CreditPayout) payoutOutcome() {}
+
+func (CollectiblePayout) payoutOutcome() {}
 
 type AcceptResult interface {
 	acceptResult()

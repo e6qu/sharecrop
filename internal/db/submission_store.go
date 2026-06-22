@@ -27,11 +27,10 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 		_ = rollbackErr
 	}()
 
-	submitterColumns := submitterSQLColumns(command.Submitter)
 	_, err = tx.Exec(ctx, `
-		insert into submissions (id, task_id, submitter_kind, user_id, wallet_address, state, response_json)
-		values ($1, $2, $3, $4, $5, $6, $7::jsonb)
-	`, submissionID.String(), command.TaskID.String(), submitterColumns.kind, submitterColumns.userID, submitterColumns.walletAddress, state.String(), command.ResponseSource.String())
+		insert into submissions (id, task_id, user_id, state, response_json)
+		values ($1, $2, $3, $4, $5::jsonb)
+	`, submissionID.String(), command.TaskID.String(), command.SubmitterID.String(), state.String(), command.ResponseSource.String())
 	if err != nil {
 		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert submission failed")}
 	}
@@ -61,7 +60,7 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 	return submission.CreateSubmissionStoreAccepted{Value: submission.Submission{
 		ID:             submissionID,
 		TaskID:         command.TaskID,
-		Submitter:      command.Submitter,
+		SubmitterID:    command.SubmitterID,
 		State:          state,
 		ResponseSource: command.ResponseSource,
 		Validation:     outcome,
@@ -107,23 +106,6 @@ func (store SubmissionStore) ListForTask(ctx context.Context, taskID core.TaskID
 		return submission.ListSubmissionsStoreRejected{Reason: rejected.reason}
 	}
 	return submission.ListSubmissionsStoreAccepted{Values: values.values}
-}
-
-type submitterSQL struct {
-	kind          string
-	userID        *string
-	walletAddress *string
-}
-
-func submitterSQLColumns(submitter submission.Submitter) submitterSQL {
-	switch typed := submitter.(type) {
-	case submission.AuthenticatedSubmitter:
-		return submitterSQL{kind: submission.SubmitterKindAuthenticated.String(), userID: stringPointer(typed.UserID.String())}
-	case submission.AnonymousSubmitter:
-		return submitterSQL{kind: submission.SubmitterKindAnonymous.String(), walletAddress: stringPointer(typed.WalletAddress.String())}
-	default:
-		return submitterSQL{}
-	}
 }
 
 type insertRowsResult interface {
@@ -174,8 +156,7 @@ func insertSensitiveFields(ctx context.Context, tx pgx.Tx, submissionID core.Sub
 
 func submissionSelectSQL() string {
 	return `
-		select submissions.id::text, submissions.task_id::text, submissions.submitter_kind, coalesce(submissions.user_id::text, ''),
-			coalesce(submissions.wallet_address, ''), submissions.state, submissions.response_json::text,
+		select submissions.id::text, submissions.task_id::text, submissions.user_id::text, submissions.state, submissions.response_json::text,
 			coalesce((
 				select jsonb_agg(
 					jsonb_build_object('path', submission_validation_errors.path, 'message', submission_validation_errors.message)
@@ -240,14 +221,12 @@ func (submissionRowRejected) submissionRowResult() {}
 func scanSubmissionRow(rows pgx.Rows) submissionRowResult {
 	var rawSubmissionID string
 	var rawTaskID string
-	var rawSubmitterKind string
 	var rawUserID string
-	var rawWalletAddress string
 	var rawState string
 	var rawResponse string
 	var rawValidationErrors string
-	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawSubmitterKind, &rawUserID, &rawWalletAddress, &rawState, &rawResponse, &rawValidationErrors); err != nil {
+	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawState, &rawResponse, &rawValidationErrors); err != nil {
 		return submissionRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan submission failed")}
 	}
-	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawSubmitterKind, rawUserID, rawWalletAddress, rawState, rawResponse, rawValidationErrors)
+	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawState, rawResponse, rawValidationErrors)
 }

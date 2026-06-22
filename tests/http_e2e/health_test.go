@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
@@ -25,7 +26,7 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("static files: %v", err)
 	}
 
-	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}, healthSubmissionService{}, healthLedgerService{}, healthAgentService{}))
+	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}, healthSubmissionService{}, healthLedgerService{}, healthAgentService{}, healthAssetService{}))
 	defer server.Close()
 
 	response, err := http.Get(server.URL + "/healthz")
@@ -93,6 +94,10 @@ func (healthOrganizationService) ListOrganizationTeams(context.Context, auth.Use
 	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthOrganizationService) CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck {
+	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthTaskService) Create(context.Context, task.CreateCommand) task.CreateResult {
 	return task.CreateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
@@ -143,6 +148,14 @@ func (healthLedgerService) FundTask(context.Context, core.UserID, core.TaskID, l
 	return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthLedgerService) FundTaskFromOrganization(context.Context, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult {
+	return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthLedgerService) OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult {
+	return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthLedgerService) AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult {
 	return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
@@ -171,6 +184,24 @@ func (healthAgentService) Verify(context.Context, agent.SecretPlain) agent.Verif
 
 func (healthAgentService) List(context.Context, core.UserID) agent.ListResult {
 	return agent.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+type healthAssetService struct{}
+
+func (healthAssetService) Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy) assets.MintResult {
+	return assets.MintRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) ListCollectibles(context.Context, core.UserID) assets.ListResult {
+	return assets.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult {
+	return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult {
+	return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 func (healthAgentService) Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult {

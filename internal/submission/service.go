@@ -30,7 +30,7 @@ func NewService(store Store, taskStore TaskFinder) Service {
 
 type SubmitCommand struct {
 	TaskID         core.TaskID
-	Submitter      Submitter
+	SubmitterID    core.UserID
 	ResponseSource ResponseSource
 }
 
@@ -57,11 +57,6 @@ func (service Service) Submit(ctx context.Context, command SubmitCommand) Submit
 	if !taskMatched {
 		rejected := taskResult.(task.FindTaskStoreRejected)
 		return SubmitRejected{Reason: rejected.Reason}
-	}
-
-	permission := canSubmitToTask(command.Submitter, taskFound.Value)
-	if rejected, matched := permission.(submitPermissionRejected); matched {
-		return SubmitRejected{Reason: rejected.reason}
 	}
 
 	schemaResult := schema.ParseSchemaJSON([]byte(taskFound.Value.ResponseSchema.String()))
@@ -181,30 +176,6 @@ func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, 
 		return ListRejected{Reason: rejected.Reason}
 	}
 	return SubmissionsListed{Values: listed.Values}
-}
-
-type submitPermissionResult interface {
-	submitPermissionResult()
-}
-
-type submitPermissionAccepted struct{}
-
-type submitPermissionRejected struct {
-	reason core.DomainError
-}
-
-func (submitPermissionAccepted) submitPermissionResult() {}
-
-func (submitPermissionRejected) submitPermissionResult() {}
-
-func canSubmitToTask(submitter Submitter, value task.Task) submitPermissionResult {
-	if _, anonymous := submitter.(AnonymousSubmitter); anonymous {
-		if _, public := value.Visibility.(task.PublicVisibility); public {
-			return submitPermissionAccepted{}
-		}
-		return submitPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "anonymous submissions require public tasks")}
-	}
-	return submitPermissionAccepted{}
 }
 
 func validationOutcome(schemaValue schema.Schema, value schema.Value) ValidationOutcome {

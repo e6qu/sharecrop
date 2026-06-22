@@ -155,8 +155,8 @@ func insertSubmission(t *testing.T, pool *pgxpool.Pool, taskID core.TaskID, work
 		t.Fatalf("submission id rejected")
 	}
 	_, err := pool.Exec(context.Background(), `
-		insert into submissions (id, task_id, submitter_kind, user_id, state, response_json)
-		values ($1, $2, 'authenticated', $3, 'submitted', '{}'::jsonb)
+		insert into submissions (id, task_id, user_id, state, response_json)
+		values ($1, $2, $3, 'submitted', '{}'::jsonb)
 	`, submissionID.Value.String(), taskID.String(), worker.String())
 	if err != nil {
 		t.Fatalf("insert submission: %v", err)

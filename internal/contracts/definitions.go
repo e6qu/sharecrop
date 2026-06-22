@@ -12,6 +12,57 @@ func Modules() []Module {
 		submissionModule(),
 		ledgerModule(),
 		agentModule(),
+		collectibleModule(),
+	}
+}
+
+func collectibleModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Collectible"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("CollectibleKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("CollectibleKindUnique"), Tag: "unique"},
+					{Name: NewElmTypeName("CollectibleKindEdition"), Tag: "edition"},
+					{Name: NewElmTypeName("CollectibleKindBadge"), Tag: "badge"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("CollectibleState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("CollectibleStateMinted"), Tag: "minted"},
+					{Name: NewElmTypeName("CollectibleStateEscrowed"), Tag: "escrowed"},
+					{Name: NewElmTypeName("CollectibleStateAwarded"), Tag: "awarded"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("CollectibleTransferPolicy"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("CollectibleTransferPolicyNonTransferableExceptPayout"), Tag: "non_transferable_except_payout"},
+					{Name: NewElmTypeName("CollectibleTransferPolicyTransferableBetweenUsers"), Tag: "transferable_between_users"},
+					{Name: NewElmTypeName("CollectibleTransferPolicyTransferableWithinOrganization"), Tag: "transferable_within_organization"},
+					{Name: NewElmTypeName("CollectibleTransferPolicyIssuerControlled"), Tag: "issuer_controlled"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("CollectibleResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("name"), JSONName: NewJSONFieldName("name"), Type: StringRef{}},
+					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("CollectibleKind")}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("CollectibleState")}},
+					{Name: NewElmValueName("transferPolicy"), JSONName: NewJSONFieldName("transfer_policy"), Type: NamedRef{Name: NewElmTypeName("CollectibleTransferPolicy")}},
+					{Name: NewElmValueName("ownerID"), JSONName: NewJSONFieldName("owner_id"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("CollectiblesResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("collectibles"), JSONName: NewJSONFieldName("collectibles"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("CollectibleResponse")}}},
+				},
+			},
+		},
 	}
 }
 
@@ -52,6 +103,7 @@ func idsModule() Module {
 			Alias{Name: NewElmTypeName("CreditAccountID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("LedgerEntryID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("AgentCredentialID"), Type: StringRef{}},
+			Alias{Name: NewElmTypeName("CollectibleID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("OrganizationMembershipID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TeamID"), Type: StringRef{}},
@@ -254,13 +306,6 @@ func submissionModule() Module {
 					{Name: NewElmTypeName("SubmissionStateRejected"), Tag: "rejected"},
 				},
 			},
-			Enum{
-				Name: NewElmTypeName("SubmitterKind"),
-				Variants: []Variant{
-					{Name: NewElmTypeName("SubmitterKindAuthenticated"), Tag: "authenticated"},
-					{Name: NewElmTypeName("SubmitterKindAnonymous"), Tag: "anonymous"},
-				},
-			},
 			Product{
 				Name: NewElmTypeName("SubmissionValidationErrorResponse"),
 				Fields: []Field{
@@ -273,7 +318,7 @@ func submissionModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
-					{Name: NewElmValueName("submitterKind"), JSONName: NewJSONFieldName("submitter_kind"), Type: NamedRef{Name: NewElmTypeName("SubmitterKind")}},
+					{Name: NewElmValueName("submitterID"), JSONName: NewJSONFieldName("submitter_id"), Type: StringRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("SubmissionState")}},
 					{Name: NewElmValueName("responseJSON"), JSONName: NewJSONFieldName("response_json"), Type: StringRef{}},
 					{Name: NewElmValueName("validationErrors"), JSONName: NewJSONFieldName("validation_errors"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionValidationErrorResponse")}}},

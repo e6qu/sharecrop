@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
@@ -120,7 +121,8 @@ func newAuthHTTPServer(t *testing.T, ctx context.Context) *httptest.Server {
 	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
 	agentService := agent.NewService(db.NewAgentStore(pool))
-	return httptest.NewServer(httpserver.New(staticFiles, serviceCreated.Value, verifier, organizationService, taskService, submissionService, ledgerService, agentService))
+	assetService := assets.NewService(db.NewCollectibleStore(pool))
+	return httptest.NewServer(httpserver.New(staticFiles, serviceCreated.Value, verifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService))
 }
 
 func postEmptyJSON(t *testing.T, url string, cookies []*http.Cookie) *http.Response {

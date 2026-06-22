@@ -42,6 +42,10 @@ type AgentCredentialID struct {
 	value id.ID
 }
 
+type CollectibleID struct {
+	value id.ID
+}
+
 type CreditAccountID struct {
 	value id.ID
 }
@@ -406,6 +410,45 @@ func organizationMembershipIDFromIDResult(result id.IDResult) OrganizationMember
 		return OrganizationMembershipIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return OrganizationMembershipIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type CollectibleIDResult interface {
+	collectibleIDResult()
+}
+
+type CollectibleIDCreated struct {
+	Value CollectibleID
+}
+
+type CollectibleIDRejected struct {
+	Reason DomainError
+}
+
+func (CollectibleIDCreated) collectibleIDResult() {}
+
+func (CollectibleIDRejected) collectibleIDResult() {}
+
+func NewCollectibleID() CollectibleIDResult {
+	return collectibleIDFromIDResult(id.New())
+}
+
+func ParseCollectibleID(raw string) CollectibleIDResult {
+	return collectibleIDFromIDResult(id.Parse(raw))
+}
+
+func (id CollectibleID) String() string {
+	return id.value.String()
+}
+
+func collectibleIDFromIDResult(result id.IDResult) CollectibleIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return CollectibleIDCreated{Value: CollectibleID{value: typed.Value}}
+	case id.IDRejected:
+		return CollectibleIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return CollectibleIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 

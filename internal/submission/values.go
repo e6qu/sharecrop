@@ -10,41 +10,6 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
-type WalletAddress struct {
-	value string
-}
-
-type WalletAddressResult interface {
-	walletAddressResult()
-}
-
-type WalletAddressAccepted struct {
-	Value WalletAddress
-}
-
-type WalletAddressRejected struct {
-	Reason core.DomainError
-}
-
-func (WalletAddressAccepted) walletAddressResult() {}
-
-func (WalletAddressRejected) walletAddressResult() {}
-
-func NewWalletAddress(raw string) WalletAddressResult {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return WalletAddressRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "wallet address is required")}
-	}
-	if len(trimmed) > 256 {
-		return WalletAddressRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "wallet address is too long")}
-	}
-	return WalletAddressAccepted{Value: WalletAddress{value: trimmed}}
-}
-
-func (address WalletAddress) String() string {
-	return address.value
-}
-
 type ResponseSource struct {
 	value string
 }

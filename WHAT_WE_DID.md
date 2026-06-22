@@ -490,3 +490,39 @@ Pull request 11 verification was performed:
 - `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell, ledger, agent, and screens Playwright tests.
 - `SHARECROP_AGENT_TOKEN=... go run ./cmd/sharecrop mcp` returned the initialize result and tool list over stdio.
 - Manual screenshot review passed for `/tmp/sharecrop-pr11-detail.png`.
+
+Pull request 12 narrowed the asset economy to platform-only rewards, removed anonymous workers, and added organization credit accounts and platform collectibles:
+
+- Anonymous wallet-based submission was removed: the anonymous submitter domain type, wallet address value, public submission route and handler, anonymous columns, and anonymous tests were deleted, and a migration dropped the `submitter_kind` and `wallet_address` columns and made submissions registered-users-only.
+- Organization credit accounts were added: a migration extended `credit_accounts` to support organization owners, organizations received a credit account and grant inside the organization-creation transaction, organization-owned tasks can be funded from the organization account behind the manage-billing permission, and an organization credit balance endpoint was added.
+- The ledger funding logic for user and organization funding was unified behind a shared escrow-completion helper.
+- A platform collectible model was added under `internal/assets` with collectible kinds, lifecycle states, names, and transfer-policy variants, plus a reward-payout policy check.
+- The collectible service and PostgreSQL repository added minting, listing, collectible task reward escrow, and refund.
+- The submission-acceptance flow was generalized so accepting a submission for a collectible-reward task transfers the collectible to the worker, reported as a collectible payout.
+- HTTP endpoints were added for minting and listing collectibles, funding and refunding collectible rewards, and the organization credit balance.
+- Generated Elm contracts were extended with the collectible identifier, collectible kinds, states, transfer policies, and collectible responses.
+- The browser app gained a collectibles panel for minting, viewing holdings, and awarding a collectible to a task, and the submission request dropped the wallet address field.
+
+Pull request 12 scope decisions were recorded:
+
+- Rewards were kept entirely on-platform: Sharecrop credits are the platform token and platform collectibles are the non-fungible reward. User-issued tokens, organization-issued tokens, crypto rewards, and external wallets were intentionally excluded.
+- Anonymous workers were deferred until the anonymous identity and payout model is decided.
+
+Pull request 12 test strategy was evaluated:
+
+- Unit tests covered collectible kind, state, and transfer-policy parsing, the reward-payout policy check, and collectible minting.
+- HTTP unit tests covered the collectible response wire shapes through the existing handler doubles.
+- Integration tests continued to cover the ledger and series stores against PostgreSQL.
+- HTTP end-to-end tests covered organization credit account funding and balance, the collectible award-on-accept flow, collectible reward refund, the issuer-controlled policy denial, and the rewritten registered-user submission tests.
+- Playwright tests covered minting a collectible and awarding it to a task through the browser, while preserving the existing dashboard, agent, discovery, and acceptance tests.
+- Manual screenshot review covered the collectibles panel.
+
+Pull request 12 verification was performed:
+
+- `make check-format`, `make check-contracts`, `make check-policy`, `make check-ts`, `make check-copy-paste`, `make check-dead-code`, `make lint`, and `make vet` passed.
+- `GOCACHE=$PWD/.cache/go-build make test` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=$PWD/.cache/go-build make build` passed.
+- `docker compose up -d postgres` passed and the credit account and collectible migrations applied on a fresh database.
+- `make test-integration` and `make test-http` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm ... make e2e-ui` passed the app-shell, ledger, agent, screens, and collectible Playwright tests.
+- Manual screenshot review passed for `/tmp/sharecrop-pr12-collectibles.png`.

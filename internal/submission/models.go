@@ -5,7 +5,7 @@ import "github.com/e6qu/sharecrop/internal/core"
 type Submission struct {
 	ID             core.SubmissionID
 	TaskID         core.TaskID
-	Submitter      Submitter
+	SubmitterID    core.UserID
 	State          State
 	ResponseSource ResponseSource
 	Validation     ValidationOutcome
@@ -14,35 +14,6 @@ type Submission struct {
 type Receipt struct {
 	ID           core.SubmissionReceiptTokenID
 	SubmissionID core.SubmissionID
-}
-
-type Submitter interface {
-	submitter()
-}
-
-type AuthenticatedSubmitter struct {
-	UserID core.UserID
-}
-
-type AnonymousSubmitter struct {
-	WalletAddress WalletAddress
-}
-
-func (AuthenticatedSubmitter) submitter() {}
-
-func (AnonymousSubmitter) submitter() {}
-
-type SubmitterKind struct {
-	value string
-}
-
-var (
-	SubmitterKindAuthenticated = SubmitterKind{value: "authenticated"}
-	SubmitterKindAnonymous     = SubmitterKind{value: "anonymous"}
-)
-
-func (kind SubmitterKind) String() string {
-	return kind.value
 }
 
 type State struct {

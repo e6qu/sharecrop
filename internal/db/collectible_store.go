@@ -1,0 +1,274 @@
+package db
+
+import (
+	"context"
+	"errors"
+
+	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type CollectibleStore struct {
+	pool *pgxpool.Pool
+}
+
+func NewCollectibleStore(pool *pgxpool.Pool) CollectibleStore {
+	return CollectibleStore{pool: pool}
+}
+
+func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible assets.Collectible) assets.CreateStoreResult {
+	_, err := store.pool.Exec(ctx, `
+		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id)
+		values ($1, $2, $3, $4, $5, $6)
+	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID.String())
+	if err != nil {
+		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible failed")}
+	}
+	return assets.CreateStoreAccepted{}
+}
+
+func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.UserID) assets.ListStoreResult {
+	rows, err := store.pool.Query(ctx, `
+		select id::text, name, kind, state, transfer_policy, owner_user_id::text
+		from collectibles
+		where owner_user_id = $1
+		order by created_at desc, id
+	`, owner.String())
+	if err != nil {
+		return assets.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list collectibles failed")}
+	}
+	defer rows.Close()
+
+	values := make([]assets.Collectible, 0)
+	for rows.Next() {
+		parsed := scanCollectible(rows)
+		accepted, matched := parsed.(collectibleParsed)
+		if !matched {
+			return assets.ListStoreRejected{Reason: parsed.(collectibleParseRejected).reason}
+		}
+		values = append(values, accepted.value)
+	}
+	if err := rows.Err(); err != nil {
+		return assets.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectibles failed")}
+	}
+	return assets.ListStoreListed{Values: values}
+}
+
+func (store CollectibleStore) FundCollectibleReward(ctx context.Context, command assets.FundRewardStoreCommand) assets.FundRewardResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin fund collectible reward transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		return assets.FundRewardRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
+	}
+	if collectible.value.OwnerID != command.FunderUserID {
+		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "only the collectible owner can fund a task with it")}
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to escrow")}
+	}
+	if denied, matched := assets.AllowsRewardPayout(collectible.value.Policy).(assets.RewardDenied); matched {
+		return assets.FundRewardRejected{Reason: denied.Reason}
+	}
+
+	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.FunderUserID, "fund")
+	taskRow, taskMatched := taskResult.(taskLocked)
+	if !taskMatched {
+		return assets.FundRewardRejected{Reason: taskResult.(taskLockRejected).reason}
+	}
+	if taskRow.state != "draft" {
+		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft tasks can be funded")}
+	}
+
+	if funded, matched := taskAlreadyFunded(ctx, tx, command.TaskID); matched {
+		return assets.FundRewardRejected{Reason: funded}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set state = 'escrowed', state_recorded_at = now() where id = $1", command.CollectibleID.String()); err != nil {
+		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "escrow collectible failed")}
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into task_collectible_rewards (task_id, collectible_id, funder_user_id, state)
+		values ($1, $2, $3, 'held')
+	`, command.TaskID.String(), command.CollectibleID.String(), command.FunderUserID.String()); err != nil {
+		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible reward failed")}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit fund collectible reward transaction failed")}
+	}
+
+	awarded := collectible.value
+	awarded.State = assets.CollectibleStateEscrowed
+	return assets.RewardFunded{Value: awarded}
+}
+
+func (store CollectibleStore) RefundCollectibleReward(ctx context.Context, command assets.RefundRewardStoreCommand) assets.RefundRewardResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin refund collectible reward transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "refund")
+	taskRow, taskMatched := taskResult.(taskLocked)
+	if !taskMatched {
+		return assets.RefundRewardRejected{Reason: taskResult.(taskLockRejected).reason}
+	}
+	if taskRow.state != "draft" && taskRow.state != "open" {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft or open tasks can be refunded")}
+	}
+
+	var rawCollectibleID string
+	var rewardState string
+	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1 for update", command.TaskID.String()).Scan(&rawCollectibleID, &rewardState)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has no collectible reward to refund")}
+	}
+	if scanErr != nil {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")}
+	}
+	if rewardState != "held" {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible reward is not held")}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", rawCollectibleID); err != nil {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed")}
+	}
+	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1", command.TaskID.String()); err != nil {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update collectible reward failed")}
+	}
+	if _, err := tx.Exec(ctx, "update tasks set state = 'cancelled', state_recorded_at = now() where id = $1", command.TaskID.String()); err != nil {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "cancel task failed")}
+	}
+
+	collectibleResult := findCollectible(ctx, tx, rawCollectibleID)
+	collectible, matched := collectibleResult.(collectibleParsed)
+	if !matched {
+		return assets.RefundRewardRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit refund collectible reward transaction failed")}
+	}
+	return assets.RewardRefunded{Value: collectible.value}
+}
+
+func taskAlreadyFunded(ctx context.Context, tx pgx.Tx, taskID core.TaskID) (core.DomainError, bool) {
+	var creditExists bool
+	if err := tx.QueryRow(ctx, "select exists(select 1 from task_escrows where task_id = $1)", taskID.String()).Scan(&creditExists); err != nil {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "check existing escrow failed"), true
+	}
+	if creditExists {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "task is already funded"), true
+	}
+	var rewardExists bool
+	if err := tx.QueryRow(ctx, "select exists(select 1 from task_collectible_rewards where task_id = $1)", taskID.String()).Scan(&rewardExists); err != nil {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "check existing reward failed"), true
+	}
+	if rewardExists {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "task is already funded"), true
+	}
+	return core.DomainError{}, false
+}
+
+type collectibleParseResult interface {
+	collectibleParseResult()
+}
+
+type collectibleParsed struct {
+	value assets.Collectible
+}
+
+type collectibleParseRejected struct {
+	reason core.DomainError
+}
+
+func (collectibleParsed) collectibleParseResult() {}
+
+func (collectibleParseRejected) collectibleParseResult() {}
+
+func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.CollectibleID) collectibleParseResult {
+	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text from collectibles where id = $1 for update", collectibleID.String())
+	if err != nil {
+		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock collectible failed")}
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible was not found")}
+	}
+	return scanCollectible(rows)
+}
+
+func findCollectible(ctx context.Context, tx pgx.Tx, rawCollectibleID string) collectibleParseResult {
+	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text from collectibles where id = $1", rawCollectibleID)
+	if err != nil {
+		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible failed")}
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible was not found")}
+	}
+	return scanCollectible(rows)
+}
+
+func scanCollectible(rows pgx.Rows) collectibleParseResult {
+	var rawID string
+	var rawName string
+	var rawKind string
+	var rawState string
+	var rawPolicy string
+	var rawOwner string
+	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner); err != nil {
+		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible failed")}
+	}
+	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner)
+}
+
+func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string) collectibleParseResult {
+	idResult := core.ParseCollectibleID(rawID)
+	collectibleID, idMatched := idResult.(core.CollectibleIDCreated)
+	if !idMatched {
+		return collectibleParseRejected{reason: idResult.(core.CollectibleIDRejected).Reason}
+	}
+	nameResult := assets.NewCollectibleName(rawName)
+	name, nameMatched := nameResult.(assets.CollectibleNameAccepted)
+	if !nameMatched {
+		return collectibleParseRejected{reason: nameResult.(assets.CollectibleNameRejected).Reason}
+	}
+	kindResult := assets.ParseCollectibleKind(rawKind)
+	kind, kindMatched := kindResult.(assets.CollectibleKindAccepted)
+	if !kindMatched {
+		return collectibleParseRejected{reason: kindResult.(assets.CollectibleKindRejected).Reason}
+	}
+	stateResult := assets.ParseCollectibleState(rawState)
+	state, stateMatched := stateResult.(assets.CollectibleStateAccepted)
+	if !stateMatched {
+		return collectibleParseRejected{reason: stateResult.(assets.CollectibleStateRejected).Reason}
+	}
+	policyResult := assets.ParseTransferPolicy(rawPolicy)
+	policy, policyMatched := policyResult.(assets.TransferPolicyAccepted)
+	if !policyMatched {
+		return collectibleParseRejected{reason: policyResult.(assets.TransferPolicyRejected).Reason}
+	}
+	ownerResult := core.ParseUserID(rawOwner)
+	owner, ownerMatched := ownerResult.(core.UserIDCreated)
+	if !ownerMatched {
+		return collectibleParseRejected{reason: ownerResult.(core.UserIDRejected).Reason}
+	}
+	return collectibleParsed{value: assets.Collectible{
+		ID:      collectibleID.Value,
+		Name:    name.Value,
+		Kind:    kind.Value,
+		State:   state.Value,
+		Policy:  policy.Value,
+		OwnerID: owner.Value,
+	}}
+}

@@ -32,11 +32,23 @@ type RefundStoreCommand struct {
 	IdempotencyKey  IdempotencyKey
 }
 
+// OrganizationFundStoreCommand carries a validated organization task-funding
+// request to the store.
+type OrganizationFundStoreCommand struct {
+	EntryID        core.LedgerEntryID
+	OrganizationID core.OrganizationID
+	TaskID         core.TaskID
+	Amount         CreditAmount
+	IdempotencyKey IdempotencyKey
+}
+
 type Store interface {
 	FundTask(context.Context, FundStoreCommand) FundResult
+	FundTaskFromOrganization(context.Context, OrganizationFundStoreCommand) FundResult
 	AcceptSubmission(context.Context, AcceptStoreCommand) AcceptResult
 	RefundTask(context.Context, RefundStoreCommand) RefundResult
 	Balance(context.Context, core.UserID) BalanceResult
+	OrganizationBalance(context.Context, core.OrganizationID) BalanceResult
 	ListEntries(context.Context, core.UserID) ListEntriesResult
 }
 
@@ -98,8 +110,28 @@ func (service Service) RefundTask(ctx context.Context, requester core.UserID, ta
 	})
 }
 
+func (service Service) FundTaskFromOrganization(ctx context.Context, organizationID core.OrganizationID, taskID core.TaskID, amount CreditAmount, key IdempotencyKey) FundResult {
+	entryResult := core.NewLedgerEntryID()
+	entryCreated, matched := entryResult.(core.LedgerEntryIDCreated)
+	if !matched {
+		return FundRejected{Reason: entryResult.(core.LedgerEntryIDRejected).Reason}
+	}
+
+	return service.store.FundTaskFromOrganization(ctx, OrganizationFundStoreCommand{
+		EntryID:        entryCreated.Value,
+		OrganizationID: organizationID,
+		TaskID:         taskID,
+		Amount:         amount,
+		IdempotencyKey: key,
+	})
+}
+
 func (service Service) Balance(ctx context.Context, owner core.UserID) BalanceResult {
 	return service.store.Balance(ctx, owner)
+}
+
+func (service Service) OrganizationBalance(ctx context.Context, organizationID core.OrganizationID) BalanceResult {
+	return service.store.OrganizationBalance(ctx, organizationID)
 }
 
 func (service Service) ListEntries(ctx context.Context, owner core.UserID) ListEntriesResult {

@@ -153,7 +153,7 @@ func (services fakeServices) SubmitResponse(_ context.Context, command submissio
 		Value: submission.Submission{
 			ID:             submissionID.Value,
 			TaskID:         command.TaskID,
-			Submitter:      command.Submitter,
+			SubmitterID:    command.SubmitterID,
 			State:          submission.StateSubmitted,
 			ResponseSource: command.ResponseSource,
 			Validation:     submission.ValidationPassed{},

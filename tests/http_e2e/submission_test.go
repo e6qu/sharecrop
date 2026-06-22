@@ -8,24 +8,19 @@ import (
 	"testing"
 )
 
-func TestAnonymousSubmissionReceiptAndRequesterList(t *testing.T) {
+func TestSubmissionReceiptRedactionAndRequesterList(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
 
-	ownerResponse := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{
-		Email:    "submission-owner-" + uniqueTestSuffix(t) + "@example.com",
-		Password: "correct horse battery staple",
-	}, nil)
-	defer ownerResponse.Body.Close()
-	assertStatus(t, ownerResponse, http.StatusCreated)
-	ownerBody := decodeAuthHTTPResponse(t, ownerResponse)
+	owner := registerUser(t, server, "submission-owner")
+	worker := registerUser(t, server, "submission-worker")
 
-	createTaskResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicSensitiveTaskRequestJSON(ownerBody.SubjectID)), ownerBody.AccessToken)
+	createTaskResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicSensitiveTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
 	defer createTaskResponse.Body.Close()
 	assertStatus(t, createTaskResponse, http.StatusCreated)
 	taskBody := decodeTaskHTTPResponse(t, createTaskResponse)
 
-	submitResponse := postEncodedJSON(t, server.URL+"/api/public/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"email\":\"person@example.com\"}","wallet_address":"sharecrop:anonymous-wallet"}`), nil)
+	submitResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"email\":\"person@example.com\"}"}`), worker.AccessToken)
 	defer submitResponse.Body.Close()
 	assertStatus(t, submitResponse, http.StatusCreated)
 	createdBody := decodeSubmissionCreatedHTTPResponse(t, submitResponse)
@@ -40,14 +35,11 @@ func TestAnonymousSubmissionReceiptAndRequesterList(t *testing.T) {
 	defer receiptResponse.Body.Close()
 	assertStatus(t, receiptResponse, http.StatusOK)
 	receiptBody := decodeSubmissionHTTPResponse(t, receiptResponse)
-	if receiptBody.ResponseJSON == `{"email":"person@example.com"}` {
-		t.Fatalf("receipt response was not redacted")
-	}
 	if receiptBody.ResponseJSON != `{"email":"[redacted]"}` {
 		t.Fatalf("receipt response = %q, want redacted email", receiptBody.ResponseJSON)
 	}
 
-	listResponse := getWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", ownerBody.AccessToken)
+	listResponse := getWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", owner.AccessToken)
 	defer listResponse.Body.Close()
 	assertStatus(t, listResponse, http.StatusOK)
 	listBody := decodeSubmissionsHTTPResponse(t, listResponse)
@@ -56,24 +48,19 @@ func TestAnonymousSubmissionReceiptAndRequesterList(t *testing.T) {
 	}
 }
 
-func TestInvalidAnonymousSubmissionIsRecorded(t *testing.T) {
+func TestInvalidSubmissionIsRecorded(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
 
-	ownerResponse := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{
-		Email:    "invalid-submission-owner-" + uniqueTestSuffix(t) + "@example.com",
-		Password: "correct horse battery staple",
-	}, nil)
-	defer ownerResponse.Body.Close()
-	assertStatus(t, ownerResponse, http.StatusCreated)
-	ownerBody := decodeAuthHTTPResponse(t, ownerResponse)
+	owner := registerUser(t, server, "invalid-submission-owner")
+	worker := registerUser(t, server, "invalid-submission-worker")
 
-	createTaskResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicSensitiveTaskRequestJSON(ownerBody.SubjectID)), ownerBody.AccessToken)
+	createTaskResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicSensitiveTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
 	defer createTaskResponse.Body.Close()
 	assertStatus(t, createTaskResponse, http.StatusCreated)
 	taskBody := decodeTaskHTTPResponse(t, createTaskResponse)
 
-	submitResponse := postEncodedJSON(t, server.URL+"/api/public/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"email\":12}","wallet_address":"sharecrop:anonymous-wallet"}`), nil)
+	submitResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"email\":12}"}`), worker.AccessToken)
 	defer submitResponse.Body.Close()
 	assertStatus(t, submitResponse, http.StatusCreated)
 	createdBody := decodeSubmissionCreatedHTTPResponse(t, submitResponse)
@@ -88,7 +75,7 @@ func TestInvalidAnonymousSubmissionIsRecorded(t *testing.T) {
 type submissionHTTPResponse struct {
 	ID               string                             `json:"id"`
 	TaskID           string                             `json:"task_id"`
-	SubmitterKind    string                             `json:"submitter_kind"`
+	SubmitterID      string                             `json:"submitter_id"`
 	State            string                             `json:"state"`
 	ResponseJSON     string                             `json:"response_json"`
 	ValidationErrors []submissionValidationHTTPResponse `json:"validation_errors"`

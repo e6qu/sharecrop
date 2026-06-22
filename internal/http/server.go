@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
@@ -41,6 +42,7 @@ type OrganizationService interface {
 	DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
 	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
 	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult
+	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 }
 
 type TaskService interface {
@@ -61,6 +63,13 @@ type AgentService interface {
 	Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult
 }
 
+type AssetService interface {
+	Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy) assets.MintResult
+	ListCollectibles(context.Context, core.UserID) assets.ListResult
+	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
+	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
+}
+
 type SubmissionService interface {
 	Submit(context.Context, submission.SubmitCommand) submission.SubmitResult
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
@@ -69,9 +78,11 @@ type SubmissionService interface {
 
 type LedgerService interface {
 	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
+	FundTaskFromOrganization(context.Context, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
 	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	Balance(context.Context, core.UserID) ledger.BalanceResult
+	OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult
 	ListEntries(context.Context, core.UserID) ledger.ListEntriesResult
 }
 
@@ -84,10 +95,11 @@ type Server struct {
 	submissionService   SubmissionService
 	ledgerService       LedgerService
 	agentService        AgentService
+	assetService        AssetService
 	mcpServer           mcp.Server
 }
 
-func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService) http.Handler {
+func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService) http.Handler {
 	server := Server{
 		staticFiles:         staticFiles,
 		authService:         authService,
@@ -97,6 +109,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		submissionService:   submissionService,
 		ledgerService:       ledgerService,
 		agentService:        agentService,
+		assetService:        assetService,
 		mcpServer:           mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}),
 	}
 	mux := http.NewServeMux()
@@ -118,8 +131,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/capability-tokens", server.createTaskCapabilityToken)
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions", server.createAuthenticatedSubmission)
 	mux.HandleFunc("GET /api/tasks/{task_id}/submissions", server.listTaskSubmissions)
-	mux.HandleFunc("POST /api/public/tasks/{task_id}/submissions", server.createAnonymousSubmission)
 	mux.HandleFunc("GET /api/submission-receipts/{receipt_token}", server.findSubmissionReceipt)
+	mux.HandleFunc("GET /api/organizations/{organization_id}/credits/balance", server.organizationCreditsBalance)
 	mux.HandleFunc("GET /api/credits/balance", server.creditsBalance)
 	mux.HandleFunc("GET /api/credits/ledger", server.creditsLedger)
 	mux.HandleFunc("POST /api/tasks/{task_id}/funding", server.fundTask)
@@ -128,6 +141,10 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("GET /api/tasks/{task_id}", server.getTask)
 	mux.HandleFunc("GET /api/task-series", server.listTaskSeries)
 	mux.HandleFunc("GET /api/task-series/{series_id}", server.getTaskSeries)
+	mux.HandleFunc("POST /api/collectibles", server.mintCollectible)
+	mux.HandleFunc("GET /api/collectibles", server.listCollectibles)
+	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)
+	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-refund", server.refundCollectibleReward)
 	mux.HandleFunc("POST /api/agent-credentials", server.createAgentCredential)
 	mux.HandleFunc("GET /api/agent-credentials", server.listAgentCredentials)
 	mux.HandleFunc("POST /api/agent-credentials/{credential_id}/revoke", server.revokeAgentCredential)
@@ -232,8 +249,7 @@ type taskRequest struct {
 }
 
 type submissionRequest struct {
-	ResponseJSON  string `json:"response_json"`
-	WalletAddress string `json:"wallet_address"`
+	ResponseJSON string `json:"response_json"`
 }
 
 type organizationResponse struct {
@@ -302,7 +318,7 @@ type submissionValidationErrorResponse struct {
 type submissionResponse struct {
 	ID               string                              `json:"id"`
 	TaskID           string                              `json:"task_id"`
-	SubmitterKind    string                              `json:"submitter_kind"`
+	SubmitterID      string                              `json:"submitter_id"`
 	State            string                              `json:"state"`
 	ResponseJSON     string                              `json:"response_json"`
 	ValidationErrors []submissionValidationErrorResponse `json:"validation_errors"`
@@ -324,6 +340,7 @@ type emptyResponse struct {
 type fundingRequest struct {
 	Amount         int64  `json:"amount"`
 	IdempotencyKey string `json:"idempotency_key"`
+	OrganizationID string `json:"organization_id"`
 }
 
 type idempotentRequest struct {
@@ -356,11 +373,12 @@ type taskEscrowResponse struct {
 }
 
 type acceptSubmissionResponse struct {
-	TaskID       string `json:"task_id"`
-	SubmissionID string `json:"submission_id"`
-	PayoutKind   string `json:"payout_kind"`
-	PayoutAmount int64  `json:"payout_amount"`
-	WorkerUserID string `json:"worker_user_id"`
+	TaskID        string `json:"task_id"`
+	SubmissionID  string `json:"submission_id"`
+	PayoutKind    string `json:"payout_kind"`
+	PayoutAmount  int64  `json:"payout_amount"`
+	WorkerUserID  string `json:"worker_user_id"`
+	CollectibleID string `json:"collectible_id"`
 }
 
 func (balanceResponse) writableResponse() {}
@@ -852,26 +870,6 @@ func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *htt
 	server.submitResponse(w, r, requestAccepted.command)
 }
 
-func (server Server) createAnonymousSubmission(w http.ResponseWriter, r *http.Request) {
-	taskIDResult := parseTaskPathValue(r)
-	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
-	if !taskIDMatched {
-		rejected := taskIDResult.(taskIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
-		return
-	}
-
-	requestResult := decodeAnonymousSubmissionRequest(r, taskIDAccepted.value)
-	requestAccepted, requestMatched := requestResult.(submissionRequestAccepted)
-	if !requestMatched {
-		rejected := requestResult.(submissionRequestRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
-		return
-	}
-
-	server.submitResponse(w, r, requestAccepted.command)
-}
-
 func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, command submission.SubmitCommand) {
 	result := server.submissionService.Submit(r.Context(), command)
 	created, matched := result.(submission.SubmissionCreated)
@@ -1019,6 +1017,11 @@ func (server Server) fundTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if request.OrganizationID != "" {
+		server.fundTaskFromOrganization(w, r, actor.subject, taskIDAccepted.value, amount.Value, key.Value, request.OrganizationID)
+		return
+	}
+
 	result := server.ledgerService.FundTask(r.Context(), actor.subject.ID, taskIDAccepted.value, amount.Value, key.Value)
 	funded, matched := result.(ledger.TaskFunded)
 	if !matched {
@@ -1141,9 +1144,14 @@ func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionRespon
 		SubmissionID: accepted.SubmissionID.String(),
 		PayoutKind:   "none",
 	}
-	if payout, matched := accepted.Payout.(ledger.CreditPayout); matched {
+	switch payout := accepted.Payout.(type) {
+	case ledger.CreditPayout:
 		response.PayoutKind = "credit"
 		response.PayoutAmount = payout.Amount.Int64()
+		response.WorkerUserID = payout.WorkerUserID.String()
+	case ledger.CollectiblePayout:
+		response.PayoutKind = "collectible"
+		response.CollectibleID = payout.CollectibleID.String()
 		response.WorkerUserID = payout.WorkerUserID.String()
 	}
 	return response
@@ -1710,34 +1718,7 @@ func decodeAuthenticatedSubmissionRequest(r *http.Request, actor auth.UserSubjec
 
 	return submissionRequestAccepted{command: submission.SubmitCommand{
 		TaskID:         taskID,
-		Submitter:      submission.AuthenticatedSubmitter{UserID: actor.ID},
-		ResponseSource: source.Value,
-	}}
-}
-
-func decodeAnonymousSubmissionRequest(r *http.Request, taskID core.TaskID) submissionRequestResult {
-	var request submissionRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		return submissionRequestRejected{reason: "request body is invalid"}
-	}
-
-	walletResult := submission.NewWalletAddress(request.WalletAddress)
-	wallet, walletMatched := walletResult.(submission.WalletAddressAccepted)
-	if !walletMatched {
-		rejected := walletResult.(submission.WalletAddressRejected)
-		return submissionRequestRejected{reason: rejected.Reason.Description()}
-	}
-
-	sourceResult := submission.NewResponseSource(request.ResponseJSON)
-	source, sourceMatched := sourceResult.(submission.ResponseSourceAccepted)
-	if !sourceMatched {
-		rejected := sourceResult.(submission.ResponseSourceRejected)
-		return submissionRequestRejected{reason: rejected.Reason.Description()}
-	}
-
-	return submissionRequestAccepted{command: submission.SubmitCommand{
-		TaskID:         taskID,
-		Submitter:      submission.AnonymousSubmitter{WalletAddress: wallet.Value},
+		SubmitterID:    actor.ID,
 		ResponseSource: source.Value,
 	}}
 }
@@ -1894,21 +1875,10 @@ func submissionToResponse(value submission.Submission) submissionResponse {
 	return submissionResponse{
 		ID:               value.ID.String(),
 		TaskID:           value.TaskID.String(),
-		SubmitterKind:    submitterKindForResponse(value.Submitter),
+		SubmitterID:      value.SubmitterID.String(),
 		State:            value.State.String(),
 		ResponseJSON:     value.ResponseSource.String(),
 		ValidationErrors: errors,
-	}
-}
-
-func submitterKindForResponse(submitter submission.Submitter) string {
-	switch submitter.(type) {
-	case submission.AuthenticatedSubmitter:
-		return submission.SubmitterKindAuthenticated.String()
-	case submission.AnonymousSubmitter:
-		return submission.SubmitterKindAnonymous.String()
-	default:
-		return ""
 	}
 }
 

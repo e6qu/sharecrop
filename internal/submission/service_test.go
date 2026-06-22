@@ -9,23 +9,11 @@ import (
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
-func TestAnonymousSubmissionRequiresPublicTask(t *testing.T) {
-	store := newSubmissionMemoryStore()
-	taskStore := newSubmissionTaskStore(t, task.UserVisibility{UserID: submissionTestUserID(t)}, `{"kind":"freeform"}`)
-	service := NewService(store, taskStore)
-	command := testAnonymousSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
-
-	result := service.Submit(context.Background(), command)
-	if _, matched := result.(SubmitRejected); !matched {
-		t.Fatalf("result = %T, want SubmitRejected", result)
-	}
-}
-
-func TestAnonymousSubmissionCreatesReceiptForPublicTask(t *testing.T) {
+func TestSubmissionCreatesReceipt(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
 	service := NewService(store, taskStore)
-	command := testAnonymousSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
+	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
 	result := service.Submit(context.Background(), command)
 	created, matched := result.(SubmissionCreated)
@@ -41,7 +29,7 @@ func TestInvalidSubmissionIsRecordedWithValidationErrors(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"object","fields":[{"name":"answer","presence":"required","schema":{"kind":"string"},"sensitivity":{"category":"","retention":"","redaction":""}}]}`)
 	service := NewService(store, taskStore)
-	command := testAnonymousSubmitCommand(t, taskStore.value.ID, `{"answer":12}`)
+	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":12}`)
 
 	result := service.Submit(context.Background(), command)
 	created, matched := result.(SubmissionCreated)
@@ -64,7 +52,7 @@ func TestReceiptStatusRedactsSensitiveFields(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"object","fields":[{"name":"email","presence":"required","schema":{"kind":"string"},"sensitivity":{"category":"pii","retention":"delete_on_request","redaction":"replace"}}]}`)
 	service := NewService(store, taskStore)
-	command := testAnonymousSubmitCommand(t, taskStore.value.ID, `{"email":"person@example.com"}`)
+	command := testSubmitCommand(t, taskStore.value.ID, `{"email":"person@example.com"}`)
 
 	result := service.Submit(context.Background(), command)
 	created := result.(SubmissionCreated)
@@ -92,7 +80,7 @@ func newSubmissionMemoryStore() *submissionMemoryStore {
 }
 
 func (store *submissionMemoryStore) CreateSubmission(_ context.Context, submissionID core.SubmissionID, receiptID core.SubmissionReceiptTokenID, receiptHash ReceiptTokenHash, command SubmitCommand, state State, outcome ValidationOutcome, sensitiveFields []SensitiveField) CreateSubmissionStoreResult {
-	value := Submission{ID: submissionID, TaskID: command.TaskID, Submitter: command.Submitter, State: state, ResponseSource: command.ResponseSource, Validation: outcome}
+	value := Submission{ID: submissionID, TaskID: command.TaskID, SubmitterID: command.SubmitterID, State: state, ResponseSource: command.ResponseSource, Validation: outcome}
 	store.valuesByID[submissionID.String()] = value
 	store.submissionByHash[receiptHash.String()] = submissionID.String()
 	accepted := CreateSubmissionStoreAccepted{Value: value}
@@ -137,13 +125,11 @@ func (store *submissionTaskStore) FindTask(_ context.Context, taskID core.TaskID
 	return task.FindTaskStoreAccepted{Value: store.value}
 }
 
-func testAnonymousSubmitCommand(t *testing.T, taskID core.TaskID, response string) SubmitCommand {
+func testSubmitCommand(t *testing.T, taskID core.TaskID, response string) SubmitCommand {
 	t.Helper()
-	walletResult := NewWalletAddress("sharecrop:test")
-	wallet := walletResult.(WalletAddressAccepted)
 	sourceResult := NewResponseSource(response)
 	source := sourceResult.(ResponseSourceAccepted)
-	return SubmitCommand{TaskID: taskID, Submitter: AnonymousSubmitter{WalletAddress: wallet.Value}, ResponseSource: source.Value}
+	return SubmitCommand{TaskID: taskID, SubmitterID: submissionTestUserID(t), ResponseSource: source.Value}
 }
 
 func submissionTestUserID(t *testing.T) core.UserID {
