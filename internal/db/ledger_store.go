@@ -155,16 +155,14 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	}
 
 	outcome := payout.outcome
-	if _, noPayout := outcome.(ledger.NoPayout); noPayout {
-		collectibleResult := payOutCollectible(ctx, tx, command.TaskID, rawWorkerID)
-		collectible, collectibleMatched := collectibleResult.(payoutResolved)
-		if !collectibleMatched {
-			return ledger.AcceptRejected{Reason: collectibleResult.(payoutRejected).reason}
-		}
-		outcome = collectible.outcome
+	collectibleResult := payOutCollectible(ctx, tx, command.TaskID, rawWorkerID)
+	collectible, collectibleMatched := collectibleResult.(payoutResolved)
+	if !collectibleMatched {
+		return ledger.AcceptRejected{Reason: collectibleResult.(payoutRejected).reason}
 	}
+	outcome = combinePayouts(outcome, collectible.outcome)
 	if _, noPayout := outcome.(ledger.NoPayout); noPayout {
-		if taskRow.rewardKind == "credit" {
+		if taskRow.rewardKind == "credit" || taskRow.rewardKind == "bundle" {
 			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")}
 		}
 	}
@@ -180,6 +178,18 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	}
 
 	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: tip.outcome}
+}
+
+func combinePayouts(first ledger.PayoutOutcome, second ledger.PayoutOutcome) ledger.PayoutOutcome {
+	credit, hasCredit := first.(ledger.CreditPayout)
+	collectible, hasCollectible := second.(ledger.CollectiblePayout)
+	if hasCredit && hasCollectible && credit.WorkerUserID == collectible.WorkerUserID {
+		return ledger.BundlePayout{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleID: collectible.CollectibleID}
+	}
+	if _, firstNone := first.(ledger.NoPayout); firstNone {
+		return second
+	}
+	return first
 }
 
 func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.RequestChangesStoreCommand) ledger.RequestChangesResult {
@@ -393,6 +403,10 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 
 	if _, err := tx.Exec(ctx, "update task_escrows set state = 'refunded', state_recorded_at = now() where task_id = $1", command.TaskID.String()); err != nil {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update task escrow failed")}
+	}
+
+	if reason, rejected := refundHeldCollectibleReward(ctx, tx, command.TaskID); rejected {
+		return ledger.RefundRejected{Reason: reason}
 	}
 
 	if _, err := tx.Exec(ctx, "update tasks set state = 'cancelled', state_recorded_at = now() where id = $1", command.TaskID.String()); err != nil {

@@ -50,9 +50,9 @@ func toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolCreateTask,
-			Description: "Create a user-owned task. Visibility is \"user\" or \"public\". Reward kind is \"none\" or \"credit\".",
+			Description: "Create a user-owned task. Visibility is \"user\" or \"public\". Reward kind is \"none\", \"credit\", \"collectible\", or \"bundle\".",
 			Scope:       agent.ScopeTasksWrite,
-			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"visibility":{"type":"string","enum":["user","public"]},"reward_kind":{"type":"string","enum":["none","credit"]},"reward_credit_amount":{"type":"integer","minimum":1}},"required":["title","description","response_schema_json","visibility","reward_kind"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"visibility":{"type":"string","enum":["user","public"]},"reward_kind":{"type":"string","enum":["none","credit","collectible","bundle"]},"reward_credit_amount":{"type":"integer","minimum":1}},"required":["title","description","response_schema_json","visibility","reward_kind"]}`),
 		},
 		{
 			Name:        toolSubmitResponse,

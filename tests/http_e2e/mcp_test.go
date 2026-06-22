@@ -165,6 +165,24 @@ func createPublicCreditUserTask(t *testing.T, server *httptest.Server, owner aut
 	return decodeTaskHTTPResponse(t, response)
 }
 
+func createPublicBundleUserTask(t *testing.T, server *httptest.Server, owner authHTTPResponse, amount int64) taskHTTPResponse {
+	t.Helper()
+	body := `{
+		"owner":{"kind":"user","user_id":"` + owner.SubjectID + `","team_id":"","organization_id":""},
+		"title":"Public bundle agent task",
+		"description":"A public task with credit and collectible rewards.",
+		"reward":{"kind":"bundle","credit_amount":` + strconv.FormatInt(amount, 10) + `},
+		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(body), owner.AccessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+	return decodeTaskHTTPResponse(t, response)
+}
+
 type agentCredentialHTTPResponse struct {
 	Credential struct {
 		ID     string   `json:"id"`

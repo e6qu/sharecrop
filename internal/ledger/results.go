@@ -35,11 +35,19 @@ type CollectiblePayout struct {
 	CollectibleID core.CollectibleID
 }
 
+type BundlePayout struct {
+	WorkerUserID  core.UserID
+	Amount        CreditAmount
+	CollectibleID core.CollectibleID
+}
+
 func (NoPayout) payoutOutcome() {}
 
 func (CreditPayout) payoutOutcome() {}
 
 func (CollectiblePayout) payoutOutcome() {}
+
+func (BundlePayout) payoutOutcome() {}
 
 type AcceptResult interface {
 	acceptResult()

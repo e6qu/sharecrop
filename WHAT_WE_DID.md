@@ -651,3 +651,33 @@ The review outcomes branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod make check-format check-policy check-ts check-copy-paste lint vet frontend build` passed.
 - `make check-dead-code` could not be rerun after final changes because the required network escalation for downloading `golang.org/x/tools` was rejected by the approval system.
 - A final rerun of `make test-integration`, `make test-http`, and UI screenshot review could not be performed after the final frontend and handler refactor because escalation was rejected by the approval system.
+
+The reward bundles branch added combined reward modeling:
+
+- Task reward specs gained collectible-only and bundled credit-plus-collectible variants.
+- A migration allowed `collectible` and `bundle` task reward kinds while keeping credit amounts required only for credit-bearing rewards.
+- Task creation through HTTP and MCP accepts reward kinds `none`, `credit`, `collectible`, and `bundle`.
+- Task list, detail, generated Elm contracts, MCP summaries, and MCP detail outputs expose `reward_collectible_count` alongside reward kind and credit amount.
+- Opening a task now requires held credit escrow for credit-bearing rewards and a held collectible reward for collectible-bearing rewards.
+- Credit funding can coexist with a collectible reward on bundled tasks.
+- Accepting a bundled task pays the credit escrow and transfers the collectible in one accepted payout outcome.
+- Same-key accept retries reconstruct bundled payout responses without paying twice.
+- Refunding a bundled task through the credit refund endpoint returns both the held credits and the held collectible; the collectible-only refund endpoint rejects declared bundles so it cannot strand credit escrow.
+- Browser reward labels show credits, collectibles, or both.
+
+The reward bundles branch test coverage was updated:
+
+- HTTP end-to-end coverage verifies that bundled tasks cannot open until both reward components are funded, acceptance pays both components, same-key accept retries remain idempotent, and bundled refunds return both credits and the collectible.
+- HTTP end-to-end helper response shapes include reward kind, credit amount, and collectible count.
+
+The reward bundles branch verification was performed:
+
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags integration ./tests/integration` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-policy check-ts check-copy-paste lint vet test-deno check-dead-code frontend` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
+- `make check-contracts` regenerated the intended Elm contract changes and failed before commit because the generated files differed from `HEAD`; it should be rerun after the reward bundles commit.
+- Manual screenshot review was skipped; Playwright UI coverage passed.

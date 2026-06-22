@@ -18,6 +18,7 @@ type taskSummary struct {
 	Title          string `json:"title"`
 	RewardKind     string `json:"reward_kind"`
 	RewardAmount   int64  `json:"reward_credit_amount"`
+	Collectibles   int    `json:"reward_collectible_count"`
 	State          string `json:"state"`
 	VisibilityKind string `json:"visibility_kind"`
 	CreatedBy      string `json:"created_by"`
@@ -30,6 +31,7 @@ type taskDetail struct {
 	Description        string `json:"description"`
 	RewardKind         string `json:"reward_kind"`
 	RewardAmount       int64  `json:"reward_credit_amount"`
+	Collectibles       int    `json:"reward_collectible_count"`
 	State              string `json:"state"`
 	VisibilityKind     string `json:"visibility_kind"`
 	ResponseSchemaJSON string `json:"response_schema_json"`
@@ -241,8 +243,19 @@ func parseMCPReward(kind string, creditAmount int64) mcpRewardResult {
 			return mcpRewardRejected{reason: amountResult.(task.CreditRewardAmountRejected).Reason.Description()}
 		}
 		return mcpRewardAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
+	case task.RewardKindCollectible.String():
+		count := task.NewCollectibleRewardCount(1).(task.CollectibleRewardCountAccepted)
+		return mcpRewardAccepted{value: task.CollectibleRewardSpec{Count: count.Value}}
+	case task.RewardKindBundle.String():
+		amountResult := task.NewCreditRewardAmount(creditAmount)
+		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
+		if !matched {
+			return mcpRewardRejected{reason: amountResult.(task.CreditRewardAmountRejected).Reason.Description()}
+		}
+		count := task.NewCollectibleRewardCount(1).(task.CollectibleRewardCountAccepted)
+		return mcpRewardAccepted{value: task.BundleRewardSpec{Credit: amount.Value, Collectible: count.Value}}
 	default:
-		return mcpRewardRejected{reason: "reward_kind must be none or credit"}
+		return mcpRewardRejected{reason: "reward_kind must be none, credit, collectible, or bundle"}
 	}
 }
 
@@ -367,6 +380,11 @@ func (server Server) callAcceptSubmission(ctx context.Context, subject auth.User
 	}
 	if payout, payoutMatched := accepted.Payout.(ledger.CreditPayout); payoutMatched {
 		payload.PayoutKind = "credit"
+		payload.PayoutAmount = payout.Amount.Int64()
+		payload.WorkerUserID = payout.WorkerUserID.String()
+	}
+	if payout, payoutMatched := accepted.Payout.(ledger.BundlePayout); payoutMatched {
+		payload.PayoutKind = "bundle"
 		payload.PayoutAmount = payout.Amount.Int64()
 		payload.WorkerUserID = payout.WorkerUserID.String()
 	}
@@ -612,13 +630,14 @@ func parseTaskSubmissionIDs(rawTaskID string, rawSubmissionID string) parsedTask
 }
 
 func taskToSummary(value task.Task) taskSummary {
-	rewardKind, rewardAmount := rewardParts(value.Reward)
+	rewardKind, rewardAmount, collectibleCount := rewardParts(value.Reward)
 	return taskSummary{
 		ID:             value.ID.String(),
 		OwnerKind:      ownerKind(value.Owner),
 		Title:          value.Title.String(),
 		RewardKind:     rewardKind,
 		RewardAmount:   rewardAmount,
+		Collectibles:   collectibleCount,
 		State:          value.State.String(),
 		VisibilityKind: visibilityKind(value.Visibility),
 		CreatedBy:      value.CreatedBy.String(),
@@ -627,7 +646,7 @@ func taskToSummary(value task.Task) taskSummary {
 
 func taskToDetail(value task.Task) taskDetail {
 	payloadKind, payloadJSON := payloadParts(value.Payload)
-	rewardKind, rewardAmount := rewardParts(value.Reward)
+	rewardKind, rewardAmount, collectibleCount := rewardParts(value.Reward)
 	return taskDetail{
 		ID:                 value.ID.String(),
 		OwnerKind:          ownerKind(value.Owner),
@@ -635,6 +654,7 @@ func taskToDetail(value task.Task) taskDetail {
 		Description:        value.Description.String(),
 		RewardKind:         rewardKind,
 		RewardAmount:       rewardAmount,
+		Collectibles:       collectibleCount,
 		State:              value.State.String(),
 		VisibilityKind:     visibilityKind(value.Visibility),
 		ResponseSchemaJSON: value.ResponseSchema.String(),
@@ -644,14 +664,18 @@ func taskToDetail(value task.Task) taskDetail {
 	}
 }
 
-func rewardParts(reward task.RewardSpec) (string, int64) {
+func rewardParts(reward task.RewardSpec) (string, int64, int) {
 	switch typed := reward.(type) {
 	case task.NoRewardSpec:
-		return task.RewardKindNone.String(), 0
+		return task.RewardKindNone.String(), 0, 0
 	case task.CreditRewardSpec:
-		return task.RewardKindCredit.String(), typed.Amount.Int64()
+		return task.RewardKindCredit.String(), typed.Amount.Int64(), 0
+	case task.CollectibleRewardSpec:
+		return task.RewardKindCollectible.String(), 0, typed.Count.Int()
+	case task.BundleRewardSpec:
+		return task.RewardKindBundle.String(), typed.Credit.Int64(), typed.Collectible.Int()
 	default:
-		return "", 0
+		return "", 0, 0
 	}
 }
 

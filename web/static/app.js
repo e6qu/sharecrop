@@ -6818,7 +6818,7 @@ var $author$project$Main$createTaskRequestBody = function (state) {
 			]));
 };
 var $author$project$Main$taskDetailFromResponse = function (response) {
-	return {assigneeScope: response.assigneeScope, availabilityKind: response.availabilityKind, createdBy: response.createdBy, description: response.description, id: response.id, participationPolicy: response.participationPolicy, reservationExpiryHours: response.reservationExpiryHours, responseSchemaJson: response.responseSchemaJSON, rewardCreditAmount: response.rewardCreditAmount, rewardKind: response.rewardKind, state: response.state, title: response.title, viewerAction: response.viewerAction};
+	return {assigneeScope: response.assigneeScope, availabilityKind: response.availabilityKind, createdBy: response.createdBy, description: response.description, id: response.id, participationPolicy: response.participationPolicy, reservationExpiryHours: response.reservationExpiryHours, responseSchemaJson: response.responseSchemaJSON, rewardCollectibleCount: response.rewardCollectibleCount, rewardCreditAmount: response.rewardCreditAmount, rewardKind: response.rewardKind, state: response.state, title: response.title, viewerAction: response.viewerAction};
 };
 var $author$project$Sharecrop$Generated$Task$TaskResponse = function (id) {
 	return function (ownerKind) {
@@ -6827,22 +6827,24 @@ var $author$project$Sharecrop$Generated$Task$TaskResponse = function (id) {
 				return function (description) {
 					return function (rewardKind) {
 						return function (rewardCreditAmount) {
-							return function (participationPolicy) {
-								return function (assigneeScope) {
-									return function (reservationExpiryHours) {
-										return function (state) {
-											return function (visibilityKind) {
-												return function (visibilityID) {
-													return function (availabilityKind) {
-														return function (viewerAction) {
-															return function (seriesKind) {
-																return function (seriesID) {
-																	return function (seriesPosition) {
-																		return function (responseSchemaJSON) {
-																			return function (payloadKind) {
-																				return function (payloadJSON) {
-																					return function (createdBy) {
-																						return {assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, description: description, id: id, ownerID: ownerID, ownerKind: ownerKind, participationPolicy: participationPolicy, payloadJSON: payloadJSON, payloadKind: payloadKind, reservationExpiryHours: reservationExpiryHours, responseSchemaJSON: responseSchemaJSON, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, seriesID: seriesID, seriesKind: seriesKind, seriesPosition: seriesPosition, state: state, title: title, viewerAction: viewerAction, visibilityID: visibilityID, visibilityKind: visibilityKind};
+							return function (rewardCollectibleCount) {
+								return function (participationPolicy) {
+									return function (assigneeScope) {
+										return function (reservationExpiryHours) {
+											return function (state) {
+												return function (visibilityKind) {
+													return function (visibilityID) {
+														return function (availabilityKind) {
+															return function (viewerAction) {
+																return function (seriesKind) {
+																	return function (seriesID) {
+																		return function (seriesPosition) {
+																			return function (responseSchemaJSON) {
+																				return function (payloadKind) {
+																					return function (payloadJSON) {
+																						return function (createdBy) {
+																							return {assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, description: description, id: id, ownerID: ownerID, ownerKind: ownerKind, participationPolicy: participationPolicy, payloadJSON: payloadJSON, payloadKind: payloadKind, reservationExpiryHours: reservationExpiryHours, responseSchemaJSON: responseSchemaJSON, rewardCollectibleCount: rewardCollectibleCount, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, seriesID: seriesID, seriesKind: seriesKind, seriesPosition: seriesPosition, state: state, title: title, viewerAction: viewerAction, visibilityID: visibilityID, visibilityKind: visibilityKind};
+																						};
 																					};
 																				};
 																			};
@@ -6866,6 +6868,7 @@ var $author$project$Sharecrop$Generated$Task$TaskResponse = function (id) {
 	};
 };
 var $elm$json$Json$Decode$int = _Json_decodeInt;
+var $elm$json$Json$Decode$map7 = _Json_map7;
 var $elm$json$Json$Decode$map8 = _Json_map8;
 var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeOrganizationTeam = {$: 'TaskAssigneeScopeOrganizationTeam'};
 var $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder = A2(
@@ -7015,9 +7018,10 @@ var $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder = A2(
 var $author$project$Sharecrop$Generated$Task$taskResponseDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (finish) {
-		return A7(
-			$elm$json$Json$Decode$map6,
+		return A8(
+			$elm$json$Json$Decode$map7,
 			finish,
+			A2($elm$json$Json$Decode$field, 'series_kind', $elm$json$Json$Decode$string),
 			A2($elm$json$Json$Decode$field, 'series_id', $elm$json$Json$Decode$string),
 			A2($elm$json$Json$Decode$field, 'series_position', $elm$json$Json$Decode$int),
 			A2($elm$json$Json$Decode$field, 'response_schema_json', $elm$json$Json$Decode$string),
@@ -7031,14 +7035,14 @@ var $author$project$Sharecrop$Generated$Task$taskResponseDecoder = A2(
 			return A9(
 				$elm$json$Json$Decode$map8,
 				finish,
+				A2($elm$json$Json$Decode$field, 'participation_policy', $author$project$Sharecrop$Generated$Task$taskParticipationPolicyDecoder),
 				A2($elm$json$Json$Decode$field, 'assignee_scope', $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder),
 				A2($elm$json$Json$Decode$field, 'reservation_expiry_hours', $elm$json$Json$Decode$int),
 				A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskStateDecoder),
 				A2($elm$json$Json$Decode$field, 'visibility_kind', $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder),
 				A2($elm$json$Json$Decode$field, 'visibility_id', $elm$json$Json$Decode$string),
 				A2($elm$json$Json$Decode$field, 'availability_kind', $author$project$Sharecrop$Generated$Task$taskAvailabilityKindDecoder),
-				A2($elm$json$Json$Decode$field, 'viewer_action', $author$project$Sharecrop$Generated$Task$taskViewerActionDecoder),
-				A2($elm$json$Json$Decode$field, 'series_kind', $elm$json$Json$Decode$string));
+				A2($elm$json$Json$Decode$field, 'viewer_action', $author$project$Sharecrop$Generated$Task$taskViewerActionDecoder));
 		},
 		A9(
 			$elm$json$Json$Decode$map8,
@@ -7050,7 +7054,7 @@ var $author$project$Sharecrop$Generated$Task$taskResponseDecoder = A2(
 			A2($elm$json$Json$Decode$field, 'description', $elm$json$Json$Decode$string),
 			A2($elm$json$Json$Decode$field, 'reward_kind', $elm$json$Json$Decode$string),
 			A2($elm$json$Json$Decode$field, 'reward_credit_amount', $elm$json$Json$Decode$int),
-			A2($elm$json$Json$Decode$field, 'participation_policy', $author$project$Sharecrop$Generated$Task$taskParticipationPolicyDecoder))));
+			A2($elm$json$Json$Decode$field, 'reward_collectible_count', $elm$json$Json$Decode$int))));
 var $author$project$Main$taskDetailDecoder = A2($elm$json$Json$Decode$map, $author$project$Main$taskDetailFromResponse, $author$project$Sharecrop$Generated$Task$taskResponseDecoder);
 var $author$project$Main$postCreateTask = function (state) {
 	return A5(
@@ -7208,7 +7212,6 @@ var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F7(
 	function (id, taskID, submitterID, state, responseJSON, reviewNote, validationErrors) {
 		return {id: id, responseJSON: responseJSON, reviewNote: reviewNote, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
 	});
-var $elm$json$Json$Decode$map7 = _Json_map7;
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
@@ -7296,15 +7299,17 @@ var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = function (id
 		return function (title) {
 			return function (rewardKind) {
 				return function (rewardCreditAmount) {
-					return function (participationPolicy) {
-						return function (assigneeScope) {
-							return function (reservationExpiryHours) {
-								return function (state) {
-									return function (visibilityKind) {
-										return function (availabilityKind) {
-											return function (viewerAction) {
-												return function (createdBy) {
-													return {assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, id: id, ownerKind: ownerKind, participationPolicy: participationPolicy, reservationExpiryHours: reservationExpiryHours, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, state: state, title: title, viewerAction: viewerAction, visibilityKind: visibilityKind};
+					return function (rewardCollectibleCount) {
+						return function (participationPolicy) {
+							return function (assigneeScope) {
+								return function (reservationExpiryHours) {
+									return function (state) {
+										return function (visibilityKind) {
+											return function (availabilityKind) {
+												return function (viewerAction) {
+													return function (createdBy) {
+														return {assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, id: id, ownerKind: ownerKind, participationPolicy: participationPolicy, reservationExpiryHours: reservationExpiryHours, rewardCollectibleCount: rewardCollectibleCount, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, state: state, title: title, viewerAction: viewerAction, visibilityKind: visibilityKind};
+													};
 												};
 											};
 										};
@@ -7318,13 +7323,13 @@ var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = function (id
 		};
 	};
 };
-var $elm$json$Json$Decode$map5 = _Json_map5;
 var $author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (finish) {
-		return A6(
-			$elm$json$Json$Decode$map5,
+		return A7(
+			$elm$json$Json$Decode$map6,
 			finish,
+			A2($elm$json$Json$Decode$field, 'reservation_expiry_hours', $elm$json$Json$Decode$int),
 			A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskStateDecoder),
 			A2($elm$json$Json$Decode$field, 'visibility_kind', $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder),
 			A2($elm$json$Json$Decode$field, 'availability_kind', $author$project$Sharecrop$Generated$Task$taskAvailabilityKindDecoder),
@@ -7339,9 +7344,9 @@ var $author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder = A2(
 		A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
 		A2($elm$json$Json$Decode$field, 'reward_kind', $elm$json$Json$Decode$string),
 		A2($elm$json$Json$Decode$field, 'reward_credit_amount', $elm$json$Json$Decode$int),
+		A2($elm$json$Json$Decode$field, 'reward_collectible_count', $elm$json$Json$Decode$int),
 		A2($elm$json$Json$Decode$field, 'participation_policy', $author$project$Sharecrop$Generated$Task$taskParticipationPolicyDecoder),
-		A2($elm$json$Json$Decode$field, 'assignee_scope', $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder),
-		A2($elm$json$Json$Decode$field, 'reservation_expiry_hours', $elm$json$Json$Decode$int)));
+		A2($elm$json$Json$Decode$field, 'assignee_scope', $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder)));
 var $author$project$Sharecrop$Generated$Task$tasksResponseDecoder = A2(
 	$elm$json$Json$Decode$map,
 	$author$project$Sharecrop$Generated$Task$TasksResponse,
@@ -10095,9 +10100,18 @@ var $author$project$Main$AwardTaskIdChanged = function (a) {
 };
 var $elm$html$Html$option = _VirtualDom_node('option');
 var $elm$html$Html$select = _VirtualDom_node('select');
-var $author$project$Main$rewardLabel = F2(
-	function (kind, amount) {
-		return (kind === 'credit') ? ($elm$core$String$fromInt(amount) + ' credits') : 'no reward';
+var $author$project$Main$rewardLabel = F3(
+	function (kind, amount, collectibleCount) {
+		switch (kind) {
+			case 'credit':
+				return $elm$core$String$fromInt(amount) + ' credits';
+			case 'collectible':
+				return $elm$core$String$fromInt(collectibleCount) + ' collectible';
+			case 'bundle':
+				return $elm$core$String$fromInt(amount) + (' credits + ' + ($elm$core$String$fromInt(collectibleCount) + ' collectible'));
+			default:
+				return 'no reward';
+		}
 	});
 var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
 var $author$project$Main$taskStateLabel = function (state) {
@@ -10127,7 +10141,7 @@ var $author$project$Main$taskOption = F2(
 			_List_fromArray(
 				[
 					$elm$html$Html$text(
-					item.title + (' · ' + ($author$project$Main$taskStateLabel(item.state) + (' · ' + A2($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount)))))
+					item.title + (' · ' + ($author$project$Main$taskStateLabel(item.state) + (' · ' + A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount)))))
 				]));
 	});
 var $author$project$Main$taskPicker = F4(
@@ -10999,7 +11013,7 @@ var $author$project$Main$taskDetailView = F2(
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								'Reward: ' + A2($author$project$Main$rewardLabel, detail.rewardKind, detail.rewardCreditAmount))
+								'Reward: ' + A3($author$project$Main$rewardLabel, detail.rewardKind, detail.rewardCreditAmount, detail.rewardCollectibleCount))
 							])),
 						A2(
 						$elm$html$Html$p,
@@ -11104,7 +11118,7 @@ var $author$project$Main$taskRow = function (item) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								$author$project$Main$taskStateLabel(item.state) + (' · ' + A2($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount)))
+								$author$project$Main$taskStateLabel(item.state) + (' · ' + A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount)))
 							]))
 					])),
 				A2(
@@ -11225,7 +11239,7 @@ var $author$project$Main$discoveryRow = function (item) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								$author$project$Main$taskStateLabel(item.state) + (' · ' + (A2($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount) + (' · ' + $author$project$Main$participationPolicyLabel(item.participationPolicy)))))
+								$author$project$Main$taskStateLabel(item.state) + (' · ' + (A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + (' · ' + $author$project$Main$participationPolicyLabel(item.participationPolicy)))))
 							]))
 					])),
 				A2(
@@ -11350,7 +11364,7 @@ var $author$project$Main$detailCard = F2(
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								'Reward: ' + A2($author$project$Main$rewardLabel, detail.rewardKind, detail.rewardCreditAmount))
+								'Reward: ' + A3($author$project$Main$rewardLabel, detail.rewardKind, detail.rewardCreditAmount, detail.rewardCollectibleCount))
 							])),
 						A2(
 						$elm$html$Html$p,
