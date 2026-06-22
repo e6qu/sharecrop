@@ -738,3 +738,28 @@ The UI themes and GitHub Pages demo branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
 - Screenshot review was performed for `/tmp/sharecrop-screens/desktop-corporate-light.png`, `/tmp/sharecrop-screens/desktop-blocky-dark.png`, `/tmp/sharecrop-screens/mobile-rustic-light.png`, and `/tmp/sharecrop-screens/mobile-showcase-dark.png`.
+
+The demo UI/UX repair branch refined the GitHub Pages demo:
+
+- The demo was split into separate pages for overview, discovery, requester workflow, review queue, API/MCP instructions, and demo settings.
+- The previous all-in-one scrolling demo was replaced with a focused app shell, page tabs, task tables, detail panels, and review panels.
+- Demo login was moved into a discrete top-right account control that starts as Guest and opens a login panel.
+- The login panel supports selecting a demo user and choosing mock Google, Apple, Microsoft, Facebook, and X.com provider buttons.
+- The login panel closes after user selection, provider selection, or page navigation so it does not block other controls.
+- Dark theme overrides were fixed for all visual themes.
+- A demo audit helper was added to check deployed and local demo pages for console warnings, console errors, page errors, failed requests, and horizontal overflow.
+- Playwright static demo coverage was updated for the separated navigation and login flow.
+
+The demo UI/UX repair branch verification was performed:
+
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages.
+- Screenshot review was performed for `/tmp/sharecrop-screens/desktop-corporate-light.png` and `/tmp/sharecrop-screens/mobile-showcase-dark.png`.

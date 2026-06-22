@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 21 work. Pull request 21 was merged into `main`.
+The repository contains pull request 1 through pull request 22 work. Pull request 22 was merged into `main`.
 
 Active task:
 
-- No implementation branch is active. The next implementation task should be selected from [DO_NEXT.md](./DO_NEXT.md).
+- Active branch `task/demo-ui-ux-repair` refactors the GitHub Pages demo into separate pages, moves demo login into a top-right account control, reduces page clutter, fixes dark theme overrides, adds deployed/local demo audit tooling, and updates Playwright coverage.
 
 Implemented surface:
 
@@ -150,6 +150,8 @@ Implemented surface:
 - The static demo supports light and dark modes plus corporate, rustic, blocky, and showcase themes.
 - The static demo supports demo user selection, mock provider sign-in buttons, local task workflow edits, and a visible clear-state control.
 - GitHub Actions has a Pages workflow that publishes `site/` on pushes to `main` and manual dispatch.
+- The static demo uses separate pages for overview, discovery, requester workflow, review queue, API/MCP instructions, and demo settings.
+- Demo login starts from a Guest account control in the top-right corner and opens a discrete login panel with demo users and mock provider choices.
 
 Planned defaults:
 
@@ -192,6 +194,20 @@ Last observed checks for pull request 21:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for corporate light, blocky dark, rustic light, and showcase dark demo states.
 - GitHub CI passed before pull request 21 was merged: static checks, unit tests, build, integration tests, HTTP end-to-end tests, and Playwright user interface end-to-end tests.
+
+Last observed checks on `task/demo-ui-ux-repair`:
+
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages with no console warnings, console errors, page errors, failed requests, or horizontal overflow.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for corporate light, blocky dark, rustic light, and showcase dark demo states.
 
 Blocking issues:
 

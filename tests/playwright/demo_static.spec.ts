@@ -6,7 +6,8 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await page.goto(demoUrl);
 
   await expect(page.getByRole("heading", {
-    name: "Design tasks, reserve implementors, and pay fair rewards.",
+    name:
+      "Coordinate requested work without turning Sharecrop into a task runner.",
   })).toBeVisible();
 
   await page.getByRole("button", { name: "Dark" }).click();
@@ -14,11 +15,13 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await expect(page.locator("body")).toHaveAttribute("data-mode", "dark");
   await expect(page.locator("body")).toHaveAttribute("data-theme", "blocky");
 
-  await page.getByLabel("User").selectOption("jules");
+  await page.getByRole("button", { name: /Guest/ }).click();
+  await page.getByLabel("Select user").selectOption("jules");
   await expect(page.getByRole("heading", {
-    name: "Find work, reserve it, and submit structured results.",
+    name: "Find eligible tasks, reserve work, and submit structured results.",
   })).toBeVisible();
 
+  await page.getByRole("button", { name: "Requester" }).click();
   await page.getByLabel("Title").fill("Demo persistence task");
   await page.getByRole("button", { name: "Add demo task" }).click();
   await expect(page.getByRole("button", { name: /Demo persistence task/ }))
@@ -27,6 +30,7 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await page.reload();
   await expect(page.locator("body")).toHaveAttribute("data-mode", "dark");
   await expect(page.locator("body")).toHaveAttribute("data-theme", "blocky");
+  await page.getByRole("button", { name: "Requester" }).click();
   await expect(page.getByRole("button", { name: /Demo persistence task/ }))
     .toBeVisible();
 
