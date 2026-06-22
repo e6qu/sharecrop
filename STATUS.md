@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 18 work. Pull request 18 was merged into `main`.
+The repository contains pull request 1 through pull request 19 work. Pull request 19 was merged into `main`.
 
 Active task:
 
-- Active branch `task/mcp-workflow-sse` implemented remaining MCP workflow tools and Streamable HTTP SSE support and is awaiting pull request creation.
+- No implementation branch is active. The next implementation task should be selected from [DO_NEXT.md](./DO_NEXT.md).
 
 Implemented surface:
 
@@ -163,7 +163,7 @@ The accepted defaults for pull request 1 were:
 - Default app port: `18080`.
 - Default local Postgres port: `15432`.
 
-Last observed checks on `task/mcp-workflow-sse`:
+Last observed checks for pull request 19:
 
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e` passed with local Postgres access.
@@ -171,6 +171,7 @@ Last observed checks on `task/mcp-workflow-sse`:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test-deno` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- GitHub CI passed before pull request 19 was merged: static checks, unit tests, build, integration tests, HTTP end-to-end tests, and Playwright user interface end-to-end tests.
 
 Blocking issues:
 
