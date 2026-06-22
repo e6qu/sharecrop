@@ -6221,8 +6221,26 @@ var $author$project$Main$LoggedIn = function (a) {
 var $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen = {$: 'TaskParticipationPolicyOpen'};
 var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
-var $author$project$Main$AcceptReceived = function (a) {
-	return {$: 'AcceptReceived', a: a};
+var $author$project$Main$ReviewActionReceived = function (a) {
+	return {$: 'ReviewActionReceived', a: a};
+};
+var $elm$json$Json$Encode$int = _Json_wrap;
+var $elm$core$String$trim = _String_trim;
+var $elm$core$Maybe$withDefault = F2(
+	function (_default, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return value;
+		} else {
+			return _default;
+		}
+	});
+var $author$project$Main$intInputOrZero = function (raw) {
+	return A2(
+		$elm$core$Maybe$withDefault,
+		0,
+		$elm$core$String$toInt(
+			$elm$core$String$trim(raw)));
 };
 var $elm$json$Json$Encode$object = function (pairs) {
 	return _Json_wrap(
@@ -6238,15 +6256,24 @@ var $elm$json$Json$Encode$object = function (pairs) {
 			pairs));
 };
 var $elm$json$Json$Encode$string = _Json_wrap;
-var $author$project$Main$acceptRequestBody = function (submissionId) {
-	return $elm$json$Json$Encode$object(
-		_List_fromArray(
-			[
-				_Utils_Tuple2(
-				'idempotency_key',
-				$elm$json$Json$Encode$string('ui-accept:' + submissionId))
-			]));
-};
+var $author$project$Main$acceptRequestBody = F3(
+	function (submissionId, payoutAmount, tipAmount) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'idempotency_key',
+					$elm$json$Json$Encode$string('ui-accept:' + submissionId)),
+					_Utils_Tuple2(
+					'payout_amount',
+					$elm$json$Json$Encode$int(
+						$author$project$Main$intInputOrZero(payoutAmount))),
+					_Utils_Tuple2(
+					'tip_amount',
+					$elm$json$Json$Encode$int(
+						$author$project$Main$intInputOrZero(tipAmount)))
+				]));
+	});
 var $elm$http$Http$Header = F2(
 	function (a, b) {
 		return {$: 'Header', a: a, b: b};
@@ -6291,16 +6318,31 @@ var $elm$http$Http$jsonBody = function (value) {
 		'application/json',
 		A2($elm$json$Json$Encode$encode, 0, value));
 };
-var $author$project$Main$postAccept = F3(
-	function (token, taskId, submissionId) {
+var $author$project$Main$postAccept = F5(
+	function (token, taskId, submissionId, payoutAmount, tipAmount) {
 		return A5(
 			$author$project$Main$authorizedRequest,
 			'POST',
 			token,
 			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/accept'))),
 			$elm$http$Http$jsonBody(
-				$author$project$Main$acceptRequestBody(submissionId)),
-			$elm$http$Http$expectWhatever($author$project$Main$AcceptReceived));
+				A3($author$project$Main$acceptRequestBody, submissionId, payoutAmount, tipAmount)),
+			$elm$http$Http$expectWhatever($author$project$Main$ReviewActionReceived));
+	});
+var $author$project$Main$updateLoggedIn = F2(
+	function (model, change) {
+		var _v0 = model.session;
+		if (_v0.$ === 'LoggedIn') {
+			var state = _v0.a;
+			return _Utils_update(
+				model,
+				{
+					session: $author$project$Main$LoggedIn(
+						change(state))
+				});
+		} else {
+			return model;
+		}
 	});
 var $author$project$Main$acceptCommand = F3(
 	function (model, state, submissionId) {
@@ -6308,8 +6350,15 @@ var $author$project$Main$acceptCommand = F3(
 		if (_v0.$ === 'TaskDetailPage') {
 			var taskId = _v0.a;
 			return _Utils_Tuple2(
-				model,
-				A3($author$project$Main$postAccept, state.accessToken, taskId, submissionId));
+				A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (current) {
+						return _Utils_update(
+							current,
+							{reviewMessage: $elm$core$Maybe$Nothing});
+					}),
+				A5($author$project$Main$postAccept, state.accessToken, taskId, submissionId, state.reviewPartialCredit, state.reviewTip));
 		} else {
 			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
@@ -6407,22 +6456,6 @@ var $author$project$Main$postCollectibleReward = F3(
 			$elm$http$Http$jsonBody(
 				$author$project$Main$collectibleRewardRequestBody(collectibleId)),
 			A2($elm$http$Http$expectJson, $author$project$Main$AwardReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
-	});
-var $elm$core$String$trim = _String_trim;
-var $author$project$Main$updateLoggedIn = F2(
-	function (model, change) {
-		var _v0 = model.session;
-		if (_v0.$ === 'LoggedIn') {
-			var state = _v0.a;
-			return _Utils_update(
-				model,
-				{
-					session: $author$project$Main$LoggedIn(
-						change(state))
-				});
-		} else {
-			return model;
-		}
 	});
 var $author$project$Main$awardCommand = F3(
 	function (model, state, collectibleId) {
@@ -6634,7 +6667,6 @@ var $author$project$Main$assigneeScopeTag = function (scope) {
 		return 'organization_team';
 	}
 };
-var $elm$json$Json$Encode$int = _Json_wrap;
 var $author$project$Main$reservationHoursValue = function (raw) {
 	var _v0 = $elm$core$String$toInt(raw);
 	if (_v0.$ === 'Just') {
@@ -7172,11 +7204,13 @@ var $author$project$Main$SubmissionsReceived = function (a) {
 var $author$project$Sharecrop$Generated$Submission$SubmissionsResponse = function (submissions) {
 	return {submissions: submissions};
 };
-var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F6(
-	function (id, taskID, submitterID, state, responseJSON, validationErrors) {
-		return {id: id, responseJSON: responseJSON, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
+var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F7(
+	function (id, taskID, submitterID, state, responseJSON, reviewNote, validationErrors) {
+		return {id: id, responseJSON: responseJSON, reviewNote: reviewNote, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
 	});
+var $elm$json$Json$Decode$map7 = _Json_map7;
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateRejected = {$: 'SubmissionStateRejected'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted = {$: 'SubmissionStateSubmitted'};
@@ -7192,6 +7226,8 @@ var $author$project$Sharecrop$Generated$Submission$submissionStateDecoder = A2(
 				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted);
 			case 'rejected':
 				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateRejected);
+			case 'changes_requested':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested);
 			default:
 				return $elm$json$Json$Decode$fail('invalid SubmissionState');
 		}
@@ -7206,14 +7242,15 @@ var $author$project$Sharecrop$Generated$Submission$submissionValidationErrorResp
 	$author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse,
 	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder = A7(
-	$elm$json$Json$Decode$map6,
+var $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder = A8(
+	$elm$json$Json$Decode$map7,
 	$author$project$Sharecrop$Generated$Submission$SubmissionResponse,
 	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'submitter_id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Submission$submissionStateDecoder),
 	A2($elm$json$Json$Decode$field, 'response_json', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'review_note', $elm$json$Json$Decode$string),
 	A2(
 		$elm$json$Json$Decode$field,
 		'validation_errors',
@@ -7529,6 +7566,7 @@ var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindSignupGrant = {$: 
 var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskEscrow = {$: 'LedgerEntryKindTaskEscrow'};
 var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskPayout = {$: 'LedgerEntryKindTaskPayout'};
 var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskRefund = {$: 'LedgerEntryKindTaskRefund'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskTip = {$: 'LedgerEntryKindTaskTip'};
 var $author$project$Sharecrop$Generated$Ledger$ledgerEntryKindDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (value) {
@@ -7541,6 +7579,8 @@ var $author$project$Sharecrop$Generated$Ledger$ledgerEntryKindDecoder = A2(
 				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskRefund);
 			case 'task_payout':
 				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskPayout);
+			case 'task_tip':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskTip);
 			case 'manual_adjustment':
 				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindManualAdjustment);
 			default:
@@ -7638,6 +7678,11 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		page: $author$project$Main$DashboardPage,
 		reservationMessage: $elm$core$Maybe$Nothing,
 		reservations: _List_Nil,
+		reviewBan: false,
+		reviewMessage: $elm$core$Maybe$Nothing,
+		reviewNote: '',
+		reviewPartialCredit: '',
+		reviewTip: '',
 		selectedTask: $elm$core$Maybe$Nothing,
 		subjectId: response.subjectID,
 		submissions: _List_Nil,
@@ -7932,6 +7977,100 @@ var $author$project$Main$refreshTasksAndLedger = function (model) {
 		return $elm$core$Platform$Cmd$none;
 	}
 };
+var $elm$json$Json$Encode$bool = _Json_wrap;
+var $author$project$Main$rejectRequestBody = F5(
+	function (submissionId, reviewNote, partialCredit, tipAmount, banImplementor) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'idempotency_key',
+					$elm$json$Json$Encode$string('ui-reject:' + submissionId)),
+					_Utils_Tuple2(
+					'review_note',
+					$elm$json$Json$Encode$string(reviewNote)),
+					_Utils_Tuple2(
+					'partial_credit_amount',
+					$elm$json$Json$Encode$int(
+						$author$project$Main$intInputOrZero(partialCredit))),
+					_Utils_Tuple2(
+					'tip_amount',
+					$elm$json$Json$Encode$int(
+						$author$project$Main$intInputOrZero(tipAmount))),
+					_Utils_Tuple2(
+					'ban_implementor',
+					$elm$json$Json$Encode$bool(banImplementor))
+				]));
+	});
+var $author$project$Main$postReject = F7(
+	function (token, taskId, submissionId, reviewNote, partialCredit, tipAmount, banImplementor) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'POST',
+			token,
+			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/reject'))),
+			$elm$http$Http$jsonBody(
+				A5($author$project$Main$rejectRequestBody, submissionId, reviewNote, partialCredit, tipAmount, banImplementor)),
+			$elm$http$Http$expectWhatever($author$project$Main$ReviewActionReceived));
+	});
+var $author$project$Main$rejectCommand = F3(
+	function (model, state, submissionId) {
+		var _v0 = state.page;
+		if (_v0.$ === 'TaskDetailPage') {
+			var taskId = _v0.a;
+			return _Utils_Tuple2(
+				A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (current) {
+						return _Utils_update(
+							current,
+							{reviewMessage: $elm$core$Maybe$Nothing});
+					}),
+				A7($author$project$Main$postReject, state.accessToken, taskId, submissionId, state.reviewNote, state.reviewPartialCredit, state.reviewTip, state.reviewBan));
+		} else {
+			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+		}
+	});
+var $author$project$Main$requestChangesBody = function (reviewNote) {
+	return $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'review_note',
+				$elm$json$Json$Encode$string(reviewNote))
+			]));
+};
+var $author$project$Main$postRequestChanges = F4(
+	function (token, taskId, submissionId, reviewNote) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'POST',
+			token,
+			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/request-changes'))),
+			$elm$http$Http$jsonBody(
+				$author$project$Main$requestChangesBody(reviewNote)),
+			$elm$http$Http$expectWhatever($author$project$Main$ReviewActionReceived));
+	});
+var $author$project$Main$requestChangesCommand = F3(
+	function (model, state, submissionId) {
+		var _v0 = state.page;
+		if (_v0.$ === 'TaskDetailPage') {
+			var taskId = _v0.a;
+			return _Utils_Tuple2(
+				A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (current) {
+						return _Utils_update(
+							current,
+							{reviewMessage: $elm$core$Maybe$Nothing});
+					}),
+				A4($author$project$Main$postRequestChanges, state.accessToken, taskId, submissionId, state.reviewNote));
+		} else {
+			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+		}
+	});
 var $author$project$Main$ReservationChangeReceived = function (a) {
 	return {$: 'ReservationChangeReceived', a: a};
 };
@@ -8071,8 +8210,10 @@ var $author$project$Main$submissionStateLabel = function (state) {
 			return 'invalid';
 		case 'SubmissionStateAccepted':
 			return 'accepted';
-		default:
+		case 'SubmissionStateRejected':
 			return 'rejected';
+		default:
+			return 'changes requested';
 	}
 };
 var $author$project$Main$submitSuccessLabel = function (created) {
@@ -9036,6 +9177,54 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'ReviewNoteChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{reviewNote: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ReviewPartialCreditChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{reviewPartialCredit: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ReviewTipChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{reviewTip: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ReviewBanChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{reviewBan: value});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'AcceptClicked':
 				var submissionId = msg.a;
 				return A2(
@@ -9044,10 +9233,52 @@ var $author$project$Main$update = F2(
 					function (state) {
 						return A3($author$project$Main$acceptCommand, model, state, submissionId);
 					});
-			case 'AcceptReceived':
-				return _Utils_Tuple2(
+			case 'RequestChangesClicked':
+				var submissionId = msg.a;
+				return A2(
+					$author$project$Main$withSession,
 					model,
-					$author$project$Main$refreshAfterAccept(model));
+					function (state) {
+						return A3($author$project$Main$requestChangesCommand, model, state, submissionId);
+					});
+			case 'RejectClicked':
+				var submissionId = msg.a;
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return A3($author$project$Main$rejectCommand, model, state, submissionId);
+					});
+			case 'ReviewActionReceived':
+				if (msg.a.$ === 'Ok') {
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										reviewMessage: $elm$core$Maybe$Just('Review saved.')
+									});
+							}),
+						$author$project$Main$refreshAfterAccept(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										reviewMessage: $elm$core$Maybe$Just(
+											$author$project$Main$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'CollectibleNameChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -9719,7 +9950,6 @@ var $author$project$Main$newCredentialView = F2(
 var $author$project$Main$ToggleScope = function (a) {
 	return {$: 'ToggleScope', a: a};
 };
-var $elm$json$Json$Encode$bool = _Json_wrap;
 var $elm$html$Html$Attributes$boolProperty = F2(
 	function (key, bool) {
 		return A2(
@@ -10395,6 +10625,8 @@ var $author$project$Main$kindLabel = function (kind) {
 			return 'task_refund';
 		case 'LedgerEntryKindTaskPayout':
 			return 'task_payout';
+		case 'LedgerEntryKindTaskTip':
+			return 'task_tip';
 		default:
 			return 'manual_adjustment';
 	}
@@ -10506,23 +10738,74 @@ var $author$project$Main$RefundTaskClicked = function (a) {
 var $author$project$Main$AcceptClicked = function (a) {
 	return {$: 'AcceptClicked', a: a};
 };
-var $author$project$Main$acceptButton = F2(
-	function (_v0, submission) {
-		var _v1 = submission.state;
-		if (_v1.$ === 'SubmissionStateSubmitted') {
+var $author$project$Main$RejectClicked = function (a) {
+	return {$: 'RejectClicked', a: a};
+};
+var $author$project$Main$RequestChangesClicked = function (a) {
+	return {$: 'RequestChangesClicked', a: a};
+};
+var $author$project$Main$reviewButtons = F2(
+	function (state, submission) {
+		var _v0 = submission.state;
+		if (_v0.$ === 'SubmissionStateSubmitted') {
 			return A2(
-				$author$project$Sharecrop$Ui$primaryButton,
+				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Events$onClick(
-						$author$project$Main$AcceptClicked(submission.id)),
-						$author$project$Sharecrop$Ui$testId('accept-submission')
+						$elm$html$Html$Attributes$class('flex flex-wrap justify-end gap-2')
 					]),
-				'Accept');
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$RequestChangesClicked(submission.id)),
+								$elm$html$Html$Attributes$disabled(
+								$elm$core$String$trim(state.reviewNote) === ''),
+								$author$project$Sharecrop$Ui$testId('request-changes')
+							]),
+						'Request changes'),
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$RejectClicked(submission.id)),
+								$elm$html$Html$Attributes$disabled(
+								$elm$core$String$trim(state.reviewNote) === ''),
+								$author$project$Sharecrop$Ui$testId('reject-submission')
+							]),
+						'Reject'),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$AcceptClicked(submission.id)),
+								$author$project$Sharecrop$Ui$testId('accept-submission')
+							]),
+						'Accept')
+					]));
 		} else {
 			return $elm$html$Html$text('');
 		}
 	});
+var $author$project$Main$reviewNoteView = function (note) {
+	return $elm$core$String$isEmpty(
+		$elm$core$String$trim(note)) ? $elm$html$Html$text('') : A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900'),
+				$author$project$Sharecrop$Ui$testId('submission-review-note')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(note)
+			]));
+};
 var $author$project$Main$validationErrorView = function (item) {
 	return A2(
 		$elm$html$Html$p,
@@ -10565,7 +10848,7 @@ var $author$project$Main$submissionRow = F2(
 						[
 							$author$project$Sharecrop$Ui$badge(
 							$author$project$Main$submissionStateLabel(submission.state)),
-							A2($author$project$Main$acceptButton, state, submission)
+							A2($author$project$Main$reviewButtons, state, submission)
 						])),
 					A2(
 					$elm$html$Html$p,
@@ -10577,6 +10860,7 @@ var $author$project$Main$submissionRow = F2(
 						[
 							$elm$html$Html$text('Submitter: ' + submission.submitterID)
 						])),
+					$author$project$Main$reviewNoteView(submission.reviewNote),
 					A2(
 					$author$project$Sharecrop$Ui$codeBlock,
 					_List_fromArray(
@@ -11298,11 +11582,167 @@ var $author$project$Main$reservationCard = function (state) {
 		return $elm$html$Html$text('');
 	}
 };
+var $author$project$Main$ReviewBanChanged = function (a) {
+	return {$: 'ReviewBanChanged', a: a};
+};
+var $author$project$Main$ReviewNoteChanged = function (a) {
+	return {$: 'ReviewNoteChanged', a: a};
+};
+var $author$project$Main$ReviewPartialCreditChanged = function (a) {
+	return {$: 'ReviewPartialCreditChanged', a: a};
+};
+var $author$project$Main$ReviewTipChanged = function (a) {
+	return {$: 'ReviewTipChanged', a: a};
+};
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
+var $elm$html$Html$Events$targetChecked = A2(
+	$elm$json$Json$Decode$at,
+	_List_fromArray(
+		['target', 'checked']),
+	$elm$json$Json$Decode$bool);
+var $elm$html$Html$Events$onCheck = function (tagger) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'change',
+		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
+};
+var $author$project$Main$reviewControls = function (state) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('mb-3 grid gap-3 rounded border border-slate-200 p-3 text-sm')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$label,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('grid gap-1')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-xs font-semibold text-slate-600')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Review note')
+							])),
+						A2(
+						$elm$html$Html$textarea,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('min-h-20 rounded border border-slate-300 px-3 py-2 text-sm'),
+								$elm$html$Html$Attributes$rows(3),
+								$elm$html$Html$Attributes$value(state.reviewNote),
+								$elm$html$Html$Events$onInput($author$project$Main$ReviewNoteChanged),
+								$author$project$Sharecrop$Ui$testId('review-note')
+							]),
+						_List_Nil)
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('grid gap-2 sm:grid-cols-3')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('grid gap-1')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$span,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-xs font-semibold text-slate-600')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Partial payout')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('rounded border border-slate-300 px-3 py-2 text-sm'),
+										$elm$html$Html$Attributes$type_('number'),
+										$elm$html$Html$Attributes$value(state.reviewPartialCredit),
+										$elm$html$Html$Events$onInput($author$project$Main$ReviewPartialCreditChanged),
+										$author$project$Sharecrop$Ui$testId('review-partial-credit')
+									]),
+								_List_Nil)
+							])),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('grid gap-1')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$span,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-xs font-semibold text-slate-600')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Tip')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('rounded border border-slate-300 px-3 py-2 text-sm'),
+										$elm$html$Html$Attributes$type_('number'),
+										$elm$html$Html$Attributes$value(state.reviewTip),
+										$elm$html$Html$Events$onInput($author$project$Main$ReviewTipChanged),
+										$author$project$Sharecrop$Ui$testId('review-tip')
+									]),
+								_List_Nil)
+							])),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('flex items-center gap-2 pt-6 text-sm text-slate-700')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('checkbox'),
+										$elm$html$Html$Attributes$checked(state.reviewBan),
+										$elm$html$Html$Events$onCheck($author$project$Main$ReviewBanChanged),
+										$author$project$Sharecrop$Ui$testId('review-ban')
+									]),
+								_List_Nil),
+								$elm$html$Html$text('Ban implementor')
+							]))
+					])),
+				A2($author$project$Main$maybeNote, state.reviewMessage, 'review-message')
+			]));
+};
 var $author$project$Main$submissionsCard = function (state) {
 	return $author$project$Sharecrop$Ui$card(
 		_List_fromArray(
 			[
 				$author$project$Sharecrop$Ui$sectionTitle('Submissions'),
+				$author$project$Main$reviewControls(state),
 				$author$project$Main$submissionsList(state)
 			]));
 };

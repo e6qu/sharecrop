@@ -85,6 +85,9 @@ type LedgerService interface {
 	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
 	FundTaskFromOrganization(context.Context, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
 	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
+	ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection) ledger.AcceptResult
+	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, submission.ReviewNote) ledger.RequestChangesResult
+	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	Balance(context.Context, core.UserID) ledger.BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult
@@ -149,6 +152,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/funding", server.fundTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/refund", server.refundTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/accept", server.acceptSubmission)
+	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/request-changes", server.requestSubmissionChanges)
+	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/reject", server.rejectSubmission)
 	mux.HandleFunc("GET /api/tasks/{task_id}", server.getTask)
 	mux.HandleFunc("GET /api/task-series", server.listTaskSeries)
 	mux.HandleFunc("GET /api/task-series/{series_id}", server.getTaskSeries)
@@ -365,6 +370,7 @@ type submissionResponse struct {
 	SubmitterID      string                              `json:"submitter_id"`
 	State            string                              `json:"state"`
 	ResponseJSON     string                              `json:"response_json"`
+	ReviewNote       string                              `json:"review_note"`
 	ValidationErrors []submissionValidationErrorResponse `json:"validation_errors"`
 }
 
@@ -389,6 +395,24 @@ type fundingRequest struct {
 
 type idempotentRequest struct {
 	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type acceptSubmissionRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+	PayoutAmount   int64  `json:"payout_amount"`
+	TipAmount      int64  `json:"tip_amount"`
+}
+
+type requestChangesRequest struct {
+	ReviewNote string `json:"review_note"`
+}
+
+type rejectSubmissionRequest struct {
+	IdempotencyKey      string `json:"idempotency_key"`
+	ReviewNote          string `json:"review_note"`
+	PartialCreditAmount int64  `json:"partial_credit_amount"`
+	TipAmount           int64  `json:"tip_amount"`
+	BanImplementor      bool   `json:"ban_implementor"`
 }
 
 type writableResponse interface {
@@ -423,6 +447,18 @@ type acceptSubmissionResponse struct {
 	PayoutAmount  int64  `json:"payout_amount"`
 	WorkerUserID  string `json:"worker_user_id"`
 	CollectibleID string `json:"collectible_id"`
+	TipAmount     int64  `json:"tip_amount"`
+}
+
+type reviewSubmissionResponse struct {
+	TaskID       string `json:"task_id"`
+	SubmissionID string `json:"submission_id"`
+	State        string `json:"state"`
+	ReviewNote   string `json:"review_note"`
+	PayoutKind   string `json:"payout_kind"`
+	PayoutAmount int64  `json:"payout_amount"`
+	WorkerUserID string `json:"worker_user_id"`
+	TipAmount    int64  `json:"tip_amount"`
 }
 
 func (balanceResponse) writableResponse() {}
@@ -432,6 +468,8 @@ func (ledgerListResponse) writableResponse() {}
 func (taskEscrowResponse) writableResponse() {}
 
 func (acceptSubmissionResponse) writableResponse() {}
+
+func (reviewSubmissionResponse) writableResponse() {}
 
 func (reservationResponse) writableResponse() {}
 
@@ -810,18 +848,20 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value)
-	listed, matched := result.(task.TasksListed)
-	if !matched {
-		rejected := result.(task.ListRejected)
-		writeDomainError(w, rejected.Reason)
-		return
+	switch listed := result.(type) {
+	case task.ListRejected:
+		writeDomainError(w, listed.Reason)
+	case task.TasksListed:
+		writeTasksResponse(w, http.StatusOK, tasksToResponse(listed.Values))
 	}
+}
 
-	response := tasksResponse{Tasks: make([]taskResponse, 0, len(listed.Values))}
-	for _, value := range listed.Values {
-		response.Tasks = append(response.Tasks, taskToResponse(value))
+func tasksToResponse(values []task.Task) tasksResponse {
+	response := tasksResponse{Tasks: make([]taskResponse, 0, len(values))}
+	for valueIndex := range values {
+		response.Tasks = append(response.Tasks, taskToResponse(values[valueIndex]))
 	}
-	writeTasksResponse(w, http.StatusOK, response)
+	return response
 }
 
 func (server Server) openTask(w http.ResponseWriter, r *http.Request) {
@@ -840,11 +880,11 @@ func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	taskIDResult := parseTaskPathValue(r)
-	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
-	if !taskIDMatched {
-		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+	if rejected, matched := taskIDResult.(taskIDRejected); matched {
+		writeError(w, http.StatusBadRequest, rejected.reason)
 		return
 	}
+	taskIDAccepted := taskIDResult.(taskIDAccepted)
 
 	result := server.taskService.Reserve(r.Context(), actor.subject, taskIDAccepted.value)
 	created, matched := result.(task.ReservationCreated)
@@ -1194,7 +1234,7 @@ func (server Server) refundTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var request idempotentRequest
+	var request acceptSubmissionRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "request body is invalid")
 		return
@@ -1240,7 +1280,7 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var request idempotentRequest
+	var request acceptSubmissionRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "request body is invalid")
 		return
@@ -1253,7 +1293,20 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.AcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value)
+	creditSelectionResult := acceptCreditSelection(request.PayoutAmount)
+	creditSelection, creditSelectionMatched := creditSelectionResult.(creditSelectionAccepted)
+	if !creditSelectionMatched {
+		writeError(w, http.StatusBadRequest, creditSelectionResult.(creditSelectionRejected).reason)
+		return
+	}
+	tipSelectionResult := tipSelectionFromAmount(request.TipAmount)
+	tipSelection, tipSelectionMatched := tipSelectionResult.(tipSelectionAccepted)
+	if !tipSelectionMatched {
+		writeError(w, http.StatusBadRequest, tipSelectionResult.(tipSelectionRejected).reason)
+		return
+	}
+
+	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value, creditSelection.value, tipSelection.value)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		writeDomainError(w, result.(ledger.AcceptRejected).Reason)
@@ -1261,6 +1314,133 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, acceptToResponse(accepted))
+}
+
+func (server Server) requestSubmissionChanges(w http.ResponseWriter, r *http.Request) {
+	pathResult := server.parseReviewPath(w, r)
+	path, pathMatched := pathResult.(reviewPathAccepted)
+	if !pathMatched {
+		return
+	}
+
+	var request requestChangesRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	noteResult := submission.NewRequiredReviewNote(request.ReviewNote)
+	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
+	if !noteMatched {
+		writeError(w, http.StatusBadRequest, noteResult.(submission.ReviewNoteRejected).Reason.Description())
+		return
+	}
+
+	result := server.ledgerService.RequestChanges(r.Context(), path.actor.ID, path.taskID, path.submissionID, note.Value)
+	changed, matched := result.(ledger.ChangesRequested)
+	if !matched {
+		writeDomainError(w, result.(ledger.RequestChangesRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewSubmissionResponse{
+		TaskID:       changed.TaskID.String(),
+		SubmissionID: changed.SubmissionID.String(),
+		State:        "changes_requested",
+		ReviewNote:   changed.ReviewNote,
+		PayoutKind:   "none",
+	})
+}
+
+func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
+	pathResult := server.parseReviewPath(w, r)
+	path, pathMatched := pathResult.(reviewPathAccepted)
+	if !pathMatched {
+		return
+	}
+
+	var request rejectSubmissionRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	keyResult := ledger.NewIdempotencyKey(request.IdempotencyKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		writeError(w, http.StatusBadRequest, keyResult.(ledger.IdempotencyKeyRejected).Reason.Description())
+		return
+	}
+	noteResult := submission.NewRequiredReviewNote(request.ReviewNote)
+	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
+	if !noteMatched {
+		writeError(w, http.StatusBadRequest, noteResult.(submission.ReviewNoteRejected).Reason.Description())
+		return
+	}
+	creditSelectionResult := rejectCreditSelection(request.PartialCreditAmount)
+	creditSelection, creditSelectionMatched := creditSelectionResult.(creditSelectionAccepted)
+	if !creditSelectionMatched {
+		writeError(w, http.StatusBadRequest, creditSelectionResult.(creditSelectionRejected).reason)
+		return
+	}
+	tipSelectionResult := tipSelectionFromAmount(request.TipAmount)
+	tipSelection, tipSelectionMatched := tipSelectionResult.(tipSelectionAccepted)
+	if !tipSelectionMatched {
+		writeError(w, http.StatusBadRequest, tipSelectionResult.(tipSelectionRejected).reason)
+		return
+	}
+	banSelection := ledger.BanSelection(ledger.NoBanSelection{})
+	if request.BanImplementor {
+		banSelection = ledger.BanImplementorSelection{}
+	}
+
+	result := server.ledgerService.RejectSubmission(r.Context(), path.actor.ID, path.taskID, path.submissionID, key.Value, note.Value, creditSelection.value, tipSelection.value, banSelection)
+	rejected, matched := result.(ledger.SubmissionRejected)
+	if !matched {
+		writeDomainError(w, result.(ledger.RejectRejected).Reason)
+		return
+	}
+	response := reviewOutcomeToResponse(rejected.Payout, rejected.Tip)
+	response.TaskID = rejected.TaskID.String()
+	response.SubmissionID = rejected.SubmissionID.String()
+	response.State = "rejected"
+	response.ReviewNote = note.Value.String()
+	writeJSON(w, http.StatusOK, response)
+}
+
+type reviewPathResult interface {
+	reviewPathResult()
+}
+
+type reviewPathAccepted struct {
+	actor        auth.UserSubject
+	taskID       core.TaskID
+	submissionID core.SubmissionID
+}
+
+type reviewPathRejected struct{}
+
+func (reviewPathAccepted) reviewPathResult() {}
+
+func (reviewPathRejected) reviewPathResult() {}
+
+func (server Server) parseReviewPath(w http.ResponseWriter, r *http.Request) reviewPathResult {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return reviewPathRejected{}
+	}
+	taskIDResult := parseTaskPathValue(r)
+	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
+	if !taskIDMatched {
+		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		return reviewPathRejected{}
+	}
+	submissionIDResult := core.ParseSubmissionID(r.PathValue("submission_id"))
+	submissionIDAccepted, submissionIDMatched := submissionIDResult.(core.SubmissionIDCreated)
+	if !submissionIDMatched {
+		writeError(w, http.StatusBadRequest, submissionIDResult.(core.SubmissionIDRejected).Reason.Description())
+		return reviewPathRejected{}
+	}
+	return reviewPathAccepted{actor: actor.subject, taskID: taskIDAccepted.value, submissionID: submissionIDAccepted.Value}
 }
 
 func ledgerEntryToResponse(entry ledger.LedgerEntry) ledgerEntryResponse {
@@ -1300,7 +1480,103 @@ func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionRespon
 		response.CollectibleID = payout.CollectibleID.String()
 		response.WorkerUserID = payout.WorkerUserID.String()
 	}
+	if tip, matched := accepted.Tip.(ledger.CreditTip); matched {
+		response.TipAmount = tip.Amount.Int64()
+	}
 	return response
+}
+
+func reviewOutcomeToResponse(payout ledger.PayoutOutcome, tip ledger.TipOutcome) reviewSubmissionResponse {
+	response := reviewSubmissionResponse{PayoutKind: "none"}
+	if credit, matched := payout.(ledger.CreditPayout); matched {
+		response.PayoutKind = "credit"
+		response.PayoutAmount = credit.Amount.Int64()
+		response.WorkerUserID = credit.WorkerUserID.String()
+	}
+	if creditTip, matched := tip.(ledger.CreditTip); matched {
+		response.TipAmount = creditTip.Amount.Int64()
+		if response.WorkerUserID == "" {
+			response.WorkerUserID = creditTip.WorkerUserID.String()
+		}
+	}
+	return response
+}
+
+type creditSelectionResult interface {
+	creditSelectionResult()
+}
+
+type creditSelectionAccepted struct {
+	value ledger.CreditReviewSelection
+}
+
+type creditSelectionRejected struct {
+	reason string
+}
+
+func (creditSelectionAccepted) creditSelectionResult() {}
+
+func (creditSelectionRejected) creditSelectionResult() {}
+
+func acceptCreditSelection(amount int64) creditSelectionResult {
+	if amount < 0 {
+		return creditSelectionRejected{reason: "payout amount cannot be negative"}
+	}
+	if amount == 0 {
+		return creditSelectionAccepted{value: ledger.FullCreditReviewSelection{}}
+	}
+	creditResult := ledger.NewCreditAmount(amount)
+	credit, matched := creditResult.(ledger.CreditAmountAccepted)
+	if !matched {
+		return creditSelectionRejected{reason: creditResult.(ledger.CreditAmountRejected).Reason.Description()}
+	}
+	return creditSelectionAccepted{value: ledger.PartialCreditReviewSelection{Amount: credit.Value}}
+}
+
+func rejectCreditSelection(amount int64) creditSelectionResult {
+	if amount < 0 {
+		return creditSelectionRejected{reason: "partial credit amount cannot be negative"}
+	}
+	if amount == 0 {
+		return creditSelectionAccepted{value: ledger.NoCreditReviewSelection{}}
+	}
+	creditResult := ledger.NewCreditAmount(amount)
+	credit, matched := creditResult.(ledger.CreditAmountAccepted)
+	if !matched {
+		return creditSelectionRejected{reason: creditResult.(ledger.CreditAmountRejected).Reason.Description()}
+	}
+	return creditSelectionAccepted{value: ledger.PartialCreditReviewSelection{Amount: credit.Value}}
+}
+
+type tipSelectionResult interface {
+	tipSelectionResult()
+}
+
+type tipSelectionAccepted struct {
+	value ledger.TipSelection
+}
+
+type tipSelectionRejected struct {
+	reason string
+}
+
+func (tipSelectionAccepted) tipSelectionResult() {}
+
+func (tipSelectionRejected) tipSelectionResult() {}
+
+func tipSelectionFromAmount(amount int64) tipSelectionResult {
+	if amount < 0 {
+		return tipSelectionRejected{reason: "tip amount cannot be negative"}
+	}
+	if amount == 0 {
+		return tipSelectionAccepted{value: ledger.NoTipSelection{}}
+	}
+	creditResult := ledger.NewCreditAmount(amount)
+	credit, matched := creditResult.(ledger.CreditAmountAccepted)
+	if !matched {
+		return tipSelectionRejected{reason: creditResult.(ledger.CreditAmountRejected).Reason.Description()}
+	}
+	return tipSelectionAccepted{value: ledger.CreditTipSelection{Amount: credit.Value}}
 }
 
 func writeJSON(w http.ResponseWriter, status int, value writableResponse) {
@@ -2242,6 +2518,7 @@ func submissionToResponse(value submission.Submission) submissionResponse {
 		SubmitterID:      value.SubmitterID.String(),
 		State:            value.State.String(),
 		ResponseJSON:     value.ResponseSource.String(),
+		ReviewNote:       value.ReviewNote.String(),
 		ValidationErrors: errors,
 	}
 }

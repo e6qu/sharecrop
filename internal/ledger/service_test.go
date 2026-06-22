@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/submission"
 )
 
 func TestNewCreditAmountRejectsNonPositive(t *testing.T) {
@@ -128,10 +129,28 @@ func TestServiceAcceptSubmissionDelegates(t *testing.T) {
 	}
 }
 
+func TestServiceRejectSubmissionDelegates(t *testing.T) {
+	store := &memoryStore{}
+	service := NewService(store)
+	note := submissionNote(t, "needs current data")
+
+	result := service.RejectSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{})
+	if _, matched := result.(SubmissionRejected); !matched {
+		t.Fatalf("result = %T, want SubmissionRejected", result)
+	}
+	if store.rejectCommand.PayoutEntryID.String() == "" {
+		t.Fatalf("service did not generate a payout entry id")
+	}
+	if _, matched := store.rejectCommand.BanSelection.(BanImplementorSelection); !matched {
+		t.Fatalf("ban selection = %T, want BanImplementorSelection", store.rejectCommand.BanSelection)
+	}
+}
+
 type memoryStore struct {
 	fundCommand   FundStoreCommand
 	acceptCommand AcceptStoreCommand
 	refundCommand RefundStoreCommand
+	rejectCommand RejectStoreCommand
 }
 
 func (store *memoryStore) FundTask(_ context.Context, command FundStoreCommand) FundResult {
@@ -141,7 +160,16 @@ func (store *memoryStore) FundTask(_ context.Context, command FundStoreCommand) 
 
 func (store *memoryStore) AcceptSubmission(_ context.Context, command AcceptStoreCommand) AcceptResult {
 	store.acceptCommand = command
-	return SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: NoPayout{}}
+	return SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: NoPayout{}, Tip: NoTip{}}
+}
+
+func (store *memoryStore) RequestChanges(_ context.Context, command RequestChangesStoreCommand) RequestChangesResult {
+	return ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, ReviewNote: command.ReviewNote.String()}
+}
+
+func (store *memoryStore) RejectSubmission(_ context.Context, command RejectStoreCommand) RejectResult {
+	store.rejectCommand = command
+	return SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: NoPayout{}, Tip: NoTip{}}
 }
 
 func (store *memoryStore) RefundTask(_ context.Context, command RefundStoreCommand) RefundResult {
@@ -172,6 +200,15 @@ func newTestEntry(t *testing.T, amount int64) LedgerEntry {
 		t.Fatalf("ParseSignedAmount(%d) rejected", amount)
 	}
 	return LedgerEntry{ID: newTestEntryID(t), Kind: EntryKindManualAdjustment, Amount: signed.Value, TaskRef: NoTaskReference{}}
+}
+
+func submissionNote(t *testing.T, raw string) submission.ReviewNote {
+	t.Helper()
+	accepted, matched := submission.NewRequiredReviewNote(raw).(submission.ReviewNoteAccepted)
+	if !matched {
+		t.Fatalf("review note rejected")
+	}
+	return accepted.Value
 }
 
 func newTestAmount(t *testing.T, value int64) CreditAmount {

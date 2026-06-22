@@ -4,7 +4,7 @@ import Browser
 import Browser.Navigation as Nav
 import Html exposing (Html, div, form, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
 import Html.Attributes exposing (checked, disabled, placeholder, selected, type_, value)
-import Html.Events exposing (onClick, onInput, onSubmit)
+import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -64,6 +64,11 @@ type alias LoggedInModel =
     , submissions : List Submission.SubmissionResponse
     , submitInput : String
     , submitMessage : Maybe String
+    , reviewNote : String
+    , reviewPartialCredit : String
+    , reviewTip : String
+    , reviewBan : Bool
+    , reviewMessage : Maybe String
     , collectibles : List Collectible.CollectibleResponse
     , collectibleName : String
     , collectibleKind : Collectible.CollectibleKind
@@ -161,8 +166,14 @@ type Msg
     | SubmitInputChanged String
     | SubmitClicked
     | SubmitReceived (Result Http.Error Submission.SubmissionCreatedResponse)
+    | ReviewNoteChanged String
+    | ReviewPartialCreditChanged String
+    | ReviewTipChanged String
+    | ReviewBanChanged Bool
     | AcceptClicked String
-    | AcceptReceived (Result Http.Error ())
+    | RequestChangesClicked String
+    | RejectClicked String
+    | ReviewActionReceived (Result Http.Error ())
     | CollectibleNameChanged String
     | CollectibleKindChosen Collectible.CollectibleKind
     | CollectiblePolicyChosen Collectible.CollectibleTransferPolicy
@@ -232,6 +243,11 @@ emptyLoggedIn response =
     , submissions = []
     , submitInput = ""
     , submitMessage = Nothing
+    , reviewNote = ""
+    , reviewPartialCredit = ""
+    , reviewTip = ""
+    , reviewBan = False
+    , reviewMessage = Nothing
     , collectibles = []
     , collectibleName = ""
     , collectibleKind = Collectible.CollectibleKindBadge
@@ -526,11 +542,32 @@ update msg model =
         SubmitReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | submitMessage = Just (httpErrorLabel error) }), Cmd.none )
 
+        ReviewNoteChanged value ->
+            ( updateLoggedIn model (\state -> { state | reviewNote = value }), Cmd.none )
+
+        ReviewPartialCreditChanged value ->
+            ( updateLoggedIn model (\state -> { state | reviewPartialCredit = value }), Cmd.none )
+
+        ReviewTipChanged value ->
+            ( updateLoggedIn model (\state -> { state | reviewTip = value }), Cmd.none )
+
+        ReviewBanChanged value ->
+            ( updateLoggedIn model (\state -> { state | reviewBan = value }), Cmd.none )
+
         AcceptClicked submissionId ->
             withSession model (\state -> acceptCommand model state submissionId)
 
-        AcceptReceived _ ->
-            ( model, refreshAfterAccept model )
+        RequestChangesClicked submissionId ->
+            withSession model (\state -> requestChangesCommand model state submissionId)
+
+        RejectClicked submissionId ->
+            withSession model (\state -> rejectCommand model state submissionId)
+
+        ReviewActionReceived (Ok _) ->
+            ( updateLoggedIn model (\state -> { state | reviewMessage = Just "Review saved." }), refreshAfterAccept model )
+
+        ReviewActionReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | reviewMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         CollectibleNameChanged value ->
             ( updateLoggedIn model (\state -> { state | collectibleName = value }), Cmd.none )
@@ -733,7 +770,27 @@ acceptCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
 acceptCommand model state submissionId =
     case state.page of
         TaskDetailPage taskId ->
-            ( model, postAccept state.accessToken taskId submissionId )
+            ( updateLoggedIn model (\current -> { current | reviewMessage = Nothing }), postAccept state.accessToken taskId submissionId state.reviewPartialCredit state.reviewTip )
+
+        _ ->
+            ( model, Cmd.none )
+
+
+requestChangesCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+requestChangesCommand model state submissionId =
+    case state.page of
+        TaskDetailPage taskId ->
+            ( updateLoggedIn model (\current -> { current | reviewMessage = Nothing }), postRequestChanges state.accessToken taskId submissionId state.reviewNote )
+
+        _ ->
+            ( model, Cmd.none )
+
+
+rejectCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+rejectCommand model state submissionId =
+    case state.page of
+        TaskDetailPage taskId ->
+            ( updateLoggedIn model (\current -> { current | reviewMessage = Nothing }), postReject state.accessToken taskId submissionId state.reviewNote state.reviewPartialCredit state.reviewTip state.reviewBan )
 
         _ ->
             ( model, Cmd.none )
@@ -1046,13 +1103,31 @@ postSubmission token taskId responseJson =
         (Http.expectJson SubmitReceived Submission.submissionCreatedResponseDecoder)
 
 
-postAccept : String -> String -> String -> Cmd Msg
-postAccept token taskId submissionId =
+postAccept : String -> String -> String -> String -> String -> Cmd Msg
+postAccept token taskId submissionId payoutAmount tipAmount =
     authorizedRequest "POST"
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/accept")
-        (Http.jsonBody (acceptRequestBody submissionId))
-        (Http.expectWhatever AcceptReceived)
+        (Http.jsonBody (acceptRequestBody submissionId payoutAmount tipAmount))
+        (Http.expectWhatever ReviewActionReceived)
+
+
+postRequestChanges : String -> String -> String -> String -> Cmd Msg
+postRequestChanges token taskId submissionId reviewNote =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/request-changes")
+        (Http.jsonBody (requestChangesBody reviewNote))
+        (Http.expectWhatever ReviewActionReceived)
+
+
+postReject : String -> String -> String -> String -> String -> String -> Bool -> Cmd Msg
+postReject token taskId submissionId reviewNote partialCredit tipAmount banImplementor =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/reject")
+        (Http.jsonBody (rejectRequestBody submissionId reviewNote partialCredit tipAmount banImplementor))
+        (Http.expectWhatever ReviewActionReceived)
 
 
 fetchCollectibles : String -> Cmd Msg
@@ -1158,11 +1233,39 @@ submissionRequestBody responseJson =
         ]
 
 
-acceptRequestBody : String -> Encode.Value
-acceptRequestBody submissionId =
+acceptRequestBody : String -> String -> String -> Encode.Value
+acceptRequestBody submissionId payoutAmount tipAmount =
     Encode.object
         [ ( "idempotency_key", Encode.string ("ui-accept:" ++ submissionId) )
+        , ( "payout_amount", Encode.int (intInputOrZero payoutAmount) )
+        , ( "tip_amount", Encode.int (intInputOrZero tipAmount) )
         ]
+
+
+requestChangesBody : String -> Encode.Value
+requestChangesBody reviewNote =
+    Encode.object
+        [ ( "review_note", Encode.string reviewNote )
+        ]
+
+
+rejectRequestBody : String -> String -> String -> String -> Bool -> Encode.Value
+rejectRequestBody submissionId reviewNote partialCredit tipAmount banImplementor =
+    Encode.object
+        [ ( "idempotency_key", Encode.string ("ui-reject:" ++ submissionId) )
+        , ( "review_note", Encode.string reviewNote )
+        , ( "partial_credit_amount", Encode.int (intInputOrZero partialCredit) )
+        , ( "tip_amount", Encode.int (intInputOrZero tipAmount) )
+        , ( "ban_implementor", Encode.bool banImplementor )
+        ]
+
+
+intInputOrZero : String -> Int
+intInputOrZero raw =
+    raw
+        |> String.trim
+        |> String.toInt
+        |> Maybe.withDefault 0
 
 
 collectibleRequestBody : String -> Collectible.CollectibleKind -> Collectible.CollectibleTransferPolicy -> Encode.Value
@@ -1799,7 +1902,40 @@ submissionsCard : LoggedInModel -> Html Msg
 submissionsCard state =
     Ui.card
         [ Ui.sectionTitle "Submissions"
+        , reviewControls state
         , submissionsList state
+        ]
+
+
+reviewControls : LoggedInModel -> Html Msg
+reviewControls state =
+    div [ Html.Attributes.class "mb-3 grid gap-3 rounded border border-slate-200 p-3 text-sm" ]
+        [ label [ Html.Attributes.class "grid gap-1" ]
+            [ span [ Html.Attributes.class "text-xs font-semibold text-slate-600" ] [ text "Review note" ]
+            , Html.textarea
+                [ Html.Attributes.class "min-h-20 rounded border border-slate-300 px-3 py-2 text-sm"
+                , Html.Attributes.rows 3
+                , value state.reviewNote
+                , onInput ReviewNoteChanged
+                , testId "review-note"
+                ]
+                []
+            ]
+        , div [ Html.Attributes.class "grid gap-2 sm:grid-cols-3" ]
+            [ label [ Html.Attributes.class "grid gap-1" ]
+                [ span [ Html.Attributes.class "text-xs font-semibold text-slate-600" ] [ text "Partial payout" ]
+                , Html.input [ Html.Attributes.class "rounded border border-slate-300 px-3 py-2 text-sm", type_ "number", value state.reviewPartialCredit, onInput ReviewPartialCreditChanged, testId "review-partial-credit" ] []
+                ]
+            , label [ Html.Attributes.class "grid gap-1" ]
+                [ span [ Html.Attributes.class "text-xs font-semibold text-slate-600" ] [ text "Tip" ]
+                , Html.input [ Html.Attributes.class "rounded border border-slate-300 px-3 py-2 text-sm", type_ "number", value state.reviewTip, onInput ReviewTipChanged, testId "review-tip" ] []
+                ]
+            , label [ Html.Attributes.class "flex items-center gap-2 pt-6 text-sm text-slate-700" ]
+                [ Html.input [ type_ "checkbox", checked state.reviewBan, onCheck ReviewBanChanged, testId "review-ban" ] []
+                , text "Ban implementor"
+                ]
+            ]
+        , maybeNote state.reviewMessage "review-message"
         ]
 
 
@@ -1818,22 +1954,36 @@ submissionRow state submission =
     div [ Html.Attributes.class "space-y-2 py-3", testId "submission-row" ]
         [ div [ Html.Attributes.class "flex items-center justify-between gap-2" ]
             [ Ui.badge (submissionStateLabel submission.state)
-            , acceptButton state submission
+            , reviewButtons state submission
             ]
         , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text ("Submitter: " ++ submission.submitterID) ]
+        , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "submission-response" ] submission.responseJSON
         , validationErrorsView submission.validationErrors
         ]
 
 
-acceptButton : LoggedInModel -> Submission.SubmissionResponse -> Html Msg
-acceptButton _ submission =
+reviewButtons : LoggedInModel -> Submission.SubmissionResponse -> Html Msg
+reviewButtons state submission =
     case submission.state of
         Submission.SubmissionStateSubmitted ->
-            Ui.primaryButton [ onClick (AcceptClicked submission.id), testId "accept-submission" ] "Accept"
+            div [ Html.Attributes.class "flex flex-wrap justify-end gap-2" ]
+                [ Ui.secondaryButton [ onClick (RequestChangesClicked submission.id), disabled (String.trim state.reviewNote == ""), testId "request-changes" ] "Request changes"
+                , Ui.secondaryButton [ onClick (RejectClicked submission.id), disabled (String.trim state.reviewNote == ""), testId "reject-submission" ] "Reject"
+                , Ui.primaryButton [ onClick (AcceptClicked submission.id), testId "accept-submission" ] "Accept"
+                ]
 
         _ ->
             text ""
+
+
+reviewNoteView : String -> Html Msg
+reviewNoteView note =
+    if String.isEmpty (String.trim note) then
+        text ""
+
+    else
+        p [ Html.Attributes.class "rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900", testId "submission-review-note" ] [ text note ]
 
 
 validationErrorsView : List Submission.SubmissionValidationErrorResponse -> Html Msg
@@ -2212,6 +2362,9 @@ submissionStateLabel state =
         Submission.SubmissionStateRejected ->
             "rejected"
 
+        Submission.SubmissionStateChangesRequested ->
+            "changes requested"
+
 
 kindLabel : Ledger.LedgerEntryKind -> String
 kindLabel kind =
@@ -2227,6 +2380,9 @@ kindLabel kind =
 
         Ledger.LedgerEntryKindTaskPayout ->
             "task_payout"
+
+        Ledger.LedgerEntryKindTaskTip ->
+            "task_tip"
 
         Ledger.LedgerEntryKindManualAdjustment ->
             "manual_adjustment"

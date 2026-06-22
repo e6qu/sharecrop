@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 15 work. Pull request 15 was merged into `main`.
+The repository contains pull request 1 through pull request 16 work. Pull request 16 was merged into `main`.
 
 Active task:
 
-- Active branch `task/requester-ergonomics-instructions` is implementing requester ergonomics, task discovery controls, reservation actions, and task-page API/MCP instructions.
+- Active branch `task/review-outcomes` implemented requester review outcomes for submitted work and is awaiting pull request creation.
 
 Implemented surface:
 
@@ -131,13 +131,18 @@ Implemented surface:
 - Browser discovery exposes an include-reserved control.
 - Browser task detail pages expose reserve/request-approval actions, requester reservation review controls, and task-specific REST and MCP examples.
 - Requester task lists include tasks created by the requester even when the task is publicly visible.
+- Submission review stores requester notes and exposes them on submission responses.
+- Requesters can request changes for submitted work; the submission moves to `changes_requested` and a submitted reservation is reactivated for the same implementor.
+- Requesters can reject submitted work with required notes, optional partial credit payout from held escrow, optional credit tip from current requester balance, and optional task-local implementor ban.
+- Requesters can accept submitted work with full or partial credit payout and optional credit tip; partial acceptance refunds withheld escrow to the funder.
+- Task-local implementor bans block later direct submissions as well as later reservations for the same task.
+- HTTP review endpoints exist for accept, request changes, and reject.
+- MCP review tools support accept with optional payout/tip, request changes, and reject with optional partial payout/tip/ban.
+- Browser task detail submission review controls expose review note, partial payout, tip, ban, accept, request-changes, and reject actions.
 
 Planned defaults:
 
 - Public-team assignment is deferred unless public teams already exist; first implementation supports users and same-organization teams.
-- Requesting changes requires requester notes and keeps the reservation exclusive for the same assignee.
-- Rejected submitted work may receive a requester-selected partial reward.
-- Requesters may tip from current balance and inventory at review time.
 - Reward bundles may contain credits, collectibles, both, or neither.
 - Full MCP Streamable HTTP SSE remains planned.
 
@@ -156,13 +161,12 @@ The accepted defaults for pull request 1 were:
 
 Last observed checks:
 
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed on the requester ergonomics branch.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test frontend` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-integration` passed with local Postgres access.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-http` passed with local Postgres access.
-- `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
-- Manual screenshot review passed for `/tmp/sharecrop-requester-ergonomics.png`.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed on `task/review-outcomes`.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-integration` passed after review outcome integration coverage was added.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-http` passed after the HTTP and MCP review endpoints were added.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod make check-format check-policy check-ts check-copy-paste lint vet frontend build` passed.
+- `make check-dead-code` could not be rerun after the final frontend and handler refactor because the required network escalation for downloading `golang.org/x/tools` was rejected by the approval system.
+- A final rerun of `make test-integration`, `make test-http`, and UI screenshot checks could not be performed after the final frontend and handler refactor because database/browser escalation was rejected by the approval system.
 
 Blocking issues:
 

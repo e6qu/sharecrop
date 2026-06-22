@@ -623,3 +623,31 @@ The requester ergonomics branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-http` passed with local Postgres access.
 - `ELM_BIN=/opt/homebrew/bin/elm GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
 - Manual screenshot review passed for `/tmp/sharecrop-requester-ergonomics.png`.
+
+The review outcomes branch added requester review flows:
+
+- A migration added the `changes_requested` submission state, stored review notes, reviewer metadata, review idempotency keys, and the `task_tip` ledger kind.
+- Submission responses expose `review_note`.
+- Acceptance supports full or partial credit payout and optional credit tips from the requester balance. Partial acceptance refunds withheld escrow to the funder.
+- Request changes requires requester notes, stores the note, moves the submission to `changes_requested`, and reactivates a submitted user reservation for the same implementor.
+- Rejection requires requester notes and supports optional partial credit payout from held escrow, optional credit tip from requester balance, and optional task-local implementor ban.
+- Task-local implementor bans block direct open-task submissions as well as future reservations.
+- HTTP endpoints were added for request changes and rejection, and the existing accept endpoint gained optional `payout_amount` and `tip_amount`.
+- MCP tools were added for request changes and rejection, and the accept tool gained optional `payout_amount` and `tip_amount`.
+- Browser task detail review controls now include review note, partial payout, tip, ban implementor, accept, request changes, and reject controls.
+- Generated Elm contracts and static browser assets were rebuilt.
+
+The review outcomes branch test coverage was updated:
+
+- Ledger service tests cover rejection delegation and ban selection.
+- Integration tests cover partial accept with tip, request-changes note storage and reservation reactivation, and reject with partial payout, tip, and implementor ban.
+- HTTP contract fixture tests cover submission review notes, accept tips, and review responses.
+
+The review outcomes branch verification was performed:
+
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-integration` passed after the review outcome integration tests were added.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make test-http` passed after HTTP and MCP review endpoints were added.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod make check-format check-policy check-ts check-copy-paste lint vet frontend build` passed.
+- `make check-dead-code` could not be rerun after final changes because the required network escalation for downloading `golang.org/x/tools` was rejected by the approval system.
+- A final rerun of `make test-integration`, `make test-http`, and UI screenshot review could not be performed after the final frontend and handler refactor because escalation was rejected by the approval system.

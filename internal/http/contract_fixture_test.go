@@ -29,9 +29,24 @@ func TestTaskEscrowResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"task_id":"task-1","amount":40,"state":"held"}`)
 }
 
+func TestAcceptSubmissionResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(acceptSubmissionResponse{TaskID: "task-1", SubmissionID: "submission-1", PayoutKind: "credit", PayoutAmount: 25, WorkerUserID: "user-1", CollectibleID: "", TipAmount: 5})
+	assertWireShape(t, encoded, err, `{"task_id":"task-1","submission_id":"submission-1","payout_kind":"credit","payout_amount":25,"worker_user_id":"user-1","collectible_id":"","tip_amount":5}`)
+}
+
+func TestReviewSubmissionResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(reviewSubmissionResponse{TaskID: "task-1", SubmissionID: "submission-1", State: "rejected", ReviewNote: "Not current.", PayoutKind: "credit", PayoutAmount: 10, WorkerUserID: "user-1", TipAmount: 2})
+	assertWireShape(t, encoded, err, `{"task_id":"task-1","submission_id":"submission-1","state":"rejected","review_note":"Not current.","payout_kind":"credit","payout_amount":10,"worker_user_id":"user-1","tip_amount":2}`)
+}
+
 func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(submissionValidationErrorResponse{Path: "email", Message: "is required"})
 	assertWireShape(t, encoded, err, `{"path":"email","message":"is required"}`)
+}
+
+func TestSubmissionResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", ValidationErrors: []submissionValidationErrorResponse{}})
+	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","validation_errors":[]}`)
 }
 
 func TestAgentCredentialResponseWireShape(t *testing.T) {

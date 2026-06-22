@@ -124,6 +124,7 @@ var (
 	EntryKindTaskEscrow       = EntryKind{value: "task_escrow"}
 	EntryKindTaskRefund       = EntryKind{value: "task_refund"}
 	EntryKindTaskPayout       = EntryKind{value: "task_payout"}
+	EntryKindTaskTip          = EntryKind{value: "task_tip"}
 	EntryKindManualAdjustment = EntryKind{value: "manual_adjustment"}
 )
 
@@ -153,6 +154,8 @@ func ParseEntryKind(raw string) EntryKindResult {
 		return EntryKindAccepted{Value: EntryKindTaskRefund}
 	case EntryKindTaskPayout.value:
 		return EntryKindAccepted{Value: EntryKindTaskPayout}
+	case EntryKindTaskTip.value:
+		return EntryKindAccepted{Value: EntryKindTaskTip}
 	case EntryKindManualAdjustment.value:
 		return EntryKindAccepted{Value: EntryKindManualAdjustment}
 	default:
@@ -212,3 +215,47 @@ func (state EscrowState) String() string {
 func SignupGrantAmount() CreditAmount {
 	return CreditAmount{value: 100}
 }
+
+type CreditReviewSelection interface {
+	creditReviewSelection()
+}
+
+type FullCreditReviewSelection struct{}
+
+type PartialCreditReviewSelection struct {
+	Amount CreditAmount
+}
+
+type NoCreditReviewSelection struct{}
+
+func (FullCreditReviewSelection) creditReviewSelection() {}
+
+func (PartialCreditReviewSelection) creditReviewSelection() {}
+
+func (NoCreditReviewSelection) creditReviewSelection() {}
+
+type TipSelection interface {
+	tipSelection()
+}
+
+type NoTipSelection struct{}
+
+type CreditTipSelection struct {
+	Amount CreditAmount
+}
+
+func (NoTipSelection) tipSelection() {}
+
+func (CreditTipSelection) tipSelection() {}
+
+type BanSelection interface {
+	banSelection()
+}
+
+type NoBanSelection struct{}
+
+type BanImplementorSelection struct{}
+
+func (NoBanSelection) banSelection() {}
+
+func (BanImplementorSelection) banSelection() {}

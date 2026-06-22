@@ -9,6 +9,7 @@ type Submission struct {
 	State          State
 	ResponseSource ResponseSource
 	Validation     ValidationOutcome
+	ReviewNote     ReviewNote
 }
 
 type Receipt struct {
@@ -21,10 +22,11 @@ type State struct {
 }
 
 var (
-	StateSubmitted = State{value: "submitted"}
-	StateInvalid   = State{value: "invalid"}
-	StateAccepted  = State{value: "accepted"}
-	StateRejected  = State{value: "rejected"}
+	StateSubmitted        = State{value: "submitted"}
+	StateInvalid          = State{value: "invalid"}
+	StateAccepted         = State{value: "accepted"}
+	StateRejected         = State{value: "rejected"}
+	StateChangesRequested = State{value: "changes_requested"}
 )
 
 type StateResult interface {
@@ -53,6 +55,8 @@ func ParseState(raw string) StateResult {
 		return StateParsed{Value: StateAccepted}
 	case StateRejected.value:
 		return StateParsed{Value: StateRejected}
+	case StateChangesRequested.value:
+		return StateParsed{Value: StateChangesRequested}
 	default:
 		return StateParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "submission state is invalid")}
 	}
@@ -93,4 +97,49 @@ type SensitiveField struct {
 	Category  string
 	Retention string
 	Redaction string
+}
+
+type ReviewNote struct {
+	value string
+}
+
+type ReviewNoteResult interface {
+	reviewNoteResult()
+}
+
+type ReviewNoteAccepted struct {
+	Value ReviewNote
+}
+
+type ReviewNoteRejected struct {
+	Reason core.DomainError
+}
+
+func (ReviewNoteAccepted) reviewNoteResult() {}
+
+func (ReviewNoteRejected) reviewNoteResult() {}
+
+func NewRequiredReviewNote(raw string) ReviewNoteResult {
+	if raw == "" {
+		return ReviewNoteRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "review note is required")}
+	}
+	if len(raw) > 2000 {
+		return ReviewNoteRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "review note is too long")}
+	}
+	return ReviewNoteAccepted{Value: ReviewNote{value: raw}}
+}
+
+func NewStoredReviewNote(raw string) ReviewNoteResult {
+	if len(raw) > 2000 {
+		return ReviewNoteRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "review note is too long")}
+	}
+	return ReviewNoteAccepted{Value: ReviewNote{value: raw}}
+}
+
+func EmptyReviewNote() ReviewNote {
+	return ReviewNote{value: ""}
+}
+
+func (note ReviewNote) String() string {
+	return note.value
 }

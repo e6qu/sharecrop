@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/submission"
 )
 
 // FundStoreCommand carries a validated task-funding request to the store.
@@ -17,11 +18,37 @@ type FundStoreCommand struct {
 
 // AcceptStoreCommand carries a validated submission-acceptance request to the store.
 type AcceptStoreCommand struct {
-	PayoutEntryID   core.LedgerEntryID
+	PayoutEntryID    core.LedgerEntryID
+	RefundEntryID    core.LedgerEntryID
+	TipDebitEntryID  core.LedgerEntryID
+	TipCreditEntryID core.LedgerEntryID
+	RequesterUserID  core.UserID
+	TaskID           core.TaskID
+	SubmissionID     core.SubmissionID
+	IdempotencyKey   IdempotencyKey
+	CreditSelection  CreditReviewSelection
+	TipSelection     TipSelection
+}
+
+type RequestChangesStoreCommand struct {
 	RequesterUserID core.UserID
 	TaskID          core.TaskID
 	SubmissionID    core.SubmissionID
-	IdempotencyKey  IdempotencyKey
+	ReviewNote      submission.ReviewNote
+}
+
+type RejectStoreCommand struct {
+	PayoutEntryID    core.LedgerEntryID
+	TipDebitEntryID  core.LedgerEntryID
+	TipCreditEntryID core.LedgerEntryID
+	RequesterUserID  core.UserID
+	TaskID           core.TaskID
+	SubmissionID     core.SubmissionID
+	IdempotencyKey   IdempotencyKey
+	ReviewNote       submission.ReviewNote
+	CreditSelection  CreditReviewSelection
+	TipSelection     TipSelection
+	BanSelection     BanSelection
 }
 
 // RefundStoreCommand carries a validated task-refund request to the store.
@@ -46,6 +73,8 @@ type Store interface {
 	FundTask(context.Context, FundStoreCommand) FundResult
 	FundTaskFromOrganization(context.Context, OrganizationFundStoreCommand) FundResult
 	AcceptSubmission(context.Context, AcceptStoreCommand) AcceptResult
+	RequestChanges(context.Context, RequestChangesStoreCommand) RequestChangesResult
+	RejectSubmission(context.Context, RejectStoreCommand) RejectResult
 	RefundTask(context.Context, RefundStoreCommand) RefundResult
 	Balance(context.Context, core.UserID) BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) BalanceResult
@@ -78,20 +107,102 @@ func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID 
 }
 
 func (service Service) AcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey) AcceptResult {
+	return service.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, FullCreditReviewSelection{}, NoTipSelection{})
+}
+
+func (service Service) ReviewAcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, creditSelection CreditReviewSelection, tipSelection TipSelection) AcceptResult {
+	payoutEntryID, idResult := newLedgerEntryID()
+	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
+		return AcceptRejected{Reason: rejected.reason}
+	}
+	refundEntryID, idResult := newLedgerEntryID()
+	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
+		return AcceptRejected{Reason: rejected.reason}
+	}
+	tipDebitEntryID, idResult := newLedgerEntryID()
+	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
+		return AcceptRejected{Reason: rejected.reason}
+	}
+	tipCreditEntryID, idResult := newLedgerEntryID()
+	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
+		return AcceptRejected{Reason: rejected.reason}
+	}
+
+	return service.store.AcceptSubmission(ctx, AcceptStoreCommand{
+		PayoutEntryID:    payoutEntryID,
+		RefundEntryID:    refundEntryID,
+		TipDebitEntryID:  tipDebitEntryID,
+		TipCreditEntryID: tipCreditEntryID,
+		RequesterUserID:  requester,
+		TaskID:           taskID,
+		SubmissionID:     submissionID,
+		IdempotencyKey:   key,
+		CreditSelection:  creditSelection,
+		TipSelection:     tipSelection,
+	})
+}
+
+func (service Service) RequestChanges(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, note submission.ReviewNote) RequestChangesResult {
+	return service.store.RequestChanges(ctx, RequestChangesStoreCommand{
+		RequesterUserID: requester,
+		TaskID:          taskID,
+		SubmissionID:    submissionID,
+		ReviewNote:      note,
+	})
+}
+
+func (service Service) RejectSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote, creditSelection CreditReviewSelection, tipSelection TipSelection, banSelection BanSelection) RejectResult {
+	payoutEntryID, idResult := newLedgerEntryID()
+	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
+		return RejectRejected{Reason: rejected.reason}
+	}
+	tipDebitEntryID, idResult := newLedgerEntryID()
+	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
+		return RejectRejected{Reason: rejected.reason}
+	}
+	tipCreditEntryID, idResult := newLedgerEntryID()
+	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
+		return RejectRejected{Reason: rejected.reason}
+	}
+	return service.store.RejectSubmission(ctx, RejectStoreCommand{
+		PayoutEntryID:    payoutEntryID,
+		TipDebitEntryID:  tipDebitEntryID,
+		TipCreditEntryID: tipCreditEntryID,
+		RequesterUserID:  requester,
+		TaskID:           taskID,
+		SubmissionID:     submissionID,
+		IdempotencyKey:   key,
+		ReviewNote:       note,
+		CreditSelection:  creditSelection,
+		TipSelection:     tipSelection,
+		BanSelection:     banSelection,
+	})
+}
+
+type ledgerEntryIDResult interface {
+	ledgerEntryIDResult()
+}
+
+type ledgerEntryIDAccepted struct {
+	value core.LedgerEntryID
+}
+
+type ledgerEntryIDRejected struct {
+	reason core.DomainError
+}
+
+func (ledgerEntryIDAccepted) ledgerEntryIDResult() {}
+
+func (ledgerEntryIDRejected) ledgerEntryIDResult() {}
+
+func newLedgerEntryID() (core.LedgerEntryID, ledgerEntryIDResult) {
 	entryResult := core.NewLedgerEntryID()
 	entryCreated, matched := entryResult.(core.LedgerEntryIDCreated)
 	if !matched {
 		rejected := entryResult.(core.LedgerEntryIDRejected)
-		return AcceptRejected{Reason: rejected.Reason}
+		return core.LedgerEntryID{}, ledgerEntryIDRejected{reason: rejected.Reason}
 	}
-
-	return service.store.AcceptSubmission(ctx, AcceptStoreCommand{
-		PayoutEntryID:   entryCreated.Value,
-		RequesterUserID: requester,
-		TaskID:          taskID,
-		SubmissionID:    submissionID,
-		IdempotencyKey:  key,
-	})
+	return entryCreated.Value, ledgerEntryIDAccepted{value: entryCreated.Value}
 }
 
 func (service Service) RefundTask(ctx context.Context, requester core.UserID, taskID core.TaskID, key IdempotencyKey) RefundResult {

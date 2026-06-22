@@ -10,6 +10,7 @@ type SubmissionState
     | SubmissionStateInvalid
     | SubmissionStateAccepted
     | SubmissionStateRejected
+    | SubmissionStateChangesRequested
 
 submissionStateDecoder : Decoder SubmissionState
 submissionStateDecoder =
@@ -29,6 +30,9 @@ submissionStateDecoder =
                     "rejected" ->
                         Decode.succeed SubmissionStateRejected
 
+                    "changes_requested" ->
+                        Decode.succeed SubmissionStateChangesRequested
+
                     _ ->
                         Decode.fail "invalid SubmissionState"
             )
@@ -47,6 +51,9 @@ submissionStateEncoder submissionState =
 
         SubmissionStateRejected ->
             Encode.string "rejected"
+
+        SubmissionStateChangesRequested ->
+            Encode.string "changes_requested"
 
 
 type alias SubmissionValidationErrorResponse =
@@ -73,17 +80,19 @@ type alias SubmissionResponse =
     , submitterID : String
     , state : SubmissionState
     , responseJSON : String
+    , reviewNote : String
     , validationErrors : List SubmissionValidationErrorResponse
     }
 
 submissionResponseDecoder : Decoder SubmissionResponse
 submissionResponseDecoder =
-    Decode.map6 SubmissionResponse
+    Decode.map7 SubmissionResponse
         (Decode.field "id" Decode.string)
         (Decode.field "task_id" Decode.string)
         (Decode.field "submitter_id" Decode.string)
         (Decode.field "state" submissionStateDecoder)
         (Decode.field "response_json" Decode.string)
+        (Decode.field "review_note" Decode.string)
         (Decode.field "validation_errors" (Decode.list submissionValidationErrorResponseDecoder))
 
 submissionResponseEncoder : SubmissionResponse -> Encode.Value
@@ -94,6 +103,7 @@ submissionResponseEncoder submissionResponse =
         , ( "submitter_id", Encode.string submissionResponse.submitterID )
         , ( "state", submissionStateEncoder submissionResponse.state )
         , ( "response_json", Encode.string submissionResponse.responseJSON )
+        , ( "review_note", Encode.string submissionResponse.reviewNote )
         , ( "validation_errors", Encode.list submissionValidationErrorResponseEncoder submissionResponse.validationErrors )
         ]
 

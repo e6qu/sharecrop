@@ -370,6 +370,20 @@ func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID co
 	if err != nil {
 		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
+	var banned bool
+	if err := store.pool.QueryRow(ctx, `
+		select exists(
+			select 1 from task_implementor_bans
+			where task_id = $1
+			and assignee_kind = 'user'
+			and user_id = $2
+		)
+	`, taskID.String(), submitterID.String()).Scan(&banned); err != nil {
+		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check task implementor ban failed")}
+	}
+	if banned {
+		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "implementor is banned from the task")}
+	}
 	if policy == task.ParticipationPolicyOpen.String() {
 		return task.SubmissionEligible{}
 	}

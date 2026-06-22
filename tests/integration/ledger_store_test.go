@@ -12,6 +12,8 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/submission"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -92,6 +94,123 @@ func TestFundAcceptRefundPersist(t *testing.T) {
 	}
 }
 
+func TestReviewAcceptCanPayPartialEscrowAndTip(t *testing.T) {
+	pool := newPool(t)
+	store := db.NewLedgerStore(pool)
+
+	owner := createUser(t, pool, "integration-review-owner")
+	worker := createUser(t, pool, "integration-review-worker")
+	taskID := insertTask(t, pool, owner, "draft", 40)
+	store.FundTask(context.Background(), fundCommand(t, owner, taskID, 40, "fund-"+taskID.String()))
+	setTaskState(t, pool, taskID, "open")
+	submissionID := insertSubmission(t, pool, taskID, worker)
+
+	command := acceptCommand(t, owner, taskID, submissionID, "accept-partial-"+submissionID.String())
+	command.CreditSelection = ledger.PartialCreditReviewSelection{Amount: creditAmount(t, 25)}
+	command.TipSelection = ledger.CreditTipSelection{Amount: creditAmount(t, 5)}
+
+	result := store.AcceptSubmission(context.Background(), command)
+	accepted, matched := result.(ledger.SubmissionAccepted)
+	if !matched {
+		t.Fatalf("accept result = %T (%s), want SubmissionAccepted", result, result.(ledger.AcceptRejected).Reason.Description())
+	}
+	payout, paid := accepted.Payout.(ledger.CreditPayout)
+	if !paid || payout.Amount.Int64() != 25 {
+		t.Fatalf("payout = %#v, want 25 credit payout", accepted.Payout)
+	}
+	tip, tipped := accepted.Tip.(ledger.CreditTip)
+	if !tipped || tip.Amount.Int64() != 5 {
+		t.Fatalf("tip = %#v, want 5 credit tip", accepted.Tip)
+	}
+	if balance := mustBalance(t, store, owner); balance.Int64() != 70 {
+		t.Fatalf("owner balance = %d, want 70", balance.Int64())
+	}
+	if balance := mustBalance(t, store, worker); balance.Int64() != 130 {
+		t.Fatalf("worker balance = %d, want 130", balance.Int64())
+	}
+}
+
+func TestRequestChangesStoresNoteAndReactivatesReservation(t *testing.T) {
+	pool := newPool(t)
+	store := db.NewLedgerStore(pool)
+
+	owner := createUser(t, pool, "integration-changes-owner")
+	worker := createUser(t, pool, "integration-changes-worker")
+	taskID := insertTask(t, pool, owner, "open", 20)
+	submissionID := insertSubmission(t, pool, taskID, worker)
+	insertSubmittedReservation(t, pool, taskID, worker)
+	note := reviewNote(t, "Use the latest endpoint response.")
+
+	result := store.RequestChanges(context.Background(), ledger.RequestChangesStoreCommand{
+		RequesterUserID: owner,
+		TaskID:          taskID,
+		SubmissionID:    submissionID,
+		ReviewNote:      note,
+	})
+	if _, matched := result.(ledger.ChangesRequested); !matched {
+		t.Fatalf("request changes result = %T, want ChangesRequested", result)
+	}
+
+	var submissionState string
+	var storedNote string
+	var reservationState string
+	if err := pool.QueryRow(context.Background(), "select state, review_note from submissions where id = $1", submissionID.String()).Scan(&submissionState, &storedNote); err != nil {
+		t.Fatalf("read submission review state: %v", err)
+	}
+	if err := pool.QueryRow(context.Background(), "select state from task_reservations where task_id = $1 and user_id = $2", taskID.String(), worker.String()).Scan(&reservationState); err != nil {
+		t.Fatalf("read reservation state: %v", err)
+	}
+	if submissionState != "changes_requested" || storedNote != note.String() || reservationState != "active" {
+		t.Fatalf("state/note/reservation = %q/%q/%q", submissionState, storedNote, reservationState)
+	}
+}
+
+func TestRejectCanPayPartialTipAndBanImplementor(t *testing.T) {
+	pool := newPool(t)
+	store := db.NewLedgerStore(pool)
+
+	owner := createUser(t, pool, "integration-reject-owner")
+	worker := createUser(t, pool, "integration-reject-worker")
+	taskID := insertTask(t, pool, owner, "draft", 40)
+	store.FundTask(context.Background(), fundCommand(t, owner, taskID, 40, "fund-"+taskID.String()))
+	setTaskState(t, pool, taskID, "open")
+	submissionID := insertSubmission(t, pool, taskID, worker)
+	note := reviewNote(t, "The data is stale.")
+
+	result := store.RejectSubmission(context.Background(), ledger.RejectStoreCommand{
+		PayoutEntryID:    newEntryID(t),
+		TipDebitEntryID:  newEntryID(t),
+		TipCreditEntryID: newEntryID(t),
+		RequesterUserID:  owner,
+		TaskID:           taskID,
+		SubmissionID:     submissionID,
+		IdempotencyKey:   idempotencyKey(t, "reject-"+submissionID.String()),
+		ReviewNote:       note,
+		CreditSelection:  ledger.PartialCreditReviewSelection{Amount: creditAmount(t, 10)},
+		TipSelection:     ledger.CreditTipSelection{Amount: creditAmount(t, 3)},
+		BanSelection:     ledger.BanImplementorSelection{},
+	})
+	rejected, matched := result.(ledger.SubmissionRejected)
+	if !matched {
+		t.Fatalf("reject result = %T (%s), want SubmissionRejected", result, result.(ledger.RejectRejected).Reason.Description())
+	}
+	payout, paid := rejected.Payout.(ledger.CreditPayout)
+	if !paid || payout.Amount.Int64() != 10 {
+		t.Fatalf("payout = %#v, want 10 credit payout", rejected.Payout)
+	}
+	if balance := mustBalance(t, store, worker); balance.Int64() != 113 {
+		t.Fatalf("worker balance = %d, want 113", balance.Int64())
+	}
+	if balance := mustBalance(t, store, owner); balance.Int64() != 57 {
+		t.Fatalf("owner balance = %d, want 57", balance.Int64())
+	}
+
+	eligibility := db.NewTaskStore(pool).CheckSubmissionEligibility(context.Background(), taskID, worker)
+	if _, banned := eligibility.(task.SubmissionEligibilityRejected); !banned {
+		t.Fatalf("banned implementor remained eligible: %T", eligibility)
+	}
+}
+
 func newPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
@@ -164,6 +283,18 @@ func insertSubmission(t *testing.T, pool *pgxpool.Pool, taskID core.TaskID, work
 	return submissionID.Value
 }
 
+func insertSubmittedReservation(t *testing.T, pool *pgxpool.Pool, taskID core.TaskID, worker core.UserID) {
+	t.Helper()
+	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
+	_, err := pool.Exec(context.Background(), `
+		insert into task_reservations (id, task_id, assignee_kind, user_id, state, requested_by_user_id, expires_at)
+		values ($1, $2, 'user', $3, 'submitted', $3, now() + interval '48 hours')
+	`, reservationID.Value.String(), taskID.String(), worker.String())
+	if err != nil {
+		t.Fatalf("insert submitted reservation: %v", err)
+	}
+}
+
 func fundCommand(t *testing.T, owner core.UserID, taskID core.TaskID, amount int64, key string) ledger.FundStoreCommand {
 	t.Helper()
 	return ledger.FundStoreCommand{
@@ -178,11 +309,14 @@ func fundCommand(t *testing.T, owner core.UserID, taskID core.TaskID, amount int
 func acceptCommand(t *testing.T, owner core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key string) ledger.AcceptStoreCommand {
 	t.Helper()
 	return ledger.AcceptStoreCommand{
-		PayoutEntryID:   newEntryID(t),
-		RequesterUserID: owner,
-		TaskID:          taskID,
-		SubmissionID:    submissionID,
-		IdempotencyKey:  idempotencyKey(t, key),
+		PayoutEntryID:    newEntryID(t),
+		RefundEntryID:    newEntryID(t),
+		TipDebitEntryID:  newEntryID(t),
+		TipCreditEntryID: newEntryID(t),
+		RequesterUserID:  owner,
+		TaskID:           taskID,
+		SubmissionID:     submissionID,
+		IdempotencyKey:   idempotencyKey(t, key),
 	}
 }
 
@@ -220,6 +354,15 @@ func idempotencyKey(t *testing.T, raw string) ledger.IdempotencyKey {
 	accepted, matched := ledger.NewIdempotencyKey(raw).(ledger.IdempotencyKeyAccepted)
 	if !matched {
 		t.Fatalf("idempotency key rejected")
+	}
+	return accepted.Value
+}
+
+func reviewNote(t *testing.T, raw string) submission.ReviewNote {
+	t.Helper()
+	accepted, matched := submission.NewRequiredReviewNote(raw).(submission.ReviewNoteAccepted)
+	if !matched {
+		t.Fatalf("review note rejected")
 	}
 	return accepted.Value
 }

@@ -15,6 +15,8 @@ const (
 	toolGetSubmissionStatus = "sharecrop.get_submission_status"
 	toolListTaskSubmissions = "sharecrop.list_task_submissions"
 	toolAcceptSubmission    = "sharecrop.accept_submission"
+	toolRequestChanges      = "sharecrop.request_submission_changes"
+	toolRejectSubmission    = "sharecrop.reject_submission"
 	toolListTaskSeries      = "sharecrop.list_task_series"
 	toolGetTaskSeries       = "sharecrop.get_task_series"
 )
@@ -72,9 +74,21 @@ func toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolAcceptSubmission,
-			Description: "Accept a submission for a task owned by the agent's user, paying the escrowed reward when present.",
+			Description: "Accept a submission for a task owned by the agent's user, paying the escrowed reward when present. Optional payout_amount pays part of the credit escrow, and optional tip_amount pays extra credits from the requester balance.",
 			Scope:       agent.ScopeSubmissionsReview,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"}},"required":["task_id","submission_id","idempotency_key"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"},"payout_amount":{"type":"integer","minimum":1},"tip_amount":{"type":"integer","minimum":1}},"required":["task_id","submission_id","idempotency_key"]}`),
+		},
+		{
+			Name:        toolRequestChanges,
+			Description: "Request changes for submitted work, keeping the task reserved for the same implementor.",
+			Scope:       agent.ScopeSubmissionsReview,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"review_note":{"type":"string"}},"required":["task_id","submission_id","review_note"]}`),
+		},
+		{
+			Name:        toolRejectSubmission,
+			Description: "Reject submitted work with required notes. Optional partial_credit_amount pays part of held credit escrow, optional tip_amount pays extra credits from requester balance, and ban_implementor prevents the worker from doing the same task again.",
+			Scope:       agent.ScopeSubmissionsReview,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"},"review_note":{"type":"string"},"partial_credit_amount":{"type":"integer","minimum":1},"tip_amount":{"type":"integer","minimum":1},"ban_implementor":{"type":"boolean"}},"required":["task_id","submission_id","idempotency_key","review_note"]}`),
 		},
 		{
 			Name:        toolListTaskSeries,

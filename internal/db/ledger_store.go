@@ -169,11 +169,168 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 		}
 	}
 
+	tipResult := payCreditTip(ctx, tx, command.TaskID, command.RequesterUserID, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.TipSelection)
+	tip, tipMatched := tipResult.(tipResolved)
+	if !tipMatched {
+		return ledger.AcceptRejected{Reason: tipResult.(tipRejected).reason}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit accept submission transaction failed")}
 	}
 
-	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome}
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: tip.outcome}
+}
+
+func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.RequestChangesStoreCommand) ledger.RequestChangesResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin request changes transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
+	taskRow, taskMatched := taskResult.(taskLocked)
+	if !taskMatched {
+		return ledger.RequestChangesRejected{Reason: taskResult.(taskLockRejected).reason}
+	}
+	if taskRow.state != "open" {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can request submission changes")}
+	}
+
+	var submissionState string
+	var rawWorkerID string
+	scanErr := tx.QueryRow(ctx, `
+		select state, user_id::text
+		from submissions
+		where id = $1 and task_id = $2
+		for update
+	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
+	}
+	if scanErr != nil {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read submission failed")}
+	}
+	if submissionState != "submitted" {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only submitted work can receive requested changes")}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		update submissions
+		set state = 'changes_requested', review_note = $2, reviewed_by_user_id = $3, review_recorded_at = now(), state_recorded_at = now()
+		where id = $1
+	`, command.SubmissionID.String(), command.ReviewNote.String(), command.RequesterUserID.String()); err != nil {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "request submission changes failed")}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		update task_reservations
+		set state = 'active', state_recorded_at = now()
+		where task_id = $1 and assignee_kind = 'user' and user_id = $2 and state = 'submitted'
+	`, command.TaskID.String(), rawWorkerID); err != nil {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reactivate task reservation failed")}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit request changes transaction failed")}
+	}
+
+	return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, ReviewNote: command.ReviewNote.String()}
+}
+
+func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.RejectStoreCommand) ledger.RejectResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin reject submission transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
+	taskRow, taskMatched := taskResult.(taskLocked)
+	if !taskMatched {
+		return ledger.RejectRejected{Reason: taskResult.(taskLockRejected).reason}
+	}
+	if taskRow.state != "open" {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can reject submissions")}
+	}
+
+	var submissionState string
+	var rawWorkerID string
+	var reviewKey string
+	scanErr := tx.QueryRow(ctx, `
+		select state, user_id::text, coalesce(review_idempotency_key, '')
+		from submissions
+		where id = $1 and task_id = $2
+		for update
+	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID, &reviewKey)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
+	}
+	if scanErr != nil {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read submission failed")}
+	}
+	if submissionState == "rejected" {
+		if reviewKey == command.IdempotencyKey.String() {
+			return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
+		}
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "submission was already rejected with a different idempotency key")}
+	}
+	if submissionState != "submitted" {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only submitted work can be rejected")}
+	}
+
+	payoutResult := payReviewEscrow(ctx, tx, reviewEscrowCommand{
+		taskID:            command.TaskID,
+		rawWorkerID:       rawWorkerID,
+		payoutEntryID:     command.PayoutEntryID,
+		idempotencyKey:    command.IdempotencyKey,
+		selection:         command.CreditSelection,
+		closeTask:         false,
+		missingIsNoPayout: true,
+	})
+	payout, payoutMatched := payoutResult.(payoutResolved)
+	if !payoutMatched {
+		return ledger.RejectRejected{Reason: payoutResult.(payoutRejected).reason}
+	}
+
+	tipResult := payCreditTip(ctx, tx, command.TaskID, command.RequesterUserID, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.TipSelection)
+	tip, tipMatched := tipResult.(tipResolved)
+	if !tipMatched {
+		return ledger.RejectRejected{Reason: tipResult.(tipRejected).reason}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		update submissions
+		set state = 'rejected', review_note = $2, reviewed_by_user_id = $3, review_recorded_at = now(), review_idempotency_key = $4, state_recorded_at = now()
+		where id = $1
+	`, command.SubmissionID.String(), command.ReviewNote.String(), command.RequesterUserID.String(), command.IdempotencyKey.String()); err != nil {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reject submission failed")}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		update task_reservations
+		set state = 'cancelled_by_requester', state_recorded_at = now()
+		where task_id = $1 and assignee_kind = 'user' and user_id = $2 and state in ('active', 'submitted')
+	`, command.TaskID.String(), rawWorkerID); err != nil {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release rejected reservation failed")}
+	}
+
+	if _, ban := command.BanSelection.(ledger.BanImplementorSelection); ban {
+		if _, err := tx.Exec(ctx, `
+			insert into task_implementor_bans (task_id, assignee_kind, assignee_key, user_id, banned_by_user_id)
+			values ($1, 'user', $2, $3, $4)
+			on conflict (task_id, assignee_kind, assignee_key) do nothing
+		`, command.TaskID.String(), rawWorkerID, rawWorkerID, command.RequesterUserID.String()); err != nil {
+			return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "ban task implementor failed")}
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit reject submission transaction failed")}
+	}
+
+	return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: payout.outcome, Tip: tip.outcome}
 }
 
 func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundStoreCommand) ledger.RefundResult {

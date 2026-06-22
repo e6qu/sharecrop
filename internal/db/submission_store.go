@@ -73,6 +73,7 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 		State:          state,
 		ResponseSource: command.ResponseSource,
 		Validation:     outcome,
+		ReviewNote:     submission.EmptyReviewNote(),
 	}}
 }
 
@@ -166,6 +167,7 @@ func insertSensitiveFields(ctx context.Context, tx pgx.Tx, submissionID core.Sub
 func submissionSelectSQL() string {
 	return `
 		select submissions.id::text, submissions.task_id::text, submissions.user_id::text, submissions.state, submissions.response_json::text,
+			submissions.review_note,
 			coalesce((
 				select jsonb_agg(
 					jsonb_build_object('path', submission_validation_errors.path, 'message', submission_validation_errors.message)
@@ -233,9 +235,10 @@ func scanSubmissionRow(rows pgx.Rows) submissionRowResult {
 	var rawUserID string
 	var rawState string
 	var rawResponse string
+	var rawReviewNote string
 	var rawValidationErrors string
-	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawState, &rawResponse, &rawValidationErrors); err != nil {
+	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawState, &rawResponse, &rawReviewNote, &rawValidationErrors); err != nil {
 		return submissionRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan submission failed")}
 	}
-	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawState, rawResponse, rawValidationErrors)
+	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawState, rawResponse, rawReviewNote, rawValidationErrors)
 }
