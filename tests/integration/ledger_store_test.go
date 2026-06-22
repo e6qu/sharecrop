@@ -44,7 +44,7 @@ func TestFundAcceptRefundPersist(t *testing.T) {
 	owner := createUser(t, pool, "integration-owner")
 	worker := createUser(t, pool, "integration-worker")
 
-	taskID := insertTask(t, pool, owner, "draft")
+	taskID := insertTask(t, pool, owner, "draft", 40)
 
 	fundResult := store.FundTask(context.Background(), fundCommand(t, owner, taskID, 40, "fund-"+taskID.String()))
 	if _, matched := fundResult.(ledger.TaskFunded); !matched {
@@ -81,7 +81,7 @@ func TestFundAcceptRefundPersist(t *testing.T) {
 	}
 
 	// A second funded task refunds back to the owner.
-	refundTaskID := insertTask(t, pool, owner, "draft")
+	refundTaskID := insertTask(t, pool, owner, "draft", 20)
 	store.FundTask(context.Background(), fundCommand(t, owner, refundTaskID, 20, "fund-"+refundTaskID.String()))
 	refundResult := store.RefundTask(context.Background(), refundCommand(t, owner, refundTaskID, "refund-"+refundTaskID.String()))
 	if _, matched := refundResult.(ledger.TaskRefunded); !matched {
@@ -128,13 +128,13 @@ func createUser(t *testing.T, pool *pgxpool.Pool, prefix string) core.UserID {
 	return userID
 }
 
-func insertTask(t *testing.T, pool *pgxpool.Pool, owner core.UserID, state string) core.TaskID {
+func insertTask(t *testing.T, pool *pgxpool.Pool, owner core.UserID, state string, rewardAmount int64) core.TaskID {
 	t.Helper()
 	taskID := newTaskID(t)
 	_, err := pool.Exec(context.Background(), `
-		insert into tasks (id, owner_kind, user_id, title, description, state, response_schema_json, data_payload_kind, created_by_user_id)
-		values ($1, 'user', $2, 'Integration task', 'Integration task description', $3, '{}'::jsonb, 'none', $2)
-	`, taskID.String(), owner.String(), state)
+		insert into tasks (id, owner_kind, user_id, title, description, reward_kind, reward_credit_amount, state, response_schema_json, data_payload_kind, created_by_user_id)
+		values ($1, 'user', $2, 'Integration task', 'Integration task description', 'credit', $3, $4, '{}'::jsonb, 'none', $2)
+	`, taskID.String(), owner.String(), rewardAmount, state)
 	if err != nil {
 		t.Fatalf("insert task: %v", err)
 	}

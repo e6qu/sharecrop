@@ -87,6 +87,26 @@ func TestRefreshEndpointRequiresCookie(t *testing.T) {
 	}
 }
 
+func TestLogoutClearsRefreshCookie(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == "sharecrop_refresh_token" {
+			if cookie.MaxAge >= 0 {
+				t.Fatalf("refresh cookie max age = %d, want negative", cookie.MaxAge)
+			}
+			return
+		}
+	}
+	t.Fatalf("refresh cookie was not cleared")
+}
+
 func TestCreateOrganizationEndpoint(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/organizations", strings.NewReader(`{"name":"Sharecrop Labs"}`))
 	request.Header.Set("Authorization", "Bearer test-access-token")
@@ -125,6 +145,7 @@ func TestCreateTaskEndpointUsesDefaultUserVisibility(t *testing.T) {
 		"owner":{"kind":"user","user_id":"` + userIDCreated.Value.String() + `","team_id":"","organization_id":""},
 		"title":"Collect examples",
 		"description":"Find small examples for schema tests.",
+		"reward":{"kind":"none","credit_amount":0},
 		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"freeform\"}",

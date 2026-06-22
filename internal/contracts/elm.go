@@ -225,19 +225,51 @@ func writeProductDecoder(builder *strings.Builder, definition Product) {
 	builder.WriteString("\n")
 	builder.WriteString(decoderName)
 	builder.WriteString(" =\n")
-	builder.WriteString("    ")
-	builder.WriteString(productDecoderMap(len(definition.Fields)))
-	builder.WriteString(" ")
-	builder.WriteString(definition.Name.String())
-	builder.WriteString("\n")
-	for _, field := range definition.Fields {
-		builder.WriteString("        (Decode.field \"")
-		builder.WriteString(field.JSONName.String())
-		builder.WriteString("\" ")
-		builder.WriteString(decoderRef(field.Type))
-		builder.WriteString(")\n")
+	if len(definition.Fields) <= 8 {
+		writeProductDecoderMap(builder, productDecoderMap(len(definition.Fields)), definition.Name.String(), definition.Fields, "    ")
+	} else {
+		writeChunkedProductDecoder(builder, definition)
 	}
 	builder.WriteString("\n")
+}
+
+func writeProductDecoderMap(builder *strings.Builder, mapFunction string, constructor string, fields []Field, indent string) {
+	builder.WriteString(indent)
+	builder.WriteString(mapFunction)
+	builder.WriteString(" ")
+	builder.WriteString(constructor)
+	builder.WriteString("\n")
+	for _, field := range fields {
+		builder.WriteString(indent)
+		builder.WriteString("    ")
+		writeFieldDecoder(builder, field)
+		builder.WriteString("\n")
+	}
+}
+
+func writeChunkedProductDecoder(builder *strings.Builder, definition Product) {
+	chunkSize := 8
+	firstChunk := definition.Fields[:chunkSize]
+	writeProductDecoderMap(builder, "Decode.map8", definition.Name.String(), firstChunk, "    ")
+	for start := chunkSize; start < len(definition.Fields); start += chunkSize {
+		end := start + chunkSize
+		if end > len(definition.Fields) {
+			end = len(definition.Fields)
+		}
+		chunk := definition.Fields[start:end]
+		builder.WriteString("        |> Decode.andThen\n")
+		builder.WriteString("            (\\finish ->\n")
+		writeProductDecoderMap(builder, productDecoderMap(len(chunk)), "finish", chunk, "                ")
+		builder.WriteString("            )\n")
+	}
+}
+
+func writeFieldDecoder(builder *strings.Builder, field Field) {
+	builder.WriteString("(Decode.field \"")
+	builder.WriteString(field.JSONName.String())
+	builder.WriteString("\" ")
+	builder.WriteString(decoderRef(field.Type))
+	builder.WriteString(")")
 }
 
 func writeProductEncoder(builder *strings.Builder, definition Product) {

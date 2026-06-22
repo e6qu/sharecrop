@@ -41,7 +41,10 @@ func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreC
 		return ledger.FundRejected{Reason: taskResult.(taskLockRejected).reason}
 	}
 	if taskRow.state != "draft" {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft tasks can be funded")}
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be funded")}
+	}
+	if rejected, matched := requireCreditRewardFunding(taskRow, command.Amount).(fundingRewardRejected); matched {
+		return ledger.FundRejected{Reason: rejected.reason}
 	}
 
 	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient credits to fund the task")
@@ -70,7 +73,10 @@ func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command l
 		return ledger.FundRejected{Reason: taskResult.(taskLockRejected).reason}
 	}
 	if taskRow.state != "draft" {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft tasks can be funded")}
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be funded")}
+	}
+	if rejected, matched := requireCreditRewardFunding(taskRow, command.Amount).(fundingRewardRejected); matched {
+		return ledger.FundRejected{Reason: rejected.reason}
 	}
 
 	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient organization credits to fund the task")
@@ -105,31 +111,35 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 
 	var submissionState string
 	var rawWorkerID string
+	var acceptedKey string
 	scanErr := tx.QueryRow(ctx, `
-		select state, user_id::text
+		select state, user_id::text, coalesce(accepted_idempotency_key, '')
 		from submissions
 		where id = $1 and task_id = $2
-	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID)
+	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID, &acceptedKey)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "submission was not found for the task")}
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
 	}
 	if scanErr != nil {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read submission failed")}
 	}
 
 	if submissionState == "accepted" {
+		if acceptedKey != command.IdempotencyKey.String() {
+			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "submission was already accepted with a different idempotency key")}
+		}
 		return idempotentAccept(ctx, tx, command, rawWorkerID)
 	}
 	if submissionState != "submitted" {
-		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only valid submissions can be accepted")}
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only valid submissions can be accepted")}
 	}
 	if taskRow.state != "open" {
-		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only open tasks can accept submissions")}
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can accept submissions")}
 	}
 
-	if _, err := tx.Exec(ctx, "update submissions set state = 'accepted', state_recorded_at = now() where id = $1", command.SubmissionID.String()); err != nil {
+	if _, err := tx.Exec(ctx, "update submissions set state = 'accepted', accepted_idempotency_key = $2, state_recorded_at = now() where id = $1", command.SubmissionID.String(), command.IdempotencyKey.String()); err != nil {
 		if isUniqueViolation(err) {
-			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task already has an accepted submission")}
+			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task already has an accepted submission")}
 		}
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "accept submission failed")}
 	}
@@ -152,6 +162,11 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 			return ledger.AcceptRejected{Reason: collectibleResult.(payoutRejected).reason}
 		}
 		outcome = collectible.outcome
+	}
+	if _, noPayout := outcome.(ledger.NoPayout); noPayout {
+		if taskRow.rewardKind == "credit" {
+			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")}
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

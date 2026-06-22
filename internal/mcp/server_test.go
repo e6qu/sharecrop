@@ -137,6 +137,7 @@ func (services fakeServices) CreateTask(_ context.Context, command task.CreateCo
 		Owner:          command.Owner,
 		Title:          command.Title,
 		Description:    command.Description,
+		Reward:         command.Reward,
 		State:          task.StateDraft,
 		Visibility:     command.Visibility,
 		Placement:      command.Placement,

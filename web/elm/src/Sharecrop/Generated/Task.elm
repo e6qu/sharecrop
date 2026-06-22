@@ -185,6 +185,8 @@ type alias TaskListItemResponse =
     { id : String
     , ownerKind : TaskOwnerKind
     , title : String
+    , rewardKind : String
+    , rewardCreditAmount : Int
     , state : TaskState
     , visibilityKind : TaskVisibilityKind
     , createdBy : String
@@ -192,10 +194,12 @@ type alias TaskListItemResponse =
 
 taskListItemResponseDecoder : Decoder TaskListItemResponse
 taskListItemResponseDecoder =
-    Decode.map6 TaskListItemResponse
+    Decode.map8 TaskListItemResponse
         (Decode.field "id" Decode.string)
         (Decode.field "owner_kind" taskOwnerKindDecoder)
         (Decode.field "title" Decode.string)
+        (Decode.field "reward_kind" Decode.string)
+        (Decode.field "reward_credit_amount" Decode.int)
         (Decode.field "state" taskStateDecoder)
         (Decode.field "visibility_kind" taskVisibilityKindDecoder)
         (Decode.field "created_by" Decode.string)
@@ -206,9 +210,82 @@ taskListItemResponseEncoder taskListItemResponse =
         [ ( "id", Encode.string taskListItemResponse.id )
         , ( "owner_kind", taskOwnerKindEncoder taskListItemResponse.ownerKind )
         , ( "title", Encode.string taskListItemResponse.title )
+        , ( "reward_kind", Encode.string taskListItemResponse.rewardKind )
+        , ( "reward_credit_amount", Encode.int taskListItemResponse.rewardCreditAmount )
         , ( "state", taskStateEncoder taskListItemResponse.state )
         , ( "visibility_kind", taskVisibilityKindEncoder taskListItemResponse.visibilityKind )
         , ( "created_by", Encode.string taskListItemResponse.createdBy )
+        ]
+
+type alias TaskResponse =
+    { id : String
+    , ownerKind : TaskOwnerKind
+    , ownerID : String
+    , title : String
+    , description : String
+    , rewardKind : String
+    , rewardCreditAmount : Int
+    , state : TaskState
+    , visibilityKind : TaskVisibilityKind
+    , visibilityID : String
+    , seriesKind : String
+    , seriesID : String
+    , seriesPosition : Int
+    , responseSchemaJSON : String
+    , payloadKind : String
+    , payloadJSON : String
+    , createdBy : String
+    }
+
+taskResponseDecoder : Decoder TaskResponse
+taskResponseDecoder =
+    Decode.map8 TaskResponse
+        (Decode.field "id" Decode.string)
+        (Decode.field "owner_kind" taskOwnerKindDecoder)
+        (Decode.field "owner_id" Decode.string)
+        (Decode.field "title" Decode.string)
+        (Decode.field "description" Decode.string)
+        (Decode.field "reward_kind" Decode.string)
+        (Decode.field "reward_credit_amount" Decode.int)
+        (Decode.field "state" taskStateDecoder)
+        |> Decode.andThen
+            (\finish ->
+                Decode.map8 finish
+                    (Decode.field "visibility_kind" taskVisibilityKindDecoder)
+                    (Decode.field "visibility_id" Decode.string)
+                    (Decode.field "series_kind" Decode.string)
+                    (Decode.field "series_id" Decode.string)
+                    (Decode.field "series_position" Decode.int)
+                    (Decode.field "response_schema_json" Decode.string)
+                    (Decode.field "payload_kind" Decode.string)
+                    (Decode.field "payload_json" Decode.string)
+            )
+        |> Decode.andThen
+            (\finish ->
+                Decode.map finish
+                    (Decode.field "created_by" Decode.string)
+            )
+
+taskResponseEncoder : TaskResponse -> Encode.Value
+taskResponseEncoder taskResponse =
+    Encode.object
+        [ ( "id", Encode.string taskResponse.id )
+        , ( "owner_kind", taskOwnerKindEncoder taskResponse.ownerKind )
+        , ( "owner_id", Encode.string taskResponse.ownerID )
+        , ( "title", Encode.string taskResponse.title )
+        , ( "description", Encode.string taskResponse.description )
+        , ( "reward_kind", Encode.string taskResponse.rewardKind )
+        , ( "reward_credit_amount", Encode.int taskResponse.rewardCreditAmount )
+        , ( "state", taskStateEncoder taskResponse.state )
+        , ( "visibility_kind", taskVisibilityKindEncoder taskResponse.visibilityKind )
+        , ( "visibility_id", Encode.string taskResponse.visibilityID )
+        , ( "series_kind", Encode.string taskResponse.seriesKind )
+        , ( "series_id", Encode.string taskResponse.seriesID )
+        , ( "series_position", Encode.int taskResponse.seriesPosition )
+        , ( "response_schema_json", Encode.string taskResponse.responseSchemaJSON )
+        , ( "payload_kind", Encode.string taskResponse.payloadKind )
+        , ( "payload_json", Encode.string taskResponse.payloadJSON )
+        , ( "created_by", Encode.string taskResponse.createdBy )
         ]
 
 type alias TasksResponse =

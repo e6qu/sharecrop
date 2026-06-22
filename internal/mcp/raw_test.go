@@ -34,6 +34,29 @@ func TestHandleRawNotificationHasNoResponse(t *testing.T) {
 	}
 }
 
+func TestHandleRawNullIDIsRequest(t *testing.T) {
+	server := NewServer(fakeServices{})
+	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(`{"jsonrpc":"2.0","id":null,"method":"ping"}`))
+	if !result.HasResponse {
+		t.Fatalf("id:null request should produce a response")
+	}
+	var response Response
+	if err := json.Unmarshal(result.Payload, &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if string(response.ID) != "null" {
+		t.Fatalf("id = %s, want null", string(response.ID))
+	}
+}
+
+func TestHandleRawClientResponseHasNoResponse(t *testing.T) {
+	server := NewServer(fakeServices{})
+	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+	if result.HasResponse {
+		t.Fatalf("client response should not be dispatched")
+	}
+}
+
 func TestHandleRawBatchReturnsArray(t *testing.T) {
 	server := NewServer(fakeServices{})
 	body := `[{"jsonrpc":"2.0","id":1,"method":"tools/list"},{"jsonrpc":"2.0","id":2,"method":"ping"}]`

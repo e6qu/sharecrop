@@ -48,7 +48,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${owner.body.access_token}` },
-    data: taskRequest(title, owner.body.subject_id, "public"),
+    data: taskRequest(title, owner.body.subject_id, "public", 20),
   });
   expect(taskResponse.ok()).toBeTruthy();
   const task = (await taskResponse.json()) as TaskBody;

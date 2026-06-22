@@ -117,6 +117,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/auth/register", server.register)
 	mux.HandleFunc("POST /api/auth/login", server.login)
 	mux.HandleFunc("POST /api/auth/refresh", server.refresh)
+	mux.HandleFunc("POST /api/auth/logout", server.logout)
 	mux.HandleFunc("POST /api/auth/guest", server.guest)
 	mux.HandleFunc("GET /api/organizations", server.listOrganizations)
 	mux.HandleFunc("POST /api/organizations", server.createOrganization)
@@ -242,10 +243,16 @@ type taskRequest struct {
 	Owner              taskOwnerRequest      `json:"owner"`
 	Title              string                `json:"title"`
 	Description        string                `json:"description"`
+	Reward             taskRewardRequest     `json:"reward"`
 	Visibility         taskVisibilityRequest `json:"visibility"`
 	Placement          taskPlacementRequest  `json:"placement"`
 	ResponseSchemaJSON string                `json:"response_schema_json"`
 	Payload            taskPayloadRequest    `json:"payload"`
+}
+
+type taskRewardRequest struct {
+	Kind         string `json:"kind"`
+	CreditAmount int64  `json:"credit_amount"`
 }
 
 type submissionRequest struct {
@@ -287,6 +294,8 @@ type taskResponse struct {
 	OwnerID            string `json:"owner_id"`
 	Title              string `json:"title"`
 	Description        string `json:"description"`
+	RewardKind         string `json:"reward_kind"`
+	RewardCreditAmount int64  `json:"reward_credit_amount"`
 	State              string `json:"state"`
 	VisibilityKind     string `json:"visibility_kind"`
 	VisibilityID       string `json:"visibility_id"`
@@ -489,6 +498,11 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeAuthResponse(w, http.StatusOK, responseAccepted.response)
+}
+
+func (server Server) logout(w http.ResponseWriter, r *http.Request) {
+	clearRefreshCookie(w)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (server Server) guest(w http.ResponseWriter, r *http.Request) {
@@ -732,7 +746,7 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 	created, matched := result.(task.TaskCreated)
 	if !matched {
 		rejected := result.(task.CreateRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -760,7 +774,7 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		rejected := result.(task.ListRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -802,7 +816,7 @@ func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, cha
 	changed, matched := result.(task.TaskStateChanged)
 	if !matched {
 		rejected := result.(task.ChangeStateRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -830,7 +844,7 @@ func (server Server) createTaskCapabilityToken(w http.ResponseWriter, r *http.Re
 	created, matched := result.(task.CapabilityTokenCreated)
 	if !matched {
 		rejected := result.(task.CreateCapabilityTokenRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -875,7 +889,7 @@ func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, comm
 	created, matched := result.(submission.SubmissionCreated)
 	if !matched {
 		rejected := result.(submission.SubmitRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -926,7 +940,7 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		rejected := result.(submission.ListRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -950,7 +964,7 @@ func (server Server) creditsBalance(w http.ResponseWriter, r *http.Request) {
 	found, matched := result.(ledger.BalanceFound)
 	if !matched {
 		rejected := result.(ledger.BalanceRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -970,7 +984,7 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 	listed, matched := result.(ledger.EntriesListed)
 	if !matched {
 		rejected := result.(ledger.ListEntriesRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -1025,7 +1039,7 @@ func (server Server) fundTask(w http.ResponseWriter, r *http.Request) {
 	result := server.ledgerService.FundTask(r.Context(), actor.subject.ID, taskIDAccepted.value, amount.Value, key.Value)
 	funded, matched := result.(ledger.TaskFunded)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(ledger.FundRejected).Reason.Description())
+		writeDomainError(w, result.(ledger.FundRejected).Reason)
 		return
 	}
 
@@ -1064,7 +1078,7 @@ func (server Server) refundTask(w http.ResponseWriter, r *http.Request) {
 	result := server.ledgerService.RefundTask(r.Context(), actor.subject.ID, taskIDAccepted.value, key.Value)
 	refunded, matched := result.(ledger.TaskRefunded)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(ledger.RefundRejected).Reason.Description())
+		writeDomainError(w, result.(ledger.RefundRejected).Reason)
 		return
 	}
 
@@ -1110,7 +1124,7 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 	result := server.ledgerService.AcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(ledger.AcceptRejected).Reason.Description())
+		writeDomainError(w, result.(ledger.AcceptRejected).Reason)
 		return
 	}
 
@@ -1348,6 +1362,13 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		return taskRequestRejected{reason: rejected.Reason.Description()}
 	}
 
+	rewardResult := parseTaskRewardRequest(request.Reward)
+	rewardAccepted, rewardMatched := rewardResult.(taskRewardAccepted)
+	if !rewardMatched {
+		rejected := rewardResult.(taskRewardRejected)
+		return taskRequestRejected{reason: rejected.reason}
+	}
+
 	visibilityResult := parseTaskVisibilityRequest(request.Visibility, ownerAccepted.value)
 	visibilityAccepted, visibilityMatched := visibilityResult.(taskVisibilityAccepted)
 	if !visibilityMatched {
@@ -1387,11 +1408,45 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		Owner:          ownerAccepted.value,
 		Title:          titleAccepted.Value,
 		Description:    descriptionAccepted.Value,
+		Reward:         rewardAccepted.value,
 		Visibility:     visibilityAccepted.value,
 		Placement:      placementAccepted.value,
 		ResponseSchema: schemaSourceAccepted.Value,
 		Payload:        payloadAccepted.value,
 	}}
+}
+
+type taskRewardResult interface {
+	taskRewardResult()
+}
+
+type taskRewardAccepted struct {
+	value task.RewardSpec
+}
+
+type taskRewardRejected struct {
+	reason string
+}
+
+func (taskRewardAccepted) taskRewardResult() {}
+
+func (taskRewardRejected) taskRewardResult() {}
+
+func parseTaskRewardRequest(request taskRewardRequest) taskRewardResult {
+	switch request.Kind {
+	case task.RewardKindNone.String():
+		return taskRewardAccepted{value: task.NoRewardSpec{}}
+	case task.RewardKindCredit.String():
+		amountResult := task.NewCreditRewardAmount(request.CreditAmount)
+		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
+		if !matched {
+			rejected := amountResult.(task.CreditRewardAmountRejected)
+			return taskRewardRejected{reason: rejected.Reason.Description()}
+		}
+		return taskRewardAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
+	default:
+		return taskRewardRejected{reason: "task reward kind is invalid"}
+	}
 }
 
 type taskOwnerResult interface {
@@ -1761,6 +1816,18 @@ func setRefreshCookie(w http.ResponseWriter, refreshToken auth.RefreshTokenPlain
 	})
 }
 
+func clearRefreshCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "sharecrop_refresh_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0).UTC(),
+	})
+}
+
 func organizationToResponse(value org.Organization) organizationResponse {
 	return organizationResponse{ID: value.ID.String(), Name: value.Name.String(), CreatedBy: value.CreatedBy.String()}
 }
@@ -1788,12 +1855,15 @@ func taskToResponse(value task.Task) taskResponse {
 	visibility := taskVisibilityResponseParts(value.Visibility)
 	placement := taskPlacementResponseParts(value.Placement)
 	payload := taskPayloadResponseParts(value.Payload)
+	reward := taskRewardResponseParts(value.Reward)
 	return taskResponse{
 		ID:                 value.ID.String(),
 		OwnerKind:          owner.kind,
 		OwnerID:            owner.id,
 		Title:              value.Title.String(),
 		Description:        value.Description.String(),
+		RewardKind:         reward.kind,
+		RewardCreditAmount: reward.amount,
 		State:              value.State.String(),
 		VisibilityKind:     visibility.kind,
 		VisibilityID:       visibility.id,
@@ -1804,6 +1874,22 @@ func taskToResponse(value task.Task) taskResponse {
 		PayloadKind:        payload.kind,
 		PayloadJSON:        payload.source,
 		CreatedBy:          value.CreatedBy.String(),
+	}
+}
+
+type rewardResponseParts struct {
+	kind   string
+	amount int64
+}
+
+func taskRewardResponseParts(reward task.RewardSpec) rewardResponseParts {
+	switch typed := reward.(type) {
+	case task.NoRewardSpec:
+		return rewardResponseParts{kind: task.RewardKindNone.String()}
+	case task.CreditRewardSpec:
+		return rewardResponseParts{kind: task.RewardKindCredit.String(), amount: typed.Amount.Int64()}
+	default:
+		return rewardResponseParts{}
 	}
 }
 
@@ -1977,4 +2063,25 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(errorResponse{Error: message})
+}
+
+func writeDomainError(w http.ResponseWriter, reason core.DomainError) {
+	writeError(w, statusForError(reason), reason.Description())
+}
+
+func statusForError(reason core.DomainError) int {
+	switch reason.Code() {
+	case core.ErrorCodeInvalidID, core.ErrorCodeInvalidEnum, core.ErrorCodeInvalidArgument:
+		return http.StatusBadRequest
+	case core.ErrorCodeInvalidState:
+		return http.StatusConflict
+	case core.ErrorCodeNotFound:
+		return http.StatusNotFound
+	case core.ErrorCodePermissionDenied:
+		return http.StatusForbidden
+	case core.ErrorCodeConflict:
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
 }

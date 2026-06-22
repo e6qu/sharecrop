@@ -34,10 +34,10 @@ func TestOrganizationCreditAccountFunding(t *testing.T) {
 		t.Fatalf("organization balance after funding = %d, want 70", balance)
 	}
 
-	// Funding more than the organization holds is rejected.
+	// Funding an amount that does not match the declared reward is rejected.
 	over := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/funding", []byte(`{"amount":200,"idempotency_key":"org-fund-over","organization_id":"`+organizationID+`"}`), owner.AccessToken)
 	defer over.Body.Close()
-	assertStatus(t, over, http.StatusBadRequest)
+	assertStatus(t, over, http.StatusConflict)
 }
 
 func createOrganization(t *testing.T, server *httptest.Server, owner authHTTPResponse, name string) string {
@@ -63,6 +63,7 @@ func createOrganizationTask(t *testing.T, server *httptest.Server, owner authHTT
 		"owner":{"kind":"organization","user_id":"","team_id":"","organization_id":"` + organizationID + `"},
 		"title":"Organization task",
 		"description":"A task owned by an organization.",
+		"reward":{"kind":"credit","credit_amount":30},
 		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"freeform\"}",

@@ -5,14 +5,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
 func TestSubmissionCreatesReceipt(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
-	service := NewService(store, taskStore)
+	service := NewService(store, taskStore, submissionPermissionStore{})
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
 	result := service.Submit(context.Background(), command)
@@ -28,7 +30,7 @@ func TestSubmissionCreatesReceipt(t *testing.T) {
 func TestInvalidSubmissionIsRecordedWithValidationErrors(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"object","fields":[{"name":"answer","presence":"required","schema":{"kind":"string"},"sensitivity":{"category":"","retention":"","redaction":""}}]}`)
-	service := NewService(store, taskStore)
+	service := NewService(store, taskStore, submissionPermissionStore{})
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":12}`)
 
 	result := service.Submit(context.Background(), command)
@@ -51,7 +53,7 @@ func TestInvalidSubmissionIsRecordedWithValidationErrors(t *testing.T) {
 func TestReceiptStatusRedactsSensitiveFields(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"object","fields":[{"name":"email","presence":"required","schema":{"kind":"string"},"sensitivity":{"category":"pii","retention":"delete_on_request","redaction":"replace"}}]}`)
-	service := NewService(store, taskStore)
+	service := NewService(store, taskStore, submissionPermissionStore{})
 	command := testSubmitCommand(t, taskStore.value.ID, `{"email":"person@example.com"}`)
 
 	result := service.Submit(context.Background(), command)
@@ -67,6 +69,51 @@ func TestReceiptStatusRedactsSensitiveFields(t *testing.T) {
 	}
 	if !strings.Contains(statusFound.Value.ResponseSource.String(), "[redacted]") {
 		t.Fatalf("receipt response did not contain redaction marker")
+	}
+}
+
+func TestSubmitRejectsClosedTask(t *testing.T) {
+	store := newSubmissionMemoryStore()
+	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
+	taskStore.value.State = task.StateClosed
+	service := NewService(store, taskStore, submissionPermissionStore{})
+	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
+
+	result := service.Submit(context.Background(), command)
+	if _, matched := result.(SubmitRejected); !matched {
+		t.Fatalf("result = %T, want SubmitRejected", result)
+	}
+}
+
+func TestSubmitRejectsTaskHiddenFromSubmitter(t *testing.T) {
+	store := newSubmissionMemoryStore()
+	ownerID := submissionTestUserID(t)
+	taskStore := newSubmissionTaskStore(t, task.UserVisibility{UserID: ownerID}, `{"kind":"freeform"}`)
+	taskStore.value.CreatedBy = ownerID
+	taskStore.value.Owner = task.UserOwner{UserID: ownerID}
+	service := NewService(store, taskStore, submissionPermissionStore{})
+	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
+
+	result := service.Submit(context.Background(), command)
+	if _, matched := result.(SubmitRejected); !matched {
+		t.Fatalf("result = %T, want SubmitRejected", result)
+	}
+}
+
+func TestOrganizationReviewerCanListSubmissions(t *testing.T) {
+	store := newSubmissionMemoryStore()
+	organizationID := submissionTestOrganizationID(t)
+	taskStore := newSubmissionTaskStore(t, task.OrganizationVisibility{OrganizationID: organizationID}, `{"kind":"freeform"}`)
+	taskStore.value.Owner = task.OrganizationOwner{OrganizationID: organizationID}
+	service := NewService(store, taskStore, submissionPermissionStore{organizationID: organizationID, roles: []org.Role{org.RoleReviewer}})
+	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
+	if _, matched := service.Submit(context.Background(), command).(SubmissionCreated); !matched {
+		t.Fatalf("submit was rejected")
+	}
+
+	result := service.ListForTask(context.Background(), testAuthSubject(t, command.SubmitterID), taskStore.value.ID)
+	if _, matched := result.(SubmissionsListed); !matched {
+		t.Fatalf("result = %T, want SubmissionsListed", result)
 	}
 }
 
@@ -109,6 +156,7 @@ func newSubmissionTaskStore(t *testing.T, visibility task.Visibility, schemaSour
 		Owner:          task.UserOwner{UserID: submissionTestUserID(t)},
 		Title:          acceptedTaskTitle(t),
 		Description:    acceptedTaskDescription(t),
+		Reward:         task.NoRewardSpec{},
 		State:          task.StateOpen,
 		Visibility:     visibility,
 		Placement:      task.StandalonePlacement{},
@@ -116,6 +164,18 @@ func newSubmissionTaskStore(t *testing.T, visibility task.Visibility, schemaSour
 		Payload:        task.NoDataPayload{},
 		CreatedBy:      submissionTestUserID(t),
 	}}
+}
+
+type submissionPermissionStore struct {
+	organizationID core.OrganizationID
+	roles          []org.Role
+}
+
+func (store submissionPermissionStore) CheckOrganizationPermission(_ context.Context, organizationID core.OrganizationID, _ core.UserID, permission org.Permission) org.PermissionCheck {
+	if organizationID != store.organizationID {
+		return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization permission denied")}
+	}
+	return org.CheckPermission(store.roles, permission)
 }
 
 func (store *submissionTaskStore) FindTask(_ context.Context, taskID core.TaskID) task.FindTaskStoreResult {
@@ -150,6 +210,21 @@ func submissionTestTaskID(t *testing.T) core.TaskID {
 		t.Fatalf("submission test task id = %T, want TaskIDCreated", result)
 	}
 	return created.Value
+}
+
+func submissionTestOrganizationID(t *testing.T) core.OrganizationID {
+	t.Helper()
+	result := core.NewOrganizationID()
+	created, matched := result.(core.OrganizationIDCreated)
+	if !matched {
+		t.Fatalf("submission test organization id = %T, want OrganizationIDCreated", result)
+	}
+	return created.Value
+}
+
+func testAuthSubject(t *testing.T, userID core.UserID) auth.UserSubject {
+	t.Helper()
+	return auth.UserSubject{ID: userID}
 }
 
 func acceptedTaskTitle(t *testing.T) task.Title {

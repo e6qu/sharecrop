@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -17,7 +18,7 @@ func TestMCPAgentDiscoverSubmitAcceptFlow(t *testing.T) {
 	owner := registerUser(t, server, "mcp-owner")
 	worker := registerUser(t, server, "mcp-worker")
 
-	task := createPublicUserTask(t, server, owner)
+	task := createPublicCreditUserTask(t, server, owner, 30)
 	fundTask(t, server, owner.AccessToken, task.ID, 30, "fund-"+task.ID)
 	openTask(t, server, owner.AccessToken, task.ID)
 
@@ -134,6 +135,25 @@ func createPublicUserTask(t *testing.T, server *httptest.Server, owner authHTTPR
 		"owner":{"kind":"user","user_id":"` + owner.SubjectID + `","team_id":"","organization_id":""},
 		"title":"Public agent task",
 		"description":"A public task that agents can discover and submit to.",
+		"reward":{"kind":"none","credit_amount":0},
+		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(body), owner.AccessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+	return decodeTaskHTTPResponse(t, response)
+}
+
+func createPublicCreditUserTask(t *testing.T, server *httptest.Server, owner authHTTPResponse, amount int64) taskHTTPResponse {
+	t.Helper()
+	body := `{
+		"owner":{"kind":"user","user_id":"` + owner.SubjectID + `","team_id":"","organization_id":""},
+		"title":"Public credit agent task",
+		"description":"A public task with a credit reward that agents can discover and submit to.",
+		"reward":{"kind":"credit","credit_amount":` + strconv.FormatInt(amount, 10) + `},
 		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"freeform\"}",

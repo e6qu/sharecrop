@@ -36,6 +36,7 @@ type CreateCommand struct {
 	Owner          Owner
 	Title          Title
 	Description    Description
+	Reward         RewardSpec
 	Visibility     Visibility
 	Placement      SeriesPlacement
 	ResponseSchema ResponseSchemaSource
@@ -205,13 +206,13 @@ func (service Service) requireViewPermission(ctx context.Context, actor auth.Use
 		if typed.UserID == actor.ID {
 			return viewPermissionAccepted{}
 		}
-		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task view access denied")}
+		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
 	case OrganizationVisibility:
 		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, actor.ID)
 	case OrganizationTeamVisibility:
 		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, actor.ID)
 	default:
-		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task view access denied")}
+		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
 	}
 }
 
@@ -347,7 +348,7 @@ func (service Service) requireOwnerPermission(ctx context.Context, actor auth.Us
 	switch typed := owner.(type) {
 	case UserOwner:
 		if typed.UserID != actor.ID {
-			return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task owner access denied")}
+			return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task owner access denied")}
 		}
 		return ownerPermissionAccepted{}
 	case OrganizationOwner:
@@ -355,7 +356,7 @@ func (service Service) requireOwnerPermission(ctx context.Context, actor auth.Us
 	case OrganizationTeamOwner:
 		return service.requireOrganizationPermission(ctx, typed.OrganizationID, actor.ID, org.PermissionCreateOrganizationTask)
 	case TeamOwner:
-		return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "team-owned tasks require organization ownership in this release")}
+		return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team-owned tasks require organization ownership in this release")}
 	default:
 		return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task owner is invalid")}
 	}
@@ -444,7 +445,7 @@ func (service Service) requireListPermission(ctx context.Context, actor auth.Use
 		return listPermissionAccepted{}
 	case UserListScope:
 		if typed.UserID != actor.ID {
-			return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list access denied")}
+			return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task list access denied")}
 		}
 		return listPermissionAccepted{}
 	case OrganizationListScope:

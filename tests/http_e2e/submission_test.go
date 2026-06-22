@@ -19,6 +19,7 @@ func TestSubmissionReceiptRedactionAndRequesterList(t *testing.T) {
 	defer createTaskResponse.Body.Close()
 	assertStatus(t, createTaskResponse, http.StatusCreated)
 	taskBody := decodeTaskHTTPResponse(t, createTaskResponse)
+	openTask(t, server, owner.AccessToken, taskBody.ID)
 
 	submitResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"email\":\"person@example.com\"}"}`), worker.AccessToken)
 	defer submitResponse.Body.Close()
@@ -59,6 +60,7 @@ func TestInvalidSubmissionIsRecorded(t *testing.T) {
 	defer createTaskResponse.Body.Close()
 	assertStatus(t, createTaskResponse, http.StatusCreated)
 	taskBody := decodeTaskHTTPResponse(t, createTaskResponse)
+	openTask(t, server, owner.AccessToken, taskBody.ID)
 
 	submitResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"email\":12}"}`), worker.AccessToken)
 	defer submitResponse.Body.Close()
@@ -100,6 +102,7 @@ func publicSensitiveTaskRequestJSON(userID string) string {
 		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
 		"title":"Collect contact",
 		"description":"Collect a contact email for validation.",
+		"reward":{"kind":"none","credit_amount":0},
 		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"object\",\"fields\":[{\"name\":\"email\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"},\"sensitivity\":{\"category\":\"pii\",\"retention\":\"delete_on_request\",\"redaction\":\"replace\"}}]}",

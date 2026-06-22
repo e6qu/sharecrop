@@ -5,6 +5,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/schema"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -19,13 +20,18 @@ type TaskFinder interface {
 	FindTask(context.Context, core.TaskID) task.FindTaskStoreResult
 }
 
-type Service struct {
-	store     Store
-	taskStore TaskFinder
+type OrganizationPermissions interface {
+	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 }
 
-func NewService(store Store, taskStore TaskFinder) Service {
-	return Service{store: store, taskStore: taskStore}
+type Service struct {
+	store                   Store
+	taskStore               TaskFinder
+	organizationPermissions OrganizationPermissions
+}
+
+func NewService(store Store, taskStore TaskFinder, organizationPermissions OrganizationPermissions) Service {
+	return Service{store: store, taskStore: taskStore, organizationPermissions: organizationPermissions}
 }
 
 type SubmitCommand struct {
@@ -57,6 +63,12 @@ func (service Service) Submit(ctx context.Context, command SubmitCommand) Submit
 	if !taskMatched {
 		rejected := taskResult.(task.FindTaskStoreRejected)
 		return SubmitRejected{Reason: rejected.Reason}
+	}
+	if taskFound.Value.State != task.StateOpen {
+		return SubmitRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks accept submissions")}
+	}
+	if rejected, matched := service.requireViewPermission(ctx, command.SubmitterID, taskFound.Value).(viewPermissionRejected); matched {
+		return SubmitRejected{Reason: rejected.reason}
 	}
 
 	schemaResult := schema.ParseSchemaJSON([]byte(taskFound.Value.ResponseSchema.String()))
@@ -165,8 +177,8 @@ func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, 
 		rejected := taskResult.(task.FindTaskStoreRejected)
 		return ListRejected{Reason: rejected.Reason}
 	}
-	if taskFound.Value.CreatedBy != actor.ID {
-		return ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission list access denied")}
+	if rejected, matched := service.requireReviewPermission(ctx, actor.ID, taskFound.Value).(reviewPermissionRejected); matched {
+		return ListRejected{Reason: rejected.reason}
 	}
 
 	result := service.store.ListForTask(ctx, taskID)
@@ -176,6 +188,108 @@ func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, 
 		return ListRejected{Reason: rejected.Reason}
 	}
 	return SubmissionsListed{Values: listed.Values}
+}
+
+type viewPermissionResult interface {
+	viewPermissionResult()
+}
+
+type viewPermissionAccepted struct{}
+
+type viewPermissionRejected struct {
+	reason core.DomainError
+}
+
+func (viewPermissionAccepted) viewPermissionResult() {}
+
+func (viewPermissionRejected) viewPermissionResult() {}
+
+func (service Service) requireViewPermission(ctx context.Context, userID core.UserID, value task.Task) viewPermissionResult {
+	if value.CreatedBy == userID {
+		return viewPermissionAccepted{}
+	}
+	switch typed := value.Visibility.(type) {
+	case task.PublicVisibility:
+		return viewPermissionAccepted{}
+	case task.UserVisibility:
+		if typed.UserID == userID {
+			return viewPermissionAccepted{}
+		}
+		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
+	case task.OrganizationVisibility:
+		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, userID)
+	case task.OrganizationTeamVisibility:
+		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, userID)
+	default:
+		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
+	}
+}
+
+func (service Service) requireOrganizationViewPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) viewPermissionResult {
+	check := service.organizationPermissions.CheckOrganizationPermission(ctx, organizationID, userID, org.PermissionReviewSubmissions)
+	if _, granted := check.(org.PermissionGranted); granted {
+		return viewPermissionAccepted{}
+	}
+	check = service.organizationPermissions.CheckOrganizationPermission(ctx, organizationID, userID, org.PermissionCreateOrganizationTask)
+	if rejected, matched := check.(org.PermissionDenied); matched {
+		return viewPermissionRejected{reason: rejected.Reason}
+	}
+	return viewPermissionAccepted{}
+}
+
+type reviewPermissionResult interface {
+	reviewPermissionResult()
+}
+
+type reviewPermissionAccepted struct{}
+
+type reviewPermissionRejected struct {
+	reason core.DomainError
+}
+
+func (reviewPermissionAccepted) reviewPermissionResult() {}
+
+func (reviewPermissionRejected) reviewPermissionResult() {}
+
+func (service Service) requireReviewPermission(ctx context.Context, userID core.UserID, value task.Task) reviewPermissionResult {
+	if value.CreatedBy == userID {
+		return reviewPermissionAccepted{}
+	}
+	organizationIDResult := organizationIDForTask(value)
+	organizationIDFound, matched := organizationIDResult.(organizationIDFound)
+	if !matched {
+		return reviewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submission list access denied")}
+	}
+	check := service.organizationPermissions.CheckOrganizationPermission(ctx, organizationIDFound.value, userID, org.PermissionReviewSubmissions)
+	if rejected, permissionMatched := check.(org.PermissionDenied); permissionMatched {
+		return reviewPermissionRejected{reason: rejected.Reason}
+	}
+	return reviewPermissionAccepted{}
+}
+
+type organizationIDForTaskResult interface {
+	organizationIDForTaskResult()
+}
+
+type organizationIDFound struct {
+	value core.OrganizationID
+}
+
+type organizationIDMissing struct{}
+
+func (organizationIDFound) organizationIDForTaskResult() {}
+
+func (organizationIDMissing) organizationIDForTaskResult() {}
+
+func organizationIDForTask(value task.Task) organizationIDForTaskResult {
+	switch typed := value.Owner.(type) {
+	case task.OrganizationOwner:
+		return organizationIDFound{value: typed.OrganizationID}
+	case task.OrganizationTeamOwner:
+		return organizationIDFound{value: typed.OrganizationID}
+	default:
+		return organizationIDMissing{}
+	}
 }
 
 func validationOutcome(schemaValue schema.Schema, value schema.Value) ValidationOutcome {

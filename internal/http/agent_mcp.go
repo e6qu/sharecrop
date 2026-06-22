@@ -12,6 +12,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/mcp"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -204,6 +205,14 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "origin is not allowed")
 		return
 	}
+	if !mcpAcceptAllowed(r.Header.Get("Accept")) {
+		writeError(w, http.StatusNotAcceptable, "MCP endpoint requires an Accept header allowing application/json")
+		return
+	}
+	if !mcpProtocolVersionAllowed(r.Header.Get("MCP-Protocol-Version")) {
+		writeError(w, http.StatusBadRequest, "MCP protocol version is unsupported")
+		return
+	}
 
 	verifyResult := server.verifyAgent(r)
 	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
@@ -229,6 +238,23 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(result.Payload)
+}
+
+func mcpAcceptAllowed(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	for _, value := range strings.Split(raw, ",") {
+		mediaType := strings.TrimSpace(strings.Split(value, ";")[0])
+		if mediaType == "application/json" || mediaType == "*/*" {
+			return true
+		}
+	}
+	return false
+}
+
+func mcpProtocolVersionAllowed(raw string) bool {
+	return raw == "" || raw == mcp.ProtocolVersion()
 }
 
 // mcpStreamNotOffered answers a GET on the MCP endpoint. This server has no

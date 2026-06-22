@@ -121,7 +121,7 @@ func (server Server) fundCollectibleReward(w http.ResponseWriter, r *http.Reques
 	result := server.assetService.FundReward(r.Context(), actor.ID, taskID, collectibleID.Value)
 	funded, matched := result.(assets.RewardFunded)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(assets.FundRewardRejected).Reason.Description())
+		writeDomainError(w, result.(assets.FundRewardRejected).Reason)
 		return
 	}
 	writeJSON(w, http.StatusCreated, collectibleToResponse(funded.Value))

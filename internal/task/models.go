@@ -7,6 +7,7 @@ type Task struct {
 	Owner          Owner
 	Title          Title
 	Description    Description
+	Reward         RewardSpec
 	State          State
 	Visibility     Visibility
 	Placement      SeriesPlacement
@@ -56,6 +57,33 @@ func (TeamOwner) owner() {}
 func (OrganizationOwner) owner() {}
 
 func (OrganizationTeamOwner) owner() {}
+
+type RewardSpec interface {
+	rewardSpec()
+}
+
+type NoRewardSpec struct{}
+
+type CreditRewardSpec struct {
+	Amount CreditRewardAmount
+}
+
+func (NoRewardSpec) rewardSpec() {}
+
+func (CreditRewardSpec) rewardSpec() {}
+
+type RewardKind struct {
+	value string
+}
+
+var (
+	RewardKindNone   = RewardKind{value: "none"}
+	RewardKindCredit = RewardKind{value: "credit"}
+)
+
+func (kind RewardKind) String() string {
+	return kind.value
+}
 
 type OwnerKind struct {
 	value string

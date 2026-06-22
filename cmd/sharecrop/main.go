@@ -136,7 +136,7 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 	organizationService := org.NewService(db.NewOrgStore(pool))
 	taskStore := db.NewTaskStore(pool)
 	taskService := task.NewService(taskStore, organizationService)
-	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore)
+	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
 	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService)
 
@@ -182,7 +182,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	organizationService := org.NewService(db.NewOrgStore(pool))
 	taskStore := db.NewTaskStore(pool)
 	taskService := task.NewService(taskStore, organizationService)
-	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore)
+	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
 	agentService := agent.NewService(db.NewAgentStore(pool))
 	assetService := assets.NewService(db.NewCollectibleStore(pool))

@@ -1,6 +1,7 @@
 module Main exposing (main)
 
 import Browser
+import Browser.Navigation as Nav
 import Html exposing (Html, div, form, label, main_, p, span, table, tbody, td, text, th, thead, tr)
 import Html.Attributes exposing (checked, disabled, placeholder, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
@@ -14,6 +15,7 @@ import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Ui as Ui exposing (testId)
+import Url exposing (Url)
 
 
 type alias Flags =
@@ -37,6 +39,11 @@ type alias LoggedInModel =
     , page : Page
     , balance : Maybe Int
     , entries : List Ledger.LedgerEntryResponse
+    , createTitle : String
+    , createDescription : String
+    , createRewardAmount : String
+    , createPublic : Bool
+    , createMessage : Maybe String
     , fundTaskId : String
     , fundAmount : String
     , fundMessage : Maybe String
@@ -64,17 +71,22 @@ type alias LoggedInModel =
 
 type alias TaskDetail =
     { id : String
+    , title : String
+    , description : String
     , state : String
+    , rewardKind : String
+    , rewardCreditAmount : Int
     , responseSchemaJson : String
     }
 
 
 type alias PublicTaskDetail =
     { id : String
-    , ownerKind : String
     , title : String
     , description : String
     , state : String
+    , rewardKind : String
+    , rewardCreditAmount : Int
     , responseSchemaJson : String
     , createdBy : String
     }
@@ -82,6 +94,8 @@ type alias PublicTaskDetail =
 
 type alias Model =
     { origin : String
+    , key : Nav.Key
+    , route : Page
     , email : String
     , password : String
     , authError : Maybe String
@@ -95,9 +109,16 @@ type Msg
     | RegisterClicked
     | LoginClicked
     | AuthReceived (Result Http.Error Auth.AuthResponse)
+    | RefreshReceived (Result Http.Error Auth.AuthResponse)
     | BalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | LedgerReceived (Result Http.Error Ledger.LedgerResponse)
     | TasksReceived (Result Http.Error Task.TasksResponse)
+    | CreateTitleChanged String
+    | CreateDescriptionChanged String
+    | CreateRewardAmountChanged String
+    | CreatePublicChanged Bool
+    | CreateTaskClicked
+    | CreateTaskReceived (Result Http.Error TaskDetail)
     | CredentialsReceived (Result Http.Error Agent.AgentCredentialsResponse)
     | FundTaskIdChanged String
     | FundAmountChanged String
@@ -105,6 +126,10 @@ type Msg
     | FundReceived (Result Http.Error Ledger.TaskEscrowResponse)
     | SelectTask String
     | TaskDetailReceived (Result Http.Error TaskDetail)
+    | OpenTaskClicked String
+    | OpenTaskReceived (Result Http.Error TaskDetail)
+    | RefundTaskClicked String
+    | RefundTaskReceived (Result Http.Error Ledger.TaskEscrowResponse)
     | AgentLabelChanged String
     | ToggleScope Agent.AgentScope
     | CreateAgentClicked
@@ -112,6 +137,7 @@ type Msg
     | RevokeClicked String
     | AgentRevoked (Result Http.Error Agent.AgentCredentialResponse)
     | LogoutClicked
+    | LogoutReceived (Result Http.Error ())
     | NavDashboard
     | NavDiscovery
     | DiscoveryReceived (Result Http.Error Task.TasksResponse)
@@ -133,21 +159,27 @@ type Msg
     | AwardTaskIdChanged String
     | AwardClicked String
     | AwardReceived (Result Http.Error Collectible.CollectibleResponse)
+    | LinkClicked Browser.UrlRequest
+    | UrlChanged Url
 
 
 main : Program Flags Model Msg
 main =
-    Browser.element
-        { init = \flags -> ( initialModel flags, Cmd.none )
+    Browser.application
+        { init = \flags url key -> ( initialModel flags key url, postRefresh )
         , update = update
         , subscriptions = \_ -> Sub.none
         , view = view
+        , onUrlRequest = LinkClicked
+        , onUrlChange = UrlChanged
         }
 
 
-initialModel : Flags -> Model
-initialModel flags =
+initialModel : Flags -> Nav.Key -> Url -> Model
+initialModel flags key url =
     { origin = flags.origin
+    , key = key
+    , route = pageFromUrl url
     , email = ""
     , password = ""
     , authError = Nothing
@@ -162,6 +194,11 @@ emptyLoggedIn response =
     , page = DashboardPage
     , balance = Nothing
     , entries = []
+    , createTitle = ""
+    , createDescription = ""
+    , createRewardAmount = ""
+    , createPublic = False
+    , createMessage = Nothing
     , fundTaskId = ""
     , fundAmount = ""
     , fundMessage = Nothing
@@ -187,6 +224,28 @@ emptyLoggedIn response =
     }
 
 
+loggedInForPage : Auth.AuthResponse -> Page -> LoggedInModel
+loggedInForPage response page =
+    let
+        state =
+            emptyLoggedIn response
+    in
+    { state | page = page }
+
+
+pageFromUrl : Url -> Page
+pageFromUrl url =
+    case String.split "/" (String.dropLeft 1 url.path) of
+        [ "discovery" ] ->
+            DiscoveryPage
+
+        [ "tasks", taskId ] ->
+            TaskDetailPage taskId
+
+        _ ->
+            DashboardPage
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -203,12 +262,20 @@ update msg model =
             ( { model | authError = Nothing }, postAuth "/api/auth/login" model )
 
         AuthReceived (Ok response) ->
-            ( { model | password = "", authError = Nothing, session = LoggedIn (emptyLoggedIn response) }
+            ( { model | password = "", authError = Nothing, session = LoggedIn (loggedInForPage response model.route) }
             , loadAfterAuth response.accessToken
             )
 
         AuthReceived (Err error) ->
             ( { model | authError = Just (httpErrorLabel error) }, Cmd.none )
+
+        RefreshReceived (Ok response) ->
+            ( { model | session = LoggedIn (loggedInForPage response model.route) }
+            , Cmd.batch [ loadAfterAuth response.accessToken, routeLoadCmd response.accessToken model.route ]
+            )
+
+        RefreshReceived (Err _) ->
+            ( model, Cmd.none )
 
         BalanceReceived result ->
             ( updateLoggedIn model (\state -> { state | balance = balanceFromResult result }), Cmd.none )
@@ -218,6 +285,43 @@ update msg model =
 
         TasksReceived result ->
             ( updateLoggedIn model (\state -> { state | tasks = tasksFromResult result }), Cmd.none )
+
+        CreateTitleChanged value ->
+            ( updateLoggedIn model (\state -> { state | createTitle = value }), Cmd.none )
+
+        CreateDescriptionChanged value ->
+            ( updateLoggedIn model (\state -> { state | createDescription = value }), Cmd.none )
+
+        CreateRewardAmountChanged value ->
+            ( updateLoggedIn model (\state -> { state | createRewardAmount = value }), Cmd.none )
+
+        CreatePublicChanged value ->
+            ( updateLoggedIn model (\state -> { state | createPublic = value }), Cmd.none )
+
+        CreateTaskClicked ->
+            withSession model (\state -> createTaskCommand model state)
+
+        CreateTaskReceived (Ok created) ->
+            ( updateLoggedIn model
+                (\state ->
+                    { state
+                        | createTitle = ""
+                        , createDescription = ""
+                        , createMessage = Just ("Created task " ++ created.id)
+                        , fundTaskId = created.id
+                        , fundAmount =
+                            if created.rewardKind == "credit" then
+                                String.fromInt created.rewardCreditAmount
+
+                            else
+                                state.fundAmount
+                    }
+                )
+            , refreshTasksAndLedger model
+            )
+
+        CreateTaskReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         CredentialsReceived result ->
             ( updateLoggedIn model (\state -> { state | credentials = credentialsFromResult result }), Cmd.none )
@@ -238,13 +342,33 @@ update msg model =
             ( updateLoggedIn model (\state -> { state | fundMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         SelectTask taskId ->
-            withSession model (\state -> ( model, fetchTaskDetail state.accessToken taskId ))
+            withSession model (\state -> ( model, Cmd.batch [ fetchTaskDetail state.accessToken taskId, fetchSubmissions state.accessToken taskId ] ))
 
         TaskDetailReceived (Ok detail) ->
             ( updateLoggedIn model (\state -> { state | selectedTask = Just detail }), Cmd.none )
 
-        TaskDetailReceived (Err _) ->
-            ( model, Cmd.none )
+        TaskDetailReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        OpenTaskClicked taskId ->
+            withSession model (\state -> ( model, postOpenTask state.accessToken taskId ))
+
+        OpenTaskReceived (Ok detail) ->
+            ( updateLoggedIn model (\state -> { state | selectedTask = Just detail, createMessage = Just "Task opened." })
+            , refreshTasksAndDiscovery model
+            )
+
+        OpenTaskReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        RefundTaskClicked taskId ->
+            withSession model (\state -> ( model, postRefundTask state.accessToken taskId ))
+
+        RefundTaskReceived (Ok _) ->
+            ( updateLoggedIn model (\state -> { state | createMessage = Just "Task refunded and cancelled." }), refreshTasksAndLedger model )
+
+        RefundTaskReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         AgentLabelChanged value ->
             ( updateLoggedIn model (\state -> { state | agentLabel = value }), Cmd.none )
@@ -268,16 +392,18 @@ update msg model =
             ( model, refreshCredentials model )
 
         LogoutClicked ->
-            ( { model | session = LoggedOut, email = "", password = "" }, Cmd.none )
+            ( { model | session = LoggedOut, email = "", password = "" }
+            , Cmd.batch [ postLogout, Nav.pushUrl model.key "/dashboard" ]
+            )
+
+        LogoutReceived _ ->
+            ( model, Cmd.none )
 
         NavDashboard ->
-            ( updateLoggedIn model (\state -> { state | page = DashboardPage }), Cmd.none )
+            ( model, Nav.pushUrl model.key "/dashboard" )
 
         NavDiscovery ->
-            withSession model
-                (\state ->
-                    ( updateLoggedIn model (\s -> { s | page = DiscoveryPage }), fetchDiscovery state.accessToken )
-                )
+            ( model, Nav.pushUrl model.key "/discovery" )
 
         DiscoveryReceived result ->
             ( updateLoggedIn model (\state -> { state | discoveryTasks = tasksFromResult result }), Cmd.none )
@@ -308,14 +434,14 @@ update msg model =
         DetailReceived (Ok detail) ->
             ( updateLoggedIn model (\state -> { state | detail = Just detail }), Cmd.none )
 
-        DetailReceived (Err _) ->
-            ( model, Cmd.none )
+        DetailReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | submitMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         SubmissionsReceived (Ok response) ->
             ( updateLoggedIn model (\state -> { state | submissions = response.submissions }), Cmd.none )
 
-        SubmissionsReceived (Err _) ->
-            ( updateLoggedIn model (\state -> { state | submissions = [] }), Cmd.none )
+        SubmissionsReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | submissions = [], submitMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         SubmitInputChanged value ->
             ( updateLoggedIn model (\state -> { state | submitInput = value }), Cmd.none )
@@ -377,6 +503,28 @@ update msg model =
 
         AwardReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        LinkClicked request ->
+            case request of
+                Browser.Internal url ->
+                    ( model, Nav.pushUrl model.key (Url.toString url) )
+
+                Browser.External href ->
+                    ( model, Nav.load href )
+
+        UrlChanged url ->
+            let
+                page =
+                    pageFromUrl url
+            in
+            case model.session of
+                LoggedIn state ->
+                    ( { model | route = page, session = LoggedIn { state | page = page } }
+                    , routeLoadCmd state.accessToken page
+                    )
+
+                LoggedOut ->
+                    ( { model | route = page }, Cmd.none )
 
 
 withSession : Model -> (LoggedInModel -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
@@ -477,6 +625,17 @@ createAgentCommand model state =
         ( updateLoggedIn model (\current -> { current | agentMessage = Nothing, newCredential = Nothing }), postAgent state.accessToken state.agentLabel state.agentScopes )
 
 
+createTaskCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+createTaskCommand model state =
+    if String.isEmpty (String.trim state.createTitle) || String.isEmpty (String.trim state.createDescription) then
+        ( updateLoggedIn model (\current -> { current | createMessage = Just "Title and description are required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | createMessage = Nothing })
+        , postCreateTask state
+        )
+
+
 submitCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 submitCommand model state =
     case state.page of
@@ -546,6 +705,39 @@ refreshLedger model =
             Cmd.none
 
 
+refreshTasksAndLedger : Model -> Cmd Msg
+refreshTasksAndLedger model =
+    case model.session of
+        LoggedIn state ->
+            Cmd.batch [ fetchTasks state.accessToken, fetchBalance state.accessToken, fetchLedger state.accessToken ]
+
+        LoggedOut ->
+            Cmd.none
+
+
+refreshTasksAndDiscovery : Model -> Cmd Msg
+refreshTasksAndDiscovery model =
+    case model.session of
+        LoggedIn state ->
+            Cmd.batch [ fetchTasks state.accessToken, fetchDiscovery state.accessToken ]
+
+        LoggedOut ->
+            Cmd.none
+
+
+routeLoadCmd : String -> Page -> Cmd Msg
+routeLoadCmd token page =
+    case page of
+        DashboardPage ->
+            Cmd.none
+
+        DiscoveryPage ->
+            fetchDiscovery token
+
+        TaskDetailPage taskId ->
+            Cmd.batch [ fetchPublicTaskDetail token taskId, fetchSubmissions token taskId ]
+
+
 refreshCredentials : Model -> Cmd Msg
 refreshCredentials model =
     case model.session of
@@ -598,6 +790,24 @@ postAuth url model =
         }
 
 
+postRefresh : Cmd Msg
+postRefresh =
+    Http.post
+        { url = "/api/auth/refresh"
+        , body = Http.emptyBody
+        , expect = Http.expectJson RefreshReceived Auth.authResponseDecoder
+        }
+
+
+postLogout : Cmd Msg
+postLogout =
+    Http.post
+        { url = "/api/auth/logout"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever LogoutReceived
+        }
+
+
 authRequestBody : Model -> Encode.Value
 authRequestBody model =
     Encode.object
@@ -631,6 +841,15 @@ fetchTaskDetail token taskId =
     authorizedRequest "GET" token ("/api/tasks/" ++ taskId) Http.emptyBody (Http.expectJson TaskDetailReceived taskDetailDecoder)
 
 
+postCreateTask : LoggedInModel -> Cmd Msg
+postCreateTask state =
+    authorizedRequest "POST"
+        state.accessToken
+        "/api/tasks"
+        (Http.jsonBody (createTaskRequestBody state))
+        (Http.expectJson CreateTaskReceived taskDetailDecoder)
+
+
 fetchDiscovery : String -> Cmd Msg
 fetchDiscovery token =
     authorizedRequest "GET" token "/api/tasks?scope=public" Http.emptyBody (Http.expectJson DiscoveryReceived Task.tasksResponseDecoder)
@@ -653,6 +872,24 @@ postFunding token taskId amount =
         ("/api/tasks/" ++ taskId ++ "/funding")
         (Http.jsonBody (fundingRequestBody taskId amount))
         (Http.expectJson FundReceived Ledger.taskEscrowResponseDecoder)
+
+
+postOpenTask : String -> String -> Cmd Msg
+postOpenTask token taskId =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/open")
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson OpenTaskReceived taskDetailDecoder)
+
+
+postRefundTask : String -> String -> Cmd Msg
+postRefundTask token taskId =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/refund")
+        (Http.jsonBody (Encode.object [ ( "idempotency_key", Encode.string ("ui-refund:" ++ taskId) ) ]))
+        (Http.expectJson RefundTaskReceived Ledger.taskEscrowResponseDecoder)
 
 
 postAgent : String -> String -> List Agent.AgentScope -> Cmd Msg
@@ -722,6 +959,34 @@ fundingRequestBody taskId amount =
         ]
 
 
+createTaskRequestBody : LoggedInModel -> Encode.Value
+createTaskRequestBody state =
+    Encode.object
+        [ ( "owner", Encode.object [ ( "kind", Encode.string "user" ), ( "user_id", Encode.string state.subjectId ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string "" ) ] )
+        , ( "title", Encode.string state.createTitle )
+        , ( "description", Encode.string state.createDescription )
+        , ( "reward", createRewardBody state.createRewardAmount )
+        , ( "visibility", Encode.object [ ( "kind", Encode.string (if state.createPublic then "public" else "default") ), ( "user_id", Encode.string "" ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string "" ) ] )
+        , ( "placement", Encode.object [ ( "kind", Encode.string "standalone" ), ( "series_id", Encode.string "" ), ( "series_title", Encode.string "" ), ( "series_position", Encode.int 0 ) ] )
+        , ( "response_schema_json", Encode.string "{\"kind\":\"freeform\"}" )
+        , ( "payload", Encode.object [ ( "kind", Encode.string "none" ), ( "json", Encode.string "" ) ] )
+        ]
+
+
+createRewardBody : String -> Encode.Value
+createRewardBody rawAmount =
+    case String.toInt rawAmount of
+        Just amount ->
+            if amount > 0 then
+                Encode.object [ ( "kind", Encode.string "credit" ), ( "credit_amount", Encode.int amount ) ]
+
+            else
+                Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ) ]
+
+        Nothing ->
+            Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ) ]
+
+
 agentRequestBody : String -> List Agent.AgentScope -> Encode.Value
 agentRequestBody agentLabel scopes =
     Encode.object
@@ -762,22 +1027,28 @@ collectibleRewardRequestBody collectibleId =
 
 taskDetailDecoder : Decode.Decoder TaskDetail
 taskDetailDecoder =
-    Decode.map3 TaskDetail
+    Decode.map7 TaskDetail
         (Decode.field "id" Decode.string)
+        (Decode.field "title" Decode.string)
+        (Decode.field "description" Decode.string)
         (Decode.field "state" Decode.string)
+        (Decode.field "reward_kind" Decode.string)
+        (Decode.field "reward_credit_amount" Decode.int)
         (Decode.field "response_schema_json" Decode.string)
 
 
 publicTaskDetailDecoder : Decode.Decoder PublicTaskDetail
 publicTaskDetailDecoder =
-    Decode.map7 PublicTaskDetail
+    Decode.map8 PublicTaskDetail
         (Decode.field "id" Decode.string)
-        (Decode.field "owner_kind" Decode.string)
         (Decode.field "title" Decode.string)
         (Decode.field "description" Decode.string)
         (Decode.field "state" Decode.string)
+        (Decode.field "reward_kind" Decode.string)
+        (Decode.field "reward_credit_amount" Decode.int)
         (Decode.field "response_schema_json" Decode.string)
         (Decode.field "created_by" Decode.string)
+
 
 
 authorizedRequest : String -> String -> String -> Http.Body -> Http.Expect Msg -> Cmd Msg
@@ -793,14 +1064,18 @@ authorizedRequest method token url body expect =
         }
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
-    main_ [ Html.Attributes.class "min-h-screen bg-slate-50 p-8 text-slate-950" ]
-        [ div [ Html.Attributes.class "mx-auto max-w-3xl space-y-6" ]
-            [ Ui.pageTitle "Sharecrop"
-            , sessionView model
+    { title = "Sharecrop"
+    , body =
+        [ main_ [ Html.Attributes.class "min-h-screen bg-slate-50 p-8 text-slate-950" ]
+            [ div [ Html.Attributes.class "mx-auto max-w-3xl space-y-6" ]
+                [ Ui.pageTitle "Sharecrop"
+                , sessionView model
+                ]
             ]
         ]
+    }
 
 
 sessionView : Model -> Html Msg
@@ -866,6 +1141,7 @@ dashboardView origin state =
             ]
         , balanceView state.balance
         , ledgerView state.entries
+        , createTaskView state
         , fundingView state
         , tasksView origin state
         , agentsView origin state
@@ -889,6 +1165,28 @@ balanceLabel balance =
 
         Nothing ->
             "Loading…"
+
+
+createTaskView : LoggedInModel -> Html Msg
+createTaskView state =
+    form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit CreateTaskClicked ]
+        [ Ui.sectionTitle "Create a task"
+        , Ui.textInput [ type_ "text", placeholder "Title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ]
+        , Ui.textarea_
+            [ placeholder "Description"
+            , value state.createDescription
+            , onInput CreateDescriptionChanged
+            , Html.Attributes.rows 3
+            , testId "create-description"
+            ]
+        , Ui.textInput [ type_ "number", placeholder "Credit reward amount (blank for no reward)", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ]
+        , label [ Html.Attributes.class "flex items-center gap-2 text-sm" ]
+            [ Html.input [ type_ "checkbox", checked state.createPublic, onClick (CreatePublicChanged (not state.createPublic)), testId "create-public" ] []
+            , span [] [ text "Publish publicly" ]
+            ]
+        , Ui.primaryButton [ type_ "submit", testId "create-task" ] "Create task"
+        , maybeNote state.createMessage "create-message"
+        ]
 
 
 ledgerView : List Ledger.LedgerEntryResponse -> Html Msg
@@ -949,7 +1247,7 @@ taskRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount) ]
             ]
         , Ui.secondaryButton [ onClick (SelectTask item.id), testId "view-task" ] "View"
         ]
@@ -960,10 +1258,18 @@ taskDetailView origin state =
     case state.selectedTask of
         Just detail ->
             div [ Html.Attributes.class "mt-4 space-y-3 rounded-md bg-slate-50 p-4", testId "task-detail" ]
-                [ Ui.label_ ("Task " ++ detail.id)
+                [ Ui.label_ detail.title
+                , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
+                , Ui.label_ ("Task " ++ detail.id)
                 , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ detail.state) ]
+                , p [ Html.Attributes.class "text-sm" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount) ]
+                , div [ Html.Attributes.class "flex gap-2" ]
+                    [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
+                    , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
+                    ]
                 , Ui.label_ "Response schema"
                 , Ui.codeBlock [ testId "task-schema" ] detail.responseSchemaJson
+                , submissionsList state
                 , Ui.label_ "Submit with the REST API"
                 , Ui.codeBlock [] (restSubmitCurl origin detail.id)
                 , Ui.label_ "Submit with an MCP agent"
@@ -1168,7 +1474,7 @@ discoveryRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "discovery-task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount) ]
             ]
         , Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View"
         ]
@@ -1195,6 +1501,7 @@ detailCard state =
             Ui.card
                 [ p [ Html.Attributes.class "text-2xl font-semibold", testId "detail-title" ] [ text detail.title ]
                 , div [ Html.Attributes.class "flex items-center gap-2" ] [ Ui.badge detail.state ]
+                , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount) ]
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
                 , Ui.label_ "Response schema"
                 , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson
@@ -1240,10 +1547,14 @@ submissionsList state =
 
 submissionRow : LoggedInModel -> Submission.SubmissionResponse -> Html Msg
 submissionRow state submission =
-    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "submission-row" ]
-        [ div [ Html.Attributes.class "flex items-center gap-2" ]
-            [ Ui.badge (submissionStateLabel submission.state) ]
-        , acceptButton state submission
+    div [ Html.Attributes.class "space-y-2 py-3", testId "submission-row" ]
+        [ div [ Html.Attributes.class "flex items-center justify-between gap-2" ]
+            [ Ui.badge (submissionStateLabel submission.state)
+            , acceptButton state submission
+            ]
+        , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text ("Submitter: " ++ submission.submitterID) ]
+        , Ui.codeBlock [ testId "submission-response" ] submission.responseJSON
+        , validationErrorsView submission.validationErrors
         ]
 
 
@@ -1255,6 +1566,20 @@ acceptButton _ submission =
 
         _ ->
             text ""
+
+
+validationErrorsView : List Submission.SubmissionValidationErrorResponse -> Html Msg
+validationErrorsView errors =
+    if List.isEmpty errors then
+        text ""
+
+    else
+        div [ Html.Attributes.class "space-y-1" ] (List.map validationErrorView errors)
+
+
+validationErrorView : Submission.SubmissionValidationErrorResponse -> Html Msg
+validationErrorView item =
+    p [ Html.Attributes.class "text-xs text-red-700" ] [ text (item.path ++ ": " ++ item.message) ]
 
 
 
@@ -1501,6 +1826,15 @@ escrowStateLabel state =
 
         Ledger.EscrowStateRefunded ->
             "refunded"
+
+
+rewardLabel : String -> Int -> String
+rewardLabel kind amount =
+    if kind == "credit" then
+        String.fromInt amount ++ " credits"
+
+    else
+        "no reward"
 
 
 httpErrorLabel : Http.Error -> String
