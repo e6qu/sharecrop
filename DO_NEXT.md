@@ -2,7 +2,7 @@
 
 Prioritized queue:
 
-1. Open and merge the UI themes and GitHub Pages demo pull request from `task/ui-themes-demo`.
+1. Select the next implementation task from the deferred queue below.
 2. Revisit collectible or inventory-based tips.
 3. Redesign anonymous worker identity and payout.
 4. Add user-issued or organization-issued tokens.
