@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 19 work. Pull request 19 was merged into `main`.
+The repository contains pull request 1 through pull request 21 work. Pull request 21 was merged into `main`.
 
 Active task:
 
-- Active branch `task/ui-themes-demo` added the UI user-story map, a GitHub Pages root landing page, `/demo/` static localStorage demo, `/docs/` placeholder, demo theme and mode selection, demo user switching, mock provider sign-in buttons, demo state reset, a Pages deployment workflow, Playwright coverage, and screenshot review. The branch is ready for pull request creation.
+- No implementation branch is active. The next implementation task should be selected from [DO_NEXT.md](./DO_NEXT.md).
 
 Implemented surface:
 
@@ -178,7 +178,7 @@ Last observed checks for pull request 19:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - GitHub CI passed before pull request 19 was merged: static checks, unit tests, build, integration tests, HTTP end-to-end tests, and Playwright user interface end-to-end tests.
 
-Last observed checks on `task/ui-themes-demo`:
+Last observed checks for pull request 21:
 
 - `make check-format` passed.
 - `make check-ts` passed.
@@ -191,6 +191,7 @@ Last observed checks on `task/ui-themes-demo`:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for corporate light, blocky dark, rustic light, and showcase dark demo states.
+- GitHub CI passed before pull request 21 was merged: static checks, unit tests, build, integration tests, HTTP end-to-end tests, and Playwright user interface end-to-end tests.
 
 Blocking issues:
 
