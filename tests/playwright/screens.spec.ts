@@ -82,7 +82,6 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await expect(page.getByTestId("detail-submit-message")).toBeVisible();
 
   // Owner reviews and accepts the submission through the UI.
-  await page.getByTestId("nav-dashboard").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toHaveText("80 credits");
@@ -102,6 +101,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   const title = `Reserved UI ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill(
     "Reservation required from the browser.",
@@ -113,6 +113,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
     "Created task",
   );
 
+  await page.getByTestId("nav-tasks").click();
   const ownerRow = page.getByTestId("task-row").filter({ hasText: title });
   await expect(ownerRow).toHaveCount(1);
   await ownerRow.getByTestId("view-task").click();
@@ -139,7 +140,6 @@ test("requesters configure reservations and workers include reserved tasks", asy
 
   const other = await registerViaApi(request, "reservation-ui-other");
   await page.getByTestId("detail-back").click();
-  await page.getByTestId("nav-dashboard").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, other.email);
   await page.getByTestId("nav-discovery").click();
@@ -157,6 +157,7 @@ test("users create and see their organizations", async ({ page, request }) => {
   const name = `Org UI ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-organizations").click();
   await expect(page.getByTestId("organizations-empty")).toBeVisible();
 
   await page.getByTestId("create-org-name").fill(name);
@@ -176,6 +177,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   const teamName = `Crew ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-organizations").click();
   await page.getByTestId("create-org-name").fill(orgName);
   await page.getByTestId("create-org").click();
   await expect(page.getByTestId("org-message")).toContainText(
@@ -203,6 +205,7 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   const title = `Filter UI ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Filter from the browser.");
   await page.getByTestId("create-task").click();
@@ -210,6 +213,7 @@ test("requesters filter their task list by state", async ({ page, request }) => 
     "Created task",
   );
 
+  await page.getByTestId("nav-tasks").click();
   const row = page.getByTestId("task-row").filter({ hasText: title });
   await expect(row).toHaveCount(1);
 
@@ -220,4 +224,24 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   await page.getByTestId("task-filter-draft").click();
   await expect(page.getByTestId("task-row").filter({ hasText: title }))
     .toHaveCount(1);
+});
+
+test("pages have their own URLs and deep links load", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "routing-owner");
+  await loginViaUi(page, owner.email);
+
+  // Link navigation updates the address bar and shows the page.
+  await page.getByTestId("nav-agents").click();
+  await expect(page).toHaveURL(/\/agents$/);
+  await expect(page.getByTestId("agent-label")).toBeVisible();
+
+  await page.getByTestId("nav-collectibles").click();
+  await expect(page).toHaveURL(/\/collectibles$/);
+  await expect(page.getByTestId("collectible-name")).toBeVisible();
+
+  // Deep-linking directly to a page loads the app on that page with the
+  // session restored from the refresh cookie.
+  await page.goto("/organizations");
+  await expect(page).toHaveURL(/\/organizations$/);
+  await expect(page.getByTestId("create-org-name")).toBeVisible();
 });

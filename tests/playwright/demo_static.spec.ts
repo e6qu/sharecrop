@@ -42,8 +42,8 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await expect(page.getByRole("button", { name: /Demo persistence task/ }))
     .toBeVisible();
 
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Clear state" }).click();
+  // The reset control is always visible in the top bar, not buried in Settings.
+  await page.getByTestId("topbar-reset").click();
   await expect(page.locator("body")).toHaveAttribute("data-mode", "light");
   await expect(page.locator("body")).toHaveAttribute("data-theme", "blocky");
   await expect(page.getByRole("button", { name: /Demo persistence task/ }))

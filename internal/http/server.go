@@ -207,7 +207,10 @@ func health(w http.ResponseWriter, r *http.Request) {
 
 func index(staticFiles fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
+		// The browser app is a single-page application served from the same
+		// shell for every in-app route, so deep links and refreshes load the
+		// app. Unmatched API paths still return 404 rather than the shell.
+		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
 			return
 		}

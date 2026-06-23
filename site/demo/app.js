@@ -621,6 +621,7 @@ function topbar() {
     <nav class="topbar">
       <a class="brand" href="../">Sharecrop</a>
       <div class="topbar-actions">
+        <button class="button secondary" data-action="reset" data-testid="topbar-reset">Reset demo</button>
         <a class="button secondary" href="../docs/">Docs</a>
         <div class="account-menu">
           <button class="account-button" data-action="toggleLogin" aria-expanded="${state.loginOpen ? "true" : "false"}">

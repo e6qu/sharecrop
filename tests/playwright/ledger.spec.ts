@@ -44,6 +44,7 @@ test("funding a task escrows credits and lowers the balance", async ({ page, req
   await page.getByTestId("login").click();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
+  await page.getByTestId("nav-funding").click();
   await page.getByTestId("fund-task-id").selectOption(taskBody.id);
   await page.getByTestId("fund-amount").fill("40");
   await page.getByTestId("fund").click();
@@ -51,5 +52,7 @@ test("funding a task escrows credits and lowers the balance", async ({ page, req
   await expect(page.getByTestId("fund-message")).toContainText(
     "Escrowed 40 credits",
   );
+
+  await page.getByTestId("nav-overview").click();
   await expect(page.getByTestId("balance")).toHaveText("60 credits");
 });

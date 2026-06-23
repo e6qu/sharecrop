@@ -4,7 +4,17 @@ The repository contains pull request 1 through pull request 26 work. Pull reques
 
 Active task:
 
-- Active branch `task/teams-org-context-collectible-ui` adds standalone (user-owned) teams, organization context in the browser, and multi-collectible reward visibility in the browser. The branch is ready for pull request review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/multi-page-routing` gives the browser app a route and URL per section and makes deep links load, decomposes the single dashboard panel into focused pages, and adds an always-visible reset control to the static demo. The branch is ready for pull request review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/multi-page-routing`:
+
+- The HTTP server serves the single-page-application shell for every non-API route, so deep links and refreshes load the app. Unmatched API paths still return 404.
+- The browser app has a route and URL per section: `/` overview, `/tasks`, `/tasks/new`, `/tasks/{id}`, `/discovery`, `/funding`, `/agents`, `/collectibles`, `/organizations`. The navigation bar uses real links, and each section is its own page instead of one stacked dashboard panel.
+- The static demo has an always-visible reset control in the top bar, in addition to the one on the settings page.
+
+Earlier active task:
+
+- Branch `task/teams-org-context-collectible-ui` added standalone (user-owned) teams, organization context in the browser, and multi-collectible reward visibility. It was merged into `main`. See below.
 
 Implemented in `task/teams-org-context-collectible-ui`:
 
@@ -325,6 +335,12 @@ Last observed checks on `task/demo-list-detail-navigation`:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.
+
+Last observed checks on `task/multi-page-routing`:
+
+- `make check-format`, `make check-contracts`, `make check-policy`, `make check-ts`, `make check-copy-paste`, `make check-dead-code`, `make lint`, `make vet`, `make test`, and `make test-deno` passed.
+- `make build` and `make frontend` passed.
+- `make test-integration`, `make test-http`, and `make e2e-ui` passed with local Postgres access.
 
 Last observed checks on `task/teams-org-context-collectible-ui`:
 
