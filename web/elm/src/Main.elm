@@ -59,11 +59,14 @@ type alias LoggedInModel =
     , createRewardAmount : String
     , createVisibility : String
     , createScopeUserId : String
+    , createScopeTeamId : String
+    , createScopeOrganizationId : String
     , createParticipationPolicy : String
     , createReservationHours : String
     , createMessage : Maybe String
     , fundTaskId : String
     , fundAmount : String
+    , fundOrganizationId : String
     , fundMessage : Maybe String
     , tasks : List Task.TaskListItemResponse
     , taskStateFilter : String
@@ -161,6 +164,8 @@ type Msg
     | CreateRewardAmountChanged String
     | CreateVisibilityChanged String
     | CreateScopeUserIdChanged String
+    | CreateScopeTeamIdChanged String
+    | CreateScopeOrganizationIdChanged String
     | CreateParticipationChanged String
     | CreateReservationHoursChanged String
     | CreateTaskClicked
@@ -169,6 +174,7 @@ type Msg
     | FundTaskIdChanged String
     | FundAmountChanged String
     | FundClicked
+    | FundOrganizationIdChanged String
     | FundReceived (Result Http.Error Ledger.TaskEscrowResponse)
     | OpenTaskClicked String
     | OpenTaskReceived (Result Http.Error TaskDetail)
@@ -273,11 +279,14 @@ emptyLoggedIn response =
     , createRewardAmount = ""
     , createVisibility = visibilityDefaultTag
     , createScopeUserId = ""
+    , createScopeTeamId = ""
+    , createScopeOrganizationId = ""
     , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
     , createReservationHours = "48"
     , createMessage = Nothing
     , fundTaskId = ""
     , fundAmount = ""
+    , fundOrganizationId = ""
     , fundMessage = Nothing
     , tasks = []
     , taskStateFilter = ""
@@ -519,6 +528,12 @@ update msg model =
         CreateScopeUserIdChanged value ->
             ( updateLoggedIn model (\state -> { state | createScopeUserId = value }), Cmd.none )
 
+        CreateScopeTeamIdChanged value ->
+            ( updateLoggedIn model (\state -> { state | createScopeTeamId = value }), Cmd.none )
+
+        CreateScopeOrganizationIdChanged value ->
+            ( updateLoggedIn model (\state -> { state | createScopeOrganizationId = value }), Cmd.none )
+
         CreateParticipationChanged value ->
             ( updateLoggedIn model (\state -> { state | createParticipationPolicy = value }), Cmd.none )
 
@@ -560,6 +575,9 @@ update msg model =
 
         FundAmountChanged value ->
             ( updateLoggedIn model (\state -> { state | fundAmount = value }), Cmd.none )
+
+        FundOrganizationIdChanged value ->
+            ( updateLoggedIn model (\state -> { state | fundOrganizationId = value }), Cmd.none )
 
         FundClicked ->
             withSession model (\state -> fundTaskCommand model state)
@@ -968,7 +986,7 @@ fundTaskCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 fundTaskCommand model state =
     case String.toInt state.fundAmount of
         Just amount ->
-            ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount )
+            ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount state.fundOrganizationId )
 
         Nothing ->
             ( updateLoggedIn model (\current -> { current | fundMessage = Just "Amount must be a whole number of credits." }), Cmd.none )
@@ -1327,12 +1345,12 @@ fetchReservations token taskId =
     authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/reservations") Http.emptyBody (Http.expectJson ReservationsReceived Task.taskReservationsResponseDecoder)
 
 
-postFunding : String -> String -> Int -> Cmd Msg
-postFunding token taskId amount =
+postFunding : String -> String -> Int -> String -> Cmd Msg
+postFunding token taskId amount organizationId =
     authorizedRequest "POST"
         token
         ("/api/tasks/" ++ taskId ++ "/funding")
-        (Http.jsonBody (fundingRequestBody taskId amount))
+        (Http.jsonBody (fundingRequestBody taskId amount organizationId))
         (Http.expectJson FundReceived Ledger.taskEscrowResponseDecoder)
 
 
@@ -1568,11 +1586,12 @@ revokeAgent token credentialId =
         (Http.expectJson AgentRevoked Agent.agentCredentialResponseDecoder)
 
 
-fundingRequestBody : String -> Int -> Encode.Value
-fundingRequestBody taskId amount =
+fundingRequestBody : String -> Int -> String -> Encode.Value
+fundingRequestBody taskId amount organizationId =
     Encode.object
         [ ( "amount", Encode.int amount )
         , ( "idempotency_key", Encode.string ("fund:" ++ taskId) )
+        , ( "organization_id", Encode.string organizationId )
         ]
 
 
@@ -1629,9 +1648,19 @@ visibilityUserTag =
     "user"
 
 
+visibilityTeamTag : String
+visibilityTeamTag =
+    "team"
+
+
+visibilityOrganizationTag : String
+visibilityOrganizationTag =
+    "organization"
+
+
 allVisibilityTags : List String
 allVisibilityTags =
-    [ visibilityPublicTag, visibilityDefaultTag, visibilityUserTag ]
+    [ visibilityPublicTag, visibilityDefaultTag, visibilityUserTag, visibilityTeamTag, visibilityOrganizationTag ]
 
 
 visibilityLabel : String -> String
@@ -1641,6 +1670,12 @@ visibilityLabel tag =
 
     else if tag == visibilityUserTag then
         "Specific user"
+
+    else if tag == visibilityTeamTag then
+        "Team"
+
+    else if tag == visibilityOrganizationTag then
+        "Organization"
 
     else
         "Private (default)"
@@ -1668,8 +1703,24 @@ createVisibilityBody state =
                     ""
                 )
           )
-        , ( "team_id", Encode.string "" )
-        , ( "organization_id", Encode.string "" )
+        , ( "team_id"
+          , Encode.string
+                (if state.createVisibility == visibilityTeamTag then
+                    state.createScopeTeamId
+
+                 else
+                    ""
+                )
+          )
+        , ( "organization_id"
+          , Encode.string
+                (if state.createVisibility == visibilityOrganizationTag then
+                    state.createScopeOrganizationId
+
+                 else
+                    ""
+                )
+          )
         ]
 
 
@@ -2264,6 +2315,14 @@ visibilityScopeField state =
         Ui.fieldLabel "Share with user ID"
             [ Ui.textInput [ type_ "text", placeholder "User ID to grant access", value state.createScopeUserId, onInput CreateScopeUserIdChanged, testId "create-scope-user" ] ]
 
+    else if state.createVisibility == visibilityTeamTag then
+        Ui.fieldLabel "Share with team ID"
+            [ Ui.textInput [ type_ "text", placeholder "Team ID (standalone or organization team)", value state.createScopeTeamId, onInput CreateScopeTeamIdChanged, testId "create-scope-team" ] ]
+
+    else if state.createVisibility == visibilityOrganizationTag then
+        Ui.fieldLabel "Share with organization ID"
+            [ Ui.textInput [ type_ "text", placeholder "Organization ID", value state.createScopeOrganizationId, onInput CreateScopeOrganizationIdChanged, testId "create-scope-organization" ] ]
+
     else
         text ""
 
@@ -2306,6 +2365,7 @@ fundingView state =
         [ Ui.sectionTitle "Fund a task"
         , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged state.tasks
         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
+        , Ui.textInput [ type_ "text", placeholder "Organization ID (optional — fund from org credits)", value state.fundOrganizationId, onInput FundOrganizationIdChanged, testId "fund-organization" ]
         , Ui.primaryButton [ type_ "submit", disabled (state.fundTaskId == ""), testId "fund" ] "Fund task"
         , maybeNote state.fundMessage "fund-message"
         ]

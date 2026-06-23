@@ -260,6 +260,33 @@ test("a user profile page lists the user's public tasks", async ({ page, request
   await expect(page).toHaveURL(/\/users\/[^/]+\/submissions$/);
 });
 
+test("requesters scope a task to a standalone team", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "team-scope-owner");
+  const teamResponse = await request.post("/api/teams", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { name: `Crew ${crypto.randomUUID()}` },
+  });
+  expect(teamResponse.ok()).toBeTruthy();
+  const team = (await teamResponse.json()) as { id: string };
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
+  const title = `Team scoped ${crypto.randomUUID()}`;
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill("Scoped to a team.");
+  await page.getByTestId("create-visibility-team").click();
+  await page.getByTestId("create-scope-team").fill(team.id);
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+
+  await page.getByTestId("nav-tasks").click();
+  await expect(
+    page.getByTestId("task-row").filter({ hasText: title }),
+  ).toHaveCount(1);
+});
+
 test("pages have their own URLs and deep links load", async ({ page, request }) => {
   const owner = await registerViaApi(request, "routing-owner");
   await loginViaUi(page, owner.email);

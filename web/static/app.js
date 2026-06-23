@@ -6950,6 +6950,8 @@ var $author$project$Main$createRewardBody = function (rawAmount) {
 				]));
 	}
 };
+var $author$project$Main$visibilityOrganizationTag = 'organization';
+var $author$project$Main$visibilityTeamTag = 'team';
 var $author$project$Main$visibilityUserTag = 'user';
 var $author$project$Main$createVisibilityBody = function (state) {
 	return $elm$json$Json$Encode$object(
@@ -6964,10 +6966,12 @@ var $author$project$Main$createVisibilityBody = function (state) {
 					_Utils_eq(state.createVisibility, $author$project$Main$visibilityUserTag) ? state.createScopeUserId : '')),
 				_Utils_Tuple2(
 				'team_id',
-				$elm$json$Json$Encode$string('')),
+				$elm$json$Json$Encode$string(
+					_Utils_eq(state.createVisibility, $author$project$Main$visibilityTeamTag) ? state.createScopeTeamId : '')),
 				_Utils_Tuple2(
 				'organization_id',
-				$elm$json$Json$Encode$string(''))
+				$elm$json$Json$Encode$string(
+					_Utils_eq(state.createVisibility, $author$project$Main$visibilityOrganizationTag) ? state.createScopeOrganizationId : ''))
 			]));
 };
 var $author$project$Main$createTaskRequestBody = function (state) {
@@ -7519,8 +7523,8 @@ var $author$project$Main$fundSuccessLabel = function (escrow) {
 var $author$project$Main$FundReceived = function (a) {
 	return {$: 'FundReceived', a: a};
 };
-var $author$project$Main$fundingRequestBody = F2(
-	function (taskId, amount) {
+var $author$project$Main$fundingRequestBody = F3(
+	function (taskId, amount, organizationId) {
 		return $elm$json$Json$Encode$object(
 			_List_fromArray(
 				[
@@ -7529,7 +7533,10 @@ var $author$project$Main$fundingRequestBody = F2(
 					$elm$json$Json$Encode$int(amount)),
 					_Utils_Tuple2(
 					'idempotency_key',
-					$elm$json$Json$Encode$string('fund:' + taskId))
+					$elm$json$Json$Encode$string('fund:' + taskId)),
+					_Utils_Tuple2(
+					'organization_id',
+					$elm$json$Json$Encode$string(organizationId))
 				]));
 	});
 var $author$project$Sharecrop$Generated$Ledger$TaskEscrowResponse = F3(
@@ -7560,15 +7567,15 @@ var $author$project$Sharecrop$Generated$Ledger$taskEscrowResponseDecoder = A4(
 	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'amount', $elm$json$Json$Decode$int),
 	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Ledger$escrowStateDecoder));
-var $author$project$Main$postFunding = F3(
-	function (token, taskId, amount) {
+var $author$project$Main$postFunding = F4(
+	function (token, taskId, amount, organizationId) {
 		return A5(
 			$author$project$Main$authorizedRequest,
 			'POST',
 			token,
 			'/api/tasks/' + (taskId + '/funding'),
 			$elm$http$Http$jsonBody(
-				A2($author$project$Main$fundingRequestBody, taskId, amount)),
+				A3($author$project$Main$fundingRequestBody, taskId, amount, organizationId)),
 			A2($elm$http$Http$expectJson, $author$project$Main$FundReceived, $author$project$Sharecrop$Generated$Ledger$taskEscrowResponseDecoder));
 	});
 var $author$project$Main$fundTaskCommand = F2(
@@ -7585,7 +7592,7 @@ var $author$project$Main$fundTaskCommand = F2(
 							current,
 							{fundMessage: $elm$core$Maybe$Nothing});
 					}),
-				A3($author$project$Main$postFunding, state.accessToken, state.fundTaskId, amount));
+				A4($author$project$Main$postFunding, state.accessToken, state.fundTaskId, amount, state.fundOrganizationId));
 		} else {
 			return _Utils_Tuple2(
 				A2(
@@ -7788,6 +7795,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		createParticipationPolicy: $author$project$Main$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
 		createReservationHours: '48',
 		createRewardAmount: '',
+		createScopeOrganizationId: '',
+		createScopeTeamId: '',
 		createScopeUserId: '',
 		createTaskOwner: '',
 		createTitle: '',
@@ -7799,6 +7808,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		entries: _List_Nil,
 		fundAmount: '',
 		fundMessage: $elm$core$Maybe$Nothing,
+		fundOrganizationId: '',
 		fundTaskId: '',
 		newCredential: $elm$core$Maybe$Nothing,
 		orgBalance: $elm$core$Maybe$Nothing,
@@ -9140,6 +9150,30 @@ var $author$project$Main$update = F2(
 								{createScopeUserId: value});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'CreateScopeTeamIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createScopeTeamId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateScopeOrganizationIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createScopeOrganizationId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'CreateParticipationChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -9244,6 +9278,18 @@ var $author$project$Main$update = F2(
 							return _Utils_update(
 								state,
 								{fundAmount: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'FundOrganizationIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{fundOrganizationId: value});
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'FundClicked':
@@ -11469,7 +11515,7 @@ var $author$project$Main$allParticipationPolicies = _List_fromArray(
 	[$author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen, $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyReservationRequired, $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyApprovalRequired]);
 var $author$project$Main$visibilityPublicTag = 'public';
 var $author$project$Main$allVisibilityTags = _List_fromArray(
-	[$author$project$Main$visibilityPublicTag, $author$project$Main$visibilityDefaultTag, $author$project$Main$visibilityUserTag]);
+	[$author$project$Main$visibilityPublicTag, $author$project$Main$visibilityDefaultTag, $author$project$Main$visibilityUserTag, $author$project$Main$visibilityTeamTag, $author$project$Main$visibilityOrganizationTag]);
 var $author$project$Sharecrop$Ui$fieldLabel = F2(
 	function (labelText, controls) {
 		return A2(
@@ -11575,7 +11621,7 @@ var $author$project$Main$CreateVisibilityChanged = function (a) {
 	return {$: 'CreateVisibilityChanged', a: a};
 };
 var $author$project$Main$visibilityLabel = function (tag) {
-	return _Utils_eq(tag, $author$project$Main$visibilityPublicTag) ? 'Public' : (_Utils_eq(tag, $author$project$Main$visibilityUserTag) ? 'Specific user' : 'Private (default)');
+	return _Utils_eq(tag, $author$project$Main$visibilityPublicTag) ? 'Public' : (_Utils_eq(tag, $author$project$Main$visibilityUserTag) ? 'Specific user' : (_Utils_eq(tag, $author$project$Main$visibilityTeamTag) ? 'Team' : (_Utils_eq(tag, $author$project$Main$visibilityOrganizationTag) ? 'Organization' : 'Private (default)')));
 };
 var $author$project$Main$visibilityButton = F2(
 	function (selected, tag) {
@@ -11586,6 +11632,12 @@ var $author$project$Main$visibilityButton = F2(
 			'create-visibility-' + tag,
 			$author$project$Main$visibilityLabel(tag));
 	});
+var $author$project$Main$CreateScopeOrganizationIdChanged = function (a) {
+	return {$: 'CreateScopeOrganizationIdChanged', a: a};
+};
+var $author$project$Main$CreateScopeTeamIdChanged = function (a) {
+	return {$: 'CreateScopeTeamIdChanged', a: a};
+};
 var $author$project$Main$CreateScopeUserIdChanged = function (a) {
 	return {$: 'CreateScopeUserIdChanged', a: a};
 };
@@ -11604,7 +11656,35 @@ var $author$project$Main$visibilityScopeField = function (state) {
 						$elm$html$Html$Events$onInput($author$project$Main$CreateScopeUserIdChanged),
 						$author$project$Sharecrop$Ui$testId('create-scope-user')
 					]))
-			])) : $elm$html$Html$text('');
+			])) : (_Utils_eq(state.createVisibility, $author$project$Main$visibilityTeamTag) ? A2(
+		$author$project$Sharecrop$Ui$fieldLabel,
+		'Share with team ID',
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$textInput(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('text'),
+						$elm$html$Html$Attributes$placeholder('Team ID (standalone or organization team)'),
+						$elm$html$Html$Attributes$value(state.createScopeTeamId),
+						$elm$html$Html$Events$onInput($author$project$Main$CreateScopeTeamIdChanged),
+						$author$project$Sharecrop$Ui$testId('create-scope-team')
+					]))
+			])) : (_Utils_eq(state.createVisibility, $author$project$Main$visibilityOrganizationTag) ? A2(
+		$author$project$Sharecrop$Ui$fieldLabel,
+		'Share with organization ID',
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$textInput(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('text'),
+						$elm$html$Html$Attributes$placeholder('Organization ID'),
+						$elm$html$Html$Attributes$value(state.createScopeOrganizationId),
+						$elm$html$Html$Events$onInput($author$project$Main$CreateScopeOrganizationIdChanged),
+						$author$project$Sharecrop$Ui$testId('create-scope-organization')
+					]))
+			])) : $elm$html$Html$text('')));
 };
 var $author$project$Main$createTaskView = function (state) {
 	return A2(
@@ -11842,6 +11922,9 @@ var $author$project$Main$FundAmountChanged = function (a) {
 	return {$: 'FundAmountChanged', a: a};
 };
 var $author$project$Main$FundClicked = {$: 'FundClicked'};
+var $author$project$Main$FundOrganizationIdChanged = function (a) {
+	return {$: 'FundOrganizationIdChanged', a: a};
+};
 var $author$project$Main$FundTaskIdChanged = function (a) {
 	return {$: 'FundTaskIdChanged', a: a};
 };
@@ -11866,6 +11949,15 @@ var $author$project$Main$fundingView = function (state) {
 						$elm$html$Html$Attributes$value(state.fundAmount),
 						$elm$html$Html$Events$onInput($author$project$Main$FundAmountChanged),
 						$author$project$Sharecrop$Ui$testId('fund-amount')
+					])),
+				$author$project$Sharecrop$Ui$textInput(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('text'),
+						$elm$html$Html$Attributes$placeholder('Organization ID (optional — fund from org credits)'),
+						$elm$html$Html$Attributes$value(state.fundOrganizationId),
+						$elm$html$Html$Events$onInput($author$project$Main$FundOrganizationIdChanged),
+						$author$project$Sharecrop$Ui$testId('fund-organization')
 					])),
 				A2(
 				$author$project$Sharecrop$Ui$primaryButton,
