@@ -1,102 +1,339 @@
-const storageKey = "sharecrop-demo-state-v3";
+const storageKey = "sharecrop-demo-state-v4";
+
+const policy = {
+  open: "open",
+  reservation: "reservation",
+  approval: "approval",
+};
+
+const lifecycle = {
+  draft: "draft",
+  funded: "funded",
+  open: "open",
+  closed: "closed",
+  canceled: "canceled",
+};
+
+const availability = {
+  available: "available",
+  reserved: "reserved",
+  awaitingApproval: "awaiting_approval",
+  submitted: "submitted",
+  changesRequested: "changes_requested",
+  rejected: "rejected",
+  accepted: "accepted",
+  closed: "closed",
+};
+
+const pages = [
+  { id: "overview", label: "Command" },
+  { id: "discover", label: "Mission Board" },
+  { id: "requester", label: "Post Mission" },
+  { id: "review", label: "Review Queue" },
+  { id: "integrations", label: "Uplink" },
+  { id: "settings", label: "Settings" },
+];
+
+const users = [
+  { id: "mara", name: "Mara Chen", role: "Requester", callsign: "Quartermaster", balance: 180, rank: "S-2" },
+  { id: "jules", name: "Jules Park", role: "Implementor", callsign: "Scout", balance: 64, rank: "A-4" },
+  { id: "ren", name: "Ren Ito", role: "Organization reviewer", callsign: "Marshal", balance: 112, rank: "R-3" },
+  { id: "sol", name: "Sol Rivera", role: "Agent operator", callsign: "Uplink", balance: 100, rank: "M-1" },
+  { id: "tala", name: "Tala Stone", role: "Implementor", callsign: "Pathfinder", balance: 83, rank: "B-2" },
+];
+
+const providers = ["Google", "Apple", "Microsoft", "Facebook", "X.com"];
+const maxLocalTasks = 6;
+const maxActivity = 12;
 
 const seedTasks = [
-  {
+  task({
     id: "orchard-labels",
     title: "Label orchard photos",
     requester: "mara",
     assignee: "jules",
-    visibility: "Public marketplace",
-    policy: "Reservation required",
-    reward: "45 credits + 1 collectible",
-    state: "open",
-    availability: "reserved",
+    area: "Field Ops",
+    difficulty: "A",
+    visibility: "public",
+    policy: policy.reservation,
+    reward: rewardBundle(45, ["Ripe Lens"]),
+    lifecycle: lifecycle.open,
+    availability: availability.submitted,
+    objective: "Classify orchard imagery and return a compact JSON response.",
     schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string"}}}}',
-    description: "Classify orchard imagery and return a compact JSON response.",
-    submissions: [
-      {
-        by: "jules",
-        state: "submitted",
-        response: '{"labels":["ripe","needs review"],"confidence":[91,74]}',
-      },
-    ],
-    reservations: [{ by: "jules", state: "active" }],
-  },
-  {
+    reservations: [{ id: "res-orchard-jules", by: "jules", state: "active", expires: "48h" }],
+    submissions: [{
+      id: "sub-orchard-jules",
+      by: "jules",
+      state: "submitted",
+      response: '{"labels":["ripe","needs review"],"confidence":[91,74]}',
+      reviewNote: "",
+      partialPayout: "",
+      tip: "",
+      ban: false,
+    }],
+    timeline: ["Mara posted the orchard image run.", "Jules reserved the mission.", "Jules submitted a labeled payload."],
+  }),
+  task({
     id: "invoice-cleanup",
     title: "Extract invoice totals",
     requester: "mara",
     assignee: "",
-    visibility: "Organization",
-    policy: "Approval required",
-    reward: "30 credits",
-    state: "open",
-    availability: "awaiting approval",
+    area: "Ledger Bay",
+    difficulty: "B",
+    visibility: "organization",
+    policy: policy.approval,
+    reward: rewardCredits(30),
+    lifecycle: lifecycle.open,
+    availability: availability.awaitingApproval,
+    objective: "Return invoice totals from a small vendor batch.",
     schema: '{"kind":"object","fields":{"total":{"kind":"decimal_string"}}}',
-    description: "Return invoice totals from a small vendor batch.",
-    submissions: [],
-    reservations: [{ by: "ren", state: "requested" }],
-  },
-  {
+    reservations: [{ id: "res-invoice-ren", by: "ren", state: "requested", expires: "24h" }],
+    timeline: ["Ren requested clearance to work on invoice extraction."],
+  }),
+  task({
     id: "badge-copy",
     title: "Draft badge copy",
     requester: "ren",
     assignee: "",
-    visibility: "Public marketplace",
-    policy: "Open submissions",
-    reward: "no reward",
-    state: "open",
-    availability: "available",
+    area: "Foundry",
+    difficulty: "C",
+    visibility: "public",
+    policy: policy.open,
+    reward: rewardNone(),
+    lifecycle: lifecycle.open,
+    availability: availability.available,
+    objective: "Suggest short labels for a platform collectible badge.",
     schema: '{"kind":"freeform"}',
-    description: "Suggest short labels for a platform collectible badge.",
-    submissions: [],
-    reservations: [],
-  },
+    timeline: ["Ren opened the brief for public submissions."],
+  }),
+  task({
+    id: "map-sensor-cleanup",
+    title: "Normalize sensor map tiles",
+    requester: "mara",
+    assignee: "",
+    area: "Cartography",
+    difficulty: "S",
+    visibility: "public",
+    policy: policy.reservation,
+    reward: rewardCredits(80),
+    lifecycle: lifecycle.open,
+    availability: availability.available,
+    objective: "Normalize noisy map-tile metadata into a stable region index.",
+    schema: '{"kind":"object","fields":{"region":{"kind":"string"},"quality":{"kind":"integer"}}}',
+    timeline: ["Mission opened with credit escrow held."],
+  }),
+  task({
+    id: "collectible-audit",
+    title: "Verify collectible transfers",
+    requester: "ren",
+    assignee: "tala",
+    area: "Vault",
+    difficulty: "A",
+    visibility: "organization",
+    policy: policy.reservation,
+    reward: rewardCollectible(["Vault Seal"]),
+    lifecycle: lifecycle.open,
+    availability: availability.changesRequested,
+    objective: "Check a small transfer ledger and mark suspicious collectible moves.",
+    schema: '{"kind":"object","fields":{"suspicious_ids":{"kind":"array","items":{"kind":"string"}}}}',
+    reservations: [{ id: "res-audit-tala", by: "tala", state: "active", expires: "12h" }],
+    submissions: [{
+      id: "sub-audit-tala",
+      by: "tala",
+      state: "changes_requested",
+      response: '{"suspicious_ids":["cx-19"]}',
+      reviewNote: "Include the second transfer batch before final review.",
+      partialPayout: "",
+      tip: "",
+      ban: false,
+    }],
+    timeline: ["Tala submitted an audit pass.", "Ren requested a second batch check."],
+  }),
+  task({
+    id: "agent-weather-json",
+    title: "Agent weather JSON",
+    requester: "mara",
+    assignee: "sol",
+    area: "Uplink",
+    difficulty: "B",
+    visibility: "public",
+    policy: policy.approval,
+    reward: rewardBundle(25, ["Storm Pin"]),
+    lifecycle: lifecycle.open,
+    availability: availability.submitted,
+    objective: "Use an agent credential to package three weather readings as JSON.",
+    schema: '{"kind":"object","fields":{"readings":{"kind":"array","items":{"kind":"decimal_string"}}}}',
+    reservations: [{ id: "res-weather-sol", by: "sol", state: "active", expires: "8h" }],
+    submissions: [{
+      id: "sub-weather-sol",
+      by: "sol",
+      state: "submitted",
+      response: '{"readings":["21.4","20.9","22.1"],"source":"agent"}',
+      reviewNote: "",
+      partialPayout: "",
+      tip: "",
+      ban: false,
+    }],
+    timeline: ["Sol created a scoped agent token.", "The agent submitted readings over MCP."],
+  }),
+  task({
+    id: "market-tags",
+    title: "Tag public market tasks",
+    requester: "mara",
+    assignee: "",
+    area: "Market",
+    difficulty: "C",
+    visibility: "public",
+    policy: policy.open,
+    reward: rewardCredits(12),
+    lifecycle: lifecycle.open,
+    availability: availability.available,
+    objective: "Assign two concise marketplace tags to five task descriptions.",
+    schema: '{"kind":"object","fields":{"tags":{"kind":"array","items":{"kind":"string"}}}}',
+    timeline: ["Low-risk mission opened for open submissions."],
+  }),
+  task({
+    id: "review-denied-batch",
+    title: "Rejected crop batch",
+    requester: "mara",
+    assignee: "jules",
+    area: "Field Ops",
+    difficulty: "B",
+    visibility: "public",
+    policy: policy.open,
+    reward: rewardCredits(18),
+    lifecycle: lifecycle.open,
+    availability: availability.rejected,
+    objective: "Summarize a rejected crop inspection batch.",
+    schema: '{"kind":"freeform"}',
+    submissions: [{
+      id: "sub-denied-jules",
+      by: "jules",
+      state: "rejected",
+      response: '{"summary":"batch failed moisture range"}',
+      reviewNote: "Moisture values were missing from the result.",
+      partialPayout: "6",
+      tip: "0",
+      ban: false,
+    }],
+    timeline: ["Jules submitted a summary.", "Mara rejected the result and paid 6 credits."],
+  }),
+  task({
+    id: "closed-orchard-archive",
+    title: "Archive orchard receipts",
+    requester: "mara",
+    assignee: "tala",
+    area: "Archive",
+    difficulty: "C",
+    visibility: "organization",
+    policy: policy.reservation,
+    reward: rewardCredits(20),
+    lifecycle: lifecycle.closed,
+    availability: availability.accepted,
+    objective: "Move accepted orchard receipts into the archive index.",
+    schema: '{"kind":"freeform"}',
+    submissions: [{
+      id: "sub-archive-tala",
+      by: "tala",
+      state: "accepted",
+      response: '{"archived":true,"count":42}',
+      reviewNote: "Accepted.",
+      partialPayout: "20",
+      tip: "3",
+      ban: false,
+    }],
+    timeline: ["Tala delivered the archive index.", "Mara accepted and tipped 3 credits."],
+  }),
+  task({
+    id: "draft-drone-footage",
+    title: "Sort drone footage",
+    requester: "mara",
+    assignee: "",
+    area: "Hangar",
+    difficulty: "A",
+    visibility: "public",
+    policy: policy.reservation,
+    reward: rewardBundle(60, ["Drone Patch"]),
+    lifecycle: lifecycle.draft,
+    availability: availability.available,
+    objective: "Sort short drone clips by field and weather condition.",
+    schema: '{"kind":"object","fields":{"clips":{"kind":"array","items":{"kind":"string"}}}}',
+    timeline: ["Draft mission waiting for funding and opening."],
+  }),
+  task({
+    id: "funded-api-docs",
+    title: "Polish API examples",
+    requester: "ren",
+    assignee: "",
+    area: "Docs Deck",
+    difficulty: "C",
+    visibility: "public",
+    policy: policy.approval,
+    reward: rewardCredits(22),
+    lifecycle: lifecycle.funded,
+    availability: availability.available,
+    objective: "Tighten three REST examples and one MCP example.",
+    schema: '{"kind":"freeform"}',
+    timeline: ["Reward funded; requester has not opened the mission."],
+  }),
+  task({
+    id: "expired-reservation-demo",
+    title: "Expired soil sample reservation",
+    requester: "mara",
+    assignee: "",
+    area: "Lab",
+    difficulty: "B",
+    visibility: "public",
+    policy: policy.reservation,
+    reward: rewardCredits(26),
+    lifecycle: lifecycle.open,
+    availability: availability.available,
+    objective: "Extract soil sample IDs and mark missing readings.",
+    schema: '{"kind":"object","fields":{"missing":{"kind":"array","items":{"kind":"string"}}}}',
+    reservations: [{ id: "res-soil-jules", by: "jules", state: "expired", expires: "0h" }],
+    timeline: ["A previous reservation expired and released the mission."],
+  }),
 ];
 
 const seedState = {
   mode: "light",
-  theme: "corporate",
+  theme: "blocky",
   page: "overview",
   loginOpen: false,
   userId: "mara",
   socialProvider: "",
   includeReserved: false,
+  boardFilter: "all",
   selectedTaskId: "orchard-labels",
   draftTitle: "Label orchard photos",
   draftDescription: "Classify orchard imagery and return a compact JSON response.",
-  draftReward: "45 credits + 1 collectible",
-  draftPolicy: "reservation",
+  draftRewardKind: "bundle",
+  draftCredits: "45",
+  draftCollectible: "Ripe Lens",
+  draftPolicy: policy.reservation,
   draftVisibility: "public",
   draftReservationHours: "48",
   responseText: '{"labels":["ripe","needs review"]}',
-  reviewNote: "Please include confidence values for each label.",
-  partialPayout: "18",
-  tipAmount: "4",
-  banImplementor: false,
+  reviewDrafts: {},
+  localTaskSeq: 1,
+  balances: Object.fromEntries(users.map((user) => [user.id, user.balance])),
+  inventories: {
+    mara: ["Ripe Lens", "Drone Patch", "Storm Pin"],
+    jules: ["Archive Token"],
+    ren: ["Vault Seal"],
+    sol: ["Agent Sigil"],
+    tala: ["Field Badge"],
+  },
+  activityLog: [
+    "Mara accepted Archive Orchard Receipts and tipped Tala 3 credits.",
+    "Sol's agent submitted weather readings through MCP.",
+    "Ren requested changes on Collectible Transfer Audit.",
+    "Jules reserved Label Orchard Photos.",
+  ],
   tasks: seedTasks,
 };
 
-const pages = [
-  { id: "overview", label: "Overview" },
-  { id: "discover", label: "Discover" },
-  { id: "requester", label: "Create" },
-  { id: "review", label: "Review" },
-  { id: "integrations", label: "API & MCP" },
-  { id: "settings", label: "Settings" },
-];
-
-const users = [
-  { id: "mara", name: "Mara Chen", role: "Requester", balance: 180 },
-  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64 },
-  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 112 },
-  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100 },
-];
-
-const providers = ["Google", "Apple", "Microsoft", "Facebook", "X.com"];
-const maxDemoTasks = 8;
-const maxDemoSubmissions = 4;
-const maxDemoReservations = 4;
 let state = loadState();
 let saveHandle = 0;
 
@@ -106,24 +343,64 @@ document.addEventListener("input", handleDraftInput);
 
 render();
 
+function task(config) {
+  return {
+    submissions: [],
+    reservations: [],
+    timeline: [],
+    ...config,
+  };
+}
+
+function rewardNone() {
+  return { kind: "none", credits: 0, collectibles: [] };
+}
+
+function rewardCredits(credits) {
+  return { kind: "credits", credits, collectibles: [] };
+}
+
+function rewardCollectible(collectibles) {
+  return { kind: "collectible", credits: 0, collectibles };
+}
+
+function rewardBundle(credits, collectibles) {
+  return { kind: "bundle", credits, collectibles };
+}
+
 function loadState() {
   const stored = localStorage.getItem(storageKey);
-  if (stored === null) {
-    return structuredClone(seedState);
-  }
+  if (stored === null) return structuredClone(seedState);
 
   try {
-    return { ...structuredClone(seedState), ...JSON.parse(stored) };
+    const parsed = JSON.parse(stored);
+    return {
+      ...structuredClone(seedState),
+      ...parsed,
+      tasks: mergeTasks(parsed.tasks ?? []),
+      balances: { ...structuredClone(seedState.balances), ...(parsed.balances ?? {}) },
+      inventories: { ...structuredClone(seedState.inventories), ...(parsed.inventories ?? {}) },
+      reviewDrafts: parsed.reviewDrafts ?? {},
+      activityLog: (parsed.activityLog ?? seedState.activityLog).slice(0, maxActivity),
+    };
   } catch (_error) {
     return structuredClone(seedState);
   }
 }
 
+function mergeTasks(storedTasks) {
+  const byId = new Map(seedTasks.map((item) => [item.id, item]));
+  for (const storedTask of storedTasks) {
+    if (storedTask && typeof storedTask.id === "string") {
+      byId.set(storedTask.id, { ...byId.get(storedTask.id), ...storedTask });
+    }
+  }
+  return [...byId.values()];
+}
+
 function saveSoon() {
   clearTimeout(saveHandle);
-  saveHandle = setTimeout(() => {
-    saveToStorage();
-  }, 120);
+  saveHandle = setTimeout(saveToStorage, 120);
 }
 
 function saveNow() {
@@ -135,8 +412,12 @@ function saveToStorage() {
   try {
     localStorage.setItem(storageKey, JSON.stringify(state));
   } catch (_error) {
+    state = {
+      ...structuredClone(seedState),
+      page: "settings",
+      storageWarning: "The browser rejected demo storage. State was reset.",
+    };
     localStorage.removeItem(storageKey);
-    state = { ...structuredClone(seedState), page: "settings" };
     render();
   }
 }
@@ -144,9 +425,7 @@ function saveToStorage() {
 function setState(patch, options = { render: true }) {
   state = { ...state, ...patch };
   saveNow();
-  if (options.render) {
-    render();
-  }
+  if (options.render) render();
 }
 
 function resetState() {
@@ -160,56 +439,101 @@ function selectedUser() {
 }
 
 function selectedTask() {
-  return state.tasks.find((task) => task.id === state.selectedTaskId) ?? state.tasks[0];
+  return state.tasks.find((item) => item.id === state.selectedTaskId) ?? firstVisibleTask() ?? state.tasks[0];
+}
+
+function firstVisibleTask() {
+  return visibleTasks()[0];
 }
 
 function visibleTasks() {
-  return state.tasks.filter((task) => {
-    if (state.includeReserved) {
-      return true;
-    }
-    return task.availability !== "reserved" || task.assignee === state.userId || task.requester === state.userId;
-  });
+  const user = selectedUser();
+  return state.tasks.filter((taskItem) => canSeeTask(taskItem, user));
 }
 
-function updateTask(taskId, change) {
+function canSeeTask(taskItem, user) {
+  if (taskItem.lifecycle === lifecycle.draft || taskItem.lifecycle === lifecycle.funded) {
+    return taskItem.requester === user.id || user.role === "Organization reviewer";
+  }
+  if (!state.includeReserved && taskItem.availability === availability.reserved) {
+    return taskItem.requester === user.id || taskItem.assignee === user.id || user.role === "Organization reviewer";
+  }
+  if (taskItem.visibility === "organization") {
+    return user.role !== "Implementor" || taskItem.assignee === user.id || taskItem.requester === user.id;
+  }
+  return true;
+}
+
+function tasksForRequester() {
+  return state.tasks.filter((taskItem) => taskItem.requester === state.userId || selectedUser().role === "Organization reviewer");
+}
+
+function reviewableTasks() {
+  const user = selectedUser();
+  return state.tasks.filter((taskItem) =>
+    taskItem.requester === user.id || user.role === "Organization reviewer" ||
+    taskItem.submissions.some((submission) => submission.state === "submitted") ||
+    taskItem.reservations.some((reservation) => reservation.state === "requested")
+  );
+}
+
+function updateTask(taskId, change, activity) {
   state = {
     ...state,
-    tasks: state.tasks.map((task) => task.id === taskId ? { ...task, ...change(task) } : task),
+    tasks: state.tasks.map((item) => item.id === taskId ? appendTaskEvent({ ...item, ...change(item) }, activity) : item),
+    activityLog: activity ? [activity, ...state.activityLog].slice(0, maxActivity) : state.activityLog,
   };
   saveNow();
   render();
+}
+
+function appendTaskEvent(taskItem, activity) {
+  if (!activity) return taskItem;
+  return { ...taskItem, timeline: [activity, ...taskItem.timeline].slice(0, 5) };
 }
 
 function createDraftTask() {
-  const id = `demo-${Date.now()}`;
+  const id = `demo-${state.localTaskSeq}`;
+  const newTask = task({
+    id,
+    title: state.draftTitle || "Untitled mission",
+    requester: state.userId,
+    assignee: "",
+    area: "Custom Board",
+    difficulty: "C",
+    visibility: state.draftVisibility,
+    policy: state.draftPolicy,
+    reward: draftReward(),
+    lifecycle: lifecycle.draft,
+    availability: availability.available,
+    reservationHours: state.draftReservationHours,
+    schema: '{"kind":"freeform"}',
+    objective: state.draftDescription || "Describe the requested result.",
+    timeline: [`${selectedUser().name} drafted the mission.`],
+  });
   state = {
     ...state,
+    localTaskSeq: state.localTaskSeq + 1,
     selectedTaskId: id,
     page: "requester",
     tasks: [
-      {
-        id,
-        title: state.draftTitle,
-        requester: state.userId,
-        assignee: "",
-        visibility: state.draftVisibility === "organization" ? "Organization" : "Public marketplace",
-        policy: state.draftPolicy === "approval" ? "Approval required" : "Reservation required",
-        reward: state.draftReward,
-        state: "draft",
-        availability: "available",
-        reservationHours: state.draftReservationHours,
-        schema: '{"kind":"freeform"}',
-        description: state.draftDescription,
-        submissions: [],
-        reservations: [],
-      },
-      ...state.tasks.filter((task) => !task.id.startsWith("demo-")),
-      ...state.tasks.filter((task) => task.id.startsWith("demo-")).slice(0, maxDemoTasks - 4),
-    ].slice(0, maxDemoTasks),
+      newTask,
+      ...state.tasks.filter((item) => !item.id.startsWith("demo-")),
+      ...state.tasks.filter((item) => item.id.startsWith("demo-")).slice(0, maxLocalTasks - 1),
+    ],
+    activityLog: [`${selectedUser().name} drafted ${newTask.title}.`, ...state.activityLog].slice(0, maxActivity),
   };
   saveNow();
   render();
+}
+
+function draftReward() {
+  const credits = Number.parseInt(state.draftCredits, 10) || 0;
+  const collectibles = state.draftCollectible.trim() === "" ? [] : [state.draftCollectible.trim()];
+  if (state.draftRewardKind === "none") return rewardNone();
+  if (state.draftRewardKind === "credits") return rewardCredits(credits);
+  if (state.draftRewardKind === "collectible") return rewardCollectible(collectibles);
+  return rewardBundle(credits, collectibles);
 }
 
 function render() {
@@ -233,8 +557,8 @@ function topbar() {
         <a class="button secondary" href="../docs/">Docs</a>
         <div class="account-menu">
           <button class="account-button" data-action="toggleLogin" aria-expanded="${state.loginOpen ? "true" : "false"}">
-            <span>Viewing as</span>
-            <strong>${user.name} · ${user.role}</strong>
+            <span>Persona</span>
+            <strong>${escapeHtml(user.callsign)} - ${escapeHtml(user.name)}</strong>
           </button>
           ${state.loginOpen ? loginPanel() : ""}
         </div>
@@ -246,23 +570,35 @@ function topbar() {
 function loginPanel() {
   return `
     <section class="login-popover">
-      <span class="eyebrow">Login demo</span>
-      <label for="demo-user">Select user</label>
+      <span class="eyebrow">Choose persona</span>
+      <label for="demo-user">Select persona</label>
       <select id="demo-user" data-field="userId">
-        ${users.map((item) => `<option value="${item.id}" ${item.id === state.userId ? "selected" : ""}>${item.name} - ${item.role}</option>`).join("")}
+        ${users.map((item) => `<option value="${escapeAttribute(item.id)}" ${item.id === state.userId ? "selected" : ""}>${escapeHtml(item.name)} - ${escapeHtml(item.role)}</option>`).join("")}
       </select>
-      <div class="provider-grid">
-        ${providers.map((provider) => `<button class="button secondary compact-button" data-provider="${provider}">${provider}</button>`).join("")}
+      <div class="persona-list">
+        ${users.map((item) => personaBadge(item)).join("")}
       </div>
-      <p class="hint">${state.socialProvider ? `${state.socialProvider} sign-in is a placeholder.` : "Provider buttons are non-functional demo controls."}</p>
+      <div class="provider-grid">
+        ${providers.map((provider) => `<button class="button secondary compact-button" data-provider="${escapeAttribute(provider)}">${escapeHtml(provider)}</button>`).join("")}
+      </div>
+      <p class="hint">${state.socialProvider ? `${escapeHtml(state.socialProvider)} sign-in is a placeholder.` : "Provider buttons are non-functional demo controls."}</p>
     </section>
+  `;
+}
+
+function personaBadge(user) {
+  return `
+    <button class="persona-badge ${user.id === state.userId ? "selected" : ""}" data-action="choosePersona" data-user="${escapeAttribute(user.id)}">
+      <strong>${escapeHtml(user.callsign)}</strong>
+      <span>${escapeHtml(user.role)} / ${escapeHtml(user.rank)}</span>
+    </button>
   `;
 }
 
 function pageNavigation() {
   return `
     <nav class="page-tabs" aria-label="Demo pages">
-      ${pages.map((page) => `<button class="tab ${state.page === page.id ? "active" : ""}" data-page="${page.id}">${page.label}</button>`).join("")}
+      ${pages.map((page) => `<button class="tab ${state.page === page.id ? "active" : ""}" data-page="${escapeAttribute(page.id)}">${escapeHtml(page.label)}</button>`).join("")}
     </nav>
   `;
 }
@@ -278,29 +614,38 @@ function pageView() {
 
 function overviewPage() {
   const user = selectedUser();
+  const taskItem = selectedTask();
   return `
-    <section class="hero-panel">
-      <div>
-        <span class="eyebrow">${user.role}</span>
-        <h1>${headlineFor(user.role)}</h1>
-        <p>${copyFor(user.role)}</p>
+    <section class="command-grid">
+      <div class="hero-panel command-hero">
+        <div>
+          <span class="eyebrow">${escapeHtml(user.role)} / ${escapeHtml(user.rank)}</span>
+          <h1>${escapeHtml(headlineFor(user.role))}</h1>
+          <p>${escapeHtml(copyFor(user.role))}</p>
+          <div class="row-actions">
+            ${primaryFlowButton(user.role)}
+            <button class="button secondary" data-page="settings">Tune demo</button>
+          </div>
+        </div>
+        <div class="summary-grid">
+          ${metricCard("Open missions", String(state.tasks.filter((item) => item.lifecycle === lifecycle.open).length))}
+          ${metricCard("Review signals", String(reviewSignals()))}
+          ${metricCard("Credits", `${balanceOf(user.id)}`)}
+          ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
+        </div>
       </div>
-      <div class="summary-grid">
-        ${metricCard("Open tasks", String(state.tasks.filter((task) => task.state === "open").length))}
-        ${metricCard("Reservations", String(state.tasks.flatMap((task) => task.reservations).length))}
-        ${metricCard("Submissions", String(state.tasks.flatMap((task) => task.submissions).length))}
-        ${metricCard("Balance", `${user.balance} credits`)}
-      </div>
+      ${missionBriefing(taskItem)}
     </section>
     <section class="panel">
-      <span class="eyebrow">Choose a flow</span>
+      <span class="eyebrow">Mission paths</span>
       <div class="flow-grid">
-        ${flowCard("discover", "Implementor discovery", "Find eligible tasks, inspect rewards and policies, and submit work.")}
-        ${flowCard("requester", "Requester setup", "Create a task and see the requester-owned task list.")}
-        ${flowCard("review", "Review queue", "Approve reservations and accept or reject submitted work.")}
-        ${flowCard("integrations", "API and MCP", "Copy the instructions a worker or local agent needs to provide a result.")}
+        ${flowCard("discover", "Mission Board", "Pick visible work, inspect policies, reserve or submit.")}
+        ${flowCard("requester", "Post Mission", "Draft, fund, open, cancel, and inspect requester-owned missions.")}
+        ${flowCard("review", "Review Queue", "Approve reservations and settle submissions with notes and payouts.")}
+        ${flowCard("integrations", "Uplink", "Read the REST and MCP instructions for the selected mission.")}
       </div>
     </section>
+    ${activityFeed()}
   `;
 }
 
@@ -309,18 +654,27 @@ function discoverPage() {
     <section class="panel">
       <div class="page-header">
         <div>
-          <span class="eyebrow">Implementor flow</span>
-          <h1>Discover available work</h1>
-          <p>Workers see the public task list, choose whether to include reserved tasks, and act on one selected task.</p>
+          <span class="eyebrow">Mission board</span>
+          <h1>${escapeHtml(boardTitleFor(selectedUser().role))}</h1>
+          <p>Work is grouped by live mission state. Pick a card to read the briefing and take the next eligible action.</p>
         </div>
-        <label class="check-row">
-          <input type="checkbox" data-field="includeReserved" ${state.includeReserved ? "checked" : ""}>
-          Include reserved
-        </label>
+        <div class="board-controls">
+          <label class="check-row">
+            <input type="checkbox" data-field="includeReserved" ${state.includeReserved ? "checked" : ""}>
+            Include reserved
+          </label>
+          <select data-field="boardFilter" aria-label="Mission filter">
+            ${filterOption("all", "All sectors")}
+            ${filterOption("public", "Public")}
+            ${filterOption("organization", "Organization")}
+            ${filterOption("mine", "Mine")}
+          </select>
+        </div>
       </div>
-      ${taskTable(visibleTasks())}
+      ${missionBoard(filteredBoardTasks(), "discover")}
     </section>
-    ${taskActionPanel()}
+    ${missionBriefing(selectedTask())}
+    ${activityFeed()}
   `;
 }
 
@@ -329,82 +683,91 @@ function requesterPage() {
     <section class="panel">
       <div class="page-header">
         <div>
-          <span class="eyebrow">Requester flow</span>
-          <h1>Create and prepare a task</h1>
-          <p>The real app funds and opens tasks through the API. This demo keeps a local draft so the creation flow is quick to inspect.</p>
+          <span class="eyebrow">Post mission</span>
+          <h1>Build a reward crate and open a mission</h1>
+          <p>Create a local mission, fund it, attach a collectible when needed, then open it onto the board.</p>
         </div>
       </div>
       <form class="create-form" data-form="create-task">
-        <label for="draft-title">Title<input id="draft-title" data-field="draftTitle" value="${escapeHtml(state.draftTitle)}"></label>
-        <label class="wide-field" for="draft-description">Description<textarea id="draft-description" data-field="draftDescription">${escapeHtml(state.draftDescription)}</textarea></label>
-        <label for="draft-reward">Reward<input id="draft-reward" data-field="draftReward" value="${escapeHtml(state.draftReward)}"></label>
+        <label for="draft-title">Mission title<input id="draft-title" data-field="draftTitle" value="${escapeAttribute(state.draftTitle)}"></label>
+        <label class="wide-field" for="draft-description">Objective<textarea id="draft-description" data-field="draftDescription">${escapeHtml(state.draftDescription)}</textarea></label>
+        <label for="draft-reward-kind">Reward kind
+          <select id="draft-reward-kind" data-field="draftRewardKind">
+            ${option("none", "No reward", state.draftRewardKind)}
+            ${option("credits", "Credits", state.draftRewardKind)}
+            ${option("collectible", "Collectible", state.draftRewardKind)}
+            ${option("bundle", "Credits + collectible", state.draftRewardKind)}
+          </select>
+        </label>
+        <label for="draft-credits">Credits<input id="draft-credits" data-field="draftCredits" value="${escapeAttribute(state.draftCredits)}"></label>
+        <label for="draft-collectible">Collectible<input id="draft-collectible" data-field="draftCollectible" value="${escapeAttribute(state.draftCollectible)}"></label>
         <label for="draft-visibility">Visibility
           <select id="draft-visibility" data-field="draftVisibility">
-            <option value="public" ${state.draftVisibility === "public" ? "selected" : ""}>Public marketplace</option>
-            <option value="organization" ${state.draftVisibility === "organization" ? "selected" : ""}>Organization</option>
+            ${option("public", "Public marketplace", state.draftVisibility)}
+            ${option("organization", "Organization", state.draftVisibility)}
           </select>
         </label>
         <label for="draft-policy">Participation
           <select id="draft-policy" data-field="draftPolicy">
-            <option value="reservation" ${state.draftPolicy === "reservation" ? "selected" : ""}>Reservation required</option>
-            <option value="approval" ${state.draftPolicy === "approval" ? "selected" : ""}>Requester approval required</option>
+            ${option(policy.open, "Open submissions", state.draftPolicy)}
+            ${option(policy.reservation, "Reservation required", state.draftPolicy)}
+            ${option(policy.approval, "Requester approval required", state.draftPolicy)}
           </select>
         </label>
-        <label for="draft-reservation-hours">Reservation expiry<input id="draft-reservation-hours" data-field="draftReservationHours" value="${escapeHtml(state.draftReservationHours)}"></label>
-        <button class="button primary" data-action="create" type="button">Add demo task</button>
+        <label for="draft-reservation-hours">Reservation expiry<input id="draft-reservation-hours" data-field="draftReservationHours" value="${escapeAttribute(state.draftReservationHours)}"></label>
+        <button class="button primary" data-action="create" type="button">Draft mission</button>
       </form>
-      <div class="flow-note">
-        <strong>Next in the API-backed app:</strong>
-        fund the reward, attach collectibles when needed, then open the task for discovery.
-      </div>
     </section>
     <section class="panel">
-      <span class="eyebrow">Tasks owned by ${selectedUser().name}</span>
-      ${taskTable(state.tasks.filter((task) => task.requester === state.userId))}
+      <span class="eyebrow">Requester control board</span>
+      ${missionBoard(tasksForRequester(), "requester")}
     </section>
+    ${missionBriefing(selectedTask())}
   `;
 }
 
 function reviewPage() {
-  const task = selectedTask();
+  const tasks = reviewableTasks();
+  const taskItem = selectedTask();
   return `
     <section class="panel">
       <div class="page-header">
         <div>
-          <span class="eyebrow">Requester review flow</span>
-          <h1>Review reservations and submissions</h1>
-          <p>Reservation decisions and submission outcomes are kept together because they are usually handled by the same requester or reviewer.</p>
+          <span class="eyebrow">Dispatch review</span>
+          <h1>Review reservations and submitted payloads</h1>
+          <p>Approve access, request changes, reject with fair partial payout, or accept and settle the reward crate.</p>
         </div>
-        ${taskSelect(task)}
+        ${taskSelect(taskItem, tasks)}
       </div>
       <div class="review-layout">
-        <section class="sub-panel">
+        <section class="sub-panel control-room">
           <h2>Reservation queue</h2>
-          ${reservationQueue(task)}
+          ${reservationQueue(taskItem)}
         </section>
-        <section class="sub-panel">
-          <h2>Submission decision</h2>
-          ${submissionList(task)}
+        <section class="sub-panel control-room">
+          <h2>Submission decisions</h2>
+          ${submissionList(taskItem)}
         </section>
       </div>
     </section>
+    ${activityFeed()}
   `;
 }
 
 function integrationsPage() {
-  const task = selectedTask();
+  const taskItem = selectedTask();
   return `
     <section class="panel">
       <div class="page-header">
         <div>
-          <span class="eyebrow">Agent and API flow</span>
-          <h1>Provide a result for ${escapeHtml(task.title)}</h1>
-          <p>Task pages should expose direct REST and MCP instructions so people, scripts, and local agents can all submit results.</p>
+          <span class="eyebrow">Uplink console</span>
+          <h1>Provide a result for ${escapeHtml(taskItem.title)}</h1>
+          <p>Each mission carries direct REST and MCP instructions so people, scripts, and local agents can all submit results.</p>
         </div>
-        ${taskSelect(task)}
+        ${taskSelect(taskItem, state.tasks)}
       </div>
       <div class="code-grid">
-        <article class="sub-panel">
+        <article class="sub-panel uplink-panel">
           <span class="eyebrow">Agent credential</span>
           <h2>Scoped client setup</h2>
           <pre>{
@@ -415,17 +778,18 @@ function integrationsPage() {
     }
   }
 }</pre>
-          <p class="hint">Demo scopes: tasks_read, submissions_write, submissions_review. Revocation is available in the API-backed app.</p>
+          <button class="button primary" data-action="agentRun">Simulate agent run</button>
+          <p class="hint">Demo scopes: tasks_read, submissions_write, submissions_review. The action adds an agent-labeled submission to this mission.</p>
         </article>
-        <article class="sub-panel">
+        <article class="sub-panel uplink-panel">
           <span class="eyebrow">Worker REST</span>
           <h2>Submit result</h2>
-          <pre>curl -X POST https://sharecrop.example/api/tasks/${task.id}/submissions \\
+          <pre>curl -X POST https://sharecrop.example/api/tasks/${escapeHtml(taskItem.id)}/submissions \\
   -H "Authorization: Bearer &lt;ACCESS_TOKEN&gt;" \\
   -H "Content-Type: application/json" \\
   -d '{"response_json":"{}"}'</pre>
         </article>
-        <article class="sub-panel">
+        <article class="sub-panel uplink-panel">
           <span class="eyebrow">Worker MCP</span>
           <h2>Session workflow</h2>
           <pre>initialize -> Mcp-Session-Id
@@ -433,7 +797,7 @@ sharecrop.reserve_task
 sharecrop.get_task_schema
 sharecrop.submit_response</pre>
         </article>
-        <article class="sub-panel">
+        <article class="sub-panel uplink-panel">
           <span class="eyebrow">Requester MCP</span>
           <h2>Review tools</h2>
           <pre>sharecrop.list_task_reservations
@@ -453,8 +817,8 @@ function settingsPage() {
       <div class="page-header">
         <div>
           <span class="eyebrow">Demo settings</span>
-          <h1>Theme, state, and placeholders</h1>
-          <p>Settings are kept out of task workflows so the demo does not compete with the actual work surfaces.</p>
+          <h1>Theme, local state, and test controls</h1>
+          <p>Use the controls here to change presentation, reset the local mission board, or keep demo-only tools out of the main workflows.</p>
         </div>
       </div>
       <div class="settings-grid">
@@ -473,7 +837,8 @@ function settingsPage() {
         </section>
         <section class="sub-panel">
           <h2>Local state</h2>
-          <p>The demo stores edits only in this browser.</p>
+          <p>The demo stores persona, mission progress, activity, balances, and local draft missions only in this browser.</p>
+          ${state.storageWarning ? `<p class="danger-text">${escapeHtml(state.storageWarning)}</p>` : ""}
           <button class="button primary" data-action="reset">Clear state</button>
         </section>
       </div>
@@ -481,156 +846,350 @@ function settingsPage() {
   `;
 }
 
-function taskSelect(task) {
+function missionBoard(tasks, context) {
+  const lanes = boardLanes(tasks);
   return `
-    <select class="task-select" data-field="selectedTaskId">
-      ${state.tasks.map((item) => `<option value="${item.id}" ${item.id === task.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
-    </select>
-  `;
-}
-
-function modeButton(value, label) {
-  return `<button class="button ${state.mode === value ? "primary" : "secondary"}" data-mode="${value}">${label}</button>`;
-}
-
-function themeButton(value, label) {
-  return `<button class="theme-chip ${state.theme === value ? "selected" : ""}" data-theme="${value}">${label}</button>`;
-}
-
-function metricCard(label, value) {
-  return `<div class="metric-card"><span>${label}</span><strong>${value}</strong></div>`;
-}
-
-function flowCard(page, title, copy) {
-  return `
-    <button class="flow-card" data-page="${page}">
-      <strong>${title}</strong>
-      <span>${copy}</span>
-    </button>
-  `;
-}
-
-function taskTable(tasks) {
-  if (tasks.length === 0) {
-    return `<p class="empty-state">No tasks match this view.</p>`;
-  }
-  return `
-    <div class="task-table">
-      <div class="task-table-head">
-        <span>Task</span><span>Policy</span><span>Reward</span><span>Status</span>
-      </div>
-      ${tasks.map(taskRow).join("")}
+    <div class="mission-board" data-context="${escapeAttribute(context)}">
+      ${lanes.map((lane) => `
+        <section class="mission-lane">
+          <div class="lane-header">
+            <strong>${escapeHtml(lane.label)}</strong>
+            <span>${lane.tasks.length}</span>
+          </div>
+          ${lane.tasks.length === 0 ? `<p class="empty-state">No missions in this lane.</p>` : lane.tasks.map(missionCard).join("")}
+        </section>
+      `).join("")}
     </div>
   `;
 }
 
-function taskRow(task) {
+function boardLanes(tasks) {
+  const lanes = [
+    { id: "available", label: "Available", tasks: [] },
+    { id: "reserved", label: "Reserved", tasks: [] },
+    { id: "awaiting", label: "Awaiting approval", tasks: [] },
+    { id: "submitted", label: "Submitted", tasks: [] },
+    { id: "settled", label: "Settled", tasks: [] },
+  ];
+  for (const taskItem of tasks) {
+    lanes.find((lane) => lane.id === laneForTask(taskItem)).tasks.push(taskItem);
+  }
+  return lanes;
+}
+
+function laneForTask(taskItem) {
+  if ([availability.accepted, availability.rejected, availability.closed].includes(taskItem.availability) || taskItem.lifecycle === lifecycle.closed) return "settled";
+  if ([availability.submitted, availability.changesRequested].includes(taskItem.availability)) return "submitted";
+  if (taskItem.availability === availability.awaitingApproval) return "awaiting";
+  if (taskItem.availability === availability.reserved) return "reserved";
+  return "available";
+}
+
+function missionCard(taskItem) {
+  const selected = taskItem.id === selectedTask().id ? "selected" : "";
   return `
-    <button class="task-table-row ${task.id === state.selectedTaskId ? "selected" : ""}" data-task="${task.id}">
-      <span><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.description)}</small></span>
-      <span>${escapeHtml(task.policy)}</span>
-      <span>${escapeHtml(task.reward)}</span>
-      <span><em>${escapeHtml(task.availability)}</em></span>
+    <button class="mission-card ${selected}" data-task="${escapeAttribute(taskItem.id)}">
+      <span class="rank-badge">Rank ${escapeHtml(taskItem.difficulty)}</span>
+      <strong>${escapeHtml(taskItem.title)}</strong>
+      <small>${escapeHtml(taskItem.objective)}</small>
+      <div class="mission-meta">
+        <span>${escapeHtml(areaLabel(taskItem.area))}</span>
+        <span>${escapeHtml(policyLabel(taskItem.policy))}</span>
+        <span>${escapeHtml(availabilityLabel(taskItem.availability))}</span>
+      </div>
+      <div class="reward-row">${rewardChips(taskItem.reward)}</div>
     </button>
   `;
 }
 
-function taskActionPanel() {
-  const task = selectedTask();
-  const action = nextAction(task);
+function missionBriefing(taskItem) {
+  if (!taskItem) return "";
+  const action = nextAction(taskItem);
   return `
-    <section class="panel task-action-panel">
+    <section class="panel briefing-panel">
       <div>
-        <span class="eyebrow">Selected task</span>
-        <h2>${escapeHtml(task.title)}</h2>
-        <p>${escapeHtml(task.description)}</p>
+        <span class="eyebrow">Mission briefing</span>
+        <h2>${escapeHtml(taskItem.title)}</h2>
+        <p>${escapeHtml(taskItem.objective)}</p>
         <div class="badge-row">
-          <span>${escapeHtml(task.state)}</span>
-          <span>${escapeHtml(task.visibility)}</span>
-          <span>${escapeHtml(task.reward)}</span>
-          <span>${escapeHtml(task.policy)}</span>
+          <span>${escapeHtml(lifecycleLabel(taskItem.lifecycle))}</span>
+          <span>${escapeHtml(visibilityLabel(taskItem.visibility))}</span>
+          <span>${escapeHtml(policyLabel(taskItem.policy))}</span>
+          <span>${escapeHtml(availabilityLabel(taskItem.availability))}</span>
         </div>
+        <ul class="objective-list">
+          <li>Requester: ${escapeHtml(userName(taskItem.requester))}</li>
+          <li>Assignee: ${escapeHtml(taskItem.assignee ? userName(taskItem.assignee) : "unassigned")}</li>
+          <li>Reward crate: ${escapeHtml(rewardLabel(taskItem.reward))}</li>
+          <li>Schema: ${escapeHtml(taskItem.schema)}</li>
+        </ul>
       </div>
-      <div class="sub-panel">
-        <h2>Implementor action</h2>
-        <textarea data-field="responseText">${escapeHtml(state.responseText)}</textarea>
-        <div class="row-actions">
-          ${actionButtons(action)}
-        </div>
-        <p class="hint">${action.explanation}</p>
+      <div class="sub-panel action-console">
+        <h2>${escapeHtml(action.title)}</h2>
+        ${actionPayload(action)}
+        <div class="row-actions">${actionButtons(action)}</div>
+        <p class="hint">${escapeHtml(action.explanation)}</p>
+      </div>
+      <div class="sub-panel activity-feed">
+        <h2>Mission log</h2>
+        ${taskItem.timeline.slice(0, 5).map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
       </div>
     </section>
   `;
 }
 
-function nextAction(task) {
-  if (task.availability === "closed" || task.state === "closed") {
-    return { kind: "none", explanation: "This task is closed." };
+function nextAction(taskItem) {
+  const user = selectedUser();
+  const reservation = taskItem.reservations.find((item) => item.by === state.userId);
+  const submission = taskItem.submissions.find((item) => item.by === state.userId);
+
+  if (taskItem.requester === state.userId && taskItem.lifecycle === lifecycle.draft) {
+    return { kind: "fund", title: "Prepare crate", explanation: "Fund or attach the reward before opening the mission." };
   }
-  if (task.policy === "Approval required" && task.assignee !== state.userId) {
-    return { kind: "requestApproval", explanation: "This task requires requester approval before work can be submitted." };
+  if (taskItem.requester === state.userId && taskItem.lifecycle === lifecycle.funded) {
+    return { kind: "openMission", title: "Open mission", explanation: "Publish the funded mission to the board." };
   }
-  if (task.policy === "Reservation required" && task.assignee !== state.userId) {
-    return { kind: "reserve", explanation: "This task needs an exclusive reservation before submission." };
+  if (taskItem.requester === state.userId && taskItem.lifecycle === lifecycle.open) {
+    return { kind: "none", title: "Requester watch", explanation: "Use Review Queue to decide reservations and submissions." };
   }
-  return { kind: "submit", explanation: "You are eligible to submit a response for this task." };
+  if (taskItem.lifecycle !== lifecycle.open || taskItem.availability === availability.closed || taskItem.availability === availability.accepted) {
+    return { kind: "none", title: "No action", explanation: "This mission is not open for new work." };
+  }
+  if (taskItem.banned?.includes(state.userId)) {
+    return { kind: "none", title: "Blocked", explanation: "This implementor is banned from this mission." };
+  }
+  if (submission?.state === "submitted") {
+    return { kind: "none", title: "Payload received", explanation: "The requester has a submitted result to review." };
+  }
+  if (submission?.state === "changes_requested") {
+    return { kind: "submit", title: "Revise payload", explanation: "Changes were requested. Submit an updated payload for the same mission." };
+  }
+  if (taskItem.policy === policy.approval && reservation?.state === "requested") {
+    return { kind: "none", title: "Awaiting clearance", explanation: "Requester approval is pending." };
+  }
+  if (taskItem.policy === policy.approval && taskItem.assignee !== state.userId) {
+    return { kind: "requestApproval", title: "Request clearance", explanation: "This mission requires requester approval before work starts." };
+  }
+  if (taskItem.policy === policy.reservation && taskItem.assignee !== state.userId) {
+    return { kind: "reserve", title: "Claim reservation", explanation: "Reserve the mission to make it exclusive for your run." };
+  }
+  if (user.role === "Agent operator") {
+    return { kind: "agentRun", title: "Run agent", explanation: "Simulate a scoped local agent submitting over MCP." };
+  }
+  return { kind: "submit", title: "Submit payload", explanation: "You are eligible to submit a result for this mission." };
 }
 
 function actionButtons(action) {
-  if (action.kind === "reserve") {
-    return `<button class="button primary" data-action="reserve">Reserve task</button><button class="button secondary" disabled>Submit after reservation</button>`;
-  }
-  if (action.kind === "requestApproval") {
-    return `<button class="button primary" data-action="requestApproval">Request approval</button><button class="button secondary" disabled>Submit after approval</button>`;
-  }
-  if (action.kind === "submit") {
-    return `<button class="button primary" data-action="submit">Submit response</button>`;
-  }
+  if (action.kind === "fund") return `<button class="button primary" data-action="fund">Fund reward</button><button class="button secondary" data-action="cancelMission">Cancel</button>`;
+  if (action.kind === "openMission") return `<button class="button primary" data-action="openMission">Open mission</button><button class="button secondary" data-action="cancelMission">Cancel</button>`;
+  if (action.kind === "reserve") return `<button class="button primary" data-action="reserve">Reserve mission</button>`;
+  if (action.kind === "requestApproval") return `<button class="button primary" data-action="requestApproval">Request approval</button>`;
+  if (action.kind === "submit") return `<button class="button primary" data-action="submit">Submit payload</button>`;
+  if (action.kind === "agentRun") return `<button class="button primary" data-action="agentRun">Simulate agent run</button>`;
   return `<button class="button secondary" disabled>No action available</button>`;
 }
 
-function reservationQueue(task) {
-  if (task.reservations.length === 0) {
-    return `<p class="empty-state">No reservations for this task.</p>`;
+function actionPayload(action) {
+  if (action.kind === "submit" || action.kind === "agentRun") {
+    return `<label for="response-text">Submission payload<textarea id="response-text" data-field="responseText">${escapeHtml(state.responseText)}</textarea></label>`;
   }
-  return task.reservations.map((reservation) => `
+  return "";
+}
+
+function reservationQueue(taskItem) {
+  if (taskItem.reservations.length === 0) return `<p class="empty-state">No reservations for this mission.</p>`;
+  return taskItem.reservations.map((reservation) => `
     <div class="queue-row">
       <div>
-        <strong>${userName(reservation.by)}</strong>
-        <span>${escapeHtml(reservation.state)}</span>
+        <strong>${escapeHtml(userName(reservation.by))}</strong>
+        <span>${escapeHtml(reservation.state)} / expires ${escapeHtml(reservation.expires ?? "48h")}</span>
       </div>
       <div class="row-actions">
-        ${reservation.state === "requested" ? `<button class="button secondary" data-action="declineReservation" data-user="${reservation.by}">Decline</button><button class="button primary" data-action="approve" data-user="${reservation.by}">Approve</button>` : ""}
-        ${reservation.state === "active" ? `<button class="button secondary" data-action="releaseReservation" data-user="${reservation.by}">Release</button>` : ""}
+        ${reservation.state === "requested" ? `<button class="button secondary" data-action="declineReservation" data-user="${escapeAttribute(reservation.by)}">Decline</button><button class="button primary" data-action="approve" data-user="${escapeAttribute(reservation.by)}">Approve</button>` : ""}
+        ${reservation.state === "active" ? `<button class="button secondary" data-action="releaseReservation" data-user="${escapeAttribute(reservation.by)}">Release</button>` : ""}
       </div>
     </div>
   `).join("");
 }
 
-function submissionList(task) {
-  if (task.submissions.length === 0) {
-    return `<p class="empty-state">No submissions for this task.</p>`;
-  }
-  return task.submissions.map((submission) => `
-    <div class="submission-row">
-      <div>
-        <strong>${userName(submission.by)}</strong>
-        <span>${escapeHtml(submission.state)}</span>
+function submissionList(taskItem) {
+  if (taskItem.submissions.length === 0) return `<p class="empty-state">No submissions for this mission.</p>`;
+  return taskItem.submissions.map((submission) => {
+    const draft = reviewDraft(submission);
+    return `
+      <div class="submission-row">
+        <div>
+          <strong>${escapeHtml(userName(submission.by))}</strong>
+          <span>${escapeHtml(submission.state)}</span>
+        </div>
+        <code>${escapeHtml(submission.response)}</code>
+        <label>Review note<textarea data-field="reviewNote" data-submission="${escapeAttribute(submission.id)}">${escapeHtml(draft.reviewNote)}</textarea></label>
+        <div class="mini-grid">
+          <label>Partial payout<input data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.partialPayout)}"></label>
+          <label>Tip<input data-field="tipAmount" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.tipAmount)}"></label>
+        </div>
+        <label class="check-row"><input type="checkbox" data-field="banImplementor" data-submission="${escapeAttribute(submission.id)}" ${draft.banImplementor ? "checked" : ""}> Ban implementor from this mission</label>
+        <div class="row-actions">
+          <button class="button secondary" data-action="requestChanges" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Request changes</button>
+          <button class="button secondary" data-action="reject" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Reject</button>
+          <button class="button primary" data-action="accept" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Accept</button>
+        </div>
       </div>
-      <code>${escapeHtml(submission.response)}</code>
-      <label>Review note<textarea data-field="reviewNote">${escapeHtml(state.reviewNote)}</textarea></label>
-      <div class="mini-grid">
-        <label>Partial payout<input data-field="partialPayout" value="${escapeHtml(state.partialPayout)}"></label>
-        <label>Tip<input data-field="tipAmount" value="${escapeHtml(state.tipAmount)}"></label>
-      </div>
-      <label class="check-row"><input type="checkbox" data-field="banImplementor" ${state.banImplementor ? "checked" : ""}> Ban implementor from this task</label>
-      <div class="row-actions">
-        <button class="button secondary" data-action="requestChanges" data-user="${submission.by}">Request changes</button>
-        <button class="button secondary" data-action="reject" data-user="${submission.by}">Reject</button>
-        <button class="button primary" data-action="accept" data-user="${submission.by}">Accept</button>
-      </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
+}
+
+function reviewDraft(submission) {
+  return {
+    reviewNote: submission.reviewNote || "Looks close. Add missing evidence if needed.",
+    partialPayout: submission.partialPayout || "18",
+    tipAmount: submission.tip || "4",
+    banImplementor: submission.ban || false,
+    ...(state.reviewDrafts[submission.id] ?? {}),
+  };
+}
+
+function activityFeed() {
+  return `
+    <section class="panel activity-feed">
+      <span class="eyebrow">Comms feed</span>
+      ${state.activityLog.map((entry) => `<p>${escapeHtml(entry)}</p>`).join("")}
+    </section>
+  `;
+}
+
+function taskSelect(taskItem, tasks) {
+  return `
+    <select class="task-select" data-field="selectedTaskId">
+      ${tasks.map((item) => `<option value="${escapeAttribute(item.id)}" ${item.id === taskItem.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
+    </select>
+  `;
+}
+
+function modeButton(value, label) {
+  return `<button class="button ${state.mode === value ? "primary" : "secondary"}" data-mode="${escapeAttribute(value)}">${escapeHtml(label)}</button>`;
+}
+
+function themeButton(value, label) {
+  return `<button class="theme-chip ${state.theme === value ? "selected" : ""}" data-theme="${escapeAttribute(value)}">${escapeHtml(label)}</button>`;
+}
+
+function metricCard(label, value) {
+  return `<div class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function flowCard(page, title, copy) {
+  return `
+    <button class="flow-card" data-page="${escapeAttribute(page)}">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(copy)}</span>
+    </button>
+  `;
+}
+
+function primaryFlowButton(role) {
+  if (role === "Requester") return `<button class="button primary" data-page="requester">Post mission</button>`;
+  if (role === "Implementor") return `<button class="button primary" data-page="discover">Open mission board</button>`;
+  if (role === "Organization reviewer") return `<button class="button primary" data-page="review">Open review queue</button>`;
+  return `<button class="button primary" data-page="integrations">Open uplink</button>`;
+}
+
+function filteredBoardTasks() {
+  const tasks = visibleTasks();
+  if (state.boardFilter === "public") return tasks.filter((item) => item.visibility === "public");
+  if (state.boardFilter === "organization") return tasks.filter((item) => item.visibility === "organization");
+  if (state.boardFilter === "mine") return tasks.filter((item) => item.requester === state.userId || item.assignee === state.userId);
+  return tasks;
+}
+
+function filterOption(value, label) {
+  return option(value, label, state.boardFilter);
+}
+
+function option(value, label, selected) {
+  return `<option value="${escapeAttribute(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+}
+
+function rewardChips(reward) {
+  if (reward.kind === "none") return `<span class="reward-chip muted-chip">No reward</span>`;
+  const chips = [];
+  if (reward.credits > 0) chips.push(`<span class="reward-chip">${reward.credits} credits</span>`);
+  for (const collectible of reward.collectibles) chips.push(`<span class="reward-chip rare-chip">${escapeHtml(collectible)}</span>`);
+  return chips.join("");
+}
+
+function rewardLabel(reward) {
+  if (reward.kind === "none") return "no reward";
+  const parts = [];
+  if (reward.credits > 0) parts.push(`${reward.credits} credits`);
+  if (reward.collectibles.length > 0) parts.push(reward.collectibles.join(", "));
+  return parts.join(" + ");
+}
+
+function visibilityLabel(value) {
+  return value === "organization" ? "Organization" : "Public marketplace";
+}
+
+function policyLabel(value) {
+  if (value === policy.open) return "Open submissions";
+  if (value === policy.approval) return "Approval required";
+  return "Reservation required";
+}
+
+function lifecycleLabel(value) {
+  if (value === lifecycle.draft) return "Draft";
+  if (value === lifecycle.funded) return "Funded";
+  if (value === lifecycle.closed) return "Closed";
+  if (value === lifecycle.canceled) return "Canceled";
+  return "Open";
+}
+
+function availabilityLabel(value) {
+  return value.replaceAll("_", " ");
+}
+
+function areaLabel(value) {
+  return `${value} sector`;
+}
+
+function boardTitleFor(role) {
+  if (role === "Requester") return "Posted missions and market visibility";
+  if (role === "Implementor") return "Available contracts and claimed work";
+  if (role === "Organization reviewer") return "Organization dispatch board";
+  return "Agent-ready missions and MCP runs";
+}
+
+function headlineFor(role) {
+  if (role === "Requester") return "Command the work board, fund rewards, and settle results.";
+  if (role === "Implementor") return "Pick a mission, claim the slot, and deliver the payload.";
+  if (role === "Organization reviewer") return "Keep mission access, submissions, and payouts under control.";
+  return "Connect local agents to missions through scoped uplinks.";
+}
+
+function copyFor(role) {
+  if (role === "Requester") return "Post missions, attach reward crates, review submissions, and watch the board change as work moves.";
+  if (role === "Implementor") return "The mission board highlights what is available, reserved, awaiting approval, submitted, or settled.";
+  if (role === "Organization reviewer") return "The review queue exposes approvals, changes, rejection, bans, partial payouts, and acceptance.";
+  return "The uplink screen shows REST and MCP instructions and can simulate an agent submission.";
+}
+
+function reviewSignals() {
+  return state.tasks.filter((item) =>
+    item.reservations.some((reservation) => reservation.state === "requested") ||
+    item.submissions.some((submission) => submission.state === "submitted")
+  ).length;
+}
+
+function balanceOf(userId) {
+  return state.balances[userId] ?? 0;
+}
+
+function inventoryOf(userId) {
+  return state.inventories[userId] ?? [];
+}
+
+function userName(userId) {
+  return users.find((user) => user.id === userId)?.name ?? userId;
 }
 
 function handleClick(event) {
@@ -658,7 +1217,7 @@ function handleClick(event) {
     return;
   }
 
-  handleAction(target.dataset.action, target.dataset.user);
+  handleAction(target.dataset.action, target.dataset.user, target.dataset.submission);
 }
 
 function handleCommit(event) {
@@ -668,7 +1227,11 @@ function handleCommit(event) {
   const key = target.dataset.field;
   const value = target.type === "checkbox" ? target.checked : target.value;
   if (key === "userId") {
-    setState({ userId: value, loginOpen: false });
+    choosePersona(value);
+    return;
+  }
+  if (target.dataset.submission !== undefined) {
+    updateReviewDraft(target.dataset.submission, key, value);
     return;
   }
   if (target.type === "checkbox" || target.tagName === "SELECT") {
@@ -685,109 +1248,226 @@ function handleDraftInput(event) {
 
   const key = target.dataset.field;
   if (key === "userId" || target.type === "checkbox" || target.tagName === "SELECT") return;
-
+  if (target.dataset.submission !== undefined) {
+    updateReviewDraft(target.dataset.submission, key, target.value, { render: false });
+    return;
+  }
   state = { ...state, [key]: target.value };
   saveSoon();
 }
 
-function handleAction(action, userId) {
-  const task = selectedTask();
-  if (action === "reset") resetState();
-  if (action === "toggleLogin") setState({ loginOpen: !state.loginOpen });
-  if (action === "create") createDraftTask();
-  if (action === "reserve") {
-    updateTask(task.id, () => ({
-      assignee: state.userId,
-      availability: "reserved",
-      reservations: [{ by: state.userId, state: "active" }],
-    }));
-  }
-  if (action === "requestApproval") {
-    updateTask(task.id, (current) => ({
-      availability: "awaiting approval",
-      reservations: [
-        ...current.reservations.filter((reservation) => reservation.by !== state.userId),
-        { by: state.userId, state: "requested" },
-      ].slice(-maxDemoReservations),
-    }));
-  }
-  if (action === "submit") {
-    updateTask(task.id, (current) => ({
-      submissions: [
-        ...current.submissions.filter((submission) => submission.by !== state.userId || submission.state !== "submitted"),
-        { by: state.userId, state: "submitted", response: state.responseText },
-      ].slice(-maxDemoSubmissions),
-    }));
-  }
-  if (action === "approve") {
-    updateTask(task.id, (current) => ({
-      assignee: userId,
-      availability: "reserved",
-      reservations: current.reservations.map((reservation) =>
-        reservation.by === userId ? { ...reservation, state: "active" } : reservation
-      ),
-    }));
-  }
-  if (action === "declineReservation") {
-    updateTask(task.id, (current) => ({
-      availability: current.assignee === userId ? "available" : current.availability,
-      assignee: current.assignee === userId ? "" : current.assignee,
-      reservations: current.reservations.map((reservation) =>
-        reservation.by === userId ? { ...reservation, state: "declined" } : reservation
-      ),
-    }));
-  }
-  if (action === "releaseReservation") {
-    updateTask(task.id, (current) => ({
-      availability: "available",
-      assignee: "",
-      reservations: current.reservations.map((reservation) =>
-        reservation.by === userId ? { ...reservation, state: "released" } : reservation
-      ),
-    }));
-  }
-  if (action === "reject") {
-    updateTask(task.id, (current) => ({
-      submissions: current.submissions.map((submission) =>
-        submission.by === userId ? { ...submission, state: "rejected" } : submission
-      ),
-    }));
-  }
-  if (action === "requestChanges") {
-    updateTask(task.id, (current) => ({
-      submissions: current.submissions.map((submission) =>
-        submission.by === userId ? { ...submission, state: "changes requested" } : submission
-      ),
-    }));
-  }
-  if (action === "accept") {
-    updateTask(task.id, (current) => ({
-      state: "closed",
-      availability: "closed",
-      submissions: current.submissions.map((submission) =>
-        submission.by === userId ? { ...submission, state: "accepted" } : submission
-      ),
-    }));
+function updateReviewDraft(submissionId, key, value, options = { render: true }) {
+  const field = key === "tipAmount" ? "tipAmount" : key;
+  state = {
+    ...state,
+    reviewDrafts: {
+      ...state.reviewDrafts,
+      [submissionId]: {
+        ...(state.reviewDrafts[submissionId] ?? {}),
+        [field]: value,
+      },
+    },
+  };
+  saveNow();
+  if (options.render) render();
+}
+
+function handleAction(action, userId, submissionId) {
+  const taskItem = selectedTask();
+  switch (action) {
+    case "reset":
+      resetState();
+      return;
+    case "toggleLogin":
+      setState({ loginOpen: !state.loginOpen });
+      return;
+    case "choosePersona":
+      choosePersona(userId);
+      return;
+    case "create":
+      createDraftTask();
+      return;
+    case "fund":
+      fundMission(taskItem);
+      return;
+    case "openMission":
+      openMission(taskItem);
+      return;
+    case "cancelMission":
+      cancelMission(taskItem);
+      return;
+    case "reserve":
+      reserveMission(taskItem);
+      return;
+    case "requestApproval":
+      requestApproval(taskItem);
+      return;
+    case "submit":
+      submitMission(taskItem);
+      return;
+    case "agentRun":
+      agentRun(taskItem);
+      return;
+    case "approve":
+      approveReservation(taskItem, userId);
+      return;
+    case "declineReservation":
+      declineReservation(taskItem, userId);
+      return;
+    case "releaseReservation":
+      releaseReservation(taskItem, userId);
+      return;
+    case "requestChanges":
+      decideSubmission(taskItem, userId, submissionId, "changes_requested");
+      return;
+    case "reject":
+      decideSubmission(taskItem, userId, submissionId, "rejected");
+      return;
+    case "accept":
+      decideSubmission(taskItem, userId, submissionId, "accepted");
+      return;
   }
 }
 
-function headlineFor(role) {
-  if (role === "Requester") return "Coordinate requested work without making Sharecrop a task runner.";
-  if (role === "Implementor") return "Find eligible tasks, reserve work, and submit structured results.";
-  if (role === "Organization reviewer") return "Review organization work through clear queues and outcomes.";
-  return "Connect local agents through scoped HTTP and MCP instructions.";
+function choosePersona(userId) {
+  const nextUser = users.find((user) => user.id === userId) ?? users[0];
+  const nextPage = nextUser.role === "Requester" ? "requester" : nextUser.role === "Implementor" ? "discover" : nextUser.role === "Organization reviewer" ? "review" : "integrations";
+  const nextTask = state.tasks.find((item) => canSeeTask(item, nextUser)) ?? state.tasks[0];
+  setState({ userId: nextUser.id, page: nextPage, selectedTaskId: nextTask.id, loginOpen: false });
 }
 
-function copyFor(role) {
-  if (role === "Requester") return "Use focused pages for creating work, checking discovery, reviewing submissions, and copying integration instructions.";
-  if (role === "Implementor") return "Discovery is a dedicated flow so available work, reservation state, and next actions are visible together.";
-  if (role === "Organization reviewer") return "Review queues keep reservation and submission decisions in one place without crowding task creation.";
-  return "API and MCP instructions are isolated from human review screens so agent setup stays easy to scan.";
+function fundMission(taskItem) {
+  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.funded }), `${selectedUser().name} funded ${taskItem.title}.`);
 }
 
-function userName(userId) {
-  const found = users.find((user) => user.id === userId);
-  return found ? found.name : userId;
+function openMission(taskItem) {
+  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.open, availability: availability.available }), `${selectedUser().name} opened ${taskItem.title} to the board.`);
+}
+
+function cancelMission(taskItem) {
+  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.canceled, availability: availability.closed }), `${selectedUser().name} canceled ${taskItem.title}.`);
+}
+
+function reserveMission(taskItem) {
+  updateTask(taskItem.id, () => ({
+    assignee: state.userId,
+    availability: availability.reserved,
+    reservations: [{ id: `res-${taskItem.id}-${state.userId}`, by: state.userId, state: "active", expires: `${taskItem.reservationHours ?? 48}h` }],
+  }), `${selectedUser().name} reserved ${taskItem.title}.`);
+}
+
+function requestApproval(taskItem) {
+  updateTask(taskItem.id, (current) => ({
+    availability: availability.awaitingApproval,
+    reservations: [
+      ...current.reservations.filter((reservation) => reservation.by !== state.userId),
+      { id: `res-${taskItem.id}-${state.userId}`, by: state.userId, state: "requested", expires: `${taskItem.reservationHours ?? 48}h` },
+    ].slice(-4),
+  }), `${selectedUser().name} requested approval for ${taskItem.title}.`);
+}
+
+function submitMission(taskItem) {
+  updateTask(taskItem.id, (current) => ({
+    availability: availability.submitted,
+    submissions: [
+      ...current.submissions.filter((submission) => submission.by !== state.userId || submission.state !== "submitted"),
+      { id: `sub-${taskItem.id}-${state.userId}`, by: state.userId, state: "submitted", response: state.responseText, reviewNote: "", partialPayout: "", tip: "", ban: false },
+    ].slice(-4),
+  }), `${selectedUser().name} submitted a payload for ${taskItem.title}.`);
+}
+
+function agentRun(taskItem) {
+  updateTask(taskItem.id, (current) => ({
+    assignee: "sol",
+    availability: availability.submitted,
+    reservations: [
+      ...current.reservations.filter((reservation) => reservation.by !== "sol"),
+      { id: `res-${taskItem.id}-sol`, by: "sol", state: "active", expires: "8h" },
+    ].slice(-4),
+    submissions: [
+      ...current.submissions.filter((submission) => submission.by !== "sol" || submission.state !== "submitted"),
+      { id: `sub-${taskItem.id}-sol`, by: "sol", state: "submitted", response: '{"submitted_by":"agent","status":"ready"}', reviewNote: "", partialPayout: "", tip: "", ban: false },
+    ].slice(-4),
+  }), `Sol simulated an MCP agent run for ${taskItem.title}.`);
+}
+
+function approveReservation(taskItem, userId) {
+  updateTask(taskItem.id, (current) => ({
+    assignee: userId,
+    availability: availability.reserved,
+    reservations: current.reservations.map((reservation) => reservation.by === userId ? { ...reservation, state: "active" } : reservation),
+  }), `${selectedUser().name} approved ${userName(userId)} for ${taskItem.title}.`);
+}
+
+function declineReservation(taskItem, userId) {
+  updateTask(taskItem.id, (current) => ({
+    availability: current.assignee === userId ? availability.available : current.availability,
+    assignee: current.assignee === userId ? "" : current.assignee,
+    reservations: current.reservations.map((reservation) => reservation.by === userId ? { ...reservation, state: "declined" } : reservation),
+  }), `${selectedUser().name} declined ${userName(userId)} for ${taskItem.title}.`);
+}
+
+function releaseReservation(taskItem, userId) {
+  updateTask(taskItem.id, (current) => ({
+    availability: availability.available,
+    assignee: "",
+    reservations: current.reservations.map((reservation) => reservation.by === userId ? { ...reservation, state: "released" } : reservation),
+  }), `${selectedUser().name} released ${userName(userId)} from ${taskItem.title}.`);
+}
+
+function decideSubmission(taskItem, userId, submissionId, decision) {
+  const submission = taskItem.submissions.find((item) => item.id === submissionId || item.by === userId);
+  if (!submission) return;
+  const draft = reviewDraft(submission);
+  const partial = Number.parseInt(draft.partialPayout, 10) || 0;
+  const tip = Number.parseInt(draft.tipAmount, 10) || 0;
+  const payout = decision === "accepted" ? (partial || taskItem.reward.credits || 0) : partial;
+  const nextAvailability = decision === "accepted" ? availability.accepted : decision === "rejected" ? availability.rejected : availability.changesRequested;
+  const nextLifecycle = decision === "accepted" ? lifecycle.closed : taskItem.lifecycle;
+  const activity = decision === "accepted"
+    ? `${selectedUser().name} accepted ${userName(userId)} on ${taskItem.title} and paid ${payout + tip} credits.`
+    : decision === "rejected"
+    ? `${selectedUser().name} rejected ${userName(userId)} on ${taskItem.title} with ${payout + tip} credits paid.`
+    : `${selectedUser().name} requested changes from ${userName(userId)} on ${taskItem.title}.`;
+
+  state = {
+    ...state,
+    balances: {
+      ...state.balances,
+      [userId]: balanceOf(userId) + payout + tip,
+      [state.userId]: Math.max(0, balanceOf(state.userId) - tip),
+    },
+  };
+
+  if (decision === "accepted" && taskItem.reward.collectibles.length > 0) {
+    state = {
+      ...state,
+      inventories: {
+        ...state.inventories,
+        [userId]: [...inventoryOf(userId), ...taskItem.reward.collectibles],
+      },
+    };
+  }
+
+  updateTask(taskItem.id, (current) => ({
+    lifecycle: nextLifecycle,
+    availability: nextAvailability,
+    banned: draft.banImplementor ? [...(current.banned ?? []), userId] : current.banned,
+    submissions: current.submissions.map((item) =>
+      item.id === submission.id
+        ? {
+          ...item,
+          state: decision,
+          reviewNote: draft.reviewNote,
+          partialPayout: String(payout),
+          tip: String(tip),
+          ban: draft.banImplementor,
+          payoutCredits: payout,
+          payoutCollectibles: decision === "accepted" ? taskItem.reward.collectibles : [],
+        }
+        : item
+    ),
+  }), activity);
 }
 
 function escapeHtml(value) {
@@ -796,4 +1476,8 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("'", "&#39;");
 }

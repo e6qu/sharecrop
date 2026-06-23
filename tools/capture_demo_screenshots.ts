@@ -98,18 +98,21 @@ for (const item of cases) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: item.mode, exact: true }).click();
   await page.getByRole("button", { name: new RegExp(item.themeLabel) }).click();
-  await page.getByRole("button", { name: "Overview", exact: true }).click();
+  await page.getByRole("button", { name: "Command", exact: true }).click();
   if (item.name.includes("discover")) {
-    await page.getByRole("button", { name: "Discover", exact: true }).click();
+    await page.getByRole("button", { name: "Mission Board", exact: true })
+      .click();
   }
   if (item.name.includes("requester")) {
-    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await page.getByRole("button", { name: "Post Mission", exact: true })
+      .click();
   }
   if (item.name.includes("review")) {
-    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await page.getByRole("button", { name: "Review Queue", exact: true })
+      .click();
   }
   if (item.name.includes("integrations")) {
-    await page.getByRole("button", { name: "API & MCP", exact: true }).click();
+    await page.getByRole("button", { name: "Uplink", exact: true }).click();
   }
   if (item.name.includes("settings")) {
     await page.getByRole("button", { name: "Settings", exact: true }).click();

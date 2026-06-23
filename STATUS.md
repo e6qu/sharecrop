@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 23 work. Pull request 23 was merged into `main`.
+The repository contains pull request 1 through pull request 24 work. Pull request 24 was merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-performance-flow-review` repaired the GitHub Pages demo for browser performance, resource use, page structure, and persona-specific flows after reports that the deployed demo could become slow or stuck.
+- Active branch `task/demo-game-like-personas` expanded the GitHub Pages demo with richer persona switching, more localStorage-backed task states, more seeded tasks, and a game-like task distribution interface.
 
 Implemented surface:
 
@@ -156,6 +156,11 @@ Implemented surface:
 - The static demo requester flow includes title, description, reward, visibility, participation policy, and reservation expiry fields.
 - The static demo review flow exposes per-reservation approve, decline, and release controls plus per-submission request-changes, reject, accept, partial payout, tip, and ban controls.
 - The Elm build helper rejects the recursive npm Elm wrapper when `ELM_BIN` points to it, so local builds fail fast instead of hanging or flooding warnings.
+- The static demo uses Command, Mission Board, Post Mission, Review Queue, Uplink, and Settings pages.
+- The static demo mission board groups seeded and local missions into Available, Reserved, Awaiting approval, Submitted, and Settled lanes.
+- The static demo seeds varied public and organization missions with open submissions, reservations, approval, submitted work, changes requested, rejection, acceptance, credit rewards, collectible rewards, and bundled rewards.
+- The static demo persona picker changes the active persona, default page, selected mission, and available actions.
+- The static demo tracks local activity, balances, collectible inventory, mission timelines, review drafts, and mission transitions in localStorage.
 
 Planned defaults:
 
@@ -231,6 +236,26 @@ Last observed checks on `task/demo-performance-flow-review`:
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for overview, discovery, requester create, review, API/MCP, settings, blocky dark, rustic light mobile, and showcase dark mobile states.
 - `docker compose up -d postgres` confirmed local Postgres was running.
 - `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=migrations make migrate-up` passed.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make test-integration` passed.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make test-http` passed.
+
+Last observed checks on `task/demo-game-like-personas`:
+
+- `node --check site/demo/app.js` passed.
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./...` passed.
+- `make vet` passed.
+- `make lint` passed.
+- `make check-contracts` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make check-dead-code` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `make e2e-ui` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages with no reported console warnings, console errors, page errors, failed requests, or horizontal overflow.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for Command, Mission Board, Post Mission, Review Queue, Uplink, Settings, blocky dark, rustic light mobile, and showcase dark mobile states.
 - `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make test-integration` passed.
 - `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make test-http` passed.
 
