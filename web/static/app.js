@@ -5363,6 +5363,9 @@ var $author$project$Main$TaskDetailPage = function (a) {
 	return {$: 'TaskDetailPage', a: a};
 };
 var $author$project$Main$TasksPage = {$: 'TasksPage'};
+var $author$project$Main$TeamDetailPage = function (a) {
+	return {$: 'TeamDetailPage', a: a};
+};
 var $author$project$Main$UserDetailPage = function (a) {
 	return {$: 'UserDetailPage', a: a};
 };
@@ -5377,7 +5380,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 		$elm$core$String$split,
 		'/',
 		A2($elm$core$String$dropLeft, 1, url.path));
-	_v0$14:
+	_v0$15:
 	while (true) {
 		if (_v0.b) {
 			if (!_v0.b.b) {
@@ -5395,7 +5398,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 					case 'organizations':
 						return $author$project$Main$OrganizationsPage;
 					default:
-						break _v0$14;
+						break _v0$15;
 				}
 			} else {
 				if (!_v0.b.b.b) {
@@ -5417,40 +5420,44 @@ var $author$project$Main$pageFromUrl = function (url) {
 							var _v4 = _v0.b;
 							var seriesId = _v4.a;
 							return $author$project$Main$SeriesDetailPage(seriesId);
-						case 'organizations':
+						case 'teams':
 							var _v5 = _v0.b;
-							var organizationId = _v5.a;
+							var teamId = _v5.a;
+							return $author$project$Main$TeamDetailPage(teamId);
+						case 'organizations':
+							var _v6 = _v0.b;
+							var organizationId = _v6.a;
 							return $author$project$Main$OrganizationDetailPage(organizationId);
 						case 'users':
-							var _v6 = _v0.b;
-							var userId = _v6.a;
+							var _v7 = _v0.b;
+							var userId = _v7.a;
 							return $author$project$Main$UserDetailPage(userId);
 						default:
-							break _v0$14;
+							break _v0$15;
 					}
 				} else {
 					if ((_v0.a === 'users') && (!_v0.b.b.b.b)) {
 						switch (_v0.b.b.a) {
 							case 'work':
-								var _v7 = _v0.b;
-								var userId = _v7.a;
-								var _v8 = _v7.b;
+								var _v8 = _v0.b;
+								var userId = _v8.a;
+								var _v9 = _v8.b;
 								return $author$project$Main$UserWorkPage(userId);
 							case 'submissions':
-								var _v9 = _v0.b;
-								var userId = _v9.a;
-								var _v10 = _v9.b;
+								var _v10 = _v0.b;
+								var userId = _v10.a;
+								var _v11 = _v10.b;
 								return $author$project$Main$UserSubmissionsPage(userId);
 							default:
-								break _v0$14;
+								break _v0$15;
 						}
 					} else {
-						break _v0$14;
+						break _v0$15;
 					}
 				}
 			}
 		} else {
-			break _v0$14;
+			break _v0$15;
 		}
 	}
 	return $author$project$Main$OverviewPage;
@@ -7349,6 +7356,10 @@ var $author$project$Main$enterPage = F2(
 				return _Utils_update(
 					state,
 					{page: page, seriesDetail: $elm$core$Maybe$Nothing});
+			case 'TeamDetailPage':
+				return _Utils_update(
+					state,
+					{page: page, teamDetail: $elm$core$Maybe$Nothing});
 			default:
 				return _Utils_update(
 					state,
@@ -7835,6 +7846,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		submitMessage: $elm$core$Maybe$Nothing,
 		taskStateFilter: '',
 		tasks: _List_Nil,
+		teamDetail: $elm$core$Maybe$Nothing,
 		userProfile: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
 		userWork: _List_Nil
@@ -8592,6 +8604,9 @@ var $author$project$Main$revokeAgent = F2(
 var $author$project$Main$SeriesDetailReceived = function (a) {
 	return {$: 'SeriesDetailReceived', a: a};
 };
+var $author$project$Main$TeamDetailReceived = function (a) {
+	return {$: 'TeamDetailReceived', a: a};
+};
 var $author$project$Main$UserSubmissionsReceived = function (a) {
 	return {$: 'UserSubmissionsReceived', a: a};
 };
@@ -8679,6 +8694,18 @@ var $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder = A
 	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Team$TeamDetailResponse = F2(
+	function (team, members) {
+		return {members: members, team: team};
+	});
+var $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Team$TeamDetailResponse,
+	A2($elm$json$Json$Decode$field, 'team', $author$project$Sharecrop$Generated$Team$teamResponseDecoder),
+	A2(
+		$elm$json$Json$Decode$field,
+		'members',
+		$elm$json$Json$Decode$list($elm$json$Json$Decode$string)));
 var $author$project$Main$routeLoadCmd = F2(
 	function (token, page) {
 		switch (page.$) {
@@ -8742,7 +8769,7 @@ var $author$project$Main$routeLoadCmd = F2(
 					A2($elm$http$Http$expectJson, $author$project$Main$UserSubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
 			case 'CollectibleDetailPage':
 				return $author$project$Main$fetchCollectibles(token);
-			default:
+			case 'SeriesDetailPage':
 				var seriesId = page.a;
 				return A5(
 					$author$project$Main$authorizedRequest,
@@ -8751,6 +8778,15 @@ var $author$project$Main$routeLoadCmd = F2(
 					'/api/task-series/' + seriesId,
 					$elm$http$Http$emptyBody,
 					A2($elm$http$Http$expectJson, $author$project$Main$SeriesDetailReceived, $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder));
+			default:
+				var teamId = page.a;
+				return A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/teams/' + teamId,
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$TeamDetailReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder));
 		}
 	});
 var $author$project$Main$submissionsFromResult = function (result) {
@@ -10209,6 +10245,20 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'TeamDetailReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									teamDetail: $elm$core$Result$toMaybe(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'OrgTasksReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -10687,9 +10737,12 @@ var $author$project$Main$pageToPath = function (page) {
 		case 'CollectibleDetailPage':
 			var collectibleId = page.a;
 			return '/collectibles/' + collectibleId;
-		default:
+		case 'SeriesDetailPage':
 			var seriesId = page.a;
 			return '/series/' + seriesId;
+		default:
+			var teamId = page.a;
+			return '/teams/' + teamId;
 	}
 };
 var $author$project$Main$navLink = F4(
@@ -12094,10 +12147,11 @@ var $author$project$Main$orgTeamsList = function (teams) {
 			$elm$core$List$map,
 			function (team) {
 				return A2(
-					$elm$html$Html$p,
+					$elm$html$Html$a,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('py-1 text-sm'),
+							$elm$html$Html$Attributes$href('/teams/' + team.id),
+							$elm$html$Html$Attributes$class('block py-1 text-sm underline'),
 							$author$project$Sharecrop$Ui$testId('org-team-row')
 						]),
 					_List_fromArray(
@@ -13557,6 +13611,98 @@ var $author$project$Main$tasksView = F2(
 					$author$project$Main$tasksList(state.tasks)
 				]));
 	});
+var $author$project$Main$teamDetailView = F2(
+	function (teamId, state) {
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					function () {
+					var _v0 = state.teamDetail;
+					if (_v0.$ === 'Just') {
+						var detail = _v0.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('space-y-2'),
+									$author$project$Sharecrop$Ui$testId('team-detail')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-2xl font-semibold'),
+											$author$project$Sharecrop$Ui$testId('team-detail-name')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(detail.team.name)
+										])),
+									$author$project$Sharecrop$Ui$label_('Team ' + detail.team.id),
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Owner kind: ' + detail.team.ownerKind)
+										])),
+									$author$project$Sharecrop$Ui$sectionTitle('Members'),
+									$elm$core$List$isEmpty(detail.members) ? A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+											$author$project$Sharecrop$Ui$testId('team-members-empty')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('No members yet.')
+										])) : A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+											$author$project$Sharecrop$Ui$testId('team-members')
+										]),
+									A2(
+										$elm$core$List$map,
+										function (memberId) {
+											return A2(
+												$elm$html$Html$a,
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$href('/users/' + memberId),
+														$elm$html$Html$Attributes$class('block py-2 text-sm underline'),
+														$author$project$Sharecrop$Ui$testId('team-member-row')
+													]),
+												_List_fromArray(
+													[
+														$elm$html$Html$text(memberId)
+													]));
+										},
+										detail.members))
+								]));
+					} else {
+						return A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+									$author$project$Sharecrop$Ui$testId('team-detail-missing')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Loading team ' + (teamId + '…'))
+								]));
+					}
+				}()
+				]));
+	});
 var $author$project$Main$userDetailView = F2(
 	function (userId, state) {
 		return $author$project$Sharecrop$Ui$card(
@@ -13826,9 +13972,12 @@ var $author$project$Main$pageView = F2(
 			case 'CollectibleDetailPage':
 				var collectibleId = _v0.a;
 				return A2($author$project$Main$collectibleDetailView, collectibleId, state);
-			default:
+			case 'SeriesDetailPage':
 				var seriesId = _v0.a;
 				return A2($author$project$Main$seriesDetailView, seriesId, state);
+			default:
+				var teamId = _v0.a;
+				return A2($author$project$Main$teamDetailView, teamId, state);
 		}
 	});
 var $author$project$Main$loggedInView = F2(

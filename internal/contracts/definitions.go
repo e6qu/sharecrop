@@ -227,6 +227,13 @@ func teamModule() Module {
 					{Name: NewElmValueName("teams"), JSONName: NewJSONFieldName("teams"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TeamResponse")}}},
 				},
 			},
+			Product{
+				Name: NewElmTypeName("TeamDetailResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("team"), JSONName: NewJSONFieldName("team"), Type: NamedRef{Name: NewElmTypeName("TeamResponse")}},
+					{Name: NewElmValueName("members"), JSONName: NewJSONFieldName("members"), Type: ListRef{Element: StringRef{}}},
+				},
+			},
 		},
 	}
 }

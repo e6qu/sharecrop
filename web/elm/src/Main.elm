@@ -46,6 +46,7 @@ type Page
     | UserSubmissionsPage String
     | CollectibleDetailPage String
     | SeriesDetailPage String
+    | TeamDetailPage String
 
 
 type alias LoggedInModel =
@@ -107,6 +108,7 @@ type alias LoggedInModel =
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
     , seriesDetail : Maybe TaskSeries.TaskSeriesResponse
+    , teamDetail : Maybe Team.TeamDetailResponse
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
     , provisionMemberEmail : String
@@ -231,6 +233,7 @@ type Msg
     | UserWorkReceived (Result Http.Error Task.TasksResponse)
     | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
     | SeriesDetailReceived (Result Http.Error TaskSeries.TaskSeriesResponse)
+    | TeamDetailReceived (Result Http.Error Team.TeamDetailResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
@@ -327,6 +330,7 @@ emptyLoggedIn response =
     , userWork = []
     , userSubmissions = []
     , seriesDetail = Nothing
+    , teamDetail = Nothing
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
     , provisionMemberEmail = ""
@@ -373,6 +377,9 @@ pageFromUrl url =
 
         [ "series", seriesId ] ->
             SeriesDetailPage seriesId
+
+        [ "teams", teamId ] ->
+            TeamDetailPage teamId
 
         [ "organizations" ] ->
             OrganizationsPage
@@ -441,6 +448,9 @@ pageToPath page =
         SeriesDetailPage seriesId ->
             "/series/" ++ seriesId
 
+        TeamDetailPage teamId ->
+            "/teams/" ++ teamId
+
 
 -- enterPage applies any per-page state a route needs when it becomes active, so
 -- a deep link or back/forward leaves the model consistent with the URL.
@@ -461,6 +471,9 @@ enterPage page state =
 
         SeriesDetailPage _ ->
             { state | page = page, seriesDetail = Nothing }
+
+        TeamDetailPage _ ->
+            { state | page = page, teamDetail = Nothing }
 
         _ ->
             { state | page = page }
@@ -833,6 +846,9 @@ update msg model =
         SeriesDetailReceived result ->
             ( updateLoggedIn model (\state -> { state | seriesDetail = Result.toMaybe result }), Cmd.none )
 
+        TeamDetailReceived result ->
+            ( updateLoggedIn model (\state -> { state | teamDetail = Result.toMaybe result }), Cmd.none )
+
         OrgTasksReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
 
@@ -1183,6 +1199,9 @@ routeLoadCmd token page =
 
         SeriesDetailPage seriesId ->
             authorizedRequest "GET" token ("/api/task-series/" ++ seriesId) Http.emptyBody (Http.expectJson SeriesDetailReceived TaskSeries.taskSeriesResponseDecoder)
+
+        TeamDetailPage teamId ->
+            authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
 
 
 fetchUserProfile : String -> String -> Cmd Msg
@@ -1971,6 +1990,32 @@ pageView origin state =
         SeriesDetailPage seriesId ->
             seriesDetailView seriesId state
 
+        TeamDetailPage teamId ->
+            teamDetailView teamId state
+
+
+teamDetailView : String -> LoggedInModel -> Html Msg
+teamDetailView teamId state =
+    Ui.card
+        [ case state.teamDetail of
+            Just detail ->
+                div [ Html.Attributes.class "space-y-2", testId "team-detail" ]
+                    [ p [ Html.Attributes.class "text-2xl font-semibold", testId "team-detail-name" ] [ text detail.team.name ]
+                    , Ui.label_ ("Team " ++ detail.team.id)
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Owner kind: " ++ detail.team.ownerKind) ]
+                    , Ui.sectionTitle "Members"
+                    , if List.isEmpty detail.members then
+                        p [ Html.Attributes.class "text-sm text-slate-500", testId "team-members-empty" ] [ text "No members yet." ]
+
+                      else
+                        div [ Html.Attributes.class "divide-y divide-slate-100", testId "team-members" ]
+                            (List.map (\memberId -> a [ href ("/users/" ++ memberId), Html.Attributes.class "block py-2 text-sm underline", testId "team-member-row" ] [ text memberId ]) detail.members)
+                    ]
+
+            Nothing ->
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "team-detail-missing" ] [ text ("Loading team " ++ teamId ++ "…") ]
+        ]
+
 
 collectibleDetailView : String -> LoggedInModel -> Html Msg
 collectibleDetailView collectibleId state =
@@ -2183,7 +2228,7 @@ orgTeamsList teams =
 
     else
         div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-teams" ]
-            (List.map (\team -> p [ Html.Attributes.class "py-1 text-sm", testId "org-team-row" ] [ text team.name ]) teams)
+            (List.map (\team -> a [ href ("/teams/" ++ team.id), Html.Attributes.class "block py-1 text-sm underline", testId "org-team-row" ] [ text team.name ]) teams)
 
 
 orgMembersList : List Organization.OrganizationMemberResponse -> Html Msg

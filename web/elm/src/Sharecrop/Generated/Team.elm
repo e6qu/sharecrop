@@ -49,3 +49,21 @@ teamsResponseEncoder teamsResponse =
     Encode.object
         [ ( "teams", Encode.list teamResponseEncoder teamsResponse.teams )
         ]
+
+type alias TeamDetailResponse =
+    { team : TeamResponse
+    , members : List String
+    }
+
+teamDetailResponseDecoder : Decoder TeamDetailResponse
+teamDetailResponseDecoder =
+    Decode.map2 TeamDetailResponse
+        (Decode.field "team" teamResponseDecoder)
+        (Decode.field "members" (Decode.list Decode.string))
+
+teamDetailResponseEncoder : TeamDetailResponse -> Encode.Value
+teamDetailResponseEncoder teamDetailResponse =
+    Encode.object
+        [ ( "team", teamResponseEncoder teamDetailResponse.team )
+        , ( "members", Encode.list Encode.string teamDetailResponse.members )
+        ]

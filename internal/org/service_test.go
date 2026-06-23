@@ -127,6 +127,14 @@ func (store *memoryStore) ListStandaloneTeams(context.Context, core.UserID, core
 	return TeamsListed{Values: []Team{}}
 }
 
+func (store *memoryStore) FindTeam(context.Context, core.TeamID) FindTeamResult {
+	return TeamMissing{Reason: core.NewDomainError(core.ErrorCodeNotFound, "team not found")}
+}
+
+func (store *memoryStore) ListTeamMembers(context.Context, core.TeamID) TeamMembersResult {
+	return TeamMembersListed{Values: []core.UserID{}}
+}
+
 func acceptedOrganizationName(t *testing.T, raw string) OrganizationName {
 	t.Helper()
 	result := NewOrganizationName(raw)

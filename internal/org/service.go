@@ -19,6 +19,8 @@ type Store interface {
 	AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult
 	ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult
 	ListStandaloneTeams(context.Context, core.UserID, core.Page) TeamListResult
+	FindTeam(context.Context, core.TeamID) FindTeamResult
+	ListTeamMembers(context.Context, core.TeamID) TeamMembersResult
 }
 
 type Service struct {
@@ -258,6 +260,94 @@ func (service Service) ListOrganizationTeams(ctx context.Context, actor auth.Use
 		return ListTeamsRejected{Reason: rejected.Reason}
 	}
 	return OrganizationTeamsListed{Values: listed.Values}
+}
+
+type FindTeamResult interface {
+	findTeamResult()
+}
+
+type TeamFound struct {
+	Value Team
+}
+
+type TeamMissing struct {
+	Reason core.DomainError
+}
+
+func (TeamFound) findTeamResult() {}
+
+func (TeamMissing) findTeamResult() {}
+
+type TeamMembersResult interface {
+	teamMembersResult()
+}
+
+type TeamMembersListed struct {
+	Values []core.UserID
+}
+
+type TeamMembersRejected struct {
+	Reason core.DomainError
+}
+
+func (TeamMembersListed) teamMembersResult() {}
+
+func (TeamMembersRejected) teamMembersResult() {}
+
+type GetTeamResult interface {
+	getTeamResult()
+}
+
+type TeamGot struct {
+	Team    Team
+	Members []core.UserID
+}
+
+type GetTeamRejected struct {
+	Reason core.DomainError
+}
+
+func (TeamGot) getTeamResult() {}
+
+func (GetTeamRejected) getTeamResult() {}
+
+// GetTeam returns a team and its roster. A viewer may see a team only when they
+// own it, belong to it, or (for an organization team) are a member of the owning
+// organization, so a team roster never leaks to unrelated users.
+func (service Service) GetTeam(ctx context.Context, actor auth.UserSubject, teamID core.TeamID) GetTeamResult {
+	findResult := service.store.FindTeam(ctx, teamID)
+	found, matched := findResult.(TeamFound)
+	if !matched {
+		return GetTeamRejected{Reason: findResult.(TeamMissing).Reason}
+	}
+
+	membersResult := service.store.ListTeamMembers(ctx, teamID)
+	membersListed, membersMatched := membersResult.(TeamMembersListed)
+	if !membersMatched {
+		return GetTeamRejected{Reason: membersResult.(TeamMembersRejected).Reason}
+	}
+
+	if !service.canViewTeam(ctx, actor, found.Value, membersListed.Values) {
+		return GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team access denied")}
+	}
+	return TeamGot{Team: found.Value, Members: membersListed.Values}
+}
+
+func (service Service) canViewTeam(ctx context.Context, actor auth.UserSubject, team Team, members []core.UserID) bool {
+	for _, member := range members {
+		if member == actor.ID {
+			return true
+		}
+	}
+	switch owner := team.Owner.(type) {
+	case UserOwnedTeam:
+		return owner.OwnerUserID == actor.ID
+	case OrganizationOwnedTeam:
+		_, matched := service.store.FindMemberRoles(ctx, owner.OrganizationID, actor.ID).(MemberRolesFound)
+		return matched
+	default:
+		return false
+	}
 }
 
 type DeactivateMemberResult interface {
