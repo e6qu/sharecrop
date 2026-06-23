@@ -10,7 +10,7 @@ import (
 type Store interface {
 	CreateCredential(context.Context, Credential, SecretHash) CreateStoreResult
 	VerifyCredential(context.Context, SecretHash) VerifyStoreResult
-	ListCredentials(context.Context, core.UserID) ListStoreResult
+	ListCredentials(context.Context, core.UserID, core.Page) ListStoreResult
 	RevokeCredential(context.Context, core.UserID, core.AgentCredentialID) RevokeStoreResult
 }
 
@@ -121,8 +121,8 @@ func (CredentialsListed) listResult() {}
 
 func (ListRejected) listResult() {}
 
-func (service Service) List(ctx context.Context, owner core.UserID) ListResult {
-	storeResult := service.store.ListCredentials(ctx, owner)
+func (service Service) List(ctx context.Context, owner core.UserID, page core.Page) ListResult {
+	storeResult := service.store.ListCredentials(ctx, owner, page)
 	listed, matched := storeResult.(ListStoreListed)
 	if !matched {
 		return ListRejected{Reason: storeResult.(ListStoreRejected).Reason}

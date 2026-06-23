@@ -167,6 +167,51 @@ func TestReservationRequiredTaskDiscoveryAndSubmission(t *testing.T) {
 	submitAuthenticated(t, server, worker.AccessToken, taskBody.ID)
 }
 
+func TestTaskListPagination(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "pagination-owner")
+
+	for index := 0; index < 5; index++ {
+		createResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(userTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
+		assertStatus(t, createResponse, http.StatusCreated)
+		_ = decodeTaskHTTPResponse(t, createResponse)
+		createResponse.Body.Close()
+	}
+
+	// The full ordered list establishes the deterministic order the pages slice into.
+	fullResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user", owner.AccessToken)
+	defer fullResponse.Body.Close()
+	assertStatus(t, fullResponse, http.StatusOK)
+	fullPage := decodeTasksHTTPResponse(t, fullResponse)
+	if len(fullPage.Tasks) != 5 {
+		t.Fatalf("full list count = %d, want 5", len(fullPage.Tasks))
+	}
+
+	firstPageResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&limit=2", owner.AccessToken)
+	defer firstPageResponse.Body.Close()
+	assertStatus(t, firstPageResponse, http.StatusOK)
+	firstPage := decodeTasksHTTPResponse(t, firstPageResponse)
+	if len(firstPage.Tasks) != 2 {
+		t.Fatalf("first page count = %d, want 2", len(firstPage.Tasks))
+	}
+	if firstPage.Tasks[0].ID != fullPage.Tasks[0].ID || firstPage.Tasks[1].ID != fullPage.Tasks[1].ID {
+		t.Fatalf("first page = [%q %q], want [%q %q]", firstPage.Tasks[0].ID, firstPage.Tasks[1].ID, fullPage.Tasks[0].ID, fullPage.Tasks[1].ID)
+	}
+
+	secondPageResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&limit=2&offset=2", owner.AccessToken)
+	defer secondPageResponse.Body.Close()
+	assertStatus(t, secondPageResponse, http.StatusOK)
+	secondPage := decodeTasksHTTPResponse(t, secondPageResponse)
+	if len(secondPage.Tasks) != 2 {
+		t.Fatalf("second page count = %d, want 2", len(secondPage.Tasks))
+	}
+	if secondPage.Tasks[0].ID != fullPage.Tasks[2].ID || secondPage.Tasks[1].ID != fullPage.Tasks[3].ID {
+		t.Fatalf("second page = [%q %q], want [%q %q]", secondPage.Tasks[0].ID, secondPage.Tasks[1].ID, fullPage.Tasks[2].ID, fullPage.Tasks[3].ID)
+	}
+}
+
 type taskHTTPResponse struct {
 	ID                     string `json:"id"`
 	State                  string `json:"state"`

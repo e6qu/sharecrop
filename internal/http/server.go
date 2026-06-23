@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,11 +38,11 @@ type SubjectVerifier interface {
 
 type OrganizationService interface {
 	CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult
-	ListOrganizations(context.Context, auth.UserSubject) org.ListOrganizationsResult
+	ListOrganizations(context.Context, auth.UserSubject, core.Page) org.ListOrganizationsResult
 	ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
 	DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
 	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
-	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult
+	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 }
 
@@ -50,9 +51,9 @@ type TaskService interface {
 	Get(context.Context, auth.UserSubject, core.TaskID) task.GetResult
 	Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
-	List(context.Context, auth.UserSubject, task.ListScope) task.ListResult
+	List(context.Context, auth.UserSubject, task.ListScope, core.Page) task.ListResult
 	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
-	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
+	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
@@ -64,13 +65,13 @@ type TaskService interface {
 type AgentService interface {
 	Create(context.Context, core.UserID, agent.Label, agent.ScopeSet) agent.CreateResult
 	Verify(context.Context, agent.SecretPlain) agent.VerifyResult
-	List(context.Context, core.UserID) agent.ListResult
+	List(context.Context, core.UserID, core.Page) agent.ListResult
 	Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult
 }
 
 type AssetService interface {
 	Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy) assets.MintResult
-	ListCollectibles(context.Context, core.UserID) assets.ListResult
+	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
 	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
 }
@@ -78,7 +79,7 @@ type AssetService interface {
 type SubmissionService interface {
 	Submit(context.Context, submission.SubmitCommand) submission.SubmitResult
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
-	ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
+	ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
 }
 
 type LedgerService interface {
@@ -91,7 +92,7 @@ type LedgerService interface {
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	Balance(context.Context, core.UserID) ledger.BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult
-	ListEntries(context.Context, core.UserID) ledger.ListEntriesResult
+	ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 }
 
 type Server struct {
@@ -660,7 +661,7 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.organizationService.ListOrganizations(r.Context(), actor.subject)
+	result := server.organizationService.ListOrganizations(r.Context(), actor.subject, parsePage(r))
 	listed, matched := result.(org.OrganizationsListed)
 	if !matched {
 		rejected := result.(org.ListOrganizationsRejected)
@@ -805,7 +806,7 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value)
+	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value, parsePage(r))
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
@@ -865,7 +866,7 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value)
+	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value, parsePage(r))
 	switch listed := result.(type) {
 	case task.ListRejected:
 		writeDomainError(w, listed.Reason)
@@ -1126,7 +1127,7 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value)
+	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value, parsePage(r))
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		rejected := result.(submission.ListRejected)
@@ -1170,7 +1171,7 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID)
+	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID, parsePage(r))
 	listed, matched := result.(ledger.EntriesListed)
 	if !matched {
 		rejected := result.(ledger.ListEntriesRejected)
@@ -2282,6 +2283,29 @@ func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeRe
 	default:
 		return taskListScopeRejected{reason: "task list scope is invalid"}
 	}
+}
+
+func parsePage(r *http.Request) core.Page {
+	query := r.URL.Query()
+	rawLimit := query.Get("limit")
+	rawOffset := query.Get("offset")
+	if rawLimit == "" && rawOffset == "" {
+		return core.DefaultPage()
+	}
+	limit, limitErr := strconv.Atoi(rawLimit)
+	if limitErr != nil {
+		limit = core.DefaultPage().Limit()
+	}
+	offset, offsetErr := strconv.Atoi(rawOffset)
+	if offsetErr != nil {
+		offset = core.DefaultPage().Offset()
+	}
+	pageResult := core.NewPage(limit, offset)
+	accepted, matched := pageResult.(core.PageAccepted)
+	if !matched {
+		return core.DefaultPage()
+	}
+	return accepted.Value
 }
 
 type submissionRequestResult interface {

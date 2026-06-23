@@ -71,7 +71,7 @@ func (store *memoryStore) CreateCollectible(_ context.Context, collectible Colle
 	return CreateStoreAccepted{}
 }
 
-func (store *memoryStore) ListCollectibles(_ context.Context, _ core.UserID) ListStoreResult {
+func (store *memoryStore) ListCollectibles(_ context.Context, _ core.UserID, _ core.Page) ListStoreResult {
 	return ListStoreListed{Values: store.created}
 }
 

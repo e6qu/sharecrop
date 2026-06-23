@@ -189,7 +189,7 @@ func (store *memoryStore) OrganizationBalance(_ context.Context, _ core.Organiza
 	return BalanceFound{Value: NewBalance(0)}
 }
 
-func (store *memoryStore) ListEntries(_ context.Context, _ core.UserID) ListEntriesResult {
+func (store *memoryStore) ListEntries(_ context.Context, _ core.UserID, _ core.Page) ListEntriesResult {
 	return EntriesListed{Values: nil}
 }
 

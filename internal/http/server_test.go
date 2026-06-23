@@ -408,7 +408,7 @@ func (testOrganizationService) CreateOrganization(_ context.Context, actor auth.
 	return org.OrganizationCreated{Value: org.Organization{ID: idCreated.Value, Name: name, CreatedBy: actor.ID}}
 }
 
-func (testOrganizationService) ListOrganizations(context.Context, auth.UserSubject) org.ListOrganizationsResult {
+func (testOrganizationService) ListOrganizations(context.Context, auth.UserSubject, core.Page) org.ListOrganizationsResult {
 	return org.OrganizationsListed{Values: []org.Organization{}}
 }
 
@@ -432,7 +432,7 @@ func (testOrganizationService) CreateOrganizationTeam(_ context.Context, actor a
 	return org.TeamCreated{Value: org.Team{ID: teamIDCreated.Value, OrganizationID: organizationID, Name: name, CreatedBy: actor.ID}}
 }
 
-func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult {
+func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult {
 	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 
@@ -484,7 +484,7 @@ func (testTaskService) Cancel(context.Context, auth.UserSubject, core.TaskID) ta
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope) task.ListResult {
+func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope, core.Page) task.ListResult {
 	return task.TasksListed{Values: []task.Task{}}
 }
 
@@ -519,7 +519,7 @@ func (testTaskService) ListReservations(context.Context, auth.UserSubject, core.
 	return task.ReservationsListed{Values: []task.Reservation{}}
 }
 
-func (testTaskService) ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult {
+func (testTaskService) ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult {
 	return task.SeriesListed{Values: []task.Series{}}
 }
 
@@ -549,7 +549,7 @@ func (testSubmissionService) FindByReceipt(context.Context, submission.ReceiptTo
 	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test submission service")}
 }
 
-func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult {
+func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
@@ -589,7 +589,7 @@ func (testLedgerService) Balance(context.Context, core.UserID) ledger.BalanceRes
 	return ledger.BalanceFound{Value: ledger.NewBalance(100)}
 }
 
-func (testLedgerService) ListEntries(context.Context, core.UserID) ledger.ListEntriesResult {
+func (testLedgerService) ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult {
 	return ledger.EntriesListed{Values: []ledger.LedgerEntry{}}
 }
 
@@ -609,7 +609,7 @@ func (testAgentService) Verify(context.Context, agent.SecretPlain) agent.VerifyR
 	return agent.VerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test agent service for user "+idCreated.Value.String())}
 }
 
-func (testAgentService) List(context.Context, core.UserID) agent.ListResult {
+func (testAgentService) List(context.Context, core.UserID, core.Page) agent.ListResult {
 	return agent.CredentialsListed{Values: []agent.Credential{}}
 }
 
@@ -620,7 +620,7 @@ func (testAssetService) Mint(_ context.Context, owner core.UserID, name assets.C
 	return assets.CollectibleMinted{Value: assets.Collectible{ID: idCreated.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerID: owner}}
 }
 
-func (testAssetService) ListCollectibles(context.Context, core.UserID) assets.ListResult {
+func (testAssetService) ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult {
 	return assets.CollectiblesListed{Values: []assets.Collectible{}}
 }
 

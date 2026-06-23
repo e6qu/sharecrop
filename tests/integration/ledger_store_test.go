@@ -28,7 +28,7 @@ func TestSignupGrantPersistsBalance(t *testing.T) {
 		t.Fatalf("signup balance = %d, want 100", balance.Int64())
 	}
 
-	listed, matched := store.ListEntries(context.Background(), owner).(ledger.EntriesListed)
+	listed, matched := store.ListEntries(context.Background(), owner, core.DefaultPage()).(ledger.EntriesListed)
 	if !matched {
 		t.Fatalf("list entries was rejected")
 	}

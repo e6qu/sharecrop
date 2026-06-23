@@ -86,7 +86,7 @@ func (server Server) listCollectibles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID)
+	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID, parsePage(r))
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(assets.ListRejected).Reason.Description())

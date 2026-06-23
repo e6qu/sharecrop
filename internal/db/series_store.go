@@ -9,11 +9,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (store TaskStore) ListSeries(ctx context.Context, owner core.UserID) task.ListSeriesStoreResult {
+func (store TaskStore) ListSeries(ctx context.Context, owner core.UserID, page core.Page) task.ListSeriesStoreResult {
 	rows, err := store.pool.Query(ctx, seriesSelectSQL()+`
 		where task_series.created_by_user_id = $1
 		order by task_series.created_at desc, task_series.id
-	`, owner.String())
+		limit $2 offset $3
+	`, owner.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return task.ListSeriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list task series failed")}
 	}

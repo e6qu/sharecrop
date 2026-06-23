@@ -29,13 +29,14 @@ func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible
 	return assets.CreateStoreAccepted{}
 }
 
-func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.UserID) assets.ListStoreResult {
+func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) assets.ListStoreResult {
 	rows, err := store.pool.Query(ctx, `
 		select id::text, name, kind, state, transfer_policy, owner_user_id::text
 		from collectibles
 		where owner_user_id = $1
 		order by created_at desc, id
-	`, owner.String())
+		limit $2 offset $3
+	`, owner.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return assets.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list collectibles failed")}
 	}

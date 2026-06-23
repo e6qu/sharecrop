@@ -188,7 +188,7 @@ func (store *taskMemoryStore) ChangeTaskState(_ context.Context, taskID core.Tas
 	return ChangeTaskStateStoreAccepted{Value: value}
 }
 
-func (store *taskMemoryStore) ListTasks(context.Context, ListScope) ListTasksStoreResult {
+func (store *taskMemoryStore) ListTasks(context.Context, ListScope, core.Page) ListTasksStoreResult {
 	values := make([]Task, 0, len(store.tasks))
 	for taskKey := range store.tasks {
 		values = append(values, store.tasks[taskKey])
@@ -254,7 +254,7 @@ func (store *taskMemoryStore) CreateCapabilityToken(context.Context, core.TaskCa
 	return CreateCapabilityTokenStoreRejected{Reason: reason}
 }
 
-func (store *taskMemoryStore) ListSeries(context.Context, core.UserID) ListSeriesStoreResult {
+func (store *taskMemoryStore) ListSeries(context.Context, core.UserID, core.Page) ListSeriesStoreResult {
 	return ListSeriesStoreAccepted{Values: store.series}
 }
 

@@ -124,7 +124,7 @@ func (store *memoryStore) VerifyCredential(_ context.Context, hash SecretHash) V
 	return VerifyStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "agent credential was not found")}
 }
 
-func (store *memoryStore) ListCredentials(_ context.Context, owner core.UserID) ListStoreResult {
+func (store *memoryStore) ListCredentials(_ context.Context, owner core.UserID, _ core.Page) ListStoreResult {
 	values := make([]Credential, 0)
 	for index := range store.records {
 		if store.records[index].credential.UserID == owner {

@@ -77,8 +77,8 @@ func (SeriesGot) getSeriesResult() {}
 
 func (GetSeriesRejected) getSeriesResult() {}
 
-func (service Service) ListSeries(ctx context.Context, actor auth.UserSubject) ListSeriesResult {
-	storeResult := service.store.ListSeries(ctx, actor.ID)
+func (service Service) ListSeries(ctx context.Context, actor auth.UserSubject, page core.Page) ListSeriesResult {
+	storeResult := service.store.ListSeries(ctx, actor.ID, page)
 	listed, matched := storeResult.(ListSeriesStoreAccepted)
 	if !matched {
 		return ListSeriesRejected{Reason: storeResult.(ListSeriesStoreRejected).Reason}

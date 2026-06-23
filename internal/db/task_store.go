@@ -163,12 +163,12 @@ func (store TaskStore) requireOpenableReward(ctx context.Context, taskID core.Ta
 	return openableRewardAccepted{}
 }
 
-func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope) task.ListTasksStoreResult {
+func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, page core.Page) task.ListTasksStoreResult {
 	if err := store.releaseExpiredReservations(ctx); err != nil {
 		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
 	}
 
-	queryResult := listQueryForScope(scope)
+	queryResult := listQueryForScope(scope, page)
 	query, matched := queryResult.(listQueryAccepted)
 	if !matched {
 		rejected := queryResult.(listQueryRejected)
@@ -210,13 +210,13 @@ func (taskRowsQueryRejected) taskRowsQueryResult() {}
 func (store TaskStore) queryTaskRows(ctx context.Context, query listQueryAccepted) taskRowsQueryResult {
 	switch arguments := query.arguments.(type) {
 	case publicListQueryArguments:
-		rows, err := store.pool.Query(ctx, query.sql, arguments.visibilityKind, arguments.includeReserved, arguments.viewerID)
+		rows, err := store.pool.Query(ctx, query.sql, arguments.visibilityKind, arguments.includeReserved, arguments.viewerID, arguments.limit, arguments.offset)
 		if err != nil {
 			return taskRowsQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
 		}
 		return taskRowsQueried{rows: rows}
 	case singleListQueryArgument:
-		rows, err := store.pool.Query(ctx, query.sql, arguments.value)
+		rows, err := store.pool.Query(ctx, query.sql, arguments.value, arguments.limit, arguments.offset)
 		if err != nil {
 			return taskRowsQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
 		}
@@ -650,17 +650,21 @@ type publicListQueryArguments struct {
 	visibilityKind  string
 	includeReserved bool
 	viewerID        string
+	limit           int
+	offset          int
 }
 
 type singleListQueryArgument struct {
-	value string
+	value  string
+	limit  int
+	offset int
 }
 
 func (publicListQueryArguments) listQueryArguments() {}
 
 func (singleListQueryArgument) listQueryArguments() {}
 
-func listQueryForScope(scope task.ListScope) listQueryResult {
+func listQueryForScope(scope task.ListScope, page core.Page) listQueryResult {
 	switch typed := scope.(type) {
 	case task.PublicListScope:
 		return listQueryAccepted{sql: taskSelectSQL() + `
@@ -681,11 +685,12 @@ func listQueryForScope(scope task.ListScope) listQueryResult {
 				)
 				or tasks.created_by_user_id = $3
 			)
-			order by tasks.created_at desc`, arguments: publicListQueryArguments{visibilityKind: task.VisibilityKindPublic.String(), includeReserved: typed.IncludeReserved, viewerID: typed.ViewerID.String()}}
+			order by tasks.created_at desc
+			limit $4 offset $5`, arguments: publicListQueryArguments{visibilityKind: task.VisibilityKindPublic.String(), includeReserved: typed.IncludeReserved, viewerID: typed.ViewerID.String(), limit: page.Limit(), offset: page.Offset()}}
 	case task.UserListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.user_id = $1 or tasks.created_by_user_id = $1 order by tasks.created_at desc", arguments: singleListQueryArgument{value: typed.UserID.String()}}
+		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.user_id = $1 or tasks.created_by_user_id = $1 order by tasks.created_at desc limit $2 offset $3", arguments: singleListQueryArgument{value: typed.UserID.String(), limit: page.Limit(), offset: page.Offset()}}
 	case task.OrganizationListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.organization_id = $1 order by tasks.created_at desc", arguments: singleListQueryArgument{value: typed.OrganizationID.String()}}
+		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.organization_id = $1 order by tasks.created_at desc limit $2 offset $3", arguments: singleListQueryArgument{value: typed.OrganizationID.String(), limit: page.Limit(), offset: page.Offset()}}
 	default:
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list scope is invalid")}
 	}
