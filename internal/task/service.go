@@ -12,9 +12,9 @@ type Store interface {
 	CreateTask(context.Context, core.TaskSeriesID, core.TaskID, CreateCommand) CreateTaskStoreResult
 	FindTask(context.Context, core.TaskID) FindTaskStoreResult
 	ChangeTaskState(context.Context, core.TaskID, State) ChangeTaskStateStoreResult
-	ListTasks(context.Context, ListScope) ListTasksStoreResult
+	ListTasks(context.Context, ListScope, ListFilters, core.Page) ListTasksStoreResult
 	CreateCapabilityToken(context.Context, core.TaskCapabilityTokenID, core.TaskID, CapabilityTokenHash) CreateCapabilityTokenStoreResult
-	ListSeries(context.Context, core.UserID) ListSeriesStoreResult
+	ListSeries(context.Context, core.UserID, core.Page) ListSeriesStoreResult
 	FindSeries(context.Context, core.TaskSeriesID) FindSeriesStoreResult
 	CreateReservation(context.Context, core.TaskReservationID, ReservationCommand) CreateReservationStoreResult
 	ChangeReservationState(context.Context, core.TaskReservationID, ReservationState) ChangeReservationStateStoreResult
@@ -235,6 +235,49 @@ type ListScope interface {
 	listScope()
 }
 
+// StateFilter is an optional task-state filter for task listing. AnyStateFilter
+// means no state restriction; StateEquals restricts the listing to a single state.
+type StateFilter interface {
+	stateFilter()
+}
+
+type AnyStateFilter struct{}
+
+type StateEquals struct {
+	Value State
+}
+
+func (AnyStateFilter) stateFilter() {}
+
+func (StateEquals) stateFilter() {}
+
+// ParticipationPolicyFilter is an optional participation-policy filter for task
+// listing. AnyParticipationPolicyFilter means no restriction; ParticipationPolicyEquals
+// restricts the listing to a single policy.
+type ParticipationPolicyFilter interface {
+	participationPolicyFilter()
+}
+
+type AnyParticipationPolicyFilter struct{}
+
+type ParticipationPolicyEquals struct {
+	Value ParticipationPolicy
+}
+
+func (AnyParticipationPolicyFilter) participationPolicyFilter() {}
+
+func (ParticipationPolicyEquals) participationPolicyFilter() {}
+
+// ListFilters groups the optional discovery/list filters applied to a task listing.
+type ListFilters struct {
+	State         StateFilter
+	Participation ParticipationPolicyFilter
+}
+
+func NoListFilters() ListFilters {
+	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}}
+}
+
 type PublicListScope struct {
 	ViewerID        core.UserID
 	IncludeReserved bool
@@ -246,8 +289,8 @@ type UserListScope struct {
 }
 
 type OrganizationListScope struct {
-	OrganizationID core.OrganizationID
-	UserID         core.UserID
+	OrganizationID  core.OrganizationID
+	UserID          core.UserID
 	IncludeReserved bool
 }
 
@@ -262,7 +305,7 @@ type ListResult interface {
 }
 
 type TasksListed struct {
-	Values []Task
+	Values []ListItem
 }
 
 type ListRejected struct {
@@ -273,13 +316,13 @@ func (TasksListed) listResult() {}
 
 func (ListRejected) listResult() {}
 
-func (service Service) List(ctx context.Context, actor auth.UserSubject, scope ListScope) ListResult {
+func (service Service) List(ctx context.Context, actor auth.UserSubject, scope ListScope, filters ListFilters, page core.Page) ListResult {
 	scopePermission := service.requireListPermission(ctx, actor, scope)
 	if rejected, matched := scopePermission.(listPermissionRejected); matched {
 		return ListRejected{Reason: rejected.reason}
 	}
 
-	storeResult := service.store.ListTasks(ctx, scope)
+	storeResult := service.store.ListTasks(ctx, scope, filters, page)
 	listed, matched := storeResult.(ListTasksStoreAccepted)
 	if !matched {
 		rejected := storeResult.(ListTasksStoreRejected)

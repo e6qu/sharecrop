@@ -103,7 +103,7 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "accept submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "accept submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.AcceptRejected{Reason: taskResult.(taskLockRejected).reason}
@@ -184,7 +184,7 @@ func combinePayouts(first ledger.PayoutOutcome, second ledger.PayoutOutcome) led
 	credit, hasCredit := first.(ledger.CreditPayout)
 	collectible, hasCollectible := second.(ledger.CollectiblePayout)
 	if hasCredit && hasCollectible && credit.WorkerUserID == collectible.WorkerUserID {
-		return ledger.BundlePayout{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleID: collectible.CollectibleID}
+		return ledger.BundlePayout{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleIDs: collectible.CollectibleIDs}
 	}
 	if _, firstNone := first.(ledger.NoPayout); firstNone {
 		return second
@@ -199,7 +199,7 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.RequestChangesRejected{Reason: taskResult.(taskLockRejected).reason}
@@ -256,7 +256,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.RejectRejected{Reason: taskResult.(taskLockRejected).reason}
@@ -434,14 +434,15 @@ func (store LedgerStore) Balance(ctx context.Context, owner core.UserID) ledger.
 	return ledger.BalanceFound{Value: ledger.NewBalance(balance)}
 }
 
-func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID) ledger.ListEntriesResult {
+func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, page core.Page) ledger.ListEntriesResult {
 	rows, err := store.pool.Query(ctx, `
 		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, '')
 		from ledger_entries
 		join credit_accounts on credit_accounts.id = ledger_entries.account_id
 		where credit_accounts.user_id = $1
 		order by ledger_entries.created_at, ledger_entries.id
-	`, owner.String())
+		limit $2 offset $3
+	`, owner.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list ledger entries failed")}
 	}

@@ -99,11 +99,12 @@ func (store SubmissionStore) FindByReceiptToken(ctx context.Context, hash submis
 	return submission.ReceiptFound{Value: values.values[0]}
 }
 
-func (store SubmissionStore) ListForTask(ctx context.Context, taskID core.TaskID) submission.ListSubmissionsStoreResult {
+func (store SubmissionStore) ListForTask(ctx context.Context, taskID core.TaskID, page core.Page) submission.ListSubmissionsStoreResult {
 	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
 		where submissions.task_id = $1
 		order by submissions.created_at
-	`, taskID.String())
+		limit $2 offset $3
+	`, taskID.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return submission.ListSubmissionsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list submissions failed")}
 	}

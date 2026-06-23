@@ -70,9 +70,15 @@ type ConsumeRefreshTokenResult interface {
 
 type RefreshTokenConsumed struct {
 	Subject Subject
+	Family  core.RefreshTokenID
 }
 
 type RefreshTokenNotConsumed struct{}
+
+// RefreshTokenReuseDetected reports that a refresh token that was already
+// consumed or revoked was presented again. This signals possible token theft,
+// so the store revokes every remaining active token in the same family.
+type RefreshTokenReuseDetected struct{}
 
 type ConsumeRefreshTokenRejected struct {
 	Reason core.DomainError
@@ -81,5 +87,7 @@ type ConsumeRefreshTokenRejected struct {
 func (RefreshTokenConsumed) consumeRefreshTokenResult() {}
 
 func (RefreshTokenNotConsumed) consumeRefreshTokenResult() {}
+
+func (RefreshTokenReuseDetected) consumeRefreshTokenResult() {}
 
 func (ConsumeRefreshTokenRejected) consumeRefreshTokenResult() {}

@@ -6656,6 +6656,58 @@ var $author$project$Main$createAgentCommand = F2(
 				}),
 			A3($author$project$Main$postAgent, state.accessToken, state.agentLabel, state.agentScopes));
 	});
+var $author$project$Main$CreateOrgReceived = function (a) {
+	return {$: 'CreateOrgReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Organization$OrganizationResponse = F3(
+	function (id, name, createdBy) {
+		return {createdBy: createdBy, id: id, name: name};
+	});
+var $author$project$Sharecrop$Generated$Organization$organizationResponseDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Generated$Organization$OrganizationResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+var $author$project$Main$createOrgCommand = F2(
+	function (model, state) {
+		return $elm$core$String$isEmpty(
+			$elm$core$String$trim(state.createOrgName)) ? _Utils_Tuple2(
+			A2(
+				$author$project$Main$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							orgMessage: $elm$core$Maybe$Just('Organization name is required.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Main$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{orgMessage: $elm$core$Maybe$Nothing});
+				}),
+			A5(
+				$author$project$Main$authorizedRequest,
+				'POST',
+				state.accessToken,
+				'/api/organizations',
+				$elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'name',
+								$elm$json$Json$Encode$string(
+									$elm$core$String$trim(state.createOrgName)))
+							]))),
+				A2($elm$http$Http$expectJson, $author$project$Main$CreateOrgReceived, $author$project$Sharecrop$Generated$Organization$organizationResponseDecoder)));
+	});
 var $author$project$Main$CreateTaskReceived = function (a) {
 	return {$: 'CreateTaskReceived', a: a};
 };
@@ -6729,6 +6781,26 @@ var $author$project$Main$createRewardBody = function (rawAmount) {
 				]));
 	}
 };
+var $author$project$Main$visibilityUserTag = 'user';
+var $author$project$Main$createVisibilityBody = function (state) {
+	return $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'kind',
+				$elm$json$Json$Encode$string(state.createVisibility)),
+				_Utils_Tuple2(
+				'user_id',
+				$elm$json$Json$Encode$string(
+					_Utils_eq(state.createVisibility, $author$project$Main$visibilityUserTag) ? state.createScopeUserId : '')),
+				_Utils_Tuple2(
+				'team_id',
+				$elm$json$Json$Encode$string('')),
+				_Utils_Tuple2(
+				'organization_id',
+				$elm$json$Json$Encode$string(''))
+			]));
+};
 var $author$project$Main$createTaskRequestBody = function (state) {
 	return $elm$json$Json$Encode$object(
 		_List_fromArray(
@@ -6765,23 +6837,7 @@ var $author$project$Main$createTaskRequestBody = function (state) {
 				$author$project$Main$createParticipationBody(state)),
 				_Utils_Tuple2(
 				'visibility',
-				$elm$json$Json$Encode$object(
-					_List_fromArray(
-						[
-							_Utils_Tuple2(
-							'kind',
-							$elm$json$Json$Encode$string(
-								state.createPublic ? 'public' : 'default')),
-							_Utils_Tuple2(
-							'user_id',
-							$elm$json$Json$Encode$string('')),
-							_Utils_Tuple2(
-							'team_id',
-							$elm$json$Json$Encode$string('')),
-							_Utils_Tuple2(
-							'organization_id',
-							$elm$json$Json$Encode$string(''))
-						]))),
+				$author$project$Main$createVisibilityBody(state)),
 				_Utils_Tuple2(
 				'placement',
 				$elm$json$Json$Encode$object(
@@ -7308,7 +7364,11 @@ var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = function (id
 											return function (availabilityKind) {
 												return function (viewerAction) {
 													return function (createdBy) {
-														return {assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, id: id, ownerKind: ownerKind, participationPolicy: participationPolicy, reservationExpiryHours: reservationExpiryHours, rewardCollectibleCount: rewardCollectibleCount, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, state: state, title: title, viewerAction: viewerAction, visibilityKind: visibilityKind};
+														return function (activeAssigneeKind) {
+															return function (activeAssigneeID) {
+																return {activeAssigneeID: activeAssigneeID, activeAssigneeKind: activeAssigneeKind, assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, id: id, ownerKind: ownerKind, participationPolicy: participationPolicy, reservationExpiryHours: reservationExpiryHours, rewardCollectibleCount: rewardCollectibleCount, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, state: state, title: title, viewerAction: viewerAction, visibilityKind: visibilityKind};
+															};
+														};
 													};
 												};
 											};
@@ -7326,15 +7386,17 @@ var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = function (id
 var $author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (finish) {
-		return A7(
-			$elm$json$Json$Decode$map6,
+		return A9(
+			$elm$json$Json$Decode$map8,
 			finish,
 			A2($elm$json$Json$Decode$field, 'reservation_expiry_hours', $elm$json$Json$Decode$int),
 			A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskStateDecoder),
 			A2($elm$json$Json$Decode$field, 'visibility_kind', $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder),
 			A2($elm$json$Json$Decode$field, 'availability_kind', $author$project$Sharecrop$Generated$Task$taskAvailabilityKindDecoder),
 			A2($elm$json$Json$Decode$field, 'viewer_action', $author$project$Sharecrop$Generated$Task$taskViewerActionDecoder),
-			A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+			A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string),
+			A2($elm$json$Json$Decode$field, 'active_assignee_kind', $elm$json$Json$Decode$string),
+			A2($elm$json$Json$Decode$field, 'active_assignee_id', $elm$json$Json$Decode$string));
 	},
 	A9(
 		$elm$json$Json$Decode$map8,
@@ -7376,6 +7438,20 @@ var $author$project$Main$fetchTaskDetail = F2(
 			'/api/tasks/' + taskId,
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Main$TaskDetailReceived, $author$project$Main$taskDetailDecoder));
+	});
+var $author$project$Main$TasksReceived = function (a) {
+	return {$: 'TasksReceived', a: a};
+};
+var $author$project$Main$fetchTasks = F2(
+	function (token, stateFilter) {
+		var query = (stateFilter === '') ? '/api/tasks?scope=user' : ('/api/tasks?scope=user&state=' + stateFilter);
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'GET',
+			token,
+			query,
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Main$TasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
 var $author$project$Main$escrowStateLabel = function (state) {
 	switch (state.$) {
@@ -7616,17 +7692,27 @@ var $author$project$Main$fetchLedger = function (token) {
 		$elm$http$Http$emptyBody,
 		A2($elm$http$Http$expectJson, $author$project$Main$LedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
 };
-var $author$project$Main$TasksReceived = function (a) {
-	return {$: 'TasksReceived', a: a};
+var $author$project$Main$OrganizationsReceived = function (a) {
+	return {$: 'OrganizationsReceived', a: a};
 };
-var $author$project$Main$fetchTasks = function (token) {
+var $author$project$Sharecrop$Generated$Organization$OrganizationsResponse = function (organizations) {
+	return {organizations: organizations};
+};
+var $author$project$Sharecrop$Generated$Organization$organizationsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Organization$OrganizationsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'organizations',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Organization$organizationResponseDecoder)));
+var $author$project$Main$fetchOrganizations = function (token) {
 	return A5(
 		$author$project$Main$authorizedRequest,
 		'GET',
 		token,
-		'/api/tasks?scope=user',
+		'/api/organizations',
 		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Main$TasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
+		A2($elm$http$Http$expectJson, $author$project$Main$OrganizationsReceived, $author$project$Sharecrop$Generated$Organization$organizationsResponseDecoder));
 };
 var $author$project$Main$loadAfterAuth = function (token) {
 	return $elm$core$Platform$Cmd$batch(
@@ -7634,9 +7720,10 @@ var $author$project$Main$loadAfterAuth = function (token) {
 			[
 				$author$project$Main$fetchBalance(token),
 				$author$project$Main$fetchLedger(token),
-				$author$project$Main$fetchTasks(token),
+				A2($author$project$Main$fetchTasks, token, ''),
 				$author$project$Main$fetchCredentials(token),
-				$author$project$Main$fetchCollectibles(token)
+				$author$project$Main$fetchCollectibles(token),
+				$author$project$Main$fetchOrganizations(token)
 			]));
 };
 var $author$project$Main$participationPolicyTag = function (policy) {
@@ -7649,6 +7736,7 @@ var $author$project$Main$participationPolicyTag = function (policy) {
 			return 'approval_required';
 	}
 };
+var $author$project$Main$visibilityDefaultTag = 'default';
 var $author$project$Main$emptyLoggedIn = function (response) {
 	return {
 		accessToken: response.accessToken,
@@ -7666,11 +7754,13 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		collectibles: _List_Nil,
 		createDescription: '',
 		createMessage: $elm$core$Maybe$Nothing,
+		createOrgName: '',
 		createParticipationPolicy: $author$project$Main$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
-		createPublic: false,
 		createReservationHours: '48',
 		createRewardAmount: '',
+		createScopeUserId: '',
 		createTitle: '',
+		createVisibility: $author$project$Main$visibilityDefaultTag,
 		credentials: _List_Nil,
 		detail: $elm$core$Maybe$Nothing,
 		discoveryIncludeReserved: false,
@@ -7680,6 +7770,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundMessage: $elm$core$Maybe$Nothing,
 		fundTaskId: '',
 		newCredential: $elm$core$Maybe$Nothing,
+		orgMessage: $elm$core$Maybe$Nothing,
+		organizations: _List_Nil,
 		page: $author$project$Main$DashboardPage,
 		reservationMessage: $elm$core$Maybe$Nothing,
 		reservations: _List_Nil,
@@ -7693,6 +7785,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		submissions: _List_Nil,
 		submitInput: '',
 		submitMessage: $elm$core$Maybe$Nothing,
+		taskStateFilter: '',
 		tasks: _List_Nil
 	};
 };
@@ -7782,6 +7875,14 @@ var $author$project$Main$mintCommand = F2(
 	});
 var $author$project$Main$mintSuccessLabel = function (collectible) {
 	return 'Minted ' + (collectible.name + (' (' + ($author$project$Main$collectibleStateLabel(collectible.state) + ').')));
+};
+var $author$project$Main$organizationsFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return response.organizations;
+	} else {
+		return _List_Nil;
+	}
 };
 var $author$project$Main$AuthReceived = function (a) {
 	return {$: 'AuthReceived', a: a};
@@ -7953,6 +8054,15 @@ var $author$project$Main$refreshLedger = function (model) {
 		return $elm$core$Platform$Cmd$none;
 	}
 };
+var $author$project$Main$refreshOrganizations = function (model) {
+	var _v0 = model.session;
+	if (_v0.$ === 'LoggedIn') {
+		var state = _v0.a;
+		return $author$project$Main$fetchOrganizations(state.accessToken);
+	} else {
+		return $elm$core$Platform$Cmd$none;
+	}
+};
 var $author$project$Main$refreshTasksAndDiscovery = function (model) {
 	var _v0 = model.session;
 	if (_v0.$ === 'LoggedIn') {
@@ -7960,7 +8070,7 @@ var $author$project$Main$refreshTasksAndDiscovery = function (model) {
 		return $elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
-					$author$project$Main$fetchTasks(state.accessToken),
+					A2($author$project$Main$fetchTasks, state.accessToken, state.taskStateFilter),
 					A2($author$project$Main$fetchDiscovery, state.accessToken, state.discoveryIncludeReserved)
 				]));
 	} else {
@@ -7974,7 +8084,7 @@ var $author$project$Main$refreshTasksAndLedger = function (model) {
 		return $elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
-					$author$project$Main$fetchTasks(state.accessToken),
+					A2($author$project$Main$fetchTasks, state.accessToken, state.taskStateFilter),
 					$author$project$Main$fetchBalance(state.accessToken),
 					$author$project$Main$fetchLedger(state.accessToken)
 				]));
@@ -8451,6 +8561,24 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'TaskStateFilterChanged':
+				var value = msg.a;
+				var updated = A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (state) {
+						return _Utils_update(
+							state,
+							{taskStateFilter: value});
+					});
+				return A2(
+					$author$project$Main$withSession,
+					updated,
+					function (state) {
+						return _Utils_Tuple2(
+							updated,
+							A2($author$project$Main$fetchTasks, state.accessToken, value));
+					});
 			case 'CreateTitleChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -8487,7 +8615,7 @@ var $author$project$Main$update = F2(
 								{createRewardAmount: value});
 						}),
 					$elm$core$Platform$Cmd$none);
-			case 'CreatePublicChanged':
+			case 'CreateVisibilityChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
 					A2(
@@ -8496,7 +8624,19 @@ var $author$project$Main$update = F2(
 						function (state) {
 							return _Utils_update(
 								state,
-								{createPublic: value});
+								{createVisibility: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateScopeUserIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createScopeUserId: value});
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'CreateParticipationChanged':
@@ -9426,6 +9566,71 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'OrganizationsReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									organizations: $author$project$Main$organizationsFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateOrgNameChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createOrgName: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateOrgClicked':
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return A2($author$project$Main$createOrgCommand, model, state);
+					});
+			case 'CreateOrgReceived':
+				if (msg.a.$ === 'Ok') {
+					var organization = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										createOrgName: '',
+										orgMessage: $elm$core$Maybe$Just('Created organization ' + organization.name)
+									});
+							}),
+						$author$project$Main$refreshOrganizations(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										orgMessage: $elm$core$Maybe$Just(
+											$author$project$Main$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'LinkClicked':
 				var request = msg.a;
 				if (request.$ === 'Internal') {
@@ -9908,7 +10113,7 @@ var $author$project$Sharecrop$Ui$label_ = function (value) {
 		$elm$html$Html$p,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('text-sm uppercase tracking-wide text-slate-500')
+				$elm$html$Html$Attributes$class('text-sm uppercase tracking-wide text-slate-600')
 			]),
 		_List_fromArray(
 			[
@@ -10211,7 +10416,7 @@ var $author$project$Sharecrop$Ui$badge = function (value) {
 		$elm$html$Html$span,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600')
+				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700')
 			]),
 		_List_fromArray(
 			[
@@ -10434,9 +10639,6 @@ var $author$project$Main$collectiblesView = function (state) {
 var $author$project$Main$CreateDescriptionChanged = function (a) {
 	return {$: 'CreateDescriptionChanged', a: a};
 };
-var $author$project$Main$CreatePublicChanged = function (a) {
-	return {$: 'CreatePublicChanged', a: a};
-};
 var $author$project$Main$CreateReservationHoursChanged = function (a) {
 	return {$: 'CreateReservationHoursChanged', a: a};
 };
@@ -10449,7 +10651,28 @@ var $author$project$Main$CreateTitleChanged = function (a) {
 };
 var $author$project$Main$allParticipationPolicies = _List_fromArray(
 	[$author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen, $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyReservationRequired, $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyApprovalRequired]);
-var $elm$core$Basics$not = _Basics_not;
+var $author$project$Main$visibilityPublicTag = 'public';
+var $author$project$Main$allVisibilityTags = _List_fromArray(
+	[$author$project$Main$visibilityPublicTag, $author$project$Main$visibilityDefaultTag, $author$project$Main$visibilityUserTag]);
+var $author$project$Sharecrop$Ui$fieldLabel = F2(
+	function (labelText, controls) {
+		return A2(
+			$elm$html$Html$label,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('block space-y-1 text-sm font-medium text-slate-700')
+				]),
+			A2(
+				$elm$core$List$cons,
+				A2(
+					$elm$html$Html$span,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text(labelText)
+						])),
+				controls));
+	});
 var $author$project$Main$CreateParticipationChanged = function (a) {
 	return {$: 'CreateParticipationChanged', a: a};
 };
@@ -10492,6 +10715,41 @@ var $author$project$Sharecrop$Ui$textarea_ = function (attrs) {
 			attrs),
 		_List_Nil);
 };
+var $author$project$Main$CreateVisibilityChanged = function (a) {
+	return {$: 'CreateVisibilityChanged', a: a};
+};
+var $author$project$Main$visibilityLabel = function (tag) {
+	return _Utils_eq(tag, $author$project$Main$visibilityPublicTag) ? 'Public' : (_Utils_eq(tag, $author$project$Main$visibilityUserTag) ? 'Specific user' : 'Private (default)');
+};
+var $author$project$Main$visibilityButton = F2(
+	function (selected, tag) {
+		return A4(
+			$author$project$Main$chooserButton,
+			_Utils_eq(selected, tag),
+			$author$project$Main$CreateVisibilityChanged(tag),
+			'create-visibility-' + tag,
+			$author$project$Main$visibilityLabel(tag));
+	});
+var $author$project$Main$CreateScopeUserIdChanged = function (a) {
+	return {$: 'CreateScopeUserIdChanged', a: a};
+};
+var $author$project$Main$visibilityScopeField = function (state) {
+	return _Utils_eq(state.createVisibility, $author$project$Main$visibilityUserTag) ? A2(
+		$author$project$Sharecrop$Ui$fieldLabel,
+		'Share with user ID',
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$textInput(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('text'),
+						$elm$html$Html$Attributes$placeholder('User ID to grant access'),
+						$elm$html$Html$Attributes$value(state.createScopeUserId),
+						$elm$html$Html$Events$onInput($author$project$Main$CreateScopeUserIdChanged),
+						$author$project$Sharecrop$Ui$testId('create-scope-user')
+					]))
+			])) : $elm$html$Html$text('');
+};
 var $author$project$Main$createTaskView = function (state) {
 	return A2(
 		$elm$html$Html$form,
@@ -10503,32 +10761,50 @@ var $author$project$Main$createTaskView = function (state) {
 		_List_fromArray(
 			[
 				$author$project$Sharecrop$Ui$sectionTitle('Create a task'),
-				$author$project$Sharecrop$Ui$textInput(
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Title',
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$type_('text'),
-						$elm$html$Html$Attributes$placeholder('Title'),
-						$elm$html$Html$Attributes$value(state.createTitle),
-						$elm$html$Html$Events$onInput($author$project$Main$CreateTitleChanged),
-						$author$project$Sharecrop$Ui$testId('create-title')
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('text'),
+								$elm$html$Html$Attributes$placeholder('Short, descriptive title'),
+								$elm$html$Html$Attributes$value(state.createTitle),
+								$elm$html$Html$Events$onInput($author$project$Main$CreateTitleChanged),
+								$author$project$Sharecrop$Ui$testId('create-title')
+							]))
 					])),
-				$author$project$Sharecrop$Ui$textarea_(
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Description',
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$placeholder('Description'),
-						$elm$html$Html$Attributes$value(state.createDescription),
-						$elm$html$Html$Events$onInput($author$project$Main$CreateDescriptionChanged),
-						$elm$html$Html$Attributes$rows(3),
-						$author$project$Sharecrop$Ui$testId('create-description')
+						$author$project$Sharecrop$Ui$textarea_(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$placeholder('What the worker should do'),
+								$elm$html$Html$Attributes$value(state.createDescription),
+								$elm$html$Html$Events$onInput($author$project$Main$CreateDescriptionChanged),
+								$elm$html$Html$Attributes$rows(3),
+								$author$project$Sharecrop$Ui$testId('create-description')
+							]))
 					])),
-				$author$project$Sharecrop$Ui$textInput(
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Credit reward',
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$type_('number'),
-						$elm$html$Html$Attributes$placeholder('Credit reward amount (blank for no reward)'),
-						$elm$html$Html$Attributes$value(state.createRewardAmount),
-						$elm$html$Html$Events$onInput($author$project$Main$CreateRewardAmountChanged),
-						$author$project$Sharecrop$Ui$testId('create-reward')
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('number'),
+								$elm$html$Html$Attributes$placeholder('Blank for no reward'),
+								$elm$html$Html$Attributes$value(state.createRewardAmount),
+								$elm$html$Html$Events$onInput($author$project$Main$CreateRewardAmountChanged),
+								$author$project$Sharecrop$Ui$testId('create-reward')
+							]))
 					])),
 				$author$project$Sharecrop$Ui$label_('Participation'),
 				A2(
@@ -10541,42 +10817,33 @@ var $author$project$Main$createTaskView = function (state) {
 					$elm$core$List$map,
 					$author$project$Main$participationButton(state.createParticipationPolicy),
 					$author$project$Main$allParticipationPolicies)),
-				$author$project$Sharecrop$Ui$textInput(
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('number'),
-						$elm$html$Html$Attributes$placeholder('Reservation expiry hours'),
-						$elm$html$Html$Attributes$value(state.createReservationHours),
-						$elm$html$Html$Events$onInput($author$project$Main$CreateReservationHoursChanged),
-						$author$project$Sharecrop$Ui$testId('create-reservation-hours')
-					])),
 				A2(
-				$elm$html$Html$label,
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Reservation expiry (hours)',
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$input,
+						$author$project$Sharecrop$Ui$textInput(
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$type_('checkbox'),
-								$elm$html$Html$Attributes$checked(state.createPublic),
-								$elm$html$Html$Events$onClick(
-								$author$project$Main$CreatePublicChanged(!state.createPublic)),
-								$author$project$Sharecrop$Ui$testId('create-public')
-							]),
-						_List_Nil),
-						A2(
-						$elm$html$Html$span,
-						_List_Nil,
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Publish publicly')
+								$elm$html$Html$Attributes$type_('number'),
+								$elm$html$Html$Attributes$placeholder('48'),
+								$elm$html$Html$Attributes$value(state.createReservationHours),
+								$elm$html$Html$Events$onInput($author$project$Main$CreateReservationHoursChanged),
+								$author$project$Sharecrop$Ui$testId('create-reservation-hours')
 							]))
 					])),
+				$author$project$Sharecrop$Ui$label_('Visibility'),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+					]),
+				A2(
+					$elm$core$List$map,
+					$author$project$Main$visibilityButton(state.createVisibility),
+					$author$project$Main$allVisibilityTags)),
+				$author$project$Main$visibilityScopeField(state),
 				A2(
 				$author$project$Sharecrop$Ui$primaryButton,
 				_List_fromArray(
@@ -10741,6 +11008,105 @@ var $author$project$Main$ledgerView = function (entries) {
 							]),
 						A2($elm$core$List$map, $author$project$Main$ledgerRow, entries))
 					]))
+			]));
+};
+var $author$project$Main$CreateOrgClicked = {$: 'CreateOrgClicked'};
+var $author$project$Main$CreateOrgNameChanged = function (a) {
+	return {$: 'CreateOrgNameChanged', a: a};
+};
+var $author$project$Main$organizationRow = function (organization) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
+				$author$project$Sharecrop$Ui$testId('organization-row')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('font-medium')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(organization.name)
+					])),
+				$author$project$Sharecrop$Ui$badge(organization.id)
+			]));
+};
+var $author$project$Main$organizationsList = function (organizations) {
+	return $elm$core$List$isEmpty(organizations) ? A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+				$author$project$Sharecrop$Ui$testId('organizations-empty')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text('You do not belong to any organizations yet.')
+			])) : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+				$author$project$Sharecrop$Ui$testId('organizations')
+			]),
+		A2($elm$core$List$map, $author$project$Main$organizationRow, organizations));
+};
+var $author$project$Main$organizationsView = function (state) {
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Organizations'),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-600')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Organizations you belong to. Create one to own tasks and credits as a team.')
+					])),
+				$author$project$Main$organizationsList(state.organizations),
+				A2(
+				$elm$html$Html$form,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('mt-3 flex flex-wrap items-end gap-2'),
+						$elm$html$Html$Events$onSubmit($author$project$Main$CreateOrgClicked)
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'New organization',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('text'),
+										$elm$html$Html$Attributes$placeholder('Organization name'),
+										$elm$html$Html$Attributes$value(state.createOrgName),
+										$elm$html$Html$Events$onInput($author$project$Main$CreateOrgNameChanged),
+										$author$project$Sharecrop$Ui$testId('create-org-name')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('submit'),
+								$author$project$Sharecrop$Ui$testId('create-org')
+							]),
+						'Create organization')
+					])),
+				A2($author$project$Main$maybeNote, state.orgMessage, 'org-message')
 			]));
 };
 var $author$project$Main$OpenTaskClicked = function (a) {
@@ -10977,6 +11343,20 @@ var $author$project$Main$taskInstructions = F2(
 					A2($author$project$Main$mcpSchemaCurl, origin, taskId))
 				]));
 	});
+var $author$project$Main$taskStateGuidance = function (state) {
+	switch (state.$) {
+		case 'TaskStateDraft':
+			return 'Next step: fund this task (if it offers a reward) and then open it so workers can submit.';
+		case 'TaskStateOpen':
+			return 'Workers can submit now. Review submissions below to accept, request changes, or reject.';
+		case 'TaskStateClosed':
+			return 'This task is closed. An accepted submission has been settled.';
+		case 'TaskStateCancelled':
+			return 'This task was cancelled. Any escrowed reward was refunded.';
+		default:
+			return 'This task expired without an accepted submission.';
+	}
+};
 var $author$project$Main$taskDetailView = F2(
 	function (origin, state) {
 		var _v0 = state.selectedTask;
@@ -11048,6 +11428,18 @@ var $author$project$Main$taskDetailView = F2(
 								'Reservation expiry: ' + ($elm$core$String$fromInt(detail.reservationExpiryHours) + ' hours'))
 							])),
 						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700'),
+								$author$project$Sharecrop$Ui$testId('task-guidance')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								$author$project$Main$taskStateGuidance(detail.state))
+							])),
+						A2(
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
@@ -11091,8 +11483,32 @@ var $author$project$Main$taskDetailView = F2(
 			return $elm$html$Html$text('');
 		}
 	});
+var $author$project$Main$TaskStateFilterChanged = function (a) {
+	return {$: 'TaskStateFilterChanged', a: a};
+};
+var $author$project$Main$taskFilterButton = F2(
+	function (selected, _v0) {
+		var tag = _v0.a;
+		var labelText = _v0.b;
+		return A4(
+			$author$project$Main$chooserButton,
+			_Utils_eq(selected, tag),
+			$author$project$Main$TaskStateFilterChanged(tag),
+			'task-filter-' + ((tag === '') ? 'all' : tag),
+			labelText);
+	});
+var $author$project$Main$taskStateFilterOptions = _List_fromArray(
+	[
+		_Utils_Tuple2('', 'All'),
+		_Utils_Tuple2('open', 'Open'),
+		_Utils_Tuple2('draft', 'Draft'),
+		_Utils_Tuple2('closed', 'Closed')
+	]);
 var $author$project$Main$SelectTask = function (a) {
 	return {$: 'SelectTask', a: a};
+};
+var $author$project$Main$activeAssigneeSuffix = function (item) {
+	return (item.activeAssigneeID === '') ? '' : (' · reserved by ' + item.activeAssigneeID);
 };
 var $author$project$Main$taskRow = function (item) {
 	return A2(
@@ -11128,7 +11544,7 @@ var $author$project$Main$taskRow = function (item) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								$author$project$Main$taskStateLabel(item.state) + (' · ' + A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount)))
+								$author$project$Main$taskStateLabel(item.state) + (' · ' + (A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + $author$project$Main$activeAssigneeSuffix(item))))
 							]))
 					])),
 				A2(
@@ -11168,6 +11584,18 @@ var $author$project$Main$tasksView = F2(
 			_List_fromArray(
 				[
 					$author$project$Sharecrop$Ui$sectionTitle('My tasks'),
+					$author$project$Sharecrop$Ui$label_('Filter by state'),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
+							$author$project$Sharecrop$Ui$testId('task-filter')
+						]),
+					A2(
+						$elm$core$List$map,
+						$author$project$Main$taskFilterButton(state.taskStateFilter),
+						$author$project$Main$taskStateFilterOptions)),
 					$author$project$Main$tasksList(state.tasks),
 					A2($author$project$Main$taskDetailView, origin, state)
 				]));
@@ -11206,12 +11634,43 @@ var $author$project$Main$dashboardView = F2(
 					$author$project$Main$fundingView(state),
 					A2($author$project$Main$tasksView, origin, state),
 					A2($author$project$Main$agentsView, origin, state),
-					$author$project$Main$collectiblesView(state)
+					$author$project$Main$collectiblesView(state),
+					$author$project$Main$organizationsView(state)
 				]));
 	});
 var $author$project$Main$DiscoveryIncludeReservedChanged = function (a) {
 	return {$: 'DiscoveryIncludeReservedChanged', a: a};
 };
+var $author$project$Sharecrop$Ui$checkboxClass = 'h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-2 focus:ring-slate-500';
+var $author$project$Sharecrop$Ui$checkbox = F2(
+	function (attrs, labelText) {
+		return A2(
+			$elm$html$Html$label,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm text-slate-700')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$input,
+					A2(
+						$elm$core$List$cons,
+						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$checkboxClass),
+						A2(
+							$elm$core$List$cons,
+							$elm$html$Html$Attributes$type_('checkbox'),
+							attrs)),
+					_List_Nil),
+					A2(
+					$elm$html$Html$span,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text(labelText)
+						]))
+				]));
+	});
 var $author$project$Main$DiscoveryViewClicked = function (a) {
 	return {$: 'DiscoveryViewClicked', a: a};
 };
@@ -11249,7 +11708,7 @@ var $author$project$Main$discoveryRow = function (item) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								$author$project$Main$taskStateLabel(item.state) + (' · ' + (A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + (' · ' + $author$project$Main$participationPolicyLabel(item.participationPolicy)))))
+								$author$project$Main$taskStateLabel(item.state) + (' · ' + (A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + (' · ' + ($author$project$Main$participationPolicyLabel(item.participationPolicy) + $author$project$Main$activeAssigneeSuffix(item))))))
 							]))
 					])),
 				A2(
@@ -11283,38 +11742,22 @@ var $author$project$Main$discoveryList = function (tasks) {
 			]),
 		A2($elm$core$List$map, $author$project$Main$discoveryRow, tasks));
 };
+var $elm$core$Basics$not = _Basics_not;
 var $author$project$Main$discoveryView = function (state) {
 	return $author$project$Sharecrop$Ui$card(
 		_List_fromArray(
 			[
 				$author$project$Sharecrop$Ui$sectionTitle('Discover public tasks'),
 				A2(
-				$elm$html$Html$label,
+				$author$project$Sharecrop$Ui$checkbox,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm')
+						$elm$html$Html$Attributes$checked(state.discoveryIncludeReserved),
+						$elm$html$Html$Events$onClick(
+						$author$project$Main$DiscoveryIncludeReservedChanged(!state.discoveryIncludeReserved)),
+						$author$project$Sharecrop$Ui$testId('include-reserved')
 					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$input,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$type_('checkbox'),
-								$elm$html$Html$Attributes$checked(state.discoveryIncludeReserved),
-								$elm$html$Html$Events$onClick(
-								$author$project$Main$DiscoveryIncludeReservedChanged(!state.discoveryIncludeReserved)),
-								$author$project$Sharecrop$Ui$testId('include-reserved')
-							]),
-						_List_Nil),
-						A2(
-						$elm$html$Html$span,
-						_List_Nil,
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Include reserved')
-							]))
-					])),
+				'Include reserved'),
 				$author$project$Main$discoveryList(state.discoveryTasks)
 			]));
 };
@@ -11738,24 +12181,22 @@ var $author$project$Main$reviewControls = function (state) {
 								_List_Nil)
 							])),
 						A2(
-						$elm$html$Html$label,
+						$elm$html$Html$div,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('flex items-center gap-2 pt-6 text-sm text-slate-700')
+								$elm$html$Html$Attributes$class('pt-6')
 							]),
 						_List_fromArray(
 							[
 								A2(
-								$elm$html$Html$input,
+								$author$project$Sharecrop$Ui$checkbox,
 								_List_fromArray(
 									[
-										$elm$html$Html$Attributes$type_('checkbox'),
 										$elm$html$Html$Attributes$checked(state.reviewBan),
 										$elm$html$Html$Events$onCheck($author$project$Main$ReviewBanChanged),
 										$author$project$Sharecrop$Ui$testId('review-ban')
 									]),
-								_List_Nil),
-								$elm$html$Html$text('Ban implementor')
+								'Ban implementor')
 							]))
 					])),
 				A2($author$project$Main$maybeNote, state.reviewMessage, 'review-message')

@@ -5,6 +5,7 @@ package http_e2e_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -167,6 +168,134 @@ func TestReservationRequiredTaskDiscoveryAndSubmission(t *testing.T) {
 	submitAuthenticated(t, server, worker.AccessToken, taskBody.ID)
 }
 
+func TestTaskListPagination(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "pagination-owner")
+
+	for index := 0; index < 5; index++ {
+		createResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(userTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
+		assertStatus(t, createResponse, http.StatusCreated)
+		_ = decodeTaskHTTPResponse(t, createResponse)
+		createResponse.Body.Close()
+	}
+
+	// The full ordered list establishes the deterministic order the pages slice into.
+	fullResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user", owner.AccessToken)
+	defer fullResponse.Body.Close()
+	assertStatus(t, fullResponse, http.StatusOK)
+	fullPage := decodeTasksHTTPResponse(t, fullResponse)
+	if len(fullPage.Tasks) != 5 {
+		t.Fatalf("full list count = %d, want 5", len(fullPage.Tasks))
+	}
+
+	firstPageResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&limit=2", owner.AccessToken)
+	defer firstPageResponse.Body.Close()
+	assertStatus(t, firstPageResponse, http.StatusOK)
+	firstPage := decodeTasksHTTPResponse(t, firstPageResponse)
+	if len(firstPage.Tasks) != 2 {
+		t.Fatalf("first page count = %d, want 2", len(firstPage.Tasks))
+	}
+	if firstPage.Tasks[0].ID != fullPage.Tasks[0].ID || firstPage.Tasks[1].ID != fullPage.Tasks[1].ID {
+		t.Fatalf("first page = [%q %q], want [%q %q]", firstPage.Tasks[0].ID, firstPage.Tasks[1].ID, fullPage.Tasks[0].ID, fullPage.Tasks[1].ID)
+	}
+
+	secondPageResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&limit=2&offset=2", owner.AccessToken)
+	defer secondPageResponse.Body.Close()
+	assertStatus(t, secondPageResponse, http.StatusOK)
+	secondPage := decodeTasksHTTPResponse(t, secondPageResponse)
+	if len(secondPage.Tasks) != 2 {
+		t.Fatalf("second page count = %d, want 2", len(secondPage.Tasks))
+	}
+	if secondPage.Tasks[0].ID != fullPage.Tasks[2].ID || secondPage.Tasks[1].ID != fullPage.Tasks[3].ID {
+		t.Fatalf("second page = [%q %q], want [%q %q]", secondPage.Tasks[0].ID, secondPage.Tasks[1].ID, fullPage.Tasks[2].ID, fullPage.Tasks[3].ID)
+	}
+}
+
+func TestTaskListFiltersByStateAndParticipation(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "filter-owner")
+
+	// One open task with open participation, one draft task with reservation participation.
+	openTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, userTaskRequestJSON(owner.SubjectID))
+	openTask(t, server, owner.AccessToken, openTaskID)
+	draftTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, publicReservationTaskRequestJSON(owner.SubjectID))
+
+	openListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&state=open"))
+	assertTaskPresent(t, openListing, openTaskID)
+	assertTaskAbsent(t, openListing, draftTaskID)
+
+	draftListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&state=draft"))
+	assertTaskPresent(t, draftListing, draftTaskID)
+	assertTaskAbsent(t, draftListing, openTaskID)
+
+	reservationListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&participation_policy=reservation_required"))
+	assertTaskPresent(t, reservationListing, draftTaskID)
+	assertTaskAbsent(t, reservationListing, openTaskID)
+
+	invalidResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&state=bogus", owner.AccessToken)
+	defer invalidResponse.Body.Close()
+	assertStatus(t, invalidResponse, http.StatusBadRequest)
+}
+
+func TestTaskListItemExposesActiveAssignee(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "active-assignee-owner")
+	worker := registerUser(t, server, "active-assignee-worker")
+
+	taskID := createUserTaskFromJSON(t, server, owner.AccessToken, publicReservationTaskRequestJSON(owner.SubjectID))
+	openTask(t, server, owner.AccessToken, taskID)
+
+	beforeReserve := findTaskInListing(t, decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user")), taskID)
+	if beforeReserve.ActiveAssigneeKind != "" || beforeReserve.ActiveAssigneeID != "" {
+		t.Fatalf("active assignee before reserve = (%q, %q), want empty", beforeReserve.ActiveAssigneeKind, beforeReserve.ActiveAssigneeID)
+	}
+
+	reserveResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/reservations", []byte(`{}`), worker.AccessToken)
+	defer reserveResponse.Body.Close()
+	assertStatus(t, reserveResponse, http.StatusCreated)
+
+	afterReserve := findTaskInListing(t, decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user")), taskID)
+	if afterReserve.ActiveAssigneeKind != "user" {
+		t.Fatalf("active assignee kind = %q, want user", afterReserve.ActiveAssigneeKind)
+	}
+	if afterReserve.ActiveAssigneeID != worker.SubjectID {
+		t.Fatalf("active assignee id = %q, want %q", afterReserve.ActiveAssigneeID, worker.SubjectID)
+	}
+}
+
+func createUserTaskFromJSON(t *testing.T, server *httptest.Server, accessToken string, requestJSON string) string {
+	t.Helper()
+	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(requestJSON), accessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+	return decodeTaskHTTPResponse(t, response).ID
+}
+
+func mustGet(t *testing.T, server *httptest.Server, accessToken string, path string) *http.Response {
+	t.Helper()
+	response := getWithBearer(t, server.URL+path, accessToken)
+	t.Cleanup(func() { response.Body.Close() })
+	assertStatus(t, response, http.StatusOK)
+	return response
+}
+
+func findTaskInListing(t *testing.T, body tasksHTTPResponse, taskID string) taskHTTPResponse {
+	t.Helper()
+	for _, value := range body.Tasks {
+		if value.ID == taskID {
+			return value
+		}
+	}
+	t.Fatalf("task %s was not present", taskID)
+	return taskHTTPResponse{}
+}
+
 type taskHTTPResponse struct {
 	ID                     string `json:"id"`
 	State                  string `json:"state"`
@@ -174,6 +303,9 @@ type taskHTTPResponse struct {
 	RewardKind             string `json:"reward_kind"`
 	RewardCreditAmount     int64  `json:"reward_credit_amount"`
 	RewardCollectibleCount int    `json:"reward_collectible_count"`
+	ParticipationPolicy    string `json:"participation_policy"`
+	ActiveAssigneeKind     string `json:"active_assignee_kind"`
+	ActiveAssigneeID       string `json:"active_assignee_id"`
 }
 
 type tasksHTTPResponse struct {

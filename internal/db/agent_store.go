@@ -71,12 +71,13 @@ func (store AgentStore) VerifyCredential(ctx context.Context, hash agent.SecretH
 	return agent.VerifyStoreFound{Value: accepted.value}
 }
 
-func (store AgentStore) ListCredentials(ctx context.Context, owner core.UserID) agent.ListStoreResult {
+func (store AgentStore) ListCredentials(ctx context.Context, owner core.UserID, page core.Page) agent.ListStoreResult {
 	rows, err := store.pool.Query(ctx, agentCredentialSelectSQL()+`
 		where agent_credentials.user_id = $1
 		group by agent_credentials.id
 		order by agent_credentials.created_at, agent_credentials.id
-	`, owner.String())
+		limit $2 offset $3
+	`, owner.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return agent.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list agent credentials failed")}
 	}

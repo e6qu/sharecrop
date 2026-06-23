@@ -26,7 +26,7 @@ type mcpServices struct {
 }
 
 func (services mcpServices) ListTasks(ctx context.Context, subject auth.UserSubject, scope task.ListScope) task.ListResult {
-	return services.taskService.List(ctx, subject, scope)
+	return services.taskService.List(ctx, subject, scope, task.NoListFilters(), core.DefaultPage())
 }
 
 func (services mcpServices) GetTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.GetResult {
@@ -46,7 +46,7 @@ func (services mcpServices) GetSubmissionStatus(ctx context.Context, token submi
 }
 
 func (services mcpServices) ListTaskSubmissions(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) submission.ListResult {
-	return services.submissionService.ListForTask(ctx, subject, taskID)
+	return services.submissionService.ListForTask(ctx, subject, taskID, core.DefaultPage())
 }
 
 func (services mcpServices) AcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey) ledger.AcceptResult {
@@ -66,7 +66,7 @@ func (services mcpServices) RejectSubmission(ctx context.Context, requester core
 }
 
 func (services mcpServices) ListSeries(ctx context.Context, subject auth.UserSubject) task.ListSeriesResult {
-	return services.taskService.ListSeries(ctx, subject)
+	return services.taskService.ListSeries(ctx, subject, core.DefaultPage())
 }
 
 func (services mcpServices) GetSeries(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID) task.GetSeriesResult {
@@ -194,7 +194,7 @@ func (server Server) listAgentCredentials(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result := server.agentService.List(r.Context(), actor.subject.ID)
+	result := server.agentService.List(r.Context(), actor.subject.ID, parsePage(r))
 	listed, matched := result.(agent.CredentialsListed)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(agent.ListRejected).Reason.Description())

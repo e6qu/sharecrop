@@ -86,7 +86,7 @@ func (server Server) listCollectibles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID)
+	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID, parsePage(r))
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(assets.ListRejected).Reason.Description())
@@ -139,7 +139,11 @@ func (server Server) refundCollectibleReward(w http.ResponseWriter, r *http.Requ
 		writeDomainError(w, result.(assets.RefundRewardRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusOK, collectibleToResponse(refunded.Value))
+	response := collectiblesResponse{Collectibles: make([]collectibleResponse, 0, len(refunded.Values))}
+	for index := range refunded.Values {
+		response.Collectibles = append(response.Collectibles, collectibleToResponse(refunded.Values[index]))
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (server Server) collectibleRewardActor(w http.ResponseWriter, r *http.Request) (actorSubject, core.TaskID, bool) {

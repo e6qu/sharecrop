@@ -19,6 +19,37 @@ type Task struct {
 	CreatedBy      core.UserID
 }
 
+// ActiveAssignee describes the worker currently holding an active reservation on
+// a task. NoActiveAssignee means the task has no active reservation; ActiveUserAssignee
+// or ActiveOrganizationTeamAssignee identify the holder.
+type ActiveAssignee interface {
+	activeAssignee()
+}
+
+type NoActiveAssignee struct{}
+
+type ActiveUserAssignee struct {
+	UserID core.UserID
+}
+
+type ActiveOrganizationTeamAssignee struct {
+	OrganizationID core.OrganizationID
+	TeamID         core.TeamID
+}
+
+func (NoActiveAssignee) activeAssignee() {}
+
+func (ActiveUserAssignee) activeAssignee() {}
+
+func (ActiveOrganizationTeamAssignee) activeAssignee() {}
+
+// ListItem is the read model returned by task listings. It carries the task plus
+// the active reservation assignee, which the bare Task domain object does not track.
+type ListItem struct {
+	Task           Task
+	ActiveAssignee ActiveAssignee
+}
+
 type Series struct {
 	ID        core.TaskSeriesID
 	Owner     Owner

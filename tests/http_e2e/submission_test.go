@@ -47,6 +47,17 @@ func TestSubmissionReceiptRedactionAndRequesterList(t *testing.T) {
 	if len(listBody.Submissions) != 1 {
 		t.Fatalf("submission count = %d, want 1", len(listBody.Submissions))
 	}
+	// The authorized requester must see unredacted submission data to grade the work.
+	// Redaction applies only to viewers who lack permission (the receipt path above).
+	if listBody.Submissions[0].ResponseJSON != `{"email": "person@example.com"}` {
+		t.Fatalf("requester list response = %q, want unredacted email", listBody.Submissions[0].ResponseJSON)
+	}
+
+	// A submitter who is not the requester and holds no review permission must not be
+	// able to list submissions for the task, so no unredacted data leaks to them.
+	workerListResponse := getWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", worker.AccessToken)
+	defer workerListResponse.Body.Close()
+	assertStatus(t, workerListResponse, http.StatusForbidden)
 }
 
 func TestInvalidSubmissionIsRecorded(t *testing.T) {

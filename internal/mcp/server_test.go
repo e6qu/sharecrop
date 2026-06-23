@@ -126,7 +126,7 @@ type fakeServices struct {
 }
 
 func (services fakeServices) ListTasks(_ context.Context, _ auth.UserSubject, _ task.ListScope) task.ListResult {
-	return task.TasksListed{Values: []task.Task{}}
+	return task.TasksListed{Values: []task.ListItem{}}
 }
 
 func (services fakeServices) GetTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.GetResult {

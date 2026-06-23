@@ -102,6 +102,39 @@ func TestServiceRegistersLogsInAndRefreshesUser(t *testing.T) {
 	}
 }
 
+func TestRefreshTokenReuseRevokesFamily(t *testing.T) {
+	store := newMemoryStore()
+	service := acceptedService(t, store)
+	email := acceptedEmail(t, "reuse@example.com")
+	password := acceptedPassword(t, "correct horse battery staple")
+
+	registerResult := service.Register(context.Background(), email, password)
+	registerAccepted, registerMatched := registerResult.(RegisterAccepted)
+	if !registerMatched {
+		t.Fatalf("register result = %T, want RegisterAccepted", registerResult)
+	}
+
+	// Rotate once: the original token is consumed and a new token is issued in
+	// the same family.
+	rotatedResult := service.Refresh(context.Background(), registerAccepted.RefreshToken)
+	rotated, rotatedMatched := rotatedResult.(RefreshAccepted)
+	if !rotatedMatched {
+		t.Fatalf("rotation result = %T, want RefreshAccepted", rotatedResult)
+	}
+
+	// Reusing the already-consumed original token is detected and revokes the family.
+	reuse := service.Refresh(context.Background(), registerAccepted.RefreshToken)
+	if _, matched := reuse.(RefreshRejected); !matched {
+		t.Fatalf("reuse result = %T, want RefreshRejected", reuse)
+	}
+
+	// The rotated token belongs to the revoked family, so it can no longer refresh.
+	afterRevoke := service.Refresh(context.Background(), rotated.RefreshToken)
+	if _, matched := afterRevoke.(RefreshRejected); !matched {
+		t.Fatalf("post-revocation refresh = %T, want RefreshRejected", afterRevoke)
+	}
+}
+
 func TestServiceCreatesGuestSession(t *testing.T) {
 	store := newMemoryStore()
 	service := acceptedService(t, store)
@@ -229,6 +262,14 @@ func (store *memoryStore) StoreRefreshToken(_ context.Context, record RefreshTok
 func (store *memoryStore) ConsumeRefreshToken(_ context.Context, hash RefreshTokenHash, consumedAt time.Time) ConsumeRefreshTokenResult {
 	record, exists := store.refreshByHash[hash.String()]
 	if !exists {
+		if consumed, reused := store.consumedByHash[hash.String()]; reused {
+			for storedHash, active := range store.refreshByHash {
+				if active.FamilyID.String() == consumed.FamilyID.String() {
+					delete(store.refreshByHash, storedHash)
+				}
+			}
+			return RefreshTokenReuseDetected{}
+		}
 		return RefreshTokenNotConsumed{}
 	}
 
@@ -238,5 +279,5 @@ func (store *memoryStore) ConsumeRefreshToken(_ context.Context, hash RefreshTok
 
 	delete(store.refreshByHash, hash.String())
 	store.consumedByHash[hash.String()] = record
-	return RefreshTokenConsumed{Subject: record.Subject}
+	return RefreshTokenConsumed{Subject: record.Subject, Family: record.FamilyID}
 }

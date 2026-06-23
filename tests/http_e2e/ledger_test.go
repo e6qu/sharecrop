@@ -165,23 +165,17 @@ type escrowHTTPResponse struct {
 }
 
 type acceptHTTPResponse struct {
-	TaskID        string `json:"task_id"`
-	SubmissionID  string `json:"submission_id"`
-	PayoutKind    string `json:"payout_kind"`
-	PayoutAmount  int64  `json:"payout_amount"`
-	WorkerUserID  string `json:"worker_user_id"`
-	CollectibleID string `json:"collectible_id"`
+	TaskID         string   `json:"task_id"`
+	SubmissionID   string   `json:"submission_id"`
+	PayoutKind     string   `json:"payout_kind"`
+	PayoutAmount   int64    `json:"payout_amount"`
+	WorkerUserID   string   `json:"worker_user_id"`
+	CollectibleIDs []string `json:"collectible_ids"`
 }
 
 func registerUser(t *testing.T, server *httptest.Server, prefix string) authHTTPResponse {
 	t.Helper()
-	response := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{
-		Email:    prefix + "-" + uniqueTestSuffix(t) + "@example.com",
-		Password: "correct horse battery staple",
-	}, nil)
-	defer response.Body.Close()
-	assertStatus(t, response, http.StatusCreated)
-	return decodeAuthHTTPResponse(t, response)
+	return registerUserWithEmail(t, server, prefix+"-"+uniqueTestSuffix(t)+"@example.com")
 }
 
 func createUserTask(t *testing.T, server *httptest.Server, owner authHTTPResponse) taskHTTPResponse {

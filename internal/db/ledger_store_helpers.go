@@ -6,6 +6,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -151,6 +152,72 @@ func lockTaskOwnedBy(ctx context.Context, tx pgx.Tx, taskID core.TaskID, request
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner can "+action+" the task")}
 	}
 	return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+}
+
+// lockTaskForReview locks a task for a review action. The direct task creator is
+// always authorized. For organization-owned tasks, a member with the
+// review-submissions permission is also authorized. This mirrors the
+// submission service's review-permission check, but resolves authorization in
+// the same transaction as the review write so authorization cannot drift
+// between the check and the mutation.
+func lockTaskForReview(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID, action string) taskLockResult {
+	var state string
+	var rawCreatedBy string
+	var rawOrganizationID string
+	var rewardKind string
+	var rewardCreditAmount int64
+	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text, coalesce(organization_id::text, ''), reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawCreatedBy, &rawOrganizationID, &rewardKind, &rewardCreditAmount)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if scanErr != nil {
+		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock task failed")}
+	}
+	if rawCreatedBy == requester.String() {
+		return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+	}
+	if rawOrganizationID != "" {
+		check := reviewerOrganizationPermission(ctx, tx, rawOrganizationID, requester)
+		if _, granted := check.(org.PermissionGranted); granted {
+			return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+		}
+	}
+	return taskLockRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or an organization reviewer can "+action+" the task")}
+}
+
+// reviewerOrganizationPermission resolves whether the requester holds the
+// review-submissions permission in the given organization, evaluated in-tx.
+func reviewerOrganizationPermission(ctx context.Context, tx pgx.Tx, rawOrganizationID string, requester core.UserID) org.PermissionCheck {
+	rows, err := tx.Query(ctx, `
+		select organization_membership_roles.role
+		from organization_memberships
+		join organization_membership_roles on organization_membership_roles.membership_id = organization_memberships.id
+		where organization_memberships.organization_id = $1
+			and organization_memberships.user_id = $2
+			and organization_memberships.status = $3
+	`, rawOrganizationID, requester.String(), org.MembershipStatusActive.String())
+	if err != nil {
+		return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read reviewer roles failed")}
+	}
+	defer rows.Close()
+
+	roles := make([]org.Role, 0)
+	for rows.Next() {
+		var rawRole string
+		if err := rows.Scan(&rawRole); err != nil {
+			return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan reviewer role failed")}
+		}
+		roleResult := org.ParseRole(rawRole)
+		roleAccepted, matched := roleResult.(org.RoleAccepted)
+		if !matched {
+			return org.PermissionDenied{Reason: roleResult.(org.RoleRejected).Reason}
+		}
+		roles = append(roles, roleAccepted.Value)
+	}
+	if err := rows.Err(); err != nil {
+		return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read reviewer roles failed")}
+	}
+	return org.CheckPermission(roles, org.PermissionReviewSubmissions)
 }
 
 type fundingRewardResult interface {
@@ -406,88 +473,120 @@ func (tipResolved) tipResult() {}
 
 func (tipRejected) tipResult() {}
 
+// payOutCollectible transfers every currently-held collectible reward for the
+// task to the accepted worker. A task may bundle more than one collectible, so
+// all held rewards are awarded together.
 func payOutCollectible(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
-	var rawCollectibleID string
-	var rewardState string
-	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1 for update", taskID.String()).Scan(&rawCollectibleID, &rewardState)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return payoutResolved{outcome: ledger.NoPayout{}}
+	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "held", true)
+	if scanRejected != nil {
+		return payoutRejected{reason: *scanRejected}
 	}
-	if scanErr != nil {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")}
+	resolved, resolveRejected := resolveCollectiblePayout(rawWorkerID, rawCollectibleIDs)
+	if resolveRejected != nil {
+		return payoutRejected{reason: *resolveRejected}
 	}
-	if rewardState != "held" {
+	if _, empty := resolved.outcome.(ledger.NoPayout); empty {
 		return payoutResolved{outcome: ledger.NoPayout{}}
 	}
 
-	workerResult := core.ParseUserID(rawWorkerID)
-	worker, workerMatched := workerResult.(core.UserIDCreated)
-	if !workerMatched {
-		return payoutRejected{reason: workerResult.(core.UserIDRejected).Reason}
+	for _, rawCollectibleID := range rawCollectibleIDs {
+		if _, err := tx.Exec(ctx, "update collectibles set state = 'awarded', owner_user_id = $2, state_recorded_at = now() where id = $1", rawCollectibleID, rawWorkerID); err != nil {
+			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "award collectible failed")}
+		}
 	}
-	collectibleResult := core.ParseCollectibleID(rawCollectibleID)
-	collectibleID, collectibleMatched := collectibleResult.(core.CollectibleIDCreated)
-	if !collectibleMatched {
-		return payoutRejected{reason: collectibleResult.(core.CollectibleIDRejected).Reason}
-	}
-
-	if _, err := tx.Exec(ctx, "update collectibles set state = 'awarded', owner_user_id = $2, state_recorded_at = now() where id = $1", rawCollectibleID, rawWorkerID); err != nil {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "award collectible failed")}
-	}
-	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'released', state_recorded_at = now() where task_id = $1", taskID.String()); err != nil {
+	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'released', state_recorded_at = now() where task_id = $1 and state = 'held'", taskID.String()); err != nil {
 		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "release collectible reward failed")}
 	}
 
-	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleID: collectibleID.Value}}
+	return resolved
 }
 
 func releasedCollectiblePayout(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
-	var rawCollectibleID string
-	var rewardState string
-	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1", taskID.String()).Scan(&rawCollectibleID, &rewardState)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return payoutResolved{outcome: ledger.NoPayout{}}
+	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "released", false)
+	if scanRejected != nil {
+		return payoutRejected{reason: *scanRejected}
 	}
-	if scanErr != nil {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")}
+	resolved, resolveRejected := resolveCollectiblePayout(rawWorkerID, rawCollectibleIDs)
+	if resolveRejected != nil {
+		return payoutRejected{reason: *resolveRejected}
 	}
-	if rewardState != "released" {
-		return payoutResolved{outcome: ledger.NoPayout{}}
+	return resolved
+}
+
+// resolveCollectiblePayout parses the worker and the held collectible IDs into a
+// collectible payout outcome. It returns a NoPayout outcome when there are no
+// collectible rewards, so both the award and refund paths share one parse.
+func resolveCollectiblePayout(rawWorkerID string, rawCollectibleIDs []string) (payoutResolved, *core.DomainError) {
+	if len(rawCollectibleIDs) == 0 {
+		return payoutResolved{outcome: ledger.NoPayout{}}, nil
 	}
 
 	workerResult := core.ParseUserID(rawWorkerID)
 	worker, workerMatched := workerResult.(core.UserIDCreated)
 	if !workerMatched {
-		return payoutRejected{reason: workerResult.(core.UserIDRejected).Reason}
+		reason := workerResult.(core.UserIDRejected).Reason
+		return payoutResolved{}, &reason
 	}
-	collectibleResult := core.ParseCollectibleID(rawCollectibleID)
-	collectibleID, collectibleMatched := collectibleResult.(core.CollectibleIDCreated)
-	if !collectibleMatched {
-		return payoutRejected{reason: collectibleResult.(core.CollectibleIDRejected).Reason}
+
+	collectibleIDs := make([]core.CollectibleID, 0, len(rawCollectibleIDs))
+	for _, rawCollectibleID := range rawCollectibleIDs {
+		collectibleResult := core.ParseCollectibleID(rawCollectibleID)
+		collectibleID, collectibleMatched := collectibleResult.(core.CollectibleIDCreated)
+		if !collectibleMatched {
+			reason := collectibleResult.(core.CollectibleIDRejected).Reason
+			return payoutResolved{}, &reason
+		}
+		collectibleIDs = append(collectibleIDs, collectibleID.Value)
 	}
-	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleID: collectibleID.Value}}
+	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleIDs: collectibleIDs}}, nil
 }
 
+// collectibleRewardIDsInState returns the raw collectible IDs for the task's
+// reward rows in the requested state, optionally taking a row lock.
+func collectibleRewardIDsInState(ctx context.Context, tx pgx.Tx, taskID core.TaskID, state string, lock bool) ([]string, *core.DomainError) {
+	query := "select collectible_id::text from task_collectible_rewards where task_id = $1 and state = $2 order by created_at, id"
+	if lock {
+		query += " for update"
+	}
+	rows, err := tx.Query(ctx, query, taskID.String(), state)
+	if err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")
+		return nil, &reason
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var rawCollectibleID string
+		if err := rows.Scan(&rawCollectibleID); err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible reward failed")
+			return nil, &reason
+		}
+		ids = append(ids, rawCollectibleID)
+	}
+	if err := rows.Err(); err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")
+		return nil, &reason
+	}
+	return ids, nil
+}
+
+// refundHeldCollectibleReward returns every held collectible reward on the task
+// to its funder. A task may bundle more than one collectible, so all held
+// rewards are returned together.
 func refundHeldCollectibleReward(ctx context.Context, tx pgx.Tx, taskID core.TaskID) (core.DomainError, bool) {
-	var rawCollectibleID string
-	var rewardState string
-	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1 for update", taskID.String()).Scan(&rawCollectibleID, &rewardState)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "held", true)
+	if scanRejected != nil {
+		return *scanRejected, true
+	}
+	if len(rawCollectibleIDs) == 0 {
 		return core.DomainError{}, false
 	}
-	if scanErr != nil {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed"), true
+	for _, rawCollectibleID := range rawCollectibleIDs {
+		if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", rawCollectibleID); err != nil {
+			return core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed"), true
+		}
 	}
-	if rewardState == "refunded" {
-		return core.DomainError{}, false
-	}
-	if rewardState != "held" {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "collectible reward is not held"), true
-	}
-	if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", rawCollectibleID); err != nil {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed"), true
-	}
-	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1", taskID.String()); err != nil {
+	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1 and state = 'held'", taskID.String()); err != nil {
 		return core.NewDomainError(core.ErrorCodeInvalidState, "update collectible reward failed"), true
 	}
 	return core.DomainError{}, false

@@ -9,13 +9,13 @@ import (
 
 type Store interface {
 	CreateOrganization(context.Context, core.OrganizationID, OrganizationName, core.UserID, core.OrganizationMembershipID) CreateOrganizationStoreResult
-	ListOrganizationsForUser(context.Context, core.UserID) ListOrganizationsResult
+	ListOrganizationsForUser(context.Context, core.UserID, core.Page) ListOrganizationsResult
 	FindMemberRoles(context.Context, core.OrganizationID, core.UserID) MemberRolesResult
 	ProvisionMember(context.Context, core.OrganizationMembershipID, core.OrganizationID, auth.EmailAddress, []Role) ProvisionMemberStoreResult
 	DeactivateMember(context.Context, core.OrganizationID, core.UserID) DeactivateMemberStoreResult
 	CreateOrganizationTeam(context.Context, core.TeamID, core.OrganizationID, TeamName, core.UserID) CreateTeamStoreResult
 	AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult
-	ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID) TeamListResult
+	ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult
 }
 
 type Service struct {
@@ -87,8 +87,8 @@ func (OrganizationsListed) listOrganizationsResult() {}
 
 func (ListOrganizationsRejected) listOrganizationsResult() {}
 
-func (service Service) ListOrganizations(ctx context.Context, actor auth.UserSubject) ListOrganizationsResult {
-	result := service.store.ListOrganizationsForUser(ctx, actor.ID)
+func (service Service) ListOrganizations(ctx context.Context, actor auth.UserSubject, page core.Page) ListOrganizationsResult {
+	result := service.store.ListOrganizationsForUser(ctx, actor.ID, page)
 	listed, matched := result.(OrganizationsListed)
 	if !matched {
 		rejected := result.(ListOrganizationsRejected)
@@ -189,8 +189,8 @@ func (OrganizationTeamsListed) listTeamsResult() {}
 
 func (ListTeamsRejected) listTeamsResult() {}
 
-func (service Service) ListOrganizationTeams(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID) ListTeamsResult {
-	result := service.store.ListOrganizationTeams(ctx, organizationID, actor.ID)
+func (service Service) ListOrganizationTeams(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID, page core.Page) ListTeamsResult {
+	result := service.store.ListOrganizationTeams(ctx, organizationID, actor.ID, page)
 	listed, matched := result.(TeamsListed)
 	if !matched {
 		rejected := result.(TeamListRejected)

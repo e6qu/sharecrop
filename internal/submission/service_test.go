@@ -127,7 +127,7 @@ func TestOrganizationReviewerCanListSubmissions(t *testing.T) {
 		t.Fatalf("submit was rejected")
 	}
 
-	result := service.ListForTask(context.Background(), testAuthSubject(t, command.SubmitterID), taskStore.value.ID)
+	result := service.ListForTask(context.Background(), testAuthSubject(t, command.SubmitterID), taskStore.value.ID, core.DefaultPage())
 	if _, matched := result.(SubmissionsListed); !matched {
 		t.Fatalf("result = %T, want SubmissionsListed", result)
 	}
@@ -284,7 +284,7 @@ func acceptedTaskSchema(t *testing.T, raw string) task.ResponseSchemaSource {
 	return accepted.Value
 }
 
-func (store *submissionMemoryStore) ListForTask(_ context.Context, taskID core.TaskID) ListSubmissionsStoreResult {
+func (store *submissionMemoryStore) ListForTask(_ context.Context, taskID core.TaskID, _ core.Page) ListSubmissionsStoreResult {
 	values := make([]Submission, 0)
 	for key := range store.valuesByID {
 		value := store.valuesByID[key]

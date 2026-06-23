@@ -55,7 +55,7 @@ type ListTasksStoreResult interface {
 }
 
 type ListTasksStoreAccepted struct {
-	Values []Task
+	Values []ListItem
 }
 
 type ListTasksStoreRejected struct {

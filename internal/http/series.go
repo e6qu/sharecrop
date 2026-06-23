@@ -35,7 +35,7 @@ func (server Server) listTaskSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.taskService.ListSeries(r.Context(), actor.subject)
+	result := server.taskService.ListSeries(r.Context(), actor.subject, parsePage(r))
 	listed, matched := result.(task.SeriesListed)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(task.ListSeriesRejected).Reason.Description())

@@ -55,7 +55,7 @@ func (store OrgStore) CreateOrganization(ctx context.Context, organizationID cor
 	return org.CreateOrganizationStoreAccepted{}
 }
 
-func (store OrgStore) ListOrganizationsForUser(ctx context.Context, userID core.UserID) org.ListOrganizationsResult {
+func (store OrgStore) ListOrganizationsForUser(ctx context.Context, userID core.UserID, page core.Page) org.ListOrganizationsResult {
 	rows, err := store.pool.Query(ctx, `
 		select organizations.id::text, organizations.name, organizations.created_by_user_id::text
 		from organizations
@@ -63,7 +63,8 @@ func (store OrgStore) ListOrganizationsForUser(ctx context.Context, userID core.
 		where organization_memberships.user_id = $1
 			and organization_memberships.status = $2
 		order by organizations.name
-	`, userID.String(), org.MembershipStatusActive.String())
+		limit $3 offset $4
+	`, userID.String(), org.MembershipStatusActive.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return org.ListOrganizationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list organizations failed")}
 	}
@@ -209,7 +210,7 @@ func (store OrgStore) AddTeamMember(ctx context.Context, teamID core.TeamID, use
 	return org.TeamMemberAdded{}
 }
 
-func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) org.TeamListResult {
+func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, page core.Page) org.TeamListResult {
 	rolesResult := store.FindMemberRoles(ctx, organizationID, userID)
 	if _, matched := rolesResult.(org.MemberRolesFound); !matched {
 		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization team access denied")}
@@ -220,7 +221,8 @@ func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID 
 		from teams
 		where organization_id = $1
 		order by name
-	`, organizationID.String())
+		limit $2 offset $3
+	`, organizationID.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list organization teams failed")}
 	}

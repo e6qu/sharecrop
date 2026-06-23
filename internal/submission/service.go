@@ -13,7 +13,7 @@ import (
 type Store interface {
 	CreateSubmission(context.Context, core.SubmissionID, core.SubmissionReceiptTokenID, ReceiptTokenHash, SubmitCommand, State, ValidationOutcome, []SensitiveField) CreateSubmissionStoreResult
 	FindByReceiptToken(context.Context, ReceiptTokenHash) FindReceiptStoreResult
-	ListForTask(context.Context, core.TaskID) ListSubmissionsStoreResult
+	ListForTask(context.Context, core.TaskID, core.Page) ListSubmissionsStoreResult
 }
 
 type TaskFinder interface {
@@ -175,7 +175,7 @@ func (SubmissionsListed) listResult() {}
 
 func (ListRejected) listResult() {}
 
-func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ListResult {
+func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, page core.Page) ListResult {
 	taskResult := service.taskStore.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(task.FindTaskStoreAccepted)
 	if !taskMatched {
@@ -186,7 +186,7 @@ func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, 
 		return ListRejected{Reason: rejected.reason}
 	}
 
-	result := service.store.ListForTask(ctx, taskID)
+	result := service.store.ListForTask(ctx, taskID, page)
 	listed, matched := result.(ListSubmissionsStoreAccepted)
 	if !matched {
 		rejected := result.(ListSubmissionsStoreRejected)

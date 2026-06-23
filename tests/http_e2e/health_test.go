@@ -74,7 +74,7 @@ func (healthOrganizationService) CreateOrganization(context.Context, auth.UserSu
 	return org.CreateOrganizationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) ListOrganizations(context.Context, auth.UserSubject) org.ListOrganizationsResult {
+func (healthOrganizationService) ListOrganizations(context.Context, auth.UserSubject, core.Page) org.ListOrganizationsResult {
 	return org.ListOrganizationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -90,7 +90,7 @@ func (healthOrganizationService) CreateOrganizationTeam(context.Context, auth.Us
 	return org.CreateTeamRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult {
+func (healthOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult {
 	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -114,7 +114,7 @@ func (healthTaskService) Cancel(context.Context, auth.UserSubject, core.TaskID) 
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) List(context.Context, auth.UserSubject, task.ListScope) task.ListResult {
+func (healthTaskService) List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
 	return task.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -122,7 +122,7 @@ func (healthTaskService) CreateCapabilityToken(context.Context, auth.UserSubject
 	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult {
+func (healthTaskService) ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult {
 	return task.ListSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -158,7 +158,7 @@ func (healthSubmissionService) FindByReceipt(context.Context, submission.Receipt
 	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult {
+func (healthSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult {
 	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -200,7 +200,7 @@ func (healthLedgerService) Balance(context.Context, core.UserID) ledger.BalanceR
 	return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) ListEntries(context.Context, core.UserID) ledger.ListEntriesResult {
+func (healthLedgerService) ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult {
 	return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -214,7 +214,7 @@ func (healthAgentService) Verify(context.Context, agent.SecretPlain) agent.Verif
 	return agent.VerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthAgentService) List(context.Context, core.UserID) agent.ListResult {
+func (healthAgentService) List(context.Context, core.UserID, core.Page) agent.ListResult {
 	return agent.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -224,7 +224,7 @@ func (healthAssetService) Mint(context.Context, core.UserID, assets.CollectibleN
 	return assets.MintRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthAssetService) ListCollectibles(context.Context, core.UserID) assets.ListResult {
+func (healthAssetService) ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult {
 	return assets.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

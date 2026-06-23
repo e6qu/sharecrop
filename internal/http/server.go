@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,11 +38,11 @@ type SubjectVerifier interface {
 
 type OrganizationService interface {
 	CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult
-	ListOrganizations(context.Context, auth.UserSubject) org.ListOrganizationsResult
+	ListOrganizations(context.Context, auth.UserSubject, core.Page) org.ListOrganizationsResult
 	ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
 	DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
 	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
-	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID) org.ListTeamsResult
+	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 }
 
@@ -50,9 +51,9 @@ type TaskService interface {
 	Get(context.Context, auth.UserSubject, core.TaskID) task.GetResult
 	Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
-	List(context.Context, auth.UserSubject, task.ListScope) task.ListResult
+	List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult
 	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
-	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
+	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
@@ -64,13 +65,13 @@ type TaskService interface {
 type AgentService interface {
 	Create(context.Context, core.UserID, agent.Label, agent.ScopeSet) agent.CreateResult
 	Verify(context.Context, agent.SecretPlain) agent.VerifyResult
-	List(context.Context, core.UserID) agent.ListResult
+	List(context.Context, core.UserID, core.Page) agent.ListResult
 	Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult
 }
 
 type AssetService interface {
 	Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy) assets.MintResult
-	ListCollectibles(context.Context, core.UserID) assets.ListResult
+	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
 	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
 }
@@ -78,7 +79,7 @@ type AssetService interface {
 type SubmissionService interface {
 	Submit(context.Context, submission.SubmitCommand) submission.SubmitResult
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
-	ListForTask(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
+	ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
 }
 
 type LedgerService interface {
@@ -91,7 +92,7 @@ type LedgerService interface {
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	Balance(context.Context, core.UserID) ledger.BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult
-	ListEntries(context.Context, core.UserID) ledger.ListEntriesResult
+	ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 }
 
 type Server struct {
@@ -171,7 +172,21 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("DELETE /mcp", server.mcpDeleteSession)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 	mux.HandleFunc("GET /", index(staticFiles))
-	return mux
+	return withRequestBodyLimit(mux)
+}
+
+// maxRequestBodyBytes bounds the size of each request body decoded by the API
+// so a large upload cannot exhaust memory. The MCP endpoint applies its own
+// stricter limit, which takes effect before this one.
+const maxRequestBodyBytes = 2 << 20
+
+func withRequestBodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // NewMCPServer builds an MCP server backed by the given domain services so the
@@ -339,8 +354,27 @@ type taskResponse struct {
 	ViewerAction           string `json:"viewer_action"`
 }
 
+type taskListItemResponse struct {
+	ID                     string `json:"id"`
+	OwnerKind              string `json:"owner_kind"`
+	Title                  string `json:"title"`
+	RewardKind             string `json:"reward_kind"`
+	RewardCreditAmount     int64  `json:"reward_credit_amount"`
+	RewardCollectibleCount int    `json:"reward_collectible_count"`
+	ParticipationPolicy    string `json:"participation_policy"`
+	AssigneeScope          string `json:"assignee_scope"`
+	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
+	State                  string `json:"state"`
+	VisibilityKind         string `json:"visibility_kind"`
+	AvailabilityKind       string `json:"availability_kind"`
+	ViewerAction           string `json:"viewer_action"`
+	CreatedBy              string `json:"created_by"`
+	ActiveAssigneeKind     string `json:"active_assignee_kind"`
+	ActiveAssigneeID       string `json:"active_assignee_id"`
+}
+
 type tasksResponse struct {
-	Tasks []taskResponse `json:"tasks"`
+	Tasks []taskListItemResponse `json:"tasks"`
 }
 
 type taskCapabilityTokenResponse struct {
@@ -445,13 +479,13 @@ type taskEscrowResponse struct {
 }
 
 type acceptSubmissionResponse struct {
-	TaskID        string `json:"task_id"`
-	SubmissionID  string `json:"submission_id"`
-	PayoutKind    string `json:"payout_kind"`
-	PayoutAmount  int64  `json:"payout_amount"`
-	WorkerUserID  string `json:"worker_user_id"`
-	CollectibleID string `json:"collectible_id"`
-	TipAmount     int64  `json:"tip_amount"`
+	TaskID         string   `json:"task_id"`
+	SubmissionID   string   `json:"submission_id"`
+	PayoutKind     string   `json:"payout_kind"`
+	PayoutAmount   int64    `json:"payout_amount"`
+	WorkerUserID   string   `json:"worker_user_id"`
+	CollectibleIDs []string `json:"collectible_ids"`
+	TipAmount      int64    `json:"tip_amount"`
 }
 
 type reviewSubmissionResponse struct {
@@ -496,113 +530,6 @@ func (authRequestAccepted) authRequestResult() {}
 
 func (authRequestRejected) authRequestResult() {}
 
-func (server Server) register(w http.ResponseWriter, r *http.Request) {
-	requestResult := decodeAuthRequest(r)
-	requestAccepted, requestMatched := requestResult.(authRequestAccepted)
-	if !requestMatched {
-		rejected := requestResult.(authRequestRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
-		return
-	}
-
-	result := server.authService.Register(r.Context(), requestAccepted.email, requestAccepted.password)
-	accepted, matched := result.(auth.RegisterAccepted)
-	if !matched {
-		rejected := result.(auth.RegisterRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
-		return
-	}
-
-	setRefreshCookie(w, accepted.RefreshToken)
-	writeAuthResponse(w, http.StatusCreated, authResponse{
-		SubjectKind: "user",
-		SubjectID:   accepted.Subject.ID.String(),
-		AccessToken: accepted.AccessToken.String(),
-	})
-}
-
-func (server Server) login(w http.ResponseWriter, r *http.Request) {
-	requestResult := decodeAuthRequest(r)
-	requestAccepted, requestMatched := requestResult.(authRequestAccepted)
-	if !requestMatched {
-		rejected := requestResult.(authRequestRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
-		return
-	}
-
-	result := server.authService.Login(r.Context(), requestAccepted.email, requestAccepted.password)
-	accepted, matched := result.(auth.LoginAccepted)
-	if !matched {
-		rejected := result.(auth.LoginRejected)
-		writeError(w, http.StatusUnauthorized, rejected.Reason.Description())
-		return
-	}
-
-	setRefreshCookie(w, accepted.RefreshToken)
-	writeAuthResponse(w, http.StatusOK, authResponse{
-		SubjectKind: "user",
-		SubjectID:   accepted.Subject.ID.String(),
-		AccessToken: accepted.AccessToken.String(),
-	})
-}
-
-func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("sharecrop_refresh_token")
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "refresh token is required")
-		return
-	}
-
-	tokenResult := auth.ParseRefreshTokenPlain(cookie.Value)
-	tokenAccepted, tokenMatched := tokenResult.(auth.RefreshTokenPlainAccepted)
-	if !tokenMatched {
-		rejected := tokenResult.(auth.RefreshTokenPlainRejected)
-		writeError(w, http.StatusUnauthorized, rejected.Reason.Description())
-		return
-	}
-
-	result := server.authService.Refresh(r.Context(), tokenAccepted.Value)
-	accepted, matched := result.(auth.RefreshAccepted)
-	if !matched {
-		rejected := result.(auth.RefreshRejected)
-		writeError(w, http.StatusUnauthorized, rejected.Reason.Description())
-		return
-	}
-
-	setRefreshCookie(w, accepted.RefreshToken)
-	responseResult := authResponseForSubject(accepted.Subject, accepted.AccessToken)
-	responseAccepted, responseMatched := responseResult.(authResponseAccepted)
-	if !responseMatched {
-		rejected := responseResult.(authResponseRejected)
-		writeError(w, http.StatusInternalServerError, rejected.reason)
-		return
-	}
-
-	writeAuthResponse(w, http.StatusOK, responseAccepted.response)
-}
-
-func (server Server) logout(w http.ResponseWriter, r *http.Request) {
-	clearRefreshCookie(w)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (server Server) guest(w http.ResponseWriter, r *http.Request) {
-	result := server.authService.CreateGuest(r.Context())
-	accepted, matched := result.(auth.GuestAccepted)
-	if !matched {
-		rejected := result.(auth.GuestRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
-		return
-	}
-
-	setRefreshCookie(w, accepted.RefreshToken)
-	writeAuthResponse(w, http.StatusCreated, authResponse{
-		SubjectKind: "guest",
-		SubjectID:   accepted.Subject.ID.String(),
-		AccessToken: accepted.AccessToken.String(),
-	})
-}
-
 func (server Server) createOrganization(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
@@ -646,7 +573,7 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.organizationService.ListOrganizations(r.Context(), actor.subject)
+	result := server.organizationService.ListOrganizations(r.Context(), actor.subject, parsePage(r))
 	listed, matched := result.(org.OrganizationsListed)
 	if !matched {
 		rejected := result.(org.ListOrganizationsRejected)
@@ -791,7 +718,7 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value)
+	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value, parsePage(r))
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
@@ -851,7 +778,14 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value)
+	filtersResult := parseTaskListFilters(r)
+	filtersAccepted, filtersMatched := filtersResult.(taskListFiltersAccepted)
+	if !filtersMatched {
+		writeDomainError(w, filtersResult.(taskListFiltersRejected).reason)
+		return
+	}
+
+	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value, filtersAccepted.value, parsePage(r))
 	switch listed := result.(type) {
 	case task.ListRejected:
 		writeDomainError(w, listed.Reason)
@@ -860,10 +794,10 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func tasksToResponse(values []task.Task) tasksResponse {
-	response := tasksResponse{Tasks: make([]taskResponse, 0, len(values))}
+func tasksToResponse(values []task.ListItem) tasksResponse {
+	response := tasksResponse{Tasks: make([]taskListItemResponse, 0, len(values))}
 	for valueIndex := range values {
-		response.Tasks = append(response.Tasks, taskToResponse(values[valueIndex]))
+		response.Tasks = append(response.Tasks, taskListItemToResponse(values[valueIndex]))
 	}
 	return response
 }
@@ -1112,7 +1046,7 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value)
+	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value, parsePage(r))
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		rejected := result.(submission.ListRejected)
@@ -1156,7 +1090,7 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID)
+	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID, parsePage(r))
 	listed, matched := result.(ledger.EntriesListed)
 	if !matched {
 		rejected := result.(ledger.ListEntriesRejected)
@@ -1468,11 +1402,20 @@ func escrowToResponse(escrow ledger.TaskEscrow) taskEscrowResponse {
 	}
 }
 
+func collectibleIDStrings(ids []core.CollectibleID) []string {
+	values := make([]string, 0, len(ids))
+	for index := range ids {
+		values = append(values, ids[index].String())
+	}
+	return values
+}
+
 func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionResponse {
 	response := acceptSubmissionResponse{
-		TaskID:       accepted.TaskID.String(),
-		SubmissionID: accepted.SubmissionID.String(),
-		PayoutKind:   "none",
+		TaskID:         accepted.TaskID.String(),
+		SubmissionID:   accepted.SubmissionID.String(),
+		PayoutKind:     "none",
+		CollectibleIDs: []string{},
 	}
 	switch payout := accepted.Payout.(type) {
 	case ledger.CreditPayout:
@@ -1481,12 +1424,12 @@ func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionRespon
 		response.WorkerUserID = payout.WorkerUserID.String()
 	case ledger.CollectiblePayout:
 		response.PayoutKind = "collectible"
-		response.CollectibleID = payout.CollectibleID.String()
+		response.CollectibleIDs = collectibleIDStrings(payout.CollectibleIDs)
 		response.WorkerUserID = payout.WorkerUserID.String()
 	case ledger.BundlePayout:
 		response.PayoutKind = "bundle"
 		response.PayoutAmount = payout.Amount.Int64()
-		response.CollectibleID = payout.CollectibleID.String()
+		response.CollectibleIDs = collectibleIDStrings(payout.CollectibleIDs)
 		response.WorkerUserID = payout.WorkerUserID.String()
 	}
 	if tip, matched := accepted.Tip.(ledger.CreditTip); matched {
@@ -2270,6 +2213,70 @@ func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeRe
 	}
 }
 
+type taskListFiltersResult interface {
+	taskListFiltersResult()
+}
+
+type taskListFiltersAccepted struct {
+	value task.ListFilters
+}
+
+type taskListFiltersRejected struct {
+	reason core.DomainError
+}
+
+func (taskListFiltersAccepted) taskListFiltersResult() {}
+
+func (taskListFiltersRejected) taskListFiltersResult() {}
+
+func parseTaskListFilters(r *http.Request) taskListFiltersResult {
+	query := r.URL.Query()
+	filters := task.NoListFilters()
+
+	if rawState := query.Get("state"); rawState != "" {
+		stateResult := task.ParseState(rawState)
+		stateAccepted, matched := stateResult.(task.StateAccepted)
+		if !matched {
+			return taskListFiltersRejected{reason: stateResult.(task.StateRejected).Reason}
+		}
+		filters.State = task.StateEquals{Value: stateAccepted.Value}
+	}
+
+	if rawPolicy := query.Get("participation_policy"); rawPolicy != "" {
+		policyResult := task.ParseParticipationPolicy(rawPolicy)
+		policyAccepted, matched := policyResult.(task.ParticipationPolicyAccepted)
+		if !matched {
+			return taskListFiltersRejected{reason: policyResult.(task.ParticipationPolicyRejected).Reason}
+		}
+		filters.Participation = task.ParticipationPolicyEquals{Value: policyAccepted.Value}
+	}
+
+	return taskListFiltersAccepted{value: filters}
+}
+
+func parsePage(r *http.Request) core.Page {
+	query := r.URL.Query()
+	rawLimit := query.Get("limit")
+	rawOffset := query.Get("offset")
+	if rawLimit == "" && rawOffset == "" {
+		return core.DefaultPage()
+	}
+	limit, limitErr := strconv.Atoi(rawLimit)
+	if limitErr != nil {
+		limit = core.DefaultPage().Limit()
+	}
+	offset, offsetErr := strconv.Atoi(rawOffset)
+	if offsetErr != nil {
+		offset = core.DefaultPage().Offset()
+	}
+	pageResult := core.NewPage(limit, offset)
+	accepted, matched := pageResult.(core.PageAccepted)
+	if !matched {
+		return core.DefaultPage()
+	}
+	return accepted.Value
+}
+
 type submissionRequestResult interface {
 	submissionRequestResult()
 }
@@ -2376,6 +2383,48 @@ func memberToResponse(value org.OrganizationMember) organizationMemberResponse {
 
 func teamToResponse(value org.Team) teamResponse {
 	return teamResponse{ID: value.ID.String(), OrganizationID: value.OrganizationID.String(), Name: value.Name.String(), CreatedBy: value.CreatedBy.String()}
+}
+
+func taskListItemToResponse(item task.ListItem) taskListItemResponse {
+	value := item.Task
+	owner := taskOwnerResponseParts(value.Owner)
+	visibility := taskVisibilityResponseParts(value.Visibility)
+	reward := taskRewardResponseParts(value.Reward)
+	active := activeAssigneeResponseParts(item.ActiveAssignee)
+	return taskListItemResponse{
+		ID:                     value.ID.String(),
+		OwnerKind:              owner.kind,
+		Title:                  value.Title.String(),
+		RewardKind:             reward.kind,
+		RewardCreditAmount:     reward.amount,
+		RewardCollectibleCount: reward.collectibleCount,
+		ParticipationPolicy:    value.Participation.String(),
+		AssigneeScope:          value.AssigneeScope.String(),
+		ReservationExpiryHours: value.ReservationTTL.Hours(),
+		State:                  value.State.String(),
+		VisibilityKind:         visibility.kind,
+		AvailabilityKind:       taskAvailabilityKind(value).String(),
+		ViewerAction:           taskViewerAction(value).String(),
+		CreatedBy:              value.CreatedBy.String(),
+		ActiveAssigneeKind:     active.kind,
+		ActiveAssigneeID:       active.id,
+	}
+}
+
+type activeAssigneeParts struct {
+	kind string
+	id   string
+}
+
+func activeAssigneeResponseParts(active task.ActiveAssignee) activeAssigneeParts {
+	switch typed := active.(type) {
+	case task.ActiveUserAssignee:
+		return activeAssigneeParts{kind: task.AssigneeScopeUser.String(), id: typed.UserID.String()}
+	case task.ActiveOrganizationTeamAssignee:
+		return activeAssigneeParts{kind: task.AssigneeScopeOrganizationTeam.String(), id: typed.TeamID.String()}
+	default:
+		return activeAssigneeParts{kind: "", id: ""}
+	}
 }
 
 func taskToResponse(value task.Task) taskResponse {

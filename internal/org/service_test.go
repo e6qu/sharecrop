@@ -68,7 +68,7 @@ func (store *memoryStore) CreateOrganization(_ context.Context, organizationID c
 	return CreateOrganizationStoreAccepted{}
 }
 
-func (store *memoryStore) ListOrganizationsForUser(_ context.Context, userID core.UserID) ListOrganizationsResult {
+func (store *memoryStore) ListOrganizationsForUser(_ context.Context, userID core.UserID, _ core.Page) ListOrganizationsResult {
 	values := make([]Organization, 0)
 	for _, organization := range store.organizations {
 		if _, matched := store.members[organization.ID.String()+":"+userID.String()]; matched {
@@ -111,7 +111,7 @@ func (store *memoryStore) AddTeamMember(context.Context, core.TeamID, core.UserI
 	return TeamMemberAdded{}
 }
 
-func (store *memoryStore) ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID) TeamListResult {
+func (store *memoryStore) ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult {
 	return TeamsListed{Values: []Team{}}
 }
 

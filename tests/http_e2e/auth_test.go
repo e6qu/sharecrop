@@ -71,6 +71,69 @@ func TestAuthHTTPFlow(t *testing.T) {
 	}
 }
 
+func TestRefreshTokenReuseRevokesFamilyHTTP(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	registerResponse := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{
+		Email:    "reuse-" + uniqueTestSuffix(t) + "@example.com",
+		Password: "correct horse battery staple",
+	}, nil)
+	defer registerResponse.Body.Close()
+	assertStatus(t, registerResponse, http.StatusCreated)
+	originalCookie := findRefreshCookie(t, registerResponse)
+
+	// Rotate: the original token is consumed and a new token is issued.
+	rotateResponse := postRefresh(t, server, originalCookie)
+	defer rotateResponse.Body.Close()
+	assertStatus(t, rotateResponse, http.StatusOK)
+	rotatedCookie := findRefreshCookie(t, rotateResponse)
+
+	// Reusing the original (already consumed) token is detected and rejected.
+	reuseResponse := postRefresh(t, server, originalCookie)
+	defer reuseResponse.Body.Close()
+	if reuseResponse.StatusCode == http.StatusOK {
+		t.Fatalf("reused refresh token was accepted, want rejection")
+	}
+
+	// The rotated token belongs to the revoked family and can no longer refresh.
+	revokedResponse := postRefresh(t, server, rotatedCookie)
+	defer revokedResponse.Body.Close()
+	if revokedResponse.StatusCode == http.StatusOK {
+		t.Fatalf("rotated token still refreshed after family revocation, want rejection")
+	}
+}
+
+func postRefresh(t *testing.T, server *httptest.Server, cookie *http.Cookie) *http.Response {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/api/auth/refresh", http.NoBody)
+	if err != nil {
+		t.Fatalf("create refresh request: %v", err)
+	}
+	request.AddCookie(cookie)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("post refresh: %v", err)
+	}
+	return response
+}
+
+func TestOversizedRequestBodyIsRejected(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	huge := strings.Repeat("a", 3<<20)
+	body := `{"email":"big-` + uniqueTestSuffix(t) + `@example.com","password":"` + huge + `"}`
+	response, err := http.Post(server.URL+"/api/auth/register", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post oversized body: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest && response.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body status = %d, want 400 or 413", response.StatusCode)
+	}
+}
+
 type authHTTPRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`

@@ -30,8 +30,8 @@ func TestTaskEscrowResponseWireShape(t *testing.T) {
 }
 
 func TestAcceptSubmissionResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(acceptSubmissionResponse{TaskID: "task-1", SubmissionID: "submission-1", PayoutKind: "credit", PayoutAmount: 25, WorkerUserID: "user-1", CollectibleID: "", TipAmount: 5})
-	assertWireShape(t, encoded, err, `{"task_id":"task-1","submission_id":"submission-1","payout_kind":"credit","payout_amount":25,"worker_user_id":"user-1","collectible_id":"","tip_amount":5}`)
+	encoded, err := json.Marshal(acceptSubmissionResponse{TaskID: "task-1", SubmissionID: "submission-1", PayoutKind: "bundle", PayoutAmount: 25, WorkerUserID: "user-1", CollectibleIDs: []string{"collectible-1", "collectible-2"}, TipAmount: 5})
+	assertWireShape(t, encoded, err, `{"task_id":"task-1","submission_id":"submission-1","payout_kind":"bundle","payout_amount":25,"worker_user_id":"user-1","collectible_ids":["collectible-1","collectible-2"],"tip_amount":5}`)
 }
 
 func TestReviewSubmissionResponseWireShape(t *testing.T) {
@@ -52,6 +52,28 @@ func TestSubmissionResponseWireShape(t *testing.T) {
 func TestAgentCredentialResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(agentCredentialResponse{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read", "submissions_write"}, State: "active"})
 	assertWireShape(t, encoded, err, `{"id":"cred-1","label":"Local agent","scopes":["tasks_read","submissions_write"],"state":"active"}`)
+}
+
+func TestTaskListItemResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskListItemResponse{
+		ID:                     "task-1",
+		OwnerKind:              "user",
+		Title:                  "Label receipts",
+		RewardKind:             "credit",
+		RewardCreditAmount:     25,
+		RewardCollectibleCount: 0,
+		ParticipationPolicy:    "reservation_required",
+		AssigneeScope:          "user",
+		ReservationExpiryHours: 48,
+		State:                  "open",
+		VisibilityKind:         "public",
+		AvailabilityKind:       "reserved",
+		ViewerAction:           "wait",
+		CreatedBy:              "user-1",
+		ActiveAssigneeKind:     "user",
+		ActiveAssigneeID:       "user-2",
+	})
+	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":0,"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"reserved","viewer_action":"wait","created_by":"user-1","active_assignee_kind":"user","active_assignee_id":"user-2"}`)
 }
 
 func assertWireShape(t *testing.T, got []byte, err error, want string) {

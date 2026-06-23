@@ -22,7 +22,7 @@ func TestTaskSeriesListAndFind(t *testing.T) {
 
 	store := db.NewTaskStore(pool)
 
-	listed, matched := store.ListSeries(context.Background(), owner).(task.ListSeriesStoreAccepted)
+	listed, matched := store.ListSeries(context.Background(), owner, core.DefaultPage()).(task.ListSeriesStoreAccepted)
 	if !matched {
 		t.Fatalf("list series rejected")
 	}

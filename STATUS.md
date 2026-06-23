@@ -4,7 +4,23 @@ The repository contains pull request 1 through pull request 26 work. Pull reques
 
 Active task:
 
-- Active branch `task/demo-list-detail-navigation` has replaced the static demo board-like task discovery abstraction with a list-and-actions discovery surface and a separate task detail page. The branch is ready for pull request review.
+- Active branch `task/full-review-improvements` carries a multi-area review and a set of improvements across security, backend correctness, the browser UI, the data model, and code structure. The branch is ready for pull request review. See the implemented surface below and [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/full-review-improvements`:
+
+- Submission read paths keep redaction for unauthorized viewers (receipt token holders) and return unredacted data to authorized requesters and organization reviewers; tests pin both behaviors and confirm non-reviewers receive `403`.
+- Submission accept, reject, and request-changes authorize the task creator or an organization member with the review-submissions permission, resolved inside the review transaction.
+- The Sharecrop schema parser and value parser bound nesting depth and reject overly nested input.
+- A request body size limit applies to all JSON HTTP endpoints.
+- Refresh tokens belong to a family; reusing a consumed or revoked token revokes the whole family.
+- MCP HTTP sessions are evicted after an idle timeout.
+- A concurrency test confirms the transactional acceptance path keeps at most one accepted submission per task.
+- A task can escrow multiple collectible rewards; acceptance transfers all held collectibles to the worker and refund returns them all.
+- List endpoints accept `limit` and `offset` pagination through a `core.Page` value type, defaulting to a bounded page.
+- The task list accepts `state` and `participation_policy` filters, and task list items expose the active reservation assignee.
+- The browser task creation form exposes public, private, and specific-user visibility; the dashboard shows task-state guidance, a task-state filter, the active assignee on task rows, and an organizations panel that lists and creates organizations.
+- Checkbox and label accessibility and badge and label contrast were improved through shared `Sharecrop.Ui` helpers.
+- Auth HTTP handlers were moved from `internal/http/server.go` into `internal/http/auth_handlers.go`.
 
 Implemented surface:
 
@@ -299,6 +315,12 @@ Last observed checks on `task/demo-list-detail-navigation`:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.
+
+Last observed checks on `task/full-review-improvements`:
+
+- `make check-format`, `make check-contracts`, `make check-policy`, `make check-ts`, `make check-copy-paste`, `make check-dead-code`, `make lint`, `make vet`, `make test`, and `make test-deno` passed.
+- `make build` and `make frontend` passed.
+- `make test-integration`, `make test-http`, and `make e2e-ui` passed with local Postgres access.
 
 Blocking issues:
 

@@ -12,6 +12,7 @@ import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Ui as Ui exposing (testId)
@@ -42,7 +43,8 @@ type alias LoggedInModel =
     , createTitle : String
     , createDescription : String
     , createRewardAmount : String
-    , createPublic : Bool
+    , createVisibility : String
+    , createScopeUserId : String
     , createParticipationPolicy : String
     , createReservationHours : String
     , createMessage : Maybe String
@@ -50,6 +52,7 @@ type alias LoggedInModel =
     , fundAmount : String
     , fundMessage : Maybe String
     , tasks : List Task.TaskListItemResponse
+    , taskStateFilter : String
     , selectedTask : Maybe TaskDetail
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
@@ -76,6 +79,9 @@ type alias LoggedInModel =
     , collectibleMessage : Maybe String
     , awardTaskId : String
     , awardMessage : Maybe String
+    , organizations : List Organization.OrganizationResponse
+    , createOrgName : String
+    , orgMessage : Maybe String
     }
 
 
@@ -122,10 +128,12 @@ type Msg
     | BalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | LedgerReceived (Result Http.Error Ledger.LedgerResponse)
     | TasksReceived (Result Http.Error Task.TasksResponse)
+    | TaskStateFilterChanged String
     | CreateTitleChanged String
     | CreateDescriptionChanged String
     | CreateRewardAmountChanged String
-    | CreatePublicChanged Bool
+    | CreateVisibilityChanged String
+    | CreateScopeUserIdChanged String
     | CreateParticipationChanged String
     | CreateReservationHoursChanged String
     | CreateTaskClicked
@@ -184,6 +192,10 @@ type Msg
     | AwardTaskIdChanged String
     | AwardClicked String
     | AwardReceived (Result Http.Error Collectible.CollectibleResponse)
+    | OrganizationsReceived (Result Http.Error Organization.OrganizationsResponse)
+    | CreateOrgNameChanged String
+    | CreateOrgClicked
+    | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
 
@@ -222,7 +234,8 @@ emptyLoggedIn response =
     , createTitle = ""
     , createDescription = ""
     , createRewardAmount = ""
-    , createPublic = False
+    , createVisibility = visibilityDefaultTag
+    , createScopeUserId = ""
     , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
     , createReservationHours = "48"
     , createMessage = Nothing
@@ -230,6 +243,7 @@ emptyLoggedIn response =
     , fundAmount = ""
     , fundMessage = Nothing
     , tasks = []
+    , taskStateFilter = ""
     , selectedTask = Nothing
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
@@ -256,6 +270,9 @@ emptyLoggedIn response =
     , collectibleMessage = Nothing
     , awardTaskId = ""
     , awardMessage = Nothing
+    , organizations = []
+    , createOrgName = ""
+    , orgMessage = Nothing
     }
 
 
@@ -321,6 +338,13 @@ update msg model =
         TasksReceived result ->
             ( updateLoggedIn model (\state -> { state | tasks = tasksFromResult result }), Cmd.none )
 
+        TaskStateFilterChanged value ->
+            let
+                updated =
+                    updateLoggedIn model (\state -> { state | taskStateFilter = value })
+            in
+            withSession updated (\state -> ( updated, fetchTasks state.accessToken value ))
+
         CreateTitleChanged value ->
             ( updateLoggedIn model (\state -> { state | createTitle = value }), Cmd.none )
 
@@ -330,8 +354,11 @@ update msg model =
         CreateRewardAmountChanged value ->
             ( updateLoggedIn model (\state -> { state | createRewardAmount = value }), Cmd.none )
 
-        CreatePublicChanged value ->
-            ( updateLoggedIn model (\state -> { state | createPublic = value }), Cmd.none )
+        CreateVisibilityChanged value ->
+            ( updateLoggedIn model (\state -> { state | createVisibility = value }), Cmd.none )
+
+        CreateScopeUserIdChanged value ->
+            ( updateLoggedIn model (\state -> { state | createScopeUserId = value }), Cmd.none )
 
         CreateParticipationChanged value ->
             ( updateLoggedIn model (\state -> { state | createParticipationPolicy = value }), Cmd.none )
@@ -611,6 +638,21 @@ update msg model =
         AwardReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
 
+        OrganizationsReceived result ->
+            ( updateLoggedIn model (\state -> { state | organizations = organizationsFromResult result }), Cmd.none )
+
+        CreateOrgNameChanged value ->
+            ( updateLoggedIn model (\state -> { state | createOrgName = value }), Cmd.none )
+
+        CreateOrgClicked ->
+            withSession model (\state -> createOrgCommand model state)
+
+        CreateOrgReceived (Ok organization) ->
+            ( updateLoggedIn model (\state -> { state | createOrgName = "", orgMessage = Just ("Created organization " ++ organization.name) }), refreshOrganizations model )
+
+        CreateOrgReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | orgMessage = Just (httpErrorLabel error) }), Cmd.none )
+
         LinkClicked request ->
             case request of
                 Browser.Internal url ->
@@ -833,7 +875,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token, fetchCredentials token, fetchCollectibles token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "", fetchCredentials token, fetchCollectibles token, fetchOrganizations token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -860,7 +902,7 @@ refreshTasksAndLedger : Model -> Cmd Msg
 refreshTasksAndLedger model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken, fetchBalance state.accessToken, fetchLedger state.accessToken ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter, fetchBalance state.accessToken, fetchLedger state.accessToken ]
 
         LoggedOut ->
             Cmd.none
@@ -870,7 +912,7 @@ refreshTasksAndDiscovery : Model -> Cmd Msg
 refreshTasksAndDiscovery model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken, fetchDiscovery state.accessToken state.discoveryIncludeReserved ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter, fetchDiscovery state.accessToken state.discoveryIncludeReserved ]
 
         LoggedOut ->
             Cmd.none
@@ -997,9 +1039,17 @@ fetchLedger token =
     authorizedRequest "GET" token "/api/credits/ledger" Http.emptyBody (Http.expectJson LedgerReceived Ledger.ledgerResponseDecoder)
 
 
-fetchTasks : String -> Cmd Msg
-fetchTasks token =
-    authorizedRequest "GET" token "/api/tasks?scope=user" Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
+fetchTasks : String -> String -> Cmd Msg
+fetchTasks token stateFilter =
+    let
+        query =
+            if stateFilter == "" then
+                "/api/tasks?scope=user"
+
+            else
+                "/api/tasks?scope=user&state=" ++ stateFilter
+    in
+    authorizedRequest "GET" token query Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
 
 
 fetchCredentials : String -> Cmd Msg
@@ -1136,6 +1186,46 @@ fetchCollectibles token =
     authorizedRequest "GET" token "/api/collectibles" Http.emptyBody (Http.expectJson CollectiblesReceived Collectible.collectiblesResponseDecoder)
 
 
+fetchOrganizations : String -> Cmd Msg
+fetchOrganizations token =
+    authorizedRequest "GET" token "/api/organizations" Http.emptyBody (Http.expectJson OrganizationsReceived Organization.organizationsResponseDecoder)
+
+
+refreshOrganizations : Model -> Cmd Msg
+refreshOrganizations model =
+    case model.session of
+        LoggedIn state ->
+            fetchOrganizations state.accessToken
+
+        LoggedOut ->
+            Cmd.none
+
+
+createOrgCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+createOrgCommand model state =
+    if String.isEmpty (String.trim state.createOrgName) then
+        ( updateLoggedIn model (\current -> { current | orgMessage = Just "Organization name is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | orgMessage = Nothing })
+        , authorizedRequest "POST"
+            state.accessToken
+            "/api/organizations"
+            (Http.jsonBody (Encode.object [ ( "name", Encode.string (String.trim state.createOrgName) ) ]))
+            (Http.expectJson CreateOrgReceived Organization.organizationResponseDecoder)
+        )
+
+
+organizationsFromResult : Result Http.Error Organization.OrganizationsResponse -> List Organization.OrganizationResponse
+organizationsFromResult result =
+    case result of
+        Ok response ->
+            response.organizations
+
+        Err _ ->
+            []
+
+
 postCollectible : String -> String -> Collectible.CollectibleKind -> Collectible.CollectibleTransferPolicy -> Cmd Msg
 postCollectible token name kind policy =
     authorizedRequest "POST"
@@ -1179,7 +1269,7 @@ createTaskRequestBody state =
         , ( "description", Encode.string state.createDescription )
         , ( "reward", createRewardBody state.createRewardAmount )
         , ( "participation", createParticipationBody state )
-        , ( "visibility", Encode.object [ ( "kind", Encode.string (if state.createPublic then "public" else "default") ), ( "user_id", Encode.string "" ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string "" ) ] )
+        , ( "visibility", createVisibilityBody state )
         , ( "placement", Encode.object [ ( "kind", Encode.string "standalone" ), ( "series_id", Encode.string "" ), ( "series_title", Encode.string "" ), ( "series_position", Encode.int 0 ) ] )
         , ( "response_schema_json", Encode.string "{\"kind\":\"freeform\"}" )
         , ( "payload", Encode.object [ ( "kind", Encode.string "none" ), ( "json", Encode.string "" ) ] )
@@ -1206,6 +1296,56 @@ createParticipationBody state =
         [ ( "policy", Encode.string state.createParticipationPolicy )
         , ( "assignee_scope", Encode.string (assigneeScopeTag Task.TaskAssigneeScopeUser) )
         , ( "reservation_expiry_hours", Encode.int (reservationHoursValue state.createReservationHours) )
+        ]
+
+
+visibilityPublicTag : String
+visibilityPublicTag =
+    "public"
+
+
+visibilityDefaultTag : String
+visibilityDefaultTag =
+    "default"
+
+
+visibilityUserTag : String
+visibilityUserTag =
+    "user"
+
+
+allVisibilityTags : List String
+allVisibilityTags =
+    [ visibilityPublicTag, visibilityDefaultTag, visibilityUserTag ]
+
+
+visibilityLabel : String -> String
+visibilityLabel tag =
+    if tag == visibilityPublicTag then
+        "Public"
+
+    else if tag == visibilityUserTag then
+        "Specific user"
+
+    else
+        "Private (default)"
+
+
+createVisibilityBody : LoggedInModel -> Encode.Value
+createVisibilityBody state =
+    Encode.object
+        [ ( "kind", Encode.string state.createVisibility )
+        , ( "user_id"
+          , Encode.string
+                (if state.createVisibility == visibilityUserTag then
+                    state.createScopeUserId
+
+                 else
+                    ""
+                )
+          )
+        , ( "team_id", Encode.string "" )
+        , ( "organization_id", Encode.string "" )
         ]
 
 
@@ -1415,6 +1555,39 @@ dashboardView origin state =
         , tasksView origin state
         , agentsView origin state
         , collectiblesView state
+        , organizationsView state
+        ]
+
+
+organizationsView : LoggedInModel -> Html Msg
+organizationsView state =
+    Ui.card
+        [ Ui.sectionTitle "Organizations"
+        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Organizations you belong to. Create one to own tasks and credits as a team." ]
+        , organizationsList state.organizations
+        , form [ Html.Attributes.class "mt-3 flex flex-wrap items-end gap-2", onSubmit CreateOrgClicked ]
+            [ Ui.fieldLabel "New organization"
+                [ Ui.textInput [ type_ "text", placeholder "Organization name", value state.createOrgName, onInput CreateOrgNameChanged, testId "create-org-name" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "create-org" ] "Create organization"
+            ]
+        , maybeNote state.orgMessage "org-message"
+        ]
+
+
+organizationsList : List Organization.OrganizationResponse -> Html Msg
+organizationsList organizations =
+    if List.isEmpty organizations then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "organizations-empty" ] [ text "You do not belong to any organizations yet." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "organizations" ] (List.map organizationRow organizations)
+
+
+organizationRow : Organization.OrganizationResponse -> Html Msg
+organizationRow organization =
+    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "organization-row" ]
+        [ p [ Html.Attributes.class "font-medium" ] [ text organization.name ]
+        , Ui.badge organization.id
         ]
 
 
@@ -1440,25 +1613,36 @@ createTaskView : LoggedInModel -> Html Msg
 createTaskView state =
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit CreateTaskClicked ]
         [ Ui.sectionTitle "Create a task"
-        , Ui.textInput [ type_ "text", placeholder "Title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ]
-        , Ui.textarea_
-            [ placeholder "Description"
-            , value state.createDescription
-            , onInput CreateDescriptionChanged
-            , Html.Attributes.rows 3
-            , testId "create-description"
-            ]
-        , Ui.textInput [ type_ "number", placeholder "Credit reward amount (blank for no reward)", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ]
+        , Ui.fieldLabel "Title" [ Ui.textInput [ type_ "text", placeholder "Short, descriptive title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ] ]
+        , Ui.fieldLabel "Description" [ Ui.textarea_ [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ] ]
+        , Ui.fieldLabel "Credit reward" [ Ui.textInput [ type_ "number", placeholder "Blank for no reward", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
         , Ui.label_ "Participation"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (participationButton state.createParticipationPolicy) allParticipationPolicies)
-        , Ui.textInput [ type_ "number", placeholder "Reservation expiry hours", value state.createReservationHours, onInput CreateReservationHoursChanged, testId "create-reservation-hours" ]
-        , label [ Html.Attributes.class "flex items-center gap-2 text-sm" ]
-            [ Html.input [ type_ "checkbox", checked state.createPublic, onClick (CreatePublicChanged (not state.createPublic)), testId "create-public" ] []
-            , span [] [ text "Publish publicly" ]
-            ]
+        , Ui.fieldLabel "Reservation expiry (hours)" [ Ui.textInput [ type_ "number", placeholder "48", value state.createReservationHours, onInput CreateReservationHoursChanged, testId "create-reservation-hours" ] ]
+        , Ui.label_ "Visibility"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (visibilityButton state.createVisibility) allVisibilityTags)
+        , visibilityScopeField state
         , Ui.primaryButton [ type_ "submit", testId "create-task" ] "Create task"
         , maybeNote state.createMessage "create-message"
         ]
+
+
+visibilityButton : String -> String -> Html Msg
+visibilityButton selected tag =
+    chooserButton (selected == tag)
+        (CreateVisibilityChanged tag)
+        ("create-visibility-" ++ tag)
+        (visibilityLabel tag)
+
+
+visibilityScopeField : LoggedInModel -> Html Msg
+visibilityScopeField state =
+    if state.createVisibility == visibilityUserTag then
+        Ui.fieldLabel "Share with user ID"
+            [ Ui.textInput [ type_ "text", placeholder "User ID to grant access", value state.createScopeUserId, onInput CreateScopeUserIdChanged, testId "create-scope-user" ] ]
+
+    else
+        text ""
 
 
 participationButton : String -> Task.TaskParticipationPolicy -> Html Msg
@@ -1525,9 +1709,44 @@ tasksView : String -> LoggedInModel -> Html Msg
 tasksView origin state =
     Ui.card
         [ Ui.sectionTitle "My tasks"
+        , Ui.label_ "Filter by state"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
         , tasksList state.tasks
         , taskDetailView origin state
         ]
+
+
+taskStateFilterOptions : List ( String, String )
+taskStateFilterOptions =
+    [ ( "", "All" )
+    , ( "open", "Open" )
+    , ( "draft", "Draft" )
+    , ( "closed", "Closed" )
+    ]
+
+
+taskFilterButton : String -> ( String, String ) -> Html Msg
+taskFilterButton selected ( tag, labelText ) =
+    chooserButton (selected == tag)
+        (TaskStateFilterChanged tag)
+        ("task-filter-"
+            ++ (if tag == "" then
+                    "all"
+
+                else
+                    tag
+               )
+        )
+        labelText
+
+
+activeAssigneeSuffix : Task.TaskListItemResponse -> String
+activeAssigneeSuffix item =
+    if item.activeAssigneeID == "" then
+        ""
+
+    else
+        " · reserved by " ++ item.activeAssigneeID
 
 
 tasksList : List Task.TaskListItemResponse -> Html Msg
@@ -1544,7 +1763,7 @@ taskRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
             ]
         , Ui.secondaryButton [ onClick (SelectTask item.id), testId "view-task" ] "View"
         ]
@@ -1562,6 +1781,7 @@ taskDetailView origin state =
                 , p [ Html.Attributes.class "text-sm" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
                 , p [ Html.Attributes.class "text-sm" ] [ text ("Participation: " ++ participationPolicyLabel detail.participationPolicy) ]
                 , p [ Html.Attributes.class "text-sm" ] [ text ("Reservation expiry: " ++ String.fromInt detail.reservationExpiryHours ++ " hours") ]
+                , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
                 , div [ Html.Attributes.class "flex gap-2" ]
                     [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
                     , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
@@ -1752,10 +1972,7 @@ discoveryView : LoggedInModel -> Html Msg
 discoveryView state =
     Ui.card
         [ Ui.sectionTitle "Discover public tasks"
-        , label [ Html.Attributes.class "flex items-center gap-2 text-sm" ]
-            [ Html.input [ type_ "checkbox", checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] []
-            , span [] [ text "Include reserved" ]
-            ]
+        , Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
         , discoveryList state.discoveryTasks
         ]
 
@@ -1774,7 +1991,7 @@ discoveryRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "discovery-task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item) ]
             ]
         , Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View"
         ]
@@ -1932,10 +2149,8 @@ reviewControls state =
                 [ span [ Html.Attributes.class "text-xs font-semibold text-slate-600" ] [ text "Tip" ]
                 , Html.input [ Html.Attributes.class "rounded border border-slate-300 px-3 py-2 text-sm", type_ "number", value state.reviewTip, onInput ReviewTipChanged, testId "review-tip" ] []
                 ]
-            , label [ Html.Attributes.class "flex items-center gap-2 pt-6 text-sm text-slate-700" ]
-                [ Html.input [ type_ "checkbox", checked state.reviewBan, onCheck ReviewBanChanged, testId "review-ban" ] []
-                , text "Ban implementor"
-                ]
+            , div [ Html.Attributes.class "pt-6" ]
+                [ Ui.checkbox [ checked state.reviewBan, onCheck ReviewBanChanged, testId "review-ban" ] "Ban implementor" ]
             ]
         , maybeNote state.reviewMessage "review-message"
         ]
@@ -2336,6 +2551,25 @@ credentialStateLabel state =
 
         Agent.AgentCredentialStateRevoked ->
             "revoked"
+
+
+taskStateGuidance : Task.TaskState -> String
+taskStateGuidance state =
+    case state of
+        Task.TaskStateDraft ->
+            "Next step: fund this task (if it offers a reward) and then open it so workers can submit."
+
+        Task.TaskStateOpen ->
+            "Workers can submit now. Review submissions below to accept, request changes, or reject."
+
+        Task.TaskStateClosed ->
+            "This task is closed. An accepted submission has been settled."
+
+        Task.TaskStateCancelled ->
+            "This task was cancelled. Any escrowed reward was refunded."
+
+        Task.TaskStateExpired ->
+            "This task expired without an accepted submission."
 
 
 taskStateLabel : Task.TaskState -> String

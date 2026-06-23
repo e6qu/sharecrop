@@ -8,7 +8,7 @@ import (
 
 type Store interface {
 	CreateCollectible(context.Context, Collectible) CreateStoreResult
-	ListCollectibles(context.Context, core.UserID) ListStoreResult
+	ListCollectibles(context.Context, core.UserID, core.Page) ListStoreResult
 	FundCollectibleReward(context.Context, FundRewardStoreCommand) FundRewardResult
 	RefundCollectibleReward(context.Context, RefundRewardStoreCommand) RefundRewardResult
 }
@@ -88,8 +88,8 @@ func (CollectiblesListed) listResult() {}
 
 func (ListRejected) listResult() {}
 
-func (service Service) ListCollectibles(ctx context.Context, owner core.UserID) ListResult {
-	storeResult := service.store.ListCollectibles(ctx, owner)
+func (service Service) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) ListResult {
+	storeResult := service.store.ListCollectibles(ctx, owner, page)
 	listed, matched := storeResult.(ListStoreListed)
 	if !matched {
 		return ListRejected{Reason: storeResult.(ListStoreRejected).Reason}
@@ -126,7 +126,7 @@ type RefundRewardResult interface {
 }
 
 type RewardRefunded struct {
-	Value Collectible
+	Values []Collectible
 }
 
 type RefundRewardRejected struct {

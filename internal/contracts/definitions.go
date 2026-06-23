@@ -326,6 +326,8 @@ func taskModule() Module {
 					{Name: NewElmValueName("availabilityKind"), JSONName: NewJSONFieldName("availability_kind"), Type: NamedRef{Name: NewElmTypeName("TaskAvailabilityKind")}},
 					{Name: NewElmValueName("viewerAction"), JSONName: NewJSONFieldName("viewer_action"), Type: NamedRef{Name: NewElmTypeName("TaskViewerAction")}},
 					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
+					{Name: NewElmValueName("activeAssigneeKind"), JSONName: NewJSONFieldName("active_assignee_kind"), Type: StringRef{}},
+					{Name: NewElmValueName("activeAssigneeID"), JSONName: NewJSONFieldName("active_assignee_id"), Type: StringRef{}},
 				},
 			},
 			Product{
@@ -502,7 +504,7 @@ func ledgerModule() Module {
 					{Name: NewElmValueName("payoutKind"), JSONName: NewJSONFieldName("payout_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("payoutAmount"), JSONName: NewJSONFieldName("payout_amount"), Type: IntRef{}},
 					{Name: NewElmValueName("workerUserID"), JSONName: NewJSONFieldName("worker_user_id"), Type: StringRef{}},
-					{Name: NewElmValueName("collectibleID"), JSONName: NewJSONFieldName("collectible_id"), Type: StringRef{}},
+					{Name: NewElmValueName("collectibleIDs"), JSONName: NewJSONFieldName("collectible_ids"), Type: ListRef{Element: StringRef{}}},
 					{Name: NewElmValueName("tipAmount"), JSONName: NewJSONFieldName("tip_amount"), Type: IntRef{}},
 				},
 			},

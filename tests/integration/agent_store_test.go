@@ -43,7 +43,7 @@ func TestAgentCredentialCreateVerifyListRevoke(t *testing.T) {
 		t.Fatalf("tasks_read scope missing after round trip")
 	}
 
-	listed, listedMatched := store.ListCredentials(context.Background(), owner).(agent.ListStoreListed)
+	listed, listedMatched := store.ListCredentials(context.Background(), owner, core.DefaultPage()).(agent.ListStoreListed)
 	if !listedMatched {
 		t.Fatalf("list credentials rejected")
 	}

@@ -1,5 +1,23 @@
 # What We Did
 
+A multi-area review of the product, browser UI, HTTP and MCP API, backend domain, data model, tests, and security produced a set of improvements landed on `task/full-review-improvements`:
+
+- Pinned submission redaction behavior: unauthorized receipt-token holders receive redacted data, authorized requesters and organization reviewers receive unredacted data, and non-reviewers receive `403`. The earlier reported "list leak" was not a leak; the redaction model is for unauthorized viewers.
+- Authorized submission accept, reject, and request-changes for organization members with the review-submissions permission, resolved inside the review transaction so authorization cannot drift from the write.
+- Bounded the Sharecrop schema and value parsers by nesting depth.
+- Added a request body size limit to the JSON HTTP endpoints.
+- Added refresh-token-family reuse revocation backed by a `family_id` column.
+- Added an idle-timeout eviction to the in-memory MCP HTTP session store.
+- Kept the transactional acceptance checks in the database transaction rather than moving them to the service layer, and added a concurrency test proving at most one accepted submission per task. Moving the checks out would have reintroduced a time-of-check/time-of-use gap.
+- Added multiple collectible rewards per task, transferring all held collectibles on acceptance and returning them on refund.
+- Added `limit`/`offset` pagination to list endpoints through a `core.Page` value type.
+- Added `state` and `participation_policy` filters to the task list and exposed the active reservation assignee on task list items, fixing an operator-precedence bug in the user-scope list query.
+- Added browser task visibility controls (public, private, specific user), task-state guidance, a task-state filter, active-assignee display, an organizations panel, and improved checkbox and label accessibility and contrast through shared `Sharecrop.Ui` helpers.
+- Extracted the auth HTTP handlers into `internal/http/auth_handlers.go`.
+- Ran a minimalism review of the branch and applied the safe, behavior-preserving simplifications it confirmed.
+
+Standalone (user-owned) teams, deeper organization context in the browser, and a fuller decomposition of `internal/http/server.go` and `web/elm/src/Main.elm` were left as follow-ups in [DO_NEXT.md](./DO_NEXT.md).
+
 The project plan was written in [PLAN.md](./PLAN.md).
 
 The agent workflow was documented in [AGENTS.md](./AGENTS.md).
