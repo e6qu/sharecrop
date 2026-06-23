@@ -1,19 +1,23 @@
 # Status
 
-The repository contains pull request 1 through pull request 30 work, merged into `main`.
+The repository contains pull request 1 through pull request 31 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/org-followups` (pull request 31) adds linkable, RBAC-aware pages for every entity a user can reach and finishes the organization follow-ups. The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/team-pages-and-module-split` adds team detail pages and a team-assignee selector, then decomposes the HTTP and browser monoliths. The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/org-followups`:
+Implemented in `task/team-pages-and-module-split`:
 
-- The static demo rewrites its seed tasks to be self-contained (input, deliverable, acceptance) and adds hash-routed pages, including per-user profiles.
-- The browser app gives each entity its own URL: routed `/organizations/{id}`, role-aware `/tasks/{id}` (owner controls versus worker controls), `/users/{id}` profiles, `/users/{id}/work`, `/users/{id}/submissions`, `/collectibles/{id}`, and `/series/{id}`.
-- A `GET /api/organizations/{id}/members` endpoint backs a real member list restricted to active members. `GET /api/users/{id}` exposes a user's public tasks, `GET /api/users/{id}/work` their public assignments, and `GET /api/users/{id}/submissions` their own submissions (self only).
-- Role-based access control is enforced and tested for every new surface: a private task never leaks through task detail, discovery, or a profile; submissions are visible only to their submitter; the member roster only to members.
+- `GET /api/teams/{id}` returns a team and its roster, gated so only the team owner, a team member, or (for an organization team) a member of the owning organization may read it. A routed `/teams/{id}` page shows the team and its members; organization team rows link to it.
+- The create-task form offers an assignee scope (user or organization team) instead of always assigning to a user.
+- The organization and team HTTP handlers moved into `internal/http/organizations.go`, the funding handlers into `internal/http/funding.go`, and the pure Elm label helpers into `web/elm/src/Sharecrop/Labels.elm`, shrinking `server.go` and `Main.elm` with no behavior change.
+
+Implemented earlier in `task/org-followups` (pull request 31, merged):
+
+- The static demo rewrites its seed tasks to be self-contained and adds hash-routed pages, including per-user profiles.
+- The browser app gives each entity its own URL: routed `/organizations/{id}`, role-aware `/tasks/{id}`, `/users/{id}` profiles, `/users/{id}/work`, `/users/{id}/submissions`, `/collectibles/{id}`, and `/series/{id}`.
+- `GET /api/organizations/{id}/members`, `GET /api/users/{id}`, `GET /api/users/{id}/work`, and `GET /api/users/{id}/submissions` back those pages, each with role-based access control enforced and tested against leaks.
 - The create-task form offers team and organization visibility scopes, and the funding form can fund a task from organization credits.
-- The user-profile, work, and submissions HTTP handlers live in their own `internal/http/users.go` file.
 
 Implemented in `task/multi-page-routing`:
 

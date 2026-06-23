@@ -2,10 +2,9 @@
 
 Prioritized queue:
 
-1. Continue decomposing the HTTP and browser monoliths. `internal/http/server.go` and `web/elm/src/Main.elm` are still large. Auth handlers are in `internal/http/auth_handlers.go`, series handlers in `series.go`, and user-profile/work/submissions handlers in `users.go`; extract further cohesive handler groups (organizations, funding) and split `Main.elm` into view and API modules without behavior change.
-2. Add team-assignee selection (organization-team and standalone-team) to the task creation form. Team and organization visibility scopes are wired; assignee scope is still user-only in the browser form.
-3. Surface a team page and a team roster in the browser (standalone and organization teams are created and listed but have no detail page).
-4. Revisit collectible or inventory-based tips.
+1. Continue decomposing the browser monolith. `web/elm/src/Main.elm` is still large even after extracting `Sharecrop.Labels`; split it into view, update, and API/command modules without behavior change. On the HTTP side, organization, team, funding, user, series, and credits handlers now live in their own files; the remaining `server.go` is mostly task, submission, and reservation handlers that could split next.
+2. Add a standalone-team membership flow. Organization teams add members through provisioning, but standalone (user-owned) teams have no way to add members yet, so their rosters are always empty.
+3. Revisit collectible or inventory-based tips.
 5. Redesign anonymous worker identity and payout.
 6. Add user-issued or organization-issued tokens.
 7. Add crypto reward metadata.
