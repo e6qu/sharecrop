@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v5";
+const storageKey = "sharecrop-demo-state-v6";
 
 const policy = {
   open: "open",
@@ -61,8 +61,20 @@ const seedTasks = [
     reward: rewardBundle(45, ["Ripe Lens"]),
     lifecycle: lifecycle.open,
     availability: availability.submitted,
-    objective: "You are given 20 orchard photos by URL. Return one or more condition labels for each photo (ripe, unripe, or damaged) in the labels array. Accepted when every photo has at least one label from that set.",
+    objective: "Classify each of the 6 fruit observations below as ripe, unripe, or damaged. Return one label per observation, in order, in the labels array. Accepted when all 6 have a label from that set.",
     schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string"}}}}',
+    inputs: [{
+      kind: "list",
+      label: "6 fruit observations to classify, in order:",
+      items: [
+        "Deep red skin, firm to the touch, no blemishes",
+        "Mostly green, very hard, no give",
+        "Fully colored with a soft brown bruise on one side",
+        "Evenly colored, slight give when pressed",
+        "Pale and small, skin still tight and hard",
+        "Red but the skin is split with a mold spot",
+      ],
+    }],
     reservations: [{ id: "res-orchard-jules", by: "jules", state: "active", expires: "48h" }],
     submissions: [{
       id: "sub-orchard-jules",
@@ -88,8 +100,20 @@ const seedTasks = [
     reward: rewardCredits(30),
     lifecycle: lifecycle.open,
     availability: availability.awaitingApproval,
-    objective: "Open the linked batch of 8 vendor invoices and add up their grand totals. Submit the combined amount as a decimal string in total, for example 1240.50. Accepted when it matches the verified sum within 0.01.",
+    objective: "Add up the grand totals of the 5 invoices below. Submit the combined amount as a decimal string in total, for example 1240.50. Accepted when it matches the verified sum within 0.01.",
     schema: '{"kind":"object","fields":{"total":{"kind":"decimal_string"}}}',
+    inputs: [{
+      kind: "records",
+      label: "5 invoices — sum the grand totals:",
+      columns: ["Invoice", "Vendor", "Grand total"],
+      rows: [
+        ["INV-1001", "Birch Supply", "312.40"],
+        ["INV-1002", "Cedar Freight", "88.10"],
+        ["INV-1003", "Delta Print", "146.00"],
+        ["INV-1004", "Ferro Metals", "502.75"],
+        ["INV-1005", "Grove Cafe", "41.25"],
+      ],
+    }],
     reservations: [{ id: "res-invoice-ren", by: "ren", state: "requested", expires: "24h" }],
     timeline: ["Ren requested clearance to work on invoice extraction."],
   }),
@@ -105,8 +129,13 @@ const seedTasks = [
     reward: rewardNone(),
     lifecycle: lifecycle.open,
     availability: availability.available,
-    objective: "Propose 5 short name ideas (max 3 words each) for a new contributor achievement badge. Submit them as plain text, one per line. Accepted when at least 5 distinct, on-brand names are provided.",
+    objective: "Propose 5 short name ideas (max 3 words each) for the achievement described below. Submit them as plain text, one per line. Accepted when at least 5 distinct, on-brand names are provided.",
     schema: '{"kind":"freeform"}',
+    inputs: [{
+      kind: "text",
+      label: "Achievement to name:",
+      body: "A contributor has had 10 submissions accepted across public tasks. Tone: encouraging and short. No numbers in the name.",
+    }],
     timeline: ["Ren opened the brief for public submissions."],
   }),
   task({
@@ -121,8 +150,13 @@ const seedTasks = [
     reward: rewardCredits(80),
     lifecycle: lifecycle.open,
     availability: availability.available,
-    objective: "You are given a CSV of 200 map tiles whose region column is spelled inconsistently. Pick the single canonical region name for the file and rate its overall data quality from 0 to 100. Submit region and quality. Accepted when the region matches the canonical list in the brief.",
+    objective: "The region values below are all meant to be the same place, spelled inconsistently. Pick the single canonical name (from the canonical options) and rate the data quality from 0 to 100. Submit region and quality.",
     schema: '{"kind":"object","fields":{"region":{"kind":"string"},"quality":{"kind":"integer"}}}',
+    inputs: [{
+      kind: "list",
+      label: "Region values found in the file (canonical options: North Vale, South Vale, East Vale):",
+      items: ["Nørth Vale", "north vale", "N. Vale", "Northvale", "north  vale", "North Vale"],
+    }],
     timeline: ["Mission opened with credit escrow held."],
   }),
   task({
@@ -137,8 +171,20 @@ const seedTasks = [
     reward: rewardCollectible(["Vault Seal"]),
     lifecycle: lifecycle.open,
     availability: availability.changesRequested,
-    objective: "Review the linked ledger of 50 collectible transfers and flag any that look fraudulent, such as the same item moved twice or a transfer to a banned account. Submit the transfer ids to investigate in suspicious_ids, each with a one-line reason in the thread.",
+    objective: "Review the transfer ledger below and flag any rows that look fraudulent — the same item moved twice, or a transfer to a banned account. Submit the transfer ids to investigate in suspicious_ids.",
     schema: '{"kind":"object","fields":{"suspicious_ids":{"kind":"array","items":{"kind":"string"}}}}',
+    inputs: [{
+      kind: "records",
+      label: "Transfer ledger (accounts starting with banned- are blocked):",
+      columns: ["Transfer", "Item", "From", "To"],
+      rows: [
+        ["cx-17", "Vault Seal #2", "mara", "jules"],
+        ["cx-18", "Field Badge #9", "tala", "ren"],
+        ["cx-19", "Vault Seal #2", "jules", "sol"],
+        ["cx-20", "Storm Pin #1", "ren", "banned-0042"],
+        ["cx-21", "Drone Patch #4", "sol", "tala"],
+      ],
+    }],
     reservations: [{ id: "res-audit-tala", by: "tala", state: "active", expires: "12h" }],
     submissions: [{
       id: "sub-audit-tala",
@@ -164,8 +210,13 @@ const seedTasks = [
     reward: rewardBundle(25, ["Storm Pin"]),
     lifecycle: lifecycle.open,
     availability: availability.submitted,
-    objective: "Using a scoped agent credential over MCP, fetch the current temperature in Celsius for the three cities named in the brief and submit them, in order, as decimal strings in readings. Accepted when three plausible readings are present.",
+    objective: "Reverse-MCP task: point a scoped agent at a weather tool and fetch the current temperature in Celsius for the three cities below, in order. Submit them as decimal strings in readings. Accepted when three plausible readings are present.",
     schema: '{"kind":"object","fields":{"readings":{"kind":"array","items":{"kind":"decimal_string"}}}}',
+    inputs: [{
+      kind: "list",
+      label: "Fetch current temperature (°C) for these cities, in order:",
+      items: ["Lisbon, PT", "Nairobi, KE", "Osaka, JP"],
+    }],
     reservations: [{ id: "res-weather-sol", by: "sol", state: "active", expires: "8h" }],
     submissions: [{
       id: "sub-weather-sol",
@@ -191,8 +242,22 @@ const seedTasks = [
     reward: rewardCredits(12),
     lifecycle: lifecycle.open,
     availability: availability.available,
-    objective: "You are given five marketplace task descriptions. Choose exactly two category tags for each from the provided tag list and submit them in the tags array, grouped per task. Accepted when every task has two tags from the list.",
+    objective: "Choose exactly two category tags for each of the five task descriptions below, using only the allowed tags. Submit them in the tags array, grouped per task in order.",
     schema: '{"kind":"object","fields":{"tags":{"kind":"array","items":{"kind":"string"}}}}',
+    inputs: [
+      { kind: "text", label: "Allowed tags:", body: "data, images, writing, code, audio, research" },
+      {
+        kind: "list",
+        label: "Tasks to tag (two tags each, in order):",
+        items: [
+          "Transcribe a 3-minute recorded interview",
+          "Clean a CSV of product prices",
+          "Write release notes from a changelog",
+          "Label a set of street-sign photos",
+          "Summarize three research abstracts",
+        ],
+      },
+    ],
     timeline: ["Low-risk mission opened for open submissions."],
   }),
   task({
@@ -207,8 +272,13 @@ const seedTasks = [
     reward: rewardCredits(18),
     lifecycle: lifecycle.open,
     availability: availability.rejected,
-    objective: "Read the linked crop-inspection report that failed QA and write a 2 to 3 sentence summary of why it failed and what to fix. Submit as plain text. Accepted when the summary names the failing metric.",
+    objective: "Read the inspection report below and write a 2 to 3 sentence summary of why the batch failed and what to fix. Submit as plain text. Accepted when the summary names the failing metric.",
     schema: '{"kind":"freeform"}',
+    inputs: [{
+      kind: "text",
+      label: "Inspection report:",
+      body: "Batch B-204 — moisture 18.2% (limit 14.0%), foreign material 0.1% (within limit), color grade A (within limit). Disposition: rejected.",
+    }],
     submissions: [{
       id: "sub-denied-jules",
       by: "jules",
@@ -233,8 +303,18 @@ const seedTasks = [
     reward: rewardCredits(20),
     lifecycle: lifecycle.closed,
     availability: availability.accepted,
-    objective: "Add each of the 42 accepted receipts in the linked folder to the archive index, one row per receipt with date, vendor, and amount. Submit a short note confirming the count archived. Accepted when the index row count matches.",
+    objective: "Add each of the 3 accepted receipts below to the archive index, one row per receipt with date, vendor, and amount. Submit a short note confirming the count archived. Accepted when the index row count matches.",
     schema: '{"kind":"freeform"}',
+    inputs: [{
+      kind: "records",
+      label: "Receipts to archive:",
+      columns: ["Date", "Vendor", "Amount"],
+      rows: [
+        ["2026-05-02", "Birch Supply", "312.40"],
+        ["2026-05-03", "Cedar Freight", "88.10"],
+        ["2026-05-05", "Grove Cafe", "41.25"],
+      ],
+    }],
     submissions: [{
       id: "sub-archive-tala",
       by: "tala",
@@ -259,8 +339,20 @@ const seedTasks = [
     reward: rewardBundle(60, ["Drone Patch"]),
     lifecycle: lifecycle.draft,
     availability: availability.available,
-    objective: "You are given 30 short drone clips by URL. Group each clip by field name and weather condition (for example field-3-clear) and submit the grouped clip identifiers in clips. Accepted when every clip is grouped.",
+    objective: "Group the drone clips below by field and weather (for example field-3-clear) and submit the grouped clip identifiers in clips. Accepted when every clip is grouped.",
     schema: '{"kind":"object","fields":{"clips":{"kind":"array","items":{"kind":"string"}}}}',
+    inputs: [{
+      kind: "records",
+      label: "Drone clips with metadata:",
+      columns: ["Clip", "Field", "Weather"],
+      rows: [
+        ["clip-1", "field-3", "clear"],
+        ["clip-2", "field-1", "rain"],
+        ["clip-3", "field-3", "clear"],
+        ["clip-4", "field-1", "rain"],
+        ["clip-5", "field-2", "fog"],
+      ],
+    }],
     timeline: ["Draft mission waiting for funding and opening."],
   }),
   task({
@@ -275,8 +367,13 @@ const seedTasks = [
     reward: rewardCredits(22),
     lifecycle: lifecycle.funded,
     availability: availability.available,
-    objective: "Rewrite the three REST curl examples and one MCP example on the linked docs page so they run correctly against the current API. Submit the corrected snippets as plain text. Accepted when each example is copy-paste runnable.",
+    objective: "The API snippets below are broken. Rewrite them so they run correctly against the current API (base URL https://api.sharecrop.dev, JSON bodies, bearer auth). Submit the corrected snippets as plain text.",
     schema: '{"kind":"freeform"}',
+    inputs: [{
+      kind: "code",
+      label: "Broken snippets to fix:",
+      body: "curl -X GET /api/tasks\ncurl -X POST /tasks/{id}/funding -d amount=20\nmcp: sharecrop.get_task(id)",
+    }],
     timeline: ["Reward funded; requester has not opened the mission."],
   }),
   task({
@@ -291,8 +388,20 @@ const seedTasks = [
     reward: rewardCredits(26),
     lifecycle: lifecycle.open,
     availability: availability.available,
-    objective: "You are given a soil-sample CSV. List the sample ids that are missing a moisture reading in the missing array. Accepted when every row with a blank moisture value is included and no others.",
+    objective: "From the soil-sample rows below, list the sample ids that are missing a moisture reading in the missing array. Accepted when every row with a blank moisture value is included and no others.",
     schema: '{"kind":"object","fields":{"missing":{"kind":"array","items":{"kind":"string"}}}}',
+    inputs: [{
+      kind: "records",
+      label: "Soil samples (blank moisture = missing):",
+      columns: ["Sample", "Moisture %"],
+      rows: [
+        ["s-01", "22.4"],
+        ["s-02", ""],
+        ["s-03", "19.0"],
+        ["s-04", ""],
+        ["s-05", "20.1"],
+      ],
+    }],
     reservations: [{ id: "res-soil-jules", by: "jules", state: "expired", expires: "0h" }],
     timeline: ["A previous reservation expired and released the mission."],
   }),
@@ -300,7 +409,7 @@ const seedTasks = [
 
 const seedState = {
   mode: "light",
-  theme: "blocky",
+  theme: "showcase",
   page: "overview",
   loginOpen: false,
   userId: "mara",
@@ -310,7 +419,9 @@ const seedState = {
   selectedTaskId: "orchard-labels",
   selectedUserId: "mara",
   draftTitle: "Label orchard photos",
-  draftDescription: "You are given 20 orchard photos by URL. Return one or more condition labels for each photo (ripe, unripe, or damaged) in the labels array.",
+  draftDescription: "Classify each of the 6 fruit observations as ripe, unripe, or damaged. Return one label per observation, in order, in the labels array.",
+  draftResponseKind: "structured",
+  draftFields: [{ name: "labels", type: "string_list" }],
   draftRewardKind: "bundle",
   draftCredits: "45",
   draftCollectible: "Ripe Lens",
@@ -604,6 +715,78 @@ function appendTaskEvent(taskItem, activity) {
   return { ...taskItem, timeline: [activity, ...taskItem.timeline].slice(0, 5) };
 }
 
+function schemaForType(type) {
+  if (type === "integer") return { kind: "integer" };
+  if (type === "decimal") return { kind: "decimal_string" };
+  if (type === "string_list") return { kind: "array", items: { kind: "string" } };
+  return { kind: "string" };
+}
+
+function draftSchema() {
+  if (state.draftResponseKind !== "structured") return '{"kind":"freeform"}';
+  const fields = state.draftFields.filter((field) => field.name.trim() !== "");
+  if (fields.length === 0) return '{"kind":"freeform"}';
+  const built = { kind: "object", fields: {} };
+  fields.forEach((field) => {
+    built.fields[field.name.trim()] = schemaForType(field.type);
+  });
+  return JSON.stringify(built);
+}
+
+function schemaDesigner() {
+  const kindSelect = `
+    <label for="draft-response-kind">Response from worker
+      <select id="draft-response-kind" data-field="draftResponseKind">
+        ${option("freeform", "Free-form text", state.draftResponseKind)}
+        ${option("structured", "Structured fields", state.draftResponseKind)}
+      </select>
+    </label>`;
+  if (state.draftResponseKind !== "structured") {
+    return `
+      <div class="schema-designer wide-field">
+        ${kindSelect}
+        <p class="schema-hint">Workers reply in free-form text. No response schema is enforced.</p>
+      </div>`;
+  }
+  const rows = state.draftFields
+    .map((field, index) => `
+      <div class="schema-field-row">
+        <input class="schema-field-name" data-schema-name="${index}" value="${escapeAttribute(field.name)}" placeholder="field name" aria-label="Field name">
+        <select class="schema-field-type" data-schema-type="${index}" aria-label="Field type">
+          ${option("string", "Text", field.type)}
+          ${option("integer", "Whole number", field.type)}
+          ${option("decimal", "Decimal", field.type)}
+          ${option("string_list", "List of text", field.type)}
+        </select>
+        <button class="button ghost" type="button" data-action="remove-field" data-index="${index}" aria-label="Remove field">Remove</button>
+      </div>`)
+    .join("");
+  return `
+    <div class="schema-designer wide-field">
+      ${kindSelect}
+      <p class="schema-hint">Design the structured result you want back. Each field becomes part of the response schema.</p>
+      <div class="schema-fields">${rows}</div>
+      <button class="button secondary" type="button" data-action="add-field">Add field</button>
+      <div class="schema-block">
+        <span>Generated response schema</span>
+        <pre>${escapeHtml(draftSchema())}</pre>
+      </div>
+    </div>`;
+}
+
+function addDraftField() {
+  setState({ draftFields: [...state.draftFields, { name: "", type: "string" }] });
+}
+
+function removeDraftField(index) {
+  setState({ draftFields: state.draftFields.filter((_, position) => position !== index) });
+}
+
+function updateDraftField(index, key, value) {
+  const fields = state.draftFields.map((field, position) => (position === index ? { ...field, [key]: value } : field));
+  setState({ draftFields: fields });
+}
+
 function createDraftTask() {
   const id = `demo-${state.localTaskSeq}`;
   const newTask = task({
@@ -619,7 +802,7 @@ function createDraftTask() {
     lifecycle: lifecycle.draft,
     availability: availability.available,
     reservationHours: state.draftReservationHours,
-    schema: '{"kind":"freeform"}',
+    schema: draftSchema(),
     objective: state.draftDescription || "Describe the requested result.",
     timeline: [`${selectedUser().name} drafted the mission.`],
   });
@@ -753,6 +936,22 @@ function userPage() {
   `;
 }
 
+function dashboardSpotlight(taskItem) {
+  if (!taskItem) return "";
+  return `
+    <section class="panel spotlight-panel">
+      <span class="eyebrow">Continue where you left off</span>
+      <h2>${escapeHtml(taskItem.title)}</h2>
+      <p class="spotlight-objective">${escapeHtml(taskItem.objective)}</p>
+      <div class="badge-row">
+        <span>${escapeHtml(lifecycleLabel(taskItem.lifecycle))}</span>
+        <span>${escapeHtml(availabilityLabel(taskItem.availability))}</span>
+        <span>${escapeHtml(rewardLabel(taskItem.reward))}</span>
+      </div>
+      <button class="button primary" data-open-task="${escapeAttribute(taskItem.id)}">Open task</button>
+    </section>`;
+}
+
 function overviewPage() {
   const user = selectedUser();
   const taskItem = selectedTask();
@@ -775,7 +974,7 @@ function overviewPage() {
           ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
         </div>
       </div>
-      ${missionBriefing(taskItem)}
+      ${dashboardSpotlight(taskItem)}
     </section>
     <section class="panel">
       <span class="eyebrow">Task paths</span>
@@ -852,7 +1051,8 @@ function requesterPage() {
       </div>
       <form class="create-form" data-form="create-task">
         <label for="draft-title">Task title<input id="draft-title" data-field="draftTitle" value="${escapeAttribute(state.draftTitle)}"></label>
-        <label class="wide-field" for="draft-description">Objective<textarea id="draft-description" data-field="draftDescription">${escapeHtml(state.draftDescription)}</textarea></label>
+        <label class="wide-field" for="draft-description">Instructions (free-form)<textarea id="draft-description" data-field="draftDescription">${escapeHtml(state.draftDescription)}</textarea></label>
+        ${schemaDesigner()}
         <label for="draft-reward-kind">Reward kind
           <select id="draft-reward-kind" data-field="draftRewardKind">
             ${option("none", "No reward", state.draftRewardKind)}
@@ -1109,6 +1309,34 @@ function missionCard(taskItem, selectedId) {
   `;
 }
 
+function renderInputBlock(block) {
+  const label = block.label ? `<p class="input-label">${escapeHtml(block.label)}</p>` : "";
+  if (block.kind === "list") {
+    return `${label}<ul class="input-list">${block.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  }
+  if (block.kind === "records") {
+    const head = `<tr>${block.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr>`;
+    const body = block.rows
+      .map((row) => `<tr>${row.map((cell) => `<td>${cell === "" ? "—" : escapeHtml(cell)}</td>`).join("")}</tr>`)
+      .join("");
+    return `${label}<div class="input-table-wrap"><table class="input-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  }
+  if (block.kind === "code") {
+    return `${label}<pre class="input-code">${escapeHtml(block.body)}</pre>`;
+  }
+  return `${label}<p class="input-text">${escapeHtml(block.body)}</p>`;
+}
+
+function renderTaskInputs(inputs) {
+  if (!Array.isArray(inputs) || inputs.length === 0) return "";
+  return `
+    <div class="input-block">
+      <span class="eyebrow">Input / materials</span>
+      ${inputs.map(renderInputBlock).join("")}
+    </div>
+  `;
+}
+
 function missionBriefing(taskItem) {
   if (!taskItem) return "";
   const action = nextAction(taskItem);
@@ -1118,6 +1346,7 @@ function missionBriefing(taskItem) {
         <span class="eyebrow">Task briefing</span>
         <h2>${escapeHtml(taskItem.title)}</h2>
         <p>${escapeHtml(taskItem.objective)}</p>
+        ${renderTaskInputs(taskItem.inputs)}
         <div class="badge-row">
           <span>${escapeHtml(lifecycleLabel(taskItem.lifecycle))}</span>
           <span>${escapeHtml(visibilityLabel(taskItem.visibility))}</span>
@@ -1531,11 +1760,28 @@ function handleClick(event) {
     return;
   }
 
+  if (target.dataset.action === "add-field") {
+    addDraftField();
+    return;
+  }
+  if (target.dataset.action === "remove-field") {
+    removeDraftField(Number(target.dataset.index));
+    return;
+  }
+
   handleAction(target.dataset.action, target.dataset.user, target.dataset.submission);
 }
 
 function handleCommit(event) {
   const target = event.target;
+  if (target.dataset.schemaName !== undefined) {
+    updateDraftField(Number(target.dataset.schemaName), "name", target.value);
+    return;
+  }
+  if (target.dataset.schemaType !== undefined) {
+    updateDraftField(Number(target.dataset.schemaType), "type", target.value);
+    return;
+  }
   if (target.dataset.field === undefined) return;
 
   const key = target.dataset.field;

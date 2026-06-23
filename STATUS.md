@@ -1,10 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 31 work, merged into `main`.
+The repository contains pull request 1 through pull request 32 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/team-pages-and-module-split` adds team detail pages and a team-assignee selector, then decomposes the HTTP and browser monoliths. The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-selfcontained-tasks-and-redesign` makes the demo tasks genuinely self-contained (each carries its own input material), adds a free-form-plus-receive-schema designer to the Post Task page, and gives the demo a clean visual redesign. The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/demo-selfcontained-tasks-and-redesign`:
+
+- Every demo task now carries an `inputs` array (records, lists, text, or code) rendered as an "Input / materials" section, so the task is actually completable from what is on screen instead of referencing data that does not exist. Framed as reverse-MCP agentic requests: humans asking people and their agents for structured results.
+- The Post Task page supports free-form human instructions and a receive-schema designer: choose free-form or structured, add named fields with types, and see the generated response schema.
+- The demo uses the clean "showcase" theme by default with softer shadows, rounded cards, status-colored badges, real data tables, and a compact dashboard spotlight in place of a full task panel.
+
+Earlier branch `task/team-pages-and-module-split` (pull request 32, merged) added team detail pages and a team-assignee selector, then decomposed the HTTP and browser monoliths. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
 Implemented in `task/team-pages-and-module-split`:
 

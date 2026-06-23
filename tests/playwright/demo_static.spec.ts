@@ -27,8 +27,8 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await page.getByLabel("Task title").pressSequentially(
     "Demo persistence task",
   );
-  await page.getByLabel("Objective").fill("");
-  await page.getByLabel("Objective").pressSequentially(
+  await page.getByLabel("Instructions (free-form)").fill("");
+  await page.getByLabel("Instructions (free-form)").pressSequentially(
     "A local demo task created by typing normally.",
   );
   await page.getByRole("button", { name: "Create draft task" }).click();
@@ -45,7 +45,7 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   // The reset control is always visible in the top bar, not buried in Settings.
   await page.getByTestId("topbar-reset").click();
   await expect(page.locator("body")).toHaveAttribute("data-mode", "light");
-  await expect(page.locator("body")).toHaveAttribute("data-theme", "blocky");
+  await expect(page.locator("body")).toHaveAttribute("data-theme", "showcase");
   await expect(page.getByRole("button", { name: /Demo persistence task/ }))
     .toHaveCount(0);
 });
