@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v4";
+const storageKey = "sharecrop-demo-state-v5";
 
 const policy = {
   open: "open",
@@ -369,20 +369,21 @@ function rewardBundle(credits, collectibles) {
 }
 
 function loadState() {
-  const stored = localStorage.getItem(storageKey);
+  const stored = readStoredState();
   if (stored === null) return structuredClone(seedState);
 
   try {
     const parsed = JSON.parse(stored);
-    return {
+    const nextState = {
       ...structuredClone(seedState),
       ...parsed,
       tasks: mergeTasks(parsed.tasks ?? []),
       balances: { ...structuredClone(seedState.balances), ...(parsed.balances ?? {}) },
       inventories: { ...structuredClone(seedState.inventories), ...(parsed.inventories ?? {}) },
-      reviewDrafts: parsed.reviewDrafts ?? {},
-      activityLog: (parsed.activityLog ?? seedState.activityLog).slice(0, maxActivity),
+      reviewDrafts: plainObject(parsed.reviewDrafts) ? parsed.reviewDrafts : {},
+      activityLog: arrayOrEmpty(parsed.activityLog, seedState.activityLog).slice(0, maxActivity),
     };
+    return normalizeState(nextState);
   } catch (_error) {
     return structuredClone(seedState);
   }
@@ -390,12 +391,74 @@ function loadState() {
 
 function mergeTasks(storedTasks) {
   const byId = new Map(seedTasks.map((item) => [item.id, item]));
-  for (const storedTask of storedTasks) {
+  for (const storedTask of arrayOrEmpty(storedTasks).slice(0, seedTasks.length + maxLocalTasks)) {
     if (storedTask && typeof storedTask.id === "string") {
-      byId.set(storedTask.id, { ...byId.get(storedTask.id), ...storedTask });
+      byId.set(storedTask.id, normalizeTask({ ...byId.get(storedTask.id), ...storedTask }));
     }
   }
   return [...byId.values()];
+}
+
+function normalizeState(nextState) {
+  const knownUser = users.some((user) => user.id === nextState.userId) ? nextState.userId : seedState.userId;
+  const knownPage = pages.some((page) => page.id === nextState.page) ? nextState.page : seedState.page;
+  const tasks = mergeTasks(nextState.tasks);
+  const selectedTaskId = tasks.some((item) => item.id === nextState.selectedTaskId) ? nextState.selectedTaskId : tasks[0]?.id;
+  return {
+    ...nextState,
+    userId: knownUser,
+    page: knownPage,
+    selectedTaskId,
+    tasks,
+  };
+}
+
+function normalizeTask(taskItem) {
+  const reward = plainObject(taskItem.reward) ? taskItem.reward : rewardNone();
+  return task({
+    ...taskItem,
+    reward: {
+      kind: typeof reward.kind === "string" ? reward.kind : "none",
+      credits: Number.isFinite(Number(reward.credits)) ? Number(reward.credits) : 0,
+      collectibles: arrayOrEmpty(reward.collectibles).filter((item) => typeof item === "string"),
+    },
+    reservations: arrayOrEmpty(taskItem.reservations).filter((item) => plainObject(item)),
+    submissions: arrayOrEmpty(taskItem.submissions).filter((item) => plainObject(item)),
+    timeline: arrayOrEmpty(taskItem.timeline).filter((item) => typeof item === "string").slice(0, 5),
+  });
+}
+
+function readStoredState() {
+  try {
+    return localStorage.getItem(storageKey);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writeStoredState(value) {
+  try {
+    localStorage.setItem(storageKey, value);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function removeStoredState() {
+  try {
+    localStorage.removeItem(storageKey);
+  } catch (_error) {
+    // The demo can still run without persistent browser storage.
+  }
+}
+
+function arrayOrEmpty(value, replacement = []) {
+  return Array.isArray(value) ? value : replacement;
+}
+
+function plainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function saveSoon() {
@@ -409,15 +472,13 @@ function saveNow() {
 }
 
 function saveToStorage() {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(state));
-  } catch (_error) {
+  if (!writeStoredState(JSON.stringify(state))) {
     state = {
       ...structuredClone(seedState),
       page: "settings",
       storageWarning: "The browser rejected demo storage. State was reset.",
     };
-    localStorage.removeItem(storageKey);
+    removeStoredState();
     render();
   }
 }
@@ -429,7 +490,7 @@ function setState(patch, options = { render: true }) {
 }
 
 function resetState() {
-  localStorage.removeItem(storageKey);
+  removeStoredState();
   state = structuredClone(seedState);
   render();
 }
@@ -471,10 +532,15 @@ function tasksForRequester() {
 function reviewableTasks() {
   const user = selectedUser();
   return state.tasks.filter((taskItem) =>
-    taskItem.requester === user.id || user.role === "Organization reviewer" ||
-    taskItem.submissions.some((submission) => submission.state === "submitted") ||
-    taskItem.reservations.some((reservation) => reservation.state === "requested")
+    canReviewTask(taskItem, user) && (
+      taskItem.submissions.length > 0 ||
+      taskItem.reservations.some((reservation) => reservation.state === "requested" || reservation.state === "active")
+    )
   );
+}
+
+function canReviewTask(taskItem, user = selectedUser()) {
+  return taskItem.requester === user.id || user.role === "Organization reviewer";
 }
 
 function updateTask(taskId, change, activity) {
@@ -588,7 +654,7 @@ function loginPanel() {
 
 function personaBadge(user) {
   return `
-    <button class="persona-badge ${user.id === state.userId ? "selected" : ""}" data-action="choosePersona" data-user="${escapeAttribute(user.id)}">
+    <button class="persona-badge ${user.id === state.userId ? "selected" : ""}" data-action="choosePersona" data-user="${escapeAttribute(user.id)}" aria-pressed="${user.id === state.userId ? "true" : "false"}">
       <strong>${escapeHtml(user.callsign)}</strong>
       <span>${escapeHtml(user.role)} / ${escapeHtml(user.rank)}</span>
     </button>
@@ -598,7 +664,7 @@ function personaBadge(user) {
 function pageNavigation() {
   return `
     <nav class="page-tabs" aria-label="Demo pages">
-      ${pages.map((page) => `<button class="tab ${state.page === page.id ? "active" : ""}" data-page="${escapeAttribute(page.id)}">${escapeHtml(page.label)}</button>`).join("")}
+      ${pages.map((page) => `<button class="tab ${state.page === page.id ? "active" : ""}" data-page="${escapeAttribute(page.id)}" ${state.page === page.id ? 'aria-current="page"' : ""}>${escapeHtml(page.label)}</button>`).join("")}
     </nav>
   `;
 }
@@ -650,6 +716,8 @@ function overviewPage() {
 }
 
 function discoverPage() {
+  const tasks = filteredBoardTasks();
+  const taskItem = activeTaskFor(tasks);
   return `
     <section class="panel">
       <div class="page-header">
@@ -671,9 +739,9 @@ function discoverPage() {
           </select>
         </div>
       </div>
-      ${missionBoard(filteredBoardTasks(), "discover")}
+      ${missionBoard(tasks, "discover", taskItem?.id)}
     </section>
-    ${missionBriefing(selectedTask())}
+    ${missionBriefing(taskItem)}
     ${activityFeed()}
   `;
 }
@@ -684,12 +752,12 @@ function requesterPage() {
       <div class="page-header">
         <div>
           <span class="eyebrow">Post mission</span>
-          <h1>Build a reward crate and open a mission</h1>
-          <p>Create a local mission, fund it, attach a collectible when needed, then open it onto the board.</p>
+          <h1>Create, fund, and open a task</h1>
+          <p>Create a local task, choose the reward, set visibility and participation policy, then open it onto the board.</p>
         </div>
       </div>
       <form class="create-form" data-form="create-task">
-        <label for="draft-title">Mission title<input id="draft-title" data-field="draftTitle" value="${escapeAttribute(state.draftTitle)}"></label>
+        <label for="draft-title">Task title<input id="draft-title" data-field="draftTitle" value="${escapeAttribute(state.draftTitle)}"></label>
         <label class="wide-field" for="draft-description">Objective<textarea id="draft-description" data-field="draftDescription">${escapeHtml(state.draftDescription)}</textarea></label>
         <label for="draft-reward-kind">Reward kind
           <select id="draft-reward-kind" data-field="draftRewardKind">
@@ -715,7 +783,7 @@ function requesterPage() {
           </select>
         </label>
         <label for="draft-reservation-hours">Reservation expiry<input id="draft-reservation-hours" data-field="draftReservationHours" value="${escapeAttribute(state.draftReservationHours)}"></label>
-        <button class="button primary" data-action="create" type="button">Draft mission</button>
+        <button class="button primary" data-action="create" type="button">Create draft task</button>
       </form>
     </section>
     <section class="panel">
@@ -728,7 +796,7 @@ function requesterPage() {
 
 function reviewPage() {
   const tasks = reviewableTasks();
-  const taskItem = selectedTask();
+  const taskItem = activeTaskFor(tasks);
   return `
     <section class="panel">
       <div class="page-header">
@@ -737,9 +805,9 @@ function reviewPage() {
           <h1>Review reservations and submitted payloads</h1>
           <p>Approve access, request changes, reject with fair partial payout, or accept and settle the reward crate.</p>
         </div>
-        ${taskSelect(taskItem, tasks)}
+        ${taskItem ? taskSelect(taskItem, tasks) : ""}
       </div>
-      <div class="review-layout">
+      ${taskItem ? `<div class="review-layout">
         <section class="sub-panel control-room">
           <h2>Reservation queue</h2>
           ${reservationQueue(taskItem)}
@@ -748,7 +816,7 @@ function reviewPage() {
           <h2>Submission decisions</h2>
           ${submissionList(taskItem)}
         </section>
-      </div>
+      </div>` : `<p class="empty-state">No reservations or submitted payloads need this persona's review.</p>`}
     </section>
     ${activityFeed()}
   `;
@@ -778,8 +846,8 @@ function integrationsPage() {
     }
   }
 }</pre>
-          <button class="button primary" data-action="agentRun">Simulate agent run</button>
-          <p class="hint">Demo scopes: tasks_read, submissions_write, submissions_review. The action adds an agent-labeled submission to this mission.</p>
+          <button class="button primary" data-action="agentRun">Run as Sol agent</button>
+          <p class="hint">Demo scopes: tasks_read, submissions_write, submissions_review. The action adds a Sol-labeled MCP submission to this mission.</p>
         </article>
         <article class="sub-panel uplink-panel">
           <span class="eyebrow">Worker REST</span>
@@ -846,17 +914,17 @@ function settingsPage() {
   `;
 }
 
-function missionBoard(tasks, context) {
+function missionBoard(tasks, context, selectedId = selectedTask()?.id) {
   const lanes = boardLanes(tasks);
   return `
     <div class="mission-board" data-context="${escapeAttribute(context)}">
       ${lanes.map((lane) => `
-        <section class="mission-lane">
+        <section class="mission-lane ${lane.tasks.length === 0 ? "empty-lane" : ""}" data-lane="${escapeAttribute(lane.id)}">
           <div class="lane-header">
             <strong>${escapeHtml(lane.label)}</strong>
             <span>${lane.tasks.length}</span>
           </div>
-          ${lane.tasks.length === 0 ? `<p class="empty-state">No missions in this lane.</p>` : lane.tasks.map(missionCard).join("")}
+          ${lane.tasks.length === 0 ? `<p class="empty-state">No missions in this lane.</p>` : lane.tasks.map((item) => missionCard(item, selectedId)).join("")}
         </section>
       `).join("")}
     </div>
@@ -885,18 +953,20 @@ function laneForTask(taskItem) {
   return "available";
 }
 
-function missionCard(taskItem) {
-  const selected = taskItem.id === selectedTask().id ? "selected" : "";
+function missionCard(taskItem, selectedId) {
+  const selected = taskItem.id === selectedId ? "selected" : "";
+  const next = nextAction(taskItem);
   return `
-    <button class="mission-card ${selected}" data-task="${escapeAttribute(taskItem.id)}">
+    <button class="mission-card ${selected}" data-task="${escapeAttribute(taskItem.id)}" aria-pressed="${selected ? "true" : "false"}">
       <span class="rank-badge">Rank ${escapeHtml(taskItem.difficulty)}</span>
       <strong>${escapeHtml(taskItem.title)}</strong>
       <small>${escapeHtml(taskItem.objective)}</small>
       <div class="mission-meta">
         <span>${escapeHtml(areaLabel(taskItem.area))}</span>
         <span>${escapeHtml(policyLabel(taskItem.policy))}</span>
-        <span>${escapeHtml(availabilityLabel(taskItem.availability))}</span>
+        <span>${escapeHtml(taskItem.assignee ? `Assigned: ${userName(taskItem.assignee)}` : `Requester: ${userName(taskItem.requester)}`)}</span>
       </div>
+      <span class="action-chip">${escapeHtml(cardActionLabel(next))}</span>
       <div class="reward-row">${rewardChips(taskItem.reward)}</div>
     </button>
   `;
@@ -920,15 +990,17 @@ function missionBriefing(taskItem) {
         <ul class="objective-list">
           <li>Requester: ${escapeHtml(userName(taskItem.requester))}</li>
           <li>Assignee: ${escapeHtml(taskItem.assignee ? userName(taskItem.assignee) : "unassigned")}</li>
-          <li>Reward crate: ${escapeHtml(rewardLabel(taskItem.reward))}</li>
-          <li>Schema: ${escapeHtml(taskItem.schema)}</li>
+          <li>Reward: ${escapeHtml(rewardLabel(taskItem.reward))}</li>
         </ul>
+        <div class="schema-block">
+          <span>Expected response schema</span>
+          <pre>${escapeHtml(taskItem.schema)}</pre>
+        </div>
       </div>
       <div class="sub-panel action-console">
         <h2>${escapeHtml(action.title)}</h2>
         ${actionPayload(action)}
-        <div class="row-actions">${actionButtons(action)}</div>
-        <p class="hint">${escapeHtml(action.explanation)}</p>
+        ${actionControls(action)}
       </div>
       <div class="sub-panel activity-feed">
         <h2>Mission log</h2>
@@ -950,7 +1022,7 @@ function nextAction(taskItem) {
     return { kind: "openMission", title: "Open mission", explanation: "Publish the funded mission to the board." };
   }
   if (taskItem.requester === state.userId && taskItem.lifecycle === lifecycle.open) {
-    return { kind: "none", title: "Requester watch", explanation: "Use Review Queue to decide reservations and submissions." };
+    return { kind: "openReviewQueue", title: "Requester watch", explanation: "Open the Review Queue to decide reservations and submissions." };
   }
   if (taskItem.lifecycle !== lifecycle.open || taskItem.availability === availability.closed || taskItem.availability === availability.accepted) {
     return { kind: "none", title: "No action", explanation: "This mission is not open for new work." };
@@ -986,7 +1058,16 @@ function actionButtons(action) {
   if (action.kind === "requestApproval") return `<button class="button primary" data-action="requestApproval">Request approval</button>`;
   if (action.kind === "submit") return `<button class="button primary" data-action="submit">Submit payload</button>`;
   if (action.kind === "agentRun") return `<button class="button primary" data-action="agentRun">Simulate agent run</button>`;
-  return `<button class="button secondary" disabled>No action available</button>`;
+  if (action.kind === "openReviewQueue") return `<button class="button primary" data-page="review">Review queue</button>`;
+  return "";
+}
+
+function actionControls(action) {
+  const buttons = actionButtons(action);
+  if (buttons !== "") {
+    return `<div class="row-actions">${buttons}</div><p class="hint">${escapeHtml(action.explanation)}</p>`;
+  }
+  return `<div class="status-panel"><strong>${escapeHtml(action.title)}</strong><span>${escapeHtml(action.explanation)}</span></div>`;
 }
 
 function actionPayload(action) {
@@ -994,6 +1075,17 @@ function actionPayload(action) {
     return `<label for="response-text">Submission payload<textarea id="response-text" data-field="responseText">${escapeHtml(state.responseText)}</textarea></label>`;
   }
   return "";
+}
+
+function cardActionLabel(action) {
+  if (action.kind === "fund") return "Fund";
+  if (action.kind === "openMission") return "Open";
+  if (action.kind === "reserve") return "Reserve";
+  if (action.kind === "requestApproval") return "Request approval";
+  if (action.kind === "submit") return "Submit";
+  if (action.kind === "agentRun") return "Agent run";
+  if (action.kind === "openReviewQueue") return "Review";
+  return action.title;
 }
 
 function reservationQueue(taskItem) {
@@ -1016,13 +1108,18 @@ function submissionList(taskItem) {
   if (taskItem.submissions.length === 0) return `<p class="empty-state">No submissions for this mission.</p>`;
   return taskItem.submissions.map((submission) => {
     const draft = reviewDraft(submission);
+    if (submission.state !== "submitted") return submissionOutcome(submission);
     return `
-      <div class="submission-row">
+      <div class="submission-row decision-console">
         <div>
           <strong>${escapeHtml(userName(submission.by))}</strong>
-          <span>${escapeHtml(submission.state)}</span>
+          <span class="action-chip">${escapeHtml(submissionStateLabel(submission.state))}</span>
         </div>
         <code>${escapeHtml(submission.response)}</code>
+        <div class="payout-strip">
+          <span>Reward available</span>
+          <strong>${escapeHtml(rewardLabel(taskItem.reward))}</strong>
+        </div>
         <label>Review note<textarea data-field="reviewNote" data-submission="${escapeAttribute(submission.id)}">${escapeHtml(draft.reviewNote)}</textarea></label>
         <div class="mini-grid">
           <label>Partial payout<input data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.partialPayout)}"></label>
@@ -1037,6 +1134,41 @@ function submissionList(taskItem) {
       </div>
     `;
   }).join("");
+}
+
+function submissionOutcome(submission) {
+  const paid = Number(submission.payoutCredits ?? submission.partialPayout ?? 0) + Number(submission.tip ?? 0);
+  return `
+    <div class="submission-row outcome-row">
+      <div>
+        <strong>${escapeHtml(userName(submission.by))}</strong>
+        <span class="action-chip">${escapeHtml(submissionStateLabel(submission.state))}</span>
+      </div>
+      <code>${escapeHtml(submission.response)}</code>
+      <div class="status-panel">
+        <strong>${escapeHtml(outcomeTitle(submission.state))}</strong>
+        <span>${escapeHtml(submission.reviewNote || outcomeCopy(submission.state, paid))}</span>
+      </div>
+    </div>
+  `;
+}
+
+function submissionStateLabel(value) {
+  return value.replaceAll("_", " ");
+}
+
+function outcomeTitle(value) {
+  if (value === "changes_requested") return "Waiting for revised payload";
+  if (value === "accepted") return "Accepted and settled";
+  if (value === "rejected") return "Rejected";
+  return "Decision recorded";
+}
+
+function outcomeCopy(value, paid) {
+  if (value === "changes_requested") return "The implementor keeps this task and can submit an updated payload.";
+  if (value === "accepted") return `The requester settled this submission with ${paid} credits plus any collectible reward.`;
+  if (value === "rejected") return `The requester closed this submission with ${paid} credits paid.`;
+  return "This submission no longer has active decision controls.";
 }
 
 function reviewDraft(submission) {
@@ -1060,18 +1192,18 @@ function activityFeed() {
 
 function taskSelect(taskItem, tasks) {
   return `
-    <select class="task-select" data-field="selectedTaskId">
+    <select class="task-select" data-field="selectedTaskId" aria-label="Selected task">
       ${tasks.map((item) => `<option value="${escapeAttribute(item.id)}" ${item.id === taskItem.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
     </select>
   `;
 }
 
 function modeButton(value, label) {
-  return `<button class="button ${state.mode === value ? "primary" : "secondary"}" data-mode="${escapeAttribute(value)}">${escapeHtml(label)}</button>`;
+  return `<button class="button ${state.mode === value ? "primary" : "secondary"}" data-mode="${escapeAttribute(value)}" aria-pressed="${state.mode === value ? "true" : "false"}">${escapeHtml(label)}</button>`;
 }
 
 function themeButton(value, label) {
-  return `<button class="theme-chip ${state.theme === value ? "selected" : ""}" data-theme="${escapeAttribute(value)}">${escapeHtml(label)}</button>`;
+  return `<button class="theme-chip ${state.theme === value ? "selected" : ""}" data-theme="${escapeAttribute(value)}" aria-pressed="${state.theme === value ? "true" : "false"}">${escapeHtml(label)}</button>`;
 }
 
 function metricCard(label, value) {
@@ -1100,6 +1232,10 @@ function filteredBoardTasks() {
   if (state.boardFilter === "organization") return tasks.filter((item) => item.visibility === "organization");
   if (state.boardFilter === "mine") return tasks.filter((item) => item.requester === state.userId || item.assignee === state.userId);
   return tasks;
+}
+
+function activeTaskFor(tasks) {
+  return tasks.find((item) => item.id === state.selectedTaskId) ?? tasks[0] ?? null;
 }
 
 function filterOption(value, label) {
@@ -1197,7 +1333,7 @@ function handleClick(event) {
   if (target === null) return;
 
   if (target.dataset.page !== undefined) {
-    setState({ page: target.dataset.page, loginOpen: false });
+    setState({ page: target.dataset.page, selectedTaskId: taskIdForPage(target.dataset.page), loginOpen: false });
     return;
   }
   if (target.dataset.mode !== undefined) {
@@ -1231,7 +1367,7 @@ function handleCommit(event) {
     return;
   }
   if (target.dataset.submission !== undefined) {
-    updateReviewDraft(target.dataset.submission, key, value);
+    updateReviewDraft(target.dataset.submission, key, value, { render: false });
     return;
   }
   if (target.type === "checkbox" || target.tagName === "SELECT") {
@@ -1268,12 +1404,15 @@ function updateReviewDraft(submissionId, key, value, options = { render: true })
       },
     },
   };
-  saveNow();
+  if (options.render) {
+    saveNow();
+  } else {
+    saveSoon();
+  }
   if (options.render) render();
 }
 
 function handleAction(action, userId, submissionId) {
-  const taskItem = selectedTask();
   switch (action) {
     case "reset":
       resetState();
@@ -1287,6 +1426,11 @@ function handleAction(action, userId, submissionId) {
     case "create":
       createDraftTask();
       return;
+  }
+
+  const taskItem = taskForAction(action);
+  if (!taskItem) return;
+  switch (action) {
     case "fund":
       fundMission(taskItem);
       return;
@@ -1309,24 +1453,51 @@ function handleAction(action, userId, submissionId) {
       agentRun(taskItem);
       return;
     case "approve":
+      if (!canReviewTask(taskItem)) return;
       approveReservation(taskItem, userId);
       return;
     case "declineReservation":
+      if (!canReviewTask(taskItem)) return;
       declineReservation(taskItem, userId);
       return;
     case "releaseReservation":
+      if (!canReviewTask(taskItem)) return;
       releaseReservation(taskItem, userId);
       return;
     case "requestChanges":
+      if (!canReviewTask(taskItem)) return;
       decideSubmission(taskItem, userId, submissionId, "changes_requested");
       return;
     case "reject":
+      if (!canReviewTask(taskItem)) return;
       decideSubmission(taskItem, userId, submissionId, "rejected");
       return;
     case "accept":
+      if (!canReviewTask(taskItem)) return;
       decideSubmission(taskItem, userId, submissionId, "accepted");
       return;
   }
+}
+
+function taskForAction(action) {
+  if (isReviewAction(action)) return activeTaskFor(reviewableTasks());
+  return activeTaskForCurrentPage();
+}
+
+function isReviewAction(action) {
+  return ["approve", "declineReservation", "releaseReservation", "requestChanges", "reject", "accept"].includes(action);
+}
+
+function taskIdForPage(page) {
+  const tasks = page === "review" ? reviewableTasks() : page === "discover" ? filteredBoardTasks() : visibleTasks();
+  return activeTaskFor(tasks)?.id ?? selectedTask()?.id;
+}
+
+function activeTaskForCurrentPage() {
+  if (state.page === "discover") return activeTaskFor(filteredBoardTasks());
+  if (state.page === "requester") return activeTaskFor(tasksForRequester());
+  if (state.page === "review") return activeTaskFor(reviewableTasks());
+  return selectedTask();
 }
 
 function choosePersona(userId) {
@@ -1417,10 +1588,10 @@ function releaseReservation(taskItem, userId) {
 
 function decideSubmission(taskItem, userId, submissionId, decision) {
   const submission = taskItem.submissions.find((item) => item.id === submissionId || item.by === userId);
-  if (!submission) return;
+  if (!submission || submission.state !== "submitted") return;
   const draft = reviewDraft(submission);
-  const partial = Number.parseInt(draft.partialPayout, 10) || 0;
-  const tip = Number.parseInt(draft.tipAmount, 10) || 0;
+  const partial = decision === "changes_requested" ? 0 : Number.parseInt(draft.partialPayout, 10) || 0;
+  const tip = decision === "changes_requested" ? 0 : Number.parseInt(draft.tipAmount, 10) || 0;
   const payout = decision === "accepted" ? (partial || taskItem.reward.credits || 0) : partial;
   const nextAvailability = decision === "accepted" ? availability.accepted : decision === "rejected" ? availability.rejected : availability.changesRequested;
   const nextLifecycle = decision === "accepted" ? lifecycle.closed : taskItem.lifecycle;

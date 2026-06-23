@@ -796,3 +796,32 @@ The `task/demo-game-like-personas` branch expanded the static demo into a game-l
 - The Uplink page can simulate an agent run that creates an agent-labeled submission.
 - Static demo Playwright coverage was expanded to verify persona switching, mission drafting persistence, and reserve-submit-accept transitions.
 - Screenshot capture was updated for the new page labels and mission board screenshots.
+
+The `task/demo-ui-polish-pass` branch polished the expanded static demo after specialized review:
+
+- The review queue became persona-scoped so implementors do not see or act on requester review work.
+- Mission board and review actions now operate on the task shown in the current filtered view instead of stale global selection.
+- Request-changes review decisions no longer pay partial payout or tip credits; payouts apply only to accepted and rejected decisions.
+- Review inputs save without rerendering while the user is clicking a decision control, preventing lost review clicks.
+- Settled, rejected, and changes-requested submissions now render as outcomes instead of still-active decision forms.
+- Mission cards now show persona-specific next actions plus requester or assignee context, with wider lanes and clearer card hierarchy.
+- Mission briefings now show the expected response schema in a readable block.
+- Page tabs, persona buttons, theme buttons, mode buttons, and mission cards expose current or pressed state to assistive technology.
+- Demo localStorage reads and writes are guarded, normalized, and bounded before stored state is merged into the seed demo state.
+- Static demo Playwright coverage was expanded for persona-scoped review access and request-changes resubmission flow.
+
+The `task/demo-ui-polish-pass` branch verification was performed:
+
+- `node --check site/demo/app.js` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts tests/playwright/demo_static.spec.ts` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots; screenshots reviewed included the Mission Board, Review Queue, Command desktop, and showcase mobile states.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages.
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.
