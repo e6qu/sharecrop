@@ -269,6 +269,48 @@ func TestTaskListItemExposesActiveAssignee(t *testing.T) {
 	}
 }
 
+func TestPrivateTaskDoesNotLeakToOtherUsers(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "leak-owner")
+	taskID := createUserTaskFromJSON(t, server, owner.AccessToken, userTaskRequestJSON(owner.SubjectID))
+	outsider := registerUser(t, server, "leak-outsider")
+
+	// The task detail endpoint denies a viewer without permission.
+	detailResponse := getWithBearer(t, server.URL+"/api/tasks/"+taskID, outsider.AccessToken)
+	defer detailResponse.Body.Close()
+	assertStatus(t, detailResponse, http.StatusForbidden)
+
+	// Public discovery never lists the private task.
+	discoveryResponse := getWithBearer(t, server.URL+"/api/tasks?scope=public", outsider.AccessToken)
+	defer discoveryResponse.Body.Close()
+	assertStatus(t, discoveryResponse, http.StatusOK)
+	for _, item := range decodeTasksHTTPResponse(t, discoveryResponse).Tasks {
+		if item.ID == taskID {
+			t.Fatalf("private task %s leaked into public discovery", taskID)
+		}
+	}
+
+	// The owner's public profile never lists the private task.
+	profileResponse := getWithBearer(t, server.URL+"/api/users/"+owner.SubjectID, outsider.AccessToken)
+	defer profileResponse.Body.Close()
+	assertStatus(t, profileResponse, http.StatusOK)
+	var profile struct {
+		Tasks []struct {
+			ID string `json:"id"`
+		} `json:"tasks"`
+	}
+	if err := json.NewDecoder(profileResponse.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode profile: %v", err)
+	}
+	for _, item := range profile.Tasks {
+		if item.ID == taskID {
+			t.Fatalf("private task %s leaked into the owner's public profile", taskID)
+		}
+	}
+}
+
 func TestUserProfileShowsOnlyPublicTasks(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
