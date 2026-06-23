@@ -292,6 +292,39 @@ test("requesters scope a task to a standalone team", async ({ page, request }) =
   ).toHaveCount(1);
 });
 
+test("requesters set a task's assignee scope to a team", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "assignee-owner");
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
+  const title = `Team assignee ${crypto.randomUUID()}`;
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill("Assigned to a team.");
+  await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-assignee-organization_team").click();
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+
+  // Open it so a worker can discover and view it.
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
+    "view-task",
+  ).click();
+  await page.getByTestId("open-task").click();
+  await expect(page.getByTestId("create-message")).toContainText("Task opened");
+
+  // A worker viewing the task sees the organization-team assignee scope.
+  const worker = await registerViaApi(request, "assignee-worker");
+  await page.getByTestId("logout").click();
+  await loginViaUi(page, worker.email);
+  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("discovery-task-row").filter({ hasText: title })
+    .getByTestId("discovery-view").click();
+  await expect(page.getByTestId("detail-title")).toContainText(title);
+  await expect(page.getByText("organization team")).toBeVisible();
+});
+
 test("pages have their own URLs and deep links load", async ({ page, request }) => {
   const owner = await registerViaApi(request, "routing-owner");
   await loginViaUi(page, owner.email);

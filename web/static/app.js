@@ -6887,7 +6887,6 @@ var $author$project$Main$createOwnerBody = function (state) {
 				$elm$json$Json$Encode$string(state.createTaskOwner))
 			]));
 };
-var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser = {$: 'TaskAssigneeScopeUser'};
 var $author$project$Main$assigneeScopeTag = function (scope) {
 	if (scope.$ === 'TaskAssigneeScopeUser') {
 		return 'user';
@@ -6914,7 +6913,7 @@ var $author$project$Main$createParticipationBody = function (state) {
 				_Utils_Tuple2(
 				'assignee_scope',
 				$elm$json$Json$Encode$string(
-					$author$project$Main$assigneeScopeTag($author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser))),
+					$author$project$Main$assigneeScopeTag(state.createAssigneeScope))),
 				_Utils_Tuple2(
 				'reservation_expiry_hours',
 				$elm$json$Json$Encode$int(
@@ -7092,6 +7091,7 @@ var $elm$json$Json$Decode$int = _Json_decodeInt;
 var $elm$json$Json$Decode$map7 = _Json_map7;
 var $elm$json$Json$Decode$map8 = _Json_map8;
 var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeOrganizationTeam = {$: 'TaskAssigneeScopeOrganizationTeam'};
+var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser = {$: 'TaskAssigneeScopeUser'};
 var $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (value) {
@@ -7799,6 +7799,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		collectibleName: '',
 		collectiblePolicy: $author$project$Sharecrop$Generated$Collectible$CollectibleTransferPolicyNonTransferableExceptPayout,
 		collectibles: _List_Nil,
+		createAssigneeScope: $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser,
 		createDescription: '',
 		createMessage: $elm$core$Maybe$Nothing,
 		createOrgName: '',
@@ -9208,6 +9209,18 @@ var $author$project$Main$update = F2(
 							return _Utils_update(
 								state,
 								{createScopeOrganizationId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateAssigneeScopeChosen':
+				var scope = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createAssigneeScope: scope});
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'CreateParticipationChanged':
@@ -11564,11 +11577,32 @@ var $author$project$Main$CreateTaskClicked = {$: 'CreateTaskClicked'};
 var $author$project$Main$CreateTitleChanged = function (a) {
 	return {$: 'CreateTitleChanged', a: a};
 };
+var $author$project$Main$allAssigneeScopes = _List_fromArray(
+	[$author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser, $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeOrganizationTeam]);
 var $author$project$Main$allParticipationPolicies = _List_fromArray(
 	[$author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen, $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyReservationRequired, $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyApprovalRequired]);
 var $author$project$Main$visibilityPublicTag = 'public';
 var $author$project$Main$allVisibilityTags = _List_fromArray(
 	[$author$project$Main$visibilityPublicTag, $author$project$Main$visibilityDefaultTag, $author$project$Main$visibilityUserTag, $author$project$Main$visibilityTeamTag, $author$project$Main$visibilityOrganizationTag]);
+var $author$project$Main$CreateAssigneeScopeChosen = function (a) {
+	return {$: 'CreateAssigneeScopeChosen', a: a};
+};
+var $author$project$Main$assigneeScopeLabel = function (scope) {
+	if (scope.$ === 'TaskAssigneeScopeUser') {
+		return 'user';
+	} else {
+		return 'organization team';
+	}
+};
+var $author$project$Main$assigneeScopeButton = F2(
+	function (selected, scope) {
+		return A4(
+			$author$project$Main$chooserButton,
+			_Utils_eq(selected, scope),
+			$author$project$Main$CreateAssigneeScopeChosen(scope),
+			'create-assignee-' + $author$project$Main$assigneeScopeTag(scope),
+			$author$project$Main$assigneeScopeLabel(scope));
+	});
 var $author$project$Sharecrop$Ui$fieldLabel = F2(
 	function (labelText, controls) {
 		return A2(
@@ -11834,6 +11868,17 @@ var $author$project$Main$createTaskView = function (state) {
 					$author$project$Main$visibilityButton(state.createVisibility),
 					$author$project$Main$allVisibilityTags)),
 				$author$project$Main$visibilityScopeField(state),
+				$author$project$Sharecrop$Ui$label_('Assignee'),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+					]),
+				A2(
+					$elm$core$List$map,
+					$author$project$Main$assigneeScopeButton(state.createAssigneeScope),
+					$author$project$Main$allAssigneeScopes)),
 				A2(
 				$author$project$Sharecrop$Ui$primaryButton,
 				_List_fromArray(
@@ -12902,13 +12947,6 @@ var $author$project$Main$ownerControlsCard = function (state) {
 				]));
 	} else {
 		return $elm$html$Html$text('');
-	}
-};
-var $author$project$Main$assigneeScopeLabel = function (scope) {
-	if (scope.$ === 'TaskAssigneeScopeUser') {
-		return 'user';
-	} else {
-		return 'organization team';
 	}
 };
 var $author$project$Main$ReserveClicked = function (a) {

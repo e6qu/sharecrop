@@ -62,6 +62,7 @@ type alias LoggedInModel =
     , createScopeUserId : String
     , createScopeTeamId : String
     , createScopeOrganizationId : String
+    , createAssigneeScope : Task.TaskAssigneeScope
     , createParticipationPolicy : String
     , createReservationHours : String
     , createMessage : Maybe String
@@ -168,6 +169,7 @@ type Msg
     | CreateScopeUserIdChanged String
     | CreateScopeTeamIdChanged String
     | CreateScopeOrganizationIdChanged String
+    | CreateAssigneeScopeChosen Task.TaskAssigneeScope
     | CreateParticipationChanged String
     | CreateReservationHoursChanged String
     | CreateTaskClicked
@@ -284,6 +286,7 @@ emptyLoggedIn response =
     , createScopeUserId = ""
     , createScopeTeamId = ""
     , createScopeOrganizationId = ""
+    , createAssigneeScope = Task.TaskAssigneeScopeUser
     , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
     , createReservationHours = "48"
     , createMessage = Nothing
@@ -546,6 +549,9 @@ update msg model =
 
         CreateScopeOrganizationIdChanged value ->
             ( updateLoggedIn model (\state -> { state | createScopeOrganizationId = value }), Cmd.none )
+
+        CreateAssigneeScopeChosen scope ->
+            ( updateLoggedIn model (\state -> { state | createAssigneeScope = scope }), Cmd.none )
 
         CreateParticipationChanged value ->
             ( updateLoggedIn model (\state -> { state | createParticipationPolicy = value }), Cmd.none )
@@ -1647,7 +1653,7 @@ createParticipationBody : LoggedInModel -> Encode.Value
 createParticipationBody state =
     Encode.object
         [ ( "policy", Encode.string state.createParticipationPolicy )
-        , ( "assignee_scope", Encode.string (assigneeScopeTag Task.TaskAssigneeScopeUser) )
+        , ( "assignee_scope", Encode.string (assigneeScopeTag state.createAssigneeScope) )
         , ( "reservation_expiry_hours", Encode.int (reservationHoursValue state.createReservationHours) )
         ]
 
@@ -2341,6 +2347,8 @@ createTaskView state =
         , Ui.label_ "Visibility"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (visibilityButton state.createVisibility) allVisibilityTags)
         , visibilityScopeField state
+        , Ui.label_ "Assignee"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (assigneeScopeButton state.createAssigneeScope) allAssigneeScopes)
         , Ui.primaryButton [ type_ "submit", testId "create-task" ] "Create task"
         , maybeNote state.createMessage "create-message"
         ]
@@ -2352,6 +2360,19 @@ visibilityButton selected tag =
         (CreateVisibilityChanged tag)
         ("create-visibility-" ++ tag)
         (visibilityLabel tag)
+
+
+allAssigneeScopes : List Task.TaskAssigneeScope
+allAssigneeScopes =
+    [ Task.TaskAssigneeScopeUser, Task.TaskAssigneeScopeOrganizationTeam ]
+
+
+assigneeScopeButton : Task.TaskAssigneeScope -> Task.TaskAssigneeScope -> Html Msg
+assigneeScopeButton selected scope =
+    chooserButton (selected == scope)
+        (CreateAssigneeScopeChosen scope)
+        ("create-assignee-" ++ assigneeScopeTag scope)
+        (assigneeScopeLabel scope)
 
 
 visibilityScopeField : LoggedInModel -> Html Msg
