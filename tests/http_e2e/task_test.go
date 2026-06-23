@@ -5,6 +5,7 @@ package http_e2e_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -212,6 +213,93 @@ func TestTaskListPagination(t *testing.T) {
 	}
 }
 
+func TestTaskListFiltersByStateAndParticipation(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "filter-owner")
+
+	// One open task with open participation, one draft task with reservation participation.
+	openTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, userTaskRequestJSON(owner.SubjectID))
+	openTask(t, server, owner.AccessToken, openTaskID)
+	draftTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, publicReservationTaskRequestJSON(owner.SubjectID))
+
+	openListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&state=open"))
+	assertTaskPresent(t, openListing, openTaskID)
+	assertTaskAbsent(t, openListing, draftTaskID)
+
+	draftListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&state=draft"))
+	for _, v := range draftListing.Tasks {
+		t.Logf("draft listing: id=%s state=%s", v.ID, v.State)
+	}
+	t.Logf("openTaskID=%s draftTaskID=%s", openTaskID, draftTaskID)
+	assertTaskPresent(t, draftListing, draftTaskID)
+	assertTaskAbsent(t, draftListing, openTaskID)
+
+	reservationListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&participation_policy=reservation_required"))
+	assertTaskPresent(t, reservationListing, draftTaskID)
+	assertTaskAbsent(t, reservationListing, openTaskID)
+
+	invalidResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&state=bogus", owner.AccessToken)
+	defer invalidResponse.Body.Close()
+	assertStatus(t, invalidResponse, http.StatusBadRequest)
+}
+
+func TestTaskListItemExposesActiveAssignee(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "active-assignee-owner")
+	worker := registerUser(t, server, "active-assignee-worker")
+
+	taskID := createUserTaskFromJSON(t, server, owner.AccessToken, publicReservationTaskRequestJSON(owner.SubjectID))
+	openTask(t, server, owner.AccessToken, taskID)
+
+	beforeReserve := findTaskInListing(t, decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user")), taskID)
+	if beforeReserve.ActiveAssigneeKind != "" || beforeReserve.ActiveAssigneeID != "" {
+		t.Fatalf("active assignee before reserve = (%q, %q), want empty", beforeReserve.ActiveAssigneeKind, beforeReserve.ActiveAssigneeID)
+	}
+
+	reserveResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/reservations", []byte(`{}`), worker.AccessToken)
+	defer reserveResponse.Body.Close()
+	assertStatus(t, reserveResponse, http.StatusCreated)
+
+	afterReserve := findTaskInListing(t, decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user")), taskID)
+	if afterReserve.ActiveAssigneeKind != "user" {
+		t.Fatalf("active assignee kind = %q, want user", afterReserve.ActiveAssigneeKind)
+	}
+	if afterReserve.ActiveAssigneeID != worker.SubjectID {
+		t.Fatalf("active assignee id = %q, want %q", afterReserve.ActiveAssigneeID, worker.SubjectID)
+	}
+}
+
+func createUserTaskFromJSON(t *testing.T, server *httptest.Server, accessToken string, requestJSON string) string {
+	t.Helper()
+	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(requestJSON), accessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+	return decodeTaskHTTPResponse(t, response).ID
+}
+
+func mustGet(t *testing.T, server *httptest.Server, accessToken string, path string) *http.Response {
+	t.Helper()
+	response := getWithBearer(t, server.URL+path, accessToken)
+	t.Cleanup(func() { response.Body.Close() })
+	assertStatus(t, response, http.StatusOK)
+	return response
+}
+
+func findTaskInListing(t *testing.T, body tasksHTTPResponse, taskID string) taskHTTPResponse {
+	t.Helper()
+	for _, value := range body.Tasks {
+		if value.ID == taskID {
+			return value
+		}
+	}
+	t.Fatalf("task %s was not present", taskID)
+	return taskHTTPResponse{}
+}
+
 type taskHTTPResponse struct {
 	ID                     string `json:"id"`
 	State                  string `json:"state"`
@@ -219,6 +307,9 @@ type taskHTTPResponse struct {
 	RewardKind             string `json:"reward_kind"`
 	RewardCreditAmount     int64  `json:"reward_credit_amount"`
 	RewardCollectibleCount int    `json:"reward_collectible_count"`
+	ParticipationPolicy    string `json:"participation_policy"`
+	ActiveAssigneeKind     string `json:"active_assignee_kind"`
+	ActiveAssigneeID       string `json:"active_assignee_id"`
 }
 
 type tasksHTTPResponse struct {

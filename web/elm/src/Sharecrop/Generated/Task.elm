@@ -423,6 +423,8 @@ type alias TaskListItemResponse =
     , availabilityKind : TaskAvailabilityKind
     , viewerAction : TaskViewerAction
     , createdBy : String
+    , activeAssigneeKind : String
+    , activeAssigneeID : String
     }
 
 taskListItemResponseDecoder : Decoder TaskListItemResponse
@@ -438,13 +440,15 @@ taskListItemResponseDecoder =
         (Decode.field "assignee_scope" taskAssigneeScopeDecoder)
         |> Decode.andThen
             (\finish ->
-                Decode.map6 finish
+                Decode.map8 finish
                     (Decode.field "reservation_expiry_hours" Decode.int)
                     (Decode.field "state" taskStateDecoder)
                     (Decode.field "visibility_kind" taskVisibilityKindDecoder)
                     (Decode.field "availability_kind" taskAvailabilityKindDecoder)
                     (Decode.field "viewer_action" taskViewerActionDecoder)
                     (Decode.field "created_by" Decode.string)
+                    (Decode.field "active_assignee_kind" Decode.string)
+                    (Decode.field "active_assignee_id" Decode.string)
             )
 
 taskListItemResponseEncoder : TaskListItemResponse -> Encode.Value
@@ -464,6 +468,8 @@ taskListItemResponseEncoder taskListItemResponse =
         , ( "availability_kind", taskAvailabilityKindEncoder taskListItemResponse.availabilityKind )
         , ( "viewer_action", taskViewerActionEncoder taskListItemResponse.viewerAction )
         , ( "created_by", Encode.string taskListItemResponse.createdBy )
+        , ( "active_assignee_kind", Encode.string taskListItemResponse.activeAssigneeKind )
+        , ( "active_assignee_id", Encode.string taskListItemResponse.activeAssigneeID )
         ]
 
 type alias TaskResponse =

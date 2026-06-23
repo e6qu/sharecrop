@@ -114,7 +114,7 @@ func (healthTaskService) Cancel(context.Context, auth.UserSubject, core.TaskID) 
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) List(context.Context, auth.UserSubject, task.ListScope, core.Page) task.ListResult {
+func (healthTaskService) List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
 	return task.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

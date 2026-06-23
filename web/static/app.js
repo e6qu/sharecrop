@@ -7326,7 +7326,11 @@ var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = function (id
 											return function (availabilityKind) {
 												return function (viewerAction) {
 													return function (createdBy) {
-														return {assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, id: id, ownerKind: ownerKind, participationPolicy: participationPolicy, reservationExpiryHours: reservationExpiryHours, rewardCollectibleCount: rewardCollectibleCount, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, state: state, title: title, viewerAction: viewerAction, visibilityKind: visibilityKind};
+														return function (activeAssigneeKind) {
+															return function (activeAssigneeID) {
+																return {activeAssigneeID: activeAssigneeID, activeAssigneeKind: activeAssigneeKind, assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, id: id, ownerKind: ownerKind, participationPolicy: participationPolicy, reservationExpiryHours: reservationExpiryHours, rewardCollectibleCount: rewardCollectibleCount, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, state: state, title: title, viewerAction: viewerAction, visibilityKind: visibilityKind};
+															};
+														};
 													};
 												};
 											};
@@ -7344,15 +7348,17 @@ var $author$project$Sharecrop$Generated$Task$TaskListItemResponse = function (id
 var $author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (finish) {
-		return A7(
-			$elm$json$Json$Decode$map6,
+		return A9(
+			$elm$json$Json$Decode$map8,
 			finish,
 			A2($elm$json$Json$Decode$field, 'reservation_expiry_hours', $elm$json$Json$Decode$int),
 			A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskStateDecoder),
 			A2($elm$json$Json$Decode$field, 'visibility_kind', $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder),
 			A2($elm$json$Json$Decode$field, 'availability_kind', $author$project$Sharecrop$Generated$Task$taskAvailabilityKindDecoder),
 			A2($elm$json$Json$Decode$field, 'viewer_action', $author$project$Sharecrop$Generated$Task$taskViewerActionDecoder),
-			A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+			A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string),
+			A2($elm$json$Json$Decode$field, 'active_assignee_kind', $elm$json$Json$Decode$string),
+			A2($elm$json$Json$Decode$field, 'active_assignee_id', $elm$json$Json$Decode$string));
 	},
 	A9(
 		$elm$json$Json$Decode$map8,
@@ -7394,6 +7400,20 @@ var $author$project$Main$fetchTaskDetail = F2(
 			'/api/tasks/' + taskId,
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Main$TaskDetailReceived, $author$project$Main$taskDetailDecoder));
+	});
+var $author$project$Main$TasksReceived = function (a) {
+	return {$: 'TasksReceived', a: a};
+};
+var $author$project$Main$fetchTasks = F2(
+	function (token, stateFilter) {
+		var query = (stateFilter === '') ? '/api/tasks?scope=user' : ('/api/tasks?scope=user&state=' + stateFilter);
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'GET',
+			token,
+			query,
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Main$TasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
 var $author$project$Main$escrowStateLabel = function (state) {
 	switch (state.$) {
@@ -7634,25 +7654,13 @@ var $author$project$Main$fetchLedger = function (token) {
 		$elm$http$Http$emptyBody,
 		A2($elm$http$Http$expectJson, $author$project$Main$LedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
 };
-var $author$project$Main$TasksReceived = function (a) {
-	return {$: 'TasksReceived', a: a};
-};
-var $author$project$Main$fetchTasks = function (token) {
-	return A5(
-		$author$project$Main$authorizedRequest,
-		'GET',
-		token,
-		'/api/tasks?scope=user',
-		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Main$TasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
-};
 var $author$project$Main$loadAfterAuth = function (token) {
 	return $elm$core$Platform$Cmd$batch(
 		_List_fromArray(
 			[
 				$author$project$Main$fetchBalance(token),
 				$author$project$Main$fetchLedger(token),
-				$author$project$Main$fetchTasks(token),
+				A2($author$project$Main$fetchTasks, token, ''),
 				$author$project$Main$fetchCredentials(token),
 				$author$project$Main$fetchCollectibles(token)
 			]));
@@ -7713,6 +7721,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		submissions: _List_Nil,
 		submitInput: '',
 		submitMessage: $elm$core$Maybe$Nothing,
+		taskStateFilter: '',
 		tasks: _List_Nil
 	};
 };
@@ -7980,7 +7989,7 @@ var $author$project$Main$refreshTasksAndDiscovery = function (model) {
 		return $elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
-					$author$project$Main$fetchTasks(state.accessToken),
+					A2($author$project$Main$fetchTasks, state.accessToken, state.taskStateFilter),
 					A2($author$project$Main$fetchDiscovery, state.accessToken, state.discoveryIncludeReserved)
 				]));
 	} else {
@@ -7994,7 +8003,7 @@ var $author$project$Main$refreshTasksAndLedger = function (model) {
 		return $elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
-					$author$project$Main$fetchTasks(state.accessToken),
+					A2($author$project$Main$fetchTasks, state.accessToken, state.taskStateFilter),
 					$author$project$Main$fetchBalance(state.accessToken),
 					$author$project$Main$fetchLedger(state.accessToken)
 				]));
@@ -8471,6 +8480,24 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'TaskStateFilterChanged':
+				var value = msg.a;
+				var updated = A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (state) {
+						return _Utils_update(
+							state,
+							{taskStateFilter: value});
+					});
+				return A2(
+					$author$project$Main$withSession,
+					updated,
+					function (state) {
+						return _Utils_Tuple2(
+							updated,
+							A2($author$project$Main$fetchTasks, state.accessToken, value));
+					});
 			case 'CreateTitleChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -11211,8 +11238,35 @@ var $author$project$Main$taskDetailView = F2(
 			return $elm$html$Html$text('');
 		}
 	});
+var $author$project$Main$TaskStateFilterChanged = function (a) {
+	return {$: 'TaskStateFilterChanged', a: a};
+};
+var $author$project$Main$filterTagId = function (tag) {
+	return (tag === '') ? 'all' : tag;
+};
+var $author$project$Main$taskFilterButton = F2(
+	function (selected, _v0) {
+		var tag = _v0.a;
+		var labelText = _v0.b;
+		return A4(
+			$author$project$Main$chooserButton,
+			_Utils_eq(selected, tag),
+			$author$project$Main$TaskStateFilterChanged(tag),
+			'task-filter-' + $author$project$Main$filterTagId(tag),
+			labelText);
+	});
+var $author$project$Main$taskStateFilterOptions = _List_fromArray(
+	[
+		_Utils_Tuple2('', 'All'),
+		_Utils_Tuple2('open', 'Open'),
+		_Utils_Tuple2('draft', 'Draft'),
+		_Utils_Tuple2('closed', 'Closed')
+	]);
 var $author$project$Main$SelectTask = function (a) {
 	return {$: 'SelectTask', a: a};
+};
+var $author$project$Main$activeAssigneeSuffix = function (item) {
+	return (item.activeAssigneeID === '') ? '' : (' · reserved by ' + item.activeAssigneeID);
 };
 var $author$project$Main$taskRow = function (item) {
 	return A2(
@@ -11248,7 +11302,7 @@ var $author$project$Main$taskRow = function (item) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								$author$project$Main$taskStateLabel(item.state) + (' · ' + A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount)))
+								$author$project$Main$taskStateLabel(item.state) + (' · ' + (A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + $author$project$Main$activeAssigneeSuffix(item))))
 							]))
 					])),
 				A2(
@@ -11288,6 +11342,18 @@ var $author$project$Main$tasksView = F2(
 			_List_fromArray(
 				[
 					$author$project$Sharecrop$Ui$sectionTitle('My tasks'),
+					$author$project$Sharecrop$Ui$label_('Filter by state'),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
+							$author$project$Sharecrop$Ui$testId('task-filter')
+						]),
+					A2(
+						$elm$core$List$map,
+						$author$project$Main$taskFilterButton(state.taskStateFilter),
+						$author$project$Main$taskStateFilterOptions)),
 					$author$project$Main$tasksList(state.tasks),
 					A2($author$project$Main$taskDetailView, origin, state)
 				]));
@@ -11399,7 +11465,7 @@ var $author$project$Main$discoveryRow = function (item) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								$author$project$Main$taskStateLabel(item.state) + (' · ' + (A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + (' · ' + $author$project$Main$participationPolicyLabel(item.participationPolicy)))))
+								$author$project$Main$taskStateLabel(item.state) + (' · ' + (A3($author$project$Main$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + (' · ' + ($author$project$Main$participationPolicyLabel(item.participationPolicy) + $author$project$Main$activeAssigneeSuffix(item))))))
 							]))
 					])),
 				A2(

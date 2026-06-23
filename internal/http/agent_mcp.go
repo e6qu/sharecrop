@@ -26,7 +26,7 @@ type mcpServices struct {
 }
 
 func (services mcpServices) ListTasks(ctx context.Context, subject auth.UserSubject, scope task.ListScope) task.ListResult {
-	return services.taskService.List(ctx, subject, scope, core.DefaultPage())
+	return services.taskService.List(ctx, subject, scope, task.NoListFilters(), core.DefaultPage())
 }
 
 func (services mcpServices) GetTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.GetResult {

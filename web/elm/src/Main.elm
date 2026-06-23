@@ -51,6 +51,7 @@ type alias LoggedInModel =
     , fundAmount : String
     , fundMessage : Maybe String
     , tasks : List Task.TaskListItemResponse
+    , taskStateFilter : String
     , selectedTask : Maybe TaskDetail
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
@@ -123,6 +124,7 @@ type Msg
     | BalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | LedgerReceived (Result Http.Error Ledger.LedgerResponse)
     | TasksReceived (Result Http.Error Task.TasksResponse)
+    | TaskStateFilterChanged String
     | CreateTitleChanged String
     | CreateDescriptionChanged String
     | CreateRewardAmountChanged String
@@ -233,6 +235,7 @@ emptyLoggedIn response =
     , fundAmount = ""
     , fundMessage = Nothing
     , tasks = []
+    , taskStateFilter = ""
     , selectedTask = Nothing
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
@@ -323,6 +326,13 @@ update msg model =
 
         TasksReceived result ->
             ( updateLoggedIn model (\state -> { state | tasks = tasksFromResult result }), Cmd.none )
+
+        TaskStateFilterChanged value ->
+            let
+                updated =
+                    updateLoggedIn model (\state -> { state | taskStateFilter = value })
+            in
+            withSession updated (\state -> ( updated, fetchTasks state.accessToken value ))
 
         CreateTitleChanged value ->
             ( updateLoggedIn model (\state -> { state | createTitle = value }), Cmd.none )
@@ -839,7 +849,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token, fetchCredentials token, fetchCollectibles token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "", fetchCredentials token, fetchCollectibles token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -866,7 +876,7 @@ refreshTasksAndLedger : Model -> Cmd Msg
 refreshTasksAndLedger model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken, fetchBalance state.accessToken, fetchLedger state.accessToken ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter, fetchBalance state.accessToken, fetchLedger state.accessToken ]
 
         LoggedOut ->
             Cmd.none
@@ -876,7 +886,7 @@ refreshTasksAndDiscovery : Model -> Cmd Msg
 refreshTasksAndDiscovery model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken, fetchDiscovery state.accessToken state.discoveryIncludeReserved ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter, fetchDiscovery state.accessToken state.discoveryIncludeReserved ]
 
         LoggedOut ->
             Cmd.none
@@ -1003,9 +1013,17 @@ fetchLedger token =
     authorizedRequest "GET" token "/api/credits/ledger" Http.emptyBody (Http.expectJson LedgerReceived Ledger.ledgerResponseDecoder)
 
 
-fetchTasks : String -> Cmd Msg
-fetchTasks token =
-    authorizedRequest "GET" token "/api/tasks?scope=user" Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
+fetchTasks : String -> String -> Cmd Msg
+fetchTasks token stateFilter =
+    let
+        query =
+            if stateFilter == "" then
+                "/api/tasks?scope=user"
+
+            else
+                "/api/tasks?scope=user&state=" ++ stateFilter
+    in
+    authorizedRequest "GET" token query Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
 
 
 fetchCredentials : String -> Cmd Msg
@@ -1583,9 +1601,46 @@ tasksView : String -> LoggedInModel -> Html Msg
 tasksView origin state =
     Ui.card
         [ Ui.sectionTitle "My tasks"
+        , Ui.label_ "Filter by state"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
         , tasksList state.tasks
         , taskDetailView origin state
         ]
+
+
+taskStateFilterOptions : List ( String, String )
+taskStateFilterOptions =
+    [ ( "", "All" )
+    , ( "open", "Open" )
+    , ( "draft", "Draft" )
+    , ( "closed", "Closed" )
+    ]
+
+
+taskFilterButton : String -> ( String, String ) -> Html Msg
+taskFilterButton selected ( tag, labelText ) =
+    chooserButton (selected == tag)
+        (TaskStateFilterChanged tag)
+        ("task-filter-" ++ filterTagId tag)
+        labelText
+
+
+filterTagId : String -> String
+filterTagId tag =
+    if tag == "" then
+        "all"
+
+    else
+        tag
+
+
+activeAssigneeSuffix : Task.TaskListItemResponse -> String
+activeAssigneeSuffix item =
+    if item.activeAssigneeID == "" then
+        ""
+
+    else
+        " · reserved by " ++ item.activeAssigneeID
 
 
 tasksList : List Task.TaskListItemResponse -> Html Msg
@@ -1602,7 +1657,7 @@ taskRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
             ]
         , Ui.secondaryButton [ onClick (SelectTask item.id), testId "view-task" ] "View"
         ]
@@ -1830,7 +1885,7 @@ discoveryRow item =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "discovery-task-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item) ]
             ]
         , Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View"
         ]

@@ -163,67 +163,31 @@ func (store TaskStore) requireOpenableReward(ctx context.Context, taskID core.Ta
 	return openableRewardAccepted{}
 }
 
-func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, page core.Page) task.ListTasksStoreResult {
+func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filters task.ListFilters, page core.Page) task.ListTasksStoreResult {
 	if err := store.releaseExpiredReservations(ctx); err != nil {
 		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
 	}
 
-	queryResult := listQueryForScope(scope, page)
+	queryResult := listQueryForScope(scope, filters, page)
 	query, matched := queryResult.(listQueryAccepted)
 	if !matched {
 		rejected := queryResult.(listQueryRejected)
 		return task.ListTasksStoreRejected{Reason: rejected.reason}
 	}
 
-	rowsResult := store.queryTaskRows(ctx, query)
-	rows, matched := rowsResult.(taskRowsQueried)
-	if !matched {
-		return task.ListTasksStoreRejected{Reason: rowsResult.(taskRowsQueryRejected).reason}
+	rows, err := store.pool.Query(ctx, query.sql, query.arguments)
+	if err != nil {
+		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
 	}
-	defer rows.rows.Close()
+	defer rows.Close()
 
-	valuesResult := scanTaskRows(rows.rows)
-	values, matched := valuesResult.(taskRowsAccepted)
+	valuesResult := scanTaskListItemRows(rows)
+	values, matched := valuesResult.(taskListItemRowsAccepted)
 	if !matched {
-		rejected := valuesResult.(taskRowsRejected)
+		rejected := valuesResult.(taskListItemRowsRejected)
 		return task.ListTasksStoreRejected{Reason: rejected.reason}
 	}
 	return task.ListTasksStoreAccepted{Values: values.values}
-}
-
-type taskRowsQueryResult interface {
-	taskRowsQueryResult()
-}
-
-type taskRowsQueried struct {
-	rows pgx.Rows
-}
-
-type taskRowsQueryRejected struct {
-	reason core.DomainError
-}
-
-func (taskRowsQueried) taskRowsQueryResult() {}
-
-func (taskRowsQueryRejected) taskRowsQueryResult() {}
-
-func (store TaskStore) queryTaskRows(ctx context.Context, query listQueryAccepted) taskRowsQueryResult {
-	switch arguments := query.arguments.(type) {
-	case publicListQueryArguments:
-		rows, err := store.pool.Query(ctx, query.sql, arguments.visibilityKind, arguments.includeReserved, arguments.viewerID, arguments.limit, arguments.offset)
-		if err != nil {
-			return taskRowsQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
-		}
-		return taskRowsQueried{rows: rows}
-	case singleListQueryArgument:
-		rows, err := store.pool.Query(ctx, query.sql, arguments.value, arguments.limit, arguments.offset)
-		if err != nil {
-			return taskRowsQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
-		}
-		return taskRowsQueried{rows: rows}
-	default:
-		return taskRowsQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list query arguments are invalid")}
-	}
 }
 
 func (store TaskStore) CreateCapabilityToken(ctx context.Context, tokenID core.TaskCapabilityTokenID, taskID core.TaskID, hash task.CapabilityTokenHash) task.CreateCapabilityTokenStoreResult {
@@ -625,13 +589,44 @@ func taskSelectSQL() string {
 	`
 }
 
+// taskListSelectSQL extends the base task select with the active reservation
+// assignee, exposed on each task list item. The LEFT JOIN keeps tasks without an
+// active reservation in the result with empty active-assignee columns.
+func taskListSelectSQL() string {
+	return `
+		select tasks.id::text, tasks.owner_kind, coalesce(tasks.user_id::text, ''), coalesce(tasks.team_id::text, ''),
+			coalesce(tasks.organization_id::text, ''), tasks.title, tasks.description, tasks.state,
+			tasks.reward_kind, coalesce(tasks.reward_credit_amount, 0),
+			coalesce((
+				select count(*)
+				from task_collectible_rewards
+				where task_collectible_rewards.task_id = tasks.id
+				and task_collectible_rewards.state in ('held', 'released')
+			), 0),
+			tasks.participation_policy, tasks.assignee_scope, tasks.reservation_expires_after_hours,
+			task_visibility_scopes.visibility_kind, coalesce(task_visibility_scopes.user_id::text, ''),
+			coalesce(task_visibility_scopes.team_id::text, ''), coalesce(task_visibility_scopes.organization_id::text, ''),
+			coalesce(tasks.series_id::text, ''), coalesce(tasks.series_position, 0), tasks.response_schema_json::text,
+			tasks.data_payload_kind, coalesce(tasks.data_payload_json::text, ''), tasks.created_by_user_id::text,
+			coalesce(active_reservation.assignee_kind, ''),
+			coalesce(active_reservation.user_id::text, ''),
+			coalesce(active_reservation.organization_id::text, ''),
+			coalesce(active_reservation.team_id::text, '')
+		from tasks
+		join task_visibility_scopes on task_visibility_scopes.task_id = tasks.id
+		left join task_reservations as active_reservation
+			on active_reservation.task_id = tasks.id
+			and active_reservation.state = 'active'
+	`
+}
+
 type listQueryResult interface {
 	listQueryResult()
 }
 
 type listQueryAccepted struct {
 	sql       string
-	arguments listQueryArguments
+	arguments pgx.NamedArgs
 }
 
 type listQueryRejected struct {
@@ -642,35 +637,21 @@ func (listQueryAccepted) listQueryResult() {}
 
 func (listQueryRejected) listQueryResult() {}
 
-type listQueryArguments interface {
-	listQueryArguments()
-}
-
-type publicListQueryArguments struct {
-	visibilityKind  string
-	includeReserved bool
-	viewerID        string
-	limit           int
-	offset          int
-}
-
-type singleListQueryArgument struct {
-	value  string
-	limit  int
-	offset int
-}
-
-func (publicListQueryArguments) listQueryArguments() {}
-
-func (singleListQueryArgument) listQueryArguments() {}
-
-func listQueryForScope(scope task.ListScope, page core.Page) listQueryResult {
+func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core.Page) listQueryResult {
+	arguments := pgx.NamedArgs{
+		"limit":  page.Limit(),
+		"offset": page.Offset(),
+	}
+	var where string
 	switch typed := scope.(type) {
 	case task.PublicListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + `
-			where task_visibility_scopes.visibility_kind = $1
+		arguments["visibility_kind"] = task.VisibilityKindPublic.String()
+		arguments["include_reserved"] = typed.IncludeReserved
+		arguments["viewer_id"] = typed.ViewerID.String()
+		where = `
+			where task_visibility_scopes.visibility_kind = @visibility_kind
 			and (
-				$2::boolean
+				@include_reserved::boolean
 				or not exists (
 					select 1 from task_reservations
 					where task_reservations.task_id = tasks.id
@@ -681,18 +662,179 @@ func listQueryForScope(scope task.ListScope, page core.Page) listQueryResult {
 					where task_reservations.task_id = tasks.id
 					and task_reservations.state = 'active'
 					and task_reservations.assignee_kind = 'user'
-					and task_reservations.user_id = $3
+					and task_reservations.user_id = @viewer_id
 				)
-				or tasks.created_by_user_id = $3
-			)
-			order by tasks.created_at desc
-			limit $4 offset $5`, arguments: publicListQueryArguments{visibilityKind: task.VisibilityKindPublic.String(), includeReserved: typed.IncludeReserved, viewerID: typed.ViewerID.String(), limit: page.Limit(), offset: page.Offset()}}
+				or tasks.created_by_user_id = @viewer_id
+			)`
 	case task.UserListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.user_id = $1 or tasks.created_by_user_id = $1 order by tasks.created_at desc limit $2 offset $3", arguments: singleListQueryArgument{value: typed.UserID.String(), limit: page.Limit(), offset: page.Offset()}}
+		arguments["user_id"] = typed.UserID.String()
+		where = " where (task_visibility_scopes.user_id = @user_id or tasks.created_by_user_id = @user_id)"
 	case task.OrganizationListScope:
-		return listQueryAccepted{sql: taskSelectSQL() + " where task_visibility_scopes.organization_id = $1 order by tasks.created_at desc limit $2 offset $3", arguments: singleListQueryArgument{value: typed.OrganizationID.String(), limit: page.Limit(), offset: page.Offset()}}
+		arguments["organization_id"] = typed.OrganizationID.String()
+		where = " where task_visibility_scopes.organization_id = @organization_id"
 	default:
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list scope is invalid")}
+	}
+
+	switch stateFilter := filters.State.(type) {
+	case task.StateEquals:
+		arguments["filter_state"] = stateFilter.Value.String()
+		where += " and tasks.state = @filter_state"
+	case task.AnyStateFilter:
+	default:
+		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task state filter is invalid")}
+	}
+
+	switch participationFilter := filters.Participation.(type) {
+	case task.ParticipationPolicyEquals:
+		arguments["filter_participation_policy"] = participationFilter.Value.String()
+		where += " and tasks.participation_policy = @filter_participation_policy"
+	case task.AnyParticipationPolicyFilter:
+	default:
+		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task participation policy filter is invalid")}
+	}
+
+	return listQueryAccepted{
+		sql:       taskListSelectSQL() + where + " order by tasks.created_at desc limit @limit offset @offset",
+		arguments: arguments,
+	}
+}
+
+type taskListItemRowsResult interface {
+	taskListItemRowsResult()
+}
+
+type taskListItemRowsAccepted struct {
+	values []task.ListItem
+}
+
+type taskListItemRowsRejected struct {
+	reason core.DomainError
+}
+
+func (taskListItemRowsAccepted) taskListItemRowsResult() {}
+
+func (taskListItemRowsRejected) taskListItemRowsResult() {}
+
+func scanTaskListItemRows(rows pgx.Rows) taskListItemRowsResult {
+	values := make([]task.ListItem, 0)
+	for rows.Next() {
+		parsed := scanTaskListItemRow(rows)
+		accepted, matched := parsed.(taskListItemRowAccepted)
+		if !matched {
+			rejected := parsed.(taskListItemRowRejected)
+			return taskListItemRowsRejected{reason: rejected.reason}
+		}
+		values = append(values, accepted.value)
+	}
+	if err := rows.Err(); err != nil {
+		return taskListItemRowsRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read tasks failed")}
+	}
+	return taskListItemRowsAccepted{values: values}
+}
+
+type taskListItemRowResult interface {
+	taskListItemRowResult()
+}
+
+type taskListItemRowAccepted struct {
+	value task.ListItem
+}
+
+type taskListItemRowRejected struct {
+	reason core.DomainError
+}
+
+func (taskListItemRowAccepted) taskListItemRowResult() {}
+
+func (taskListItemRowRejected) taskListItemRowResult() {}
+
+func scanTaskListItemRow(rows pgx.Rows) taskListItemRowResult {
+	var rawTaskID string
+	var rawOwnerKind string
+	var rawOwnerUserID string
+	var rawOwnerTeamID string
+	var rawOwnerOrganizationID string
+	var rawTitle string
+	var rawDescription string
+	var rawState string
+	var rawRewardKind string
+	var rawRewardCreditAmount int64
+	var rawRewardCollectibleCount int
+	var rawParticipationPolicy string
+	var rawAssigneeScope string
+	var rawReservationTTLHours int
+	var rawVisibilityKind string
+	var rawVisibilityUserID string
+	var rawVisibilityTeamID string
+	var rawVisibilityOrganizationID string
+	var rawSeriesID string
+	var rawSeriesPosition int
+	var rawResponseSchema string
+	var rawPayloadKind string
+	var rawPayload string
+	var rawCreatedBy string
+	var rawActiveAssigneeKind string
+	var rawActiveAssigneeUserID string
+	var rawActiveAssigneeOrganizationID string
+	var rawActiveAssigneeTeamID string
+	if err := rows.Scan(&rawTaskID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawDescription, &rawState, &rawRewardKind, &rawRewardCreditAmount, &rawRewardCollectibleCount, &rawParticipationPolicy, &rawAssigneeScope, &rawReservationTTLHours, &rawVisibilityKind, &rawVisibilityUserID, &rawVisibilityTeamID, &rawVisibilityOrganizationID, &rawSeriesID, &rawSeriesPosition, &rawResponseSchema, &rawPayloadKind, &rawPayload, &rawCreatedBy, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID); err != nil {
+		return taskListItemRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
+	}
+	taskResult := parseTaskRow(rawTaskID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawDescription, rawState, rawRewardKind, rawRewardCreditAmount, rawRewardCollectibleCount, rawParticipationPolicy, rawAssigneeScope, rawReservationTTLHours, rawVisibilityKind, rawVisibilityUserID, rawVisibilityTeamID, rawVisibilityOrganizationID, rawSeriesID, rawSeriesPosition, rawResponseSchema, rawPayloadKind, rawPayload, rawCreatedBy)
+	taskAccepted, taskMatched := taskResult.(taskRowAccepted)
+	if !taskMatched {
+		return taskListItemRowRejected{reason: taskResult.(taskRowRejected).reason}
+	}
+	activeResult := parseActiveAssignee(rawActiveAssigneeKind, rawActiveAssigneeUserID, rawActiveAssigneeOrganizationID, rawActiveAssigneeTeamID)
+	activeAccepted, activeMatched := activeResult.(activeAssigneeAccepted)
+	if !activeMatched {
+		return taskListItemRowRejected{reason: activeResult.(activeAssigneeRejected).reason}
+	}
+	return taskListItemRowAccepted{value: task.ListItem{Task: taskAccepted.value, ActiveAssignee: activeAccepted.value}}
+}
+
+type activeAssigneeResult interface {
+	activeAssigneeResult()
+}
+
+type activeAssigneeAccepted struct {
+	value task.ActiveAssignee
+}
+
+type activeAssigneeRejected struct {
+	reason core.DomainError
+}
+
+func (activeAssigneeAccepted) activeAssigneeResult() {}
+
+func (activeAssigneeRejected) activeAssigneeResult() {}
+
+func parseActiveAssignee(kind string, rawUserID string, rawOrganizationID string, rawTeamID string) activeAssigneeResult {
+	switch kind {
+	case "":
+		return activeAssigneeAccepted{value: task.NoActiveAssignee{}}
+	case task.AssigneeScopeUser.String():
+		userIDResult := core.ParseUserID(rawUserID)
+		userID, matched := userIDResult.(core.UserIDCreated)
+		if !matched {
+			return activeAssigneeRejected{reason: userIDResult.(core.UserIDRejected).Reason}
+		}
+		return activeAssigneeAccepted{value: task.ActiveUserAssignee{UserID: userID.Value}}
+	case task.AssigneeScopeOrganizationTeam.String():
+		organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
+		organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
+		if !organizationMatched {
+			return activeAssigneeRejected{reason: organizationIDResult.(core.OrganizationIDRejected).Reason}
+		}
+		teamIDResult := core.ParseTeamID(rawTeamID)
+		teamID, teamMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamMatched {
+			return activeAssigneeRejected{reason: teamIDResult.(core.TeamIDRejected).Reason}
+		}
+		return activeAssigneeAccepted{value: task.ActiveOrganizationTeamAssignee{OrganizationID: organizationID.Value, TeamID: teamID.Value}}
+	default:
+		return activeAssigneeRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "active assignee kind is invalid")}
 	}
 }
 

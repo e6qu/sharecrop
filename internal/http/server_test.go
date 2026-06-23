@@ -484,8 +484,8 @@ func (testTaskService) Cancel(context.Context, auth.UserSubject, core.TaskID) ta
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope, core.Page) task.ListResult {
-	return task.TasksListed{Values: []task.Task{}}
+func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
+	return task.TasksListed{Values: []task.ListItem{}}
 }
 
 func (testTaskService) CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult {

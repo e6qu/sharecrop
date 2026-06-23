@@ -136,7 +136,7 @@ func (server Server) callListTasks(ctx context.Context, subject auth.UserSubject
 
 	summaries := make([]taskSummary, 0, len(listed.Values))
 	for index := range listed.Values {
-		summaries = append(summaries, taskToSummary(listed.Values[index]))
+		summaries = append(summaries, taskToSummary(listed.Values[index].Task))
 	}
 	return marshalPayload(tasksPayload{Tasks: summaries})
 }

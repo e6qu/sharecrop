@@ -51,7 +51,7 @@ type TaskService interface {
 	Get(context.Context, auth.UserSubject, core.TaskID) task.GetResult
 	Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
-	List(context.Context, auth.UserSubject, task.ListScope, core.Page) task.ListResult
+	List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult
 	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
 	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
@@ -354,8 +354,27 @@ type taskResponse struct {
 	ViewerAction           string `json:"viewer_action"`
 }
 
+type taskListItemResponse struct {
+	ID                     string `json:"id"`
+	OwnerKind              string `json:"owner_kind"`
+	Title                  string `json:"title"`
+	RewardKind             string `json:"reward_kind"`
+	RewardCreditAmount     int64  `json:"reward_credit_amount"`
+	RewardCollectibleCount int    `json:"reward_collectible_count"`
+	ParticipationPolicy    string `json:"participation_policy"`
+	AssigneeScope          string `json:"assignee_scope"`
+	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
+	State                  string `json:"state"`
+	VisibilityKind         string `json:"visibility_kind"`
+	AvailabilityKind       string `json:"availability_kind"`
+	ViewerAction           string `json:"viewer_action"`
+	CreatedBy              string `json:"created_by"`
+	ActiveAssigneeKind     string `json:"active_assignee_kind"`
+	ActiveAssigneeID       string `json:"active_assignee_id"`
+}
+
 type tasksResponse struct {
-	Tasks []taskResponse `json:"tasks"`
+	Tasks []taskListItemResponse `json:"tasks"`
 }
 
 type taskCapabilityTokenResponse struct {
@@ -866,7 +885,14 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value, parsePage(r))
+	filtersResult := parseTaskListFilters(r)
+	filtersAccepted, filtersMatched := filtersResult.(taskListFiltersAccepted)
+	if !filtersMatched {
+		writeDomainError(w, filtersResult.(taskListFiltersRejected).reason)
+		return
+	}
+
+	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value, filtersAccepted.value, parsePage(r))
 	switch listed := result.(type) {
 	case task.ListRejected:
 		writeDomainError(w, listed.Reason)
@@ -875,10 +901,10 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func tasksToResponse(values []task.Task) tasksResponse {
-	response := tasksResponse{Tasks: make([]taskResponse, 0, len(values))}
+func tasksToResponse(values []task.ListItem) tasksResponse {
+	response := tasksResponse{Tasks: make([]taskListItemResponse, 0, len(values))}
 	for valueIndex := range values {
-		response.Tasks = append(response.Tasks, taskToResponse(values[valueIndex]))
+		response.Tasks = append(response.Tasks, taskListItemToResponse(values[valueIndex]))
 	}
 	return response
 }
@@ -2285,6 +2311,47 @@ func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeRe
 	}
 }
 
+type taskListFiltersResult interface {
+	taskListFiltersResult()
+}
+
+type taskListFiltersAccepted struct {
+	value task.ListFilters
+}
+
+type taskListFiltersRejected struct {
+	reason core.DomainError
+}
+
+func (taskListFiltersAccepted) taskListFiltersResult() {}
+
+func (taskListFiltersRejected) taskListFiltersResult() {}
+
+func parseTaskListFilters(r *http.Request) taskListFiltersResult {
+	query := r.URL.Query()
+	filters := task.NoListFilters()
+
+	if rawState := query.Get("state"); rawState != "" {
+		stateResult := task.ParseState(rawState)
+		stateAccepted, matched := stateResult.(task.StateAccepted)
+		if !matched {
+			return taskListFiltersRejected{reason: stateResult.(task.StateRejected).Reason}
+		}
+		filters.State = task.StateEquals{Value: stateAccepted.Value}
+	}
+
+	if rawPolicy := query.Get("participation_policy"); rawPolicy != "" {
+		policyResult := task.ParseParticipationPolicy(rawPolicy)
+		policyAccepted, matched := policyResult.(task.ParticipationPolicyAccepted)
+		if !matched {
+			return taskListFiltersRejected{reason: policyResult.(task.ParticipationPolicyRejected).Reason}
+		}
+		filters.Participation = task.ParticipationPolicyEquals{Value: policyAccepted.Value}
+	}
+
+	return taskListFiltersAccepted{value: filters}
+}
+
 func parsePage(r *http.Request) core.Page {
 	query := r.URL.Query()
 	rawLimit := query.Get("limit")
@@ -2414,6 +2481,48 @@ func memberToResponse(value org.OrganizationMember) organizationMemberResponse {
 
 func teamToResponse(value org.Team) teamResponse {
 	return teamResponse{ID: value.ID.String(), OrganizationID: value.OrganizationID.String(), Name: value.Name.String(), CreatedBy: value.CreatedBy.String()}
+}
+
+func taskListItemToResponse(item task.ListItem) taskListItemResponse {
+	value := item.Task
+	owner := taskOwnerResponseParts(value.Owner)
+	visibility := taskVisibilityResponseParts(value.Visibility)
+	reward := taskRewardResponseParts(value.Reward)
+	active := activeAssigneeResponseParts(item.ActiveAssignee)
+	return taskListItemResponse{
+		ID:                     value.ID.String(),
+		OwnerKind:              owner.kind,
+		Title:                  value.Title.String(),
+		RewardKind:             reward.kind,
+		RewardCreditAmount:     reward.amount,
+		RewardCollectibleCount: reward.collectibleCount,
+		ParticipationPolicy:    value.Participation.String(),
+		AssigneeScope:          value.AssigneeScope.String(),
+		ReservationExpiryHours: value.ReservationTTL.Hours(),
+		State:                  value.State.String(),
+		VisibilityKind:         visibility.kind,
+		AvailabilityKind:       taskAvailabilityKind(value).String(),
+		ViewerAction:           taskViewerAction(value).String(),
+		CreatedBy:              value.CreatedBy.String(),
+		ActiveAssigneeKind:     active.kind,
+		ActiveAssigneeID:       active.id,
+	}
+}
+
+type activeAssigneeParts struct {
+	kind string
+	id   string
+}
+
+func activeAssigneeResponseParts(active task.ActiveAssignee) activeAssigneeParts {
+	switch typed := active.(type) {
+	case task.ActiveUserAssignee:
+		return activeAssigneeParts{kind: task.AssigneeScopeUser.String(), id: typed.UserID.String()}
+	case task.ActiveOrganizationTeamAssignee:
+		return activeAssigneeParts{kind: task.AssigneeScopeOrganizationTeam.String(), id: typed.TeamID.String()}
+	default:
+		return activeAssigneeParts{kind: "", id: ""}
+	}
 }
 
 func taskToResponse(value task.Task) taskResponse {

@@ -188,10 +188,10 @@ func (store *taskMemoryStore) ChangeTaskState(_ context.Context, taskID core.Tas
 	return ChangeTaskStateStoreAccepted{Value: value}
 }
 
-func (store *taskMemoryStore) ListTasks(context.Context, ListScope, core.Page) ListTasksStoreResult {
-	values := make([]Task, 0, len(store.tasks))
+func (store *taskMemoryStore) ListTasks(_ context.Context, _ ListScope, _ ListFilters, _ core.Page) ListTasksStoreResult {
+	values := make([]ListItem, 0, len(store.tasks))
 	for taskKey := range store.tasks {
-		values = append(values, store.tasks[taskKey])
+		values = append(values, ListItem{Task: store.tasks[taskKey], ActiveAssignee: NoActiveAssignee{}})
 	}
 	return ListTasksStoreAccepted{Values: values}
 }
