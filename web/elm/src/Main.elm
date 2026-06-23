@@ -92,6 +92,7 @@ type alias LoggedInModel =
     , activeOrgId : String
     , orgBalance : Maybe Int
     , orgTeams : List Team.TeamResponse
+    , orgMembers : List Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
@@ -209,6 +210,7 @@ type Msg
     | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
     | OrgBalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
+    | OrgMembersReceived (Result Http.Error Organization.OrganizationMembersResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
@@ -296,6 +298,7 @@ emptyLoggedIn response =
     , activeOrgId = ""
     , orgBalance = Nothing
     , orgTeams = []
+    , orgMembers = []
     , orgTasks = []
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
@@ -388,7 +391,7 @@ enterPage : Page -> LoggedInModel -> LoggedInModel
 enterPage page state =
     case page of
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
 
         _ ->
             { state | page = page }
@@ -737,6 +740,9 @@ update msg model =
         OrgTeamsReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTeams = teamsFromResult result }), Cmd.none )
 
+        OrgMembersReceived result ->
+            ( updateLoggedIn model (\state -> { state | orgMembers = membersFromResult result }), Cmd.none )
+
         OrgTasksReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
 
@@ -763,7 +769,11 @@ update msg model =
             withSession model (\state -> provisionMemberCommand model state)
 
         ProvisionMemberReceived (Ok ()) ->
-            ( updateLoggedIn model (\state -> { state | provisionMemberEmail = "", provisionMemberMessage = Just "Member provisioned." }), Cmd.none )
+            let
+                updated =
+                    updateLoggedIn model (\state -> { state | provisionMemberEmail = "", provisionMemberMessage = Just "Member provisioned." })
+            in
+            withSession updated (\state -> ( updated, authorizedRequest "GET" state.accessToken ("/api/organizations/" ++ state.activeOrgId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder) ))
 
         ProvisionMemberReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -1344,6 +1354,7 @@ loadOrganization token organizationId =
         Cmd.batch
             [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (Http.expectJson OrgBalanceReceived Ledger.balanceResponseDecoder)
             , fetchOrgTeams token organizationId
+            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder)
             , authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
             ]
 
@@ -1388,6 +1399,16 @@ teamsFromResult result =
     case result of
         Ok response ->
             response.teams
+
+        Err _ ->
+            []
+
+
+membersFromResult : Result Http.Error Organization.OrganizationMembersResponse -> List Organization.OrganizationMemberResponse
+membersFromResult result =
+    case result of
+        Ok response ->
+            response.members
 
         Err _ ->
             []
@@ -1874,6 +1895,8 @@ activeOrganizationView state =
                 , Ui.primaryButton [ type_ "submit", testId "create-org-team" ] "Create team"
                 ]
             , maybeNote state.orgTeamMessage "org-team-message"
+            , Ui.sectionTitle "Members"
+            , orgMembersList state.orgMembers
             , Ui.sectionTitle "Provision a member"
             , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit ProvisionMemberClicked ]
                 [ Ui.fieldLabel "Member email"
@@ -1892,6 +1915,66 @@ orgTeamsList teams =
     else
         div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-teams" ]
             (List.map (\team -> p [ Html.Attributes.class "py-1 text-sm", testId "org-team-row" ] [ text team.name ]) teams)
+
+
+orgMembersList : List Organization.OrganizationMemberResponse -> Html Msg
+orgMembersList members =
+    if List.isEmpty members then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "org-members-empty" ] [ text "No members yet." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-members" ] (List.map orgMemberRow members)
+
+
+orgMemberRow : Organization.OrganizationMemberResponse -> Html Msg
+orgMemberRow member =
+    let
+        roles =
+            if List.isEmpty member.roles then
+                "no roles"
+
+            else
+                String.join ", " (List.map organizationRoleText member.roles)
+    in
+    div [ Html.Attributes.class "flex items-center justify-between gap-2 py-2", testId "org-member-row" ]
+        [ a [ href ("/users/" ++ member.userID), Html.Attributes.class "text-sm font-medium underline", testId "org-member-link" ] [ text member.userID ]
+        , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (roles ++ " · " ++ membershipStatusText member.status) ]
+        ]
+
+
+membershipStatusText : Organization.MembershipStatus -> String
+membershipStatusText status =
+    case status of
+        Organization.MembershipStatusActive ->
+            "active"
+
+        Organization.MembershipStatusDeactivated ->
+            "deactivated"
+
+        Organization.MembershipStatusRemoved ->
+            "removed"
+
+
+organizationRoleText : Organization.OrganizationRole -> String
+organizationRoleText role =
+    case role of
+        Organization.OrganizationRoleOwner ->
+            "owner"
+
+        Organization.OrganizationRoleAdmin ->
+            "admin"
+
+        Organization.OrganizationRoleMember ->
+            "member"
+
+        Organization.OrganizationRoleBilling ->
+            "billing"
+
+        Organization.OrganizationRoleReviewer ->
+            "reviewer"
+
+        Organization.OrganizationRolePublicPublisher ->
+            "public publisher"
 
 
 tasksListSimple : String -> List Task.TaskListItemResponse -> Html Msg

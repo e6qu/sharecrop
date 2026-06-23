@@ -150,6 +150,73 @@ type teamsHTTPResponse struct {
 	Teams []teamHTTPResponse `json:"teams"`
 }
 
+func TestOrganizationMemberListing(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "members-owner")
+	organizationID := createOrganization(t, server, owner, "Members Labs")
+
+	memberEmail := "members-member-" + uniqueTestSuffix(t) + "@example.com"
+	member := registerUserWithEmail(t, server, memberEmail)
+	provisionOrganizationMember(t, server, owner.AccessToken, organizationID, memberEmail, `["member","reviewer"]`)
+
+	listResp := getWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/members", owner.AccessToken)
+	defer listResp.Body.Close()
+	assertStatus(t, listResp, http.StatusOK)
+	var body struct {
+		Members []struct {
+			UserID string   `json:"user_id"`
+			Status string   `json:"status"`
+			Roles  []string `json:"roles"`
+		} `json:"members"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode members: %v", err)
+	}
+	if len(body.Members) != 2 {
+		t.Fatalf("member count = %d, want 2 (owner + provisioned)", len(body.Members))
+	}
+
+	foundOwner := false
+	foundMember := false
+	for _, entry := range body.Members {
+		if entry.Status != "active" {
+			t.Fatalf("member %q status = %q, want active", entry.UserID, entry.Status)
+		}
+		if entry.UserID == owner.SubjectID {
+			foundOwner = true
+			if !containsString(entry.Roles, "owner") {
+				t.Fatalf("owner roles = %v, want to include owner", entry.Roles)
+			}
+		}
+		if entry.UserID == member.SubjectID {
+			foundMember = true
+			if !containsString(entry.Roles, "member") || !containsString(entry.Roles, "reviewer") {
+				t.Fatalf("member roles = %v, want member and reviewer", entry.Roles)
+			}
+		}
+	}
+	if !foundOwner || !foundMember {
+		t.Fatalf("expected both owner (%v) and member (%v) in the listing", foundOwner, foundMember)
+	}
+
+	// A non-member cannot list the roster.
+	outsider := registerUser(t, server, "members-outsider")
+	outsiderResp := getWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/members", outsider.AccessToken)
+	defer outsiderResp.Body.Close()
+	assertStatus(t, outsiderResp, http.StatusForbidden)
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func registerUserWithEmail(t *testing.T, server *httptest.Server, email string) authHTTPResponse {
 	t.Helper()
 	response := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{

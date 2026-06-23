@@ -187,6 +187,8 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("select-organization").first().click();
   await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]+$/);
   await expect(page.getByTestId("active-organization")).toBeVisible();
+  // The owner is a real member of the org they created.
+  await expect(page.getByTestId("org-member-row")).toHaveCount(1);
 
   await page.getByTestId("create-org-team-name").fill(teamName);
   await page.getByTestId("create-org-team").click();
@@ -199,6 +201,8 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page.getByTestId("provision-member-message")).toContainText(
     "provisioned",
   );
+  // The provisioned member now appears in the real member list (owner + member).
+  await expect(page.getByTestId("org-member-row")).toHaveCount(2);
 });
 
 test("requesters filter their task list by state", async ({ page, request }) => {

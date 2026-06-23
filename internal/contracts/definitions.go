@@ -196,6 +196,12 @@ func organizationModule() Module {
 					{Name: NewElmValueName("roles"), JSONName: NewJSONFieldName("roles"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrganizationRole")}}},
 				},
 			},
+			Product{
+				Name: NewElmTypeName("OrganizationMembersResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("members"), JSONName: NewJSONFieldName("members"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrganizationMemberResponse")}}},
+				},
+			},
 		},
 	}
 }

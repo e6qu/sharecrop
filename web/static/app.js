@@ -6252,6 +6252,9 @@ var $author$project$Main$postRefresh = $elm$http$Http$post(
 var $author$project$Main$LoggedIn = function (a) {
 	return {$: 'LoggedIn', a: a};
 };
+var $author$project$Main$OrgMembersReceived = function (a) {
+	return {$: 'OrgMembersReceived', a: a};
+};
 var $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen = {$: 'TaskParticipationPolicyOpen'};
 var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
@@ -7280,7 +7283,7 @@ var $author$project$Main$enterPage = F2(
 			var organizationId = page.a;
 			return _Utils_update(
 				state,
-				{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, page: page, provisionMemberMessage: $elm$core$Maybe$Nothing});
+				{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgMembers: _List_Nil, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, page: page, provisionMemberMessage: $elm$core$Maybe$Nothing});
 		} else {
 			return _Utils_update(
 				state,
@@ -7738,6 +7741,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundTaskId: '',
 		newCredential: $elm$core$Maybe$Nothing,
 		orgBalance: $elm$core$Maybe$Nothing,
+		orgMembers: _List_Nil,
 		orgMessage: $elm$core$Maybe$Nothing,
 		orgTasks: _List_Nil,
 		orgTeamMessage: $elm$core$Maybe$Nothing,
@@ -7768,6 +7772,14 @@ var $author$project$Main$loggedInForPage = F2(
 			state,
 			{page: page});
 	});
+var $author$project$Main$membersFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return response.members;
+	} else {
+		return _List_Nil;
+	}
+};
 var $author$project$Main$MintReceived = function (a) {
 	return {$: 'MintReceived', a: a};
 };
@@ -7848,6 +7860,77 @@ var $author$project$Main$mintCommand = F2(
 var $author$project$Main$mintSuccessLabel = function (collectible) {
 	return 'Minted ' + (collectible.name + (' (' + ($author$project$Main$collectibleStateLabel(collectible.state) + ').')));
 };
+var $author$project$Sharecrop$Generated$Organization$OrganizationMembersResponse = function (members) {
+	return {members: members};
+};
+var $author$project$Sharecrop$Generated$Organization$OrganizationMemberResponse = F5(
+	function (id, organizationID, userID, status, roles) {
+		return {id: id, organizationID: organizationID, roles: roles, status: status, userID: userID};
+	});
+var $elm$json$Json$Decode$map5 = _Json_map5;
+var $author$project$Sharecrop$Generated$Organization$MembershipStatusActive = {$: 'MembershipStatusActive'};
+var $author$project$Sharecrop$Generated$Organization$MembershipStatusDeactivated = {$: 'MembershipStatusDeactivated'};
+var $author$project$Sharecrop$Generated$Organization$MembershipStatusRemoved = {$: 'MembershipStatusRemoved'};
+var $author$project$Sharecrop$Generated$Organization$membershipStatusDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'active':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$MembershipStatusActive);
+			case 'deactivated':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$MembershipStatusDeactivated);
+			case 'removed':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$MembershipStatusRemoved);
+			default:
+				return $elm$json$Json$Decode$fail('invalid MembershipStatus');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Organization$OrganizationRoleAdmin = {$: 'OrganizationRoleAdmin'};
+var $author$project$Sharecrop$Generated$Organization$OrganizationRoleBilling = {$: 'OrganizationRoleBilling'};
+var $author$project$Sharecrop$Generated$Organization$OrganizationRoleMember = {$: 'OrganizationRoleMember'};
+var $author$project$Sharecrop$Generated$Organization$OrganizationRoleOwner = {$: 'OrganizationRoleOwner'};
+var $author$project$Sharecrop$Generated$Organization$OrganizationRolePublicPublisher = {$: 'OrganizationRolePublicPublisher'};
+var $author$project$Sharecrop$Generated$Organization$OrganizationRoleReviewer = {$: 'OrganizationRoleReviewer'};
+var $author$project$Sharecrop$Generated$Organization$organizationRoleDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'owner':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$OrganizationRoleOwner);
+			case 'admin':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$OrganizationRoleAdmin);
+			case 'member':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$OrganizationRoleMember);
+			case 'billing':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$OrganizationRoleBilling);
+			case 'reviewer':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$OrganizationRoleReviewer);
+			case 'public_publisher':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Organization$OrganizationRolePublicPublisher);
+			default:
+				return $elm$json$Json$Decode$fail('invalid OrganizationRole');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Organization$organizationMemberResponseDecoder = A6(
+	$elm$json$Json$Decode$map5,
+	$author$project$Sharecrop$Generated$Organization$OrganizationMemberResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'organization_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'user_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'status', $author$project$Sharecrop$Generated$Organization$membershipStatusDecoder),
+	A2(
+		$elm$json$Json$Decode$field,
+		'roles',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Organization$organizationRoleDecoder)));
+var $author$project$Sharecrop$Generated$Organization$organizationMembersResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Organization$OrganizationMembersResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'members',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Organization$organizationMemberResponseDecoder)));
 var $author$project$Main$organizationsFromResult = function (result) {
 	if (result.$ === 'Ok') {
 		var response = result.a;
@@ -8460,6 +8543,13 @@ var $author$project$Main$loadOrganization = F2(
 					$elm$http$Http$emptyBody,
 					A2($elm$http$Http$expectJson, $author$project$Main$OrgBalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder)),
 					A2($author$project$Main$fetchOrgTeams, token, organizationId),
+					A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/organizations/' + (organizationId + '/members'),
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$OrgMembersReceived, $author$project$Sharecrop$Generated$Organization$organizationMembersResponseDecoder)),
 					A5(
 					$author$project$Main$authorizedRequest,
 					'GET',
@@ -9845,6 +9935,20 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'OrgMembersReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									orgMembers: $author$project$Main$membersFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'OrgTasksReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -9937,19 +10041,31 @@ var $author$project$Main$update = F2(
 					});
 			case 'ProvisionMemberReceived':
 				if (msg.a.$ === 'Ok') {
-					return _Utils_Tuple2(
-						A2(
-							$author$project$Main$updateLoggedIn,
-							model,
-							function (state) {
-								return _Utils_update(
-									state,
-									{
-										provisionMemberEmail: '',
-										provisionMemberMessage: $elm$core$Maybe$Just('Member provisioned.')
-									});
-							}),
-						$elm$core$Platform$Cmd$none);
+					var updated = A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									provisionMemberEmail: '',
+									provisionMemberMessage: $elm$core$Maybe$Just('Member provisioned.')
+								});
+						});
+					return A2(
+						$author$project$Main$withSession,
+						updated,
+						function (state) {
+							return _Utils_Tuple2(
+								updated,
+								A5(
+									$author$project$Main$authorizedRequest,
+									'GET',
+									state.accessToken,
+									'/api/organizations/' + (state.activeOrgId + '/members'),
+									$elm$http$Http$emptyBody,
+									A2($elm$http$Http$expectJson, $author$project$Main$OrgMembersReceived, $author$project$Sharecrop$Generated$Organization$organizationMembersResponseDecoder)));
+						});
 				} else {
 					var error = msg.a.a;
 					return _Utils_Tuple2(
@@ -11451,6 +11567,91 @@ var $author$project$Main$balanceLabel = function (balance) {
 		return 'Loading…';
 	}
 };
+var $author$project$Main$membershipStatusText = function (status) {
+	switch (status.$) {
+		case 'MembershipStatusActive':
+			return 'active';
+		case 'MembershipStatusDeactivated':
+			return 'deactivated';
+		default:
+			return 'removed';
+	}
+};
+var $author$project$Main$organizationRoleText = function (role) {
+	switch (role.$) {
+		case 'OrganizationRoleOwner':
+			return 'owner';
+		case 'OrganizationRoleAdmin':
+			return 'admin';
+		case 'OrganizationRoleMember':
+			return 'member';
+		case 'OrganizationRoleBilling':
+			return 'billing';
+		case 'OrganizationRoleReviewer':
+			return 'reviewer';
+		default:
+			return 'public publisher';
+	}
+};
+var $author$project$Main$orgMemberRow = function (member) {
+	var roles = $elm$core$List$isEmpty(member.roles) ? 'no roles' : A2(
+		$elm$core$String$join,
+		', ',
+		A2($elm$core$List$map, $author$project$Main$organizationRoleText, member.roles));
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex items-center justify-between gap-2 py-2'),
+				$author$project$Sharecrop$Ui$testId('org-member-row')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$a,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$href('/users/' + member.userID),
+						$elm$html$Html$Attributes$class('text-sm font-medium underline'),
+						$author$project$Sharecrop$Ui$testId('org-member-link')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(member.userID)
+					])),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs text-slate-600')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						roles + (' · ' + $author$project$Main$membershipStatusText(member.status)))
+					]))
+			]));
+};
+var $author$project$Main$orgMembersList = function (members) {
+	return $elm$core$List$isEmpty(members) ? A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+				$author$project$Sharecrop$Ui$testId('org-members-empty')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text('No members yet.')
+			])) : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+				$author$project$Sharecrop$Ui$testId('org-members')
+			]),
+		A2($elm$core$List$map, $author$project$Main$orgMemberRow, members));
+};
 var $author$project$Main$orgTeamsList = function (teams) {
 	return $elm$core$List$isEmpty(teams) ? A2(
 		$elm$html$Html$p,
@@ -11573,6 +11774,8 @@ var $author$project$Main$activeOrganizationView = function (state) {
 						'Create team')
 					])),
 				A2($author$project$Main$maybeNote, state.orgTeamMessage, 'org-team-message'),
+				$author$project$Sharecrop$Ui$sectionTitle('Members'),
+				$author$project$Main$orgMembersList(state.orgMembers),
 				$author$project$Sharecrop$Ui$sectionTitle('Provision a member'),
 				A2(
 				$elm$html$Html$form,

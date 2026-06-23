@@ -39,6 +39,7 @@ type SubjectVerifier interface {
 type OrganizationService interface {
 	CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult
 	ListOrganizations(context.Context, auth.UserSubject, core.Page) org.ListOrganizationsResult
+	ListMembers(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListMembersResult
 	ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
 	DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
 	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
@@ -134,6 +135,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/auth/guest", server.guest)
 	mux.HandleFunc("GET /api/organizations", server.listOrganizations)
 	mux.HandleFunc("POST /api/organizations", server.createOrganization)
+	mux.HandleFunc("GET /api/organizations/{organization_id}/members", server.listOrganizationMembers)
 	mux.HandleFunc("POST /api/organizations/{organization_id}/members", server.provisionOrganizationMember)
 	mux.HandleFunc("PATCH /api/organizations/{organization_id}/members/{user_id}/deactivate", server.deactivateOrganizationMember)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/teams", server.listOrganizationTeams)
@@ -322,6 +324,10 @@ type organizationMemberResponse struct {
 	UserID         string   `json:"user_id"`
 	Status         string   `json:"status"`
 	Roles          []string `json:"roles"`
+}
+
+type organizationMembersResponse struct {
+	Members []organizationMemberResponse `json:"members"`
 }
 
 type teamResponse struct {
@@ -595,6 +601,37 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 		response.Organizations = append(response.Organizations, organizationToResponse(organization))
 	}
 	writeOrganizationsResponse(w, http.StatusOK, response)
+}
+
+func (server Server) listOrganizationMembers(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	organizationIDResult := parseOrganizationPathValue(r)
+	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
+	if !organizationIDMatched {
+		rejected := organizationIDResult.(organizationIDRejected)
+		writeError(w, http.StatusBadRequest, rejected.reason)
+		return
+	}
+
+	result := server.organizationService.ListMembers(r.Context(), actor.subject, organizationIDAccepted.value, parsePage(r))
+	listed, matched := result.(org.MembersListed)
+	if !matched {
+		writeError(w, http.StatusForbidden, result.(org.ListMembersRejected).Reason.Description())
+		return
+	}
+
+	response := organizationMembersResponse{Members: make([]organizationMemberResponse, 0, len(listed.Values))}
+	for _, member := range listed.Values {
+		response.Members = append(response.Members, memberToResponse(member))
+	}
+	writeOrganizationMembersResponse(w, http.StatusOK, response)
 }
 
 func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.Request) {
@@ -2720,6 +2757,12 @@ func writeOrganizationsResponse(w http.ResponseWriter, status int, response orga
 }
 
 func writeOrganizationMemberResponse(w http.ResponseWriter, status int, response organizationMemberResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func writeOrganizationMembersResponse(w http.ResponseWriter, status int, response organizationMembersResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)

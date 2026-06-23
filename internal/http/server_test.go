@@ -432,6 +432,10 @@ func (testOrganizationService) CreateOrganizationTeam(_ context.Context, actor a
 	return org.TeamCreated{Value: org.Team{ID: teamIDCreated.Value, Owner: org.OrganizationOwnedTeam{OrganizationID: organizationID}, Name: name, CreatedBy: actor.ID}}
 }
 
+func (testOrganizationService) ListMembers(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListMembersResult {
+	return org.MembersListed{Values: []org.OrganizationMember{}}
+}
+
 func (testOrganizationService) CreateStandaloneTeam(_ context.Context, actor auth.UserSubject, name org.TeamName) org.CreateTeamResult {
 	teamIDResult := core.NewTeamID()
 	teamIDCreated := teamIDResult.(core.TeamIDCreated)
