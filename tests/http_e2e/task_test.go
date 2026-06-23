@@ -269,6 +269,41 @@ func TestTaskListItemExposesActiveAssignee(t *testing.T) {
 	}
 }
 
+func TestUserProfileShowsOnlyPublicTasks(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "profile-owner")
+	createPublicUserTask(t, server, owner)
+	createUserTaskFromJSON(t, server, owner.AccessToken, userTaskRequestJSON(owner.SubjectID))
+
+	// A different viewer reads the owner's profile and must see only the owner's
+	// public task, never the private (default-visibility) one.
+	viewer := registerUser(t, server, "profile-viewer")
+	response := getWithBearer(t, server.URL+"/api/users/"+owner.SubjectID, viewer.AccessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusOK)
+
+	var body struct {
+		ID    string `json:"id"`
+		Tasks []struct {
+			Title string `json:"title"`
+		} `json:"tasks"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode user profile: %v", err)
+	}
+	if body.ID != owner.SubjectID {
+		t.Fatalf("profile id = %q, want %q", body.ID, owner.SubjectID)
+	}
+	if len(body.Tasks) != 1 {
+		t.Fatalf("profile task count = %d, want 1 (public only, no private leak)", len(body.Tasks))
+	}
+	if body.Tasks[0].Title != "Public agent task" {
+		t.Fatalf("profile task = %q, want the public task", body.Tasks[0].Title)
+	}
+}
+
 func createUserTaskFromJSON(t *testing.T, server *httptest.Server, accessToken string, requestJSON string) string {
 	t.Helper()
 	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(requestJSON), accessToken)

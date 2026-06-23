@@ -142,6 +142,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/organizations/{organization_id}/teams", server.createOrganizationTeam)
 	mux.HandleFunc("GET /api/teams", server.listStandaloneTeams)
 	mux.HandleFunc("POST /api/teams", server.createStandaloneTeam)
+	mux.HandleFunc("GET /api/users/{user_id}", server.getUserProfile)
 	mux.HandleFunc("GET /api/tasks", server.listTasks)
 	mux.HandleFunc("POST /api/tasks", server.createTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/open", server.openTask)
@@ -389,6 +390,11 @@ type taskListItemResponse struct {
 }
 
 type tasksResponse struct {
+	Tasks []taskListItemResponse `json:"tasks"`
+}
+
+type userProfileResponse struct {
+	ID    string                 `json:"id"`
 	Tasks []taskListItemResponse `json:"tasks"`
 }
 
@@ -811,6 +817,36 @@ func (server Server) createStandaloneTeam(w http.ResponseWriter, r *http.Request
 	}
 
 	writeTeamResponse(w, http.StatusCreated, teamToResponse(created.Value))
+}
+
+func (server Server) getUserProfile(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	userIDResult := core.ParseUserID(r.PathValue("user_id"))
+	userIDCreated, userIDMatched := userIDResult.(core.UserIDCreated)
+	if !userIDMatched {
+		writeError(w, http.StatusBadRequest, userIDResult.(core.UserIDRejected).Reason.Description())
+		return
+	}
+
+	result := server.taskService.List(r.Context(), actor.subject, task.CreatorListScope{CreatorID: userIDCreated.Value}, task.NoListFilters(), parsePage(r))
+	listed, matched := result.(task.TasksListed)
+	if !matched {
+		writeDomainError(w, result.(task.ListRejected).Reason)
+		return
+	}
+
+	response := userProfileResponse{ID: userIDCreated.Value.String(), Tasks: make([]taskListItemResponse, 0, len(listed.Values))}
+	for valueIndex := range listed.Values {
+		response.Tasks = append(response.Tasks, taskListItemToResponse(listed.Values[valueIndex]))
+	}
+	writeUserProfileResponse(w, http.StatusOK, response)
 }
 
 func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request) {
@@ -2787,6 +2823,12 @@ func writeTaskResponse(w http.ResponseWriter, status int, response taskResponse)
 }
 
 func writeTasksResponse(w http.ResponseWriter, status int, response tasksResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func writeUserProfileResponse(w http.ResponseWriter, status int, response userProfileResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)

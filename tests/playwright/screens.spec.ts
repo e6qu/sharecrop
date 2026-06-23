@@ -231,6 +231,28 @@ test("requesters filter their task list by state", async ({ page, request }) => 
     .toHaveCount(1);
 });
 
+test("a user profile page lists the user's public tasks", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "profile-page-owner");
+  const title = `Public profile task ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 0),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+
+  await loginViaUi(page, owner.email);
+  // Wait for login to establish the session and refresh cookie before the
+  // deep-link reload, otherwise the reload races the login response.
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.goto(`/users/${owner.body.subject_id}`);
+  await expect(page.getByTestId("user-id")).toContainText(
+    owner.body.subject_id,
+  );
+  await expect(
+    page.getByTestId("user-task-row").filter({ hasText: title }),
+  ).toHaveCount(1);
+});
+
 test("pages have their own URLs and deep links load", async ({ page, request }) => {
   const owner = await registerViaApi(request, "routing-owner");
   await loginViaUi(page, owner.email);

@@ -662,6 +662,10 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 	case task.OrganizationListScope:
 		arguments["organization_id"] = typed.OrganizationID.String()
 		where = " where task_visibility_scopes.organization_id = @organization_id"
+	case task.CreatorListScope:
+		arguments["creator_id"] = typed.CreatorID.String()
+		arguments["visibility_kind"] = task.VisibilityKindPublic.String()
+		where = " where tasks.created_by_user_id = @creator_id and task_visibility_scopes.visibility_kind = @visibility_kind"
 	default:
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list scope is invalid")}
 	}

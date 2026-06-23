@@ -5357,12 +5357,15 @@ var $author$project$Main$TaskDetailPage = function (a) {
 	return {$: 'TaskDetailPage', a: a};
 };
 var $author$project$Main$TasksPage = {$: 'TasksPage'};
+var $author$project$Main$UserDetailPage = function (a) {
+	return {$: 'UserDetailPage', a: a};
+};
 var $author$project$Main$pageFromUrl = function (url) {
 	var _v0 = A2(
 		$elm$core$String$split,
 		'/',
 		A2($elm$core$String$dropLeft, 1, url.path));
-	_v0$9:
+	_v0$10:
 	while (true) {
 		if (_v0.b) {
 			if (!_v0.b.b) {
@@ -5380,7 +5383,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 					case 'organizations':
 						return $author$project$Main$OrganizationsPage;
 					default:
-						break _v0$9;
+						break _v0$10;
 				}
 			} else {
 				if (!_v0.b.b.b) {
@@ -5398,15 +5401,19 @@ var $author$project$Main$pageFromUrl = function (url) {
 							var _v3 = _v0.b;
 							var organizationId = _v3.a;
 							return $author$project$Main$OrganizationDetailPage(organizationId);
+						case 'users':
+							var _v4 = _v0.b;
+							var userId = _v4.a;
+							return $author$project$Main$UserDetailPage(userId);
 						default:
-							break _v0$9;
+							break _v0$10;
 					}
 				} else {
-					break _v0$9;
+					break _v0$10;
 				}
 			}
 		} else {
-			break _v0$9;
+			break _v0$10;
 		}
 	}
 	return $author$project$Main$OverviewPage;
@@ -7279,15 +7286,20 @@ var $author$project$Main$credentialsFromResult = function (result) {
 };
 var $author$project$Main$enterPage = F2(
 	function (page, state) {
-		if (page.$ === 'OrganizationDetailPage') {
-			var organizationId = page.a;
-			return _Utils_update(
-				state,
-				{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgMembers: _List_Nil, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, page: page, provisionMemberMessage: $elm$core$Maybe$Nothing});
-		} else {
-			return _Utils_update(
-				state,
-				{page: page});
+		switch (page.$) {
+			case 'OrganizationDetailPage':
+				var organizationId = page.a;
+				return _Utils_update(
+					state,
+					{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgMembers: _List_Nil, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, page: page, provisionMemberMessage: $elm$core$Maybe$Nothing});
+			case 'UserDetailPage':
+				return _Utils_update(
+					state,
+					{page: page, userProfile: $elm$core$Maybe$Nothing});
+			default:
+				return _Utils_update(
+					state,
+					{page: page});
 		}
 	});
 var $author$project$Main$entriesFromResult = function (result) {
@@ -7762,7 +7774,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		submitInput: '',
 		submitMessage: $elm$core$Maybe$Nothing,
 		taskStateFilter: '',
-		tasks: _List_Nil
+		tasks: _List_Nil,
+		userProfile: $elm$core$Maybe$Nothing
 	};
 };
 var $author$project$Main$loggedInForPage = F2(
@@ -8524,6 +8537,31 @@ var $author$project$Main$fetchDetailCommands = F2(
 					A2($author$project$Main$fetchReservations, token, taskId)
 				]));
 	});
+var $author$project$Main$UserProfileReceived = function (a) {
+	return {$: 'UserProfileReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Task$UserProfileResponse = F2(
+	function (id, tasks) {
+		return {id: id, tasks: tasks};
+	});
+var $author$project$Sharecrop$Generated$Task$userProfileResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Task$UserProfileResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2(
+		$elm$json$Json$Decode$field,
+		'tasks',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Task$taskListItemResponseDecoder)));
+var $author$project$Main$fetchUserProfile = F2(
+	function (token, userId) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'GET',
+			token,
+			'/api/users/' + userId,
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Main$UserProfileReceived, $author$project$Sharecrop$Generated$Task$userProfileResponseDecoder));
+	});
 var $author$project$Main$OrgBalanceReceived = function (a) {
 	return {$: 'OrgBalanceReceived', a: a};
 };
@@ -8591,7 +8629,7 @@ var $author$project$Main$routeLoadCmd = F2(
 						]));
 			case 'OrganizationsPage':
 				return $author$project$Main$fetchOrganizations(token);
-			default:
+			case 'OrganizationDetailPage':
 				var organizationId = page.a;
 				return $elm$core$Platform$Cmd$batch(
 					_List_fromArray(
@@ -8599,6 +8637,9 @@ var $author$project$Main$routeLoadCmd = F2(
 							$author$project$Main$fetchOrganizations(token),
 							A2($author$project$Main$loadOrganization, token, organizationId)
 						]));
+			default:
+				var userId = page.a;
+				return A2($author$project$Main$fetchUserProfile, token, userId);
 		}
 	});
 var $author$project$Main$SubmitReceived = function (a) {
@@ -8683,6 +8724,14 @@ var $author$project$Main$teamsFromResult = function (result) {
 		return response.teams;
 	} else {
 		return _List_Nil;
+	}
+};
+var $elm$core$Result$toMaybe = function (result) {
+	if (result.$ === 'Ok') {
+		var v = result.a;
+		return $elm$core$Maybe$Just(v);
+	} else {
+		return $elm$core$Maybe$Nothing;
 	}
 };
 var $elm$url$Url$addPort = F2(
@@ -9949,6 +9998,20 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'UserProfileReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									userProfile: $elm$core$Result$toMaybe(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'OrgTasksReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -10412,9 +10475,12 @@ var $author$project$Main$pageToPath = function (page) {
 			return '/collectibles';
 		case 'OrganizationsPage':
 			return '/organizations';
-		default:
+		case 'OrganizationDetailPage':
 			var organizationId = page.a;
 			return '/organizations/' + organizationId;
+		default:
+			var userId = page.a;
+			return '/users/' + userId;
 	}
 };
 var $author$project$Main$navLink = F4(
@@ -13070,6 +13136,77 @@ var $author$project$Main$tasksView = F2(
 					$author$project$Main$tasksList(state.tasks)
 				]));
 	});
+var $author$project$Main$userDetailView = F2(
+	function (userId, state) {
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$sectionTitle('User'),
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm font-medium'),
+							$author$project$Sharecrop$Ui$testId('user-id')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(userId)
+						])),
+					$author$project$Sharecrop$Ui$sectionTitle('Public tasks'),
+					function () {
+					var _v0 = state.userProfile;
+					if (_v0.$ === 'Just') {
+						var profile = _v0.a;
+						return $elm$core$List$isEmpty(profile.tasks) ? A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+									$author$project$Sharecrop$Ui$testId('user-tasks-empty')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('No public tasks.')
+								])) : A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+									$author$project$Sharecrop$Ui$testId('user-tasks')
+								]),
+							A2(
+								$elm$core$List$map,
+								function (item) {
+									return A2(
+										$elm$html$Html$a,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$href('/tasks/' + item.id),
+												$elm$html$Html$Attributes$class('block py-2 text-sm underline'),
+												$author$project$Sharecrop$Ui$testId('user-task-row')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text(item.title)
+											]));
+								},
+								profile.tasks));
+					} else {
+						return A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-slate-500')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Loading…')
+								]));
+					}
+				}()
+				]));
+	});
 var $author$project$Main$pageView = F2(
 	function (origin, state) {
 		var _v0 = state.page;
@@ -13092,8 +13229,11 @@ var $author$project$Main$pageView = F2(
 				return $author$project$Main$collectiblesView(state);
 			case 'OrganizationsPage':
 				return $author$project$Main$organizationsView(state);
-			default:
+			case 'OrganizationDetailPage':
 				return $author$project$Main$organizationDetailView(state);
+			default:
+				var userId = _v0.a;
+				return A2($author$project$Main$userDetailView, userId, state);
 		}
 	});
 var $author$project$Main$loggedInView = F2(

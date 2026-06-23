@@ -40,6 +40,7 @@ type Page
     | CollectiblesPage
     | OrganizationsPage
     | OrganizationDetailPage String
+    | UserDetailPage String
 
 
 type alias LoggedInModel =
@@ -94,6 +95,7 @@ type alias LoggedInModel =
     , orgTeams : List Team.TeamResponse
     , orgMembers : List Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
+    , userProfile : Maybe Task.UserProfileResponse
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
     , provisionMemberEmail : String
@@ -211,6 +213,7 @@ type Msg
     | OrgBalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
     | OrgMembersReceived (Result Http.Error Organization.OrganizationMembersResponse)
+    | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
@@ -300,6 +303,7 @@ emptyLoggedIn response =
     , orgTeams = []
     , orgMembers = []
     , orgTasks = []
+    , userProfile = Nothing
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
     , provisionMemberEmail = ""
@@ -347,6 +351,9 @@ pageFromUrl url =
         [ "organizations", organizationId ] ->
             OrganizationDetailPage organizationId
 
+        [ "users", userId ] ->
+            UserDetailPage userId
+
         _ ->
             OverviewPage
 
@@ -384,6 +391,9 @@ pageToPath page =
         OrganizationDetailPage organizationId ->
             "/organizations/" ++ organizationId
 
+        UserDetailPage userId ->
+            "/users/" ++ userId
+
 
 -- enterPage applies any per-page state a route needs when it becomes active, so
 -- a deep link or back/forward leaves the model consistent with the URL.
@@ -392,6 +402,9 @@ enterPage page state =
     case page of
         OrganizationDetailPage organizationId ->
             { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
+
+        UserDetailPage _ ->
+            { state | page = page, userProfile = Nothing }
 
         _ ->
             { state | page = page }
@@ -743,6 +756,9 @@ update msg model =
         OrgMembersReceived result ->
             ( updateLoggedIn model (\state -> { state | orgMembers = membersFromResult result }), Cmd.none )
 
+        UserProfileReceived result ->
+            ( updateLoggedIn model (\state -> { state | userProfile = Result.toMaybe result }), Cmd.none )
+
         OrgTasksReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
 
@@ -1078,6 +1094,14 @@ routeLoadCmd token page =
 
         OrganizationDetailPage organizationId ->
             Cmd.batch [ fetchOrganizations token, loadOrganization token organizationId ]
+
+        UserDetailPage userId ->
+            fetchUserProfile token userId
+
+
+fetchUserProfile : String -> String -> Cmd Msg
+fetchUserProfile token userId =
+    authorizedRequest "GET" token ("/api/users/" ++ userId) Http.emptyBody (Http.expectJson UserProfileReceived Task.userProfileResponseDecoder)
 
 
 refreshCredentials : Model -> Cmd Msg
@@ -1802,6 +1826,34 @@ pageView origin state =
 
         OrganizationDetailPage _ ->
             organizationDetailView state
+
+        UserDetailPage userId ->
+            userDetailView userId state
+
+
+userDetailView : String -> LoggedInModel -> Html Msg
+userDetailView userId state =
+    Ui.card
+        [ Ui.sectionTitle "User"
+        , p [ Html.Attributes.class "text-sm font-medium", testId "user-id" ] [ text userId ]
+        , Ui.sectionTitle "Public tasks"
+        , case state.userProfile of
+            Just profile ->
+                if List.isEmpty profile.tasks then
+                    p [ Html.Attributes.class "text-sm text-slate-500", testId "user-tasks-empty" ] [ text "No public tasks." ]
+
+                else
+                    div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-tasks" ]
+                        (List.map
+                            (\item ->
+                                a [ href ("/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId "user-task-row" ] [ text item.title ]
+                            )
+                            profile.tasks
+                        )
+
+            Nothing ->
+                p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading…" ]
+        ]
 
 
 overviewView : LoggedInModel -> Html Msg

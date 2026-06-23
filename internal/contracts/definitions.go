@@ -373,6 +373,13 @@ func taskModule() Module {
 				},
 			},
 			Product{
+				Name: NewElmTypeName("UserProfileResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("tasks"), JSONName: NewJSONFieldName("tasks"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskListItemResponse")}}},
+				},
+			},
+			Product{
 				Name: NewElmTypeName("TaskReservationResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
