@@ -8,24 +8,33 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const mcpSessionHeader = "Mcp-Session-Id"
 const mcpLastEventIDHeader = "Last-Event-ID"
 
+// mcpSessionTTL bounds how long an idle MCP session is retained in memory.
+// Sessions are evicted lazily on the next store operation after they go idle,
+// so abandoned sessions cannot accumulate without bound.
+const mcpSessionTTL = 30 * time.Minute
+
 type mcpHTTPSessionStore struct {
 	mu       sync.Mutex
 	sessions map[string]*mcpHTTPSession
+	ttl      time.Duration
+	now      func() time.Time
 }
 
 type mcpHTTPSession struct {
-	id      string
-	nextID  int64
-	nextSub int64
-	events  []mcpHTTPEvent
-	closed  bool
-	subject string
-	subs    map[int64]chan mcpHTTPEvent
+	id       string
+	nextID   int64
+	nextSub  int64
+	events   []mcpHTTPEvent
+	closed   bool
+	subject  string
+	subs     map[int64]chan mcpHTTPEvent
+	lastSeen time.Time
 }
 
 type mcpHTTPEvent struct {
@@ -34,20 +43,40 @@ type mcpHTTPEvent struct {
 }
 
 func newMCPHTTPSessionStore() *mcpHTTPSessionStore {
-	return &mcpHTTPSessionStore{sessions: make(map[string]*mcpHTTPSession)}
+	return &mcpHTTPSessionStore{sessions: make(map[string]*mcpHTTPSession), ttl: mcpSessionTTL, now: time.Now}
+}
+
+// evictExpiredLocked removes sessions idle for longer than the TTL. Callers must
+// hold the store mutex.
+func (store *mcpHTTPSessionStore) evictExpiredLocked() {
+	cutoff := store.now().Add(-store.ttl)
+	for id, session := range store.sessions {
+		if session.lastSeen.Before(cutoff) {
+			for _, subscriber := range session.subs {
+				close(subscriber)
+			}
+			delete(store.sessions, id)
+		}
+	}
 }
 
 func (store *mcpHTTPSessionStore) create(id string, subject string) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	store.sessions[id] = &mcpHTTPSession{id: id, subject: subject, events: make([]mcpHTTPEvent, 0), subs: make(map[int64]chan mcpHTTPEvent)}
+	store.evictExpiredLocked()
+	store.sessions[id] = &mcpHTTPSession{id: id, subject: subject, events: make([]mcpHTTPEvent, 0), subs: make(map[int64]chan mcpHTTPEvent), lastSeen: store.now()}
 }
 
 func (store *mcpHTTPSessionStore) existsForSubject(id string, subject string) bool {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	store.evictExpiredLocked()
 	session, found := store.sessions[id]
-	return found && !session.closed && session.subject == subject
+	if !found || session.closed || session.subject != subject {
+		return false
+	}
+	session.lastSeen = store.now()
+	return true
 }
 
 func (store *mcpHTTPSessionStore) terminate(id string) bool {
@@ -72,6 +101,7 @@ func (store *mcpHTTPSessionStore) appendEvent(sessionID string, payload []byte) 
 	if !found || session.closed {
 		return "", false
 	}
+	session.lastSeen = store.now()
 	session.nextID++
 	eventID := session.id + "-" + strconv.FormatInt(session.nextID, 10)
 	copied := make([]byte, len(payload))
@@ -97,6 +127,7 @@ func (store *mcpHTTPSessionStore) replayAndSubscribe(sessionID string, lastEvent
 		store.mu.Unlock()
 		return nil, nil, func() {}, false
 	}
+	session.lastSeen = store.now()
 	start := 0
 	if lastEventID != "" {
 		start = len(session.events)

@@ -128,9 +128,9 @@ func (store AuthStore) StoreRefreshToken(ctx context.Context, record auth.Refres
 	}
 
 	_, err := store.pool.Exec(ctx, `
-		insert into refresh_tokens (id, token_hash, subject_kind, user_id, guest_id, status, expires_at)
-		values ($1, $2, $3, nullif($4, '')::uuid, nullif($5, '')::uuid, 'active', $6)
-	`, record.ID.String(), record.Hash.String(), subjectKind, userID, guestID, record.ExpiresAt)
+		insert into refresh_tokens (id, family_id, token_hash, subject_kind, user_id, guest_id, status, expires_at)
+		values ($1, $2, $3, $4, nullif($5, '')::uuid, nullif($6, '')::uuid, 'active', $7)
+	`, record.ID.String(), record.FamilyID.String(), record.Hash.String(), subjectKind, userID, guestID, record.ExpiresAt)
 	if err != nil {
 		return auth.StoreRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "insert refresh token failed")}
 	}
@@ -139,36 +139,72 @@ func (store AuthStore) StoreRefreshToken(ctx context.Context, record auth.Refres
 }
 
 func (store AuthStore) ConsumeRefreshToken(ctx context.Context, hash auth.RefreshTokenHash, consumedAt time.Time) auth.ConsumeRefreshTokenResult {
-	row := store.pool.QueryRow(ctx, `
-		update refresh_tokens
-		set status = 'consumed', consumed_at = $2
-		where token_hash = $1
-			and status = 'active'
-			and expires_at > $2
-		returning subject_kind, coalesce(user_id::text, ''), coalesce(guest_id::text, '')
-	`, hash.String(), consumedAt)
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return auth.ConsumeRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "begin consume refresh token failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 
+	var status string
+	var rawFamilyID string
 	var subjectKind string
 	var rawUserID string
 	var rawGuestID string
-	if err := row.Scan(&subjectKind, &rawUserID, &rawGuestID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return auth.RefreshTokenNotConsumed{}
-		}
+	var expiresAt time.Time
+	scanErr := tx.QueryRow(ctx, `
+		select status, family_id::text, subject_kind, coalesce(user_id::text, ''), coalesce(guest_id::text, ''), expires_at
+		from refresh_tokens
+		where token_hash = $1
+		for update
+	`, hash.String()).Scan(&status, &rawFamilyID, &subjectKind, &rawUserID, &rawGuestID, &expiresAt)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return auth.RefreshTokenNotConsumed{}
+	}
+	if scanErr != nil {
 		return auth.ConsumeRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "consume refresh token failed")}
+	}
+
+	// Presenting a token that was already consumed or revoked indicates reuse,
+	// which can mean the token was stolen. Revoke the whole family so neither
+	// the legitimate holder nor an attacker can keep rotating it.
+	if status != "active" {
+		if _, err := tx.Exec(ctx, "update refresh_tokens set status = 'revoked' where family_id = $1 and status = 'active'", rawFamilyID); err != nil {
+			return auth.ConsumeRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "revoke refresh token family failed")}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return auth.ConsumeRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "commit refresh token family revocation failed")}
+		}
+		return auth.RefreshTokenReuseDetected{}
+	}
+
+	if !expiresAt.After(consumedAt) {
+		return auth.RefreshTokenNotConsumed{}
+	}
+
+	if _, err := tx.Exec(ctx, "update refresh_tokens set status = 'consumed', consumed_at = $2 where token_hash = $1", hash.String(), consumedAt); err != nil {
+		return auth.ConsumeRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "consume refresh token failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return auth.ConsumeRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "commit consume refresh token failed")}
+	}
+
+	familyResult := core.ParseRefreshTokenID(rawFamilyID)
+	familyCreated, familyMatched := familyResult.(core.RefreshTokenIDCreated)
+	if !familyMatched {
+		return auth.ConsumeRefreshTokenRejected{Reason: familyResult.(core.RefreshTokenIDRejected).Reason}
 	}
 
 	switch subjectKind {
 	case "user":
-		return consumeUserRefreshToken(rawUserID)
+		return consumeUserRefreshToken(rawUserID, familyCreated.Value)
 	case "guest":
-		return consumeGuestRefreshToken(rawGuestID)
+		return consumeGuestRefreshToken(rawGuestID, familyCreated.Value)
 	default:
 		return auth.ConsumeRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "refresh token subject kind is invalid")}
 	}
 }
 
-func consumeUserRefreshToken(rawUserID string) auth.ConsumeRefreshTokenResult {
+func consumeUserRefreshToken(rawUserID string, family core.RefreshTokenID) auth.ConsumeRefreshTokenResult {
 	result := core.ParseUserID(rawUserID)
 	created, matched := result.(core.UserIDCreated)
 	if !matched {
@@ -176,10 +212,10 @@ func consumeUserRefreshToken(rawUserID string) auth.ConsumeRefreshTokenResult {
 		return auth.ConsumeRefreshTokenRejected{Reason: rejected.Reason}
 	}
 
-	return auth.RefreshTokenConsumed{Subject: auth.UserSubject{ID: created.Value}}
+	return auth.RefreshTokenConsumed{Subject: auth.UserSubject{ID: created.Value}, Family: family}
 }
 
-func consumeGuestRefreshToken(rawGuestID string) auth.ConsumeRefreshTokenResult {
+func consumeGuestRefreshToken(rawGuestID string, family core.RefreshTokenID) auth.ConsumeRefreshTokenResult {
 	result := core.ParseGuestID(rawGuestID)
 	created, matched := result.(core.GuestIDCreated)
 	if !matched {
@@ -187,7 +223,7 @@ func consumeGuestRefreshToken(rawGuestID string) auth.ConsumeRefreshTokenResult 
 		return auth.ConsumeRefreshTokenRejected{Reason: rejected.Reason}
 	}
 
-	return auth.RefreshTokenConsumed{Subject: auth.GuestSubject{ID: created.Value}}
+	return auth.RefreshTokenConsumed{Subject: auth.GuestSubject{ID: created.Value}, Family: family}
 }
 
 type signupGrantResult interface {

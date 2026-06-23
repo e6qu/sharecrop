@@ -25,10 +25,28 @@ type CredentialRecord struct {
 
 type RefreshTokenRecord struct {
 	ID        core.RefreshTokenID
+	FamilyID  core.RefreshTokenID
 	Subject   Subject
 	Hash      RefreshTokenHash
 	ExpiresAt time.Time
 }
+
+// refreshFamilySelection decides whether a newly issued refresh token starts a
+// new token family (initial login, registration, or guest creation) or
+// continues an existing family (rotation during refresh).
+type refreshFamilySelection interface {
+	refreshFamilySelection()
+}
+
+type newRefreshFamily struct{}
+
+type continueRefreshFamily struct {
+	id core.RefreshTokenID
+}
+
+func (newRefreshFamily) refreshFamilySelection() {}
+
+func (continueRefreshFamily) refreshFamilySelection() {}
 
 type Store interface {
 	CreateUserCredential(context.Context, core.UserID, EmailAddress, PasswordHash) StoreUserResult
@@ -108,7 +126,7 @@ func (service Service) Register(ctx context.Context, email EmailAddress, passwor
 		return RegisterRejected{Reason: rejected.Reason}
 	}
 
-	sessionResult := service.issueUserSession(ctx, userCreated.Value)
+	sessionResult := service.issueUserSession(ctx, userCreated.Value, newRefreshFamily{})
 	sessionAccepted, sessionMatched := sessionResult.(UserSessionIssued)
 	if !sessionMatched {
 		rejected := sessionResult.(UserSessionRejected)
@@ -152,7 +170,7 @@ func (service Service) Login(ctx context.Context, email EmailAddress, password P
 		return LoginRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credentials are invalid")}
 	}
 
-	sessionResult := service.issueUserSession(ctx, found.Record.UserID)
+	sessionResult := service.issueUserSession(ctx, found.Record.UserID, newRefreshFamily{})
 	sessionAccepted, sessionMatched := sessionResult.(UserSessionIssued)
 	if !sessionMatched {
 		rejected := sessionResult.(UserSessionRejected)
@@ -197,7 +215,7 @@ func (service Service) CreateGuest(ctx context.Context) GuestResult {
 		return GuestRejected{Reason: rejected.Reason}
 	}
 
-	sessionResult := service.issueGuestSession(ctx, guestCreated.Value)
+	sessionResult := service.issueGuestSession(ctx, guestCreated.Value, newRefreshFamily{})
 	sessionAccepted, sessionMatched := sessionResult.(GuestSessionIssued)
 	if !sessionMatched {
 		rejected := sessionResult.(GuestSessionRejected)
@@ -232,14 +250,18 @@ func (RefreshRejected) refreshResult() {}
 func (service Service) Refresh(ctx context.Context, refreshToken RefreshTokenPlain) RefreshResult {
 	hash := HashRefreshToken(refreshToken)
 	consumed := service.store.ConsumeRefreshToken(ctx, hash, service.clock.Now())
+	if _, reused := consumed.(RefreshTokenReuseDetected); reused {
+		return RefreshRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "refresh token was reused and its session family was revoked")}
+	}
 	accepted, matched := consumed.(RefreshTokenConsumed)
 	if !matched {
 		return RefreshRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "refresh token is invalid")}
 	}
 
+	family := continueRefreshFamily{id: accepted.Family}
 	switch subject := accepted.Subject.(type) {
 	case UserSubject:
-		userResult := service.issueUserSession(ctx, subject.ID)
+		userResult := service.issueUserSession(ctx, subject.ID, family)
 		userAccepted, userMatched := userResult.(UserSessionIssued)
 		if !userMatched {
 			rejected := userResult.(UserSessionRejected)
@@ -247,7 +269,7 @@ func (service Service) Refresh(ctx context.Context, refreshToken RefreshTokenPla
 		}
 		return RefreshAccepted{Subject: userAccepted.Subject, AccessToken: userAccepted.AccessToken, RefreshToken: userAccepted.RefreshToken}
 	case GuestSubject:
-		guestResult := service.issueGuestSession(ctx, subject.ID)
+		guestResult := service.issueGuestSession(ctx, subject.ID, family)
 		guestAccepted, guestMatched := guestResult.(GuestSessionIssued)
 		if !guestMatched {
 			rejected := guestResult.(GuestSessionRejected)
@@ -277,7 +299,7 @@ func (UserSessionIssued) userSessionResult() {}
 
 func (UserSessionRejected) userSessionResult() {}
 
-func (service Service) issueUserSession(ctx context.Context, id core.UserID) UserSessionResult {
+func (service Service) issueUserSession(ctx context.Context, id core.UserID, family refreshFamilySelection) UserSessionResult {
 	subject := UserSubject{ID: id}
 	accessResult := SignAccessToken(service.tokenSecret, subject, service.clock.Now())
 	accessAccepted, accessMatched := accessResult.(AccessTokenAccepted)
@@ -286,7 +308,7 @@ func (service Service) issueUserSession(ctx context.Context, id core.UserID) Use
 		return UserSessionRejected{Reason: rejected.Reason}
 	}
 
-	refreshResult := service.storeNewRefreshToken(ctx, subject)
+	refreshResult := service.storeNewRefreshToken(ctx, subject, family)
 	refreshCreated, refreshMatched := refreshResult.(RefreshTokenCreated)
 	if !refreshMatched {
 		rejected := refreshResult.(RefreshTokenRejected)
@@ -314,7 +336,7 @@ func (GuestSessionIssued) guestSessionResult() {}
 
 func (GuestSessionRejected) guestSessionResult() {}
 
-func (service Service) issueGuestSession(ctx context.Context, id core.GuestID) GuestSessionResult {
+func (service Service) issueGuestSession(ctx context.Context, id core.GuestID, family refreshFamilySelection) GuestSessionResult {
 	subject := GuestSubject{ID: id}
 	accessResult := SignAccessToken(service.tokenSecret, subject, service.clock.Now())
 	accessAccepted, accessMatched := accessResult.(AccessTokenAccepted)
@@ -323,7 +345,7 @@ func (service Service) issueGuestSession(ctx context.Context, id core.GuestID) G
 		return GuestSessionRejected{Reason: rejected.Reason}
 	}
 
-	refreshResult := service.storeNewRefreshToken(ctx, subject)
+	refreshResult := service.storeNewRefreshToken(ctx, subject, family)
 	refreshCreated, refreshMatched := refreshResult.(RefreshTokenCreated)
 	if !refreshMatched {
 		rejected := refreshResult.(RefreshTokenRejected)
@@ -333,15 +355,21 @@ func (service Service) issueGuestSession(ctx context.Context, id core.GuestID) G
 	return GuestSessionIssued{Subject: subject, AccessToken: accessAccepted.Value, RefreshToken: refreshCreated.Value.Plain}
 }
 
-func (service Service) storeNewRefreshToken(ctx context.Context, subject Subject) RefreshTokenIssueResult {
+func (service Service) storeNewRefreshToken(ctx context.Context, subject Subject, family refreshFamilySelection) RefreshTokenIssueResult {
 	refreshResult := NewRefreshToken(service.clock.Now())
 	refreshCreated, refreshMatched := refreshResult.(RefreshTokenCreated)
 	if !refreshMatched {
 		return refreshResult
 	}
 
+	familyID := refreshCreated.Value.ID
+	if continued, matched := family.(continueRefreshFamily); matched {
+		familyID = continued.id
+	}
+
 	storeResult := service.store.StoreRefreshToken(ctx, RefreshTokenRecord{
 		ID:        refreshCreated.Value.ID,
+		FamilyID:  familyID,
 		Subject:   subject,
 		Hash:      refreshCreated.Value.Hash,
 		ExpiresAt: refreshCreated.Value.ExpiresAt,
