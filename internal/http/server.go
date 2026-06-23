@@ -479,13 +479,13 @@ type taskEscrowResponse struct {
 }
 
 type acceptSubmissionResponse struct {
-	TaskID        string `json:"task_id"`
-	SubmissionID  string `json:"submission_id"`
-	PayoutKind    string `json:"payout_kind"`
-	PayoutAmount  int64  `json:"payout_amount"`
-	WorkerUserID  string `json:"worker_user_id"`
-	CollectibleID string `json:"collectible_id"`
-	TipAmount     int64  `json:"tip_amount"`
+	TaskID         string   `json:"task_id"`
+	SubmissionID   string   `json:"submission_id"`
+	PayoutKind     string   `json:"payout_kind"`
+	PayoutAmount   int64    `json:"payout_amount"`
+	WorkerUserID   string   `json:"worker_user_id"`
+	CollectibleIDs []string `json:"collectible_ids"`
+	TipAmount      int64    `json:"tip_amount"`
 }
 
 type reviewSubmissionResponse struct {
@@ -1509,11 +1509,20 @@ func escrowToResponse(escrow ledger.TaskEscrow) taskEscrowResponse {
 	}
 }
 
+func collectibleIDStrings(ids []core.CollectibleID) []string {
+	values := make([]string, 0, len(ids))
+	for index := range ids {
+		values = append(values, ids[index].String())
+	}
+	return values
+}
+
 func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionResponse {
 	response := acceptSubmissionResponse{
-		TaskID:       accepted.TaskID.String(),
-		SubmissionID: accepted.SubmissionID.String(),
-		PayoutKind:   "none",
+		TaskID:         accepted.TaskID.String(),
+		SubmissionID:   accepted.SubmissionID.String(),
+		PayoutKind:     "none",
+		CollectibleIDs: []string{},
 	}
 	switch payout := accepted.Payout.(type) {
 	case ledger.CreditPayout:
@@ -1522,12 +1531,12 @@ func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionRespon
 		response.WorkerUserID = payout.WorkerUserID.String()
 	case ledger.CollectiblePayout:
 		response.PayoutKind = "collectible"
-		response.CollectibleID = payout.CollectibleID.String()
+		response.CollectibleIDs = collectibleIDStrings(payout.CollectibleIDs)
 		response.WorkerUserID = payout.WorkerUserID.String()
 	case ledger.BundlePayout:
 		response.PayoutKind = "bundle"
 		response.PayoutAmount = payout.Amount.Int64()
-		response.CollectibleID = payout.CollectibleID.String()
+		response.CollectibleIDs = collectibleIDStrings(payout.CollectibleIDs)
 		response.WorkerUserID = payout.WorkerUserID.String()
 	}
 	if tip, matched := accepted.Tip.(ledger.CreditTip); matched {

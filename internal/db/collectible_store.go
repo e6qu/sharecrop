@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"errors"
 
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -88,17 +87,22 @@ func (store CollectibleStore) FundCollectibleReward(ctx context.Context, command
 		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft tasks can be funded")}
 	}
 
-	if funded, matched := taskAlreadyFunded(ctx, tx, command.TaskID); matched {
-		return assets.FundRewardRejected{Reason: funded}
+	rewardIDResult := core.NewTaskCollectibleRewardID()
+	rewardID, rewardIDMatched := rewardIDResult.(core.TaskCollectibleRewardIDCreated)
+	if !rewardIDMatched {
+		return assets.FundRewardRejected{Reason: rewardIDResult.(core.TaskCollectibleRewardIDRejected).Reason}
 	}
 
 	if _, err := tx.Exec(ctx, "update collectibles set state = 'escrowed', state_recorded_at = now() where id = $1", command.CollectibleID.String()); err != nil {
 		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "escrow collectible failed")}
 	}
 	if _, err := tx.Exec(ctx, `
-		insert into task_collectible_rewards (task_id, collectible_id, funder_user_id, state)
-		values ($1, $2, $3, 'held')
-	`, command.TaskID.String(), command.CollectibleID.String(), command.FunderUserID.String()); err != nil {
+		insert into task_collectible_rewards (id, task_id, collectible_id, funder_user_id, state)
+		values ($1, $2, $3, $4, 'held')
+	`, rewardID.Value.String(), command.TaskID.String(), command.CollectibleID.String(), command.FunderUserID.String()); err != nil {
+		if isUniqueViolation(err) {
+			return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible is already escrowed on this task")}
+		}
 		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible reward failed")}
 	}
 
@@ -130,50 +134,73 @@ func (store CollectibleStore) RefundCollectibleReward(ctx context.Context, comma
 		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "bundled rewards must be refunded together")}
 	}
 
-	var rawCollectibleID string
-	var rewardState string
-	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1 for update", command.TaskID.String()).Scan(&rawCollectibleID, &rewardState)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	heldIDs, scanRejected := heldCollectibleIDs(ctx, tx, command.TaskID)
+	if scanRejected != nil {
+		return assets.RefundRewardRejected{Reason: *scanRejected}
+	}
+	if len(heldIDs) == 0 {
 		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has no collectible reward to refund")}
 	}
-	if scanErr != nil {
-		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")}
-	}
-	if rewardState != "held" {
-		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible reward is not held")}
+
+	refunded := make([]assets.Collectible, 0, len(heldIDs))
+	for _, rawCollectibleID := range heldIDs {
+		if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", rawCollectibleID); err != nil {
+			return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed")}
+		}
+		collectibleResult := findCollectible(ctx, tx, rawCollectibleID)
+		collectible, matched := collectibleResult.(collectibleParsed)
+		if !matched {
+			return assets.RefundRewardRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
+		}
+		refunded = append(refunded, collectible.value)
 	}
 
-	if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", rawCollectibleID); err != nil {
-		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed")}
-	}
-	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1", command.TaskID.String()); err != nil {
+	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1 and state = 'held'", command.TaskID.String()); err != nil {
 		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update collectible reward failed")}
 	}
 	if _, err := tx.Exec(ctx, "update tasks set state = 'cancelled', state_recorded_at = now() where id = $1", command.TaskID.String()); err != nil {
 		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "cancel task failed")}
 	}
 
-	collectibleResult := findCollectible(ctx, tx, rawCollectibleID)
-	collectible, matched := collectibleResult.(collectibleParsed)
-	if !matched {
-		return assets.RefundRewardRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
-	}
-
 	if err := tx.Commit(ctx); err != nil {
 		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit refund collectible reward transaction failed")}
 	}
-	return assets.RewardRefunded{Value: collectible.value}
+	return assets.RewardRefunded{Values: refunded}
 }
 
-func taskAlreadyFunded(ctx context.Context, tx pgx.Tx, taskID core.TaskID) (core.DomainError, bool) {
-	var rewardExists bool
-	if err := tx.QueryRow(ctx, "select exists(select 1 from task_collectible_rewards where task_id = $1)", taskID.String()).Scan(&rewardExists); err != nil {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "check existing reward failed"), true
+// heldCollectibleIDs returns the raw collectible IDs of every held reward on the
+// task, locking those reward rows. It rejects when a non-held, non-refunded
+// reward row exists so partially-released tasks cannot be silently refunded.
+func heldCollectibleIDs(ctx context.Context, tx pgx.Tx, taskID core.TaskID) ([]string, *core.DomainError) {
+	rows, err := tx.Query(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1 order by created_at, id for update", taskID.String())
+	if err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")
+		return nil, &reason
 	}
-	if rewardExists {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "task already has a collectible reward"), true
+	defer rows.Close()
+
+	ids := make([]string, 0)
+	for rows.Next() {
+		var rawCollectibleID string
+		var rewardState string
+		if err := rows.Scan(&rawCollectibleID, &rewardState); err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible reward failed")
+			return nil, &reason
+		}
+		if rewardState == "refunded" {
+			continue
+		}
+		if rewardState != "held" {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "collectible reward is not held")
+			return nil, &reason
+		}
+		ids = append(ids, rawCollectibleID)
 	}
-	return core.DomainError{}, false
+	if err := rows.Err(); err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")
+		return nil, &reason
+	}
+	return ids, nil
 }
 
 type collectibleParseResult interface {

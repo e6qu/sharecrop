@@ -473,88 +473,120 @@ func (tipResolved) tipResult() {}
 
 func (tipRejected) tipResult() {}
 
+// payOutCollectible transfers every currently-held collectible reward for the
+// task to the accepted worker. A task may bundle more than one collectible, so
+// all held rewards are awarded together.
 func payOutCollectible(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
-	var rawCollectibleID string
-	var rewardState string
-	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1 for update", taskID.String()).Scan(&rawCollectibleID, &rewardState)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return payoutResolved{outcome: ledger.NoPayout{}}
+	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "held", true)
+	if scanRejected != nil {
+		return payoutRejected{reason: *scanRejected}
 	}
-	if scanErr != nil {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")}
+	resolved, resolveRejected := resolveCollectiblePayout(rawWorkerID, rawCollectibleIDs)
+	if resolveRejected != nil {
+		return payoutRejected{reason: *resolveRejected}
 	}
-	if rewardState != "held" {
+	if _, empty := resolved.outcome.(ledger.NoPayout); empty {
 		return payoutResolved{outcome: ledger.NoPayout{}}
 	}
 
-	workerResult := core.ParseUserID(rawWorkerID)
-	worker, workerMatched := workerResult.(core.UserIDCreated)
-	if !workerMatched {
-		return payoutRejected{reason: workerResult.(core.UserIDRejected).Reason}
+	for _, rawCollectibleID := range rawCollectibleIDs {
+		if _, err := tx.Exec(ctx, "update collectibles set state = 'awarded', owner_user_id = $2, state_recorded_at = now() where id = $1", rawCollectibleID, rawWorkerID); err != nil {
+			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "award collectible failed")}
+		}
 	}
-	collectibleResult := core.ParseCollectibleID(rawCollectibleID)
-	collectibleID, collectibleMatched := collectibleResult.(core.CollectibleIDCreated)
-	if !collectibleMatched {
-		return payoutRejected{reason: collectibleResult.(core.CollectibleIDRejected).Reason}
-	}
-
-	if _, err := tx.Exec(ctx, "update collectibles set state = 'awarded', owner_user_id = $2, state_recorded_at = now() where id = $1", rawCollectibleID, rawWorkerID); err != nil {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "award collectible failed")}
-	}
-	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'released', state_recorded_at = now() where task_id = $1", taskID.String()); err != nil {
+	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'released', state_recorded_at = now() where task_id = $1 and state = 'held'", taskID.String()); err != nil {
 		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "release collectible reward failed")}
 	}
 
-	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleID: collectibleID.Value}}
+	return resolved
 }
 
 func releasedCollectiblePayout(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
-	var rawCollectibleID string
-	var rewardState string
-	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1", taskID.String()).Scan(&rawCollectibleID, &rewardState)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return payoutResolved{outcome: ledger.NoPayout{}}
+	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "released", false)
+	if scanRejected != nil {
+		return payoutRejected{reason: *scanRejected}
 	}
-	if scanErr != nil {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")}
+	resolved, resolveRejected := resolveCollectiblePayout(rawWorkerID, rawCollectibleIDs)
+	if resolveRejected != nil {
+		return payoutRejected{reason: *resolveRejected}
 	}
-	if rewardState != "released" {
-		return payoutResolved{outcome: ledger.NoPayout{}}
+	return resolved
+}
+
+// resolveCollectiblePayout parses the worker and the held collectible IDs into a
+// collectible payout outcome. It returns a NoPayout outcome when there are no
+// collectible rewards, so both the award and refund paths share one parse.
+func resolveCollectiblePayout(rawWorkerID string, rawCollectibleIDs []string) (payoutResolved, *core.DomainError) {
+	if len(rawCollectibleIDs) == 0 {
+		return payoutResolved{outcome: ledger.NoPayout{}}, nil
 	}
 
 	workerResult := core.ParseUserID(rawWorkerID)
 	worker, workerMatched := workerResult.(core.UserIDCreated)
 	if !workerMatched {
-		return payoutRejected{reason: workerResult.(core.UserIDRejected).Reason}
+		reason := workerResult.(core.UserIDRejected).Reason
+		return payoutResolved{}, &reason
 	}
-	collectibleResult := core.ParseCollectibleID(rawCollectibleID)
-	collectibleID, collectibleMatched := collectibleResult.(core.CollectibleIDCreated)
-	if !collectibleMatched {
-		return payoutRejected{reason: collectibleResult.(core.CollectibleIDRejected).Reason}
+
+	collectibleIDs := make([]core.CollectibleID, 0, len(rawCollectibleIDs))
+	for _, rawCollectibleID := range rawCollectibleIDs {
+		collectibleResult := core.ParseCollectibleID(rawCollectibleID)
+		collectibleID, collectibleMatched := collectibleResult.(core.CollectibleIDCreated)
+		if !collectibleMatched {
+			reason := collectibleResult.(core.CollectibleIDRejected).Reason
+			return payoutResolved{}, &reason
+		}
+		collectibleIDs = append(collectibleIDs, collectibleID.Value)
 	}
-	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleID: collectibleID.Value}}
+	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleIDs: collectibleIDs}}, nil
 }
 
+// collectibleRewardIDsInState returns the raw collectible IDs for the task's
+// reward rows in the requested state, optionally taking a row lock.
+func collectibleRewardIDsInState(ctx context.Context, tx pgx.Tx, taskID core.TaskID, state string, lock bool) ([]string, *core.DomainError) {
+	query := "select collectible_id::text from task_collectible_rewards where task_id = $1 and state = $2 order by created_at, id"
+	if lock {
+		query += " for update"
+	}
+	rows, err := tx.Query(ctx, query, taskID.String(), state)
+	if err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")
+		return nil, &reason
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var rawCollectibleID string
+		if err := rows.Scan(&rawCollectibleID); err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible reward failed")
+			return nil, &reason
+		}
+		ids = append(ids, rawCollectibleID)
+	}
+	if err := rows.Err(); err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")
+		return nil, &reason
+	}
+	return ids, nil
+}
+
+// refundHeldCollectibleReward returns every held collectible reward on the task
+// to its funder. A task may bundle more than one collectible, so all held
+// rewards are returned together.
 func refundHeldCollectibleReward(ctx context.Context, tx pgx.Tx, taskID core.TaskID) (core.DomainError, bool) {
-	var rawCollectibleID string
-	var rewardState string
-	scanErr := tx.QueryRow(ctx, "select collectible_id::text, state from task_collectible_rewards where task_id = $1 for update", taskID.String()).Scan(&rawCollectibleID, &rewardState)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "held", true)
+	if scanRejected != nil {
+		return *scanRejected, true
+	}
+	if len(rawCollectibleIDs) == 0 {
 		return core.DomainError{}, false
 	}
-	if scanErr != nil {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed"), true
+	for _, rawCollectibleID := range rawCollectibleIDs {
+		if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", rawCollectibleID); err != nil {
+			return core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed"), true
+		}
 	}
-	if rewardState == "refunded" {
-		return core.DomainError{}, false
-	}
-	if rewardState != "held" {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "collectible reward is not held"), true
-	}
-	if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", rawCollectibleID); err != nil {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed"), true
-	}
-	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1", taskID.String()); err != nil {
+	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1 and state = 'held'", taskID.String()); err != nil {
 		return core.NewDomainError(core.ErrorCodeInvalidState, "update collectible reward failed"), true
 	}
 	return core.DomainError{}, false

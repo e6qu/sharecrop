@@ -181,7 +181,7 @@ type alias AcceptSubmissionResponse =
     , payoutKind : String
     , payoutAmount : Int
     , workerUserID : String
-    , collectibleID : String
+    , collectibleIDs : List String
     , tipAmount : Int
     }
 
@@ -193,7 +193,7 @@ acceptSubmissionResponseDecoder =
         (Decode.field "payout_kind" Decode.string)
         (Decode.field "payout_amount" Decode.int)
         (Decode.field "worker_user_id" Decode.string)
-        (Decode.field "collectible_id" Decode.string)
+        (Decode.field "collectible_ids" (Decode.list Decode.string))
         (Decode.field "tip_amount" Decode.int)
 
 acceptSubmissionResponseEncoder : AcceptSubmissionResponse -> Encode.Value
@@ -204,7 +204,7 @@ acceptSubmissionResponseEncoder acceptSubmissionResponse =
         , ( "payout_kind", Encode.string acceptSubmissionResponse.payoutKind )
         , ( "payout_amount", Encode.int acceptSubmissionResponse.payoutAmount )
         , ( "worker_user_id", Encode.string acceptSubmissionResponse.workerUserID )
-        , ( "collectible_id", Encode.string acceptSubmissionResponse.collectibleID )
+        , ( "collectible_ids", Encode.list Encode.string acceptSubmissionResponse.collectibleIDs )
         , ( "tip_amount", Encode.int acceptSubmissionResponse.tipAmount )
         ]
 

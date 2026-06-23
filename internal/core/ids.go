@@ -50,6 +50,10 @@ type CollectibleID struct {
 	value id.ID
 }
 
+type TaskCollectibleRewardID struct {
+	value id.ID
+}
+
 type CreditAccountID struct {
 	value id.ID
 }
@@ -492,6 +496,41 @@ func collectibleIDFromIDResult(result id.IDResult) CollectibleIDResult {
 		return CollectibleIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return CollectibleIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type TaskCollectibleRewardIDResult interface {
+	taskCollectibleRewardIDResult()
+}
+
+type TaskCollectibleRewardIDCreated struct {
+	Value TaskCollectibleRewardID
+}
+
+type TaskCollectibleRewardIDRejected struct {
+	Reason DomainError
+}
+
+func (TaskCollectibleRewardIDCreated) taskCollectibleRewardIDResult() {}
+
+func (TaskCollectibleRewardIDRejected) taskCollectibleRewardIDResult() {}
+
+func NewTaskCollectibleRewardID() TaskCollectibleRewardIDResult {
+	return taskCollectibleRewardIDFromIDResult(id.New())
+}
+
+func (id TaskCollectibleRewardID) String() string {
+	return id.value.String()
+}
+
+func taskCollectibleRewardIDFromIDResult(result id.IDResult) TaskCollectibleRewardIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return TaskCollectibleRewardIDCreated{Value: TaskCollectibleRewardID{value: typed.Value}}
+	case id.IDRejected:
+		return TaskCollectibleRewardIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return TaskCollectibleRewardIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 

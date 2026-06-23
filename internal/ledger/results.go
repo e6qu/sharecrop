@@ -31,14 +31,14 @@ type CreditPayout struct {
 }
 
 type CollectiblePayout struct {
-	WorkerUserID  core.UserID
-	CollectibleID core.CollectibleID
+	WorkerUserID   core.UserID
+	CollectibleIDs []core.CollectibleID
 }
 
 type BundlePayout struct {
-	WorkerUserID  core.UserID
-	Amount        CreditAmount
-	CollectibleID core.CollectibleID
+	WorkerUserID   core.UserID
+	Amount         CreditAmount
+	CollectibleIDs []core.CollectibleID
 }
 
 func (NoPayout) payoutOutcome() {}

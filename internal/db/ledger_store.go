@@ -184,7 +184,7 @@ func combinePayouts(first ledger.PayoutOutcome, second ledger.PayoutOutcome) led
 	credit, hasCredit := first.(ledger.CreditPayout)
 	collectible, hasCollectible := second.(ledger.CollectiblePayout)
 	if hasCredit && hasCollectible && credit.WorkerUserID == collectible.WorkerUserID {
-		return ledger.BundlePayout{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleID: collectible.CollectibleID}
+		return ledger.BundlePayout{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleIDs: collectible.CollectibleIDs}
 	}
 	if _, firstNone := first.(ledger.NoPayout); firstNone {
 		return second

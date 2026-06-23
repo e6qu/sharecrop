@@ -165,12 +165,12 @@ type escrowHTTPResponse struct {
 }
 
 type acceptHTTPResponse struct {
-	TaskID        string `json:"task_id"`
-	SubmissionID  string `json:"submission_id"`
-	PayoutKind    string `json:"payout_kind"`
-	PayoutAmount  int64  `json:"payout_amount"`
-	WorkerUserID  string `json:"worker_user_id"`
-	CollectibleID string `json:"collectible_id"`
+	TaskID         string   `json:"task_id"`
+	SubmissionID   string   `json:"submission_id"`
+	PayoutKind     string   `json:"payout_kind"`
+	PayoutAmount   int64    `json:"payout_amount"`
+	WorkerUserID   string   `json:"worker_user_id"`
+	CollectibleIDs []string `json:"collectible_ids"`
 }
 
 func registerUser(t *testing.T, server *httptest.Server, prefix string) authHTTPResponse {

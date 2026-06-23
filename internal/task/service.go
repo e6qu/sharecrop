@@ -289,8 +289,8 @@ type UserListScope struct {
 }
 
 type OrganizationListScope struct {
-	OrganizationID core.OrganizationID
-	UserID         core.UserID
+	OrganizationID  core.OrganizationID
+	UserID          core.UserID
 	IncludeReserved bool
 }
 

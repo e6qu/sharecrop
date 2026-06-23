@@ -126,7 +126,7 @@ type RefundRewardResult interface {
 }
 
 type RewardRefunded struct {
-	Value Collectible
+	Values []Collectible
 }
 
 type RefundRewardRejected struct {

@@ -30,8 +30,8 @@ func TestTaskEscrowResponseWireShape(t *testing.T) {
 }
 
 func TestAcceptSubmissionResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(acceptSubmissionResponse{TaskID: "task-1", SubmissionID: "submission-1", PayoutKind: "credit", PayoutAmount: 25, WorkerUserID: "user-1", CollectibleID: "", TipAmount: 5})
-	assertWireShape(t, encoded, err, `{"task_id":"task-1","submission_id":"submission-1","payout_kind":"credit","payout_amount":25,"worker_user_id":"user-1","collectible_id":"","tip_amount":5}`)
+	encoded, err := json.Marshal(acceptSubmissionResponse{TaskID: "task-1", SubmissionID: "submission-1", PayoutKind: "bundle", PayoutAmount: 25, WorkerUserID: "user-1", CollectibleIDs: []string{"collectible-1", "collectible-2"}, TipAmount: 5})
+	assertWireShape(t, encoded, err, `{"task_id":"task-1","submission_id":"submission-1","payout_kind":"bundle","payout_amount":25,"worker_user_id":"user-1","collectible_ids":["collectible-1","collectible-2"],"tip_amount":5}`)
 }
 
 func TestReviewSubmissionResponseWireShape(t *testing.T) {

@@ -160,14 +160,18 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Filter from the browser.");
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText("Created task");
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
 
   const row = page.getByTestId("task-row").filter({ hasText: title });
   await expect(row).toHaveCount(1);
 
   // The new task is a draft, so filtering to Open hides it and Draft shows it.
   await page.getByTestId("task-filter-open").click();
-  await expect(page.getByTestId("task-row").filter({ hasText: title })).toHaveCount(0);
+  await expect(page.getByTestId("task-row").filter({ hasText: title }))
+    .toHaveCount(0);
   await page.getByTestId("task-filter-draft").click();
-  await expect(page.getByTestId("task-row").filter({ hasText: title })).toHaveCount(1);
+  await expect(page.getByTestId("task-row").filter({ hasText: title }))
+    .toHaveCount(1);
 });

@@ -504,7 +504,7 @@ func ledgerModule() Module {
 					{Name: NewElmValueName("payoutKind"), JSONName: NewJSONFieldName("payout_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("payoutAmount"), JSONName: NewJSONFieldName("payout_amount"), Type: IntRef{}},
 					{Name: NewElmValueName("workerUserID"), JSONName: NewJSONFieldName("worker_user_id"), Type: StringRef{}},
-					{Name: NewElmValueName("collectibleID"), JSONName: NewJSONFieldName("collectible_id"), Type: StringRef{}},
+					{Name: NewElmValueName("collectibleIDs"), JSONName: NewJSONFieldName("collectible_ids"), Type: ListRef{Element: StringRef{}}},
 					{Name: NewElmValueName("tipAmount"), JSONName: NewJSONFieldName("tip_amount"), Type: IntRef{}},
 				},
 			},
