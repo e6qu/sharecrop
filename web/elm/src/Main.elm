@@ -15,6 +15,7 @@ import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
+import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.Ui as Ui exposing (testId)
 import Url exposing (Url)
@@ -43,6 +44,8 @@ type Page
     | UserDetailPage String
     | UserWorkPage String
     | UserSubmissionsPage String
+    | CollectibleDetailPage String
+    | SeriesDetailPage String
 
 
 type alias LoggedInModel =
@@ -100,6 +103,7 @@ type alias LoggedInModel =
     , userProfile : Maybe Task.UserProfileResponse
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
+    , seriesDetail : Maybe TaskSeries.TaskSeriesResponse
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
     , provisionMemberEmail : String
@@ -220,6 +224,7 @@ type Msg
     | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
     | UserWorkReceived (Result Http.Error Task.TasksResponse)
     | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
+    | SeriesDetailReceived (Result Http.Error TaskSeries.TaskSeriesResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
@@ -312,6 +317,7 @@ emptyLoggedIn response =
     , userProfile = Nothing
     , userWork = []
     , userSubmissions = []
+    , seriesDetail = Nothing
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
     , provisionMemberEmail = ""
@@ -352,6 +358,12 @@ pageFromUrl url =
 
         [ "collectibles" ] ->
             CollectiblesPage
+
+        [ "collectibles", collectibleId ] ->
+            CollectibleDetailPage collectibleId
+
+        [ "series", seriesId ] ->
+            SeriesDetailPage seriesId
 
         [ "organizations" ] ->
             OrganizationsPage
@@ -414,6 +426,12 @@ pageToPath page =
         UserSubmissionsPage userId ->
             "/users/" ++ userId ++ "/submissions"
 
+        CollectibleDetailPage collectibleId ->
+            "/collectibles/" ++ collectibleId
+
+        SeriesDetailPage seriesId ->
+            "/series/" ++ seriesId
+
 
 -- enterPage applies any per-page state a route needs when it becomes active, so
 -- a deep link or back/forward leaves the model consistent with the URL.
@@ -431,6 +449,9 @@ enterPage page state =
 
         UserSubmissionsPage _ ->
             { state | page = page, userSubmissions = [] }
+
+        SeriesDetailPage _ ->
+            { state | page = page, seriesDetail = Nothing }
 
         _ ->
             { state | page = page }
@@ -791,6 +812,9 @@ update msg model =
         UserSubmissionsReceived result ->
             ( updateLoggedIn model (\state -> { state | userSubmissions = submissionsFromResult result }), Cmd.none )
 
+        SeriesDetailReceived result ->
+            ( updateLoggedIn model (\state -> { state | seriesDetail = Result.toMaybe result }), Cmd.none )
+
         OrgTasksReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
 
@@ -1135,6 +1159,12 @@ routeLoadCmd token page =
 
         UserSubmissionsPage userId ->
             authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions") Http.emptyBody (Http.expectJson UserSubmissionsReceived Submission.submissionsResponseDecoder)
+
+        CollectibleDetailPage _ ->
+            fetchCollectibles token
+
+        SeriesDetailPage seriesId ->
+            authorizedRequest "GET" token ("/api/task-series/" ++ seriesId) Http.emptyBody (Http.expectJson SeriesDetailReceived TaskSeries.taskSeriesResponseDecoder)
 
 
 fetchUserProfile : String -> String -> Cmd Msg
@@ -1884,6 +1914,48 @@ pageView origin state =
         UserSubmissionsPage userId ->
             userSubmissionsView userId state.userSubmissions
 
+        CollectibleDetailPage collectibleId ->
+            collectibleDetailView collectibleId state
+
+        SeriesDetailPage seriesId ->
+            seriesDetailView seriesId state
+
+
+collectibleDetailView : String -> LoggedInModel -> Html Msg
+collectibleDetailView collectibleId state =
+    Ui.card
+        [ a [ href "/collectibles", Html.Attributes.class Ui.secondaryButtonClass, testId "back-collectibles" ] [ text "Back to collectibles" ]
+        , case List.filter (\collectible -> collectible.id == collectibleId) state.collectibles of
+            collectible :: _ ->
+                div [ Html.Attributes.class "mt-3 space-y-2", testId "collectible-detail" ]
+                    [ p [ Html.Attributes.class "text-2xl font-semibold", testId "collectible-detail-name" ] [ text collectible.name ]
+                    , Ui.label_ ("Collectible " ++ collectible.id)
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Kind: " ++ collectibleKindLabel collectible.kind) ]
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ collectibleStateLabel collectible.state) ]
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Transfer policy: " ++ collectiblePolicyLabel collectible.transferPolicy) ]
+                    ]
+
+            [] ->
+                p [ Html.Attributes.class "mt-3 text-sm text-slate-500", testId "collectible-detail-missing" ] [ text "This collectible is not in your holdings." ]
+        ]
+
+
+seriesDetailView : String -> LoggedInModel -> Html Msg
+seriesDetailView seriesId state =
+    Ui.card
+        [ case state.seriesDetail of
+            Just series ->
+                div [ Html.Attributes.class "space-y-2", testId "series-detail" ]
+                    [ p [ Html.Attributes.class "text-2xl font-semibold", testId "series-detail-title" ] [ text series.title ]
+                    , Ui.label_ ("Series " ++ series.id)
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Owner kind: " ++ series.ownerKind) ]
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Created by: " ++ series.createdBy) ]
+                    ]
+
+            Nothing ->
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "series-detail-missing" ] [ text ("Loading series " ++ seriesId ++ "…") ]
+        ]
+
 
 userTaskListView : String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
 userTaskListView heading identifier userId tasks =
@@ -2469,7 +2541,7 @@ collectibleRow : Collectible.CollectibleResponse -> Html Msg
 collectibleRow collectible =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "collectible-row" ]
         [ div [ Html.Attributes.class "flex items-center gap-2" ]
-            [ p [ Html.Attributes.class "font-medium" ] [ text collectible.name ]
+            [ a [ href ("/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline", testId "collectible-link" ] [ text collectible.name ]
             , Ui.badge (collectibleStateLabel collectible.state)
             , span [ Html.Attributes.class "text-xs text-slate-500" ] [ text (collectibleKindLabel collectible.kind) ]
             ]

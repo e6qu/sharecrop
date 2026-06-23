@@ -5344,6 +5344,9 @@ var $elm$browser$Browser$application = _Browser_application;
 var $elm$json$Json$Decode$field = _Json_decodeField;
 var $author$project$Main$LoggedOut = {$: 'LoggedOut'};
 var $author$project$Main$AgentsPage = {$: 'AgentsPage'};
+var $author$project$Main$CollectibleDetailPage = function (a) {
+	return {$: 'CollectibleDetailPage', a: a};
+};
 var $author$project$Main$CollectiblesPage = {$: 'CollectiblesPage'};
 var $author$project$Main$CreateTaskPage = {$: 'CreateTaskPage'};
 var $author$project$Main$DiscoveryPage = {$: 'DiscoveryPage'};
@@ -5353,6 +5356,9 @@ var $author$project$Main$OrganizationDetailPage = function (a) {
 };
 var $author$project$Main$OrganizationsPage = {$: 'OrganizationsPage'};
 var $author$project$Main$OverviewPage = {$: 'OverviewPage'};
+var $author$project$Main$SeriesDetailPage = function (a) {
+	return {$: 'SeriesDetailPage', a: a};
+};
 var $author$project$Main$TaskDetailPage = function (a) {
 	return {$: 'TaskDetailPage', a: a};
 };
@@ -5371,7 +5377,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 		$elm$core$String$split,
 		'/',
 		A2($elm$core$String$dropLeft, 1, url.path));
-	_v0$12:
+	_v0$14:
 	while (true) {
 		if (_v0.b) {
 			if (!_v0.b.b) {
@@ -5389,7 +5395,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 					case 'organizations':
 						return $author$project$Main$OrganizationsPage;
 					default:
-						break _v0$12;
+						break _v0$14;
 				}
 			} else {
 				if (!_v0.b.b.b) {
@@ -5403,40 +5409,48 @@ var $author$project$Main$pageFromUrl = function (url) {
 								var taskId = _v2.a;
 								return $author$project$Main$TaskDetailPage(taskId);
 							}
-						case 'organizations':
+						case 'collectibles':
 							var _v3 = _v0.b;
-							var organizationId = _v3.a;
+							var collectibleId = _v3.a;
+							return $author$project$Main$CollectibleDetailPage(collectibleId);
+						case 'series':
+							var _v4 = _v0.b;
+							var seriesId = _v4.a;
+							return $author$project$Main$SeriesDetailPage(seriesId);
+						case 'organizations':
+							var _v5 = _v0.b;
+							var organizationId = _v5.a;
 							return $author$project$Main$OrganizationDetailPage(organizationId);
 						case 'users':
-							var _v4 = _v0.b;
-							var userId = _v4.a;
+							var _v6 = _v0.b;
+							var userId = _v6.a;
 							return $author$project$Main$UserDetailPage(userId);
 						default:
-							break _v0$12;
+							break _v0$14;
 					}
 				} else {
 					if ((_v0.a === 'users') && (!_v0.b.b.b.b)) {
 						switch (_v0.b.b.a) {
 							case 'work':
-								var _v5 = _v0.b;
-								var userId = _v5.a;
-								var _v6 = _v5.b;
-								return $author$project$Main$UserWorkPage(userId);
-							case 'submissions':
 								var _v7 = _v0.b;
 								var userId = _v7.a;
 								var _v8 = _v7.b;
+								return $author$project$Main$UserWorkPage(userId);
+							case 'submissions':
+								var _v9 = _v0.b;
+								var userId = _v9.a;
+								var _v10 = _v9.b;
 								return $author$project$Main$UserSubmissionsPage(userId);
 							default:
-								break _v0$12;
+								break _v0$14;
 						}
 					} else {
-						break _v0$12;
+						break _v0$14;
 					}
 				}
 			}
 		} else {
-			break _v0$12;
+			break _v0$14;
 		}
 	}
 	return $author$project$Main$OverviewPage;
@@ -7327,6 +7341,10 @@ var $author$project$Main$enterPage = F2(
 				return _Utils_update(
 					state,
 					{page: page, userSubmissions: _List_Nil});
+			case 'SeriesDetailPage':
+				return _Utils_update(
+					state,
+					{page: page, seriesDetail: $elm$core$Maybe$Nothing});
 			default:
 				return _Utils_update(
 					state,
@@ -7800,6 +7818,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		reviewNote: '',
 		reviewPartialCredit: '',
 		reviewTip: '',
+		seriesDetail: $elm$core$Maybe$Nothing,
 		subjectId: response.subjectID,
 		submissions: _List_Nil,
 		submitInput: '',
@@ -8560,6 +8579,9 @@ var $author$project$Main$revokeAgent = F2(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Main$AgentRevoked, $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder));
 	});
+var $author$project$Main$SeriesDetailReceived = function (a) {
+	return {$: 'SeriesDetailReceived', a: a};
+};
 var $author$project$Main$UserSubmissionsReceived = function (a) {
 	return {$: 'UserSubmissionsReceived', a: a};
 };
@@ -8636,6 +8658,17 @@ var $author$project$Main$loadOrganization = F2(
 					A2($elm$http$Http$expectJson, $author$project$Main$OrgTasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder))
 				]));
 	});
+var $author$project$Sharecrop$Generated$TaskSeries$TaskSeriesResponse = F4(
+	function (id, ownerKind, title, createdBy) {
+		return {createdBy: createdBy, id: id, ownerKind: ownerKind, title: title};
+	});
+var $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder = A5(
+	$elm$json$Json$Decode$map4,
+	$author$project$Sharecrop$Generated$TaskSeries$TaskSeriesResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
 var $author$project$Main$routeLoadCmd = F2(
 	function (token, page) {
 		switch (page.$) {
@@ -8688,7 +8721,7 @@ var $author$project$Main$routeLoadCmd = F2(
 					'/api/users/' + (userId + '/work'),
 					$elm$http$Http$emptyBody,
 					A2($elm$http$Http$expectJson, $author$project$Main$UserWorkReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
-			default:
+			case 'UserSubmissionsPage':
 				var userId = page.a;
 				return A5(
 					$author$project$Main$authorizedRequest,
@@ -8697,6 +8730,17 @@ var $author$project$Main$routeLoadCmd = F2(
 					'/api/users/' + (userId + '/submissions'),
 					$elm$http$Http$emptyBody,
 					A2($elm$http$Http$expectJson, $author$project$Main$UserSubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
+			case 'CollectibleDetailPage':
+				return $author$project$Main$fetchCollectibles(token);
+			default:
+				var seriesId = page.a;
+				return A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/task-series/' + seriesId,
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$SeriesDetailReceived, $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder));
 		}
 	});
 var $author$project$Main$submissionsFromResult = function (result) {
@@ -10105,6 +10149,20 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'SeriesDetailReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									seriesDetail: $elm$core$Result$toMaybe(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'OrgTasksReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -10577,9 +10635,15 @@ var $author$project$Main$pageToPath = function (page) {
 		case 'UserWorkPage':
 			var userId = page.a;
 			return '/users/' + (userId + '/work');
-		default:
+		case 'UserSubmissionsPage':
 			var userId = page.a;
 			return '/users/' + (userId + '/submissions');
+		case 'CollectibleDetailPage':
+			var collectibleId = page.a;
+			return '/collectibles/' + collectibleId;
+		default:
+			var seriesId = page.a;
+			return '/series/' + seriesId;
 	}
 };
 var $author$project$Main$navLink = F4(
@@ -10950,6 +11014,127 @@ var $author$project$Main$agentsView = F2(
 					$author$project$Main$credentialsList(state.credentials)
 				]));
 	});
+var $author$project$Main$collectibleKindTag = function (kind) {
+	switch (kind.$) {
+		case 'CollectibleKindUnique':
+			return 'unique';
+		case 'CollectibleKindEdition':
+			return 'edition';
+		default:
+			return 'badge';
+	}
+};
+var $author$project$Main$collectibleKindLabel = $author$project$Main$collectibleKindTag;
+var $author$project$Main$collectiblePolicyTag = function (policy) {
+	switch (policy.$) {
+		case 'CollectibleTransferPolicyNonTransferableExceptPayout':
+			return 'non_transferable_except_payout';
+		case 'CollectibleTransferPolicyTransferableBetweenUsers':
+			return 'transferable_between_users';
+		case 'CollectibleTransferPolicyTransferableWithinOrganization':
+			return 'transferable_within_organization';
+		default:
+			return 'issuer_controlled';
+	}
+};
+var $author$project$Main$collectiblePolicyLabel = $author$project$Main$collectiblePolicyTag;
+var $author$project$Main$collectibleDetailView = F2(
+	function (collectibleId, state) {
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$a,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$href('/collectibles'),
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+							$author$project$Sharecrop$Ui$testId('back-collectibles')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Back to collectibles')
+						])),
+					function () {
+					var _v0 = A2(
+						$elm$core$List$filter,
+						function (collectible) {
+							return _Utils_eq(collectible.id, collectibleId);
+						},
+						state.collectibles);
+					if (_v0.b) {
+						var collectible = _v0.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('mt-3 space-y-2'),
+									$author$project$Sharecrop$Ui$testId('collectible-detail')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-2xl font-semibold'),
+											$author$project$Sharecrop$Ui$testId('collectible-detail-name')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(collectible.name)
+										])),
+									$author$project$Sharecrop$Ui$label_('Collectible ' + collectible.id),
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											'Kind: ' + $author$project$Main$collectibleKindLabel(collectible.kind))
+										])),
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											'State: ' + $author$project$Main$collectibleStateLabel(collectible.state))
+										])),
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											'Transfer policy: ' + $author$project$Main$collectiblePolicyLabel(collectible.transferPolicy))
+										]))
+								]));
+					} else {
+						return A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('mt-3 text-sm text-slate-500'),
+									$author$project$Sharecrop$Ui$testId('collectible-detail-missing')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('This collectible is not in your holdings.')
+								]));
+					}
+				}()
+				]));
+	});
 var $author$project$Main$AwardTaskIdChanged = function (a) {
 	return {$: 'AwardTaskIdChanged', a: a};
 };
@@ -11076,17 +11261,6 @@ var $author$project$Sharecrop$Ui$badge = function (value) {
 				$elm$html$Html$text(value)
 			]));
 };
-var $author$project$Main$collectibleKindTag = function (kind) {
-	switch (kind.$) {
-		case 'CollectibleKindUnique':
-			return 'unique';
-		case 'CollectibleKindEdition':
-			return 'edition';
-		default:
-			return 'badge';
-	}
-};
-var $author$project$Main$collectibleKindLabel = $author$project$Main$collectibleKindTag;
 var $author$project$Main$collectibleRow = function (collectible) {
 	return A2(
 		$elm$html$Html$div,
@@ -11106,10 +11280,12 @@ var $author$project$Main$collectibleRow = function (collectible) {
 				_List_fromArray(
 					[
 						A2(
-						$elm$html$Html$p,
+						$elm$html$Html$a,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('font-medium')
+								$elm$html$Html$Attributes$href('/collectibles/' + collectible.id),
+								$elm$html$Html$Attributes$class('font-medium underline'),
+								$author$project$Sharecrop$Ui$testId('collectible-link')
 							]),
 						_List_fromArray(
 							[
@@ -11195,19 +11371,6 @@ var $author$project$Main$kindButton = F2(
 var $author$project$Main$CollectiblePolicyChosen = function (a) {
 	return {$: 'CollectiblePolicyChosen', a: a};
 };
-var $author$project$Main$collectiblePolicyTag = function (policy) {
-	switch (policy.$) {
-		case 'CollectibleTransferPolicyNonTransferableExceptPayout':
-			return 'non_transferable_except_payout';
-		case 'CollectibleTransferPolicyTransferableBetweenUsers':
-			return 'transferable_between_users';
-		case 'CollectibleTransferPolicyTransferableWithinOrganization':
-			return 'transferable_within_organization';
-		default:
-			return 'issuer_controlled';
-	}
-};
-var $author$project$Main$collectiblePolicyLabel = $author$project$Main$collectiblePolicyTag;
 var $author$project$Main$policyButton = F2(
 	function (selected, policy) {
 		return A4(
@@ -12290,6 +12453,73 @@ var $author$project$Main$overviewView = function (state) {
 				$author$project$Main$ledgerView(state.entries)
 			]));
 };
+var $author$project$Main$seriesDetailView = F2(
+	function (seriesId, state) {
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					function () {
+					var _v0 = state.seriesDetail;
+					if (_v0.$ === 'Just') {
+						var series = _v0.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('space-y-2'),
+									$author$project$Sharecrop$Ui$testId('series-detail')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-2xl font-semibold'),
+											$author$project$Sharecrop$Ui$testId('series-detail-title')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(series.title)
+										])),
+									$author$project$Sharecrop$Ui$label_('Series ' + series.id),
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Owner kind: ' + series.ownerKind)
+										])),
+									A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Created by: ' + series.createdBy)
+										]))
+								]));
+					} else {
+						return A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+									$author$project$Sharecrop$Ui$testId('series-detail-missing')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Loading series ' + (seriesId + '…'))
+								]));
+					}
+				}()
+				]));
+	});
 var $author$project$Main$availabilityKindLabel = function (kind) {
 	switch (kind.$) {
 		case 'TaskAvailabilityKindAvailable':
@@ -13498,9 +13728,15 @@ var $author$project$Main$pageView = F2(
 			case 'UserWorkPage':
 				var userId = _v0.a;
 				return A4($author$project$Main$userTaskListView, 'Public work', 'user-work', userId, state.userWork);
-			default:
+			case 'UserSubmissionsPage':
 				var userId = _v0.a;
 				return A2($author$project$Main$userSubmissionsView, userId, state.userSubmissions);
+			case 'CollectibleDetailPage':
+				var collectibleId = _v0.a;
+				return A2($author$project$Main$collectibleDetailView, collectibleId, state);
+			default:
+				var seriesId = _v0.a;
+				return A2($author$project$Main$seriesDetailView, seriesId, state);
 		}
 	});
 var $author$project$Main$loggedInView = F2(
