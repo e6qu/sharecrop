@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 24 work. Pull request 24 was merged into `main`.
+The repository contains pull request 1 through pull request 25 work. Pull request 25 was merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-game-like-personas` expanded the GitHub Pages demo with richer persona switching, more localStorage-backed task states, more seeded tasks, and a game-like task distribution interface.
+- Active branch `task/demo-ui-polish-pass` has polished the expanded GitHub Pages mission-board demo for visual hierarchy, persona workflows, accessibility, screenshots, and small implementation defects. The branch is ready for pull request review.
 
 Implemented surface:
 
@@ -161,6 +161,11 @@ Implemented surface:
 - The static demo seeds varied public and organization missions with open submissions, reservations, approval, submitted work, changes requested, rejection, acceptance, credit rewards, collectible rewards, and bundled rewards.
 - The static demo persona picker changes the active persona, default page, selected mission, and available actions.
 - The static demo tracks local activity, balances, collectible inventory, mission timelines, review drafts, and mission transitions in localStorage.
+- The static demo review queue is scoped to requesters and organization reviewers; implementor personas see an empty permission-appropriate queue.
+- The static demo mission board and review pages use the visible filtered task for actions so controls affect the briefing shown to the user.
+- Static demo request-changes decisions no longer transfer payout or tip credits.
+- Static demo cards expose persona-specific next-action chips, requester or assignee context, readable schema blocks, and accessible pressed/current states.
+- Static demo localStorage reads and writes are guarded, normalized, and bounded before merging browser state into the seed state.
 
 Planned defaults:
 
@@ -258,6 +263,22 @@ Last observed checks on `task/demo-game-like-personas`:
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for Command, Mission Board, Post Mission, Review Queue, Uplink, Settings, blocky dark, rustic light mobile, and showcase dark mobile states.
 - `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make test-integration` passed.
 - `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make test-http` passed.
+
+Last observed checks on `task/demo-ui-polish-pass`:
+
+- `node --check site/demo/app.js` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts tests/playwright/demo_static.spec.ts` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile demo screenshots.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages with no reported console warnings, console errors, page errors, failed requests, or horizontal overflow.
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.
 
 Blocking issues:
 

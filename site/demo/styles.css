@@ -221,8 +221,8 @@ a {
 
 .page-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
@@ -547,7 +547,7 @@ code {
 
 .mission-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(190px, 1fr));
+  grid-template-columns: repeat(5, minmax(235px, 1fr));
   gap: 12px;
   align-items: start;
   overflow-x: auto;
@@ -557,11 +557,15 @@ code {
 .mission-lane {
   display: grid;
   gap: 10px;
-  min-width: 190px;
+  min-width: 235px;
   border: 2px solid var(--line);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--surface-strong) 76%, var(--canvas));
   padding: 10px;
+}
+
+.mission-lane.empty-lane {
+  align-self: start;
 }
 
 .lane-header {
@@ -587,6 +591,7 @@ code {
 }
 
 .mission-card {
+  position: relative;
   display: grid;
   gap: 8px;
   width: 100%;
@@ -594,7 +599,7 @@ code {
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
-  padding: 11px;
+  padding: 12px;
   text-align: left;
   box-shadow: 0 5px 0 rgb(31 43 30 / 14%);
 }
@@ -607,12 +612,14 @@ code {
 }
 
 .mission-card strong {
+  padding-right: 54px;
   font-size: 1rem;
   line-height: 1.2;
 }
 
 .mission-card small {
-  min-height: 3.8em;
+  color: var(--muted);
+  line-height: 1.42;
 }
 
 .mission-meta,
@@ -625,6 +632,7 @@ code {
 .mission-meta span,
 .reward-chip,
 .rank-badge,
+.action-chip,
 .danger-chip {
   display: inline-flex;
   width: fit-content;
@@ -638,9 +646,18 @@ code {
 }
 
 .rank-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
+}
+
+.action-chip {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .reward-chip {
@@ -681,6 +698,24 @@ code {
   background: var(--canvas);
   padding: 8px 10px;
   color: var(--muted);
+}
+
+.schema-block {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.schema-block span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.schema-block pre {
+  max-height: 180px;
+  overflow: auto;
 }
 
 .status-panel {
@@ -804,6 +839,31 @@ button:disabled {
 .submission-row {
   display: grid;
   gap: 10px;
+}
+
+.decision-console,
+.outcome-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 12px;
+}
+
+.payout-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  padding: 8px 10px;
+}
+
+.payout-strip span {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .queue-row {
