@@ -15,6 +15,7 @@ import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
+import Sharecrop.Generated.Team as Team
 import Sharecrop.Ui as Ui exposing (testId)
 import Url exposing (Url)
 
@@ -82,6 +83,15 @@ type alias LoggedInModel =
     , organizations : List Organization.OrganizationResponse
     , createOrgName : String
     , orgMessage : Maybe String
+    , activeOrgId : String
+    , orgBalance : Maybe Int
+    , orgTeams : List Team.TeamResponse
+    , orgTasks : List Task.TaskListItemResponse
+    , createOrgTeamName : String
+    , orgTeamMessage : Maybe String
+    , provisionMemberEmail : String
+    , provisionMemberMessage : Maybe String
+    , createTaskOwner : String
     }
 
 
@@ -196,6 +206,17 @@ type Msg
     | CreateOrgNameChanged String
     | CreateOrgClicked
     | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
+    | SelectOrganization String
+    | OrgBalanceReceived (Result Http.Error Ledger.BalanceResponse)
+    | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
+    | OrgTasksReceived (Result Http.Error Task.TasksResponse)
+    | CreateOrgTeamNameChanged String
+    | CreateOrgTeamClicked
+    | CreateOrgTeamReceived (Result Http.Error Team.TeamResponse)
+    | ProvisionMemberEmailChanged String
+    | ProvisionMemberClicked
+    | ProvisionMemberReceived (Result Http.Error ())
+    | CreateTaskOwnerChanged String
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
 
@@ -273,6 +294,15 @@ emptyLoggedIn response =
     , organizations = []
     , createOrgName = ""
     , orgMessage = Nothing
+    , activeOrgId = ""
+    , orgBalance = Nothing
+    , orgTeams = []
+    , orgTasks = []
+    , createOrgTeamName = ""
+    , orgTeamMessage = Nothing
+    , provisionMemberEmail = ""
+    , provisionMemberMessage = Nothing
+    , createTaskOwner = ""
     }
 
 
@@ -633,7 +663,11 @@ update msg model =
             withSession model (\state -> awardCommand model state collectibleId)
 
         AwardReceived (Ok collectible) ->
-            ( updateLoggedIn model (\state -> { state | awardMessage = Just (awardSuccessLabel collectible) }), refreshCollectibles model )
+            let
+                updated =
+                    updateLoggedIn model (\state -> { state | awardMessage = Just (awardSuccessLabel collectible) })
+            in
+            withSession updated (\state -> ( updated, Cmd.batch [ fetchCollectibles state.accessToken, fetchTasks state.accessToken state.taskStateFilter ] ))
 
         AwardReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -652,6 +686,53 @@ update msg model =
 
         CreateOrgReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | orgMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        SelectOrganization organizationId ->
+            let
+                updated =
+                    updateLoggedIn model (\state -> { state | activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing })
+            in
+            withSession updated (\state -> ( updated, loadOrganization state.accessToken organizationId ))
+
+        OrgBalanceReceived result ->
+            ( updateLoggedIn model (\state -> { state | orgBalance = balanceFromResult result }), Cmd.none )
+
+        OrgTeamsReceived result ->
+            ( updateLoggedIn model (\state -> { state | orgTeams = teamsFromResult result }), Cmd.none )
+
+        OrgTasksReceived result ->
+            ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
+
+        CreateOrgTeamNameChanged value ->
+            ( updateLoggedIn model (\state -> { state | createOrgTeamName = value }), Cmd.none )
+
+        CreateOrgTeamClicked ->
+            withSession model (\state -> createOrgTeamCommand model state)
+
+        CreateOrgTeamReceived (Ok team) ->
+            let
+                updated =
+                    updateLoggedIn model (\state -> { state | createOrgTeamName = "", orgTeamMessage = Just ("Created team " ++ team.name) })
+            in
+            withSession updated (\state -> ( updated, fetchOrgTeams state.accessToken state.activeOrgId ))
+
+        CreateOrgTeamReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | orgTeamMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        ProvisionMemberEmailChanged value ->
+            ( updateLoggedIn model (\state -> { state | provisionMemberEmail = value }), Cmd.none )
+
+        ProvisionMemberClicked ->
+            withSession model (\state -> provisionMemberCommand model state)
+
+        ProvisionMemberReceived (Ok ()) ->
+            ( updateLoggedIn model (\state -> { state | provisionMemberEmail = "", provisionMemberMessage = Just "Member provisioned." }), Cmd.none )
+
+        ProvisionMemberReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        CreateTaskOwnerChanged value ->
+            ( updateLoggedIn model (\state -> { state | createTaskOwner = value }), Cmd.none )
 
         LinkClicked request ->
             case request of
@@ -1201,6 +1282,64 @@ refreshOrganizations model =
             Cmd.none
 
 
+loadOrganization : String -> String -> Cmd Msg
+loadOrganization token organizationId =
+    if organizationId == "" then
+        Cmd.none
+
+    else
+        Cmd.batch
+            [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (Http.expectJson OrgBalanceReceived Ledger.balanceResponseDecoder)
+            , fetchOrgTeams token organizationId
+            , authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
+            ]
+
+
+fetchOrgTeams : String -> String -> Cmd Msg
+fetchOrgTeams token organizationId =
+    authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/teams") Http.emptyBody (Http.expectJson OrgTeamsReceived Team.teamsResponseDecoder)
+
+
+createOrgTeamCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+createOrgTeamCommand model state =
+    if String.isEmpty (String.trim state.createOrgTeamName) || state.activeOrgId == "" then
+        ( updateLoggedIn model (\current -> { current | orgTeamMessage = Just "A team name is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | orgTeamMessage = Nothing })
+        , authorizedRequest "POST"
+            state.accessToken
+            ("/api/organizations/" ++ state.activeOrgId ++ "/teams")
+            (Http.jsonBody (Encode.object [ ( "name", Encode.string (String.trim state.createOrgTeamName) ) ]))
+            (Http.expectJson CreateOrgTeamReceived Team.teamResponseDecoder)
+        )
+
+
+provisionMemberCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+provisionMemberCommand model state =
+    if String.isEmpty (String.trim state.provisionMemberEmail) || state.activeOrgId == "" then
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "A member email is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Nothing })
+        , authorizedRequest "POST"
+            state.accessToken
+            ("/api/organizations/" ++ state.activeOrgId ++ "/members")
+            (Http.jsonBody (Encode.object [ ( "email", Encode.string (String.trim state.provisionMemberEmail) ), ( "roles", Encode.list Encode.string [ "member" ] ) ]))
+            (Http.expectWhatever ProvisionMemberReceived)
+        )
+
+
+teamsFromResult : Result Http.Error Team.TeamsResponse -> List Team.TeamResponse
+teamsFromResult result =
+    case result of
+        Ok response ->
+            response.teams
+
+        Err _ ->
+            []
+
+
 createOrgCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 createOrgCommand model state =
     if String.isEmpty (String.trim state.createOrgName) then
@@ -1264,7 +1403,7 @@ fundingRequestBody taskId amount =
 createTaskRequestBody : LoggedInModel -> Encode.Value
 createTaskRequestBody state =
     Encode.object
-        [ ( "owner", Encode.object [ ( "kind", Encode.string "user" ), ( "user_id", Encode.string state.subjectId ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string "" ) ] )
+        [ ( "owner", createOwnerBody state )
         , ( "title", Encode.string state.createTitle )
         , ( "description", Encode.string state.createDescription )
         , ( "reward", createRewardBody state.createRewardAmount )
@@ -1329,6 +1468,15 @@ visibilityLabel tag =
 
     else
         "Private (default)"
+
+
+createOwnerBody : LoggedInModel -> Encode.Value
+createOwnerBody state =
+    if state.createTaskOwner == "" then
+        Encode.object [ ( "kind", Encode.string "user" ), ( "user_id", Encode.string state.subjectId ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string "" ) ]
+
+    else
+        Encode.object [ ( "kind", Encode.string "organization" ), ( "user_id", Encode.string "" ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string state.createTaskOwner ) ]
 
 
 createVisibilityBody : LoggedInModel -> Encode.Value
@@ -1559,35 +1707,111 @@ dashboardView origin state =
         ]
 
 
+ownerChooser : LoggedInModel -> Html Msg
+ownerChooser state =
+    if List.isEmpty state.organizations then
+        text ""
+
+    else
+        div []
+            [ Ui.label_ "Owner"
+            , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "create-owner" ]
+                (chooserButton (state.createTaskOwner == "") (CreateTaskOwnerChanged "") "create-owner-me" "Me"
+                    :: List.map (ownerButton state.createTaskOwner) state.organizations
+                )
+            ]
+
+
+ownerButton : String -> Organization.OrganizationResponse -> Html Msg
+ownerButton selected organization =
+    chooserButton (selected == organization.id)
+        (CreateTaskOwnerChanged organization.id)
+        ("create-owner-" ++ organization.id)
+        organization.name
+
+
 organizationsView : LoggedInModel -> Html Msg
 organizationsView state =
     Ui.card
         [ Ui.sectionTitle "Organizations"
         , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Organizations you belong to. Create one to own tasks and credits as a team." ]
-        , organizationsList state.organizations
+        , organizationsList state
         , form [ Html.Attributes.class "mt-3 flex flex-wrap items-end gap-2", onSubmit CreateOrgClicked ]
             [ Ui.fieldLabel "New organization"
                 [ Ui.textInput [ type_ "text", placeholder "Organization name", value state.createOrgName, onInput CreateOrgNameChanged, testId "create-org-name" ] ]
             , Ui.primaryButton [ type_ "submit", testId "create-org" ] "Create organization"
             ]
         , maybeNote state.orgMessage "org-message"
+        , activeOrganizationView state
         ]
 
 
-organizationsList : List Organization.OrganizationResponse -> Html Msg
-organizationsList organizations =
-    if List.isEmpty organizations then
+organizationsList : LoggedInModel -> Html Msg
+organizationsList state =
+    if List.isEmpty state.organizations then
         p [ Html.Attributes.class "text-sm text-slate-500", testId "organizations-empty" ] [ text "You do not belong to any organizations yet." ]
 
     else
-        div [ Html.Attributes.class "divide-y divide-slate-100", testId "organizations" ] (List.map organizationRow organizations)
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "organizations" ] (List.map (organizationRow state.activeOrgId) state.organizations)
 
 
-organizationRow : Organization.OrganizationResponse -> Html Msg
-organizationRow organization =
+activeOrganizationView : LoggedInModel -> Html Msg
+activeOrganizationView state =
+    if state.activeOrgId == "" then
+        text ""
+
+    else
+        div [ Html.Attributes.class "mt-4 space-y-4 rounded-md bg-slate-50 p-4", testId "active-organization" ]
+            [ Ui.label_ ("Balance: " ++ balanceLabel state.orgBalance)
+            , Ui.sectionTitle "Organization tasks"
+            , tasksListSimple "org-tasks" state.orgTasks
+            , Ui.sectionTitle "Teams"
+            , orgTeamsList state.orgTeams
+            , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit CreateOrgTeamClicked ]
+                [ Ui.fieldLabel "New team"
+                    [ Ui.textInput [ type_ "text", placeholder "Team name", value state.createOrgTeamName, onInput CreateOrgTeamNameChanged, testId "create-org-team-name" ] ]
+                , Ui.primaryButton [ type_ "submit", testId "create-org-team" ] "Create team"
+                ]
+            , maybeNote state.orgTeamMessage "org-team-message"
+            , Ui.sectionTitle "Provision a member"
+            , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit ProvisionMemberClicked ]
+                [ Ui.fieldLabel "Member email"
+                    [ Ui.textInput [ type_ "email", placeholder "person@example.com", value state.provisionMemberEmail, onInput ProvisionMemberEmailChanged, testId "provision-member-email" ] ]
+                , Ui.primaryButton [ type_ "submit", testId "provision-member" ] "Provision member"
+                ]
+            , maybeNote state.provisionMemberMessage "provision-member-message"
+            ]
+
+
+orgTeamsList : List Team.TeamResponse -> Html Msg
+orgTeamsList teams =
+    if List.isEmpty teams then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "org-teams-empty" ] [ text "No teams yet." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-teams" ]
+            (List.map (\team -> p [ Html.Attributes.class "py-1 text-sm", testId "org-team-row" ] [ text team.name ]) teams)
+
+
+tasksListSimple : String -> List Task.TaskListItemResponse -> Html Msg
+tasksListSimple identifier tasks =
+    if List.isEmpty tasks then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId (identifier ++ "-empty") ] [ text "No tasks yet." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId identifier ]
+            (List.map (\item -> p [ Html.Attributes.class "py-1 text-sm", testId (identifier ++ "-row") ] [ text (item.title ++ " · " ++ taskStateLabel item.state) ]) tasks)
+
+
+organizationRow : String -> Organization.OrganizationResponse -> Html Msg
+organizationRow activeOrgId organization =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "organization-row" ]
         [ p [ Html.Attributes.class "font-medium" ] [ text organization.name ]
-        , Ui.badge organization.id
+        , if activeOrgId == organization.id then
+            Ui.badge "Active"
+
+          else
+            Ui.secondaryButton [ onClick (SelectOrganization organization.id), testId "select-organization" ] "Open"
         ]
 
 
@@ -1616,6 +1840,7 @@ createTaskView state =
         , Ui.fieldLabel "Title" [ Ui.textInput [ type_ "text", placeholder "Short, descriptive title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ] ]
         , Ui.fieldLabel "Description" [ Ui.textarea_ [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ] ]
         , Ui.fieldLabel "Credit reward" [ Ui.textInput [ type_ "number", placeholder "Blank for no reward", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
+        , ownerChooser state
         , Ui.label_ "Participation"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (participationButton state.createParticipationPolicy) allParticipationPolicies)
         , Ui.fieldLabel "Reservation expiry (hours)" [ Ui.textInput [ type_ "number", placeholder "48", value state.createReservationHours, onInput CreateReservationHoursChanged, testId "create-reservation-hours" ] ]
@@ -2649,16 +2874,33 @@ rewardLabel : String -> Int -> Int -> String
 rewardLabel kind amount collectibleCount =
     case kind of
         "credit" ->
-            String.fromInt amount ++ " credits"
+            if collectibleCount > 0 then
+                String.fromInt amount ++ " credits + " ++ collectibleCountLabel collectibleCount
+
+            else
+                String.fromInt amount ++ " credits"
 
         "collectible" ->
-            String.fromInt collectibleCount ++ " collectible"
+            collectibleCountLabel collectibleCount
 
         "bundle" ->
-            String.fromInt amount ++ " credits + " ++ String.fromInt collectibleCount ++ " collectible"
+            String.fromInt amount ++ " credits + " ++ collectibleCountLabel collectibleCount
 
         _ ->
-            "no reward"
+            if collectibleCount > 0 then
+                collectibleCountLabel collectibleCount
+
+            else
+                "no reward"
+
+
+collectibleCountLabel : Int -> String
+collectibleCountLabel count =
+    if count == 1 then
+        "1 collectible"
+
+    else
+        String.fromInt count ++ " collectibles"
 
 
 httpErrorLabel : Http.Error -> String

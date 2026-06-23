@@ -1,5 +1,11 @@
 # What We Did
 
+Following the review branch, `task/teams-org-context-collectible-ui` picked up three deferred follow-ups:
+
+- Added standalone (user-owned) teams. Team ownership is a tagged union over organization-owned and user-owned teams, with migration 000017, store create and list methods, `POST` and `GET /api/teams`, the owner exposed on the team contract, and e2e coverage. This is the clean redo of the standalone-teams attempt that was reverted on the review branch.
+- Added organization context to the browser: an organization switcher that loads the organization credit balance, organization-scoped task list, and teams; team creation and member provisioning for the active organization; and organization-owned task creation through an owner chooser. Member listing and organization-funded tasks from the browser remain follow-ups because no member listing endpoint exists yet.
+- Surfaced multiple collectible rewards in the browser: the reward label is pluralized, the escrowed collectible count shows on tasks even when collectibles are awarded ad hoc, and the task list refreshes after awarding.
+
 A multi-area review of the product, browser UI, HTTP and MCP API, backend domain, data model, tests, and security produced a set of improvements landed on `task/full-review-improvements`:
 
 - Pinned submission redaction behavior: unauthorized receipt-token holders receive redacted data, authorized requesters and organization reviewers receive unredacted data, and non-reviewers receive `403`. The earlier reported "list leak" was not a leak; the redaction model is for unauthorized viewers.

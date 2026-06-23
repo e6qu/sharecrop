@@ -7,16 +7,20 @@ import Json.Encode as Encode
 
 type alias TeamResponse =
     { id : String
+    , ownerKind : String
     , organizationID : String
+    , ownerUserID : String
     , name : String
     , createdBy : String
     }
 
 teamResponseDecoder : Decoder TeamResponse
 teamResponseDecoder =
-    Decode.map4 TeamResponse
+    Decode.map6 TeamResponse
         (Decode.field "id" Decode.string)
+        (Decode.field "owner_kind" Decode.string)
         (Decode.field "organization_id" Decode.string)
+        (Decode.field "owner_user_id" Decode.string)
         (Decode.field "name" Decode.string)
         (Decode.field "created_by" Decode.string)
 
@@ -24,7 +28,9 @@ teamResponseEncoder : TeamResponse -> Encode.Value
 teamResponseEncoder teamResponse =
     Encode.object
         [ ( "id", Encode.string teamResponse.id )
+        , ( "owner_kind", Encode.string teamResponse.ownerKind )
         , ( "organization_id", Encode.string teamResponse.organizationID )
+        , ( "owner_user_id", Encode.string teamResponse.ownerUserID )
         , ( "name", Encode.string teamResponse.name )
         , ( "created_by", Encode.string teamResponse.createdBy )
         ]

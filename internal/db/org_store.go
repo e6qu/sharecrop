@@ -217,7 +217,7 @@ func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID 
 	}
 
 	rows, err := store.pool.Query(ctx, `
-		select id::text, organization_id::text, name, created_by_user_id::text
+		select id::text, owner_kind, coalesce(organization_id::text, ''), coalesce(owner_user_id::text, ''), name, created_by_user_id::text
 		from teams
 		where organization_id = $1
 		order by name
@@ -226,18 +226,48 @@ func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID 
 	if err != nil {
 		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list organization teams failed")}
 	}
+	return scanTeamRows(rows, "read organization teams failed")
+}
+
+// CreateStandaloneTeam stores a team owned directly by a user.
+func (store OrgStore) CreateStandaloneTeam(ctx context.Context, teamID core.TeamID, ownerUserID core.UserID, name org.TeamName) org.CreateTeamStoreResult {
+	_, err := store.pool.Exec(ctx, "insert into teams (id, name, owner_kind, owner_user_id, created_by_user_id) values ($1, $2, 'user', $3, $3)", teamID.String(), name.String(), ownerUserID.String())
+	if err != nil {
+		return org.CreateTeamStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert standalone team failed")}
+	}
+	return org.CreateTeamStoreAccepted{}
+}
+
+// ListStandaloneTeams lists the user-owned teams for the given user.
+func (store OrgStore) ListStandaloneTeams(ctx context.Context, ownerUserID core.UserID, page core.Page) org.TeamListResult {
+	rows, err := store.pool.Query(ctx, `
+		select id::text, owner_kind, coalesce(organization_id::text, ''), coalesce(owner_user_id::text, ''), name, created_by_user_id::text
+		from teams
+		where owner_kind = 'user' and owner_user_id = $1
+		order by name
+		limit $2 offset $3
+	`, ownerUserID.String(), page.Limit(), page.Offset())
+	if err != nil {
+		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list standalone teams failed")}
+	}
+	return scanTeamRows(rows, "read standalone teams failed")
+}
+
+func scanTeamRows(rows pgx.Rows, readErrorMessage string) org.TeamListResult {
 	defer rows.Close()
 
 	values := make([]org.Team, 0)
 	for rows.Next() {
 		var rawID string
+		var rawOwnerKind string
 		var rawOrganizationID string
+		var rawOwnerUserID string
 		var rawName string
 		var rawCreatedBy string
-		if err := rows.Scan(&rawID, &rawOrganizationID, &rawName, &rawCreatedBy); err != nil {
+		if err := rows.Scan(&rawID, &rawOwnerKind, &rawOrganizationID, &rawOwnerUserID, &rawName, &rawCreatedBy); err != nil {
 			return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan team failed")}
 		}
-		parsed := parseTeamRow(rawID, rawOrganizationID, rawName, rawCreatedBy)
+		parsed := parseTeamRow(rawID, rawOwnerKind, rawOrganizationID, rawOwnerUserID, rawName, rawCreatedBy)
 		accepted, matched := parsed.(teamRowAccepted)
 		if !matched {
 			rejected := parsed.(teamRowRejected)
@@ -247,7 +277,7 @@ func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID 
 	}
 
 	if err := rows.Err(); err != nil {
-		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read organization teams failed")}
+		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, readErrorMessage)}
 	}
 
 	return org.TeamsListed{Values: values}
@@ -310,18 +340,11 @@ func (teamRowAccepted) teamRowResult() {}
 
 func (teamRowRejected) teamRowResult() {}
 
-func parseTeamRow(rawID string, rawOrganizationID string, rawName string, rawCreatedBy string) teamRowResult {
+func parseTeamRow(rawID string, rawOwnerKind string, rawOrganizationID string, rawOwnerUserID string, rawName string, rawCreatedBy string) teamRowResult {
 	idResult := core.ParseTeamID(rawID)
 	idCreated, idMatched := idResult.(core.TeamIDCreated)
 	if !idMatched {
 		rejected := idResult.(core.TeamIDRejected)
-		return teamRowRejected{reason: rejected.Reason}
-	}
-
-	organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
-	organizationIDCreated, organizationIDMatched := organizationIDResult.(core.OrganizationIDCreated)
-	if !organizationIDMatched {
-		rejected := organizationIDResult.(core.OrganizationIDRejected)
 		return teamRowRejected{reason: rejected.Reason}
 	}
 
@@ -339,7 +362,50 @@ func parseTeamRow(rawID string, rawOrganizationID string, rawName string, rawCre
 		return teamRowRejected{reason: rejected.Reason}
 	}
 
-	return teamRowAccepted{value: org.Team{ID: idCreated.Value, OrganizationID: organizationIDCreated.Value, Name: nameAccepted.Value, CreatedBy: userCreated.Value}}
+	ownerResult := parseTeamOwner(rawOwnerKind, rawOrganizationID, rawOwnerUserID)
+	owner, ownerMatched := ownerResult.(teamOwnerAccepted)
+	if !ownerMatched {
+		return teamRowRejected{reason: ownerResult.(teamOwnerRejected).reason}
+	}
+
+	return teamRowAccepted{value: org.Team{ID: idCreated.Value, Owner: owner.value, Name: nameAccepted.Value, CreatedBy: userCreated.Value}}
+}
+
+type teamOwnerResult interface {
+	teamOwnerResult()
+}
+
+type teamOwnerAccepted struct {
+	value org.TeamOwner
+}
+
+type teamOwnerRejected struct {
+	reason core.DomainError
+}
+
+func (teamOwnerAccepted) teamOwnerResult() {}
+
+func (teamOwnerRejected) teamOwnerResult() {}
+
+func parseTeamOwner(rawOwnerKind string, rawOrganizationID string, rawOwnerUserID string) teamOwnerResult {
+	switch rawOwnerKind {
+	case org.TeamOwnerKindOrganization.String():
+		organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
+		organizationIDCreated, matched := organizationIDResult.(core.OrganizationIDCreated)
+		if !matched {
+			return teamOwnerRejected{reason: organizationIDResult.(core.OrganizationIDRejected).Reason}
+		}
+		return teamOwnerAccepted{value: org.OrganizationOwnedTeam{OrganizationID: organizationIDCreated.Value}}
+	case org.TeamOwnerKindUser.String():
+		ownerUserIDResult := core.ParseUserID(rawOwnerUserID)
+		ownerUserIDCreated, matched := ownerUserIDResult.(core.UserIDCreated)
+		if !matched {
+			return teamOwnerRejected{reason: ownerUserIDResult.(core.UserIDRejected).Reason}
+		}
+		return teamOwnerAccepted{value: org.UserOwnedTeam{OwnerUserID: ownerUserIDCreated.Value}}
+	default:
+		return teamOwnerRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "team owner kind is invalid")}
+	}
 }
 
 type userIDLookupResult interface {

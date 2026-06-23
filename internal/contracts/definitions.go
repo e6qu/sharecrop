@@ -208,7 +208,9 @@ func teamModule() Module {
 				Name: NewElmTypeName("TeamResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("ownerKind"), JSONName: NewJSONFieldName("owner_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("organizationID"), JSONName: NewJSONFieldName("organization_id"), Type: StringRef{}},
+					{Name: NewElmValueName("ownerUserID"), JSONName: NewJSONFieldName("owner_user_id"), Type: StringRef{}},
 					{Name: NewElmValueName("name"), JSONName: NewJSONFieldName("name"), Type: StringRef{}},
 					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
 				},

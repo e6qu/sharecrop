@@ -89,6 +89,67 @@ func TestOrganizationReviewerCanReviewSubmissions(t *testing.T) {
 	}
 }
 
+func TestStandaloneTeamCreateAndList(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "standalone-team-owner")
+
+	createResponse := postJSONWithBearer(t, server.URL+"/api/teams", []byte(`{"name":"Solo Crew"}`), owner.AccessToken)
+	defer createResponse.Body.Close()
+	assertStatus(t, createResponse, http.StatusCreated)
+	var created teamHTTPResponse
+	if err := json.NewDecoder(createResponse.Body).Decode(&created); err != nil {
+		t.Fatalf("decode standalone team: %v", err)
+	}
+	if created.OwnerKind != "user" {
+		t.Fatalf("owner kind = %q, want user", created.OwnerKind)
+	}
+	if created.OwnerUserID != owner.SubjectID {
+		t.Fatalf("owner user id = %q, want %q", created.OwnerUserID, owner.SubjectID)
+	}
+	if created.OrganizationID != "" {
+		t.Fatalf("organization id = %q, want empty for a standalone team", created.OrganizationID)
+	}
+
+	listResponse := getWithBearer(t, server.URL+"/api/teams", owner.AccessToken)
+	defer listResponse.Body.Close()
+	assertStatus(t, listResponse, http.StatusOK)
+	var listing teamsHTTPResponse
+	if err := json.NewDecoder(listResponse.Body).Decode(&listing); err != nil {
+		t.Fatalf("decode standalone teams: %v", err)
+	}
+	if len(listing.Teams) != 1 || listing.Teams[0].Name != "Solo Crew" {
+		t.Fatalf("standalone teams = %+v, want one named Solo Crew", listing.Teams)
+	}
+
+	// A different user does not see another user's standalone team.
+	other := registerUser(t, server, "standalone-team-other")
+	otherResponse := getWithBearer(t, server.URL+"/api/teams", other.AccessToken)
+	defer otherResponse.Body.Close()
+	assertStatus(t, otherResponse, http.StatusOK)
+	var otherListing teamsHTTPResponse
+	if err := json.NewDecoder(otherResponse.Body).Decode(&otherListing); err != nil {
+		t.Fatalf("decode other standalone teams: %v", err)
+	}
+	if len(otherListing.Teams) != 0 {
+		t.Fatalf("other user standalone teams = %d, want 0", len(otherListing.Teams))
+	}
+}
+
+type teamHTTPResponse struct {
+	ID             string `json:"id"`
+	OwnerKind      string `json:"owner_kind"`
+	OrganizationID string `json:"organization_id"`
+	OwnerUserID    string `json:"owner_user_id"`
+	Name           string `json:"name"`
+	CreatedBy      string `json:"created_by"`
+}
+
+type teamsHTTPResponse struct {
+	Teams []teamHTTPResponse `json:"teams"`
+}
+
 func registerUserWithEmail(t *testing.T, server *httptest.Server, email string) authHTTPResponse {
 	t.Helper()
 	response := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{

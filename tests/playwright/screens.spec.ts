@@ -169,6 +169,35 @@ test("users create and see their organizations", async ({ page, request }) => {
   ).toHaveCount(1);
 });
 
+test("users open an organization and manage its teams and members", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "org-ctx-owner");
+  const member = await registerViaApi(request, "org-ctx-member");
+  const orgName = `Ctx Org ${crypto.randomUUID()}`;
+  const teamName = `Crew ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("create-org-name").fill(orgName);
+  await page.getByTestId("create-org").click();
+  await expect(page.getByTestId("org-message")).toContainText(
+    "Created organization",
+  );
+
+  await page.getByTestId("select-organization").first().click();
+  await expect(page.getByTestId("active-organization")).toBeVisible();
+
+  await page.getByTestId("create-org-team-name").fill(teamName);
+  await page.getByTestId("create-org-team").click();
+  await expect(
+    page.getByTestId("org-team-row").filter({ hasText: teamName }),
+  ).toHaveCount(1);
+
+  await page.getByTestId("provision-member-email").fill(member.email);
+  await page.getByTestId("provision-member").click();
+  await expect(page.getByTestId("provision-member-message")).toContainText(
+    "provisioned",
+  );
+});
+
 test("requesters filter their task list by state", async ({ page, request }) => {
   const owner = await registerViaApi(request, "filter-ui-owner");
   const title = `Filter UI ${crypto.randomUUID()}`;

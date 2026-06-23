@@ -14,8 +14,10 @@ type Store interface {
 	ProvisionMember(context.Context, core.OrganizationMembershipID, core.OrganizationID, auth.EmailAddress, []Role) ProvisionMemberStoreResult
 	DeactivateMember(context.Context, core.OrganizationID, core.UserID) DeactivateMemberStoreResult
 	CreateOrganizationTeam(context.Context, core.TeamID, core.OrganizationID, TeamName, core.UserID) CreateTeamStoreResult
+	CreateStandaloneTeam(context.Context, core.TeamID, core.UserID, TeamName) CreateTeamStoreResult
 	AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult
 	ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult
+	ListStandaloneTeams(context.Context, core.UserID, core.Page) TeamListResult
 }
 
 type Service struct {
@@ -170,7 +172,33 @@ func (service Service) CreateOrganizationTeam(ctx context.Context, actor auth.Us
 		return CreateTeamRejected{Reason: rejected.Reason}
 	}
 
-	return TeamCreated{Value: Team{ID: teamIDCreated.Value, OrganizationID: organizationID, Name: name, CreatedBy: actor.ID}}
+	return TeamCreated{Value: Team{ID: teamIDCreated.Value, Owner: OrganizationOwnedTeam{OrganizationID: organizationID}, Name: name, CreatedBy: actor.ID}}
+}
+
+func (service Service) CreateStandaloneTeam(ctx context.Context, actor auth.UserSubject, name TeamName) CreateTeamResult {
+	teamIDResult := core.NewTeamID()
+	teamIDCreated, teamIDMatched := teamIDResult.(core.TeamIDCreated)
+	if !teamIDMatched {
+		rejected := teamIDResult.(core.TeamIDRejected)
+		return CreateTeamRejected{Reason: rejected.Reason}
+	}
+
+	storeResult := service.store.CreateStandaloneTeam(ctx, teamIDCreated.Value, actor.ID, name)
+	if rejected, matched := storeResult.(CreateTeamStoreRejected); matched {
+		return CreateTeamRejected{Reason: rejected.Reason}
+	}
+
+	return TeamCreated{Value: Team{ID: teamIDCreated.Value, Owner: UserOwnedTeam{OwnerUserID: actor.ID}, Name: name, CreatedBy: actor.ID}}
+}
+
+func (service Service) ListStandaloneTeams(ctx context.Context, actor auth.UserSubject, page core.Page) ListTeamsResult {
+	result := service.store.ListStandaloneTeams(ctx, actor.ID, page)
+	listed, matched := result.(TeamsListed)
+	if !matched {
+		rejected := result.(TeamListRejected)
+		return ListTeamsRejected{Reason: rejected.Reason}
+	}
+	return OrganizationTeamsListed{Values: listed.Values}
 }
 
 type ListTeamsResult interface {

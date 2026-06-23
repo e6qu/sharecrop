@@ -90,7 +90,15 @@ func (healthOrganizationService) CreateOrganizationTeam(context.Context, auth.Us
 	return org.CreateTeamRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthOrganizationService) CreateStandaloneTeam(context.Context, auth.UserSubject, org.TeamName) org.CreateTeamResult {
+	return org.CreateTeamRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult {
+	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthOrganizationService) ListStandaloneTeams(context.Context, auth.UserSubject, core.Page) org.ListTeamsResult {
 	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
