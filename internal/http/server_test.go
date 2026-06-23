@@ -429,10 +429,20 @@ func (testOrganizationService) DeactivateMember(context.Context, auth.UserSubjec
 func (testOrganizationService) CreateOrganizationTeam(_ context.Context, actor auth.UserSubject, organizationID core.OrganizationID, name org.TeamName) org.CreateTeamResult {
 	teamIDResult := core.NewTeamID()
 	teamIDCreated := teamIDResult.(core.TeamIDCreated)
-	return org.TeamCreated{Value: org.Team{ID: teamIDCreated.Value, OrganizationID: organizationID, Name: name, CreatedBy: actor.ID}}
+	return org.TeamCreated{Value: org.Team{ID: teamIDCreated.Value, Owner: org.OrganizationOwnedTeam{OrganizationID: organizationID}, Name: name, CreatedBy: actor.ID}}
+}
+
+func (testOrganizationService) CreateStandaloneTeam(_ context.Context, actor auth.UserSubject, name org.TeamName) org.CreateTeamResult {
+	teamIDResult := core.NewTeamID()
+	teamIDCreated := teamIDResult.(core.TeamIDCreated)
+	return org.TeamCreated{Value: org.Team{ID: teamIDCreated.Value, Owner: org.UserOwnedTeam{OwnerUserID: actor.ID}, Name: name, CreatedBy: actor.ID}}
 }
 
 func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult {
+	return org.OrganizationTeamsListed{Values: []org.Team{}}
+}
+
+func (testOrganizationService) ListStandaloneTeams(context.Context, auth.UserSubject, core.Page) org.ListTeamsResult {
 	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 

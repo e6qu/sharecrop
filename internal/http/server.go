@@ -42,7 +42,9 @@ type OrganizationService interface {
 	ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
 	DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
 	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
+	CreateStandaloneTeam(context.Context, auth.UserSubject, org.TeamName) org.CreateTeamResult
 	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult
+	ListStandaloneTeams(context.Context, auth.UserSubject, core.Page) org.ListTeamsResult
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 }
 
@@ -136,6 +138,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("PATCH /api/organizations/{organization_id}/members/{user_id}/deactivate", server.deactivateOrganizationMember)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/teams", server.listOrganizationTeams)
 	mux.HandleFunc("POST /api/organizations/{organization_id}/teams", server.createOrganizationTeam)
+	mux.HandleFunc("GET /api/teams", server.listStandaloneTeams)
+	mux.HandleFunc("POST /api/teams", server.createStandaloneTeam)
 	mux.HandleFunc("GET /api/tasks", server.listTasks)
 	mux.HandleFunc("POST /api/tasks", server.createTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/open", server.openTask)
@@ -319,7 +323,9 @@ type organizationMemberResponse struct {
 
 type teamResponse struct {
 	ID             string `json:"id"`
+	OwnerKind      string `json:"owner_kind"`
 	OrganizationID string `json:"organization_id"`
+	OwnerUserID    string `json:"owner_user_id"`
 	Name           string `json:"name"`
 	CreatedBy      string `json:"created_by"`
 }
@@ -723,6 +729,64 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
 		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		return
+	}
+
+	response := teamsResponse{Teams: make([]teamResponse, 0, len(listed.Values))}
+	for _, team := range listed.Values {
+		response.Teams = append(response.Teams, teamToResponse(team))
+	}
+	writeTeamsResponse(w, http.StatusOK, response)
+}
+
+func (server Server) createStandaloneTeam(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	var request teamRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+
+	nameResult := org.NewTeamName(request.Name)
+	nameAccepted, nameMatched := nameResult.(org.TeamNameAccepted)
+	if !nameMatched {
+		rejected := nameResult.(org.TeamNameRejected)
+		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		return
+	}
+
+	result := server.organizationService.CreateStandaloneTeam(r.Context(), actor.subject, nameAccepted.Value)
+	created, matched := result.(org.TeamCreated)
+	if !matched {
+		rejected := result.(org.CreateTeamRejected)
+		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		return
+	}
+
+	writeTeamResponse(w, http.StatusCreated, teamToResponse(created.Value))
+}
+
+func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	result := server.organizationService.ListStandaloneTeams(r.Context(), actor.subject, parsePage(r))
+	listed, matched := result.(org.OrganizationTeamsListed)
+	if !matched {
+		rejected := result.(org.ListTeamsRejected)
+		writeError(w, http.StatusInternalServerError, rejected.Reason.Description())
 		return
 	}
 
@@ -2382,7 +2446,22 @@ func memberToResponse(value org.OrganizationMember) organizationMemberResponse {
 }
 
 func teamToResponse(value org.Team) teamResponse {
-	return teamResponse{ID: value.ID.String(), OrganizationID: value.OrganizationID.String(), Name: value.Name.String(), CreatedBy: value.CreatedBy.String()}
+	organizationID := ""
+	ownerUserID := ""
+	switch owner := value.Owner.(type) {
+	case org.OrganizationOwnedTeam:
+		organizationID = owner.OrganizationID.String()
+	case org.UserOwnedTeam:
+		ownerUserID = owner.OwnerUserID.String()
+	}
+	return teamResponse{
+		ID:             value.ID.String(),
+		OwnerKind:      value.Owner.Kind().String(),
+		OrganizationID: organizationID,
+		OwnerUserID:    ownerUserID,
+		Name:           value.Name.String(),
+		CreatedBy:      value.CreatedBy.String(),
+	}
 }
 
 func taskListItemToResponse(item task.ListItem) taskListItemResponse {

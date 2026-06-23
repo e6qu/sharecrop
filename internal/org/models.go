@@ -17,10 +17,48 @@ type OrganizationMember struct {
 }
 
 type Team struct {
-	ID             core.TeamID
+	ID        core.TeamID
+	Owner     TeamOwner
+	Name      TeamName
+	CreatedBy core.UserID
+}
+
+// TeamOwner is a tagged union over the entities that can own a team. A team is
+// owned either by an organization or directly by a user (a standalone team).
+// Ownership is an explicit variant rather than a nullable organization column
+// used as a flag.
+type TeamOwner interface {
+	teamOwner()
+	Kind() TeamOwnerKind
+}
+
+type OrganizationOwnedTeam struct {
 	OrganizationID core.OrganizationID
-	Name           TeamName
-	CreatedBy      core.UserID
+}
+
+type UserOwnedTeam struct {
+	OwnerUserID core.UserID
+}
+
+func (OrganizationOwnedTeam) teamOwner() {}
+
+func (UserOwnedTeam) teamOwner() {}
+
+func (OrganizationOwnedTeam) Kind() TeamOwnerKind { return TeamOwnerKindOrganization }
+
+func (UserOwnedTeam) Kind() TeamOwnerKind { return TeamOwnerKindUser }
+
+type TeamOwnerKind struct {
+	value string
+}
+
+var (
+	TeamOwnerKindOrganization = TeamOwnerKind{value: "organization"}
+	TeamOwnerKindUser         = TeamOwnerKind{value: "user"}
+)
+
+func (kind TeamOwnerKind) String() string {
+	return kind.value
 }
 
 type TeamMember struct {

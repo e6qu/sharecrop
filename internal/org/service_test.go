@@ -107,11 +107,19 @@ func (store *memoryStore) CreateOrganizationTeam(context.Context, core.TeamID, c
 	return CreateTeamStoreAccepted{}
 }
 
+func (store *memoryStore) CreateStandaloneTeam(context.Context, core.TeamID, core.UserID, TeamName) CreateTeamStoreResult {
+	return CreateTeamStoreAccepted{}
+}
+
 func (store *memoryStore) AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult {
 	return TeamMemberAdded{}
 }
 
 func (store *memoryStore) ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult {
+	return TeamsListed{Values: []Team{}}
+}
+
+func (store *memoryStore) ListStandaloneTeams(context.Context, core.UserID, core.Page) TeamListResult {
 	return TeamsListed{Values: []Team{}}
 }
 
