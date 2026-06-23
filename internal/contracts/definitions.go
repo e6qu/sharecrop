@@ -196,6 +196,12 @@ func organizationModule() Module {
 					{Name: NewElmValueName("roles"), JSONName: NewJSONFieldName("roles"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrganizationRole")}}},
 				},
 			},
+			Product{
+				Name: NewElmTypeName("OrganizationMembersResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("members"), JSONName: NewJSONFieldName("members"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrganizationMemberResponse")}}},
+				},
+			},
 		},
 	}
 }
@@ -363,6 +369,13 @@ func taskModule() Module {
 			Product{
 				Name: NewElmTypeName("TasksResponse"),
 				Fields: []Field{
+					{Name: NewElmValueName("tasks"), JSONName: NewJSONFieldName("tasks"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskListItemResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("UserProfileResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("tasks"), JSONName: NewJSONFieldName("tasks"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskListItemResponse")}}},
 				},
 			},

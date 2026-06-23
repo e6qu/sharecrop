@@ -15,6 +15,7 @@ import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
+import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.Ui as Ui exposing (testId)
 import Url exposing (Url)
@@ -39,6 +40,12 @@ type Page
     | AgentsPage
     | CollectiblesPage
     | OrganizationsPage
+    | OrganizationDetailPage String
+    | UserDetailPage String
+    | UserWorkPage String
+    | UserSubmissionsPage String
+    | CollectibleDetailPage String
+    | SeriesDetailPage String
 
 
 type alias LoggedInModel =
@@ -52,15 +59,17 @@ type alias LoggedInModel =
     , createRewardAmount : String
     , createVisibility : String
     , createScopeUserId : String
+    , createScopeTeamId : String
+    , createScopeOrganizationId : String
     , createParticipationPolicy : String
     , createReservationHours : String
     , createMessage : Maybe String
     , fundTaskId : String
     , fundAmount : String
+    , fundOrganizationId : String
     , fundMessage : Maybe String
     , tasks : List Task.TaskListItemResponse
     , taskStateFilter : String
-    , selectedTask : Maybe TaskDetail
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
     , credentials : List Agent.AgentCredentialResponse
@@ -92,7 +101,12 @@ type alias LoggedInModel =
     , activeOrgId : String
     , orgBalance : Maybe Int
     , orgTeams : List Team.TeamResponse
+    , orgMembers : List Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
+    , userProfile : Maybe Task.UserProfileResponse
+    , userWork : List Task.TaskListItemResponse
+    , userSubmissions : List Submission.SubmissionResponse
+    , seriesDetail : Maybe TaskSeries.TaskSeriesResponse
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
     , provisionMemberEmail : String
@@ -150,6 +164,8 @@ type Msg
     | CreateRewardAmountChanged String
     | CreateVisibilityChanged String
     | CreateScopeUserIdChanged String
+    | CreateScopeTeamIdChanged String
+    | CreateScopeOrganizationIdChanged String
     | CreateParticipationChanged String
     | CreateReservationHoursChanged String
     | CreateTaskClicked
@@ -158,9 +174,8 @@ type Msg
     | FundTaskIdChanged String
     | FundAmountChanged String
     | FundClicked
+    | FundOrganizationIdChanged String
     | FundReceived (Result Http.Error Ledger.TaskEscrowResponse)
-    | SelectTask String
-    | TaskDetailReceived (Result Http.Error TaskDetail)
     | OpenTaskClicked String
     | OpenTaskReceived (Result Http.Error TaskDetail)
     | RefundTaskClicked String
@@ -176,7 +191,6 @@ type Msg
     | DiscoveryIncludeReservedChanged Bool
     | DiscoveryReceived (Result Http.Error Task.TasksResponse)
     | DiscoveryViewClicked String
-    | DetailBackClicked
     | DetailReceived (Result Http.Error PublicTaskDetail)
     | ReserveClicked String
     | ReservationReceived (Result Http.Error Task.TaskReservationResponse)
@@ -210,9 +224,13 @@ type Msg
     | CreateOrgNameChanged String
     | CreateOrgClicked
     | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
-    | SelectOrganization String
     | OrgBalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
+    | OrgMembersReceived (Result Http.Error Organization.OrganizationMembersResponse)
+    | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
+    | UserWorkReceived (Result Http.Error Task.TasksResponse)
+    | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
+    | SeriesDetailReceived (Result Http.Error TaskSeries.TaskSeriesResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
@@ -261,15 +279,17 @@ emptyLoggedIn response =
     , createRewardAmount = ""
     , createVisibility = visibilityDefaultTag
     , createScopeUserId = ""
+    , createScopeTeamId = ""
+    , createScopeOrganizationId = ""
     , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
     , createReservationHours = "48"
     , createMessage = Nothing
     , fundTaskId = ""
     , fundAmount = ""
+    , fundOrganizationId = ""
     , fundMessage = Nothing
     , tasks = []
     , taskStateFilter = ""
-    , selectedTask = Nothing
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
     , credentials = []
@@ -301,7 +321,12 @@ emptyLoggedIn response =
     , activeOrgId = ""
     , orgBalance = Nothing
     , orgTeams = []
+    , orgMembers = []
     , orgTasks = []
+    , userProfile = Nothing
+    , userWork = []
+    , userSubmissions = []
+    , seriesDetail = Nothing
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
     , provisionMemberEmail = ""
@@ -343,8 +368,26 @@ pageFromUrl url =
         [ "collectibles" ] ->
             CollectiblesPage
 
+        [ "collectibles", collectibleId ] ->
+            CollectibleDetailPage collectibleId
+
+        [ "series", seriesId ] ->
+            SeriesDetailPage seriesId
+
         [ "organizations" ] ->
             OrganizationsPage
+
+        [ "organizations", organizationId ] ->
+            OrganizationDetailPage organizationId
+
+        [ "users", userId ] ->
+            UserDetailPage userId
+
+        [ "users", userId, "work" ] ->
+            UserWorkPage userId
+
+        [ "users", userId, "submissions" ] ->
+            UserSubmissionsPage userId
 
         _ ->
             OverviewPage
@@ -379,6 +422,48 @@ pageToPath page =
 
         OrganizationsPage ->
             "/organizations"
+
+        OrganizationDetailPage organizationId ->
+            "/organizations/" ++ organizationId
+
+        UserDetailPage userId ->
+            "/users/" ++ userId
+
+        UserWorkPage userId ->
+            "/users/" ++ userId ++ "/work"
+
+        UserSubmissionsPage userId ->
+            "/users/" ++ userId ++ "/submissions"
+
+        CollectibleDetailPage collectibleId ->
+            "/collectibles/" ++ collectibleId
+
+        SeriesDetailPage seriesId ->
+            "/series/" ++ seriesId
+
+
+-- enterPage applies any per-page state a route needs when it becomes active, so
+-- a deep link or back/forward leaves the model consistent with the URL.
+enterPage : Page -> LoggedInModel -> LoggedInModel
+enterPage page state =
+    case page of
+        OrganizationDetailPage organizationId ->
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
+
+        UserDetailPage _ ->
+            { state | page = page, userProfile = Nothing }
+
+        UserWorkPage _ ->
+            { state | page = page, userWork = [] }
+
+        UserSubmissionsPage _ ->
+            { state | page = page, userSubmissions = [] }
+
+        SeriesDetailPage _ ->
+            { state | page = page, seriesDetail = Nothing }
+
+        _ ->
+            { state | page = page }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -443,6 +528,12 @@ update msg model =
         CreateScopeUserIdChanged value ->
             ( updateLoggedIn model (\state -> { state | createScopeUserId = value }), Cmd.none )
 
+        CreateScopeTeamIdChanged value ->
+            ( updateLoggedIn model (\state -> { state | createScopeTeamId = value }), Cmd.none )
+
+        CreateScopeOrganizationIdChanged value ->
+            ( updateLoggedIn model (\state -> { state | createScopeOrganizationId = value }), Cmd.none )
+
         CreateParticipationChanged value ->
             ( updateLoggedIn model (\state -> { state | createParticipationPolicy = value }), Cmd.none )
 
@@ -485,6 +576,9 @@ update msg model =
         FundAmountChanged value ->
             ( updateLoggedIn model (\state -> { state | fundAmount = value }), Cmd.none )
 
+        FundOrganizationIdChanged value ->
+            ( updateLoggedIn model (\state -> { state | fundOrganizationId = value }), Cmd.none )
+
         FundClicked ->
             withSession model (\state -> fundTaskCommand model state)
 
@@ -494,20 +588,11 @@ update msg model =
         FundReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | fundMessage = Just (httpErrorLabel error) }), Cmd.none )
 
-        SelectTask taskId ->
-            withSession model (\state -> ( model, Cmd.batch [ fetchTaskDetail state.accessToken taskId, fetchSubmissions state.accessToken taskId ] ))
-
-        TaskDetailReceived (Ok detail) ->
-            ( updateLoggedIn model (\state -> { state | selectedTask = Just detail }), Cmd.none )
-
-        TaskDetailReceived (Err error) ->
-            ( updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
-
         OpenTaskClicked taskId ->
             withSession model (\state -> ( model, postOpenTask state.accessToken taskId ))
 
         OpenTaskReceived (Ok detail) ->
-            ( updateLoggedIn model (\state -> { state | selectedTask = Just detail, createMessage = Just "Task opened." })
+            ( updateLoggedIn model (\state -> { state | detail = Just detail, createMessage = Just "Task opened." })
             , refreshTasksAndDiscovery model
             )
 
@@ -579,9 +664,6 @@ update msg model =
                 )
             , Nav.pushUrl model.key ("/tasks/" ++ taskId)
             )
-
-        DetailBackClicked ->
-            ( model, Nav.pushUrl model.key "/discovery" )
 
         DetailReceived (Ok detail) ->
             ( updateLoggedIn model (\state -> { state | detail = Just detail }), Cmd.none )
@@ -730,18 +812,26 @@ update msg model =
         CreateOrgReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | orgMessage = Just (httpErrorLabel error) }), Cmd.none )
 
-        SelectOrganization organizationId ->
-            let
-                updated =
-                    updateLoggedIn model (\state -> { state | activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing })
-            in
-            withSession updated (\state -> ( updated, loadOrganization state.accessToken organizationId ))
-
         OrgBalanceReceived result ->
             ( updateLoggedIn model (\state -> { state | orgBalance = balanceFromResult result }), Cmd.none )
 
         OrgTeamsReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTeams = teamsFromResult result }), Cmd.none )
+
+        OrgMembersReceived result ->
+            ( updateLoggedIn model (\state -> { state | orgMembers = membersFromResult result }), Cmd.none )
+
+        UserProfileReceived result ->
+            ( updateLoggedIn model (\state -> { state | userProfile = Result.toMaybe result }), Cmd.none )
+
+        UserWorkReceived result ->
+            ( updateLoggedIn model (\state -> { state | userWork = tasksFromResult result }), Cmd.none )
+
+        UserSubmissionsReceived result ->
+            ( updateLoggedIn model (\state -> { state | userSubmissions = submissionsFromResult result }), Cmd.none )
+
+        SeriesDetailReceived result ->
+            ( updateLoggedIn model (\state -> { state | seriesDetail = Result.toMaybe result }), Cmd.none )
 
         OrgTasksReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
@@ -769,7 +859,11 @@ update msg model =
             withSession model (\state -> provisionMemberCommand model state)
 
         ProvisionMemberReceived (Ok ()) ->
-            ( updateLoggedIn model (\state -> { state | provisionMemberEmail = "", provisionMemberMessage = Just "Member provisioned." }), Cmd.none )
+            let
+                updated =
+                    updateLoggedIn model (\state -> { state | provisionMemberEmail = "", provisionMemberMessage = Just "Member provisioned." })
+            in
+            withSession updated (\state -> ( updated, authorizedRequest "GET" state.accessToken ("/api/organizations/" ++ state.activeOrgId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder) ))
 
         ProvisionMemberReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -792,7 +886,7 @@ update msg model =
             in
             case model.session of
                 LoggedIn state ->
-                    ( { model | route = page, session = LoggedIn { state | page = page } }
+                    ( { model | route = page, session = LoggedIn (enterPage page state) }
                     , routeLoadCmd state.accessToken page
                     )
 
@@ -892,7 +986,7 @@ fundTaskCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 fundTaskCommand model state =
     case String.toInt state.fundAmount of
         Just amount ->
-            ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount )
+            ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount state.fundOrganizationId )
 
         Nothing ->
             ( updateLoggedIn model (\current -> { current | fundMessage = Just "Amount must be a whole number of credits." }), Cmd.none )
@@ -1072,6 +1166,29 @@ routeLoadCmd token page =
         OrganizationsPage ->
             fetchOrganizations token
 
+        OrganizationDetailPage organizationId ->
+            Cmd.batch [ fetchOrganizations token, loadOrganization token organizationId ]
+
+        UserDetailPage userId ->
+            fetchUserProfile token userId
+
+        UserWorkPage userId ->
+            authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/work") Http.emptyBody (Http.expectJson UserWorkReceived Task.tasksResponseDecoder)
+
+        UserSubmissionsPage userId ->
+            authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions") Http.emptyBody (Http.expectJson UserSubmissionsReceived Submission.submissionsResponseDecoder)
+
+        CollectibleDetailPage _ ->
+            fetchCollectibles token
+
+        SeriesDetailPage seriesId ->
+            authorizedRequest "GET" token ("/api/task-series/" ++ seriesId) Http.emptyBody (Http.expectJson SeriesDetailReceived TaskSeries.taskSeriesResponseDecoder)
+
+
+fetchUserProfile : String -> String -> Cmd Msg
+fetchUserProfile token userId =
+    authorizedRequest "GET" token ("/api/users/" ++ userId) Http.emptyBody (Http.expectJson UserProfileReceived Task.userProfileResponseDecoder)
+
 
 refreshCredentials : Model -> Cmd Msg
 refreshCredentials model =
@@ -1199,11 +1316,6 @@ fetchCredentials token =
     authorizedRequest "GET" token "/api/agent-credentials" Http.emptyBody (Http.expectJson CredentialsReceived Agent.agentCredentialsResponseDecoder)
 
 
-fetchTaskDetail : String -> String -> Cmd Msg
-fetchTaskDetail token taskId =
-    authorizedRequest "GET" token ("/api/tasks/" ++ taskId) Http.emptyBody (Http.expectJson TaskDetailReceived taskDetailDecoder)
-
-
 postCreateTask : LoggedInModel -> Cmd Msg
 postCreateTask state =
     authorizedRequest "POST"
@@ -1233,12 +1345,12 @@ fetchReservations token taskId =
     authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/reservations") Http.emptyBody (Http.expectJson ReservationsReceived Task.taskReservationsResponseDecoder)
 
 
-postFunding : String -> String -> Int -> Cmd Msg
-postFunding token taskId amount =
+postFunding : String -> String -> Int -> String -> Cmd Msg
+postFunding token taskId amount organizationId =
     authorizedRequest "POST"
         token
         ("/api/tasks/" ++ taskId ++ "/funding")
-        (Http.jsonBody (fundingRequestBody taskId amount))
+        (Http.jsonBody (fundingRequestBody taskId amount organizationId))
         (Http.expectJson FundReceived Ledger.taskEscrowResponseDecoder)
 
 
@@ -1352,6 +1464,7 @@ loadOrganization token organizationId =
         Cmd.batch
             [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (Http.expectJson OrgBalanceReceived Ledger.balanceResponseDecoder)
             , fetchOrgTeams token organizationId
+            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder)
             , authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
             ]
 
@@ -1396,6 +1509,26 @@ teamsFromResult result =
     case result of
         Ok response ->
             response.teams
+
+        Err _ ->
+            []
+
+
+membersFromResult : Result Http.Error Organization.OrganizationMembersResponse -> List Organization.OrganizationMemberResponse
+membersFromResult result =
+    case result of
+        Ok response ->
+            response.members
+
+        Err _ ->
+            []
+
+
+submissionsFromResult : Result Http.Error Submission.SubmissionsResponse -> List Submission.SubmissionResponse
+submissionsFromResult result =
+    case result of
+        Ok response ->
+            response.submissions
 
         Err _ ->
             []
@@ -1453,11 +1586,12 @@ revokeAgent token credentialId =
         (Http.expectJson AgentRevoked Agent.agentCredentialResponseDecoder)
 
 
-fundingRequestBody : String -> Int -> Encode.Value
-fundingRequestBody taskId amount =
+fundingRequestBody : String -> Int -> String -> Encode.Value
+fundingRequestBody taskId amount organizationId =
     Encode.object
         [ ( "amount", Encode.int amount )
         , ( "idempotency_key", Encode.string ("fund:" ++ taskId) )
+        , ( "organization_id", Encode.string organizationId )
         ]
 
 
@@ -1514,9 +1648,19 @@ visibilityUserTag =
     "user"
 
 
+visibilityTeamTag : String
+visibilityTeamTag =
+    "team"
+
+
+visibilityOrganizationTag : String
+visibilityOrganizationTag =
+    "organization"
+
+
 allVisibilityTags : List String
 allVisibilityTags =
-    [ visibilityPublicTag, visibilityDefaultTag, visibilityUserTag ]
+    [ visibilityPublicTag, visibilityDefaultTag, visibilityUserTag, visibilityTeamTag, visibilityOrganizationTag ]
 
 
 visibilityLabel : String -> String
@@ -1526,6 +1670,12 @@ visibilityLabel tag =
 
     else if tag == visibilityUserTag then
         "Specific user"
+
+    else if tag == visibilityTeamTag then
+        "Team"
+
+    else if tag == visibilityOrganizationTag then
+        "Organization"
 
     else
         "Private (default)"
@@ -1553,8 +1703,24 @@ createVisibilityBody state =
                     ""
                 )
           )
-        , ( "team_id", Encode.string "" )
-        , ( "organization_id", Encode.string "" )
+        , ( "team_id"
+          , Encode.string
+                (if state.createVisibility == visibilityTeamTag then
+                    state.createScopeTeamId
+
+                 else
+                    ""
+                )
+          )
+        , ( "organization_id"
+          , Encode.string
+                (if state.createVisibility == visibilityOrganizationTag then
+                    state.createScopeOrganizationId
+
+                 else
+                    ""
+                )
+          )
         ]
 
 
@@ -1787,6 +1953,125 @@ pageView origin state =
         OrganizationsPage ->
             organizationsView state
 
+        OrganizationDetailPage _ ->
+            organizationDetailView state
+
+        UserDetailPage userId ->
+            userDetailView userId state
+
+        UserWorkPage userId ->
+            userTaskListView "Public work" "user-work" userId state.userWork
+
+        UserSubmissionsPage userId ->
+            userSubmissionsView userId state.userSubmissions
+
+        CollectibleDetailPage collectibleId ->
+            collectibleDetailView collectibleId state
+
+        SeriesDetailPage seriesId ->
+            seriesDetailView seriesId state
+
+
+collectibleDetailView : String -> LoggedInModel -> Html Msg
+collectibleDetailView collectibleId state =
+    Ui.card
+        [ a [ href "/collectibles", Html.Attributes.class Ui.secondaryButtonClass, testId "back-collectibles" ] [ text "Back to collectibles" ]
+        , case List.filter (\collectible -> collectible.id == collectibleId) state.collectibles of
+            collectible :: _ ->
+                div [ Html.Attributes.class "mt-3 space-y-2", testId "collectible-detail" ]
+                    [ p [ Html.Attributes.class "text-2xl font-semibold", testId "collectible-detail-name" ] [ text collectible.name ]
+                    , Ui.label_ ("Collectible " ++ collectible.id)
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Kind: " ++ collectibleKindLabel collectible.kind) ]
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ collectibleStateLabel collectible.state) ]
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Transfer policy: " ++ collectiblePolicyLabel collectible.transferPolicy) ]
+                    ]
+
+            [] ->
+                p [ Html.Attributes.class "mt-3 text-sm text-slate-500", testId "collectible-detail-missing" ] [ text "This collectible is not in your holdings." ]
+        ]
+
+
+seriesDetailView : String -> LoggedInModel -> Html Msg
+seriesDetailView seriesId state =
+    Ui.card
+        [ case state.seriesDetail of
+            Just series ->
+                div [ Html.Attributes.class "space-y-2", testId "series-detail" ]
+                    [ p [ Html.Attributes.class "text-2xl font-semibold", testId "series-detail-title" ] [ text series.title ]
+                    , Ui.label_ ("Series " ++ series.id)
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Owner kind: " ++ series.ownerKind) ]
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Created by: " ++ series.createdBy) ]
+                    ]
+
+            Nothing ->
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "series-detail-missing" ] [ text ("Loading series " ++ seriesId ++ "…") ]
+        ]
+
+
+userTaskListView : String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
+userTaskListView heading identifier userId tasks =
+    Ui.card
+        [ a [ href ("/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
+        , Ui.sectionTitle heading
+        , if List.isEmpty tasks then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId (identifier ++ "-empty") ] [ text "Nothing to show." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId identifier ]
+                (List.map (\item -> a [ href ("/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId (identifier ++ "-row") ] [ text (item.title ++ " · " ++ taskStateLabel item.state) ]) tasks)
+        ]
+
+
+userSubmissionsView : String -> List Submission.SubmissionResponse -> Html Msg
+userSubmissionsView userId submissions =
+    Ui.card
+        [ a [ href ("/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
+        , Ui.sectionTitle "Submissions"
+        , if List.isEmpty submissions then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "user-submissions-empty" ] [ text "No submissions." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
+                (List.map
+                    (\item ->
+                        div [ Html.Attributes.class "space-y-1 py-2", testId "user-submission-row" ]
+                            [ a [ href ("/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline" ] [ text ("Task " ++ item.taskID) ]
+                            , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (submissionStateLabel item.state) ]
+                            ]
+                    )
+                    submissions
+                )
+        ]
+
+
+userDetailView : String -> LoggedInModel -> Html Msg
+userDetailView userId state =
+    Ui.card
+        [ Ui.sectionTitle "User"
+        , p [ Html.Attributes.class "text-sm font-medium", testId "user-id" ] [ text userId ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ a [ href ("/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Public work" ]
+            , a [ href ("/users/" ++ userId ++ "/submissions"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-submissions-link" ] [ text "Submissions" ]
+            ]
+        , Ui.sectionTitle "Public tasks"
+        , case state.userProfile of
+            Just profile ->
+                if List.isEmpty profile.tasks then
+                    p [ Html.Attributes.class "text-sm text-slate-500", testId "user-tasks-empty" ] [ text "No public tasks." ]
+
+                else
+                    div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-tasks" ]
+                        (List.map
+                            (\item ->
+                                a [ href ("/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId "user-task-row" ] [ text item.title ]
+                            )
+                            profile.tasks
+                        )
+
+            Nothing ->
+                p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading…" ]
+        ]
+
 
 overviewView : LoggedInModel -> Html Msg
 overviewView state =
@@ -1832,6 +2117,22 @@ organizationsView state =
             , Ui.primaryButton [ type_ "submit", testId "create-org" ] "Create organization"
             ]
         , maybeNote state.orgMessage "org-message"
+        ]
+
+
+organizationDetailView : LoggedInModel -> Html Msg
+organizationDetailView state =
+    let
+        name =
+            state.organizations
+                |> List.filter (\organization -> organization.id == state.activeOrgId)
+                |> List.head
+                |> Maybe.map .name
+                |> Maybe.withDefault state.activeOrgId
+    in
+    Ui.card
+        [ a [ href "/organizations", Html.Attributes.class Ui.secondaryButtonClass, testId "back-organizations" ] [ text "Back to organizations" ]
+        , Ui.sectionTitle name
         , activeOrganizationView state
         ]
 
@@ -1842,7 +2143,7 @@ organizationsList state =
         p [ Html.Attributes.class "text-sm text-slate-500", testId "organizations-empty" ] [ text "You do not belong to any organizations yet." ]
 
     else
-        div [ Html.Attributes.class "divide-y divide-slate-100", testId "organizations" ] (List.map (organizationRow state.activeOrgId) state.organizations)
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "organizations" ] (List.map organizationRow state.organizations)
 
 
 activeOrganizationView : LoggedInModel -> Html Msg
@@ -1863,6 +2164,8 @@ activeOrganizationView state =
                 , Ui.primaryButton [ type_ "submit", testId "create-org-team" ] "Create team"
                 ]
             , maybeNote state.orgTeamMessage "org-team-message"
+            , Ui.sectionTitle "Members"
+            , orgMembersList state.orgMembers
             , Ui.sectionTitle "Provision a member"
             , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit ProvisionMemberClicked ]
                 [ Ui.fieldLabel "Member email"
@@ -1883,6 +2186,66 @@ orgTeamsList teams =
             (List.map (\team -> p [ Html.Attributes.class "py-1 text-sm", testId "org-team-row" ] [ text team.name ]) teams)
 
 
+orgMembersList : List Organization.OrganizationMemberResponse -> Html Msg
+orgMembersList members =
+    if List.isEmpty members then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "org-members-empty" ] [ text "No members yet." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-members" ] (List.map orgMemberRow members)
+
+
+orgMemberRow : Organization.OrganizationMemberResponse -> Html Msg
+orgMemberRow member =
+    let
+        roles =
+            if List.isEmpty member.roles then
+                "no roles"
+
+            else
+                String.join ", " (List.map organizationRoleText member.roles)
+    in
+    div [ Html.Attributes.class "flex items-center justify-between gap-2 py-2", testId "org-member-row" ]
+        [ a [ href ("/users/" ++ member.userID), Html.Attributes.class "text-sm font-medium underline", testId "org-member-link" ] [ text member.userID ]
+        , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (roles ++ " · " ++ membershipStatusText member.status) ]
+        ]
+
+
+membershipStatusText : Organization.MembershipStatus -> String
+membershipStatusText status =
+    case status of
+        Organization.MembershipStatusActive ->
+            "active"
+
+        Organization.MembershipStatusDeactivated ->
+            "deactivated"
+
+        Organization.MembershipStatusRemoved ->
+            "removed"
+
+
+organizationRoleText : Organization.OrganizationRole -> String
+organizationRoleText role =
+    case role of
+        Organization.OrganizationRoleOwner ->
+            "owner"
+
+        Organization.OrganizationRoleAdmin ->
+            "admin"
+
+        Organization.OrganizationRoleMember ->
+            "member"
+
+        Organization.OrganizationRoleBilling ->
+            "billing"
+
+        Organization.OrganizationRoleReviewer ->
+            "reviewer"
+
+        Organization.OrganizationRolePublicPublisher ->
+            "public publisher"
+
+
 tasksListSimple : String -> List Task.TaskListItemResponse -> Html Msg
 tasksListSimple identifier tasks =
     if List.isEmpty tasks then
@@ -1893,15 +2256,11 @@ tasksListSimple identifier tasks =
             (List.map (\item -> p [ Html.Attributes.class "py-1 text-sm", testId (identifier ++ "-row") ] [ text (item.title ++ " · " ++ taskStateLabel item.state) ]) tasks)
 
 
-organizationRow : String -> Organization.OrganizationResponse -> Html Msg
-organizationRow activeOrgId organization =
+organizationRow : Organization.OrganizationResponse -> Html Msg
+organizationRow organization =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "organization-row" ]
         [ p [ Html.Attributes.class "font-medium" ] [ text organization.name ]
-        , if activeOrgId == organization.id then
-            Ui.badge "Active"
-
-          else
-            Ui.secondaryButton [ onClick (SelectOrganization organization.id), testId "select-organization" ] "Open"
+        , a [ href ("/organizations/" ++ organization.id), Html.Attributes.class Ui.secondaryButtonClass, testId "select-organization" ] [ text "Open" ]
         ]
 
 
@@ -1956,6 +2315,14 @@ visibilityScopeField state =
         Ui.fieldLabel "Share with user ID"
             [ Ui.textInput [ type_ "text", placeholder "User ID to grant access", value state.createScopeUserId, onInput CreateScopeUserIdChanged, testId "create-scope-user" ] ]
 
+    else if state.createVisibility == visibilityTeamTag then
+        Ui.fieldLabel "Share with team ID"
+            [ Ui.textInput [ type_ "text", placeholder "Team ID (standalone or organization team)", value state.createScopeTeamId, onInput CreateScopeTeamIdChanged, testId "create-scope-team" ] ]
+
+    else if state.createVisibility == visibilityOrganizationTag then
+        Ui.fieldLabel "Share with organization ID"
+            [ Ui.textInput [ type_ "text", placeholder "Organization ID", value state.createScopeOrganizationId, onInput CreateScopeOrganizationIdChanged, testId "create-scope-organization" ] ]
+
     else
         text ""
 
@@ -1998,6 +2365,7 @@ fundingView state =
         [ Ui.sectionTitle "Fund a task"
         , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged state.tasks
         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
+        , Ui.textInput [ type_ "text", placeholder "Organization ID (optional — fund from org credits)", value state.fundOrganizationId, onInput FundOrganizationIdChanged, testId "fund-organization" ]
         , Ui.primaryButton [ type_ "submit", disabled (state.fundTaskId == ""), testId "fund" ] "Fund task"
         , maybeNote state.fundMessage "fund-message"
         ]
@@ -2027,7 +2395,6 @@ tasksView origin state =
         , Ui.label_ "Filter by state"
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
         , tasksList state.tasks
-        , taskDetailView origin state
         ]
 
 
@@ -2080,36 +2447,8 @@ taskRow item =
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
             , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
             ]
-        , Ui.secondaryButton [ onClick (SelectTask item.id), testId "view-task" ] "View"
+        , a [ href ("/tasks/" ++ item.id), Html.Attributes.class Ui.secondaryButtonClass, testId "view-task" ] [ text "View" ]
         ]
-
-
-taskDetailView : String -> LoggedInModel -> Html Msg
-taskDetailView origin state =
-    case state.selectedTask of
-        Just detail ->
-            div [ Html.Attributes.class "mt-4 space-y-3 rounded-md bg-slate-50 p-4", testId "task-detail" ]
-                [ Ui.label_ detail.title
-                , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
-                , Ui.label_ ("Task " ++ detail.id)
-                , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ taskStateLabel detail.state) ]
-                , p [ Html.Attributes.class "text-sm" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
-                , p [ Html.Attributes.class "text-sm" ] [ text ("Participation: " ++ participationPolicyLabel detail.participationPolicy) ]
-                , p [ Html.Attributes.class "text-sm" ] [ text ("Reservation expiry: " ++ String.fromInt detail.reservationExpiryHours ++ " hours") ]
-                , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
-                , div [ Html.Attributes.class "flex gap-2" ]
-                    [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
-                    , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
-                    ]
-                , maybeNote state.createMessage "create-message"
-                , Ui.label_ "Response schema"
-                , Ui.codeBlock [ testId "task-schema" ] detail.responseSchemaJson
-                , submissionsList state
-                , taskInstructions origin detail.id
-                ]
-
-        Nothing ->
-            text ""
 
 
 agentsView : String -> LoggedInModel -> Html Msg
@@ -2262,7 +2601,7 @@ collectibleRow : Collectible.CollectibleResponse -> Html Msg
 collectibleRow collectible =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "collectible-row" ]
         [ div [ Html.Attributes.class "flex items-center gap-2" ]
-            [ p [ Html.Attributes.class "font-medium" ] [ text collectible.name ]
+            [ a [ href ("/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline", testId "collectible-link" ] [ text collectible.name ]
             , Ui.badge (collectibleStateLabel collectible.state)
             , span [ Html.Attributes.class "text-xs text-slate-500" ] [ text (collectibleKindLabel collectible.kind) ]
             ]
@@ -2319,13 +2658,46 @@ discoveryRow item =
 
 taskDetailPageView : String -> LoggedInModel -> Html Msg
 taskDetailPageView origin state =
+    let
+        isOwner =
+            state.detail |> Maybe.map (\detail -> detail.createdBy == state.subjectId) |> Maybe.withDefault False
+
+        backHref =
+            if isOwner then
+                "/tasks"
+
+            else
+                "/discovery"
+    in
     div [ Html.Attributes.class "space-y-6" ]
-        [ Ui.secondaryButton [ onClick DetailBackClicked, testId "detail-back" ] "Back to discovery"
-        , detailCard origin state
-        , reservationCard state
-        , submitCard state
-        , submissionsCard state
-        ]
+        ([ a [ href backHref, Html.Attributes.class Ui.secondaryButtonClass, testId "detail-back" ] [ text "Back" ]
+         , detailCard origin state
+         ]
+            ++ (if isOwner then
+                    [ ownerControlsCard state, submissionsCard state ]
+
+                else
+                    [ reservationCard state, submitCard state ]
+               )
+        )
+
+
+ownerControlsCard : LoggedInModel -> Html Msg
+ownerControlsCard state =
+    case state.detail of
+        Just detail ->
+            Ui.card
+                [ Ui.sectionTitle "Owner controls"
+                , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
+                , div [ Html.Attributes.class "flex gap-2" ]
+                    [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
+                    , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
+                    ]
+                , maybeNote state.createMessage "create-message"
+                ]
+
+        Nothing ->
+            text ""
 
 
 detailCard : String -> LoggedInModel -> Html Msg

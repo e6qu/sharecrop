@@ -162,3 +162,18 @@ organizationMemberResponseEncoder organizationMemberResponse =
         , ( "status", membershipStatusEncoder organizationMemberResponse.status )
         , ( "roles", Encode.list organizationRoleEncoder organizationMemberResponse.roles )
         ]
+
+type alias OrganizationMembersResponse =
+    { members : List OrganizationMemberResponse
+    }
+
+organizationMembersResponseDecoder : Decoder OrganizationMembersResponse
+organizationMembersResponseDecoder =
+    Decode.map OrganizationMembersResponse
+        (Decode.field "members" (Decode.list organizationMemberResponseDecoder))
+
+organizationMembersResponseEncoder : OrganizationMembersResponse -> Encode.Value
+organizationMembersResponseEncoder organizationMembersResponse =
+    Encode.object
+        [ ( "members", Encode.list organizationMemberResponseEncoder organizationMembersResponse.members )
+        ]

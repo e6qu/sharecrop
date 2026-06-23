@@ -111,6 +111,10 @@ func (store *memoryStore) CreateStandaloneTeam(context.Context, core.TeamID, cor
 	return CreateTeamStoreAccepted{}
 }
 
+func (store *memoryStore) ListMembers(context.Context, core.OrganizationID, core.Page) ListMembersResult {
+	return MembersListed{Values: []OrganizationMember{}}
+}
+
 func (store *memoryStore) AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult {
 	return TeamMemberAdded{}
 }

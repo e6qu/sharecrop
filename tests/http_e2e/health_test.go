@@ -94,6 +94,10 @@ func (healthOrganizationService) CreateStandaloneTeam(context.Context, auth.User
 	return org.CreateTeamRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthOrganizationService) ListMembers(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListMembersResult {
+	return org.ListMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult {
 	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
@@ -167,6 +171,10 @@ func (healthSubmissionService) FindByReceipt(context.Context, submission.Receipt
 }
 
 func (healthSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult {
+	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthSubmissionService) ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult {
 	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

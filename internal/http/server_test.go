@@ -432,6 +432,10 @@ func (testOrganizationService) CreateOrganizationTeam(_ context.Context, actor a
 	return org.TeamCreated{Value: org.Team{ID: teamIDCreated.Value, Owner: org.OrganizationOwnedTeam{OrganizationID: organizationID}, Name: name, CreatedBy: actor.ID}}
 }
 
+func (testOrganizationService) ListMembers(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListMembersResult {
+	return org.MembersListed{Values: []org.OrganizationMember{}}
+}
+
 func (testOrganizationService) CreateStandaloneTeam(_ context.Context, actor auth.UserSubject, name org.TeamName) org.CreateTeamResult {
 	teamIDResult := core.NewTeamID()
 	teamIDCreated := teamIDResult.(core.TeamIDCreated)
@@ -560,6 +564,10 @@ func (testSubmissionService) FindByReceipt(context.Context, submission.ReceiptTo
 }
 
 func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult {
+	return submission.SubmissionsListed{Values: []submission.Submission{}}
+}
+
+func (testSubmissionService) ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 

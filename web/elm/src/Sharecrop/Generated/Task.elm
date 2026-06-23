@@ -576,6 +576,24 @@ tasksResponseEncoder tasksResponse =
         [ ( "tasks", Encode.list taskListItemResponseEncoder tasksResponse.tasks )
         ]
 
+type alias UserProfileResponse =
+    { id : String
+    , tasks : List TaskListItemResponse
+    }
+
+userProfileResponseDecoder : Decoder UserProfileResponse
+userProfileResponseDecoder =
+    Decode.map2 UserProfileResponse
+        (Decode.field "id" Decode.string)
+        (Decode.field "tasks" (Decode.list taskListItemResponseDecoder))
+
+userProfileResponseEncoder : UserProfileResponse -> Encode.Value
+userProfileResponseEncoder userProfileResponse =
+    Encode.object
+        [ ( "id", Encode.string userProfileResponse.id )
+        , ( "tasks", Encode.list taskListItemResponseEncoder userProfileResponse.tasks )
+        ]
+
 type alias TaskReservationResponse =
     { id : String
     , taskID : String

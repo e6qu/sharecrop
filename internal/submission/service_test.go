@@ -296,3 +296,14 @@ func (store *submissionMemoryStore) ListForTask(_ context.Context, taskID core.T
 		Values: values,
 	}
 }
+
+func (store *submissionMemoryStore) ListForSubmitter(_ context.Context, submitterID core.UserID) ListSubmissionsStoreResult {
+	values := make([]Submission, 0)
+	for key := range store.valuesByID {
+		value := store.valuesByID[key]
+		if value.SubmitterID == submitterID {
+			values = append(values, value)
+		}
+	}
+	return ListSubmissionsStoreAccepted{Values: values}
+}

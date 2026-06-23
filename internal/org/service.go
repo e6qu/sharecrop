@@ -11,6 +11,7 @@ type Store interface {
 	CreateOrganization(context.Context, core.OrganizationID, OrganizationName, core.UserID, core.OrganizationMembershipID) CreateOrganizationStoreResult
 	ListOrganizationsForUser(context.Context, core.UserID, core.Page) ListOrganizationsResult
 	FindMemberRoles(context.Context, core.OrganizationID, core.UserID) MemberRolesResult
+	ListMembers(context.Context, core.OrganizationID, core.Page) ListMembersResult
 	ProvisionMember(context.Context, core.OrganizationMembershipID, core.OrganizationID, auth.EmailAddress, []Role) ProvisionMemberStoreResult
 	DeactivateMember(context.Context, core.OrganizationID, core.UserID) DeactivateMemberStoreResult
 	CreateOrganizationTeam(context.Context, core.TeamID, core.OrganizationID, TeamName, core.UserID) CreateTeamStoreResult
@@ -136,6 +137,38 @@ func (service Service) ProvisionMember(ctx context.Context, actor auth.UserSubje
 	}
 
 	return provisioned
+}
+
+type ListMembersResult interface {
+	listMembersResult()
+}
+
+type MembersListed struct {
+	Values []OrganizationMember
+}
+
+type ListMembersRejected struct {
+	Reason core.DomainError
+}
+
+func (MembersListed) listMembersResult() {}
+
+func (ListMembersRejected) listMembersResult() {}
+
+// ListMembers returns an organization's members. Only an active member of the
+// organization may view the roster.
+func (service Service) ListMembers(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID, page core.Page) ListMembersResult {
+	rolesResult := service.store.FindMemberRoles(ctx, organizationID, actor.ID)
+	if _, matched := rolesResult.(MemberRolesFound); !matched {
+		return ListMembersRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization member access denied")}
+	}
+
+	result := service.store.ListMembers(ctx, organizationID, page)
+	listed, matched := result.(MembersListed)
+	if !matched {
+		return ListMembersRejected{Reason: result.(ListMembersRejected).Reason}
+	}
+	return listed
 }
 
 type CreateTeamResult interface {

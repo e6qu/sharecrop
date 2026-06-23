@@ -185,7 +185,10 @@ test("users open an organization and manage its teams and members", async ({ pag
   );
 
   await page.getByTestId("select-organization").first().click();
+  await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]+$/);
   await expect(page.getByTestId("active-organization")).toBeVisible();
+  // The owner is a real member of the org they created.
+  await expect(page.getByTestId("org-member-row")).toHaveCount(1);
 
   await page.getByTestId("create-org-team-name").fill(teamName);
   await page.getByTestId("create-org-team").click();
@@ -198,6 +201,8 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page.getByTestId("provision-member-message")).toContainText(
     "provisioned",
   );
+  // The provisioned member now appears in the real member list (owner + member).
+  await expect(page.getByTestId("org-member-row")).toHaveCount(2);
 });
 
 test("requesters filter their task list by state", async ({ page, request }) => {
@@ -224,6 +229,62 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   await page.getByTestId("task-filter-draft").click();
   await expect(page.getByTestId("task-row").filter({ hasText: title }))
     .toHaveCount(1);
+});
+
+test("a user profile page lists the user's public tasks", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "profile-page-owner");
+  const title = `Public profile task ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 0),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+
+  await loginViaUi(page, owner.email);
+  // Wait for login to establish the session and refresh cookie before the
+  // deep-link reload, otherwise the reload races the login response.
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.goto(`/users/${owner.body.subject_id}`);
+  await expect(page.getByTestId("user-id")).toContainText(
+    owner.body.subject_id,
+  );
+  await expect(
+    page.getByTestId("user-task-row").filter({ hasText: title }),
+  ).toHaveCount(1);
+
+  // The work and submissions sub-pages are their own linkable URLs.
+  await page.getByTestId("user-work-link").click();
+  await expect(page).toHaveURL(/\/users\/[^/]+\/work$/);
+  await page.getByTestId("back-user").click();
+  await page.getByTestId("user-submissions-link").click();
+  await expect(page).toHaveURL(/\/users\/[^/]+\/submissions$/);
+});
+
+test("requesters scope a task to a standalone team", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "team-scope-owner");
+  const teamResponse = await request.post("/api/teams", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { name: `Crew ${crypto.randomUUID()}` },
+  });
+  expect(teamResponse.ok()).toBeTruthy();
+  const team = (await teamResponse.json()) as { id: string };
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
+  const title = `Team scoped ${crypto.randomUUID()}`;
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill("Scoped to a team.");
+  await page.getByTestId("create-visibility-team").click();
+  await page.getByTestId("create-scope-team").fill(team.id);
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+
+  await page.getByTestId("nav-tasks").click();
+  await expect(
+    page.getByTestId("task-row").filter({ hasText: title }),
+  ).toHaveCount(1);
 });
 
 test("pages have their own URLs and deep links load", async ({ page, request }) => {

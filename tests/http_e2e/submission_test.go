@@ -60,6 +60,31 @@ func TestSubmissionReceiptRedactionAndRequesterList(t *testing.T) {
 	assertStatus(t, workerListResponse, http.StatusForbidden)
 }
 
+func TestUserSubmissionsAreSelfOnly(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "subs-owner")
+	worker := registerUser(t, server, "subs-worker")
+	task := createPublicUserTask(t, server, owner)
+	openTask(t, server, owner.AccessToken, task.ID)
+	submitAuthenticated(t, server, worker.AccessToken, task.ID)
+
+	// The worker can read their own submissions.
+	selfResponse := getWithBearer(t, server.URL+"/api/users/"+worker.SubjectID+"/submissions", worker.AccessToken)
+	defer selfResponse.Body.Close()
+	assertStatus(t, selfResponse, http.StatusOK)
+	selfBody := decodeSubmissionsHTTPResponse(t, selfResponse)
+	if len(selfBody.Submissions) != 1 {
+		t.Fatalf("worker submission count = %d, want 1", len(selfBody.Submissions))
+	}
+
+	// Another user (even the task owner) cannot read the worker's submissions.
+	otherResponse := getWithBearer(t, server.URL+"/api/users/"+worker.SubjectID+"/submissions", owner.AccessToken)
+	defer otherResponse.Body.Close()
+	assertStatus(t, otherResponse, http.StatusForbidden)
+}
+
 func TestInvalidSubmissionIsRecorded(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()

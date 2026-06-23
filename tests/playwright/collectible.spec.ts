@@ -45,8 +45,18 @@ test("minting a collectible and awarding it to a task through the browser", asyn
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("minted");
 
+  // The collectible has its own page reachable from its name link.
+  await row.getByTestId("collectible-link").click();
+  await expect(page).toHaveURL(/\/collectibles\/[0-9a-f-]+$/);
+  await expect(page.getByTestId("collectible-detail-name")).toContainText(name);
+  await page.getByTestId("back-collectibles").click();
+  await expect(page).toHaveURL(/\/collectibles$/);
+
+  const awardRow = page.getByTestId("collectible-row").filter({
+    hasText: name,
+  });
   await page.getByTestId("award-task-id").selectOption(task.id);
-  await row.getByTestId("award-collectible").click();
+  await awardRow.getByTestId("award-collectible").click();
 
   await expect(page.getByTestId("award-message")).toBeVisible();
   await expect(

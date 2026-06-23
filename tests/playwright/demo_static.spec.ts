@@ -58,18 +58,19 @@ test("static demo supports mission state transitions", async ({ page }) => {
 
   await page.getByRole("button", { name: "Tasks", exact: true })
     .click();
-  await page.getByRole("button", { name: /Normalize sensor map tiles/ })
+  await page.getByRole("button", { name: /Standardize map-tile region names/ })
     .click();
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Normalize sensor map tiles",
+      name: "Standardize map-tile region names",
     }),
   )
     .toBeVisible();
   await page.getByRole("button", { name: "Reserve task" }).click();
   await expect(
-    page.getByText("Jules Park reserved Normalize sensor map tiles.").first(),
+    page.getByText("Jules Park reserved Standardize map-tile region names.")
+      .first(),
   )
     .toBeVisible();
 
@@ -79,7 +80,7 @@ test("static demo supports mission state transitions", async ({ page }) => {
   await page.getByRole("button", { name: "Submit payload" }).click();
   await expect(
     page.getByText(
-      "Jules Park submitted a payload for Normalize sensor map tiles.",
+      "Jules Park submitted a payload for Standardize map-tile region names.",
     ).first(),
   )
     .toBeVisible();
@@ -91,10 +92,31 @@ test("static demo supports mission state transitions", async ({ page }) => {
   await page.getByRole("button", { name: "Accept" }).click();
   await expect(
     page.getByText(
-      /Mara Chen accepted Jules Park on Normalize sensor map tiles/,
+      /Mara Chen accepted Jules Park on Standardize map-tile region names/,
     ).first(),
   )
     .toBeVisible();
+});
+
+test("static demo links to task and user pages by URL", async ({ page }) => {
+  // Deep-linking a task page loads it directly.
+  await page.goto(`${demoUrl}#/tasks/invoice-cleanup`);
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Extract invoice totals" }),
+  ).toBeVisible();
+
+  // The requester name links to that user's profile page and the URL reflects it.
+  await page.locator('[data-user-page="mara"]').first().click();
+  await expect(page).toHaveURL(/#\/users\/mara$/);
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Mara Chen" }),
+  ).toBeVisible();
+
+  // Deep-linking a user page directly loads it.
+  await page.goto(`${demoUrl}#/users/jules`);
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Jules Park" }),
+  ).toBeVisible();
 });
 
 test("static demo keeps review decisions persona-scoped", async ({ page }) => {

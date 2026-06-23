@@ -33,14 +33,15 @@ const pages = [
   { id: "review", label: "Reviews" },
   { id: "integrations", label: "Agent/API" },
   { id: "settings", label: "Settings" },
+  { id: "user", label: "Profile", detailOnly: true },
 ];
 
 const users = [
-  { id: "mara", name: "Mara Chen", role: "Requester", callsign: "Quartermaster", balance: 180, rank: "S-2" },
-  { id: "jules", name: "Jules Park", role: "Implementor", callsign: "Scout", balance: 64, rank: "A-4" },
-  { id: "ren", name: "Ren Ito", role: "Organization reviewer", callsign: "Marshal", balance: 112, rank: "R-3" },
-  { id: "sol", name: "Sol Rivera", role: "Agent operator", callsign: "Uplink", balance: 100, rank: "M-1" },
-  { id: "tala", name: "Tala Stone", role: "Implementor", callsign: "Pathfinder", balance: 83, rank: "B-2" },
+  { id: "mara", name: "Mara Chen", role: "Requester", balance: 180 },
+  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64 },
+  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 112 },
+  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100 },
+  { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83 },
 ];
 
 const providers = ["Google", "Apple", "Microsoft", "Facebook", "X.com"];
@@ -60,7 +61,7 @@ const seedTasks = [
     reward: rewardBundle(45, ["Ripe Lens"]),
     lifecycle: lifecycle.open,
     availability: availability.submitted,
-    objective: "Classify orchard imagery and return a compact JSON response.",
+    objective: "You are given 20 orchard photos by URL. Return one or more condition labels for each photo (ripe, unripe, or damaged) in the labels array. Accepted when every photo has at least one label from that set.",
     schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string"}}}}',
     reservations: [{ id: "res-orchard-jules", by: "jules", state: "active", expires: "48h" }],
     submissions: [{
@@ -87,7 +88,7 @@ const seedTasks = [
     reward: rewardCredits(30),
     lifecycle: lifecycle.open,
     availability: availability.awaitingApproval,
-    objective: "Return invoice totals from a small vendor batch.",
+    objective: "Open the linked batch of 8 vendor invoices and add up their grand totals. Submit the combined amount as a decimal string in total, for example 1240.50. Accepted when it matches the verified sum within 0.01.",
     schema: '{"kind":"object","fields":{"total":{"kind":"decimal_string"}}}',
     reservations: [{ id: "res-invoice-ren", by: "ren", state: "requested", expires: "24h" }],
     timeline: ["Ren requested clearance to work on invoice extraction."],
@@ -104,13 +105,13 @@ const seedTasks = [
     reward: rewardNone(),
     lifecycle: lifecycle.open,
     availability: availability.available,
-    objective: "Suggest short labels for a platform collectible badge.",
+    objective: "Propose 5 short name ideas (max 3 words each) for a new contributor achievement badge. Submit them as plain text, one per line. Accepted when at least 5 distinct, on-brand names are provided.",
     schema: '{"kind":"freeform"}',
     timeline: ["Ren opened the brief for public submissions."],
   }),
   task({
     id: "map-sensor-cleanup",
-    title: "Normalize sensor map tiles",
+    title: "Standardize map-tile region names",
     requester: "mara",
     assignee: "",
     area: "Cartography",
@@ -120,7 +121,7 @@ const seedTasks = [
     reward: rewardCredits(80),
     lifecycle: lifecycle.open,
     availability: availability.available,
-    objective: "Normalize noisy map-tile metadata into a stable region index.",
+    objective: "You are given a CSV of 200 map tiles whose region column is spelled inconsistently. Pick the single canonical region name for the file and rate its overall data quality from 0 to 100. Submit region and quality. Accepted when the region matches the canonical list in the brief.",
     schema: '{"kind":"object","fields":{"region":{"kind":"string"},"quality":{"kind":"integer"}}}',
     timeline: ["Mission opened with credit escrow held."],
   }),
@@ -136,7 +137,7 @@ const seedTasks = [
     reward: rewardCollectible(["Vault Seal"]),
     lifecycle: lifecycle.open,
     availability: availability.changesRequested,
-    objective: "Check a small transfer ledger and mark suspicious collectible moves.",
+    objective: "Review the linked ledger of 50 collectible transfers and flag any that look fraudulent, such as the same item moved twice or a transfer to a banned account. Submit the transfer ids to investigate in suspicious_ids, each with a one-line reason in the thread.",
     schema: '{"kind":"object","fields":{"suspicious_ids":{"kind":"array","items":{"kind":"string"}}}}',
     reservations: [{ id: "res-audit-tala", by: "tala", state: "active", expires: "12h" }],
     submissions: [{
@@ -163,7 +164,7 @@ const seedTasks = [
     reward: rewardBundle(25, ["Storm Pin"]),
     lifecycle: lifecycle.open,
     availability: availability.submitted,
-    objective: "Use an agent credential to package three weather readings as JSON.",
+    objective: "Using a scoped agent credential over MCP, fetch the current temperature in Celsius for the three cities named in the brief and submit them, in order, as decimal strings in readings. Accepted when three plausible readings are present.",
     schema: '{"kind":"object","fields":{"readings":{"kind":"array","items":{"kind":"decimal_string"}}}}',
     reservations: [{ id: "res-weather-sol", by: "sol", state: "active", expires: "8h" }],
     submissions: [{
@@ -190,7 +191,7 @@ const seedTasks = [
     reward: rewardCredits(12),
     lifecycle: lifecycle.open,
     availability: availability.available,
-    objective: "Assign two concise marketplace tags to five task descriptions.",
+    objective: "You are given five marketplace task descriptions. Choose exactly two category tags for each from the provided tag list and submit them in the tags array, grouped per task. Accepted when every task has two tags from the list.",
     schema: '{"kind":"object","fields":{"tags":{"kind":"array","items":{"kind":"string"}}}}',
     timeline: ["Low-risk mission opened for open submissions."],
   }),
@@ -206,7 +207,7 @@ const seedTasks = [
     reward: rewardCredits(18),
     lifecycle: lifecycle.open,
     availability: availability.rejected,
-    objective: "Summarize a rejected crop inspection batch.",
+    objective: "Read the linked crop-inspection report that failed QA and write a 2 to 3 sentence summary of why it failed and what to fix. Submit as plain text. Accepted when the summary names the failing metric.",
     schema: '{"kind":"freeform"}',
     submissions: [{
       id: "sub-denied-jules",
@@ -232,7 +233,7 @@ const seedTasks = [
     reward: rewardCredits(20),
     lifecycle: lifecycle.closed,
     availability: availability.accepted,
-    objective: "Move accepted orchard receipts into the archive index.",
+    objective: "Add each of the 42 accepted receipts in the linked folder to the archive index, one row per receipt with date, vendor, and amount. Submit a short note confirming the count archived. Accepted when the index row count matches.",
     schema: '{"kind":"freeform"}',
     submissions: [{
       id: "sub-archive-tala",
@@ -258,7 +259,7 @@ const seedTasks = [
     reward: rewardBundle(60, ["Drone Patch"]),
     lifecycle: lifecycle.draft,
     availability: availability.available,
-    objective: "Sort short drone clips by field and weather condition.",
+    objective: "You are given 30 short drone clips by URL. Group each clip by field name and weather condition (for example field-3-clear) and submit the grouped clip identifiers in clips. Accepted when every clip is grouped.",
     schema: '{"kind":"object","fields":{"clips":{"kind":"array","items":{"kind":"string"}}}}',
     timeline: ["Draft mission waiting for funding and opening."],
   }),
@@ -274,7 +275,7 @@ const seedTasks = [
     reward: rewardCredits(22),
     lifecycle: lifecycle.funded,
     availability: availability.available,
-    objective: "Tighten three REST examples and one MCP example.",
+    objective: "Rewrite the three REST curl examples and one MCP example on the linked docs page so they run correctly against the current API. Submit the corrected snippets as plain text. Accepted when each example is copy-paste runnable.",
     schema: '{"kind":"freeform"}',
     timeline: ["Reward funded; requester has not opened the mission."],
   }),
@@ -290,7 +291,7 @@ const seedTasks = [
     reward: rewardCredits(26),
     lifecycle: lifecycle.open,
     availability: availability.available,
-    objective: "Extract soil sample IDs and mark missing readings.",
+    objective: "You are given a soil-sample CSV. List the sample ids that are missing a moisture reading in the missing array. Accepted when every row with a blank moisture value is included and no others.",
     schema: '{"kind":"object","fields":{"missing":{"kind":"array","items":{"kind":"string"}}}}',
     reservations: [{ id: "res-soil-jules", by: "jules", state: "expired", expires: "0h" }],
     timeline: ["A previous reservation expired and released the mission."],
@@ -307,8 +308,9 @@ const seedState = {
   includeReserved: false,
   boardFilter: "all",
   selectedTaskId: "orchard-labels",
+  selectedUserId: "mara",
   draftTitle: "Label orchard photos",
-  draftDescription: "Classify orchard imagery and return a compact JSON response.",
+  draftDescription: "You are given 20 orchard photos by URL. Return one or more condition labels for each photo (ripe, unripe, or damaged) in the labels array.",
   draftRewardKind: "bundle",
   draftCredits: "45",
   draftCollectible: "Ripe Lens",
@@ -341,8 +343,46 @@ let saveHandle = 0;
 document.addEventListener("click", handleClick);
 document.addEventListener("change", handleCommit);
 document.addEventListener("input", handleDraftInput);
+window.addEventListener("popstate", () => {
+  applyHash();
+  render();
+});
+window.addEventListener("hashchange", () => {
+  applyHash();
+  render();
+});
 
+applyHash();
 render();
+
+// hashFromState and applyHash keep the URL hash and the current page in sync so
+// task and user pages are linkable, refreshable, and shareable on GitHub Pages.
+function hashFromState() {
+  if (state.page === "task") return `#/tasks/${encodeURIComponent(state.selectedTaskId)}`;
+  if (state.page === "user") return `#/users/${encodeURIComponent(state.selectedUserId)}`;
+  if (state.page === "overview") return "#/";
+  return `#/${state.page}`;
+}
+
+function applyHash() {
+  const parts = window.location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (parts.length === 0) {
+    state = { ...state, page: "overview" };
+    return;
+  }
+  if (parts[0] === "tasks" && parts[1]) {
+    state = { ...state, page: "task", selectedTaskId: decodeURIComponent(parts[1]) };
+    return;
+  }
+  if (parts[0] === "users" && parts[1]) {
+    state = { ...state, page: "user", selectedUserId: decodeURIComponent(parts[1]) };
+    return;
+  }
+  const known = pages.find((page) => page.id === parts[0] && !page.detailOnly);
+  if (known) {
+    state = { ...state, page: known.id };
+  }
+}
 
 function task(config) {
   return {
@@ -485,8 +525,13 @@ function saveToStorage() {
 }
 
 function setState(patch, options = { render: true }) {
+  const previousHash = hashFromState();
   state = { ...state, ...patch };
   saveNow();
+  const nextHash = hashFromState();
+  if (nextHash !== previousHash) {
+    window.history.pushState(null, "", nextHash);
+  }
   if (options.render) render();
 }
 
@@ -626,7 +671,7 @@ function topbar() {
         <div class="account-menu">
           <button class="account-button" data-action="toggleLogin" aria-expanded="${state.loginOpen ? "true" : "false"}">
             <span>Persona</span>
-            <strong>${escapeHtml(user.callsign)} - ${escapeHtml(user.name)}</strong>
+            <strong>${escapeHtml(user.name)}</strong>
           </button>
           ${state.loginOpen ? loginPanel() : ""}
         </div>
@@ -657,8 +702,8 @@ function loginPanel() {
 function personaBadge(user) {
   return `
     <button class="persona-badge ${user.id === state.userId ? "selected" : ""}" data-action="choosePersona" data-user="${escapeAttribute(user.id)}" aria-pressed="${user.id === state.userId ? "true" : "false"}">
-      <strong>${escapeHtml(user.callsign)}</strong>
-      <span>${escapeHtml(user.role)} / ${escapeHtml(user.rank)}</span>
+      <strong>${escapeHtml(user.name)}</strong>
+      <span>${escapeHtml(user.role)}</span>
     </button>
   `;
 }
@@ -675,11 +720,37 @@ function pageNavigation() {
 function pageView() {
   if (state.page === "discover") return discoverPage();
   if (state.page === "task") return taskDetailPage();
+  if (state.page === "user") return userPage();
   if (state.page === "requester") return requesterPage();
   if (state.page === "review") return reviewPage();
   if (state.page === "integrations") return integrationsPage();
   if (state.page === "settings") return settingsPage();
   return overviewPage();
+}
+
+function userPage() {
+  const user = users.find((item) => item.id === state.selectedUserId) ?? users[0];
+  const requested = state.tasks.filter((item) => item.requester === user.id);
+  const assigned = state.tasks.filter((item) => item.assignee === user.id);
+  const taskLine = (item) =>
+    `<li><button class="link-button" data-open-task="${escapeAttribute(item.id)}">${escapeHtml(item.title)}</button> <span class="muted">${escapeHtml(availabilityLabel(item.availability))}</span></li>`;
+  return `
+    <section class="panel briefing-panel">
+      <div>
+        <span class="eyebrow">Profile</span>
+        <h2>${escapeHtml(user.name)}</h2>
+        <div class="badge-row">
+          <span>${escapeHtml(user.role)}</span>
+          <span>${escapeHtml(user.balance)} credits</span>
+        </div>
+        <h3>Requested tasks</h3>
+        ${requested.length ? `<ul class="objective-list">${requested.map(taskLine).join("")}</ul>` : `<p class="muted">No requested tasks.</p>`}
+        <h3>Assigned tasks</h3>
+        ${assigned.length ? `<ul class="objective-list">${assigned.map(taskLine).join("")}</ul>` : `<p class="muted">No assigned tasks.</p>`}
+        <button class="button secondary" data-page="discover">Back to tasks</button>
+      </div>
+    </section>
+  `;
 }
 
 function overviewPage() {
@@ -689,7 +760,7 @@ function overviewPage() {
     <section class="command-grid">
       <div class="hero-panel command-hero">
         <div>
-          <span class="eyebrow">${escapeHtml(user.role)} / ${escapeHtml(user.rank)}</span>
+          <span class="eyebrow">${escapeHtml(user.role)}</span>
           <h1>${escapeHtml(headlineFor(user.role))}</h1>
           <p>${escapeHtml(copyFor(user.role))}</p>
           <div class="row-actions">
@@ -952,7 +1023,7 @@ function taskListRow(taskItem) {
       <div class="task-list-main">
         <div class="task-title-row">
           <button class="link-button task-title-link" data-open-task="${escapeAttribute(taskItem.id)}">${escapeHtml(taskItem.title)}</button>
-          <span class="rank-badge inline-rank">Rank ${escapeHtml(taskItem.difficulty)}</span>
+          <span class="rank-badge inline-rank">${escapeHtml(difficultyLabel(taskItem.difficulty))}</span>
         </div>
         <p>${escapeHtml(taskItem.objective)}</p>
         <div class="mission-meta">
@@ -1024,7 +1095,7 @@ function missionCard(taskItem, selectedId) {
   const next = nextAction(taskItem);
   return `
     <button class="mission-card ${selected}" data-task="${escapeAttribute(taskItem.id)}" aria-pressed="${selected ? "true" : "false"}">
-      <span class="rank-badge">Rank ${escapeHtml(taskItem.difficulty)}</span>
+      <span class="rank-badge">${escapeHtml(difficultyLabel(taskItem.difficulty))}</span>
       <strong>${escapeHtml(taskItem.title)}</strong>
       <small>${escapeHtml(taskItem.objective)}</small>
       <div class="mission-meta">
@@ -1054,8 +1125,8 @@ function missionBriefing(taskItem) {
           <span>${escapeHtml(availabilityLabel(taskItem.availability))}</span>
         </div>
         <ul class="objective-list">
-          <li>Requester: ${escapeHtml(userName(taskItem.requester))}</li>
-          <li>Assignee: ${escapeHtml(taskItem.assignee ? userName(taskItem.assignee) : "unassigned")}</li>
+          <li>Requester: ${userLink(taskItem.requester)}</li>
+          <li>Assignee: ${userLink(taskItem.assignee)}</li>
           <li>Reward: ${escapeHtml(rewardLabel(taskItem.reward))}</li>
         </ul>
         <div class="schema-block">
@@ -1354,7 +1425,25 @@ function availabilityLabel(value) {
 }
 
 function areaLabel(value) {
-  return `${value} sector`;
+  const labels = {
+    "Field Ops": "Image labeling",
+    "Ledger Bay": "Bookkeeping",
+    "Foundry": "Content",
+    "Cartography": "Geo data",
+    "Vault": "Trust & safety",
+    "Uplink": "Weather data",
+    "Market": "Marketplace",
+    "Archive": "Records",
+    "Hangar": "Video",
+    "Docs Deck": "Documentation",
+    "Lab": "Lab data",
+  };
+  return labels[value] || value;
+}
+
+function difficultyLabel(value) {
+  const labels = { S: "High effort", A: "Above average", B: "Moderate", C: "Light" };
+  return labels[value] || value;
 }
 
 function boardTitleFor(role) {
@@ -1399,8 +1488,13 @@ function userName(userId) {
   return users.find((user) => user.id === userId)?.name ?? userId;
 }
 
+function userLink(userId) {
+  if (!userId) return "unassigned";
+  return `<button class="link-button" data-user-page="${escapeAttribute(userId)}">${escapeHtml(userName(userId))}</button>`;
+}
+
 function handleClick(event) {
-  const target = event.target.closest("[data-action], [data-page], [data-mode], [data-theme], [data-open-task], [data-task-action], [data-task], [data-provider]");
+  const target = event.target.closest("[data-action], [data-page], [data-mode], [data-theme], [data-open-task], [data-task-action], [data-task], [data-user-page], [data-provider]");
   if (target === null) return;
 
   if (target.dataset.page !== undefined) {
@@ -1426,6 +1520,10 @@ function handleClick(event) {
   }
   if (target.dataset.task !== undefined) {
     setState({ selectedTaskId: target.dataset.task, page: "task", loginOpen: false });
+    return;
+  }
+  if (target.dataset.userPage !== undefined) {
+    setState({ selectedUserId: target.dataset.userPage, page: "user", loginOpen: false });
     return;
   }
   if (target.dataset.provider !== undefined) {

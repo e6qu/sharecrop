@@ -177,6 +177,92 @@ func (store OrgStore) ProvisionMember(ctx context.Context, membershipID core.Org
 	}
 }
 
+func (store OrgStore) ListMembers(ctx context.Context, organizationID core.OrganizationID, page core.Page) org.ListMembersResult {
+	rows, err := store.pool.Query(ctx, `
+		select organization_memberships.id::text, organization_memberships.user_id::text, organization_memberships.status,
+			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')
+		from organization_memberships
+		left join organization_membership_roles on organization_membership_roles.membership_id = organization_memberships.id
+		where organization_memberships.organization_id = $1 and organization_memberships.status = $2
+		group by organization_memberships.id, organization_memberships.user_id, organization_memberships.status
+		order by organization_memberships.user_id
+		limit $3 offset $4
+	`, organizationID.String(), org.MembershipStatusActive.String(), page.Limit(), page.Offset())
+	if err != nil {
+		return org.ListMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list organization members failed")}
+	}
+	defer rows.Close()
+
+	values := make([]org.OrganizationMember, 0)
+	for rows.Next() {
+		var rawID string
+		var rawUserID string
+		var rawStatus string
+		var rawRoles []string
+		if err := rows.Scan(&rawID, &rawUserID, &rawStatus, &rawRoles); err != nil {
+			return org.ListMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan organization member failed")}
+		}
+		memberResult := parseMemberRow(rawID, organizationID, rawUserID, rawStatus, rawRoles)
+		member, matched := memberResult.(memberRowAccepted)
+		if !matched {
+			return org.ListMembersRejected{Reason: memberResult.(memberRowRejected).reason}
+		}
+		values = append(values, member.value)
+	}
+	if err := rows.Err(); err != nil {
+		return org.ListMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read organization members failed")}
+	}
+	return org.MembersListed{Values: values}
+}
+
+type memberRowResult interface {
+	memberRowResult()
+}
+
+type memberRowAccepted struct {
+	value org.OrganizationMember
+}
+
+type memberRowRejected struct {
+	reason core.DomainError
+}
+
+func (memberRowAccepted) memberRowResult() {}
+
+func (memberRowRejected) memberRowResult() {}
+
+func parseMemberRow(rawID string, organizationID core.OrganizationID, rawUserID string, rawStatus string, rawRoles []string) memberRowResult {
+	idResult := core.ParseOrganizationMembershipID(rawID)
+	idCreated, idMatched := idResult.(core.OrganizationMembershipIDCreated)
+	if !idMatched {
+		return memberRowRejected{reason: idResult.(core.OrganizationMembershipIDRejected).Reason}
+	}
+
+	userResult := core.ParseUserID(rawUserID)
+	userCreated, userMatched := userResult.(core.UserIDCreated)
+	if !userMatched {
+		return memberRowRejected{reason: userResult.(core.UserIDRejected).Reason}
+	}
+
+	statusResult := org.ParseMembershipStatus(rawStatus)
+	statusAccepted, statusMatched := statusResult.(org.MembershipStatusAccepted)
+	if !statusMatched {
+		return memberRowRejected{reason: statusResult.(org.MembershipStatusRejected).Reason}
+	}
+
+	roles := make([]org.Role, 0, len(rawRoles))
+	for _, rawRole := range rawRoles {
+		roleResult := org.ParseRole(rawRole)
+		roleAccepted, roleMatched := roleResult.(org.RoleAccepted)
+		if !roleMatched {
+			return memberRowRejected{reason: roleResult.(org.RoleRejected).Reason}
+		}
+		roles = append(roles, roleAccepted.Value)
+	}
+
+	return memberRowAccepted{value: org.OrganizationMember{ID: idCreated.Value, OrganizationID: organizationID, UserID: userCreated.Value, Status: statusAccepted.Value, Roles: roles}}
+}
+
 func (store OrgStore) DeactivateMember(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) org.DeactivateMemberStoreResult {
 	commandTag, err := store.pool.Exec(ctx, `
 		update organization_memberships
