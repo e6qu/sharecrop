@@ -6708,8 +6708,96 @@ var $author$project$Main$createOrgCommand = F2(
 							]))),
 				A2($elm$http$Http$expectJson, $author$project$Main$CreateOrgReceived, $author$project$Sharecrop$Generated$Organization$organizationResponseDecoder)));
 	});
+var $author$project$Main$CreateOrgTeamReceived = function (a) {
+	return {$: 'CreateOrgTeamReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Team$TeamResponse = F6(
+	function (id, ownerKind, organizationID, ownerUserID, name, createdBy) {
+		return {createdBy: createdBy, id: id, name: name, organizationID: organizationID, ownerKind: ownerKind, ownerUserID: ownerUserID};
+	});
+var $author$project$Sharecrop$Generated$Team$teamResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
+	$author$project$Sharecrop$Generated$Team$TeamResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'organization_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'owner_user_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+var $author$project$Main$createOrgTeamCommand = F2(
+	function (model, state) {
+		return ($elm$core$String$isEmpty(
+			$elm$core$String$trim(state.createOrgTeamName)) || (state.activeOrgId === '')) ? _Utils_Tuple2(
+			A2(
+				$author$project$Main$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							orgTeamMessage: $elm$core$Maybe$Just('A team name is required.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Main$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{orgTeamMessage: $elm$core$Maybe$Nothing});
+				}),
+			A5(
+				$author$project$Main$authorizedRequest,
+				'POST',
+				state.accessToken,
+				'/api/organizations/' + (state.activeOrgId + '/teams'),
+				$elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'name',
+								$elm$json$Json$Encode$string(
+									$elm$core$String$trim(state.createOrgTeamName)))
+							]))),
+				A2($elm$http$Http$expectJson, $author$project$Main$CreateOrgTeamReceived, $author$project$Sharecrop$Generated$Team$teamResponseDecoder)));
+	});
 var $author$project$Main$CreateTaskReceived = function (a) {
 	return {$: 'CreateTaskReceived', a: a};
+};
+var $author$project$Main$createOwnerBody = function (state) {
+	return (state.createTaskOwner === '') ? $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'kind',
+				$elm$json$Json$Encode$string('user')),
+				_Utils_Tuple2(
+				'user_id',
+				$elm$json$Json$Encode$string(state.subjectId)),
+				_Utils_Tuple2(
+				'team_id',
+				$elm$json$Json$Encode$string('')),
+				_Utils_Tuple2(
+				'organization_id',
+				$elm$json$Json$Encode$string(''))
+			])) : $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'kind',
+				$elm$json$Json$Encode$string('organization')),
+				_Utils_Tuple2(
+				'user_id',
+				$elm$json$Json$Encode$string('')),
+				_Utils_Tuple2(
+				'team_id',
+				$elm$json$Json$Encode$string('')),
+				_Utils_Tuple2(
+				'organization_id',
+				$elm$json$Json$Encode$string(state.createTaskOwner))
+			]));
 };
 var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser = {$: 'TaskAssigneeScopeUser'};
 var $author$project$Main$assigneeScopeTag = function (scope) {
@@ -6807,22 +6895,7 @@ var $author$project$Main$createTaskRequestBody = function (state) {
 			[
 				_Utils_Tuple2(
 				'owner',
-				$elm$json$Json$Encode$object(
-					_List_fromArray(
-						[
-							_Utils_Tuple2(
-							'kind',
-							$elm$json$Json$Encode$string('user')),
-							_Utils_Tuple2(
-							'user_id',
-							$elm$json$Json$Encode$string(state.subjectId)),
-							_Utils_Tuple2(
-							'team_id',
-							$elm$json$Json$Encode$string('')),
-							_Utils_Tuple2(
-							'organization_id',
-							$elm$json$Json$Encode$string(''))
-						]))),
+				$author$project$Main$createOwnerBody(state)),
 				_Utils_Tuple2(
 				'title',
 				$elm$json$Json$Encode$string(state.createTitle)),
@@ -7426,6 +7499,29 @@ var $author$project$Main$fetchDiscovery = F2(
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Main$DiscoveryReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
+var $author$project$Main$OrgTeamsReceived = function (a) {
+	return {$: 'OrgTeamsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Team$TeamsResponse = function (teams) {
+	return {teams: teams};
+};
+var $author$project$Sharecrop$Generated$Team$teamsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Team$TeamsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'teams',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Team$teamResponseDecoder)));
+var $author$project$Main$fetchOrgTeams = F2(
+	function (token, organizationId) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'GET',
+			token,
+			'/api/organizations/' + (organizationId + '/teams'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Main$OrgTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
+	});
 var $author$project$Main$TaskDetailReceived = function (a) {
 	return {$: 'TaskDetailReceived', a: a};
 };
@@ -7726,6 +7822,34 @@ var $author$project$Main$loadAfterAuth = function (token) {
 				$author$project$Main$fetchOrganizations(token)
 			]));
 };
+var $author$project$Main$OrgBalanceReceived = function (a) {
+	return {$: 'OrgBalanceReceived', a: a};
+};
+var $author$project$Main$OrgTasksReceived = function (a) {
+	return {$: 'OrgTasksReceived', a: a};
+};
+var $author$project$Main$loadOrganization = F2(
+	function (token, organizationId) {
+		return (organizationId === '') ? $elm$core$Platform$Cmd$none : $elm$core$Platform$Cmd$batch(
+			_List_fromArray(
+				[
+					A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/organizations/' + (organizationId + '/credits/balance'),
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$OrgBalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder)),
+					A2($author$project$Main$fetchOrgTeams, token, organizationId),
+					A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/tasks?scope=organization&organization_id=' + organizationId,
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$OrgTasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder))
+				]));
+	});
 var $author$project$Main$participationPolicyTag = function (policy) {
 	switch (policy.$) {
 		case 'TaskParticipationPolicyOpen':
@@ -7740,6 +7864,7 @@ var $author$project$Main$visibilityDefaultTag = 'default';
 var $author$project$Main$emptyLoggedIn = function (response) {
 	return {
 		accessToken: response.accessToken,
+		activeOrgId: '',
 		agentLabel: '',
 		agentMessage: $elm$core$Maybe$Nothing,
 		agentScopes: _List_fromArray(
@@ -7755,10 +7880,12 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		createDescription: '',
 		createMessage: $elm$core$Maybe$Nothing,
 		createOrgName: '',
+		createOrgTeamName: '',
 		createParticipationPolicy: $author$project$Main$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
 		createReservationHours: '48',
 		createRewardAmount: '',
 		createScopeUserId: '',
+		createTaskOwner: '',
 		createTitle: '',
 		createVisibility: $author$project$Main$visibilityDefaultTag,
 		credentials: _List_Nil,
@@ -7770,9 +7897,15 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundMessage: $elm$core$Maybe$Nothing,
 		fundTaskId: '',
 		newCredential: $elm$core$Maybe$Nothing,
+		orgBalance: $elm$core$Maybe$Nothing,
 		orgMessage: $elm$core$Maybe$Nothing,
+		orgTasks: _List_Nil,
+		orgTeamMessage: $elm$core$Maybe$Nothing,
+		orgTeams: _List_Nil,
 		organizations: _List_Nil,
 		page: $author$project$Main$DashboardPage,
+		provisionMemberEmail: '',
+		provisionMemberMessage: $elm$core$Maybe$Nothing,
 		reservationMessage: $elm$core$Maybe$Nothing,
 		reservations: _List_Nil,
 		reviewBan: false,
@@ -7965,6 +8098,55 @@ var $author$project$Main$postReservation = F2(
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Main$ReservationReceived, $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder));
+	});
+var $author$project$Main$ProvisionMemberReceived = function (a) {
+	return {$: 'ProvisionMemberReceived', a: a};
+};
+var $author$project$Main$provisionMemberCommand = F2(
+	function (model, state) {
+		return ($elm$core$String$isEmpty(
+			$elm$core$String$trim(state.provisionMemberEmail)) || (state.activeOrgId === '')) ? _Utils_Tuple2(
+			A2(
+				$author$project$Main$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							provisionMemberMessage: $elm$core$Maybe$Just('A member email is required.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Main$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{provisionMemberMessage: $elm$core$Maybe$Nothing});
+				}),
+			A5(
+				$author$project$Main$authorizedRequest,
+				'POST',
+				state.accessToken,
+				'/api/organizations/' + (state.activeOrgId + '/members'),
+				$elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'email',
+								$elm$json$Json$Encode$string(
+									$elm$core$String$trim(state.provisionMemberEmail))),
+								_Utils_Tuple2(
+								'roles',
+								A2(
+									$elm$json$Json$Encode$list,
+									$elm$json$Json$Encode$string,
+									_List_fromArray(
+										['member'])))
+							]))),
+				$elm$http$Http$expectWhatever($author$project$Main$ProvisionMemberReceived)));
 	});
 var $elm$browser$Browser$Navigation$pushUrl = _Browser_pushUrl;
 var $author$project$Main$refreshAfterAccept = function (model) {
@@ -8338,6 +8520,14 @@ var $author$project$Main$tasksFromResult = function (result) {
 	if (result.$ === 'Ok') {
 		var response = result.a;
 		return response.tasks;
+	} else {
+		return _List_Nil;
+	}
+};
+var $author$project$Main$teamsFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return response.teams;
 	} else {
 		return _List_Nil;
 	}
@@ -9631,6 +9821,185 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'SelectOrganization':
+				var organizationId = msg.a;
+				var updated = A2(
+					$author$project$Main$updateLoggedIn,
+					model,
+					function (state) {
+						return _Utils_update(
+							state,
+							{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, provisionMemberMessage: $elm$core$Maybe$Nothing});
+					});
+				return A2(
+					$author$project$Main$withSession,
+					updated,
+					function (state) {
+						return _Utils_Tuple2(
+							updated,
+							A2($author$project$Main$loadOrganization, state.accessToken, organizationId));
+					});
+			case 'OrgBalanceReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									orgBalance: $author$project$Main$balanceFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'OrgTeamsReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									orgTeams: $author$project$Main$teamsFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'OrgTasksReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									orgTasks: $author$project$Main$tasksFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateOrgTeamNameChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createOrgTeamName: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateOrgTeamClicked':
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return A2($author$project$Main$createOrgTeamCommand, model, state);
+					});
+			case 'CreateOrgTeamReceived':
+				if (msg.a.$ === 'Ok') {
+					var team = msg.a.a;
+					var updated = A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									createOrgTeamName: '',
+									orgTeamMessage: $elm$core$Maybe$Just('Created team ' + team.name)
+								});
+						});
+					return A2(
+						$author$project$Main$withSession,
+						updated,
+						function (state) {
+							return _Utils_Tuple2(
+								updated,
+								A2($author$project$Main$fetchOrgTeams, state.accessToken, state.activeOrgId));
+						});
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										orgTeamMessage: $elm$core$Maybe$Just(
+											$author$project$Main$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'ProvisionMemberEmailChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{provisionMemberEmail: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ProvisionMemberClicked':
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return A2($author$project$Main$provisionMemberCommand, model, state);
+					});
+			case 'ProvisionMemberReceived':
+				if (msg.a.$ === 'Ok') {
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										provisionMemberEmail: '',
+										provisionMemberMessage: $elm$core$Maybe$Just('Member provisioned.')
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										provisionMemberMessage: $elm$core$Maybe$Just(
+											$author$project$Main$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'CreateTaskOwnerChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createTaskOwner: value});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'LinkClicked':
 				var request = msg.a;
 				if (request.$ === 'Internal') {
@@ -10673,6 +11042,46 @@ var $author$project$Sharecrop$Ui$fieldLabel = F2(
 						])),
 				controls));
 	});
+var $author$project$Main$CreateTaskOwnerChanged = function (a) {
+	return {$: 'CreateTaskOwnerChanged', a: a};
+};
+var $author$project$Main$ownerButton = F2(
+	function (selected, organization) {
+		return A4(
+			$author$project$Main$chooserButton,
+			_Utils_eq(selected, organization.id),
+			$author$project$Main$CreateTaskOwnerChanged(organization.id),
+			'create-owner-' + organization.id,
+			organization.name);
+	});
+var $author$project$Main$ownerChooser = function (state) {
+	return $elm$core$List$isEmpty(state.organizations) ? $elm$html$Html$text('') : A2(
+		$elm$html$Html$div,
+		_List_Nil,
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$label_('Owner'),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
+						$author$project$Sharecrop$Ui$testId('create-owner')
+					]),
+				A2(
+					$elm$core$List$cons,
+					A4(
+						$author$project$Main$chooserButton,
+						state.createTaskOwner === '',
+						$author$project$Main$CreateTaskOwnerChanged(''),
+						'create-owner-me',
+						'Me'),
+					A2(
+						$elm$core$List$map,
+						$author$project$Main$ownerButton(state.createTaskOwner),
+						state.organizations)))
+			]));
+};
 var $author$project$Main$CreateParticipationChanged = function (a) {
 	return {$: 'CreateParticipationChanged', a: a};
 };
@@ -10806,6 +11215,7 @@ var $author$project$Main$createTaskView = function (state) {
 								$author$project$Sharecrop$Ui$testId('create-reward')
 							]))
 					])),
+				$author$project$Main$ownerChooser(state),
 				$author$project$Sharecrop$Ui$label_('Participation'),
 				A2(
 				$elm$html$Html$div,
@@ -11014,31 +11424,210 @@ var $author$project$Main$CreateOrgClicked = {$: 'CreateOrgClicked'};
 var $author$project$Main$CreateOrgNameChanged = function (a) {
 	return {$: 'CreateOrgNameChanged', a: a};
 };
-var $author$project$Main$organizationRow = function (organization) {
-	return A2(
-		$elm$html$Html$div,
+var $author$project$Main$CreateOrgTeamClicked = {$: 'CreateOrgTeamClicked'};
+var $author$project$Main$CreateOrgTeamNameChanged = function (a) {
+	return {$: 'CreateOrgTeamNameChanged', a: a};
+};
+var $author$project$Main$ProvisionMemberClicked = {$: 'ProvisionMemberClicked'};
+var $author$project$Main$ProvisionMemberEmailChanged = function (a) {
+	return {$: 'ProvisionMemberEmailChanged', a: a};
+};
+var $author$project$Main$orgTeamsList = function (teams) {
+	return $elm$core$List$isEmpty(teams) ? A2(
+		$elm$html$Html$p,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
-				$author$project$Sharecrop$Ui$testId('organization-row')
+				$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+				$author$project$Sharecrop$Ui$testId('org-teams-empty')
 			]),
 		_List_fromArray(
 			[
+				$elm$html$Html$text('No teams yet.')
+			])) : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+				$author$project$Sharecrop$Ui$testId('org-teams')
+			]),
+		A2(
+			$elm$core$List$map,
+			function (team) {
+				return A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('py-1 text-sm'),
+							$author$project$Sharecrop$Ui$testId('org-team-row')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(team.name)
+						]));
+			},
+			teams));
+};
+var $author$project$Main$tasksListSimple = F2(
+	function (identifier, tasks) {
+		return $elm$core$List$isEmpty(tasks) ? A2(
+			$elm$html$Html$p,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+					$author$project$Sharecrop$Ui$testId(identifier + '-empty')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('No tasks yet.')
+				])) : A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			A2(
+				$elm$core$List$map,
+				function (item) {
+					return A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('py-1 text-sm'),
+								$author$project$Sharecrop$Ui$testId(identifier + '-row')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								item.title + (' · ' + $author$project$Main$taskStateLabel(item.state)))
+							]));
+				},
+				tasks));
+	});
+var $author$project$Main$activeOrganizationView = function (state) {
+	return (state.activeOrgId === '') ? $elm$html$Html$text('') : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('mt-4 space-y-4 rounded-md bg-slate-50 p-4'),
+				$author$project$Sharecrop$Ui$testId('active-organization')
+			]),
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$label_(
+				'Balance: ' + $author$project$Main$balanceLabel(state.orgBalance)),
+				$author$project$Sharecrop$Ui$sectionTitle('Organization tasks'),
+				A2($author$project$Main$tasksListSimple, 'org-tasks', state.orgTasks),
+				$author$project$Sharecrop$Ui$sectionTitle('Teams'),
+				$author$project$Main$orgTeamsList(state.orgTeams),
 				A2(
-				$elm$html$Html$p,
+				$elm$html$Html$form,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('font-medium')
+						$elm$html$Html$Attributes$class('flex flex-wrap items-end gap-2'),
+						$elm$html$Html$Events$onSubmit($author$project$Main$CreateOrgTeamClicked)
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text(organization.name)
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'New team',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('text'),
+										$elm$html$Html$Attributes$placeholder('Team name'),
+										$elm$html$Html$Attributes$value(state.createOrgTeamName),
+										$elm$html$Html$Events$onInput($author$project$Main$CreateOrgTeamNameChanged),
+										$author$project$Sharecrop$Ui$testId('create-org-team-name')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('submit'),
+								$author$project$Sharecrop$Ui$testId('create-org-team')
+							]),
+						'Create team')
 					])),
-				$author$project$Sharecrop$Ui$badge(organization.id)
+				A2($author$project$Main$maybeNote, state.orgTeamMessage, 'org-team-message'),
+				$author$project$Sharecrop$Ui$sectionTitle('Provision a member'),
+				A2(
+				$elm$html$Html$form,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap items-end gap-2'),
+						$elm$html$Html$Events$onSubmit($author$project$Main$ProvisionMemberClicked)
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'Member email',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('email'),
+										$elm$html$Html$Attributes$placeholder('person@example.com'),
+										$elm$html$Html$Attributes$value(state.provisionMemberEmail),
+										$elm$html$Html$Events$onInput($author$project$Main$ProvisionMemberEmailChanged),
+										$author$project$Sharecrop$Ui$testId('provision-member-email')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('submit'),
+								$author$project$Sharecrop$Ui$testId('provision-member')
+							]),
+						'Provision member')
+					])),
+				A2($author$project$Main$maybeNote, state.provisionMemberMessage, 'provision-member-message')
 			]));
 };
-var $author$project$Main$organizationsList = function (organizations) {
-	return $elm$core$List$isEmpty(organizations) ? A2(
+var $author$project$Main$SelectOrganization = function (a) {
+	return {$: 'SelectOrganization', a: a};
+};
+var $author$project$Main$organizationRow = F2(
+	function (activeOrgId, organization) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
+					$author$project$Sharecrop$Ui$testId('organization-row')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('font-medium')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(organization.name)
+						])),
+					_Utils_eq(activeOrgId, organization.id) ? $author$project$Sharecrop$Ui$badge('Active') : A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Events$onClick(
+							$author$project$Main$SelectOrganization(organization.id)),
+							$author$project$Sharecrop$Ui$testId('select-organization')
+						]),
+					'Open')
+				]));
+	});
+var $author$project$Main$organizationsList = function (state) {
+	return $elm$core$List$isEmpty(state.organizations) ? A2(
 		$elm$html$Html$p,
 		_List_fromArray(
 			[
@@ -11055,7 +11644,10 @@ var $author$project$Main$organizationsList = function (organizations) {
 				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
 				$author$project$Sharecrop$Ui$testId('organizations')
 			]),
-		A2($elm$core$List$map, $author$project$Main$organizationRow, organizations));
+		A2(
+			$elm$core$List$map,
+			$author$project$Main$organizationRow(state.activeOrgId),
+			state.organizations));
 };
 var $author$project$Main$organizationsView = function (state) {
 	return $author$project$Sharecrop$Ui$card(
@@ -11072,7 +11664,7 @@ var $author$project$Main$organizationsView = function (state) {
 					[
 						$elm$html$Html$text('Organizations you belong to. Create one to own tasks and credits as a team.')
 					])),
-				$author$project$Main$organizationsList(state.organizations),
+				$author$project$Main$organizationsList(state),
 				A2(
 				$elm$html$Html$form,
 				_List_fromArray(
@@ -11106,7 +11698,8 @@ var $author$project$Main$organizationsView = function (state) {
 							]),
 						'Create organization')
 					])),
-				A2($author$project$Main$maybeNote, state.orgMessage, 'org-message')
+				A2($author$project$Main$maybeNote, state.orgMessage, 'org-message'),
+				$author$project$Main$activeOrganizationView(state)
 			]));
 };
 var $author$project$Main$OpenTaskClicked = function (a) {
