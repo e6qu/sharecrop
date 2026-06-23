@@ -4,7 +4,17 @@ The repository contains pull request 1 through pull request 26 work. Pull reques
 
 Active task:
 
-- Active branch `task/full-review-improvements` carries a multi-area review and a set of improvements across security, backend correctness, the browser UI, the data model, and code structure. The branch is ready for pull request review. See the implemented surface below and [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/teams-org-context-collectible-ui` adds standalone (user-owned) teams, organization context in the browser, and multi-collectible reward visibility in the browser. The branch is ready for pull request review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/teams-org-context-collectible-ui`:
+
+- Team ownership is a tagged union: organization-owned or user-owned. Standalone teams are created and listed through `POST` and `GET /api/teams`, and the owner is exposed on the team contract.
+- The browser switches the active organization and shows its credit balance, organization-scoped task list, and teams. The active organization panel creates teams and provisions members, and the task creation form can own a task by an organization.
+- The browser surfaces the escrowed collectible count on tasks, including collectibles awarded ad hoc, and refreshes the task list after awarding.
+
+Earlier active task:
+
+- Branch `task/full-review-improvements` carried a multi-area review and improvements across security, backend correctness, the browser UI, the data model, and code structure. It was merged into `main`. See the implemented surface below.
 
 Implemented in `task/full-review-improvements`:
 
@@ -315,6 +325,12 @@ Last observed checks on `task/demo-list-detail-navigation`:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.
+
+Last observed checks on `task/teams-org-context-collectible-ui`:
+
+- `make check-format`, `make check-contracts`, `make check-policy`, `make check-ts`, `make check-copy-paste`, `make check-dead-code`, `make lint`, `make vet`, `make test`, and `make test-deno` passed.
+- `make build` and `make frontend` passed.
+- `make test-integration`, `make test-http`, and `make e2e-ui` passed with local Postgres access.
 
 Last observed checks on `task/full-review-improvements`:
 
