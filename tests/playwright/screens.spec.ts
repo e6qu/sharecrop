@@ -107,7 +107,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
     "Reservation required from the browser.",
   );
   await page.getByTestId("create-participation-reservation_required").click();
-  await page.getByTestId("create-public").click();
+  await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
   await expect(page.getByTestId("create-message")).toContainText(
     "Created task",

@@ -6729,6 +6729,40 @@ var $author$project$Main$createRewardBody = function (rawAmount) {
 				]));
 	}
 };
+var $author$project$Main$visibilityUserTag = 'user';
+var $author$project$Main$createVisibilityBody = function (state) {
+	return _Utils_eq(state.createVisibility, $author$project$Main$visibilityUserTag) ? $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'kind',
+				$elm$json$Json$Encode$string($author$project$Main$visibilityUserTag)),
+				_Utils_Tuple2(
+				'user_id',
+				$elm$json$Json$Encode$string(state.createScopeUserId)),
+				_Utils_Tuple2(
+				'team_id',
+				$elm$json$Json$Encode$string('')),
+				_Utils_Tuple2(
+				'organization_id',
+				$elm$json$Json$Encode$string(''))
+			])) : $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'kind',
+				$elm$json$Json$Encode$string(state.createVisibility)),
+				_Utils_Tuple2(
+				'user_id',
+				$elm$json$Json$Encode$string('')),
+				_Utils_Tuple2(
+				'team_id',
+				$elm$json$Json$Encode$string('')),
+				_Utils_Tuple2(
+				'organization_id',
+				$elm$json$Json$Encode$string(''))
+			]));
+};
 var $author$project$Main$createTaskRequestBody = function (state) {
 	return $elm$json$Json$Encode$object(
 		_List_fromArray(
@@ -6765,23 +6799,7 @@ var $author$project$Main$createTaskRequestBody = function (state) {
 				$author$project$Main$createParticipationBody(state)),
 				_Utils_Tuple2(
 				'visibility',
-				$elm$json$Json$Encode$object(
-					_List_fromArray(
-						[
-							_Utils_Tuple2(
-							'kind',
-							$elm$json$Json$Encode$string(
-								state.createPublic ? 'public' : 'default')),
-							_Utils_Tuple2(
-							'user_id',
-							$elm$json$Json$Encode$string('')),
-							_Utils_Tuple2(
-							'team_id',
-							$elm$json$Json$Encode$string('')),
-							_Utils_Tuple2(
-							'organization_id',
-							$elm$json$Json$Encode$string(''))
-						]))),
+				$author$project$Main$createVisibilityBody(state)),
 				_Utils_Tuple2(
 				'placement',
 				$elm$json$Json$Encode$object(
@@ -7649,6 +7667,7 @@ var $author$project$Main$participationPolicyTag = function (policy) {
 			return 'approval_required';
 	}
 };
+var $author$project$Main$visibilityDefaultTag = 'default';
 var $author$project$Main$emptyLoggedIn = function (response) {
 	return {
 		accessToken: response.accessToken,
@@ -7667,10 +7686,11 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		createDescription: '',
 		createMessage: $elm$core$Maybe$Nothing,
 		createParticipationPolicy: $author$project$Main$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
-		createPublic: false,
 		createReservationHours: '48',
 		createRewardAmount: '',
+		createScopeUserId: '',
 		createTitle: '',
+		createVisibility: $author$project$Main$visibilityDefaultTag,
 		credentials: _List_Nil,
 		detail: $elm$core$Maybe$Nothing,
 		discoveryIncludeReserved: false,
@@ -8487,7 +8507,7 @@ var $author$project$Main$update = F2(
 								{createRewardAmount: value});
 						}),
 					$elm$core$Platform$Cmd$none);
-			case 'CreatePublicChanged':
+			case 'CreateVisibilityChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
 					A2(
@@ -8496,7 +8516,19 @@ var $author$project$Main$update = F2(
 						function (state) {
 							return _Utils_update(
 								state,
-								{createPublic: value});
+								{createVisibility: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateScopeUserIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createScopeUserId: value});
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'CreateParticipationChanged':
@@ -9908,7 +9940,7 @@ var $author$project$Sharecrop$Ui$label_ = function (value) {
 		$elm$html$Html$p,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('text-sm uppercase tracking-wide text-slate-500')
+				$elm$html$Html$Attributes$class('text-sm uppercase tracking-wide text-slate-600')
 			]),
 		_List_fromArray(
 			[
@@ -10211,7 +10243,7 @@ var $author$project$Sharecrop$Ui$badge = function (value) {
 		$elm$html$Html$span,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600')
+				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700')
 			]),
 		_List_fromArray(
 			[
@@ -10434,9 +10466,6 @@ var $author$project$Main$collectiblesView = function (state) {
 var $author$project$Main$CreateDescriptionChanged = function (a) {
 	return {$: 'CreateDescriptionChanged', a: a};
 };
-var $author$project$Main$CreatePublicChanged = function (a) {
-	return {$: 'CreatePublicChanged', a: a};
-};
 var $author$project$Main$CreateReservationHoursChanged = function (a) {
 	return {$: 'CreateReservationHoursChanged', a: a};
 };
@@ -10449,7 +10478,28 @@ var $author$project$Main$CreateTitleChanged = function (a) {
 };
 var $author$project$Main$allParticipationPolicies = _List_fromArray(
 	[$author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen, $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyReservationRequired, $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyApprovalRequired]);
-var $elm$core$Basics$not = _Basics_not;
+var $author$project$Main$visibilityPublicTag = 'public';
+var $author$project$Main$allVisibilityTags = _List_fromArray(
+	[$author$project$Main$visibilityPublicTag, $author$project$Main$visibilityDefaultTag, $author$project$Main$visibilityUserTag]);
+var $author$project$Sharecrop$Ui$fieldLabel = F2(
+	function (labelText, controls) {
+		return A2(
+			$elm$html$Html$label,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('block space-y-1 text-sm font-medium text-slate-700')
+				]),
+			A2(
+				$elm$core$List$cons,
+				A2(
+					$elm$html$Html$span,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text(labelText)
+						])),
+				controls));
+	});
 var $author$project$Main$CreateParticipationChanged = function (a) {
 	return {$: 'CreateParticipationChanged', a: a};
 };
@@ -10492,6 +10542,41 @@ var $author$project$Sharecrop$Ui$textarea_ = function (attrs) {
 			attrs),
 		_List_Nil);
 };
+var $author$project$Main$CreateVisibilityChanged = function (a) {
+	return {$: 'CreateVisibilityChanged', a: a};
+};
+var $author$project$Main$visibilityLabel = function (tag) {
+	return _Utils_eq(tag, $author$project$Main$visibilityPublicTag) ? 'Public' : (_Utils_eq(tag, $author$project$Main$visibilityUserTag) ? 'Specific user' : 'Private (default)');
+};
+var $author$project$Main$visibilityButton = F2(
+	function (selected, tag) {
+		return A4(
+			$author$project$Main$chooserButton,
+			_Utils_eq(selected, tag),
+			$author$project$Main$CreateVisibilityChanged(tag),
+			'create-visibility-' + tag,
+			$author$project$Main$visibilityLabel(tag));
+	});
+var $author$project$Main$CreateScopeUserIdChanged = function (a) {
+	return {$: 'CreateScopeUserIdChanged', a: a};
+};
+var $author$project$Main$visibilityScopeField = function (state) {
+	return _Utils_eq(state.createVisibility, $author$project$Main$visibilityUserTag) ? A2(
+		$author$project$Sharecrop$Ui$fieldLabel,
+		'Share with user ID',
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$textInput(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('text'),
+						$elm$html$Html$Attributes$placeholder('User ID to grant access'),
+						$elm$html$Html$Attributes$value(state.createScopeUserId),
+						$elm$html$Html$Events$onInput($author$project$Main$CreateScopeUserIdChanged),
+						$author$project$Sharecrop$Ui$testId('create-scope-user')
+					]))
+			])) : $elm$html$Html$text('');
+};
 var $author$project$Main$createTaskView = function (state) {
 	return A2(
 		$elm$html$Html$form,
@@ -10503,32 +10588,50 @@ var $author$project$Main$createTaskView = function (state) {
 		_List_fromArray(
 			[
 				$author$project$Sharecrop$Ui$sectionTitle('Create a task'),
-				$author$project$Sharecrop$Ui$textInput(
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Title',
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$type_('text'),
-						$elm$html$Html$Attributes$placeholder('Title'),
-						$elm$html$Html$Attributes$value(state.createTitle),
-						$elm$html$Html$Events$onInput($author$project$Main$CreateTitleChanged),
-						$author$project$Sharecrop$Ui$testId('create-title')
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('text'),
+								$elm$html$Html$Attributes$placeholder('Short, descriptive title'),
+								$elm$html$Html$Attributes$value(state.createTitle),
+								$elm$html$Html$Events$onInput($author$project$Main$CreateTitleChanged),
+								$author$project$Sharecrop$Ui$testId('create-title')
+							]))
 					])),
-				$author$project$Sharecrop$Ui$textarea_(
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Description',
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$placeholder('Description'),
-						$elm$html$Html$Attributes$value(state.createDescription),
-						$elm$html$Html$Events$onInput($author$project$Main$CreateDescriptionChanged),
-						$elm$html$Html$Attributes$rows(3),
-						$author$project$Sharecrop$Ui$testId('create-description')
+						$author$project$Sharecrop$Ui$textarea_(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$placeholder('What the worker should do'),
+								$elm$html$Html$Attributes$value(state.createDescription),
+								$elm$html$Html$Events$onInput($author$project$Main$CreateDescriptionChanged),
+								$elm$html$Html$Attributes$rows(3),
+								$author$project$Sharecrop$Ui$testId('create-description')
+							]))
 					])),
-				$author$project$Sharecrop$Ui$textInput(
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Credit reward',
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$type_('number'),
-						$elm$html$Html$Attributes$placeholder('Credit reward amount (blank for no reward)'),
-						$elm$html$Html$Attributes$value(state.createRewardAmount),
-						$elm$html$Html$Events$onInput($author$project$Main$CreateRewardAmountChanged),
-						$author$project$Sharecrop$Ui$testId('create-reward')
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('number'),
+								$elm$html$Html$Attributes$placeholder('Blank for no reward'),
+								$elm$html$Html$Attributes$value(state.createRewardAmount),
+								$elm$html$Html$Events$onInput($author$project$Main$CreateRewardAmountChanged),
+								$author$project$Sharecrop$Ui$testId('create-reward')
+							]))
 					])),
 				$author$project$Sharecrop$Ui$label_('Participation'),
 				A2(
@@ -10541,42 +10644,33 @@ var $author$project$Main$createTaskView = function (state) {
 					$elm$core$List$map,
 					$author$project$Main$participationButton(state.createParticipationPolicy),
 					$author$project$Main$allParticipationPolicies)),
-				$author$project$Sharecrop$Ui$textInput(
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('number'),
-						$elm$html$Html$Attributes$placeholder('Reservation expiry hours'),
-						$elm$html$Html$Attributes$value(state.createReservationHours),
-						$elm$html$Html$Events$onInput($author$project$Main$CreateReservationHoursChanged),
-						$author$project$Sharecrop$Ui$testId('create-reservation-hours')
-					])),
 				A2(
-				$elm$html$Html$label,
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Reservation expiry (hours)',
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$input,
+						$author$project$Sharecrop$Ui$textInput(
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$type_('checkbox'),
-								$elm$html$Html$Attributes$checked(state.createPublic),
-								$elm$html$Html$Events$onClick(
-								$author$project$Main$CreatePublicChanged(!state.createPublic)),
-								$author$project$Sharecrop$Ui$testId('create-public')
-							]),
-						_List_Nil),
-						A2(
-						$elm$html$Html$span,
-						_List_Nil,
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Publish publicly')
+								$elm$html$Html$Attributes$type_('number'),
+								$elm$html$Html$Attributes$placeholder('48'),
+								$elm$html$Html$Attributes$value(state.createReservationHours),
+								$elm$html$Html$Events$onInput($author$project$Main$CreateReservationHoursChanged),
+								$author$project$Sharecrop$Ui$testId('create-reservation-hours')
 							]))
 					])),
+				$author$project$Sharecrop$Ui$label_('Visibility'),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+					]),
+				A2(
+					$elm$core$List$map,
+					$author$project$Main$visibilityButton(state.createVisibility),
+					$author$project$Main$allVisibilityTags)),
+				$author$project$Main$visibilityScopeField(state),
 				A2(
 				$author$project$Sharecrop$Ui$primaryButton,
 				_List_fromArray(
@@ -10977,6 +11071,20 @@ var $author$project$Main$taskInstructions = F2(
 					A2($author$project$Main$mcpSchemaCurl, origin, taskId))
 				]));
 	});
+var $author$project$Main$taskStateGuidance = function (state) {
+	switch (state.$) {
+		case 'TaskStateDraft':
+			return 'Next step: fund this task (if it offers a reward) and then open it so workers can submit.';
+		case 'TaskStateOpen':
+			return 'Workers can submit now. Review submissions below to accept, request changes, or reject.';
+		case 'TaskStateClosed':
+			return 'This task is closed. An accepted submission has been settled.';
+		case 'TaskStateCancelled':
+			return 'This task was cancelled. Any escrowed reward was refunded.';
+		default:
+			return 'This task expired without an accepted submission.';
+	}
+};
 var $author$project$Main$taskDetailView = F2(
 	function (origin, state) {
 		var _v0 = state.selectedTask;
@@ -11046,6 +11154,18 @@ var $author$project$Main$taskDetailView = F2(
 							[
 								$elm$html$Html$text(
 								'Reservation expiry: ' + ($elm$core$String$fromInt(detail.reservationExpiryHours) + ' hours'))
+							])),
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700'),
+								$author$project$Sharecrop$Ui$testId('task-guidance')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								$author$project$Main$taskStateGuidance(detail.state))
 							])),
 						A2(
 						$elm$html$Html$div,
@@ -11212,6 +11332,36 @@ var $author$project$Main$dashboardView = F2(
 var $author$project$Main$DiscoveryIncludeReservedChanged = function (a) {
 	return {$: 'DiscoveryIncludeReservedChanged', a: a};
 };
+var $author$project$Sharecrop$Ui$checkboxClass = 'h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-2 focus:ring-slate-500';
+var $author$project$Sharecrop$Ui$checkbox = F2(
+	function (attrs, labelText) {
+		return A2(
+			$elm$html$Html$label,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm text-slate-700')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$input,
+					A2(
+						$elm$core$List$cons,
+						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$checkboxClass),
+						A2(
+							$elm$core$List$cons,
+							$elm$html$Html$Attributes$type_('checkbox'),
+							attrs)),
+					_List_Nil),
+					A2(
+					$elm$html$Html$span,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text(labelText)
+						]))
+				]));
+	});
 var $author$project$Main$DiscoveryViewClicked = function (a) {
 	return {$: 'DiscoveryViewClicked', a: a};
 };
@@ -11283,38 +11433,22 @@ var $author$project$Main$discoveryList = function (tasks) {
 			]),
 		A2($elm$core$List$map, $author$project$Main$discoveryRow, tasks));
 };
+var $elm$core$Basics$not = _Basics_not;
 var $author$project$Main$discoveryView = function (state) {
 	return $author$project$Sharecrop$Ui$card(
 		_List_fromArray(
 			[
 				$author$project$Sharecrop$Ui$sectionTitle('Discover public tasks'),
 				A2(
-				$elm$html$Html$label,
+				$author$project$Sharecrop$Ui$checkbox,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm')
+						$elm$html$Html$Attributes$checked(state.discoveryIncludeReserved),
+						$elm$html$Html$Events$onClick(
+						$author$project$Main$DiscoveryIncludeReservedChanged(!state.discoveryIncludeReserved)),
+						$author$project$Sharecrop$Ui$testId('include-reserved')
 					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$input,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$type_('checkbox'),
-								$elm$html$Html$Attributes$checked(state.discoveryIncludeReserved),
-								$elm$html$Html$Events$onClick(
-								$author$project$Main$DiscoveryIncludeReservedChanged(!state.discoveryIncludeReserved)),
-								$author$project$Sharecrop$Ui$testId('include-reserved')
-							]),
-						_List_Nil),
-						A2(
-						$elm$html$Html$span,
-						_List_Nil,
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Include reserved')
-							]))
-					])),
+				'Include reserved'),
 				$author$project$Main$discoveryList(state.discoveryTasks)
 			]));
 };
@@ -11738,24 +11872,22 @@ var $author$project$Main$reviewControls = function (state) {
 								_List_Nil)
 							])),
 						A2(
-						$elm$html$Html$label,
+						$elm$html$Html$div,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('flex items-center gap-2 pt-6 text-sm text-slate-700')
+								$elm$html$Html$Attributes$class('pt-6')
 							]),
 						_List_fromArray(
 							[
 								A2(
-								$elm$html$Html$input,
+								$author$project$Sharecrop$Ui$checkbox,
 								_List_fromArray(
 									[
-										$elm$html$Html$Attributes$type_('checkbox'),
 										$elm$html$Html$Attributes$checked(state.reviewBan),
 										$elm$html$Html$Events$onCheck($author$project$Main$ReviewBanChanged),
 										$author$project$Sharecrop$Ui$testId('review-ban')
 									]),
-								_List_Nil),
-								$elm$html$Html$text('Ban implementor')
+								'Ban implementor')
 							]))
 					])),
 				A2($author$project$Main$maybeNote, state.reviewMessage, 'review-message')

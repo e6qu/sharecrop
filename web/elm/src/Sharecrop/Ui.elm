@@ -1,6 +1,6 @@
 module Sharecrop.Ui exposing (..)
 
-import Html exposing (Attribute, Html, button, h1, h2, input, p, pre, span, text, textarea)
+import Html exposing (Attribute, Html, button, h1, h2, input, label, p, pre, span, text, textarea)
 import Html.Attributes exposing (attribute, class, type_)
 
 
@@ -26,7 +26,21 @@ pageTitle title =
 
 label_ : String -> Html msg
 label_ value =
-    p [ class "text-sm uppercase tracking-wide text-slate-500" ] [ text value ]
+    p [ class "text-sm uppercase tracking-wide text-slate-600" ] [ text value ]
+
+
+fieldLabel : String -> List (Html msg) -> Html msg
+fieldLabel labelText controls =
+    label [ class "block space-y-1 text-sm font-medium text-slate-700" ]
+        (span [] [ text labelText ] :: controls)
+
+
+checkbox : List (Attribute msg) -> String -> Html msg
+checkbox attrs labelText =
+    label [ class "flex items-center gap-2 text-sm text-slate-700" ]
+        [ input (class checkboxClass :: type_ "checkbox" :: attrs) []
+        , span [] [ text labelText ]
+        ]
 
 
 primaryButton : List (Attribute msg) -> String -> Html msg
@@ -56,7 +70,7 @@ textarea_ attrs =
 
 badge : String -> Html msg
 badge value =
-    span [ class "inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600" ] [ text value ]
+    span [ class "inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700" ] [ text value ]
 
 
 codeBlock : List (Attribute msg) -> String -> Html msg
@@ -96,6 +110,11 @@ dangerButtonClass =
 fieldClass : String
 fieldClass =
     "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+
+
+checkboxClass : String
+checkboxClass =
+    "h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-2 focus:ring-slate-500"
 
 
 textareaClass : String
