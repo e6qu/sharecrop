@@ -258,6 +258,7 @@ Pull request 6 added the Sharecrop schema parser and validator:
 - Schema JSON parsing converted boundary data into Sharecrop-owned schema types.
 - Response payload JSON parsing converted payloads into Sharecrop-owned value types without using generic maps.
 - Schema validation produced typed validation errors with field paths.
+
 - Sensitive-field indexing and redaction were added for typed response values.
 
 Pull request 7 added task series, tasks, visibility, and capability tokens:
@@ -763,3 +764,20 @@ The demo UI/UX repair branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages.
 - Screenshot review was performed for `/tmp/sharecrop-screens/desktop-corporate-light.png` and `/tmp/sharecrop-screens/mobile-showcase-dark.png`.
+
+The `task/demo-performance-flow-review` branch repaired the static demo after performance and flow review:
+
+- The demo runtime was changed from per-render event binding to document-level delegated event handling.
+- Text input now updates in-memory state and debounces localStorage writes instead of re-rendering the page on every keystroke.
+- Locally created demo tasks, reservations, and submissions are bounded so localStorage state cannot grow without limit.
+- localStorage quota failures clear the demo state and return the user to settings.
+- The expensive sticky translucent top bar with backdrop blur was replaced with an opaque non-sticky top bar.
+- The top-level demo pages were kept separate for overview, discovery, requester create, review, API/MCP instructions, and settings.
+- Demo clear-state controls were moved out of the header and into settings.
+- Requester task creation now shows title, description, reward, visibility, participation policy, and reservation expiry fields.
+- Discovery actions now match the selected task policy: reserve, request approval, submit, or no action.
+- Review controls are per reservation and per submission, with approve, decline, release, request changes, reject, accept, partial payout, tip, and ban controls.
+- API/MCP instructions separate worker REST, worker MCP, requester MCP, and credential setup placeholders.
+- The static demo Playwright test covers theme selection, user selection, typed task creation, local state persistence, and clear state through the settings page.
+- The screenshot capture helper targets exact page-tab labels and captures overview, discovery, create, review, API/MCP, settings, desktop theme, and mobile theme states.
+- The Elm build helper rejects the recursive npm Elm wrapper when `ELM_BIN` points to it, preventing local builds from hanging and flooding Node warnings.

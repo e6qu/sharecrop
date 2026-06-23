@@ -95,22 +95,24 @@ for (const item of cases) {
     viewport: { width: item.width, height: item.height },
   });
   await page.goto(demoUrl);
-  await page.getByRole("button", { name: item.mode }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: item.mode, exact: true }).click();
   await page.getByRole("button", { name: new RegExp(item.themeLabel) }).click();
+  await page.getByRole("button", { name: "Overview", exact: true }).click();
   if (item.name.includes("discover")) {
-    await page.getByRole("button", { name: "Discover" }).click();
+    await page.getByRole("button", { name: "Discover", exact: true }).click();
   }
   if (item.name.includes("requester")) {
-    await page.getByRole("button", { name: "Requester" }).click();
+    await page.getByRole("button", { name: "Create", exact: true }).click();
   }
   if (item.name.includes("review")) {
-    await page.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Review", exact: true }).click();
   }
   if (item.name.includes("integrations")) {
-    await page.getByRole("button", { name: "API & MCP" }).click();
+    await page.getByRole("button", { name: "API & MCP", exact: true }).click();
   }
   if (item.name.includes("settings")) {
-    await page.getByRole("button", { name: "Demo settings" }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
   }
   await page.screenshot({
     path: `${outputDirectory}/${item.name}.png`,

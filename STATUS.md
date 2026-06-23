@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 22 work. Pull request 22 was merged into `main`.
+The repository contains pull request 1 through pull request 23 work. Pull request 23 was merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-ui-ux-repair` refactors the GitHub Pages demo into separate pages, moves demo login into a top-right account control, reduces page clutter, fixes dark theme overrides, adds deployed/local demo audit tooling, and updates Playwright coverage.
+- Active branch `task/demo-performance-flow-review` repaired the GitHub Pages demo for browser performance, resource use, page structure, and persona-specific flows after reports that the deployed demo could become slow or stuck.
 
 Implemented surface:
 
@@ -151,7 +151,11 @@ Implemented surface:
 - The static demo supports demo user selection, mock provider sign-in buttons, local task workflow edits, and a visible clear-state control.
 - GitHub Actions has a Pages workflow that publishes `site/` on pushes to `main` and manual dispatch.
 - The static demo uses separate pages for overview, discovery, requester workflow, review queue, API/MCP instructions, and demo settings.
-- Demo login starts from a Guest account control in the top-right corner and opens a discrete login panel with demo users and mock provider choices.
+- Demo login starts from a Viewing as account control in the top-right corner and opens a discrete login panel with demo users and mock provider choices.
+- The static demo uses delegated event handlers, debounced localStorage writes for text input, bounded locally-created task/reservation/submission state, and an opaque non-sticky top bar.
+- The static demo requester flow includes title, description, reward, visibility, participation policy, and reservation expiry fields.
+- The static demo review flow exposes per-reservation approve, decline, and release controls plus per-submission request-changes, reject, accept, partial payout, tip, and ban controls.
+- The Elm build helper rejects the recursive npm Elm wrapper when `ELM_BIN` points to it, so local builds fail fast instead of hanging or flooding warnings.
 
 Planned defaults:
 
@@ -208,6 +212,27 @@ Last observed checks on `task/demo-ui-ux-repair`:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed with local Postgres access.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages with no console warnings, console errors, page errors, failed requests, or horizontal overflow.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for corporate light, blocky dark, rustic light, and showcase dark demo states.
+
+Last observed checks on `task/demo-performance-flow-review`:
+
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./...` passed.
+- `make vet` passed.
+- `make check-contracts` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make check-dead-code` passed.
+- `make lint` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm make build` passed with normal Go module cache access.
+- `make e2e-ui` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages with no console warnings, console errors, page errors, failed requests, or horizontal overflow.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots for overview, discovery, requester create, review, API/MCP, settings, blocky dark, rustic light mobile, and showcase dark mobile states.
+- `docker compose up -d postgres` confirmed local Postgres was running.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=migrations make migrate-up` passed.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make test-integration` passed.
+- `SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make test-http` passed.
 
 Blocking issues:
 

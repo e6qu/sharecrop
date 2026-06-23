@@ -2,7 +2,7 @@
 
 Prioritized queue:
 
-1. Open and merge the demo UI/UX repair pull request from `task/demo-ui-ux-repair`.
+1. Merge the `task/demo-performance-flow-review` pull request after CI passes.
 2. Verify GitHub Pages deploys the repaired demo after merge.
 3. Revisit collectible or inventory-based tips.
 4. Redesign anonymous worker identity and payout.
