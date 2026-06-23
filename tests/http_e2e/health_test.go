@@ -106,6 +106,10 @@ func (healthOrganizationService) ListStandaloneTeams(context.Context, auth.UserS
 	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthOrganizationService) GetTeam(context.Context, auth.UserSubject, core.TeamID) org.GetTeamResult {
+	return org.GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthOrganizationService) CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck {
 	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

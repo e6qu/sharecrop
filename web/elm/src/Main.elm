@@ -17,6 +17,31 @@ import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
+import Sharecrop.Labels
+    exposing
+        ( allScopes
+        , assigneeScopeLabel
+        , assigneeScopeTag
+        , availabilityKindLabel
+        , collectibleKindLabel
+        , collectibleKindTag
+        , collectiblePolicyLabel
+        , collectiblePolicyTag
+        , collectibleStateLabel
+        , credentialStateLabel
+        , escrowStateLabel
+        , httpErrorLabel
+        , kindLabel
+        , participationPolicyLabel
+        , participationPolicyTag
+        , reservationStateLabel
+        , rewardLabel
+        , scopeTag
+        , submissionStateLabel
+        , taskStateGuidance
+        , taskStateLabel
+        , viewerActionLabel
+        )
 import Sharecrop.Ui as Ui exposing (testId)
 import Url exposing (Url)
 
@@ -46,6 +71,7 @@ type Page
     | UserSubmissionsPage String
     | CollectibleDetailPage String
     | SeriesDetailPage String
+    | TeamDetailPage String
 
 
 type alias LoggedInModel =
@@ -61,6 +87,7 @@ type alias LoggedInModel =
     , createScopeUserId : String
     , createScopeTeamId : String
     , createScopeOrganizationId : String
+    , createAssigneeScope : Task.TaskAssigneeScope
     , createParticipationPolicy : String
     , createReservationHours : String
     , createMessage : Maybe String
@@ -107,6 +134,7 @@ type alias LoggedInModel =
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
     , seriesDetail : Maybe TaskSeries.TaskSeriesResponse
+    , teamDetail : Maybe Team.TeamDetailResponse
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
     , provisionMemberEmail : String
@@ -166,6 +194,7 @@ type Msg
     | CreateScopeUserIdChanged String
     | CreateScopeTeamIdChanged String
     | CreateScopeOrganizationIdChanged String
+    | CreateAssigneeScopeChosen Task.TaskAssigneeScope
     | CreateParticipationChanged String
     | CreateReservationHoursChanged String
     | CreateTaskClicked
@@ -231,6 +260,7 @@ type Msg
     | UserWorkReceived (Result Http.Error Task.TasksResponse)
     | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
     | SeriesDetailReceived (Result Http.Error TaskSeries.TaskSeriesResponse)
+    | TeamDetailReceived (Result Http.Error Team.TeamDetailResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
@@ -281,6 +311,7 @@ emptyLoggedIn response =
     , createScopeUserId = ""
     , createScopeTeamId = ""
     , createScopeOrganizationId = ""
+    , createAssigneeScope = Task.TaskAssigneeScopeUser
     , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
     , createReservationHours = "48"
     , createMessage = Nothing
@@ -327,6 +358,7 @@ emptyLoggedIn response =
     , userWork = []
     , userSubmissions = []
     , seriesDetail = Nothing
+    , teamDetail = Nothing
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
     , provisionMemberEmail = ""
@@ -373,6 +405,9 @@ pageFromUrl url =
 
         [ "series", seriesId ] ->
             SeriesDetailPage seriesId
+
+        [ "teams", teamId ] ->
+            TeamDetailPage teamId
 
         [ "organizations" ] ->
             OrganizationsPage
@@ -441,6 +476,9 @@ pageToPath page =
         SeriesDetailPage seriesId ->
             "/series/" ++ seriesId
 
+        TeamDetailPage teamId ->
+            "/teams/" ++ teamId
+
 
 -- enterPage applies any per-page state a route needs when it becomes active, so
 -- a deep link or back/forward leaves the model consistent with the URL.
@@ -461,6 +499,9 @@ enterPage page state =
 
         SeriesDetailPage _ ->
             { state | page = page, seriesDetail = Nothing }
+
+        TeamDetailPage _ ->
+            { state | page = page, teamDetail = Nothing }
 
         _ ->
             { state | page = page }
@@ -533,6 +574,9 @@ update msg model =
 
         CreateScopeOrganizationIdChanged value ->
             ( updateLoggedIn model (\state -> { state | createScopeOrganizationId = value }), Cmd.none )
+
+        CreateAssigneeScopeChosen scope ->
+            ( updateLoggedIn model (\state -> { state | createAssigneeScope = scope }), Cmd.none )
 
         CreateParticipationChanged value ->
             ( updateLoggedIn model (\state -> { state | createParticipationPolicy = value }), Cmd.none )
@@ -832,6 +876,9 @@ update msg model =
 
         SeriesDetailReceived result ->
             ( updateLoggedIn model (\state -> { state | seriesDetail = Result.toMaybe result }), Cmd.none )
+
+        TeamDetailReceived result ->
+            ( updateLoggedIn model (\state -> { state | teamDetail = Result.toMaybe result }), Cmd.none )
 
         OrgTasksReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
@@ -1183,6 +1230,9 @@ routeLoadCmd token page =
 
         SeriesDetailPage seriesId ->
             authorizedRequest "GET" token ("/api/task-series/" ++ seriesId) Http.emptyBody (Http.expectJson SeriesDetailReceived TaskSeries.taskSeriesResponseDecoder)
+
+        TeamDetailPage teamId ->
+            authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
 
 
 fetchUserProfile : String -> String -> Cmd Msg
@@ -1628,7 +1678,7 @@ createParticipationBody : LoggedInModel -> Encode.Value
 createParticipationBody state =
     Encode.object
         [ ( "policy", Encode.string state.createParticipationPolicy )
-        , ( "assignee_scope", Encode.string (assigneeScopeTag Task.TaskAssigneeScopeUser) )
+        , ( "assignee_scope", Encode.string (assigneeScopeTag state.createAssigneeScope) )
         , ( "reservation_expiry_hours", Encode.int (reservationHoursValue state.createReservationHours) )
         ]
 
@@ -1971,6 +2021,32 @@ pageView origin state =
         SeriesDetailPage seriesId ->
             seriesDetailView seriesId state
 
+        TeamDetailPage teamId ->
+            teamDetailView teamId state
+
+
+teamDetailView : String -> LoggedInModel -> Html Msg
+teamDetailView teamId state =
+    Ui.card
+        [ case state.teamDetail of
+            Just detail ->
+                div [ Html.Attributes.class "space-y-2", testId "team-detail" ]
+                    [ p [ Html.Attributes.class "text-2xl font-semibold", testId "team-detail-name" ] [ text detail.team.name ]
+                    , Ui.label_ ("Team " ++ detail.team.id)
+                    , p [ Html.Attributes.class "text-sm" ] [ text ("Owner kind: " ++ detail.team.ownerKind) ]
+                    , Ui.sectionTitle "Members"
+                    , if List.isEmpty detail.members then
+                        p [ Html.Attributes.class "text-sm text-slate-500", testId "team-members-empty" ] [ text "No members yet." ]
+
+                      else
+                        div [ Html.Attributes.class "divide-y divide-slate-100", testId "team-members" ]
+                            (List.map (\memberId -> a [ href ("/users/" ++ memberId), Html.Attributes.class "block py-2 text-sm underline", testId "team-member-row" ] [ text memberId ]) detail.members)
+                    ]
+
+            Nothing ->
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "team-detail-missing" ] [ text ("Loading team " ++ teamId ++ "…") ]
+        ]
+
 
 collectibleDetailView : String -> LoggedInModel -> Html Msg
 collectibleDetailView collectibleId state =
@@ -2183,7 +2259,7 @@ orgTeamsList teams =
 
     else
         div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-teams" ]
-            (List.map (\team -> p [ Html.Attributes.class "py-1 text-sm", testId "org-team-row" ] [ text team.name ]) teams)
+            (List.map (\team -> a [ href ("/teams/" ++ team.id), Html.Attributes.class "block py-1 text-sm underline", testId "org-team-row" ] [ text team.name ]) teams)
 
 
 orgMembersList : List Organization.OrganizationMemberResponse -> Html Msg
@@ -2296,6 +2372,8 @@ createTaskView state =
         , Ui.label_ "Visibility"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (visibilityButton state.createVisibility) allVisibilityTags)
         , visibilityScopeField state
+        , Ui.label_ "Assignee"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (assigneeScopeButton state.createAssigneeScope) allAssigneeScopes)
         , Ui.primaryButton [ type_ "submit", testId "create-task" ] "Create task"
         , maybeNote state.createMessage "create-message"
         ]
@@ -2307,6 +2385,19 @@ visibilityButton selected tag =
         (CreateVisibilityChanged tag)
         ("create-visibility-" ++ tag)
         (visibilityLabel tag)
+
+
+allAssigneeScopes : List Task.TaskAssigneeScope
+allAssigneeScopes =
+    [ Task.TaskAssigneeScopeUser, Task.TaskAssigneeScopeOrganizationTeam ]
+
+
+assigneeScopeButton : Task.TaskAssigneeScope -> Task.TaskAssigneeScope -> Html Msg
+assigneeScopeButton selected scope =
+    chooserButton (selected == scope)
+        (CreateAssigneeScopeChosen scope)
+        ("create-assignee-" ++ assigneeScopeTag scope)
+        (assigneeScopeLabel scope)
 
 
 visibilityScopeField : LoggedInModel -> Html Msg
@@ -3042,344 +3133,3 @@ allParticipationPolicies =
     , Task.TaskParticipationPolicyReservationRequired
     , Task.TaskParticipationPolicyApprovalRequired
     ]
-
-
-collectibleKindTag : Collectible.CollectibleKind -> String
-collectibleKindTag kind =
-    case kind of
-        Collectible.CollectibleKindUnique ->
-            "unique"
-
-        Collectible.CollectibleKindEdition ->
-            "edition"
-
-        Collectible.CollectibleKindBadge ->
-            "badge"
-
-
-collectibleKindLabel : Collectible.CollectibleKind -> String
-collectibleKindLabel =
-    collectibleKindTag
-
-
-collectiblePolicyTag : Collectible.CollectibleTransferPolicy -> String
-collectiblePolicyTag policy =
-    case policy of
-        Collectible.CollectibleTransferPolicyNonTransferableExceptPayout ->
-            "non_transferable_except_payout"
-
-        Collectible.CollectibleTransferPolicyTransferableBetweenUsers ->
-            "transferable_between_users"
-
-        Collectible.CollectibleTransferPolicyTransferableWithinOrganization ->
-            "transferable_within_organization"
-
-        Collectible.CollectibleTransferPolicyIssuerControlled ->
-            "issuer_controlled"
-
-
-collectiblePolicyLabel : Collectible.CollectibleTransferPolicy -> String
-collectiblePolicyLabel =
-    collectiblePolicyTag
-
-
-collectibleStateLabel : Collectible.CollectibleState -> String
-collectibleStateLabel state =
-    case state of
-        Collectible.CollectibleStateMinted ->
-            "minted"
-
-        Collectible.CollectibleStateEscrowed ->
-            "escrowed"
-
-        Collectible.CollectibleStateAwarded ->
-            "awarded"
-
-
-participationPolicyTag : Task.TaskParticipationPolicy -> String
-participationPolicyTag policy =
-    case policy of
-        Task.TaskParticipationPolicyOpen ->
-            "open"
-
-        Task.TaskParticipationPolicyReservationRequired ->
-            "reservation_required"
-
-        Task.TaskParticipationPolicyApprovalRequired ->
-            "approval_required"
-
-
-participationPolicyLabel : Task.TaskParticipationPolicy -> String
-participationPolicyLabel policy =
-    case policy of
-        Task.TaskParticipationPolicyOpen ->
-            "open submissions"
-
-        Task.TaskParticipationPolicyReservationRequired ->
-            "reservation required"
-
-        Task.TaskParticipationPolicyApprovalRequired ->
-            "approval required"
-
-
-assigneeScopeTag : Task.TaskAssigneeScope -> String
-assigneeScopeTag scope =
-    case scope of
-        Task.TaskAssigneeScopeUser ->
-            "user"
-
-        Task.TaskAssigneeScopeOrganizationTeam ->
-            "organization_team"
-
-
-assigneeScopeLabel : Task.TaskAssigneeScope -> String
-assigneeScopeLabel scope =
-    case scope of
-        Task.TaskAssigneeScopeUser ->
-            "user"
-
-        Task.TaskAssigneeScopeOrganizationTeam ->
-            "organization team"
-
-
-availabilityKindLabel : Task.TaskAvailabilityKind -> String
-availabilityKindLabel kind =
-    case kind of
-        Task.TaskAvailabilityKindAvailable ->
-            "available"
-
-        Task.TaskAvailabilityKindReserved ->
-            "reserved"
-
-        Task.TaskAvailabilityKindAwaitingApproval ->
-            "awaiting approval"
-
-        Task.TaskAvailabilityKindClosed ->
-            "closed"
-
-
-viewerActionLabel : Task.TaskViewerAction -> String
-viewerActionLabel action =
-    case action of
-        Task.TaskViewerActionSubmit ->
-            "submit"
-
-        Task.TaskViewerActionReserve ->
-            "reserve"
-
-        Task.TaskViewerActionRequestApproval ->
-            "request approval"
-
-        Task.TaskViewerActionWait ->
-            "wait"
-
-        Task.TaskViewerActionNone ->
-            "none"
-
-
-reservationStateLabel : Task.TaskReservationState -> String
-reservationStateLabel state =
-    case state of
-        Task.TaskReservationStateRequested ->
-            "requested"
-
-        Task.TaskReservationStateActive ->
-            "active"
-
-        Task.TaskReservationStateDeclined ->
-            "declined"
-
-        Task.TaskReservationStateCancelledByRequester ->
-            "cancelled by requester"
-
-        Task.TaskReservationStateCancelledByWorker ->
-            "cancelled by worker"
-
-        Task.TaskReservationStateExpired ->
-            "expired"
-
-        Task.TaskReservationStateSubmitted ->
-            "submitted"
-
-
-allScopes : List Agent.AgentScope
-allScopes =
-    [ Agent.AgentScopeTasksRead
-    , Agent.AgentScopeTasksWrite
-    , Agent.AgentScopeSubmissionsWrite
-    , Agent.AgentScopeSubmissionsRead
-    , Agent.AgentScopeSubmissionsReview
-    ]
-
-
-scopeTag : Agent.AgentScope -> String
-scopeTag scope =
-    case scope of
-        Agent.AgentScopeTasksRead ->
-            "tasks_read"
-
-        Agent.AgentScopeTasksWrite ->
-            "tasks_write"
-
-        Agent.AgentScopeSubmissionsWrite ->
-            "submissions_write"
-
-        Agent.AgentScopeSubmissionsRead ->
-            "submissions_read"
-
-        Agent.AgentScopeSubmissionsReview ->
-            "submissions_review"
-
-
-credentialStateLabel : Agent.AgentCredentialState -> String
-credentialStateLabel state =
-    case state of
-        Agent.AgentCredentialStateActive ->
-            "active"
-
-        Agent.AgentCredentialStateRevoked ->
-            "revoked"
-
-
-taskStateGuidance : Task.TaskState -> String
-taskStateGuidance state =
-    case state of
-        Task.TaskStateDraft ->
-            "Next step: fund this task (if it offers a reward) and then open it so workers can submit."
-
-        Task.TaskStateOpen ->
-            "Workers can submit now. Review submissions below to accept, request changes, or reject."
-
-        Task.TaskStateClosed ->
-            "This task is closed. An accepted submission has been settled."
-
-        Task.TaskStateCancelled ->
-            "This task was cancelled. Any escrowed reward was refunded."
-
-        Task.TaskStateExpired ->
-            "This task expired without an accepted submission."
-
-
-taskStateLabel : Task.TaskState -> String
-taskStateLabel state =
-    case state of
-        Task.TaskStateDraft ->
-            "draft"
-
-        Task.TaskStateOpen ->
-            "open"
-
-        Task.TaskStateClosed ->
-            "closed"
-
-        Task.TaskStateCancelled ->
-            "cancelled"
-
-        Task.TaskStateExpired ->
-            "expired"
-
-
-submissionStateLabel : Submission.SubmissionState -> String
-submissionStateLabel state =
-    case state of
-        Submission.SubmissionStateSubmitted ->
-            "submitted"
-
-        Submission.SubmissionStateInvalid ->
-            "invalid"
-
-        Submission.SubmissionStateAccepted ->
-            "accepted"
-
-        Submission.SubmissionStateRejected ->
-            "rejected"
-
-        Submission.SubmissionStateChangesRequested ->
-            "changes requested"
-
-
-kindLabel : Ledger.LedgerEntryKind -> String
-kindLabel kind =
-    case kind of
-        Ledger.LedgerEntryKindSignupGrant ->
-            "signup_grant"
-
-        Ledger.LedgerEntryKindTaskEscrow ->
-            "task_escrow"
-
-        Ledger.LedgerEntryKindTaskRefund ->
-            "task_refund"
-
-        Ledger.LedgerEntryKindTaskPayout ->
-            "task_payout"
-
-        Ledger.LedgerEntryKindTaskTip ->
-            "task_tip"
-
-        Ledger.LedgerEntryKindManualAdjustment ->
-            "manual_adjustment"
-
-
-escrowStateLabel : Ledger.EscrowState -> String
-escrowStateLabel state =
-    case state of
-        Ledger.EscrowStateHeld ->
-            "held"
-
-        Ledger.EscrowStateReleased ->
-            "released"
-
-        Ledger.EscrowStateRefunded ->
-            "refunded"
-
-
-rewardLabel : String -> Int -> Int -> String
-rewardLabel kind amount collectibleCount =
-    case kind of
-        "credit" ->
-            if collectibleCount > 0 then
-                String.fromInt amount ++ " credits + " ++ collectibleCountLabel collectibleCount
-
-            else
-                String.fromInt amount ++ " credits"
-
-        "collectible" ->
-            collectibleCountLabel collectibleCount
-
-        "bundle" ->
-            String.fromInt amount ++ " credits + " ++ collectibleCountLabel collectibleCount
-
-        _ ->
-            if collectibleCount > 0 then
-                collectibleCountLabel collectibleCount
-
-            else
-                "no reward"
-
-
-collectibleCountLabel : Int -> String
-collectibleCountLabel count =
-    if count == 1 then
-        "1 collectible"
-
-    else
-        String.fromInt count ++ " collectibles"
-
-
-httpErrorLabel : Http.Error -> String
-httpErrorLabel error =
-    case error of
-        Http.BadUrl url ->
-            "Bad URL: " ++ url
-
-        Http.Timeout ->
-            "The request timed out."
-
-        Http.NetworkError ->
-            "A network error occurred."
-
-        Http.BadStatus status ->
-            "The request failed with status " ++ String.fromInt status ++ "."
-
-        Http.BadBody message ->
-            "The response was unexpected: " ++ message

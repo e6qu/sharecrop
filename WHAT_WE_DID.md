@@ -1,6 +1,13 @@
 # What We Did
 
-`task/org-followups` added linkable, RBAC-aware pages for every entity a user can reach and finished the organization follow-ups:
+`task/team-pages-and-module-split` finished the entity-page work and paid down the HTTP and browser monoliths:
+
+- Added `GET /api/teams/{id}`, returning a team and its member roster, with a new `org.Service.GetTeam` that allows a viewer only when they own the team, belong to it, or (for an organization team) are a member of the owning organization, backed by store `FindTeam` and `ListTeamMembers`. A routed `/teams/{id}` page renders the team name, owner kind, and roster (each member linking to their profile); organization team rows link to it. An e2e test proves the roster is denied to unrelated users.
+- Added an assignee-scope selector (user or organization team) to the create-task form, wiring the existing `assignee_scope` field instead of always assigning to a user. A browser test confirms a worker sees the organization-team assignee scope.
+- Split the HTTP handler monolith: organization and team handlers moved to `internal/http/organizations.go`, funding and refund handlers to `internal/http/funding.go`, and the team-detail handler is in `internal/http/teams.go` (joining the earlier `users.go`, `series.go`, and `org_credits.go`). No behavior change; shared request and response types and writers stay in `server.go`.
+- Split the Elm monolith: the pure enum, label, and format helpers moved from `Main.elm` into a new `Sharecrop.Labels` module, shrinking `Main.elm` by roughly 300 lines with no behavior change.
+
+Earlier, `task/org-followups` added linkable, RBAC-aware pages for every entity a user can reach and finished the organization follow-ups:
 
 - Rewrote the static demo seed tasks to be self-contained (concrete input, deliverable, and acceptance criteria) and de-jargoned the personas and areas, then added hash-routed demo pages including per-user profiles and an always-visible reset control.
 - Gave the browser app a URL per entity: routed `/organizations/{id}`; a role-aware `/tasks/{id}` that shows owner controls (open, refund, review) to the task creator and worker controls (reserve, submit) to others, replacing the inline owner detail; `/users/{id}` profiles; `/users/{id}/work`; `/users/{id}/submissions`; `/collectibles/{id}`; and `/series/{id}`.

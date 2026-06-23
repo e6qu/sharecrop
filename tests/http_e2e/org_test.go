@@ -137,6 +137,41 @@ func TestStandaloneTeamCreateAndList(t *testing.T) {
 	}
 }
 
+func TestTeamDetailRBAC(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "team-detail-owner")
+	createResponse := postJSONWithBearer(t, server.URL+"/api/teams", []byte(`{"name":"Field crew"}`), owner.AccessToken)
+	defer createResponse.Body.Close()
+	assertStatus(t, createResponse, http.StatusCreated)
+	var team teamHTTPResponse
+	if err := json.NewDecoder(createResponse.Body).Decode(&team); err != nil {
+		t.Fatalf("decode team: %v", err)
+	}
+
+	// The owner of a standalone team can read its detail.
+	detailResponse := getWithBearer(t, server.URL+"/api/teams/"+team.ID, owner.AccessToken)
+	defer detailResponse.Body.Close()
+	assertStatus(t, detailResponse, http.StatusOK)
+	var detail struct {
+		Team    teamHTTPResponse `json:"team"`
+		Members []string         `json:"members"`
+	}
+	if err := json.NewDecoder(detailResponse.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode team detail: %v", err)
+	}
+	if detail.Team.Name != "Field crew" || detail.Team.OwnerKind != "user" {
+		t.Fatalf("team detail = %+v, want Field crew owned by user", detail.Team)
+	}
+
+	// An unrelated user cannot read the team roster.
+	outsider := registerUser(t, server, "team-detail-outsider")
+	outsiderResponse := getWithBearer(t, server.URL+"/api/teams/"+team.ID, outsider.AccessToken)
+	defer outsiderResponse.Body.Close()
+	assertStatus(t, outsiderResponse, http.StatusForbidden)
+}
+
 type teamHTTPResponse struct {
 	ID             string `json:"id"`
 	OwnerKind      string `json:"owner_kind"`

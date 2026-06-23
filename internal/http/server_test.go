@@ -450,6 +450,10 @@ func (testOrganizationService) ListStandaloneTeams(context.Context, auth.UserSub
 	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 
+func (testOrganizationService) GetTeam(context.Context, auth.UserSubject, core.TeamID) org.GetTeamResult {
+	return org.GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "team not found")}
+}
+
 func (testOrganizationService) CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck {
 	return org.PermissionGranted{}
 }

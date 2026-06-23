@@ -339,6 +339,59 @@ func (store OrgStore) ListStandaloneTeams(ctx context.Context, ownerUserID core.
 	return scanTeamRows(rows, "read standalone teams failed")
 }
 
+func (store OrgStore) FindTeam(ctx context.Context, teamID core.TeamID) org.FindTeamResult {
+	var rawID string
+	var rawOwnerKind string
+	var rawOrganizationID string
+	var rawOwnerUserID string
+	var rawName string
+	var rawCreatedBy string
+	err := store.pool.QueryRow(ctx, `
+		select id::text, owner_kind, coalesce(organization_id::text, ''), coalesce(owner_user_id::text, ''), name, created_by_user_id::text
+		from teams
+		where id = $1
+	`, teamID.String()).Scan(&rawID, &rawOwnerKind, &rawOrganizationID, &rawOwnerUserID, &rawName, &rawCreatedBy)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return org.TeamMissing{Reason: core.NewDomainError(core.ErrorCodeNotFound, "team not found")}
+		}
+		return org.TeamMissing{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find team failed")}
+	}
+
+	parsed := parseTeamRow(rawID, rawOwnerKind, rawOrganizationID, rawOwnerUserID, rawName, rawCreatedBy)
+	accepted, matched := parsed.(teamRowAccepted)
+	if !matched {
+		return org.TeamMissing{Reason: parsed.(teamRowRejected).reason}
+	}
+	return org.TeamFound{Value: accepted.value}
+}
+
+func (store OrgStore) ListTeamMembers(ctx context.Context, teamID core.TeamID) org.TeamMembersResult {
+	rows, err := store.pool.Query(ctx, "select user_id::text from team_members where team_id = $1 order by user_id", teamID.String())
+	if err != nil {
+		return org.TeamMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list team members failed")}
+	}
+	defer rows.Close()
+
+	values := make([]core.UserID, 0)
+	for rows.Next() {
+		var rawUserID string
+		if err := rows.Scan(&rawUserID); err != nil {
+			return org.TeamMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan team member failed")}
+		}
+		userIDResult := core.ParseUserID(rawUserID)
+		userIDCreated, matched := userIDResult.(core.UserIDCreated)
+		if !matched {
+			return org.TeamMembersRejected{Reason: userIDResult.(core.UserIDRejected).Reason}
+		}
+		values = append(values, userIDCreated.Value)
+	}
+	if err := rows.Err(); err != nil {
+		return org.TeamMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read team members failed")}
+	}
+	return org.TeamMembersListed{Values: values}
+}
+
 func scanTeamRows(rows pgx.Rows, readErrorMessage string) org.TeamListResult {
 	defer rows.Close()
 
