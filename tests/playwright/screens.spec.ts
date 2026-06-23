@@ -152,6 +152,23 @@ test("requesters configure reservations and workers include reserved tasks", asy
   ).toHaveCount(1);
 });
 
+test("users create and see their organizations", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "org-ui-owner");
+  const name = `Org UI ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("organizations-empty")).toBeVisible();
+
+  await page.getByTestId("create-org-name").fill(name);
+  await page.getByTestId("create-org").click();
+  await expect(page.getByTestId("org-message")).toContainText(
+    "Created organization",
+  );
+  await expect(
+    page.getByTestId("organization-row").filter({ hasText: name }),
+  ).toHaveCount(1);
+});
+
 test("requesters filter their task list by state", async ({ page, request }) => {
   const owner = await registerViaApi(request, "filter-ui-owner");
   const title = `Filter UI ${crypto.randomUUID()}`;

@@ -12,6 +12,7 @@ import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Ui as Ui exposing (testId)
@@ -78,6 +79,9 @@ type alias LoggedInModel =
     , collectibleMessage : Maybe String
     , awardTaskId : String
     , awardMessage : Maybe String
+    , organizations : List Organization.OrganizationResponse
+    , createOrgName : String
+    , orgMessage : Maybe String
     }
 
 
@@ -188,6 +192,10 @@ type Msg
     | AwardTaskIdChanged String
     | AwardClicked String
     | AwardReceived (Result Http.Error Collectible.CollectibleResponse)
+    | OrganizationsReceived (Result Http.Error Organization.OrganizationsResponse)
+    | CreateOrgNameChanged String
+    | CreateOrgClicked
+    | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
 
@@ -262,6 +270,9 @@ emptyLoggedIn response =
     , collectibleMessage = Nothing
     , awardTaskId = ""
     , awardMessage = Nothing
+    , organizations = []
+    , createOrgName = ""
+    , orgMessage = Nothing
     }
 
 
@@ -627,6 +638,21 @@ update msg model =
         AwardReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
 
+        OrganizationsReceived result ->
+            ( updateLoggedIn model (\state -> { state | organizations = organizationsFromResult result }), Cmd.none )
+
+        CreateOrgNameChanged value ->
+            ( updateLoggedIn model (\state -> { state | createOrgName = value }), Cmd.none )
+
+        CreateOrgClicked ->
+            withSession model (\state -> createOrgCommand model state)
+
+        CreateOrgReceived (Ok organization) ->
+            ( updateLoggedIn model (\state -> { state | createOrgName = "", orgMessage = Just ("Created organization " ++ organization.name) }), refreshOrganizations model )
+
+        CreateOrgReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | orgMessage = Just (httpErrorLabel error) }), Cmd.none )
+
         LinkClicked request ->
             case request of
                 Browser.Internal url ->
@@ -849,7 +875,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "", fetchCredentials token, fetchCollectibles token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "", fetchCredentials token, fetchCollectibles token, fetchOrganizations token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -1158,6 +1184,46 @@ postReject token taskId submissionId reviewNote partialCredit tipAmount banImple
 fetchCollectibles : String -> Cmd Msg
 fetchCollectibles token =
     authorizedRequest "GET" token "/api/collectibles" Http.emptyBody (Http.expectJson CollectiblesReceived Collectible.collectiblesResponseDecoder)
+
+
+fetchOrganizations : String -> Cmd Msg
+fetchOrganizations token =
+    authorizedRequest "GET" token "/api/organizations" Http.emptyBody (Http.expectJson OrganizationsReceived Organization.organizationsResponseDecoder)
+
+
+refreshOrganizations : Model -> Cmd Msg
+refreshOrganizations model =
+    case model.session of
+        LoggedIn state ->
+            fetchOrganizations state.accessToken
+
+        LoggedOut ->
+            Cmd.none
+
+
+createOrgCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+createOrgCommand model state =
+    if String.isEmpty (String.trim state.createOrgName) then
+        ( updateLoggedIn model (\current -> { current | orgMessage = Just "Organization name is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | orgMessage = Nothing })
+        , authorizedRequest "POST"
+            state.accessToken
+            "/api/organizations"
+            (Http.jsonBody (Encode.object [ ( "name", Encode.string (String.trim state.createOrgName) ) ]))
+            (Http.expectJson CreateOrgReceived Organization.organizationResponseDecoder)
+        )
+
+
+organizationsFromResult : Result Http.Error Organization.OrganizationsResponse -> List Organization.OrganizationResponse
+organizationsFromResult result =
+    case result of
+        Ok response ->
+            response.organizations
+
+        Err _ ->
+            []
 
 
 postCollectible : String -> String -> Collectible.CollectibleKind -> Collectible.CollectibleTransferPolicy -> Cmd Msg
@@ -1480,6 +1546,39 @@ dashboardView origin state =
         , tasksView origin state
         , agentsView origin state
         , collectiblesView state
+        , organizationsView state
+        ]
+
+
+organizationsView : LoggedInModel -> Html Msg
+organizationsView state =
+    Ui.card
+        [ Ui.sectionTitle "Organizations"
+        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Organizations you belong to. Create one to own tasks and credits as a team." ]
+        , organizationsList state.organizations
+        , form [ Html.Attributes.class "mt-3 flex flex-wrap items-end gap-2", onSubmit CreateOrgClicked ]
+            [ Ui.fieldLabel "New organization"
+                [ Ui.textInput [ type_ "text", placeholder "Organization name", value state.createOrgName, onInput CreateOrgNameChanged, testId "create-org-name" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "create-org" ] "Create organization"
+            ]
+        , maybeNote state.orgMessage "org-message"
+        ]
+
+
+organizationsList : List Organization.OrganizationResponse -> Html Msg
+organizationsList organizations =
+    if List.isEmpty organizations then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "organizations-empty" ] [ text "You do not belong to any organizations yet." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "organizations" ] (List.map organizationRow organizations)
+
+
+organizationRow : Organization.OrganizationResponse -> Html Msg
+organizationRow organization =
+    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "organization-row" ]
+        [ p [ Html.Attributes.class "font-medium" ] [ text organization.name ]
+        , Ui.badge organization.id
         ]
 
 

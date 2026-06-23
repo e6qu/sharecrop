@@ -6656,6 +6656,58 @@ var $author$project$Main$createAgentCommand = F2(
 				}),
 			A3($author$project$Main$postAgent, state.accessToken, state.agentLabel, state.agentScopes));
 	});
+var $author$project$Main$CreateOrgReceived = function (a) {
+	return {$: 'CreateOrgReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Organization$OrganizationResponse = F3(
+	function (id, name, createdBy) {
+		return {createdBy: createdBy, id: id, name: name};
+	});
+var $author$project$Sharecrop$Generated$Organization$organizationResponseDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Generated$Organization$OrganizationResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+var $author$project$Main$createOrgCommand = F2(
+	function (model, state) {
+		return $elm$core$String$isEmpty(
+			$elm$core$String$trim(state.createOrgName)) ? _Utils_Tuple2(
+			A2(
+				$author$project$Main$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							orgMessage: $elm$core$Maybe$Just('Organization name is required.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Main$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{orgMessage: $elm$core$Maybe$Nothing});
+				}),
+			A5(
+				$author$project$Main$authorizedRequest,
+				'POST',
+				state.accessToken,
+				'/api/organizations',
+				$elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'name',
+								$elm$json$Json$Encode$string(
+									$elm$core$String$trim(state.createOrgName)))
+							]))),
+				A2($elm$http$Http$expectJson, $author$project$Main$CreateOrgReceived, $author$project$Sharecrop$Generated$Organization$organizationResponseDecoder)));
+	});
 var $author$project$Main$CreateTaskReceived = function (a) {
 	return {$: 'CreateTaskReceived', a: a};
 };
@@ -7654,6 +7706,28 @@ var $author$project$Main$fetchLedger = function (token) {
 		$elm$http$Http$emptyBody,
 		A2($elm$http$Http$expectJson, $author$project$Main$LedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
 };
+var $author$project$Main$OrganizationsReceived = function (a) {
+	return {$: 'OrganizationsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Organization$OrganizationsResponse = function (organizations) {
+	return {organizations: organizations};
+};
+var $author$project$Sharecrop$Generated$Organization$organizationsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Organization$OrganizationsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'organizations',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Organization$organizationResponseDecoder)));
+var $author$project$Main$fetchOrganizations = function (token) {
+	return A5(
+		$author$project$Main$authorizedRequest,
+		'GET',
+		token,
+		'/api/organizations',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Main$OrganizationsReceived, $author$project$Sharecrop$Generated$Organization$organizationsResponseDecoder));
+};
 var $author$project$Main$loadAfterAuth = function (token) {
 	return $elm$core$Platform$Cmd$batch(
 		_List_fromArray(
@@ -7662,7 +7736,8 @@ var $author$project$Main$loadAfterAuth = function (token) {
 				$author$project$Main$fetchLedger(token),
 				A2($author$project$Main$fetchTasks, token, ''),
 				$author$project$Main$fetchCredentials(token),
-				$author$project$Main$fetchCollectibles(token)
+				$author$project$Main$fetchCollectibles(token),
+				$author$project$Main$fetchOrganizations(token)
 			]));
 };
 var $author$project$Main$participationPolicyTag = function (policy) {
@@ -7693,6 +7768,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		collectibles: _List_Nil,
 		createDescription: '',
 		createMessage: $elm$core$Maybe$Nothing,
+		createOrgName: '',
 		createParticipationPolicy: $author$project$Main$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
 		createReservationHours: '48',
 		createRewardAmount: '',
@@ -7708,6 +7784,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundMessage: $elm$core$Maybe$Nothing,
 		fundTaskId: '',
 		newCredential: $elm$core$Maybe$Nothing,
+		orgMessage: $elm$core$Maybe$Nothing,
+		organizations: _List_Nil,
 		page: $author$project$Main$DashboardPage,
 		reservationMessage: $elm$core$Maybe$Nothing,
 		reservations: _List_Nil,
@@ -7811,6 +7889,14 @@ var $author$project$Main$mintCommand = F2(
 	});
 var $author$project$Main$mintSuccessLabel = function (collectible) {
 	return 'Minted ' + (collectible.name + (' (' + ($author$project$Main$collectibleStateLabel(collectible.state) + ').')));
+};
+var $author$project$Main$organizationsFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return response.organizations;
+	} else {
+		return _List_Nil;
+	}
 };
 var $author$project$Main$AuthReceived = function (a) {
 	return {$: 'AuthReceived', a: a};
@@ -7978,6 +8064,15 @@ var $author$project$Main$refreshLedger = function (model) {
 					$author$project$Main$fetchBalance(state.accessToken),
 					$author$project$Main$fetchLedger(state.accessToken)
 				]));
+	} else {
+		return $elm$core$Platform$Cmd$none;
+	}
+};
+var $author$project$Main$refreshOrganizations = function (model) {
+	var _v0 = model.session;
+	if (_v0.$ === 'LoggedIn') {
+		var state = _v0.a;
+		return $author$project$Main$fetchOrganizations(state.accessToken);
 	} else {
 		return $elm$core$Platform$Cmd$none;
 	}
@@ -9485,6 +9580,71 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'OrganizationsReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									organizations: $author$project$Main$organizationsFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateOrgNameChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createOrgName: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateOrgClicked':
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return A2($author$project$Main$createOrgCommand, model, state);
+					});
+			case 'CreateOrgReceived':
+				if (msg.a.$ === 'Ok') {
+					var organization = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										createOrgName: '',
+										orgMessage: $elm$core$Maybe$Just('Created organization ' + organization.name)
+									});
+							}),
+						$author$project$Main$refreshOrganizations(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										orgMessage: $elm$core$Maybe$Just(
+											$author$project$Main$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'LinkClicked':
 				var request = msg.a;
 				if (request.$ === 'Internal') {
@@ -10864,6 +11024,105 @@ var $author$project$Main$ledgerView = function (entries) {
 					]))
 			]));
 };
+var $author$project$Main$CreateOrgClicked = {$: 'CreateOrgClicked'};
+var $author$project$Main$CreateOrgNameChanged = function (a) {
+	return {$: 'CreateOrgNameChanged', a: a};
+};
+var $author$project$Main$organizationRow = function (organization) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
+				$author$project$Sharecrop$Ui$testId('organization-row')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('font-medium')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(organization.name)
+					])),
+				$author$project$Sharecrop$Ui$badge(organization.id)
+			]));
+};
+var $author$project$Main$organizationsList = function (organizations) {
+	return $elm$core$List$isEmpty(organizations) ? A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+				$author$project$Sharecrop$Ui$testId('organizations-empty')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text('You do not belong to any organizations yet.')
+			])) : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+				$author$project$Sharecrop$Ui$testId('organizations')
+			]),
+		A2($elm$core$List$map, $author$project$Main$organizationRow, organizations));
+};
+var $author$project$Main$organizationsView = function (state) {
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Organizations'),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-600')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Organizations you belong to. Create one to own tasks and credits as a team.')
+					])),
+				$author$project$Main$organizationsList(state.organizations),
+				A2(
+				$elm$html$Html$form,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('mt-3 flex flex-wrap items-end gap-2'),
+						$elm$html$Html$Events$onSubmit($author$project$Main$CreateOrgClicked)
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'New organization',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('text'),
+										$elm$html$Html$Attributes$placeholder('Organization name'),
+										$elm$html$Html$Attributes$value(state.createOrgName),
+										$elm$html$Html$Events$onInput($author$project$Main$CreateOrgNameChanged),
+										$author$project$Sharecrop$Ui$testId('create-org-name')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('submit'),
+								$author$project$Sharecrop$Ui$testId('create-org')
+							]),
+						'Create organization')
+					])),
+				A2($author$project$Main$maybeNote, state.orgMessage, 'org-message')
+			]));
+};
 var $author$project$Main$OpenTaskClicked = function (a) {
 	return {$: 'OpenTaskClicked', a: a};
 };
@@ -11392,7 +11651,8 @@ var $author$project$Main$dashboardView = F2(
 					$author$project$Main$fundingView(state),
 					A2($author$project$Main$tasksView, origin, state),
 					A2($author$project$Main$agentsView, origin, state),
-					$author$project$Main$collectiblesView(state)
+					$author$project$Main$collectiblesView(state),
+					$author$project$Main$organizationsView(state)
 				]));
 	});
 var $author$project$Main$DiscoveryIncludeReservedChanged = function (a) {
