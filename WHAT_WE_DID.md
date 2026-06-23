@@ -1,5 +1,12 @@
 # What We Did
 
+`task/multi-page-routing` gave the browser app real per-section URLs and decomposed the single dashboard panel:
+
+- The HTTP server now serves the single-page-application shell for every non-API route (`index` no longer 404s non-root paths), so deep links and refreshes load the app. Unmatched API paths still return 404.
+- The Elm app routes each section to its own URL and page: `/` overview, `/tasks`, `/tasks/new`, `/tasks/{id}`, `/discovery`, `/funding`, `/agents`, `/collectibles`, `/organizations`. The navigation bar uses real `<a href>` links, and the one stacked dashboard was split into focused pages, with per-page data loading.
+- The static demo gained an always-visible reset control in the top bar, in addition to the settings-page control.
+- Added Playwright coverage that link navigation updates the URL and that deep-linking a page loads it, plus HTTP end-to-end coverage that deep routes serve the shell while unknown API paths 404.
+
 Following the review branch, `task/teams-org-context-collectible-ui` picked up three deferred follow-ups:
 
 - Added standalone (user-owned) teams. Team ownership is a tagged union over organization-owned and user-owned teams, with migration 000017, store create and list methods, `POST` and `GET /api/teams`, the owner exposed on the team contract, and e2e coverage. This is the clean redo of the standalone-teams attempt that was reverted on the review branch.

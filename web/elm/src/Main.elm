@@ -2,8 +2,8 @@ module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Nav
-import Html exposing (Html, div, form, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
-import Html.Attributes exposing (checked, disabled, placeholder, selected, type_, value)
+import Html exposing (Html, a, div, form, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
+import Html.Attributes exposing (checked, disabled, href, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Http
 import Json.Decode as Decode
@@ -30,9 +30,15 @@ type Session
 
 
 type Page
-    = DashboardPage
-    | DiscoveryPage
+    = OverviewPage
+    | TasksPage
+    | CreateTaskPage
     | TaskDetailPage String
+    | DiscoveryPage
+    | FundingPage
+    | AgentsPage
+    | CollectiblesPage
+    | OrganizationsPage
 
 
 type alias LoggedInModel =
@@ -167,8 +173,6 @@ type Msg
     | AgentRevoked (Result Http.Error Agent.AgentCredentialResponse)
     | LogoutClicked
     | LogoutReceived (Result Http.Error ())
-    | NavDashboard
-    | NavDiscovery
     | DiscoveryIncludeReservedChanged Bool
     | DiscoveryReceived (Result Http.Error Task.TasksResponse)
     | DiscoveryViewClicked String
@@ -249,7 +253,7 @@ emptyLoggedIn : Auth.AuthResponse -> LoggedInModel
 emptyLoggedIn response =
     { accessToken = response.accessToken
     , subjectId = response.subjectID
-    , page = DashboardPage
+    , page = OverviewPage
     , balance = Nothing
     , entries = []
     , createTitle = ""
@@ -318,14 +322,63 @@ loggedInForPage response page =
 pageFromUrl : Url -> Page
 pageFromUrl url =
     case String.split "/" (String.dropLeft 1 url.path) of
-        [ "discovery" ] ->
-            DiscoveryPage
+        [ "tasks" ] ->
+            TasksPage
+
+        [ "tasks", "new" ] ->
+            CreateTaskPage
 
         [ "tasks", taskId ] ->
             TaskDetailPage taskId
 
+        [ "discovery" ] ->
+            DiscoveryPage
+
+        [ "funding" ] ->
+            FundingPage
+
+        [ "agents" ] ->
+            AgentsPage
+
+        [ "collectibles" ] ->
+            CollectiblesPage
+
+        [ "organizations" ] ->
+            OrganizationsPage
+
         _ ->
-            DashboardPage
+            OverviewPage
+
+
+pageToPath : Page -> String
+pageToPath page =
+    case page of
+        OverviewPage ->
+            "/"
+
+        TasksPage ->
+            "/tasks"
+
+        CreateTaskPage ->
+            "/tasks/new"
+
+        TaskDetailPage taskId ->
+            "/tasks/" ++ taskId
+
+        DiscoveryPage ->
+            "/discovery"
+
+        FundingPage ->
+            "/funding"
+
+        AgentsPage ->
+            "/agents"
+
+        CollectiblesPage ->
+            "/collectibles"
+
+        OrganizationsPage ->
+            "/organizations"
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -493,17 +546,11 @@ update msg model =
 
         LogoutClicked ->
             ( { model | session = LoggedOut, email = "", password = "" }
-            , Cmd.batch [ postLogout, Nav.pushUrl model.key "/dashboard" ]
+            , Cmd.batch [ postLogout, Nav.pushUrl model.key "/" ]
             )
 
         LogoutReceived _ ->
             ( model, Cmd.none )
-
-        NavDashboard ->
-            ( model, Nav.pushUrl model.key "/dashboard" )
-
-        NavDiscovery ->
-            ( model, Nav.pushUrl model.key "/discovery" )
 
         DiscoveryIncludeReservedChanged value ->
             withSession model
@@ -519,26 +566,22 @@ update msg model =
             ( updateLoggedIn model (\state -> { state | discoveryTasks = tasksFromResult result }), Cmd.none )
 
         DiscoveryViewClicked taskId ->
-            withSession model
-                (\state ->
-                    ( updateLoggedIn model
-                        (\s ->
-                            { s
-                                | page = TaskDetailPage taskId
-                                , detail = Nothing
-                                , reservations = []
-                                , reservationMessage = Nothing
-                                , submissions = []
-                                , submitInput = ""
-                                , submitMessage = Nothing
-                            }
-                        )
-                    , fetchDetailCommands state.accessToken taskId
-                    )
+            ( updateLoggedIn model
+                (\s ->
+                    { s
+                        | detail = Nothing
+                        , reservations = []
+                        , reservationMessage = Nothing
+                        , submissions = []
+                        , submitInput = ""
+                        , submitMessage = Nothing
+                    }
                 )
+            , Nav.pushUrl model.key ("/tasks/" ++ taskId)
+            )
 
         DetailBackClicked ->
-            ( updateLoggedIn model (\state -> { state | page = DiscoveryPage }), Cmd.none )
+            ( model, Nav.pushUrl model.key "/discovery" )
 
         DetailReceived (Ok detail) ->
             ( updateLoggedIn model (\state -> { state | detail = Just detail }), Cmd.none )
@@ -1002,14 +1045,32 @@ refreshTasksAndDiscovery model =
 routeLoadCmd : String -> Page -> Cmd Msg
 routeLoadCmd token page =
     case page of
-        DashboardPage ->
-            Cmd.none
+        OverviewPage ->
+            Cmd.batch [ fetchBalance token, fetchLedger token ]
+
+        TasksPage ->
+            fetchTasks token ""
+
+        CreateTaskPage ->
+            fetchOrganizations token
+
+        TaskDetailPage taskId ->
+            fetchDetailCommands token taskId
 
         DiscoveryPage ->
             fetchDiscovery token False
 
-        TaskDetailPage taskId ->
-            fetchDetailCommands token taskId
+        FundingPage ->
+            fetchTasks token ""
+
+        AgentsPage ->
+            fetchCredentials token
+
+        CollectiblesPage ->
+            Cmd.batch [ fetchCollectibles token, fetchTasks token "" ]
+
+        OrganizationsPage ->
+            fetchOrganizations token
 
 
 refreshCredentials : Model -> Cmd Msg
@@ -1663,47 +1724,76 @@ authView model =
 loggedInView : String -> LoggedInModel -> Html Msg
 loggedInView origin state =
     div [ Html.Attributes.class "space-y-6" ]
-        [ navBar
+        [ navBar state.page
         , pageView origin state
         ]
 
 
-navBar : Html Msg
-navBar =
-    div [ Html.Attributes.class "flex gap-3" ]
-        [ Ui.secondaryButton [ type_ "button", onClick NavDashboard, testId "nav-dashboard" ] "Dashboard"
-        , Ui.secondaryButton [ type_ "button", onClick NavDiscovery, testId "nav-discovery" ] "Discovery"
+navBar : Page -> Html Msg
+navBar current =
+    div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+        [ navLink current OverviewPage "overview" "Overview"
+        , navLink current TasksPage "tasks" "Tasks"
+        , navLink current CreateTaskPage "create-task" "New task"
+        , navLink current DiscoveryPage "discovery" "Discovery"
+        , navLink current FundingPage "funding" "Funding"
+        , navLink current AgentsPage "agents" "Agents"
+        , navLink current CollectiblesPage "collectibles" "Collectibles"
+        , navLink current OrganizationsPage "organizations" "Organizations"
+        , Ui.secondaryButton [ type_ "button", onClick LogoutClicked, testId "logout" ] "Log out"
         ]
+
+
+navLink : Page -> Page -> String -> String -> Html Msg
+navLink current target identifier labelText =
+    let
+        styleClass =
+            if pageToPath current == pageToPath target then
+                Ui.primaryButtonClass
+
+            else
+                Ui.secondaryButtonClass
+    in
+    a [ href (pageToPath target), Html.Attributes.class styleClass, testId ("nav-" ++ identifier) ] [ text labelText ]
 
 
 pageView : String -> LoggedInModel -> Html Msg
 pageView origin state =
     case state.page of
-        DashboardPage ->
-            dashboardView origin state
+        OverviewPage ->
+            overviewView state
 
-        DiscoveryPage ->
-            discoveryView state
+        TasksPage ->
+            tasksView origin state
+
+        CreateTaskPage ->
+            createTaskView state
 
         TaskDetailPage _ ->
             taskDetailPageView origin state
 
+        DiscoveryPage ->
+            discoveryView state
 
-dashboardView : String -> LoggedInModel -> Html Msg
-dashboardView origin state =
-    div [ Html.Attributes.class "space-y-6" ]
-        [ div [ Html.Attributes.class "flex items-center justify-between" ]
-            [ Ui.sectionTitle "Credit account"
-            , Ui.secondaryButton [ onClick LogoutClicked, testId "logout" ] "Log out"
-            ]
+        FundingPage ->
+            fundingView state
+
+        AgentsPage ->
+            agentsView origin state
+
+        CollectiblesPage ->
+            collectiblesView state
+
+        OrganizationsPage ->
+            organizationsView state
+
+
+overviewView : LoggedInModel -> Html Msg
+overviewView state =
+    div [ Html.Attributes.class "space-y-6", testId "overview" ]
+        [ Ui.sectionTitle "Credit account"
         , balanceView state.balance
         , ledgerView state.entries
-        , createTaskView state
-        , fundingView state
-        , tasksView origin state
-        , agentsView origin state
-        , collectiblesView state
-        , organizationsView state
         ]
 
 
@@ -2011,6 +2101,7 @@ taskDetailView origin state =
                     [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
                     , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
                     ]
+                , maybeNote state.createMessage "create-message"
                 , Ui.label_ "Response schema"
                 , Ui.codeBlock [ testId "task-schema" ] detail.responseSchemaJson
                 , submissionsList state

@@ -13,6 +13,7 @@ test("creating an agent credential shows the token and MCP config", async ({ pag
   await page.getByTestId("register").click();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
+  await page.getByTestId("nav-agents").click();
   await page.getByTestId("agent-label").fill("Local workstation agent");
   await page.getByTestId("create-agent").click();
 
@@ -49,6 +50,7 @@ test("tasks panel lists user tasks and shows agent curl examples", async ({ page
   await page.getByTestId("login").click();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
+  await page.getByTestId("nav-tasks").click();
   await expect(page.getByTestId("task-row")).toContainText(
     "Agent task from the browser",
   );
