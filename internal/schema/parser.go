@@ -22,8 +22,14 @@ func (SchemaParsed) parseResult() {}
 
 func (SchemaParseRejected) parseResult() {}
 
+// maxNestingDepth bounds how deeply nested a schema or response value may be.
+// Parsing untrusted JSON recursively, so without a bound a deeply nested
+// payload could exhaust the goroutine stack. Legitimate schemas and responses
+// are far shallower than this limit.
+const maxNestingDepth = 64
+
 func ParseSchemaJSON(raw []byte) ParseResult {
-	return parseSchemaRaw(raw)
+	return parseSchemaRaw(raw, 0)
 }
 
 type schemaDTO struct {
@@ -49,7 +55,11 @@ type sensitivityDTO struct {
 	Redaction string `json:"redaction"`
 }
 
-func parseSchemaRaw(raw json.RawMessage) ParseResult {
+func parseSchemaRaw(raw json.RawMessage, depth int) ParseResult {
+	if depth > maxNestingDepth {
+		return SchemaParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "schema nesting is too deep")}
+	}
+
 	var dto schemaDTO
 	if err := json.Unmarshal(raw, &dto); err != nil {
 		return SchemaParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "schema JSON is invalid")}
@@ -57,9 +67,9 @@ func parseSchemaRaw(raw json.RawMessage) ParseResult {
 
 	switch dto.Kind {
 	case "object":
-		return parseObjectSchema(dto)
+		return parseObjectSchema(dto, depth)
 	case "array":
-		return parseArraySchema(dto)
+		return parseArraySchema(dto, depth)
 	case "string":
 		return parseStringSchema(dto)
 	case "integer":
@@ -71,7 +81,7 @@ func parseSchemaRaw(raw json.RawMessage) ParseResult {
 	case "literal":
 		return SchemaParsed{Value: LiteralSchema{Value: dto.Value}}
 	case "union":
-		return parseUnionSchema(dto)
+		return parseUnionSchema(dto, depth)
 	case "freeform":
 		return SchemaParsed{Value: FreeformSchema{}}
 	default:
@@ -79,7 +89,7 @@ func parseSchemaRaw(raw json.RawMessage) ParseResult {
 	}
 }
 
-func parseObjectSchema(dto schemaDTO) ParseResult {
+func parseObjectSchema(dto schemaDTO, depth int) ParseResult {
 	fields := make([]ObjectField, 0, len(dto.Fields))
 	for fieldIndex := range dto.Fields {
 		field := dto.Fields[fieldIndex]
@@ -97,7 +107,7 @@ func parseObjectSchema(dto schemaDTO) ParseResult {
 			return SchemaParseRejected{Reason: rejected.Reason}
 		}
 
-		schemaResult := parseSchemaRaw(field.Schema)
+		schemaResult := parseSchemaRaw(field.Schema, depth+1)
 		schemaParsed, schemaMatched := schemaResult.(SchemaParsed)
 		if !schemaMatched {
 			return schemaResult
@@ -121,8 +131,8 @@ func parseObjectSchema(dto schemaDTO) ParseResult {
 	return SchemaParsed{Value: ObjectSchema{Fields: fields}}
 }
 
-func parseArraySchema(dto schemaDTO) ParseResult {
-	result := parseSchemaRaw(dto.Item)
+func parseArraySchema(dto schemaDTO, depth int) ParseResult {
+	result := parseSchemaRaw(dto.Item, depth+1)
 	parsed, matched := result.(SchemaParsed)
 	if !matched {
 		return result
@@ -147,7 +157,7 @@ func parseEnumSchema(dto schemaDTO) ParseResult {
 	return SchemaParsed{Value: EnumSchema{Values: dto.Values}}
 }
 
-func parseUnionSchema(dto schemaDTO) ParseResult {
+func parseUnionSchema(dto schemaDTO, depth int) ParseResult {
 	if len(dto.Variants) == 0 {
 		return SchemaParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "union schema requires variants")}
 	}
@@ -155,7 +165,7 @@ func parseUnionSchema(dto schemaDTO) ParseResult {
 	variants := make([]Schema, 0, len(dto.Variants))
 	for variantIndex := range dto.Variants {
 		rawVariant := dto.Variants[variantIndex]
-		result := parseSchemaRaw(rawVariant)
+		result := parseSchemaRaw(rawVariant, depth+1)
 		parsed, matched := result.(SchemaParsed)
 		if !matched {
 			return result

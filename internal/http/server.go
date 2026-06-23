@@ -171,7 +171,21 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("DELETE /mcp", server.mcpDeleteSession)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 	mux.HandleFunc("GET /", index(staticFiles))
-	return mux
+	return withRequestBodyLimit(mux)
+}
+
+// maxRequestBodyBytes bounds the size of each request body decoded by the API
+// so a large upload cannot exhaust memory. The MCP endpoint applies its own
+// stricter limit, which takes effect before this one.
+const maxRequestBodyBytes = 2 << 20
+
+func withRequestBodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // NewMCPServer builds an MCP server backed by the given domain services so the

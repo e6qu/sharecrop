@@ -1,6 +1,42 @@
 package schema
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestParseValueRejectsExcessiveNesting(t *testing.T) {
+	deep := strings.Repeat("[", maxNestingDepth+2) + strings.Repeat("]", maxNestingDepth+2)
+	result := ParseValueJSON([]byte(deep))
+	rejected, matched := result.(ValueParseRejected)
+	if !matched {
+		t.Fatalf("deeply nested value was accepted, want rejection")
+	}
+	if rejected.Reason.Description() != "response JSON nesting is too deep" {
+		t.Fatalf("rejection = %q, want depth error", rejected.Reason.Description())
+	}
+}
+
+func TestParseSchemaRejectsExcessiveNesting(t *testing.T) {
+	prefix := strings.Repeat(`{"kind":"array","item":`, maxNestingDepth+2)
+	suffix := strings.Repeat(`}`, maxNestingDepth+2)
+	result := ParseSchemaJSON([]byte(prefix + `{"kind":"freeform"}` + suffix))
+	rejected, matched := result.(SchemaParseRejected)
+	if !matched {
+		t.Fatalf("deeply nested schema was accepted, want rejection")
+	}
+	if rejected.Reason.Description() != "schema nesting is too deep" {
+		t.Fatalf("rejection = %q, want depth error", rejected.Reason.Description())
+	}
+}
+
+func TestParseValueAcceptsReasonableNesting(t *testing.T) {
+	deep := strings.Repeat("[", 8) + strings.Repeat("]", 8)
+	result := ParseValueJSON([]byte(deep))
+	if _, matched := result.(ValueParsed); !matched {
+		t.Fatalf("reasonably nested value was rejected, want acceptance")
+	}
+}
 
 func TestParseValidateIndexAndRedactSensitiveObject(t *testing.T) {
 	schema := parsedSchema(t, []byte(`{

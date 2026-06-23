@@ -71,6 +71,22 @@ func TestAuthHTTPFlow(t *testing.T) {
 	}
 }
 
+func TestOversizedRequestBodyIsRejected(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	huge := strings.Repeat("a", 3<<20)
+	body := `{"email":"big-` + uniqueTestSuffix(t) + `@example.com","password":"` + huge + `"}`
+	response, err := http.Post(server.URL+"/api/auth/register", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post oversized body: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest && response.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body status = %d, want 400 or 413", response.StatusCode)
+	}
+}
+
 type authHTTPRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`

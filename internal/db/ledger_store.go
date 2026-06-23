@@ -103,7 +103,7 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "accept submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "accept submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.AcceptRejected{Reason: taskResult.(taskLockRejected).reason}
@@ -199,7 +199,7 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.RequestChangesRejected{Reason: taskResult.(taskLockRejected).reason}
@@ -256,7 +256,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.RejectRejected{Reason: taskResult.(taskLockRejected).reason}

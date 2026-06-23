@@ -71,7 +71,7 @@ func ParseValueJSON(raw []byte) ValueParseResult {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 
-	valueResult := parseDecoderValue(decoder)
+	valueResult := parseDecoderValue(decoder, 0)
 	valueParsed, matched := valueResult.(ValueParsed)
 	if !matched {
 		return valueResult
@@ -84,7 +84,11 @@ func ParseValueJSON(raw []byte) ValueParseResult {
 	return valueParsed
 }
 
-func parseDecoderValue(decoder *json.Decoder) ValueParseResult {
+func parseDecoderValue(decoder *json.Decoder, depth int) ValueParseResult {
+	if depth > maxNestingDepth {
+		return ValueParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "response JSON nesting is too deep")}
+	}
+
 	token, err := decoder.Token()
 	if err != nil {
 		return ValueParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "response JSON is invalid")}
@@ -92,7 +96,7 @@ func parseDecoderValue(decoder *json.Decoder) ValueParseResult {
 
 	switch typed := token.(type) {
 	case json.Delim:
-		return parseDelimitedValue(decoder, typed)
+		return parseDelimitedValue(decoder, typed, depth)
 	case string:
 		return ValueParsed{Value: StringValue{Value: typed}}
 	case json.Number:
@@ -104,18 +108,18 @@ func parseDecoderValue(decoder *json.Decoder) ValueParseResult {
 	}
 }
 
-func parseDelimitedValue(decoder *json.Decoder, delimiter json.Delim) ValueParseResult {
+func parseDelimitedValue(decoder *json.Decoder, delimiter json.Delim, depth int) ValueParseResult {
 	switch delimiter {
 	case '{':
-		return parseObjectValue(decoder)
+		return parseObjectValue(decoder, depth)
 	case '[':
-		return parseArrayValue(decoder)
+		return parseArrayValue(decoder, depth)
 	default:
 		return ValueParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "response JSON delimiter is unsupported")}
 	}
 }
 
-func parseObjectValue(decoder *json.Decoder) ValueParseResult {
+func parseObjectValue(decoder *json.Decoder, depth int) ValueParseResult {
 	fields := make([]ObjectFieldValue, 0)
 	for decoder.More() {
 		token, err := decoder.Token()
@@ -133,7 +137,7 @@ func parseObjectValue(decoder *json.Decoder) ValueParseResult {
 			return ValueParseRejected{Reason: rejected.Reason}
 		}
 
-		valueResult := parseDecoderValue(decoder)
+		valueResult := parseDecoderValue(decoder, depth+1)
 		valueParsed, valueMatched := valueResult.(ValueParsed)
 		if !valueMatched {
 			return valueResult
@@ -152,10 +156,10 @@ func parseObjectValue(decoder *json.Decoder) ValueParseResult {
 	return ValueParsed{Value: ObjectValue{Fields: fields}}
 }
 
-func parseArrayValue(decoder *json.Decoder) ValueParseResult {
+func parseArrayValue(decoder *json.Decoder, depth int) ValueParseResult {
 	items := make([]Value, 0)
 	for decoder.More() {
-		valueResult := parseDecoderValue(decoder)
+		valueResult := parseDecoderValue(decoder, depth+1)
 		valueParsed, matched := valueResult.(ValueParsed)
 		if !matched {
 			return valueResult

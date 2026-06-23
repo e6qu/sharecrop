@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -208,6 +209,82 @@ func TestRejectCanPayPartialTipAndBanImplementor(t *testing.T) {
 	eligibility := db.NewTaskStore(pool).CheckSubmissionEligibility(context.Background(), taskID, worker)
 	if _, banned := eligibility.(task.SubmissionEligibilityRejected); !banned {
 		t.Fatalf("banned implementor remained eligible: %T", eligibility)
+	}
+}
+
+// TestConcurrentAcceptKeepsSingleAcceptedSubmission proves that the
+// transactional acceptance path keeps at most one accepted submission per task
+// even when two acceptances race. Authorization and state are validated inside
+// the transaction under a FOR UPDATE task-row lock, with a unique partial index
+// as the final backstop, so the checks are not moved out to the service layer
+// where they could drift from the write.
+func TestConcurrentAcceptKeepsSingleAcceptedSubmission(t *testing.T) {
+	pool := newPool(t)
+	store := db.NewLedgerStore(pool)
+
+	owner := createUser(t, pool, "integration-concurrent-owner")
+	workerA := createUser(t, pool, "integration-concurrent-worker-a")
+	workerB := createUser(t, pool, "integration-concurrent-worker-b")
+
+	taskID := insertTask(t, pool, owner, "draft", 40)
+	store.FundTask(context.Background(), fundCommand(t, owner, taskID, 40, "fund-"+taskID.String()))
+	setTaskState(t, pool, taskID, "open")
+	submissionA := insertSubmission(t, pool, taskID, workerA)
+	submissionB := insertSubmission(t, pool, taskID, workerB)
+
+	commandA := acceptCommand(t, owner, taskID, submissionA, "accept-"+submissionA.String())
+	commandB := acceptCommand(t, owner, taskID, submissionB, "accept-"+submissionB.String())
+
+	results := make(chan ledger.AcceptResult, 2)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for _, command := range []ledger.AcceptStoreCommand{commandA, commandB} {
+		wg.Add(1)
+		go func(command ledger.AcceptStoreCommand) {
+			defer wg.Done()
+			<-start
+			results <- store.AcceptSubmission(context.Background(), command)
+		}(command)
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	accepted := 0
+	rejected := 0
+	for result := range results {
+		switch result.(type) {
+		case ledger.SubmissionAccepted:
+			accepted++
+		case ledger.AcceptRejected:
+			rejected++
+		}
+	}
+	if accepted != 1 || rejected != 1 {
+		t.Fatalf("accepted=%d rejected=%d, want exactly one accepted and one rejected", accepted, rejected)
+	}
+
+	var acceptedCount int
+	if err := pool.QueryRow(context.Background(), "select count(*) from submissions where task_id = $1 and state = 'accepted'", taskID.String()).Scan(&acceptedCount); err != nil {
+		t.Fatalf("count accepted submissions: %v", err)
+	}
+	if acceptedCount != 1 {
+		t.Fatalf("accepted submission count = %d, want 1", acceptedCount)
+	}
+
+	var taskState string
+	if err := pool.QueryRow(context.Background(), "select state from tasks where id = $1", taskID.String()).Scan(&taskState); err != nil {
+		t.Fatalf("read task state: %v", err)
+	}
+	if taskState != "closed" {
+		t.Fatalf("task state = %q, want closed", taskState)
+	}
+
+	// Exactly one worker was paid the 40-credit escrow.
+	balanceA := mustBalance(t, store, workerA).Int64()
+	balanceB := mustBalance(t, store, workerB).Int64()
+	if balanceA+balanceB != 240 {
+		t.Fatalf("worker balances = %d and %d, want one 140 and one 100", balanceA, balanceB)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -42,6 +43,86 @@ func TestOrganizationHTTPFlow(t *testing.T) {
 	provisionResponse := postJSONWithBearer(t, server.URL+"/api/organizations/"+organizationBody.ID+"/members", []byte(`{"email":"`+memberEmail+`","roles":["member","reviewer"]}`), ownerBody.AccessToken)
 	defer provisionResponse.Body.Close()
 	assertStatus(t, provisionResponse, http.StatusCreated)
+}
+
+func TestOrganizationReviewerCanReviewSubmissions(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "org-rev-owner")
+	organizationID := createOrganization(t, server, owner, "Org Reviewer Labs")
+
+	reviewerEmail := "org-rev-reviewer-" + uniqueTestSuffix(t) + "@example.com"
+	reviewer := registerUserWithEmail(t, server, reviewerEmail)
+	provisionOrganizationMember(t, server, owner.AccessToken, organizationID, reviewerEmail, `["member","reviewer"]`)
+
+	memberEmail := "org-rev-member-" + uniqueTestSuffix(t) + "@example.com"
+	member := registerUserWithEmail(t, server, memberEmail)
+	provisionOrganizationMember(t, server, owner.AccessToken, organizationID, memberEmail, `["member"]`)
+
+	worker := registerUser(t, server, "org-rev-worker")
+	taskID := createPublicOrganizationTask(t, server, owner, organizationID)
+
+	fundResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/funding", []byte(`{"amount":30,"idempotency_key":"org-rev-fund-`+taskID+`","organization_id":"`+organizationID+`"}`), owner.AccessToken)
+	defer fundResponse.Body.Close()
+	assertStatus(t, fundResponse, http.StatusCreated)
+	openTask(t, server, owner.AccessToken, taskID)
+	submission := submitAuthenticated(t, server, worker.AccessToken, taskID)
+
+	// A member without the reviewer role cannot accept a submission for the org task.
+	memberAccept := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/submissions/"+submission.Submission.ID+"/accept", []byte(`{"idempotency_key":"org-rev-member-accept"}`), member.AccessToken)
+	defer memberAccept.Body.Close()
+	assertStatus(t, memberAccept, http.StatusForbidden)
+
+	// An unrelated outsider cannot accept either.
+	outsiderAccept := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/submissions/"+submission.Submission.ID+"/accept", []byte(`{"idempotency_key":"org-rev-outsider-accept"}`), worker.AccessToken)
+	defer outsiderAccept.Body.Close()
+	assertStatus(t, outsiderAccept, http.StatusForbidden)
+
+	// The org reviewer, who did not create the task, can accept it.
+	accept := acceptSubmission(t, server, reviewer.AccessToken, taskID, submission.Submission.ID, "org-rev-accept-"+taskID)
+	if accept.SubmissionID != submission.Submission.ID {
+		t.Fatalf("accepted submission id = %q, want %q", accept.SubmissionID, submission.Submission.ID)
+	}
+	if balance := getBalance(t, server, worker.AccessToken); balance.Amount != 130 {
+		t.Fatalf("worker balance after org reviewer payout = %d, want 130", balance.Amount)
+	}
+}
+
+func registerUserWithEmail(t *testing.T, server *httptest.Server, email string) authHTTPResponse {
+	t.Helper()
+	response := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{
+		Email:    email,
+		Password: "correct horse battery staple",
+	}, nil)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+	return decodeAuthHTTPResponse(t, response)
+}
+
+func provisionOrganizationMember(t *testing.T, server *httptest.Server, accessToken string, organizationID string, email string, rolesJSON string) {
+	t.Helper()
+	response := postJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/members", []byte(`{"email":"`+email+`","roles":`+rolesJSON+`}`), accessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+}
+
+func createPublicOrganizationTask(t *testing.T, server *httptest.Server, owner authHTTPResponse, organizationID string) string {
+	t.Helper()
+	body := `{
+		"owner":{"kind":"organization","user_id":"","team_id":"","organization_id":"` + organizationID + `"},
+		"title":"Public organization task",
+		"description":"A public task owned by an organization.",
+		"reward":{"kind":"credit","credit_amount":30},
+		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(body), owner.AccessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+	return decodeTaskHTTPResponse(t, response).ID
 }
 
 type organizationHTTPResponse struct {
