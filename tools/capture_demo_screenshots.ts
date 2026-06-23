@@ -22,7 +22,15 @@ const cases: ScreenshotCase[] = [
     themeLabel: "Corporate",
   },
   {
-    name: "desktop-discover-corporate-light",
+    name: "desktop-tasks-corporate-light",
+    width: 1440,
+    height: 1100,
+    mode: "Light",
+    theme: "corporate",
+    themeLabel: "Corporate",
+  },
+  {
+    name: "desktop-task-detail-corporate-light",
     width: 1440,
     height: 1100,
     mode: "Light",
@@ -85,6 +93,14 @@ const cases: ScreenshotCase[] = [
     theme: "showcase",
     themeLabel: "Showcase",
   },
+  {
+    name: "mobile-task-detail-showcase-dark",
+    width: 390,
+    height: 1200,
+    mode: "Dark",
+    theme: "showcase",
+    themeLabel: "Showcase",
+  },
 ];
 
 await Deno.mkdir(outputDirectory, { recursive: true });
@@ -98,21 +114,23 @@ for (const item of cases) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: item.mode, exact: true }).click();
   await page.getByRole("button", { name: new RegExp(item.themeLabel) }).click();
-  await page.getByRole("button", { name: "Command", exact: true }).click();
-  if (item.name.includes("discover")) {
-    await page.getByRole("button", { name: "Mission Board", exact: true })
-      .click();
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+  if (item.name.includes("tasks")) {
+    await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  }
+  if (item.name.includes("task-detail")) {
+    await page.getByRole("button", { name: "Tasks", exact: true }).click();
+    await page.getByRole("button", { name: /Label orchard photos/ }).click();
   }
   if (item.name.includes("requester")) {
-    await page.getByRole("button", { name: "Post Mission", exact: true })
+    await page.getByRole("button", { name: "Post Task", exact: true })
       .click();
   }
   if (item.name.includes("review")) {
-    await page.getByRole("button", { name: "Review Queue", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Reviews", exact: true }).click();
   }
   if (item.name.includes("integrations")) {
-    await page.getByRole("button", { name: "Uplink", exact: true }).click();
+    await page.getByRole("button", { name: "Agent/API", exact: true }).click();
   }
   if (item.name.includes("settings")) {
     await page.getByRole("button", { name: "Settings", exact: true }).click();

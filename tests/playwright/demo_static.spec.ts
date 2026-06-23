@@ -6,7 +6,7 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await page.goto(demoUrl);
 
   await expect(page.getByRole("heading", {
-    name: "Command the work board, fund rewards, and settle results.",
+    name: "Track tasks, rewards, and reviews.",
   })).toBeVisible();
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -17,12 +17,12 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
 
   await page.locator(".account-button").click();
   await page.getByLabel("Select persona").selectOption("jules");
-  await page.getByRole("button", { name: "Command", exact: true }).click();
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
   await expect(page.getByRole("heading", {
     name: "Pick a mission, claim the slot, and deliver the payload.",
   })).toBeVisible();
 
-  await page.getByRole("button", { name: "Post Mission", exact: true }).click();
+  await page.getByRole("button", { name: "Post Task", exact: true }).click();
   await page.getByLabel("Task title").fill("");
   await page.getByLabel("Task title").pressSequentially(
     "Demo persistence task",
@@ -38,7 +38,7 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await page.reload();
   await expect(page.locator("body")).toHaveAttribute("data-mode", "dark");
   await expect(page.locator("body")).toHaveAttribute("data-theme", "blocky");
-  await page.getByRole("button", { name: "Post Mission", exact: true }).click();
+  await page.getByRole("button", { name: "Post Task", exact: true }).click();
   await expect(page.getByRole("button", { name: /Demo persistence task/ }))
     .toBeVisible();
 
@@ -56,11 +56,18 @@ test("static demo supports mission state transitions", async ({ page }) => {
   await page.locator(".account-button").click();
   await page.getByLabel("Select persona").selectOption("jules");
 
-  await page.getByRole("button", { name: "Mission Board", exact: true })
+  await page.getByRole("button", { name: "Tasks", exact: true })
     .click();
   await page.getByRole("button", { name: /Normalize sensor map tiles/ })
     .click();
-  await page.getByRole("button", { name: "Reserve mission" }).click();
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Normalize sensor map tiles",
+    }),
+  )
+    .toBeVisible();
+  await page.getByRole("button", { name: "Reserve task" }).click();
   await expect(
     page.getByText("Jules Park reserved Normalize sensor map tiles.").first(),
   )
@@ -79,7 +86,7 @@ test("static demo supports mission state transitions", async ({ page }) => {
 
   await page.locator(".account-button").click();
   await page.getByLabel("Select persona").selectOption("mara");
-  await page.getByRole("button", { name: "Review Queue", exact: true }).click();
+  await page.getByRole("button", { name: "Reviews", exact: true }).click();
   await page.getByLabel("Selected task").selectOption("map-sensor-cleanup");
   await page.getByRole("button", { name: "Accept" }).click();
   await expect(
@@ -95,7 +102,7 @@ test("static demo keeps review decisions persona-scoped", async ({ page }) => {
 
   await page.locator(".account-button").click();
   await page.getByLabel("Select persona").selectOption("jules");
-  await page.getByRole("button", { name: "Review Queue", exact: true }).click();
+  await page.getByRole("button", { name: "Reviews", exact: true }).click();
   await expect(
     page.getByText(
       "No reservations or submitted payloads need this persona's review.",
@@ -106,7 +113,7 @@ test("static demo keeps review decisions persona-scoped", async ({ page }) => {
 
   await page.locator(".account-button").click();
   await page.getByLabel("Select persona").selectOption("mara");
-  await page.getByRole("button", { name: "Review Queue", exact: true }).click();
+  await page.getByRole("button", { name: "Reviews", exact: true }).click();
   await page.getByLabel("Selected task").selectOption("orchard-labels");
   await page.getByLabel("Tip").fill("99");
   await page.getByRole("button", { name: "Request changes" }).click();
@@ -118,9 +125,10 @@ test("static demo keeps review decisions persona-scoped", async ({ page }) => {
 
   await page.locator(".account-button").click();
   await page.getByLabel("Select persona").selectOption("jules");
-  await page.getByRole("button", { name: "Mission Board", exact: true })
+  await page.getByRole("button", { name: "Tasks", exact: true })
     .click();
   await page.getByRole("button", { name: /Label orchard photos/ }).click();
+  await expect(page.getByText("Task page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Revise payload" }))
     .toBeVisible();
 });
