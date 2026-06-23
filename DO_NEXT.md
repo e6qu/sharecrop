@@ -2,7 +2,7 @@
 
 Prioritized queue:
 
-1. Verify GitHub Pages deploys the polished demo after the `task/demo-ui-polish-pass` pull request is merged.
+1. Verify GitHub Pages deploys the task-detail navigation demo after the `task/demo-list-detail-navigation` pull request is merged.
 2. Revisit collectible or inventory-based tips.
 3. Redesign anonymous worker identity and payout.
 4. Add user-issued or organization-issued tokens.

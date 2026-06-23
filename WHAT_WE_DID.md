@@ -825,3 +825,30 @@ The `task/demo-ui-polish-pass` branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.
+
+The `task/demo-list-detail-navigation` branch changed the static demo discovery model:
+
+- The top-level demo labels became Dashboard, Tasks, Post Task, Reviews, Agent/API, and Settings.
+- The Tasks page stopped using the board-like lane abstraction and now renders a scannable task list.
+- Task rows show title, objective, rank, sector, policy, requester or assignee context, status, next action, reward chips, and row-level action buttons.
+- Clicking a task title or Open task page navigates to a separate Task Detail page instead of replacing a detail pane on the list page.
+- Task Detail owns the full briefing, response schema, action console, task log, back-to-list control, and API/MCP handoff link.
+- Requester rows without pending review work no longer show a Review queue call to action.
+- Demo Playwright coverage was updated for task-list navigation, task-detail actions, and renamed navigation labels.
+- Screenshot capture was updated for task-list and task-detail desktop and mobile states.
+
+The `task/demo-list-detail-navigation` branch verification was performed:
+
+- `node --check site/demo/app.js` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts tests/playwright/demo_static.spec.ts` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured screenshots; reviewed images included desktop task list, desktop task detail, mobile task detail, and mobile dashboard states.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages.
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.

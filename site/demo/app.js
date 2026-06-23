@@ -26,11 +26,12 @@ const availability = {
 };
 
 const pages = [
-  { id: "overview", label: "Command" },
-  { id: "discover", label: "Mission Board" },
-  { id: "requester", label: "Post Mission" },
-  { id: "review", label: "Review Queue" },
-  { id: "integrations", label: "Uplink" },
+  { id: "overview", label: "Dashboard" },
+  { id: "discover", label: "Tasks" },
+  { id: "task", label: "Task Detail", detailOnly: true },
+  { id: "requester", label: "Post Task" },
+  { id: "review", label: "Reviews" },
+  { id: "integrations", label: "Agent/API" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -662,15 +663,17 @@ function personaBadge(user) {
 }
 
 function pageNavigation() {
+  const topLevelPages = pages.filter((page) => !page.detailOnly);
   return `
     <nav class="page-tabs" aria-label="Demo pages">
-      ${pages.map((page) => `<button class="tab ${state.page === page.id ? "active" : ""}" data-page="${escapeAttribute(page.id)}" ${state.page === page.id ? 'aria-current="page"' : ""}>${escapeHtml(page.label)}</button>`).join("")}
+      ${topLevelPages.map((page) => `<button class="tab ${state.page === page.id ? "active" : ""}" data-page="${escapeAttribute(page.id)}" ${state.page === page.id ? 'aria-current="page"' : ""}>${escapeHtml(page.label)}</button>`).join("")}
     </nav>
   `;
 }
 
 function pageView() {
   if (state.page === "discover") return discoverPage();
+  if (state.page === "task") return taskDetailPage();
   if (state.page === "requester") return requesterPage();
   if (state.page === "review") return reviewPage();
   if (state.page === "integrations") return integrationsPage();
@@ -694,7 +697,7 @@ function overviewPage() {
           </div>
         </div>
         <div class="summary-grid">
-          ${metricCard("Open missions", String(state.tasks.filter((item) => item.lifecycle === lifecycle.open).length))}
+          ${metricCard("Open tasks", String(state.tasks.filter((item) => item.lifecycle === lifecycle.open).length))}
           ${metricCard("Review signals", String(reviewSignals()))}
           ${metricCard("Credits", `${balanceOf(user.id)}`)}
           ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
@@ -703,12 +706,12 @@ function overviewPage() {
       ${missionBriefing(taskItem)}
     </section>
     <section class="panel">
-      <span class="eyebrow">Mission paths</span>
+      <span class="eyebrow">Task paths</span>
       <div class="flow-grid">
-        ${flowCard("discover", "Mission Board", "Pick visible work, inspect policies, reserve or submit.")}
-        ${flowCard("requester", "Post Mission", "Draft, fund, open, cancel, and inspect requester-owned missions.")}
-        ${flowCard("review", "Review Queue", "Approve reservations and settle submissions with notes and payouts.")}
-        ${flowCard("integrations", "Uplink", "Read the REST and MCP instructions for the selected mission.")}
+        ${flowCard("discover", "Tasks", "Scan visible work, compare status, and open a task page.")}
+        ${flowCard("requester", "Post Task", "Draft, fund, open, cancel, and inspect requester-owned tasks.")}
+        ${flowCard("review", "Reviews", "Approve reservations and settle submissions with notes and payouts.")}
+        ${flowCard("integrations", "Agent/API", "Read the REST and MCP instructions for the selected task.")}
       </div>
     </section>
     ${activityFeed()}
@@ -717,21 +720,20 @@ function overviewPage() {
 
 function discoverPage() {
   const tasks = filteredBoardTasks();
-  const taskItem = activeTaskFor(tasks);
   return `
     <section class="panel">
       <div class="page-header">
         <div>
-          <span class="eyebrow">Mission board</span>
+          <span class="eyebrow">Task list</span>
           <h1>${escapeHtml(boardTitleFor(selectedUser().role))}</h1>
-          <p>Work is grouped by live mission state. Pick a card to read the briefing and take the next eligible action.</p>
+          <p>Scan visible work by status, reward, and next action. Open a task page for the full briefing, submission form, and API/MCP instructions.</p>
         </div>
         <div class="board-controls">
           <label class="check-row">
             <input type="checkbox" data-field="includeReserved" ${state.includeReserved ? "checked" : ""}>
             Include reserved
           </label>
-          <select data-field="boardFilter" aria-label="Mission filter">
+          <select data-field="boardFilter" aria-label="Task filter">
             ${filterOption("all", "All sectors")}
             ${filterOption("public", "Public")}
             ${filterOption("organization", "Organization")}
@@ -739,7 +741,27 @@ function discoverPage() {
           </select>
         </div>
       </div>
-      ${missionBoard(tasks, "discover", taskItem?.id)}
+      ${taskList(tasks, "discover")}
+    </section>
+    ${activityFeed()}
+  `;
+}
+
+function taskDetailPage() {
+  const taskItem = selectedTask();
+  return `
+    <section class="panel">
+      <div class="page-header">
+        <div>
+          <span class="eyebrow">Task page</span>
+          <h1>${escapeHtml(taskItem.title)}</h1>
+          <p>Use this page for the briefing, task-specific actions, response schema, and handoff instructions.</p>
+        </div>
+        <div class="row-actions">
+          <button class="button secondary" data-page="discover">Back to tasks</button>
+          <button class="button secondary" data-page="integrations">API / MCP</button>
+        </div>
+      </div>
     </section>
     ${missionBriefing(taskItem)}
     ${activityFeed()}
@@ -751,7 +773,7 @@ function requesterPage() {
     <section class="panel">
       <div class="page-header">
         <div>
-          <span class="eyebrow">Post mission</span>
+          <span class="eyebrow">Post task</span>
           <h1>Create, fund, and open a task</h1>
           <p>Create a local task, choose the reward, set visibility and participation policy, then open it onto the board.</p>
         </div>
@@ -787,10 +809,9 @@ function requesterPage() {
       </form>
     </section>
     <section class="panel">
-      <span class="eyebrow">Requester control board</span>
-      ${missionBoard(tasksForRequester(), "requester")}
+      <span class="eyebrow">Requester task list</span>
+      ${taskList(tasksForRequester(), "requester")}
     </section>
-    ${missionBriefing(selectedTask())}
   `;
 }
 
@@ -828,9 +849,9 @@ function integrationsPage() {
     <section class="panel">
       <div class="page-header">
         <div>
-          <span class="eyebrow">Uplink console</span>
+          <span class="eyebrow">Agent/API console</span>
           <h1>Provide a result for ${escapeHtml(taskItem.title)}</h1>
-          <p>Each mission carries direct REST and MCP instructions so people, scripts, and local agents can all submit results.</p>
+          <p>Each task carries direct REST and MCP instructions so people, scripts, and local agents can all submit results.</p>
         </div>
         ${taskSelect(taskItem, state.tasks)}
       </div>
@@ -847,7 +868,7 @@ function integrationsPage() {
   }
 }</pre>
           <button class="button primary" data-action="agentRun">Run as Sol agent</button>
-          <p class="hint">Demo scopes: tasks_read, submissions_write, submissions_review. The action adds a Sol-labeled MCP submission to this mission.</p>
+          <p class="hint">Demo scopes: tasks_read, submissions_write, submissions_review. The action adds a Sol-labeled MCP submission to this task.</p>
         </article>
         <article class="sub-panel uplink-panel">
           <span class="eyebrow">Worker REST</span>
@@ -886,7 +907,7 @@ function settingsPage() {
         <div>
           <span class="eyebrow">Demo settings</span>
           <h1>Theme, local state, and test controls</h1>
-          <p>Use the controls here to change presentation, reset the local mission board, or keep demo-only tools out of the main workflows.</p>
+          <p>Use the controls here to change presentation, reset the local task state, or keep demo-only tools out of the main workflows.</p>
         </div>
       </div>
       <div class="settings-grid">
@@ -905,13 +926,57 @@ function settingsPage() {
         </section>
         <section class="sub-panel">
           <h2>Local state</h2>
-          <p>The demo stores persona, mission progress, activity, balances, and local draft missions only in this browser.</p>
+          <p>The demo stores persona, task progress, activity, balances, and local draft tasks only in this browser.</p>
           ${state.storageWarning ? `<p class="danger-text">${escapeHtml(state.storageWarning)}</p>` : ""}
           <button class="button primary" data-action="reset">Clear state</button>
         </section>
       </div>
     </section>
   `;
+}
+
+function taskList(tasks, context) {
+  if (tasks.length === 0) return `<p class="empty-state">No tasks match these filters.</p>`;
+  return `
+    <div class="task-list" data-context="${escapeAttribute(context)}">
+      ${tasks.map((item) => taskListRow(item)).join("")}
+    </div>
+  `;
+}
+
+function taskListRow(taskItem) {
+  const action = nextAction(taskItem);
+  return `
+    <article class="task-list-row">
+      <div class="task-list-main">
+        <div class="task-title-row">
+          <button class="link-button task-title-link" data-open-task="${escapeAttribute(taskItem.id)}">${escapeHtml(taskItem.title)}</button>
+          <span class="rank-badge inline-rank">Rank ${escapeHtml(taskItem.difficulty)}</span>
+        </div>
+        <p>${escapeHtml(taskItem.objective)}</p>
+        <div class="mission-meta">
+          <span>${escapeHtml(areaLabel(taskItem.area))}</span>
+          <span>${escapeHtml(policyLabel(taskItem.policy))}</span>
+          <span>${escapeHtml(taskItem.assignee ? `Assigned: ${userName(taskItem.assignee)}` : `Requester: ${userName(taskItem.requester)}`)}</span>
+        </div>
+      </div>
+      <div class="task-widget">
+        <span class="action-chip">${escapeHtml(availabilityLabel(taskItem.availability))}</span>
+        <span class="action-chip">${escapeHtml(cardActionLabel(action))}</span>
+        <div class="reward-row">${rewardChips(taskItem.reward)}</div>
+      </div>
+      <div class="task-actions">
+        ${taskListAction(action, taskItem)}
+        <button class="button secondary" data-open-task="${escapeAttribute(taskItem.id)}">Open task page</button>
+      </div>
+    </article>
+  `;
+}
+
+function taskListAction(action, taskItem) {
+  if (action.kind === "none" || action.kind === "submit" || action.kind === "agentRun") return "";
+  if (action.kind === "openReviewQueue") return `<button class="button primary" data-page="review">Review queue</button>`;
+  return `<button class="button primary" data-task-action="${escapeAttribute(action.kind)}" data-task-id="${escapeAttribute(taskItem.id)}">${escapeHtml(cardActionLabel(action))}</button>`;
 }
 
 function missionBoard(tasks, context, selectedId = selectedTask()?.id) {
@@ -978,7 +1043,7 @@ function missionBriefing(taskItem) {
   return `
     <section class="panel briefing-panel">
       <div>
-        <span class="eyebrow">Mission briefing</span>
+        <span class="eyebrow">Task briefing</span>
         <h2>${escapeHtml(taskItem.title)}</h2>
         <p>${escapeHtml(taskItem.objective)}</p>
         <div class="badge-row">
@@ -1003,7 +1068,7 @@ function missionBriefing(taskItem) {
         ${actionControls(action)}
       </div>
       <div class="sub-panel activity-feed">
-        <h2>Mission log</h2>
+        <h2>Task log</h2>
         ${taskItem.timeline.slice(0, 5).map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
       </div>
     </section>
@@ -1016,45 +1081,48 @@ function nextAction(taskItem) {
   const submission = taskItem.submissions.find((item) => item.by === state.userId);
 
   if (taskItem.requester === state.userId && taskItem.lifecycle === lifecycle.draft) {
-    return { kind: "fund", title: "Prepare crate", explanation: "Fund or attach the reward before opening the mission." };
+    return { kind: "fund", title: "Prepare reward", explanation: "Fund or attach the reward before opening the task." };
   }
   if (taskItem.requester === state.userId && taskItem.lifecycle === lifecycle.funded) {
-    return { kind: "openMission", title: "Open mission", explanation: "Publish the funded mission to the board." };
+    return { kind: "openMission", title: "Open task", explanation: "Publish the funded task to the list." };
   }
   if (taskItem.requester === state.userId && taskItem.lifecycle === lifecycle.open) {
-    return { kind: "openReviewQueue", title: "Requester watch", explanation: "Open the Review Queue to decide reservations and submissions." };
+    if (hasReviewWork(taskItem)) {
+      return { kind: "openReviewQueue", title: "Requester watch", explanation: "Open Reviews to decide reservations and submissions." };
+    }
+    return { kind: "none", title: "Watching", explanation: "This task is open. New reservations or submissions will appear in Reviews." };
   }
   if (taskItem.lifecycle !== lifecycle.open || taskItem.availability === availability.closed || taskItem.availability === availability.accepted) {
-    return { kind: "none", title: "No action", explanation: "This mission is not open for new work." };
+    return { kind: "none", title: "No action", explanation: "This task is not open for new work." };
   }
   if (taskItem.banned?.includes(state.userId)) {
-    return { kind: "none", title: "Blocked", explanation: "This implementor is banned from this mission." };
+    return { kind: "none", title: "Blocked", explanation: "This implementor is banned from this task." };
   }
   if (submission?.state === "submitted") {
     return { kind: "none", title: "Payload received", explanation: "The requester has a submitted result to review." };
   }
   if (submission?.state === "changes_requested") {
-    return { kind: "submit", title: "Revise payload", explanation: "Changes were requested. Submit an updated payload for the same mission." };
+    return { kind: "submit", title: "Revise payload", explanation: "Changes were requested. Submit an updated payload for the same task." };
   }
   if (taskItem.policy === policy.approval && reservation?.state === "requested") {
     return { kind: "none", title: "Awaiting clearance", explanation: "Requester approval is pending." };
   }
   if (taskItem.policy === policy.approval && taskItem.assignee !== state.userId) {
-    return { kind: "requestApproval", title: "Request clearance", explanation: "This mission requires requester approval before work starts." };
+    return { kind: "requestApproval", title: "Request clearance", explanation: "This task requires requester approval before work starts." };
   }
   if (taskItem.policy === policy.reservation && taskItem.assignee !== state.userId) {
-    return { kind: "reserve", title: "Claim reservation", explanation: "Reserve the mission to make it exclusive for your run." };
+    return { kind: "reserve", title: "Claim reservation", explanation: "Reserve the task to make it exclusive for your run." };
   }
   if (user.role === "Agent operator") {
     return { kind: "agentRun", title: "Run agent", explanation: "Simulate a scoped local agent submitting over MCP." };
   }
-  return { kind: "submit", title: "Submit payload", explanation: "You are eligible to submit a result for this mission." };
+  return { kind: "submit", title: "Submit payload", explanation: "You are eligible to submit a result for this task." };
 }
 
 function actionButtons(action) {
   if (action.kind === "fund") return `<button class="button primary" data-action="fund">Fund reward</button><button class="button secondary" data-action="cancelMission">Cancel</button>`;
-  if (action.kind === "openMission") return `<button class="button primary" data-action="openMission">Open mission</button><button class="button secondary" data-action="cancelMission">Cancel</button>`;
-  if (action.kind === "reserve") return `<button class="button primary" data-action="reserve">Reserve mission</button>`;
+  if (action.kind === "openMission") return `<button class="button primary" data-action="openMission">Open task</button><button class="button secondary" data-action="cancelMission">Cancel</button>`;
+  if (action.kind === "reserve") return `<button class="button primary" data-action="reserve">Reserve task</button>`;
   if (action.kind === "requestApproval") return `<button class="button primary" data-action="requestApproval">Request approval</button>`;
   if (action.kind === "submit") return `<button class="button primary" data-action="submit">Submit payload</button>`;
   if (action.kind === "agentRun") return `<button class="button primary" data-action="agentRun">Simulate agent run</button>`;
@@ -1089,7 +1157,7 @@ function cardActionLabel(action) {
 }
 
 function reservationQueue(taskItem) {
-  if (taskItem.reservations.length === 0) return `<p class="empty-state">No reservations for this mission.</p>`;
+  if (taskItem.reservations.length === 0) return `<p class="empty-state">No reservations for this task.</p>`;
   return taskItem.reservations.map((reservation) => `
     <div class="queue-row">
       <div>
@@ -1105,7 +1173,7 @@ function reservationQueue(taskItem) {
 }
 
 function submissionList(taskItem) {
-  if (taskItem.submissions.length === 0) return `<p class="empty-state">No submissions for this mission.</p>`;
+  if (taskItem.submissions.length === 0) return `<p class="empty-state">No submissions for this task.</p>`;
   return taskItem.submissions.map((submission) => {
     const draft = reviewDraft(submission);
     if (submission.state !== "submitted") return submissionOutcome(submission);
@@ -1125,7 +1193,7 @@ function submissionList(taskItem) {
           <label>Partial payout<input data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.partialPayout)}"></label>
           <label>Tip<input data-field="tipAmount" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.tipAmount)}"></label>
         </div>
-        <label class="check-row"><input type="checkbox" data-field="banImplementor" data-submission="${escapeAttribute(submission.id)}" ${draft.banImplementor ? "checked" : ""}> Ban implementor from this mission</label>
+        <label class="check-row"><input type="checkbox" data-field="banImplementor" data-submission="${escapeAttribute(submission.id)}" ${draft.banImplementor ? "checked" : ""}> Ban implementor from this task</label>
         <div class="row-actions">
           <button class="button secondary" data-action="requestChanges" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Request changes</button>
           <button class="button secondary" data-action="reject" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Reject</button>
@@ -1220,10 +1288,10 @@ function flowCard(page, title, copy) {
 }
 
 function primaryFlowButton(role) {
-  if (role === "Requester") return `<button class="button primary" data-page="requester">Post mission</button>`;
-  if (role === "Implementor") return `<button class="button primary" data-page="discover">Open mission board</button>`;
-  if (role === "Organization reviewer") return `<button class="button primary" data-page="review">Open review queue</button>`;
-  return `<button class="button primary" data-page="integrations">Open uplink</button>`;
+  if (role === "Requester") return `<button class="button primary" data-page="requester">Post task</button>`;
+  if (role === "Implementor") return `<button class="button primary" data-page="discover">Open tasks</button>`;
+  if (role === "Organization reviewer") return `<button class="button primary" data-page="review">Open reviews</button>`;
+  return `<button class="button primary" data-page="integrations">Open Agent/API</button>`;
 }
 
 function filteredBoardTasks() {
@@ -1296,7 +1364,7 @@ function boardTitleFor(role) {
 }
 
 function headlineFor(role) {
-  if (role === "Requester") return "Command the work board, fund rewards, and settle results.";
+  if (role === "Requester") return "Track tasks, rewards, and reviews.";
   if (role === "Implementor") return "Pick a mission, claim the slot, and deliver the payload.";
   if (role === "Organization reviewer") return "Keep mission access, submissions, and payouts under control.";
   return "Connect local agents to missions through scoped uplinks.";
@@ -1304,16 +1372,18 @@ function headlineFor(role) {
 
 function copyFor(role) {
   if (role === "Requester") return "Post missions, attach reward crates, review submissions, and watch the board change as work moves.";
-  if (role === "Implementor") return "The mission board highlights what is available, reserved, awaiting approval, submitted, or settled.";
+  if (role === "Implementor") return "The task list highlights what is available, reserved, awaiting approval, submitted, or settled.";
   if (role === "Organization reviewer") return "The review queue exposes approvals, changes, rejection, bans, partial payouts, and acceptance.";
-  return "The uplink screen shows REST and MCP instructions and can simulate an agent submission.";
+  return "The Agent/API screen shows REST and MCP instructions and can simulate an agent submission.";
 }
 
 function reviewSignals() {
-  return state.tasks.filter((item) =>
-    item.reservations.some((reservation) => reservation.state === "requested") ||
-    item.submissions.some((submission) => submission.state === "submitted")
-  ).length;
+  return state.tasks.filter(hasReviewWork).length;
+}
+
+function hasReviewWork(taskItem) {
+  return taskItem.reservations.some((reservation) => reservation.state === "requested") ||
+    taskItem.submissions.some((submission) => submission.state === "submitted");
 }
 
 function balanceOf(userId) {
@@ -1329,7 +1399,7 @@ function userName(userId) {
 }
 
 function handleClick(event) {
-  const target = event.target.closest("[data-action], [data-page], [data-mode], [data-theme], [data-task], [data-provider]");
+  const target = event.target.closest("[data-action], [data-page], [data-mode], [data-theme], [data-open-task], [data-task-action], [data-task], [data-provider]");
   if (target === null) return;
 
   if (target.dataset.page !== undefined) {
@@ -1344,8 +1414,17 @@ function handleClick(event) {
     setState({ theme: target.dataset.theme });
     return;
   }
+  if (target.dataset.openTask !== undefined) {
+    setState({ selectedTaskId: target.dataset.openTask, page: "task", loginOpen: false });
+    return;
+  }
+  if (target.dataset.taskAction !== undefined && target.dataset.taskId !== undefined) {
+    state = { ...state, selectedTaskId: target.dataset.taskId };
+    handleAction(target.dataset.taskAction, target.dataset.user, target.dataset.submission);
+    return;
+  }
   if (target.dataset.task !== undefined) {
-    setState({ selectedTaskId: target.dataset.task });
+    setState({ selectedTaskId: target.dataset.task, page: "task", loginOpen: false });
     return;
   }
   if (target.dataset.provider !== undefined) {
@@ -1489,11 +1568,13 @@ function isReviewAction(action) {
 }
 
 function taskIdForPage(page) {
+  if (page === "task") return selectedTask()?.id;
   const tasks = page === "review" ? reviewableTasks() : page === "discover" ? filteredBoardTasks() : visibleTasks();
   return activeTaskFor(tasks)?.id ?? selectedTask()?.id;
 }
 
 function activeTaskForCurrentPage() {
+  if (state.page === "task") return selectedTask();
   if (state.page === "discover") return activeTaskFor(filteredBoardTasks());
   if (state.page === "requester") return activeTaskFor(tasksForRequester());
   if (state.page === "review") return activeTaskFor(reviewableTasks());

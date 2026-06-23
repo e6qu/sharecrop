@@ -1,10 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 25 work. Pull request 25 was merged into `main`.
+The repository contains pull request 1 through pull request 26 work. Pull request 26 was merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-ui-polish-pass` has polished the expanded GitHub Pages mission-board demo for visual hierarchy, persona workflows, accessibility, screenshots, and small implementation defects. The branch is ready for pull request review.
+- Active branch `task/demo-list-detail-navigation` has replaced the static demo board-like task discovery abstraction with a list-and-actions discovery surface and a separate task detail page. The branch is ready for pull request review.
 
 Implemented surface:
 
@@ -166,6 +166,10 @@ Implemented surface:
 - Static demo request-changes decisions no longer transfer payout or tip credits.
 - Static demo cards expose persona-specific next-action chips, requester or assignee context, readable schema blocks, and accessible pressed/current states.
 - Static demo localStorage reads and writes are guarded, normalized, and bounded before merging browser state into the seed state.
+- The static demo uses Dashboard, Tasks, Post Task, Reviews, Agent/API, and Settings labels.
+- The static demo Tasks page renders a scannable task list with status, reward, requester or assignee context, and row-level action widgets.
+- Opening a task from the demo task list navigates to a separate Task Detail page instead of changing an inline detail pane.
+- The static demo screenshot helper captures task-list and task-detail desktop and mobile states.
 
 Planned defaults:
 
@@ -269,6 +273,22 @@ Last observed checks on `task/demo-ui-polish-pass`:
 - `node --check site/demo/app.js` passed.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts tests/playwright/demo_static.spec.ts` passed.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile demo screenshots.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages with no reported console warnings, console errors, page errors, failed requests, or horizontal overflow.
+- `make check-format` passed.
+- `make check-ts` passed.
+- `make check-policy` passed.
+- `make check-copy-paste` passed.
+- `make test-deno` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.
+
+Last observed checks on `task/demo-list-detail-navigation`:
+
+- `node --check site/demo/app.js` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts tests/playwright/demo_static.spec.ts` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots, including task-list and task-detail states.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages with no reported console warnings, console errors, page errors, failed requests, or horizontal overflow.
 - `make check-format` passed.
 - `make check-ts` passed.

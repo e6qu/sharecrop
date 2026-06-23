@@ -276,6 +276,14 @@ a {
   font-size: 0.84rem;
 }
 
+.link-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
 .account-menu {
   position: relative;
 }
@@ -545,6 +553,71 @@ code {
   justify-content: flex-end;
 }
 
+.task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.task-list-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 0.42fr) minmax(170px, auto);
+  gap: 14px;
+  align-items: center;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 12px;
+  box-shadow: 0 4px 0 rgb(31 43 30 / 10%);
+}
+
+.task-list-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 56%, var(--line));
+}
+
+.task-list-main,
+.task-widget,
+.task-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.task-title-link {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 900;
+  text-align: left;
+}
+
+.task-title-link:hover {
+  color: var(--accent-strong);
+}
+
+.task-list-main p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.task-widget {
+  justify-items: start;
+}
+
+.task-actions {
+  justify-items: stretch;
+}
+
+.task-actions .button {
+  justify-content: center;
+}
+
 .mission-board {
   display: grid;
   grid-template-columns: repeat(5, minmax(235px, 1fr));
@@ -652,6 +725,10 @@ code {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
+}
+
+.inline-rank {
+  position: static;
 }
 
 .action-chip {
@@ -925,6 +1002,14 @@ button:disabled {
   .mission-board {
     grid-template-columns: repeat(3, minmax(220px, 1fr));
   }
+
+  .task-list-row {
+    grid-template-columns: 1fr;
+  }
+
+  .task-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 680px) {
@@ -986,6 +1071,10 @@ button:disabled {
     grid-template-columns: 1fr;
     border: 1px solid var(--line);
     border-radius: var(--radius);
+  }
+
+  .task-actions {
+    grid-template-columns: 1fr;
   }
 
   .mission-board {
