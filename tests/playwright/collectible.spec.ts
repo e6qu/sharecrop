@@ -52,3 +52,42 @@ test("minting a collectible and awarding it to a task through the browser", asyn
     page.getByTestId("collectible-row").filter({ hasText: name }),
   ).toContainText("escrowed");
 });
+
+test("awarding multiple collectibles shows the count on the task", async ({ page, request }) => {
+  const email = uniqueEmail("ui-multi-collectible");
+  const registerResponse = await request.post("/api/auth/register", {
+    data: { email, password },
+  });
+  expect(registerResponse.ok()).toBeTruthy();
+  const registerBody = (await registerResponse.json()) as AuthBody;
+
+  const title = `Multi collectible ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${registerBody.access_token}` },
+    data: taskRequest(title, registerBody.subject_id, "default"),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+
+  await page.goto("/");
+  await page.getByTestId("email").fill(email);
+  await page.getByTestId("password").fill(password);
+  await page.getByTestId("login").click();
+  await expect(page.getByTestId("balance")).toHaveText("100 credits");
+
+  for (const label of ["First", "Second"]) {
+    const name = `${label} medal ${crypto.randomUUID()}`;
+    await page.getByTestId("collectible-name").fill(name);
+    await page.getByTestId("mint-collectible").click();
+    const row = page.getByTestId("collectible-row").filter({ hasText: name });
+    await expect(row).toHaveCount(1);
+    await page.getByTestId("award-task-id").selectOption(task.id);
+    await row.getByTestId("award-collectible").click();
+    await expect(page.getByTestId("award-message")).toBeVisible();
+  }
+
+  // The task row now reflects both escrowed collectibles.
+  await expect(
+    page.getByTestId("task-row").filter({ hasText: title }),
+  ).toContainText("2 collectibles");
+});

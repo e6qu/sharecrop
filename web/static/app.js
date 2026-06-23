@@ -7248,6 +7248,28 @@ var $author$project$Main$entriesFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Main$CollectiblesReceived = function (a) {
+	return {$: 'CollectiblesReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Collectible$CollectiblesResponse = function (collectibles) {
+	return {collectibles: collectibles};
+};
+var $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Collectible$CollectiblesResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'collectibles',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder)));
+var $author$project$Main$fetchCollectibles = function (token) {
+	return A5(
+		$author$project$Main$authorizedRequest,
+		'GET',
+		token,
+		'/api/collectibles',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Main$CollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
+};
 var $author$project$Main$DetailReceived = function (a) {
 	return {$: 'DetailReceived', a: a};
 };
@@ -7683,28 +7705,6 @@ var $author$project$Main$fetchBalance = function (token) {
 		'/api/credits/balance',
 		$elm$http$Http$emptyBody,
 		A2($elm$http$Http$expectJson, $author$project$Main$BalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder));
-};
-var $author$project$Main$CollectiblesReceived = function (a) {
-	return {$: 'CollectiblesReceived', a: a};
-};
-var $author$project$Sharecrop$Generated$Collectible$CollectiblesResponse = function (collectibles) {
-	return {collectibles: collectibles};
-};
-var $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Collectible$CollectiblesResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'collectibles',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder)));
-var $author$project$Main$fetchCollectibles = function (token) {
-	return A5(
-		$author$project$Main$authorizedRequest,
-		'GET',
-		token,
-		'/api/collectibles',
-		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Main$CollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 };
 var $author$project$Main$CredentialsReceived = function (a) {
 	return {$: 'CredentialsReceived', a: a};
@@ -9727,19 +9727,30 @@ var $author$project$Main$update = F2(
 			case 'AwardReceived':
 				if (msg.a.$ === 'Ok') {
 					var collectible = msg.a.a;
-					return _Utils_Tuple2(
-						A2(
-							$author$project$Main$updateLoggedIn,
-							model,
-							function (state) {
-								return _Utils_update(
-									state,
-									{
-										awardMessage: $elm$core$Maybe$Just(
-											$author$project$Main$awardSuccessLabel(collectible))
-									});
-							}),
-						$author$project$Main$refreshCollectibles(model));
+					var updated = A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									awardMessage: $elm$core$Maybe$Just(
+										$author$project$Main$awardSuccessLabel(collectible))
+								});
+						});
+					return A2(
+						$author$project$Main$withSession,
+						updated,
+						function (state) {
+							return _Utils_Tuple2(
+								updated,
+								$elm$core$Platform$Cmd$batch(
+									_List_fromArray(
+										[
+											$author$project$Main$fetchCollectibles(state.accessToken),
+											A2($author$project$Main$fetchTasks, state.accessToken, state.taskStateFilter)
+										])));
+						});
 				} else {
 					var error = msg.a.a;
 					return _Utils_Tuple2(
@@ -10674,17 +10685,20 @@ var $author$project$Main$AwardTaskIdChanged = function (a) {
 };
 var $elm$html$Html$option = _VirtualDom_node('option');
 var $elm$html$Html$select = _VirtualDom_node('select');
+var $author$project$Main$collectibleCountLabel = function (count) {
+	return (count === 1) ? '1 collectible' : ($elm$core$String$fromInt(count) + ' collectibles');
+};
 var $author$project$Main$rewardLabel = F3(
 	function (kind, amount, collectibleCount) {
 		switch (kind) {
 			case 'credit':
-				return $elm$core$String$fromInt(amount) + ' credits';
+				return (collectibleCount > 0) ? ($elm$core$String$fromInt(amount) + (' credits + ' + $author$project$Main$collectibleCountLabel(collectibleCount))) : ($elm$core$String$fromInt(amount) + ' credits');
 			case 'collectible':
-				return $elm$core$String$fromInt(collectibleCount) + ' collectible';
+				return $author$project$Main$collectibleCountLabel(collectibleCount);
 			case 'bundle':
-				return $elm$core$String$fromInt(amount) + (' credits + ' + ($elm$core$String$fromInt(collectibleCount) + ' collectible'));
+				return $elm$core$String$fromInt(amount) + (' credits + ' + $author$project$Main$collectibleCountLabel(collectibleCount));
 			default:
-				return 'no reward';
+				return (collectibleCount > 0) ? $author$project$Main$collectibleCountLabel(collectibleCount) : 'no reward';
 		}
 	});
 var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');

@@ -663,7 +663,11 @@ update msg model =
             withSession model (\state -> awardCommand model state collectibleId)
 
         AwardReceived (Ok collectible) ->
-            ( updateLoggedIn model (\state -> { state | awardMessage = Just (awardSuccessLabel collectible) }), refreshCollectibles model )
+            let
+                updated =
+                    updateLoggedIn model (\state -> { state | awardMessage = Just (awardSuccessLabel collectible) })
+            in
+            withSession updated (\state -> ( updated, Cmd.batch [ fetchCollectibles state.accessToken, fetchTasks state.accessToken state.taskStateFilter ] ))
 
         AwardReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -2870,16 +2874,33 @@ rewardLabel : String -> Int -> Int -> String
 rewardLabel kind amount collectibleCount =
     case kind of
         "credit" ->
-            String.fromInt amount ++ " credits"
+            if collectibleCount > 0 then
+                String.fromInt amount ++ " credits + " ++ collectibleCountLabel collectibleCount
+
+            else
+                String.fromInt amount ++ " credits"
 
         "collectible" ->
-            String.fromInt collectibleCount ++ " collectible"
+            collectibleCountLabel collectibleCount
 
         "bundle" ->
-            String.fromInt amount ++ " credits + " ++ String.fromInt collectibleCount ++ " collectible"
+            String.fromInt amount ++ " credits + " ++ collectibleCountLabel collectibleCount
 
         _ ->
-            "no reward"
+            if collectibleCount > 0 then
+                collectibleCountLabel collectibleCount
+
+            else
+                "no reward"
+
+
+collectibleCountLabel : Int -> String
+collectibleCountLabel count =
+    if count == 1 then
+        "1 collectible"
+
+    else
+        String.fromInt count ++ " collectibles"
 
 
 httpErrorLabel : Http.Error -> String
