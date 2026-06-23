@@ -98,6 +98,27 @@ test("static demo supports mission state transitions", async ({ page }) => {
     .toBeVisible();
 });
 
+test("static demo links to task and user pages by URL", async ({ page }) => {
+  // Deep-linking a task page loads it directly.
+  await page.goto(`${demoUrl}#/tasks/invoice-cleanup`);
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Extract invoice totals" }),
+  ).toBeVisible();
+
+  // The requester name links to that user's profile page and the URL reflects it.
+  await page.locator('[data-user-page="mara"]').first().click();
+  await expect(page).toHaveURL(/#\/users\/mara$/);
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Mara Chen" }),
+  ).toBeVisible();
+
+  // Deep-linking a user page directly loads it.
+  await page.goto(`${demoUrl}#/users/jules`);
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Jules Park" }),
+  ).toBeVisible();
+});
+
 test("static demo keeps review decisions persona-scoped", async ({ page }) => {
   await page.goto(demoUrl);
 

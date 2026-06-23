@@ -33,14 +33,15 @@ const pages = [
   { id: "review", label: "Reviews" },
   { id: "integrations", label: "Agent/API" },
   { id: "settings", label: "Settings" },
+  { id: "user", label: "Profile", detailOnly: true },
 ];
 
 const users = [
-  { id: "mara", name: "Mara Chen", role: "Requester", callsign: "Quartermaster", balance: 180, rank: "S-2" },
-  { id: "jules", name: "Jules Park", role: "Implementor", callsign: "Scout", balance: 64, rank: "A-4" },
-  { id: "ren", name: "Ren Ito", role: "Organization reviewer", callsign: "Marshal", balance: 112, rank: "R-3" },
-  { id: "sol", name: "Sol Rivera", role: "Agent operator", callsign: "Uplink", balance: 100, rank: "M-1" },
-  { id: "tala", name: "Tala Stone", role: "Implementor", callsign: "Pathfinder", balance: 83, rank: "B-2" },
+  { id: "mara", name: "Mara Chen", role: "Requester", balance: 180 },
+  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64 },
+  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 112 },
+  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100 },
+  { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83 },
 ];
 
 const providers = ["Google", "Apple", "Microsoft", "Facebook", "X.com"];
@@ -307,8 +308,9 @@ const seedState = {
   includeReserved: false,
   boardFilter: "all",
   selectedTaskId: "orchard-labels",
+  selectedUserId: "mara",
   draftTitle: "Label orchard photos",
-  draftDescription: "Classify orchard imagery and return a compact JSON response.",
+  draftDescription: "You are given 20 orchard photos by URL. Return one or more condition labels for each photo (ripe, unripe, or damaged) in the labels array.",
   draftRewardKind: "bundle",
   draftCredits: "45",
   draftCollectible: "Ripe Lens",
@@ -341,8 +343,46 @@ let saveHandle = 0;
 document.addEventListener("click", handleClick);
 document.addEventListener("change", handleCommit);
 document.addEventListener("input", handleDraftInput);
+window.addEventListener("popstate", () => {
+  applyHash();
+  render();
+});
+window.addEventListener("hashchange", () => {
+  applyHash();
+  render();
+});
 
+applyHash();
 render();
+
+// hashFromState and applyHash keep the URL hash and the current page in sync so
+// task and user pages are linkable, refreshable, and shareable on GitHub Pages.
+function hashFromState() {
+  if (state.page === "task") return `#/tasks/${encodeURIComponent(state.selectedTaskId)}`;
+  if (state.page === "user") return `#/users/${encodeURIComponent(state.selectedUserId)}`;
+  if (state.page === "overview") return "#/";
+  return `#/${state.page}`;
+}
+
+function applyHash() {
+  const parts = window.location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (parts.length === 0) {
+    state = { ...state, page: "overview" };
+    return;
+  }
+  if (parts[0] === "tasks" && parts[1]) {
+    state = { ...state, page: "task", selectedTaskId: decodeURIComponent(parts[1]) };
+    return;
+  }
+  if (parts[0] === "users" && parts[1]) {
+    state = { ...state, page: "user", selectedUserId: decodeURIComponent(parts[1]) };
+    return;
+  }
+  const known = pages.find((page) => page.id === parts[0] && !page.detailOnly);
+  if (known) {
+    state = { ...state, page: known.id };
+  }
+}
 
 function task(config) {
   return {
@@ -485,8 +525,13 @@ function saveToStorage() {
 }
 
 function setState(patch, options = { render: true }) {
+  const previousHash = hashFromState();
   state = { ...state, ...patch };
   saveNow();
+  const nextHash = hashFromState();
+  if (nextHash !== previousHash) {
+    window.history.pushState(null, "", nextHash);
+  }
   if (options.render) render();
 }
 
@@ -626,7 +671,7 @@ function topbar() {
         <div class="account-menu">
           <button class="account-button" data-action="toggleLogin" aria-expanded="${state.loginOpen ? "true" : "false"}">
             <span>Persona</span>
-            <strong>${escapeHtml(user.callsign)} - ${escapeHtml(user.name)}</strong>
+            <strong>${escapeHtml(user.name)}</strong>
           </button>
           ${state.loginOpen ? loginPanel() : ""}
         </div>
@@ -657,8 +702,8 @@ function loginPanel() {
 function personaBadge(user) {
   return `
     <button class="persona-badge ${user.id === state.userId ? "selected" : ""}" data-action="choosePersona" data-user="${escapeAttribute(user.id)}" aria-pressed="${user.id === state.userId ? "true" : "false"}">
-      <strong>${escapeHtml(user.callsign)}</strong>
-      <span>${escapeHtml(user.role)} / ${escapeHtml(user.rank)}</span>
+      <strong>${escapeHtml(user.name)}</strong>
+      <span>${escapeHtml(user.role)}</span>
     </button>
   `;
 }
@@ -675,11 +720,37 @@ function pageNavigation() {
 function pageView() {
   if (state.page === "discover") return discoverPage();
   if (state.page === "task") return taskDetailPage();
+  if (state.page === "user") return userPage();
   if (state.page === "requester") return requesterPage();
   if (state.page === "review") return reviewPage();
   if (state.page === "integrations") return integrationsPage();
   if (state.page === "settings") return settingsPage();
   return overviewPage();
+}
+
+function userPage() {
+  const user = users.find((item) => item.id === state.selectedUserId) ?? users[0];
+  const requested = state.tasks.filter((item) => item.requester === user.id);
+  const assigned = state.tasks.filter((item) => item.assignee === user.id);
+  const taskLine = (item) =>
+    `<li><button class="link-button" data-open-task="${escapeAttribute(item.id)}">${escapeHtml(item.title)}</button> <span class="muted">${escapeHtml(availabilityLabel(item.availability))}</span></li>`;
+  return `
+    <section class="panel briefing-panel">
+      <div>
+        <span class="eyebrow">Profile</span>
+        <h2>${escapeHtml(user.name)}</h2>
+        <div class="badge-row">
+          <span>${escapeHtml(user.role)}</span>
+          <span>${escapeHtml(user.balance)} credits</span>
+        </div>
+        <h3>Requested tasks</h3>
+        ${requested.length ? `<ul class="objective-list">${requested.map(taskLine).join("")}</ul>` : `<p class="muted">No requested tasks.</p>`}
+        <h3>Assigned tasks</h3>
+        ${assigned.length ? `<ul class="objective-list">${assigned.map(taskLine).join("")}</ul>` : `<p class="muted">No assigned tasks.</p>`}
+        <button class="button secondary" data-page="discover">Back to tasks</button>
+      </div>
+    </section>
+  `;
 }
 
 function overviewPage() {
@@ -689,7 +760,7 @@ function overviewPage() {
     <section class="command-grid">
       <div class="hero-panel command-hero">
         <div>
-          <span class="eyebrow">${escapeHtml(user.role)} / ${escapeHtml(user.rank)}</span>
+          <span class="eyebrow">${escapeHtml(user.role)}</span>
           <h1>${escapeHtml(headlineFor(user.role))}</h1>
           <p>${escapeHtml(copyFor(user.role))}</p>
           <div class="row-actions">
@@ -1054,8 +1125,8 @@ function missionBriefing(taskItem) {
           <span>${escapeHtml(availabilityLabel(taskItem.availability))}</span>
         </div>
         <ul class="objective-list">
-          <li>Requester: ${escapeHtml(userName(taskItem.requester))}</li>
-          <li>Assignee: ${escapeHtml(taskItem.assignee ? userName(taskItem.assignee) : "unassigned")}</li>
+          <li>Requester: ${userLink(taskItem.requester)}</li>
+          <li>Assignee: ${userLink(taskItem.assignee)}</li>
           <li>Reward: ${escapeHtml(rewardLabel(taskItem.reward))}</li>
         </ul>
         <div class="schema-block">
@@ -1417,8 +1488,13 @@ function userName(userId) {
   return users.find((user) => user.id === userId)?.name ?? userId;
 }
 
+function userLink(userId) {
+  if (!userId) return "unassigned";
+  return `<button class="link-button" data-user-page="${escapeAttribute(userId)}">${escapeHtml(userName(userId))}</button>`;
+}
+
 function handleClick(event) {
-  const target = event.target.closest("[data-action], [data-page], [data-mode], [data-theme], [data-open-task], [data-task-action], [data-task], [data-provider]");
+  const target = event.target.closest("[data-action], [data-page], [data-mode], [data-theme], [data-open-task], [data-task-action], [data-task], [data-user-page], [data-provider]");
   if (target === null) return;
 
   if (target.dataset.page !== undefined) {
@@ -1444,6 +1520,10 @@ function handleClick(event) {
   }
   if (target.dataset.task !== undefined) {
     setState({ selectedTaskId: target.dataset.task, page: "task", loginOpen: false });
+    return;
+  }
+  if (target.dataset.userPage !== undefined) {
+    setState({ selectedUserId: target.dataset.userPage, page: "user", loginOpen: false });
     return;
   }
   if (target.dataset.provider !== undefined) {
