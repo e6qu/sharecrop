@@ -2,8 +2,8 @@
 
 Prioritized queue:
 
-1. Merge the `task/demo-performance-flow-review` pull request after CI passes.
-2. Verify GitHub Pages deploys the repaired demo after merge.
+1. Merge the `task/demo-game-like-personas` pull request after CI passes.
+2. Verify GitHub Pages deploys the expanded demo after merge.
 3. Revisit collectible or inventory-based tips.
 4. Redesign anonymous worker identity and payout.
 5. Add user-issued or organization-issued tokens.

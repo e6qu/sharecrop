@@ -781,3 +781,18 @@ The `task/demo-performance-flow-review` branch repaired the static demo after pe
 - The static demo Playwright test covers theme selection, user selection, typed task creation, local state persistence, and clear state through the settings page.
 - The screenshot capture helper targets exact page-tab labels and captures overview, discovery, create, review, API/MCP, settings, desktop theme, and mobile theme states.
 - The Elm build helper rejects the recursive npm Elm wrapper when `ELM_BIN` points to it, preventing local builds from hanging and flooding Node warnings.
+
+The `task/demo-game-like-personas` branch expanded the static demo into a game-like mission board:
+
+- The page labels became Command, Mission Board, Post Mission, Review Queue, Uplink, and Settings.
+- The demo seed data grew from a few tasks to a larger mission set covering public and organization visibility, open submissions, reservations, requester approval, submitted work, changes requested, rejected work, accepted work, draft missions, funded missions, expired reservations, credit rewards, collectible rewards, and bundled rewards.
+- The work-viewing surface changed from a table into mission lanes for Available, Reserved, Awaiting approval, Submitted, and Settled work.
+- Mission cards now show rank, sector, policy, availability, and reward chips.
+- Persona switching now changes the active persona, page, selected mission, and available actions.
+- LocalStorage-backed state now includes activity feed entries, balances, collectible inventories, mission timelines, review drafts, local mission IDs, and mission state transitions.
+- Requesters can locally draft, fund, open, and cancel missions.
+- Implementors can locally reserve missions, request approval, submit payloads, and resubmit after changes are requested.
+- Reviewers/requesters can locally approve or decline reservations, release reservations, request changes, reject with partial payout and tip, accept with payout and collectible transfer, and ban implementors from a mission.
+- The Uplink page can simulate an agent run that creates an agent-labeled submission.
+- Static demo Playwright coverage was expanded to verify persona switching, mission drafting persistence, and reserve-submit-accept transitions.
+- Screenshot capture was updated for the new page labels and mission board screenshots.
