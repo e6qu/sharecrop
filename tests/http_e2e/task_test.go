@@ -229,10 +229,6 @@ func TestTaskListFiltersByStateAndParticipation(t *testing.T) {
 	assertTaskAbsent(t, openListing, draftTaskID)
 
 	draftListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&state=draft"))
-	for _, v := range draftListing.Tasks {
-		t.Logf("draft listing: id=%s state=%s", v.ID, v.State)
-	}
-	t.Logf("openTaskID=%s draftTaskID=%s", openTaskID, draftTaskID)
 	assertTaskPresent(t, draftListing, draftTaskID)
 	assertTaskAbsent(t, draftListing, openTaskID)
 

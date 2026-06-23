@@ -6783,22 +6783,7 @@ var $author$project$Main$createRewardBody = function (rawAmount) {
 };
 var $author$project$Main$visibilityUserTag = 'user';
 var $author$project$Main$createVisibilityBody = function (state) {
-	return _Utils_eq(state.createVisibility, $author$project$Main$visibilityUserTag) ? $elm$json$Json$Encode$object(
-		_List_fromArray(
-			[
-				_Utils_Tuple2(
-				'kind',
-				$elm$json$Json$Encode$string($author$project$Main$visibilityUserTag)),
-				_Utils_Tuple2(
-				'user_id',
-				$elm$json$Json$Encode$string(state.createScopeUserId)),
-				_Utils_Tuple2(
-				'team_id',
-				$elm$json$Json$Encode$string('')),
-				_Utils_Tuple2(
-				'organization_id',
-				$elm$json$Json$Encode$string(''))
-			])) : $elm$json$Json$Encode$object(
+	return $elm$json$Json$Encode$object(
 		_List_fromArray(
 			[
 				_Utils_Tuple2(
@@ -6806,7 +6791,8 @@ var $author$project$Main$createVisibilityBody = function (state) {
 				$elm$json$Json$Encode$string(state.createVisibility)),
 				_Utils_Tuple2(
 				'user_id',
-				$elm$json$Json$Encode$string('')),
+				$elm$json$Json$Encode$string(
+					_Utils_eq(state.createVisibility, $author$project$Main$visibilityUserTag) ? state.createScopeUserId : '')),
 				_Utils_Tuple2(
 				'team_id',
 				$elm$json$Json$Encode$string('')),
@@ -11500,9 +11486,6 @@ var $author$project$Main$taskDetailView = F2(
 var $author$project$Main$TaskStateFilterChanged = function (a) {
 	return {$: 'TaskStateFilterChanged', a: a};
 };
-var $author$project$Main$filterTagId = function (tag) {
-	return (tag === '') ? 'all' : tag;
-};
 var $author$project$Main$taskFilterButton = F2(
 	function (selected, _v0) {
 		var tag = _v0.a;
@@ -11511,7 +11494,7 @@ var $author$project$Main$taskFilterButton = F2(
 			$author$project$Main$chooserButton,
 			_Utils_eq(selected, tag),
 			$author$project$Main$TaskStateFilterChanged(tag),
-			'task-filter-' + $author$project$Main$filterTagId(tag),
+			'task-filter-' + ((tag === '') ? 'all' : tag),
 			labelText);
 	});
 var $author$project$Main$taskStateFilterOptions = _List_fromArray(

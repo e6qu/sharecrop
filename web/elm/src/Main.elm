@@ -1333,11 +1333,20 @@ visibilityLabel tag =
 
 createVisibilityBody : LoggedInModel -> Encode.Value
 createVisibilityBody state =
-    if state.createVisibility == visibilityUserTag then
-        Encode.object [ ( "kind", Encode.string visibilityUserTag ), ( "user_id", Encode.string state.createScopeUserId ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string "" ) ]
+    Encode.object
+        [ ( "kind", Encode.string state.createVisibility )
+        , ( "user_id"
+          , Encode.string
+                (if state.createVisibility == visibilityUserTag then
+                    state.createScopeUserId
 
-    else
-        Encode.object [ ( "kind", Encode.string state.createVisibility ), ( "user_id", Encode.string "" ), ( "team_id", Encode.string "" ), ( "organization_id", Encode.string "" ) ]
+                 else
+                    ""
+                )
+          )
+        , ( "team_id", Encode.string "" )
+        , ( "organization_id", Encode.string "" )
+        ]
 
 
 reservationHoursValue : String -> Int
@@ -1720,17 +1729,15 @@ taskFilterButton : String -> ( String, String ) -> Html Msg
 taskFilterButton selected ( tag, labelText ) =
     chooserButton (selected == tag)
         (TaskStateFilterChanged tag)
-        ("task-filter-" ++ filterTagId tag)
+        ("task-filter-"
+            ++ (if tag == "" then
+                    "all"
+
+                else
+                    tag
+               )
+        )
         labelText
-
-
-filterTagId : String -> String
-filterTagId tag =
-    if tag == "" then
-        "all"
-
-    else
-        tag
 
 
 activeAssigneeSuffix : Task.TaskListItemResponse -> String
