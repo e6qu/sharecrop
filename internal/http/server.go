@@ -83,6 +83,7 @@ type SubmissionService interface {
 	Submit(context.Context, submission.SubmitCommand) submission.SubmitResult
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
+	ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult
 }
 
 type LedgerService interface {
@@ -143,6 +144,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("GET /api/teams", server.listStandaloneTeams)
 	mux.HandleFunc("POST /api/teams", server.createStandaloneTeam)
 	mux.HandleFunc("GET /api/users/{user_id}", server.getUserProfile)
+	mux.HandleFunc("GET /api/users/{user_id}/work", server.getUserWork)
+	mux.HandleFunc("GET /api/users/{user_id}/submissions", server.getUserSubmissions)
 	mux.HandleFunc("GET /api/tasks", server.listTasks)
 	mux.HandleFunc("POST /api/tasks", server.createTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/open", server.openTask)
@@ -847,6 +850,61 @@ func (server Server) getUserProfile(w http.ResponseWriter, r *http.Request) {
 		response.Tasks = append(response.Tasks, taskListItemToResponse(listed.Values[valueIndex]))
 	}
 	writeUserProfileResponse(w, http.StatusOK, response)
+}
+
+func (server Server) getUserWork(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	userIDResult := core.ParseUserID(r.PathValue("user_id"))
+	userIDCreated, userIDMatched := userIDResult.(core.UserIDCreated)
+	if !userIDMatched {
+		writeError(w, http.StatusBadRequest, userIDResult.(core.UserIDRejected).Reason.Description())
+		return
+	}
+
+	result := server.taskService.List(r.Context(), actor.subject, task.AssigneeListScope{AssigneeID: userIDCreated.Value}, task.NoListFilters(), parsePage(r))
+	listed, matched := result.(task.TasksListed)
+	if !matched {
+		writeDomainError(w, result.(task.ListRejected).Reason)
+		return
+	}
+	writeTasksResponse(w, http.StatusOK, tasksToResponse(listed.Values))
+}
+
+func (server Server) getUserSubmissions(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	userIDResult := core.ParseUserID(r.PathValue("user_id"))
+	userIDCreated, userIDMatched := userIDResult.(core.UserIDCreated)
+	if !userIDMatched {
+		writeError(w, http.StatusBadRequest, userIDResult.(core.UserIDRejected).Reason.Description())
+		return
+	}
+
+	result := server.submissionService.ListForSubmitter(r.Context(), actor.subject, userIDCreated.Value)
+	listed, matched := result.(submission.SubmissionsListed)
+	if !matched {
+		writeDomainError(w, result.(submission.ListRejected).Reason)
+		return
+	}
+
+	response := submissionsResponse{Submissions: make([]submissionResponse, 0, len(listed.Values))}
+	for _, value := range listed.Values {
+		response.Submissions = append(response.Submissions, submissionToResponse(value))
+	}
+	writeSubmissionsResponse(w, http.StatusOK, response)
 }
 
 func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request) {

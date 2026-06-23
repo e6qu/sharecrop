@@ -301,6 +301,13 @@ type CreatorListScope struct {
 	CreatorID core.UserID
 }
 
+// AssigneeListScope lists the public tasks a user is actively assigned to (their
+// public work). It exposes only publicly visible tasks, so a profile cannot leak
+// private or scoped work.
+type AssigneeListScope struct {
+	AssigneeID core.UserID
+}
+
 func (PublicListScope) listScope() {}
 
 func (UserListScope) listScope() {}
@@ -308,6 +315,8 @@ func (UserListScope) listScope() {}
 func (OrganizationListScope) listScope() {}
 
 func (CreatorListScope) listScope() {}
+
+func (AssigneeListScope) listScope() {}
 
 type ListResult interface {
 	listResult()
@@ -674,6 +683,8 @@ func (service Service) requireListPermission(ctx context.Context, actor auth.Use
 		}
 		return listPermissionAccepted{}
 	case CreatorListScope:
+		return listPermissionAccepted{}
+	case AssigneeListScope:
 		return listPermissionAccepted{}
 	default:
 		return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list scope is invalid")}

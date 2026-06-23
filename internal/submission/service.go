@@ -14,6 +14,7 @@ type Store interface {
 	CreateSubmission(context.Context, core.SubmissionID, core.SubmissionReceiptTokenID, ReceiptTokenHash, SubmitCommand, State, ValidationOutcome, []SensitiveField) CreateSubmissionStoreResult
 	FindByReceiptToken(context.Context, ReceiptTokenHash) FindReceiptStoreResult
 	ListForTask(context.Context, core.TaskID, core.Page) ListSubmissionsStoreResult
+	ListForSubmitter(context.Context, core.UserID) ListSubmissionsStoreResult
 }
 
 type TaskFinder interface {
@@ -187,6 +188,22 @@ func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, 
 	}
 
 	result := service.store.ListForTask(ctx, taskID, page)
+	listed, matched := result.(ListSubmissionsStoreAccepted)
+	if !matched {
+		rejected := result.(ListSubmissionsStoreRejected)
+		return ListRejected{Reason: rejected.Reason}
+	}
+	return SubmissionsListed{Values: listed.Values}
+}
+
+// ListForSubmitter returns a submitter's own submissions. Only the submitter may
+// read their submissions; another user is denied so submissions never leak.
+func (service Service) ListForSubmitter(ctx context.Context, actor auth.UserSubject, submitterID core.UserID) ListResult {
+	if actor.ID != submitterID {
+		return ListRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submissions are visible only to their submitter")}
+	}
+
+	result := service.store.ListForSubmitter(ctx, submitterID)
 	listed, matched := result.(ListSubmissionsStoreAccepted)
 	if !matched {
 		rejected := result.(ListSubmissionsStoreRejected)

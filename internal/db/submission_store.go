@@ -99,6 +99,24 @@ func (store SubmissionStore) FindByReceiptToken(ctx context.Context, hash submis
 	return submission.ReceiptFound{Value: values.values[0]}
 }
 
+func (store SubmissionStore) ListForSubmitter(ctx context.Context, submitterID core.UserID) submission.ListSubmissionsStoreResult {
+	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
+		where submissions.user_id = $1
+		order by submissions.created_at
+	`, submitterID.String())
+	if err != nil {
+		return submission.ListSubmissionsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list submitter submissions failed")}
+	}
+	defer rows.Close()
+
+	valuesResult := scanSubmissionRows(rows)
+	values, matched := valuesResult.(submissionRowsAccepted)
+	if !matched {
+		return submission.ListSubmissionsStoreRejected{Reason: valuesResult.(submissionRowsRejected).reason}
+	}
+	return submission.ListSubmissionsStoreAccepted{Values: values.values}
+}
+
 func (store SubmissionStore) ListForTask(ctx context.Context, taskID core.TaskID, page core.Page) submission.ListSubmissionsStoreResult {
 	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
 		where submissions.task_id = $1

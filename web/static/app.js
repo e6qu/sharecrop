@@ -5360,12 +5360,18 @@ var $author$project$Main$TasksPage = {$: 'TasksPage'};
 var $author$project$Main$UserDetailPage = function (a) {
 	return {$: 'UserDetailPage', a: a};
 };
+var $author$project$Main$UserSubmissionsPage = function (a) {
+	return {$: 'UserSubmissionsPage', a: a};
+};
+var $author$project$Main$UserWorkPage = function (a) {
+	return {$: 'UserWorkPage', a: a};
+};
 var $author$project$Main$pageFromUrl = function (url) {
 	var _v0 = A2(
 		$elm$core$String$split,
 		'/',
 		A2($elm$core$String$dropLeft, 1, url.path));
-	_v0$10:
+	_v0$12:
 	while (true) {
 		if (_v0.b) {
 			if (!_v0.b.b) {
@@ -5383,7 +5389,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 					case 'organizations':
 						return $author$project$Main$OrganizationsPage;
 					default:
-						break _v0$10;
+						break _v0$12;
 				}
 			} else {
 				if (!_v0.b.b.b) {
@@ -5406,14 +5412,31 @@ var $author$project$Main$pageFromUrl = function (url) {
 							var userId = _v4.a;
 							return $author$project$Main$UserDetailPage(userId);
 						default:
-							break _v0$10;
+							break _v0$12;
 					}
 				} else {
-					break _v0$10;
+					if ((_v0.a === 'users') && (!_v0.b.b.b.b)) {
+						switch (_v0.b.b.a) {
+							case 'work':
+								var _v5 = _v0.b;
+								var userId = _v5.a;
+								var _v6 = _v5.b;
+								return $author$project$Main$UserWorkPage(userId);
+							case 'submissions':
+								var _v7 = _v0.b;
+								var userId = _v7.a;
+								var _v8 = _v7.b;
+								return $author$project$Main$UserSubmissionsPage(userId);
+							default:
+								break _v0$12;
+						}
+					} else {
+						break _v0$12;
+					}
 				}
 			}
 		} else {
-			break _v0$10;
+			break _v0$12;
 		}
 	}
 	return $author$project$Main$OverviewPage;
@@ -7296,6 +7319,14 @@ var $author$project$Main$enterPage = F2(
 				return _Utils_update(
 					state,
 					{page: page, userProfile: $elm$core$Maybe$Nothing});
+			case 'UserWorkPage':
+				return _Utils_update(
+					state,
+					{page: page, userWork: _List_Nil});
+			case 'UserSubmissionsPage':
+				return _Utils_update(
+					state,
+					{page: page, userSubmissions: _List_Nil});
 			default:
 				return _Utils_update(
 					state,
@@ -7775,7 +7806,9 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		submitMessage: $elm$core$Maybe$Nothing,
 		taskStateFilter: '',
 		tasks: _List_Nil,
-		userProfile: $elm$core$Maybe$Nothing
+		userProfile: $elm$core$Maybe$Nothing,
+		userSubmissions: _List_Nil,
+		userWork: _List_Nil
 	};
 };
 var $author$project$Main$loggedInForPage = F2(
@@ -8527,6 +8560,12 @@ var $author$project$Main$revokeAgent = F2(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Main$AgentRevoked, $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder));
 	});
+var $author$project$Main$UserSubmissionsReceived = function (a) {
+	return {$: 'UserSubmissionsReceived', a: a};
+};
+var $author$project$Main$UserWorkReceived = function (a) {
+	return {$: 'UserWorkReceived', a: a};
+};
 var $author$project$Main$fetchDetailCommands = F2(
 	function (token, taskId) {
 		return $elm$core$Platform$Cmd$batch(
@@ -8637,11 +8676,37 @@ var $author$project$Main$routeLoadCmd = F2(
 							$author$project$Main$fetchOrganizations(token),
 							A2($author$project$Main$loadOrganization, token, organizationId)
 						]));
-			default:
+			case 'UserDetailPage':
 				var userId = page.a;
 				return A2($author$project$Main$fetchUserProfile, token, userId);
+			case 'UserWorkPage':
+				var userId = page.a;
+				return A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/users/' + (userId + '/work'),
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$UserWorkReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
+			default:
+				var userId = page.a;
+				return A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/users/' + (userId + '/submissions'),
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$UserSubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
 		}
 	});
+var $author$project$Main$submissionsFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return response.submissions;
+	} else {
+		return _List_Nil;
+	}
+};
 var $author$project$Main$SubmitReceived = function (a) {
 	return {$: 'SubmitReceived', a: a};
 };
@@ -10012,6 +10077,34 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'UserWorkReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									userWork: $author$project$Main$tasksFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'UserSubmissionsReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									userSubmissions: $author$project$Main$submissionsFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'OrgTasksReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -10478,9 +10571,15 @@ var $author$project$Main$pageToPath = function (page) {
 		case 'OrganizationDetailPage':
 			var organizationId = page.a;
 			return '/organizations/' + organizationId;
-		default:
+		case 'UserDetailPage':
 			var userId = page.a;
 			return '/users/' + userId;
+		case 'UserWorkPage':
+			var userId = page.a;
+			return '/users/' + (userId + '/work');
+		default:
+			var userId = page.a;
+			return '/users/' + (userId + '/submissions');
 	}
 };
 var $author$project$Main$navLink = F4(
@@ -13153,6 +13252,39 @@ var $author$project$Main$userDetailView = F2(
 						[
 							$elm$html$Html$text(userId)
 						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$a,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$href('/users/' + (userId + '/work')),
+									$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+									$author$project$Sharecrop$Ui$testId('user-work-link')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Public work')
+								])),
+							A2(
+							$elm$html$Html$a,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$href('/users/' + (userId + '/submissions')),
+									$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+									$author$project$Sharecrop$Ui$testId('user-submissions-link')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Submissions')
+								]))
+						])),
 					$author$project$Sharecrop$Ui$sectionTitle('Public tasks'),
 					function () {
 					var _v0 = state.userProfile;
@@ -13207,6 +13339,135 @@ var $author$project$Main$userDetailView = F2(
 				}()
 				]));
 	});
+var $author$project$Main$userSubmissionsView = F2(
+	function (userId, submissions) {
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$a,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$href('/users/' + userId),
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+							$author$project$Sharecrop$Ui$testId('back-user')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Back to profile')
+						])),
+					$author$project$Sharecrop$Ui$sectionTitle('Submissions'),
+					$elm$core$List$isEmpty(submissions) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+							$author$project$Sharecrop$Ui$testId('user-submissions-empty')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No submissions.')
+						])) : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+							$author$project$Sharecrop$Ui$testId('user-submissions')
+						]),
+					A2(
+						$elm$core$List$map,
+						function (item) {
+							return A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('space-y-1 py-2'),
+										$author$project$Sharecrop$Ui$testId('user-submission-row')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$a,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$href('/tasks/' + item.taskID),
+												$elm$html$Html$Attributes$class('text-sm underline')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Task ' + item.taskID)
+											])),
+										A2(
+										$elm$html$Html$p,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-xs text-slate-600')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text(
+												$author$project$Main$submissionStateLabel(item.state))
+											]))
+									]));
+						},
+						submissions))
+				]));
+	});
+var $author$project$Main$userTaskListView = F4(
+	function (heading, identifier, userId, tasks) {
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$a,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$href('/users/' + userId),
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+							$author$project$Sharecrop$Ui$testId('back-user')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Back to profile')
+						])),
+					$author$project$Sharecrop$Ui$sectionTitle(heading),
+					$elm$core$List$isEmpty(tasks) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+							$author$project$Sharecrop$Ui$testId(identifier + '-empty')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Nothing to show.')
+						])) : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+							$author$project$Sharecrop$Ui$testId(identifier)
+						]),
+					A2(
+						$elm$core$List$map,
+						function (item) {
+							return A2(
+								$elm$html$Html$a,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$href('/tasks/' + item.id),
+										$elm$html$Html$Attributes$class('block py-2 text-sm underline'),
+										$author$project$Sharecrop$Ui$testId(identifier + '-row')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text(
+										item.title + (' · ' + $author$project$Main$taskStateLabel(item.state)))
+									]));
+						},
+						tasks))
+				]));
+	});
 var $author$project$Main$pageView = F2(
 	function (origin, state) {
 		var _v0 = state.page;
@@ -13231,9 +13492,15 @@ var $author$project$Main$pageView = F2(
 				return $author$project$Main$organizationsView(state);
 			case 'OrganizationDetailPage':
 				return $author$project$Main$organizationDetailView(state);
-			default:
+			case 'UserDetailPage':
 				var userId = _v0.a;
 				return A2($author$project$Main$userDetailView, userId, state);
+			case 'UserWorkPage':
+				var userId = _v0.a;
+				return A4($author$project$Main$userTaskListView, 'Public work', 'user-work', userId, state.userWork);
+			default:
+				var userId = _v0.a;
+				return A2($author$project$Main$userSubmissionsView, userId, state.userSubmissions);
 		}
 	});
 var $author$project$Main$loggedInView = F2(

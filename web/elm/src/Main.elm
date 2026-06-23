@@ -41,6 +41,8 @@ type Page
     | OrganizationsPage
     | OrganizationDetailPage String
     | UserDetailPage String
+    | UserWorkPage String
+    | UserSubmissionsPage String
 
 
 type alias LoggedInModel =
@@ -96,6 +98,8 @@ type alias LoggedInModel =
     , orgMembers : List Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
     , userProfile : Maybe Task.UserProfileResponse
+    , userWork : List Task.TaskListItemResponse
+    , userSubmissions : List Submission.SubmissionResponse
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
     , provisionMemberEmail : String
@@ -214,6 +218,8 @@ type Msg
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
     | OrgMembersReceived (Result Http.Error Organization.OrganizationMembersResponse)
     | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
+    | UserWorkReceived (Result Http.Error Task.TasksResponse)
+    | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
@@ -304,6 +310,8 @@ emptyLoggedIn response =
     , orgMembers = []
     , orgTasks = []
     , userProfile = Nothing
+    , userWork = []
+    , userSubmissions = []
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
     , provisionMemberEmail = ""
@@ -354,6 +362,12 @@ pageFromUrl url =
         [ "users", userId ] ->
             UserDetailPage userId
 
+        [ "users", userId, "work" ] ->
+            UserWorkPage userId
+
+        [ "users", userId, "submissions" ] ->
+            UserSubmissionsPage userId
+
         _ ->
             OverviewPage
 
@@ -394,6 +408,12 @@ pageToPath page =
         UserDetailPage userId ->
             "/users/" ++ userId
 
+        UserWorkPage userId ->
+            "/users/" ++ userId ++ "/work"
+
+        UserSubmissionsPage userId ->
+            "/users/" ++ userId ++ "/submissions"
+
 
 -- enterPage applies any per-page state a route needs when it becomes active, so
 -- a deep link or back/forward leaves the model consistent with the URL.
@@ -405,6 +425,12 @@ enterPage page state =
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing }
+
+        UserWorkPage _ ->
+            { state | page = page, userWork = [] }
+
+        UserSubmissionsPage _ ->
+            { state | page = page, userSubmissions = [] }
 
         _ ->
             { state | page = page }
@@ -759,6 +785,12 @@ update msg model =
         UserProfileReceived result ->
             ( updateLoggedIn model (\state -> { state | userProfile = Result.toMaybe result }), Cmd.none )
 
+        UserWorkReceived result ->
+            ( updateLoggedIn model (\state -> { state | userWork = tasksFromResult result }), Cmd.none )
+
+        UserSubmissionsReceived result ->
+            ( updateLoggedIn model (\state -> { state | userSubmissions = submissionsFromResult result }), Cmd.none )
+
         OrgTasksReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
 
@@ -1098,6 +1130,12 @@ routeLoadCmd token page =
         UserDetailPage userId ->
             fetchUserProfile token userId
 
+        UserWorkPage userId ->
+            authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/work") Http.emptyBody (Http.expectJson UserWorkReceived Task.tasksResponseDecoder)
+
+        UserSubmissionsPage userId ->
+            authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions") Http.emptyBody (Http.expectJson UserSubmissionsReceived Submission.submissionsResponseDecoder)
+
 
 fetchUserProfile : String -> String -> Cmd Msg
 fetchUserProfile token userId =
@@ -1433,6 +1471,16 @@ membersFromResult result =
     case result of
         Ok response ->
             response.members
+
+        Err _ ->
+            []
+
+
+submissionsFromResult : Result Http.Error Submission.SubmissionsResponse -> List Submission.SubmissionResponse
+submissionsFromResult result =
+    case result of
+        Ok response ->
+            response.submissions
 
         Err _ ->
             []
@@ -1830,12 +1878,58 @@ pageView origin state =
         UserDetailPage userId ->
             userDetailView userId state
 
+        UserWorkPage userId ->
+            userTaskListView "Public work" "user-work" userId state.userWork
+
+        UserSubmissionsPage userId ->
+            userSubmissionsView userId state.userSubmissions
+
+
+userTaskListView : String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
+userTaskListView heading identifier userId tasks =
+    Ui.card
+        [ a [ href ("/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
+        , Ui.sectionTitle heading
+        , if List.isEmpty tasks then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId (identifier ++ "-empty") ] [ text "Nothing to show." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId identifier ]
+                (List.map (\item -> a [ href ("/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId (identifier ++ "-row") ] [ text (item.title ++ " · " ++ taskStateLabel item.state) ]) tasks)
+        ]
+
+
+userSubmissionsView : String -> List Submission.SubmissionResponse -> Html Msg
+userSubmissionsView userId submissions =
+    Ui.card
+        [ a [ href ("/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
+        , Ui.sectionTitle "Submissions"
+        , if List.isEmpty submissions then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "user-submissions-empty" ] [ text "No submissions." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
+                (List.map
+                    (\item ->
+                        div [ Html.Attributes.class "space-y-1 py-2", testId "user-submission-row" ]
+                            [ a [ href ("/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline" ] [ text ("Task " ++ item.taskID) ]
+                            , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (submissionStateLabel item.state) ]
+                            ]
+                    )
+                    submissions
+                )
+        ]
+
 
 userDetailView : String -> LoggedInModel -> Html Msg
 userDetailView userId state =
     Ui.card
         [ Ui.sectionTitle "User"
         , p [ Html.Attributes.class "text-sm font-medium", testId "user-id" ] [ text userId ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ a [ href ("/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Public work" ]
+            , a [ href ("/users/" ++ userId ++ "/submissions"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-submissions-link" ] [ text "Submissions" ]
+            ]
         , Ui.sectionTitle "Public tasks"
         , case state.userProfile of
             Just profile ->

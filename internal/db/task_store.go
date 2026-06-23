@@ -666,6 +666,10 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 		arguments["creator_id"] = typed.CreatorID.String()
 		arguments["visibility_kind"] = task.VisibilityKindPublic.String()
 		where = " where tasks.created_by_user_id = @creator_id and task_visibility_scopes.visibility_kind = @visibility_kind"
+	case task.AssigneeListScope:
+		arguments["assignee_id"] = typed.AssigneeID.String()
+		arguments["visibility_kind"] = task.VisibilityKindPublic.String()
+		where = " where active_reservation.assignee_kind = 'user' and active_reservation.user_id = @assignee_id and task_visibility_scopes.visibility_kind = @visibility_kind"
 	default:
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list scope is invalid")}
 	}

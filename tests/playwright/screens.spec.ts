@@ -251,6 +251,13 @@ test("a user profile page lists the user's public tasks", async ({ page, request
   await expect(
     page.getByTestId("user-task-row").filter({ hasText: title }),
   ).toHaveCount(1);
+
+  // The work and submissions sub-pages are their own linkable URLs.
+  await page.getByTestId("user-work-link").click();
+  await expect(page).toHaveURL(/\/users\/[^/]+\/work$/);
+  await page.getByTestId("back-user").click();
+  await page.getByTestId("user-submissions-link").click();
+  await expect(page).toHaveURL(/\/users\/[^/]+\/submissions$/);
 });
 
 test("pages have their own URLs and deep links load", async ({ page, request }) => {

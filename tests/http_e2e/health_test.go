@@ -174,6 +174,10 @@ func (healthSubmissionService) ListForTask(context.Context, auth.UserSubject, co
 	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthSubmissionService) ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult {
+	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 type healthLedgerService struct{}
 
 func (healthLedgerService) FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult {

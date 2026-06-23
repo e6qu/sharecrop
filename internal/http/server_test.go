@@ -567,6 +567,10 @@ func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
+func (testSubmissionService) ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult {
+	return submission.SubmissionsListed{Values: []submission.Submission{}}
+}
+
 func (testLedgerService) FundTask(_ context.Context, _ core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
 	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
 }
