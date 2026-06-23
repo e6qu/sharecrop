@@ -1,10 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 26 work. Pull request 26 was merged into `main`.
+The repository contains pull request 1 through pull request 30 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/multi-page-routing` gives the browser app a route and URL per section and makes deep links load, decomposes the single dashboard panel into focused pages, and adds an always-visible reset control to the static demo. The branch is ready for pull request review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/org-followups` (pull request 31) adds linkable, RBAC-aware pages for every entity a user can reach and finishes the organization follow-ups. The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/org-followups`:
+
+- The static demo rewrites its seed tasks to be self-contained (input, deliverable, acceptance) and adds hash-routed pages, including per-user profiles.
+- The browser app gives each entity its own URL: routed `/organizations/{id}`, role-aware `/tasks/{id}` (owner controls versus worker controls), `/users/{id}` profiles, `/users/{id}/work`, `/users/{id}/submissions`, `/collectibles/{id}`, and `/series/{id}`.
+- A `GET /api/organizations/{id}/members` endpoint backs a real member list restricted to active members. `GET /api/users/{id}` exposes a user's public tasks, `GET /api/users/{id}/work` their public assignments, and `GET /api/users/{id}/submissions` their own submissions (self only).
+- Role-based access control is enforced and tested for every new surface: a private task never leaks through task detail, discovery, or a profile; submissions are visible only to their submitter; the member roster only to members.
+- The create-task form offers team and organization visibility scopes, and the funding form can fund a task from organization credits.
+- The user-profile, work, and submissions HTTP handlers live in their own `internal/http/users.go` file.
 
 Implemented in `task/multi-page-routing`:
 

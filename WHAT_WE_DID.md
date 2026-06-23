@@ -1,6 +1,16 @@
 # What We Did
 
-`task/multi-page-routing` gave the browser app real per-section URLs and decomposed the single dashboard panel:
+`task/org-followups` added linkable, RBAC-aware pages for every entity a user can reach and finished the organization follow-ups:
+
+- Rewrote the static demo seed tasks to be self-contained (concrete input, deliverable, and acceptance criteria) and de-jargoned the personas and areas, then added hash-routed demo pages including per-user profiles and an always-visible reset control.
+- Gave the browser app a URL per entity: routed `/organizations/{id}`; a role-aware `/tasks/{id}` that shows owner controls (open, refund, review) to the task creator and worker controls (reserve, submit) to others, replacing the inline owner detail; `/users/{id}` profiles; `/users/{id}/work`; `/users/{id}/submissions`; `/collectibles/{id}`; and `/series/{id}`.
+- Added `GET /api/organizations/{id}/members` (real membership-and-roles query, restricted to active members) with a member list in the organization page; `GET /api/users/{id}` (a user's public tasks via a public-only `CreatorListScope`); `GET /api/users/{id}/work` (public assignments via `AssigneeListScope`); and `GET /api/users/{id}/submissions` (the caller's own submissions only).
+- Enforced and tested role-based access control on every new surface: a private task is denied through task detail and is absent from public discovery and from the owner's public profile; submissions are visible only to their submitter (others get 403); the member roster is visible only to members.
+- Extended the create-task form with team and organization visibility scopes (a standalone team id is a valid scope) and let the funding form fund a task from organization credits via the existing org-funding endpoint.
+- Moved the user-profile, work, and submissions handlers into `internal/http/users.go`.
+- Verified all responses are real persisted data with no mocks, placeholders, or stubs in production code.
+
+Earlier, `task/multi-page-routing` gave the browser app real per-section URLs and decomposed the single dashboard panel:
 
 - The HTTP server now serves the single-page-application shell for every non-API route (`index` no longer 404s non-root paths), so deep links and refreshes load the app. Unmatched API paths still return 404.
 - The Elm app routes each section to its own URL and page: `/` overview, `/tasks`, `/tasks/new`, `/tasks/{id}`, `/discovery`, `/funding`, `/agents`, `/collectibles`, `/organizations`. The navigation bar uses real `<a href>` links, and the one stacked dashboard was split into focused pages, with per-page data loading.
