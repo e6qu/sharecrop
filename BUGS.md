@@ -13,8 +13,6 @@ Test gaps:
 - Reservation availability is exposed on task responses, but the current read model does not yet expose the active reservation assignee on each task list item.
 - The asset economy is platform-only: user-issued tokens, organization-issued tokens, crypto rewards, and external wallets are not implemented. Current implemented rewards are Sharecrop credits and platform collectibles.
 - Request/command contracts and HTTP contract fixture tests still need to expand as the API grows.
-- Manual screenshot review for reward-bundle browser labels was skipped; Playwright UI coverage passed on the branch.
-- Manual screenshot review for MCP instruction snippet changes was skipped; Playwright UI coverage passed on the branch.
 
 Known risks:
 

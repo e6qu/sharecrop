@@ -1,4 +1,58 @@
-const storageKey = "sharecrop-demo-state-v2";
+const storageKey = "sharecrop-demo-state-v3";
+
+const seedTasks = [
+  {
+    id: "orchard-labels",
+    title: "Label orchard photos",
+    requester: "mara",
+    assignee: "jules",
+    visibility: "Public marketplace",
+    policy: "Reservation required",
+    reward: "45 credits + 1 collectible",
+    state: "open",
+    availability: "reserved",
+    schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string"}}}}',
+    description: "Classify orchard imagery and return a compact JSON response.",
+    submissions: [
+      {
+        by: "jules",
+        state: "submitted",
+        response: '{"labels":["ripe","needs review"],"confidence":[91,74]}',
+      },
+    ],
+    reservations: [{ by: "jules", state: "active" }],
+  },
+  {
+    id: "invoice-cleanup",
+    title: "Extract invoice totals",
+    requester: "mara",
+    assignee: "",
+    visibility: "Organization",
+    policy: "Approval required",
+    reward: "30 credits",
+    state: "open",
+    availability: "awaiting approval",
+    schema: '{"kind":"object","fields":{"total":{"kind":"decimal_string"}}}',
+    description: "Return invoice totals from a small vendor batch.",
+    submissions: [],
+    reservations: [{ by: "ren", state: "requested" }],
+  },
+  {
+    id: "badge-copy",
+    title: "Draft badge copy",
+    requester: "ren",
+    assignee: "",
+    visibility: "Public marketplace",
+    policy: "Open submissions",
+    reward: "no reward",
+    state: "open",
+    availability: "available",
+    schema: '{"kind":"freeform"}',
+    description: "Suggest short labels for a platform collectible badge.",
+    submissions: [],
+    reservations: [],
+  },
+];
 
 const seedState = {
   mode: "light",
@@ -10,75 +64,26 @@ const seedState = {
   includeReserved: false,
   selectedTaskId: "orchard-labels",
   draftTitle: "Label orchard photos",
+  draftDescription: "Classify orchard imagery and return a compact JSON response.",
   draftReward: "45 credits + 1 collectible",
   draftPolicy: "reservation",
+  draftVisibility: "public",
+  draftReservationHours: "48",
   responseText: '{"labels":["ripe","needs review"]}',
   reviewNote: "Please include confidence values for each label.",
   partialPayout: "18",
   tipAmount: "4",
   banImplementor: false,
-  tasks: [
-    {
-      id: "orchard-labels",
-      title: "Label orchard photos",
-      requester: "mara",
-      assignee: "jules",
-      visibility: "Public marketplace",
-      policy: "Reservation required",
-      reward: "45 credits + 1 collectible",
-      state: "open",
-      availability: "reserved",
-      schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string"}}}}',
-      description: "Classify orchard imagery and return a compact JSON response.",
-      submissions: [
-        {
-          by: "jules",
-          state: "submitted",
-          response: '{"labels":["ripe","needs review"],"confidence":[91,74]}',
-        },
-      ],
-      reservations: [{ by: "jules", state: "active" }],
-    },
-    {
-      id: "invoice-cleanup",
-      title: "Extract invoice totals",
-      requester: "mara",
-      assignee: "",
-      visibility: "Organization",
-      policy: "Approval required",
-      reward: "30 credits",
-      state: "open",
-      availability: "awaiting approval",
-      schema: '{"kind":"object","fields":{"total":{"kind":"decimal_string"}}}',
-      description: "Return invoice totals from a small vendor batch.",
-      submissions: [],
-      reservations: [{ by: "ren", state: "requested" }],
-    },
-    {
-      id: "badge-copy",
-      title: "Draft badge copy",
-      requester: "ren",
-      assignee: "",
-      visibility: "Public marketplace",
-      policy: "Open submissions",
-      reward: "no reward",
-      state: "open",
-      availability: "available",
-      schema: '{"kind":"freeform"}',
-      description: "Suggest short labels for a platform collectible badge.",
-      submissions: [],
-      reservations: [],
-    },
-  ],
+  tasks: seedTasks,
 };
 
 const pages = [
   { id: "overview", label: "Overview" },
   { id: "discover", label: "Discover" },
-  { id: "requester", label: "Requester" },
+  { id: "requester", label: "Create" },
   { id: "review", label: "Review" },
   { id: "integrations", label: "API & MCP" },
-  { id: "settings", label: "Demo settings" },
+  { id: "settings", label: "Settings" },
 ];
 
 const users = [
@@ -89,8 +94,17 @@ const users = [
 ];
 
 const providers = ["Google", "Apple", "Microsoft", "Facebook", "X.com"];
-
+const maxDemoTasks = 8;
+const maxDemoSubmissions = 4;
+const maxDemoReservations = 4;
 let state = loadState();
+let saveHandle = 0;
+
+document.addEventListener("click", handleClick);
+document.addEventListener("change", handleCommit);
+document.addEventListener("input", handleDraftInput);
+
+render();
 
 function loadState() {
   const stored = localStorage.getItem(storageKey);
@@ -105,14 +119,34 @@ function loadState() {
   }
 }
 
-function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
+function saveSoon() {
+  clearTimeout(saveHandle);
+  saveHandle = setTimeout(() => {
+    saveToStorage();
+  }, 120);
 }
 
-function setState(patch) {
+function saveNow() {
+  clearTimeout(saveHandle);
+  saveToStorage();
+}
+
+function saveToStorage() {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  } catch (_error) {
+    localStorage.removeItem(storageKey);
+    state = { ...structuredClone(seedState), page: "settings" };
+    render();
+  }
+}
+
+function setState(patch, options = { render: true }) {
   state = { ...state, ...patch };
-  saveState();
-  render();
+  saveNow();
+  if (options.render) {
+    render();
+  }
 }
 
 function resetState() {
@@ -143,57 +177,8 @@ function updateTask(taskId, change) {
     ...state,
     tasks: state.tasks.map((task) => task.id === taskId ? { ...task, ...change(task) } : task),
   };
-  saveState();
+  saveNow();
   render();
-}
-
-function reserveTask(taskId) {
-  updateTask(taskId, () => ({
-    assignee: state.userId,
-    availability: "reserved",
-    reservations: [{ by: state.userId, state: "active" }],
-  }));
-}
-
-function requestApproval(taskId) {
-  updateTask(taskId, (task) => ({
-    availability: "awaiting approval",
-    reservations: [...task.reservations, { by: state.userId, state: "requested" }],
-  }));
-}
-
-function submitResponse(taskId) {
-  updateTask(taskId, (task) => ({
-    submissions: [...task.submissions, { by: state.userId, state: "submitted", response: state.responseText }],
-  }));
-}
-
-function approveReservation(taskId, userId) {
-  updateTask(taskId, (task) => ({
-    assignee: userId,
-    availability: "reserved",
-    reservations: task.reservations.map((reservation) =>
-      reservation.by === userId ? { ...reservation, state: "active" } : reservation
-    ),
-  }));
-}
-
-function rejectSubmission(taskId, userId) {
-  updateTask(taskId, (task) => ({
-    submissions: task.submissions.map((submission) =>
-      submission.by === userId ? { ...submission, state: "rejected" } : submission
-    ),
-  }));
-}
-
-function acceptSubmission(taskId, userId) {
-  updateTask(taskId, (task) => ({
-    state: "closed",
-    availability: "closed",
-    submissions: task.submissions.map((submission) =>
-      submission.by === userId ? { ...submission, state: "accepted" } : submission
-    ),
-  }));
 }
 
 function createDraftTask() {
@@ -208,40 +193,35 @@ function createDraftTask() {
         title: state.draftTitle,
         requester: state.userId,
         assignee: "",
-        visibility: "Public marketplace",
+        visibility: state.draftVisibility === "organization" ? "Organization" : "Public marketplace",
         policy: state.draftPolicy === "approval" ? "Approval required" : "Reservation required",
         reward: state.draftReward,
         state: "draft",
         availability: "available",
+        reservationHours: state.draftReservationHours,
         schema: '{"kind":"freeform"}',
-        description: "Demo-created task stored only in this browser.",
+        description: state.draftDescription,
         submissions: [],
         reservations: [],
       },
-      ...state.tasks,
-    ],
+      ...state.tasks.filter((task) => !task.id.startsWith("demo-")),
+      ...state.tasks.filter((task) => task.id.startsWith("demo-")).slice(0, maxDemoTasks - 4),
+    ].slice(0, maxDemoTasks),
   };
-  saveState();
+  saveNow();
   render();
 }
 
 function render() {
   document.body.dataset.mode = state.mode;
   document.body.dataset.theme = state.theme;
-  const app = document.getElementById("app");
-  app.innerHTML = `
+  document.getElementById("app").innerHTML = `
     <main class="app-shell">
       ${topbar()}
-      <section class="workspace">
-        <aside class="rail">${rail()}</aside>
-        <section class="content-shell">
-          ${pageNavigation()}
-          ${pageView()}
-        </section>
-      </section>
+      ${pageNavigation()}
+      <section class="page-shell">${pageView()}</section>
     </main>
   `;
-  bindEvents();
 }
 
 function topbar() {
@@ -251,42 +231,15 @@ function topbar() {
       <a class="brand" href="../">Sharecrop</a>
       <div class="topbar-actions">
         <a class="button secondary" href="../docs/">Docs</a>
-        <button class="button ghost" data-action="reset">Clear demo state</button>
         <div class="account-menu">
-          <button class="account-button" data-action="toggleLogin">
-            <span>Guest</span>
-            <strong>${user.name}</strong>
+          <button class="account-button" data-action="toggleLogin" aria-expanded="${state.loginOpen ? "true" : "false"}">
+            <span>Viewing as</span>
+            <strong>${user.name} · ${user.role}</strong>
           </button>
           ${state.loginOpen ? loginPanel() : ""}
         </div>
       </div>
     </nav>
-  `;
-}
-
-function rail() {
-  return `
-    <section class="rail-card">
-      <span class="eyebrow">Theme</span>
-      <div class="segmented" aria-label="Mode">
-        ${modeButton("light", "Light")}
-        ${modeButton("dark", "Dark")}
-      </div>
-      <div class="theme-grid">
-        ${themeButton("corporate", "Corporate")}
-        ${themeButton("rustic", "Rustic")}
-        ${themeButton("blocky", "Blocky")}
-        ${themeButton("showcase", "Showcase")}
-      </div>
-    </section>
-    <section class="rail-card">
-      <span class="eyebrow">Session</span>
-      <div class="account-line">
-        <span>${selectedUser().role}</span>
-        <strong>${selectedUser().balance} credits</strong>
-      </div>
-      <p class="hint">Use the account menu in the top-right corner to switch demo users or preview login methods.</p>
-    </section>
   `;
 }
 
@@ -306,14 +259,6 @@ function loginPanel() {
   `;
 }
 
-function modeButton(value, label) {
-  return `<button class="button ${state.mode === value ? "primary" : "secondary"}" data-mode="${value}">${label}</button>`;
-}
-
-function themeButton(value, label) {
-  return `<button class="theme-chip ${state.theme === value ? "selected" : ""}" data-theme="${value}">${label}</button>`;
-}
-
 function pageNavigation() {
   return `
     <nav class="page-tabs" aria-label="Demo pages">
@@ -323,21 +268,11 @@ function pageNavigation() {
 }
 
 function pageView() {
-  if (state.page === "discover") {
-    return discoverPage();
-  }
-  if (state.page === "requester") {
-    return requesterPage();
-  }
-  if (state.page === "review") {
-    return reviewPage();
-  }
-  if (state.page === "integrations") {
-    return integrationsPage();
-  }
-  if (state.page === "settings") {
-    return settingsPage();
-  }
+  if (state.page === "discover") return discoverPage();
+  if (state.page === "requester") return requesterPage();
+  if (state.page === "review") return reviewPage();
+  if (state.page === "integrations") return integrationsPage();
+  if (state.page === "settings") return settingsPage();
   return overviewPage();
 }
 
@@ -354,21 +289,16 @@ function overviewPage() {
         ${metricCard("Open tasks", String(state.tasks.filter((task) => task.state === "open").length))}
         ${metricCard("Reservations", String(state.tasks.flatMap((task) => task.reservations).length))}
         ${metricCard("Submissions", String(state.tasks.flatMap((task) => task.submissions).length))}
-        ${metricCard("Demo balance", `${user.balance}`)}
+        ${metricCard("Balance", `${user.balance} credits`)}
       </div>
     </section>
     <section class="panel">
-      <div class="section-header">
-        <div>
-          <span class="eyebrow">Workflow map</span>
-          <h2>What this demo covers</h2>
-        </div>
-      </div>
-      <div class="story-grid">
-        ${storyCard("Requester", "Create tasks, set rewards, choose participation policy, and review results.")}
-        ${storyCard("Implementor", "Discover available work, reserve or request approval, and submit JSON responses.")}
-        ${storyCard("Reviewer", "Approve reservations, accept submissions, reject work, request changes, and issue fair payouts.")}
-        ${storyCard("Agent", "Use REST and MCP instructions from a task page to provide the result.")}
+      <span class="eyebrow">Choose a flow</span>
+      <div class="flow-grid">
+        ${flowCard("discover", "Implementor discovery", "Find eligible tasks, inspect rewards and policies, and submit work.")}
+        ${flowCard("requester", "Requester setup", "Create a task and see the requester-owned task list.")}
+        ${flowCard("review", "Review queue", "Approve reservations and accept or reject submitted work.")}
+        ${flowCard("integrations", "API and MCP", "Copy the instructions a worker or local agent needs to provide a result.")}
       </div>
     </section>
   `;
@@ -377,18 +307,18 @@ function overviewPage() {
 function discoverPage() {
   return `
     <section class="panel">
-      <div class="section-header">
+      <div class="page-header">
         <div>
-          <span class="eyebrow">Discover</span>
-          <h1>Find available work</h1>
-          <p>Workers see open public tasks. Reserved tasks stay hidden unless explicitly included.</p>
+          <span class="eyebrow">Implementor flow</span>
+          <h1>Discover available work</h1>
+          <p>Workers see the public task list, choose whether to include reserved tasks, and act on one selected task.</p>
         </div>
         <label class="check-row">
           <input type="checkbox" data-field="includeReserved" ${state.includeReserved ? "checked" : ""}>
           Include reserved
         </label>
       </div>
-      ${taskTable(visibleTasks(), "discover")}
+      ${taskTable(visibleTasks())}
     </section>
     ${taskActionPanel()}
   `;
@@ -396,32 +326,41 @@ function discoverPage() {
 
 function requesterPage() {
   return `
-    <section class="panel split-panel">
-      <div>
-        <span class="eyebrow">Requester</span>
-        <h1>Create and prepare work</h1>
-        <p>Set the task shape first, then fund and open it in the real API-backed app.</p>
+    <section class="panel">
+      <div class="page-header">
+        <div>
+          <span class="eyebrow">Requester flow</span>
+          <h1>Create and prepare a task</h1>
+          <p>The real app funds and opens tasks through the API. This demo keeps a local draft so the creation flow is quick to inspect.</p>
+        </div>
       </div>
-      <form class="form-grid" data-form="create-task">
+      <form class="create-form" data-form="create-task">
         <label for="draft-title">Title<input id="draft-title" data-field="draftTitle" value="${escapeHtml(state.draftTitle)}"></label>
+        <label class="wide-field" for="draft-description">Description<textarea id="draft-description" data-field="draftDescription">${escapeHtml(state.draftDescription)}</textarea></label>
         <label for="draft-reward">Reward<input id="draft-reward" data-field="draftReward" value="${escapeHtml(state.draftReward)}"></label>
+        <label for="draft-visibility">Visibility
+          <select id="draft-visibility" data-field="draftVisibility">
+            <option value="public" ${state.draftVisibility === "public" ? "selected" : ""}>Public marketplace</option>
+            <option value="organization" ${state.draftVisibility === "organization" ? "selected" : ""}>Organization</option>
+          </select>
+        </label>
         <label for="draft-policy">Participation
           <select id="draft-policy" data-field="draftPolicy">
             <option value="reservation" ${state.draftPolicy === "reservation" ? "selected" : ""}>Reservation required</option>
             <option value="approval" ${state.draftPolicy === "approval" ? "selected" : ""}>Requester approval required</option>
           </select>
         </label>
+        <label for="draft-reservation-hours">Reservation expiry<input id="draft-reservation-hours" data-field="draftReservationHours" value="${escapeHtml(state.draftReservationHours)}"></label>
         <button class="button primary" data-action="create" type="button">Add demo task</button>
       </form>
+      <div class="flow-note">
+        <strong>Next in the API-backed app:</strong>
+        fund the reward, attach collectibles when needed, then open the task for discovery.
+      </div>
     </section>
     <section class="panel">
-      <div class="section-header">
-        <div>
-          <span class="eyebrow">Requester task list</span>
-          <h2>Tasks you own</h2>
-        </div>
-      </div>
-      ${taskTable(state.tasks.filter((task) => task.requester === state.userId), "requester")}
+      <span class="eyebrow">Tasks owned by ${selectedUser().name}</span>
+      ${taskTable(state.tasks.filter((task) => task.requester === state.userId))}
     </section>
   `;
 }
@@ -430,15 +369,13 @@ function reviewPage() {
   const task = selectedTask();
   return `
     <section class="panel">
-      <div class="section-header">
+      <div class="page-header">
         <div>
-          <span class="eyebrow">Review</span>
-          <h1>Reservations and submissions</h1>
-          <p>Requester decisions stay separate from discovery and creation work.</p>
+          <span class="eyebrow">Requester review flow</span>
+          <h1>Review reservations and submissions</h1>
+          <p>Reservation decisions and submission outcomes are kept together because they are usually handled by the same requester or reviewer.</p>
         </div>
-        <select class="task-select" data-field="selectedTaskId">
-          ${state.tasks.map((item) => `<option value="${item.id}" ${item.id === task.id ? "selected" : ""}>${item.title}</option>`).join("")}
-        </select>
+        ${taskSelect(task)}
       </div>
       <div class="review-layout">
         <section class="sub-panel">
@@ -446,8 +383,7 @@ function reviewPage() {
           ${reservationQueue(task)}
         </section>
         <section class="sub-panel">
-          <h2>Submission review</h2>
-          ${reviewControls()}
+          <h2>Submission decision</h2>
           ${submissionList(task)}
         </section>
       </div>
@@ -459,19 +395,30 @@ function integrationsPage() {
   const task = selectedTask();
   return `
     <section class="panel">
-      <div class="section-header">
+      <div class="page-header">
         <div>
-          <span class="eyebrow">API & MCP</span>
-          <h1>Instructions for ${escapeHtml(task.title)}</h1>
-          <p>Each task page needs clear REST and MCP instructions so workers and agents can provide results.</p>
+          <span class="eyebrow">Agent and API flow</span>
+          <h1>Provide a result for ${escapeHtml(task.title)}</h1>
+          <p>Task pages should expose direct REST and MCP instructions so people, scripts, and local agents can all submit results.</p>
         </div>
-        <select class="task-select" data-field="selectedTaskId">
-          ${state.tasks.map((item) => `<option value="${item.id}" ${item.id === task.id ? "selected" : ""}>${item.title}</option>`).join("")}
-        </select>
+        ${taskSelect(task)}
       </div>
       <div class="code-grid">
         <article class="sub-panel">
-          <span class="eyebrow">REST API</span>
+          <span class="eyebrow">Agent credential</span>
+          <h2>Scoped client setup</h2>
+          <pre>{
+  "mcpServers": {
+    "sharecrop": {
+      "url": "https://sharecrop.example/mcp",
+      "headers": { "Authorization": "Bearer &lt;AGENT_TOKEN&gt;" }
+    }
+  }
+}</pre>
+          <p class="hint">Demo scopes: tasks_read, submissions_write, submissions_review. Revocation is available in the API-backed app.</p>
+        </article>
+        <article class="sub-panel">
+          <span class="eyebrow">Worker REST</span>
           <h2>Submit result</h2>
           <pre>curl -X POST https://sharecrop.example/api/tasks/${task.id}/submissions \\
   -H "Authorization: Bearer &lt;ACCESS_TOKEN&gt;" \\
@@ -479,13 +426,21 @@ function integrationsPage() {
   -d '{"response_json":"{}"}'</pre>
         </article>
         <article class="sub-panel">
-          <span class="eyebrow">MCP</span>
+          <span class="eyebrow">Worker MCP</span>
           <h2>Session workflow</h2>
           <pre>initialize -> Mcp-Session-Id
 sharecrop.reserve_task
 sharecrop.get_task_schema
-sharecrop.submit_response
-sharecrop.accept_submission</pre>
+sharecrop.submit_response</pre>
+        </article>
+        <article class="sub-panel">
+          <span class="eyebrow">Requester MCP</span>
+          <h2>Review tools</h2>
+          <pre>sharecrop.list_task_reservations
+sharecrop.approve_task_reservation
+sharecrop.request_changes
+sharecrop.accept_submission
+sharecrop.reject_submission</pre>
         </article>
       </div>
     </section>
@@ -494,34 +449,73 @@ sharecrop.accept_submission</pre>
 
 function settingsPage() {
   return `
-    <section class="panel split-panel">
-      <div>
-        <span class="eyebrow">Demo settings</span>
-        <h1>Local state and placeholders</h1>
-        <p>The demo stores edits only in this browser. Clearing state restores the seeded requester, implementor, reviewer, and agent stories.</p>
+    <section class="panel">
+      <div class="page-header">
+        <div>
+          <span class="eyebrow">Demo settings</span>
+          <h1>Theme, state, and placeholders</h1>
+          <p>Settings are kept out of task workflows so the demo does not compete with the actual work surfaces.</p>
+        </div>
       </div>
-      <div class="settings-actions">
-        <button class="button primary" data-action="reset">Clear demo state</button>
-        <a class="button secondary" href="../docs/">Open docs placeholder</a>
+      <div class="settings-grid">
+        <section class="sub-panel">
+          <h2>Theme</h2>
+          <div class="segmented" aria-label="Mode">
+            ${modeButton("light", "Light")}
+            ${modeButton("dark", "Dark")}
+          </div>
+          <div class="theme-grid">
+            ${themeButton("corporate", "Corporate")}
+            ${themeButton("rustic", "Rustic")}
+            ${themeButton("blocky", "Blocky")}
+            ${themeButton("showcase", "Showcase")}
+          </div>
+        </section>
+        <section class="sub-panel">
+          <h2>Local state</h2>
+          <p>The demo stores edits only in this browser.</p>
+          <button class="button primary" data-action="reset">Clear state</button>
+        </section>
       </div>
     </section>
   `;
+}
+
+function taskSelect(task) {
+  return `
+    <select class="task-select" data-field="selectedTaskId">
+      ${state.tasks.map((item) => `<option value="${item.id}" ${item.id === task.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
+    </select>
+  `;
+}
+
+function modeButton(value, label) {
+  return `<button class="button ${state.mode === value ? "primary" : "secondary"}" data-mode="${value}">${label}</button>`;
+}
+
+function themeButton(value, label) {
+  return `<button class="theme-chip ${state.theme === value ? "selected" : ""}" data-theme="${value}">${label}</button>`;
 }
 
 function metricCard(label, value) {
   return `<div class="metric-card"><span>${label}</span><strong>${value}</strong></div>`;
 }
 
-function storyCard(title, copy) {
-  return `<article class="story-card"><h3>${title}</h3><p>${copy}</p></article>`;
+function flowCard(page, title, copy) {
+  return `
+    <button class="flow-card" data-page="${page}">
+      <strong>${title}</strong>
+      <span>${copy}</span>
+    </button>
+  `;
 }
 
-function taskTable(tasks, context) {
+function taskTable(tasks) {
   if (tasks.length === 0) {
     return `<p class="empty-state">No tasks match this view.</p>`;
   }
   return `
-    <div class="task-table" data-context="${context}">
+    <div class="task-table">
       <div class="task-table-head">
         <span>Task</span><span>Policy</span><span>Reward</span><span>Status</span>
       </div>
@@ -534,39 +528,65 @@ function taskRow(task) {
   return `
     <button class="task-table-row ${task.id === state.selectedTaskId ? "selected" : ""}" data-task="${task.id}">
       <span><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.description)}</small></span>
-      <span>${task.policy}</span>
-      <span>${task.reward}</span>
-      <span><em>${task.availability}</em></span>
+      <span>${escapeHtml(task.policy)}</span>
+      <span>${escapeHtml(task.reward)}</span>
+      <span><em>${escapeHtml(task.availability)}</em></span>
     </button>
   `;
 }
 
 function taskActionPanel() {
   const task = selectedTask();
+  const action = nextAction(task);
   return `
-    <section class="panel split-panel">
+    <section class="panel task-action-panel">
       <div>
         <span class="eyebrow">Selected task</span>
         <h2>${escapeHtml(task.title)}</h2>
         <p>${escapeHtml(task.description)}</p>
         <div class="badge-row">
-          <span>${task.state}</span>
-          <span>${task.visibility}</span>
-          <span>${task.reward}</span>
-          <span>${task.policy}</span>
+          <span>${escapeHtml(task.state)}</span>
+          <span>${escapeHtml(task.visibility)}</span>
+          <span>${escapeHtml(task.reward)}</span>
+          <span>${escapeHtml(task.policy)}</span>
         </div>
       </div>
       <div class="sub-panel">
         <h2>Implementor action</h2>
         <textarea data-field="responseText">${escapeHtml(state.responseText)}</textarea>
         <div class="row-actions">
-          <button class="button secondary" data-action="reserve">Reserve</button>
-          <button class="button secondary" data-action="requestApproval">Request approval</button>
-          <button class="button primary" data-action="submit">Submit response</button>
+          ${actionButtons(action)}
         </div>
+        <p class="hint">${action.explanation}</p>
       </div>
     </section>
   `;
+}
+
+function nextAction(task) {
+  if (task.availability === "closed" || task.state === "closed") {
+    return { kind: "none", explanation: "This task is closed." };
+  }
+  if (task.policy === "Approval required" && task.assignee !== state.userId) {
+    return { kind: "requestApproval", explanation: "This task requires requester approval before work can be submitted." };
+  }
+  if (task.policy === "Reservation required" && task.assignee !== state.userId) {
+    return { kind: "reserve", explanation: "This task needs an exclusive reservation before submission." };
+  }
+  return { kind: "submit", explanation: "You are eligible to submit a response for this task." };
+}
+
+function actionButtons(action) {
+  if (action.kind === "reserve") {
+    return `<button class="button primary" data-action="reserve">Reserve task</button><button class="button secondary" disabled>Submit after reservation</button>`;
+  }
+  if (action.kind === "requestApproval") {
+    return `<button class="button primary" data-action="requestApproval">Request approval</button><button class="button secondary" disabled>Submit after approval</button>`;
+  }
+  if (action.kind === "submit") {
+    return `<button class="button primary" data-action="submit">Submit response</button>`;
+  }
+  return `<button class="button secondary" disabled>No action available</button>`;
 }
 
 function reservationQueue(task) {
@@ -577,24 +597,14 @@ function reservationQueue(task) {
     <div class="queue-row">
       <div>
         <strong>${userName(reservation.by)}</strong>
-        <span>${reservation.state}</span>
+        <span>${escapeHtml(reservation.state)}</span>
       </div>
-      ${reservation.state === "requested" ? `<button class="button primary" data-action="approve" data-user="${reservation.by}">Approve</button>` : ""}
+      <div class="row-actions">
+        ${reservation.state === "requested" ? `<button class="button secondary" data-action="declineReservation" data-user="${reservation.by}">Decline</button><button class="button primary" data-action="approve" data-user="${reservation.by}">Approve</button>` : ""}
+        ${reservation.state === "active" ? `<button class="button secondary" data-action="releaseReservation" data-user="${reservation.by}">Release</button>` : ""}
+      </div>
     </div>
   `).join("");
-}
-
-function reviewControls() {
-  return `
-    <div class="review-controls">
-      <label for="review-note">Review note<textarea id="review-note" data-field="reviewNote">${escapeHtml(state.reviewNote)}</textarea></label>
-      <div class="mini-grid">
-        <label>Partial payout<input data-field="partialPayout" value="${escapeHtml(state.partialPayout)}"></label>
-        <label>Tip<input data-field="tipAmount" value="${escapeHtml(state.tipAmount)}"></label>
-      </div>
-      <label class="check-row"><input type="checkbox" data-field="banImplementor" ${state.banImplementor ? "checked" : ""}> Ban implementor from this task</label>
-    </div>
-  `;
 }
 
 function submissionList(task) {
@@ -605,10 +615,17 @@ function submissionList(task) {
     <div class="submission-row">
       <div>
         <strong>${userName(submission.by)}</strong>
-        <span>${submission.state}</span>
+        <span>${escapeHtml(submission.state)}</span>
       </div>
       <code>${escapeHtml(submission.response)}</code>
+      <label>Review note<textarea data-field="reviewNote">${escapeHtml(state.reviewNote)}</textarea></label>
+      <div class="mini-grid">
+        <label>Partial payout<input data-field="partialPayout" value="${escapeHtml(state.partialPayout)}"></label>
+        <label>Tip<input data-field="tipAmount" value="${escapeHtml(state.tipAmount)}"></label>
+      </div>
+      <label class="check-row"><input type="checkbox" data-field="banImplementor" ${state.banImplementor ? "checked" : ""}> Ban implementor from this task</label>
       <div class="row-actions">
+        <button class="button secondary" data-action="requestChanges" data-user="${submission.by}">Request changes</button>
         <button class="button secondary" data-action="reject" data-user="${submission.by}">Reject</button>
         <button class="button primary" data-action="accept" data-user="${submission.by}">Accept</button>
       </div>
@@ -616,36 +633,61 @@ function submissionList(task) {
   `).join("");
 }
 
-function bindEvents() {
-  document.querySelectorAll("[data-field]").forEach((node) => {
-    node.addEventListener("input", () => {
-      const key = node.dataset.field;
-      const value = node.type === "checkbox" ? node.checked : node.value;
-      if (key === "userId") {
-        setState({ [key]: value, loginOpen: false });
-        return;
-      }
-      setState({ [key]: value });
-    });
-  });
-  document.querySelectorAll("[data-mode]").forEach((node) => {
-    node.addEventListener("click", () => setState({ mode: node.dataset.mode }));
-  });
-  document.querySelectorAll("[data-theme]").forEach((node) => {
-    node.addEventListener("click", () => setState({ theme: node.dataset.theme }));
-  });
-  document.querySelectorAll("[data-page]").forEach((node) => {
-    node.addEventListener("click", () => setState({ page: node.dataset.page, loginOpen: false }));
-  });
-  document.querySelectorAll("[data-task]").forEach((node) => {
-    node.addEventListener("click", () => setState({ selectedTaskId: node.dataset.task }));
-  });
-  document.querySelectorAll("[data-provider]").forEach((node) => {
-    node.addEventListener("click", () => setState({ socialProvider: node.dataset.provider, loginOpen: false }));
-  });
-  document.querySelectorAll("[data-action]").forEach((node) => {
-    node.addEventListener("click", () => handleAction(node.dataset.action, node.dataset.user));
-  });
+function handleClick(event) {
+  const target = event.target.closest("[data-action], [data-page], [data-mode], [data-theme], [data-task], [data-provider]");
+  if (target === null) return;
+
+  if (target.dataset.page !== undefined) {
+    setState({ page: target.dataset.page, loginOpen: false });
+    return;
+  }
+  if (target.dataset.mode !== undefined) {
+    setState({ mode: target.dataset.mode });
+    return;
+  }
+  if (target.dataset.theme !== undefined) {
+    setState({ theme: target.dataset.theme });
+    return;
+  }
+  if (target.dataset.task !== undefined) {
+    setState({ selectedTaskId: target.dataset.task });
+    return;
+  }
+  if (target.dataset.provider !== undefined) {
+    setState({ socialProvider: target.dataset.provider, loginOpen: false });
+    return;
+  }
+
+  handleAction(target.dataset.action, target.dataset.user);
+}
+
+function handleCommit(event) {
+  const target = event.target;
+  if (target.dataset.field === undefined) return;
+
+  const key = target.dataset.field;
+  const value = target.type === "checkbox" ? target.checked : target.value;
+  if (key === "userId") {
+    setState({ userId: value, loginOpen: false });
+    return;
+  }
+  if (target.type === "checkbox" || target.tagName === "SELECT") {
+    setState({ [key]: value });
+    return;
+  }
+  state = { ...state, [key]: value };
+  saveNow();
+}
+
+function handleDraftInput(event) {
+  const target = event.target;
+  if (target.dataset.field === undefined) return;
+
+  const key = target.dataset.field;
+  if (key === "userId" || target.type === "checkbox" || target.tagName === "SELECT") return;
+
+  state = { ...state, [key]: target.value };
+  saveSoon();
 }
 
 function handleAction(action, userId) {
@@ -653,26 +695,94 @@ function handleAction(action, userId) {
   if (action === "reset") resetState();
   if (action === "toggleLogin") setState({ loginOpen: !state.loginOpen });
   if (action === "create") createDraftTask();
-  if (action === "reserve") reserveTask(task.id);
-  if (action === "requestApproval") requestApproval(task.id);
-  if (action === "submit") submitResponse(task.id);
-  if (action === "approve") approveReservation(task.id, userId);
-  if (action === "reject") rejectSubmission(task.id, userId);
-  if (action === "accept") acceptSubmission(task.id, userId);
+  if (action === "reserve") {
+    updateTask(task.id, () => ({
+      assignee: state.userId,
+      availability: "reserved",
+      reservations: [{ by: state.userId, state: "active" }],
+    }));
+  }
+  if (action === "requestApproval") {
+    updateTask(task.id, (current) => ({
+      availability: "awaiting approval",
+      reservations: [
+        ...current.reservations.filter((reservation) => reservation.by !== state.userId),
+        { by: state.userId, state: "requested" },
+      ].slice(-maxDemoReservations),
+    }));
+  }
+  if (action === "submit") {
+    updateTask(task.id, (current) => ({
+      submissions: [
+        ...current.submissions.filter((submission) => submission.by !== state.userId || submission.state !== "submitted"),
+        { by: state.userId, state: "submitted", response: state.responseText },
+      ].slice(-maxDemoSubmissions),
+    }));
+  }
+  if (action === "approve") {
+    updateTask(task.id, (current) => ({
+      assignee: userId,
+      availability: "reserved",
+      reservations: current.reservations.map((reservation) =>
+        reservation.by === userId ? { ...reservation, state: "active" } : reservation
+      ),
+    }));
+  }
+  if (action === "declineReservation") {
+    updateTask(task.id, (current) => ({
+      availability: current.assignee === userId ? "available" : current.availability,
+      assignee: current.assignee === userId ? "" : current.assignee,
+      reservations: current.reservations.map((reservation) =>
+        reservation.by === userId ? { ...reservation, state: "declined" } : reservation
+      ),
+    }));
+  }
+  if (action === "releaseReservation") {
+    updateTask(task.id, (current) => ({
+      availability: "available",
+      assignee: "",
+      reservations: current.reservations.map((reservation) =>
+        reservation.by === userId ? { ...reservation, state: "released" } : reservation
+      ),
+    }));
+  }
+  if (action === "reject") {
+    updateTask(task.id, (current) => ({
+      submissions: current.submissions.map((submission) =>
+        submission.by === userId ? { ...submission, state: "rejected" } : submission
+      ),
+    }));
+  }
+  if (action === "requestChanges") {
+    updateTask(task.id, (current) => ({
+      submissions: current.submissions.map((submission) =>
+        submission.by === userId ? { ...submission, state: "changes requested" } : submission
+      ),
+    }));
+  }
+  if (action === "accept") {
+    updateTask(task.id, (current) => ({
+      state: "closed",
+      availability: "closed",
+      submissions: current.submissions.map((submission) =>
+        submission.by === userId ? { ...submission, state: "accepted" } : submission
+      ),
+    }));
+  }
 }
 
 function headlineFor(role) {
-  if (role === "Requester") return "Coordinate requested work without turning Sharecrop into a task runner.";
+  if (role === "Requester") return "Coordinate requested work without making Sharecrop a task runner.";
   if (role === "Implementor") return "Find eligible tasks, reserve work, and submit structured results.";
-  if (role === "Organization reviewer") return "Review organization workflows with clear queues and outcomes.";
+  if (role === "Organization reviewer") return "Review organization work through clear queues and outcomes.";
   return "Connect local agents through scoped HTTP and MCP instructions.";
 }
 
 function copyFor(role) {
-  if (role === "Requester") return "The demo separates creation, discovery, review, and integrations so each workflow has a focused place.";
-  if (role === "Implementor") return "Discovery shows what is available, what is reserved, and which action can be taken next.";
-  if (role === "Organization reviewer") return "Review queues show reservation decisions and submission outcomes without crowding creation controls.";
-  return "Integration instructions are kept on their own page so API and MCP usage can be inspected directly.";
+  if (role === "Requester") return "Use focused pages for creating work, checking discovery, reviewing submissions, and copying integration instructions.";
+  if (role === "Implementor") return "Discovery is a dedicated flow so available work, reservation state, and next actions are visible together.";
+  if (role === "Organization reviewer") return "Review queues keep reservation and submission decisions in one place without crowding task creation.";
+  return "API and MCP instructions are isolated from human review screens so agent setup stays easy to scan.";
 }
 
 function userName(userId) {
@@ -687,5 +797,3 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
-
-render();
