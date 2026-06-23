@@ -7425,92 +7425,6 @@ var $author$project$Main$fetchOrgTeams = F2(
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Main$OrgTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
 	});
-var $author$project$Main$SubmissionsReceived = function (a) {
-	return {$: 'SubmissionsReceived', a: a};
-};
-var $author$project$Sharecrop$Generated$Submission$SubmissionsResponse = function (submissions) {
-	return {submissions: submissions};
-};
-var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F7(
-	function (id, taskID, submitterID, state, responseJSON, reviewNote, validationErrors) {
-		return {id: id, responseJSON: responseJSON, reviewNote: reviewNote, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
-	});
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateRejected = {$: 'SubmissionStateRejected'};
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted = {$: 'SubmissionStateSubmitted'};
-var $author$project$Sharecrop$Generated$Submission$submissionStateDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'submitted':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted);
-			case 'invalid':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid);
-			case 'accepted':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted);
-			case 'rejected':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateRejected);
-			case 'changes_requested':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested);
-			default:
-				return $elm$json$Json$Decode$fail('invalid SubmissionState');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse = F2(
-	function (path, message) {
-		return {message: message, path: path};
-	});
-var $author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder = A3(
-	$elm$json$Json$Decode$map2,
-	$author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse,
-	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder = A8(
-	$elm$json$Json$Decode$map7,
-	$author$project$Sharecrop$Generated$Submission$SubmissionResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'submitter_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Submission$submissionStateDecoder),
-	A2($elm$json$Json$Decode$field, 'response_json', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'review_note', $elm$json$Json$Decode$string),
-	A2(
-		$elm$json$Json$Decode$field,
-		'validation_errors',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder)));
-var $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Submission$SubmissionsResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'submissions',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionResponseDecoder)));
-var $author$project$Main$fetchSubmissions = F2(
-	function (token, taskId) {
-		return A5(
-			$author$project$Main$authorizedRequest,
-			'GET',
-			token,
-			'/api/tasks/' + (taskId + '/submissions'),
-			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Main$SubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
-	});
-var $author$project$Main$TaskDetailReceived = function (a) {
-	return {$: 'TaskDetailReceived', a: a};
-};
-var $author$project$Main$fetchTaskDetail = F2(
-	function (token, taskId) {
-		return A5(
-			$author$project$Main$authorizedRequest,
-			'GET',
-			token,
-			'/api/tasks/' + taskId,
-			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Main$TaskDetailReceived, $author$project$Main$taskDetailDecoder));
-	});
 var $author$project$Main$TasksReceived = function (a) {
 	return {$: 'TasksReceived', a: a};
 };
@@ -7839,7 +7753,6 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		reviewNote: '',
 		reviewPartialCredit: '',
 		reviewTip: '',
-		selectedTask: $elm$core$Maybe$Nothing,
 		subjectId: response.subjectID,
 		submissions: _List_Nil,
 		submitInput: '',
@@ -8118,6 +8031,79 @@ var $author$project$Main$provisionMemberCommand = F2(
 				$elm$http$Http$expectWhatever($author$project$Main$ProvisionMemberReceived)));
 	});
 var $elm$browser$Browser$Navigation$pushUrl = _Browser_pushUrl;
+var $author$project$Main$SubmissionsReceived = function (a) {
+	return {$: 'SubmissionsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionsResponse = function (submissions) {
+	return {submissions: submissions};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F7(
+	function (id, taskID, submitterID, state, responseJSON, reviewNote, validationErrors) {
+		return {id: id, responseJSON: responseJSON, reviewNote: reviewNote, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
+	});
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateRejected = {$: 'SubmissionStateRejected'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted = {$: 'SubmissionStateSubmitted'};
+var $author$project$Sharecrop$Generated$Submission$submissionStateDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'submitted':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted);
+			case 'invalid':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid);
+			case 'accepted':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted);
+			case 'rejected':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateRejected);
+			case 'changes_requested':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested);
+			default:
+				return $elm$json$Json$Decode$fail('invalid SubmissionState');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse = F2(
+	function (path, message) {
+		return {message: message, path: path};
+	});
+var $author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse,
+	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder = A8(
+	$elm$json$Json$Decode$map7,
+	$author$project$Sharecrop$Generated$Submission$SubmissionResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'submitter_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Submission$submissionStateDecoder),
+	A2($elm$json$Json$Decode$field, 'response_json', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'review_note', $elm$json$Json$Decode$string),
+	A2(
+		$elm$json$Json$Decode$field,
+		'validation_errors',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder)));
+var $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Submission$SubmissionsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'submissions',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionResponseDecoder)));
+var $author$project$Main$fetchSubmissions = F2(
+	function (token, taskId) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'GET',
+			token,
+			'/api/tasks/' + (taskId + '/submissions'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Main$SubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
+	});
 var $author$project$Main$refreshAfterAccept = function (model) {
 	var _v0 = model.session;
 	if (_v0.$ === 'LoggedIn') {
@@ -9051,52 +9037,6 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
-			case 'SelectTask':
-				var taskId = msg.a;
-				return A2(
-					$author$project$Main$withSession,
-					model,
-					function (state) {
-						return _Utils_Tuple2(
-							model,
-							$elm$core$Platform$Cmd$batch(
-								_List_fromArray(
-									[
-										A2($author$project$Main$fetchTaskDetail, state.accessToken, taskId),
-										A2($author$project$Main$fetchSubmissions, state.accessToken, taskId)
-									])));
-					});
-			case 'TaskDetailReceived':
-				if (msg.a.$ === 'Ok') {
-					var detail = msg.a.a;
-					return _Utils_Tuple2(
-						A2(
-							$author$project$Main$updateLoggedIn,
-							model,
-							function (state) {
-								return _Utils_update(
-									state,
-									{
-										selectedTask: $elm$core$Maybe$Just(detail)
-									});
-							}),
-						$elm$core$Platform$Cmd$none);
-				} else {
-					var error = msg.a.a;
-					return _Utils_Tuple2(
-						A2(
-							$author$project$Main$updateLoggedIn,
-							model,
-							function (state) {
-								return _Utils_update(
-									state,
-									{
-										createMessage: $elm$core$Maybe$Just(
-											$author$project$Main$httpErrorLabel(error))
-									});
-							}),
-						$elm$core$Platform$Cmd$none);
-				}
 			case 'OpenTaskClicked':
 				var taskId = msg.a;
 				return A2(
@@ -9119,7 +9059,7 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										createMessage: $elm$core$Maybe$Just('Task opened.'),
-										selectedTask: $elm$core$Maybe$Just(detail)
+										detail: $elm$core$Maybe$Just(detail)
 									});
 							}),
 						$author$project$Main$refreshTasksAndDiscovery(model));
@@ -9315,10 +9255,6 @@ var $author$project$Main$update = F2(
 								{detail: $elm$core$Maybe$Nothing, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing});
 						}),
 					A2($elm$browser$Browser$Navigation$pushUrl, model.key, '/tasks/' + taskId));
-			case 'DetailBackClicked':
-				return _Utils_Tuple2(
-					model,
-					A2($elm$browser$Browser$Navigation$pushUrl, model.key, '/discovery'));
 			case 'DetailReceived':
 				if (msg.a.$ === 'Ok') {
 					var detail = msg.a.a;
@@ -11986,7 +11922,6 @@ var $author$project$Main$overviewView = function (state) {
 				$author$project$Main$ledgerView(state.entries)
 			]));
 };
-var $author$project$Main$DetailBackClicked = {$: 'DetailBackClicked'};
 var $author$project$Main$availabilityKindLabel = function (kind) {
 	switch (kind.$) {
 		case 'TaskAvailabilityKindAvailable':
@@ -12150,6 +12085,81 @@ var $author$project$Main$detailCard = F2(
 					]));
 		}
 	});
+var $author$project$Main$OpenTaskClicked = function (a) {
+	return {$: 'OpenTaskClicked', a: a};
+};
+var $author$project$Main$RefundTaskClicked = function (a) {
+	return {$: 'RefundTaskClicked', a: a};
+};
+var $author$project$Main$taskStateGuidance = function (state) {
+	switch (state.$) {
+		case 'TaskStateDraft':
+			return 'Next step: fund this task (if it offers a reward) and then open it so workers can submit.';
+		case 'TaskStateOpen':
+			return 'Workers can submit now. Review submissions below to accept, request changes, or reject.';
+		case 'TaskStateClosed':
+			return 'This task is closed. An accepted submission has been settled.';
+		case 'TaskStateCancelled':
+			return 'This task was cancelled. Any escrowed reward was refunded.';
+		default:
+			return 'This task expired without an accepted submission.';
+	}
+};
+var $author$project$Main$ownerControlsCard = function (state) {
+	var _v0 = state.detail;
+	if (_v0.$ === 'Just') {
+		var detail = _v0.a;
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$sectionTitle('Owner controls'),
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700'),
+							$author$project$Sharecrop$Ui$testId('task-guidance')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							$author$project$Main$taskStateGuidance(detail.state))
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex gap-2')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									$author$project$Main$OpenTaskClicked(detail.id)),
+									$author$project$Sharecrop$Ui$testId('open-task')
+								]),
+							'Open'),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									$author$project$Main$RefundTaskClicked(detail.id)),
+									$author$project$Sharecrop$Ui$testId('refund-task')
+								]),
+							'Refund')
+						])),
+					A2($author$project$Main$maybeNote, state.createMessage, 'create-message')
+				]));
+	} else {
+		return $elm$html$Html$text('');
+	}
+};
 var $author$project$Main$assigneeScopeLabel = function (scope) {
 	if (scope.$ === 'TaskAssigneeScopeUser') {
 		return 'user';
@@ -12701,174 +12711,48 @@ var $author$project$Main$submitCard = function (state) {
 };
 var $author$project$Main$taskDetailPageView = F2(
 	function (origin, state) {
+		var isOwner = A2(
+			$elm$core$Maybe$withDefault,
+			false,
+			A2(
+				$elm$core$Maybe$map,
+				function (detail) {
+					return _Utils_eq(detail.createdBy, state.subjectId);
+				},
+				state.detail));
+		var backHref = isOwner ? '/tasks' : '/discovery';
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
 				[
 					$elm$html$Html$Attributes$class('space-y-6')
 				]),
-			_List_fromArray(
-				[
-					A2(
-					$author$project$Sharecrop$Ui$secondaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Events$onClick($author$project$Main$DetailBackClicked),
-							$author$project$Sharecrop$Ui$testId('detail-back')
-						]),
-					'Back to discovery'),
-					A2($author$project$Main$detailCard, origin, state),
-					$author$project$Main$reservationCard(state),
-					$author$project$Main$submitCard(state),
-					$author$project$Main$submissionsCard(state)
-				]));
-	});
-var $author$project$Main$OpenTaskClicked = function (a) {
-	return {$: 'OpenTaskClicked', a: a};
-};
-var $author$project$Main$RefundTaskClicked = function (a) {
-	return {$: 'RefundTaskClicked', a: a};
-};
-var $author$project$Main$taskStateGuidance = function (state) {
-	switch (state.$) {
-		case 'TaskStateDraft':
-			return 'Next step: fund this task (if it offers a reward) and then open it so workers can submit.';
-		case 'TaskStateOpen':
-			return 'Workers can submit now. Review submissions below to accept, request changes, or reject.';
-		case 'TaskStateClosed':
-			return 'This task is closed. An accepted submission has been settled.';
-		case 'TaskStateCancelled':
-			return 'This task was cancelled. Any escrowed reward was refunded.';
-		default:
-			return 'This task expired without an accepted submission.';
-	}
-};
-var $author$project$Main$taskDetailView = F2(
-	function (origin, state) {
-		var _v0 = state.selectedTask;
-		if (_v0.$ === 'Just') {
-			var detail = _v0.a;
-			return A2(
-				$elm$html$Html$div,
+			_Utils_ap(
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('mt-4 space-y-3 rounded-md bg-slate-50 p-4'),
-						$author$project$Sharecrop$Ui$testId('task-detail')
+						A2(
+						$elm$html$Html$a,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$href(backHref),
+								$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+								$author$project$Sharecrop$Ui$testId('detail-back')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Back')
+							])),
+						A2($author$project$Main$detailCard, origin, state)
 					]),
-				_List_fromArray(
+				isOwner ? _List_fromArray(
 					[
-						$author$project$Sharecrop$Ui$label_(detail.title),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-sm text-slate-700')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(detail.description)
-							])),
-						$author$project$Sharecrop$Ui$label_('Task ' + detail.id),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-sm')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								'State: ' + $author$project$Main$taskStateLabel(detail.state))
-							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-sm')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								'Reward: ' + A3($author$project$Main$rewardLabel, detail.rewardKind, detail.rewardCreditAmount, detail.rewardCollectibleCount))
-							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-sm')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								'Participation: ' + $author$project$Main$participationPolicyLabel(detail.participationPolicy))
-							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-sm')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								'Reservation expiry: ' + ($elm$core$String$fromInt(detail.reservationExpiryHours) + ' hours'))
-							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700'),
-								$author$project$Sharecrop$Ui$testId('task-guidance')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								$author$project$Main$taskStateGuidance(detail.state))
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('flex gap-2')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$author$project$Sharecrop$Ui$secondaryButton,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('button'),
-										$elm$html$Html$Events$onClick(
-										$author$project$Main$OpenTaskClicked(detail.id)),
-										$author$project$Sharecrop$Ui$testId('open-task')
-									]),
-								'Open'),
-								A2(
-								$author$project$Sharecrop$Ui$secondaryButton,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('button'),
-										$elm$html$Html$Events$onClick(
-										$author$project$Main$RefundTaskClicked(detail.id)),
-										$author$project$Sharecrop$Ui$testId('refund-task')
-									]),
-								'Refund')
-							])),
-						A2($author$project$Main$maybeNote, state.createMessage, 'create-message'),
-						$author$project$Sharecrop$Ui$label_('Response schema'),
-						A2(
-						$author$project$Sharecrop$Ui$codeBlock,
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Ui$testId('task-schema')
-							]),
-						detail.responseSchemaJson),
-						$author$project$Main$submissionsList(state),
-						A2($author$project$Main$taskInstructions, origin, detail.id)
-					]));
-		} else {
-			return $elm$html$Html$text('');
-		}
+						$author$project$Main$ownerControlsCard(state),
+						$author$project$Main$submissionsCard(state)
+					]) : _List_fromArray(
+					[
+						$author$project$Main$reservationCard(state),
+						$author$project$Main$submitCard(state)
+					])));
 	});
 var $author$project$Main$TaskStateFilterChanged = function (a) {
 	return {$: 'TaskStateFilterChanged', a: a};
@@ -12891,9 +12775,6 @@ var $author$project$Main$taskStateFilterOptions = _List_fromArray(
 		_Utils_Tuple2('draft', 'Draft'),
 		_Utils_Tuple2('closed', 'Closed')
 	]);
-var $author$project$Main$SelectTask = function (a) {
-	return {$: 'SelectTask', a: a};
-};
 var $author$project$Main$taskRow = function (item) {
 	return A2(
 		$elm$html$Html$div,
@@ -12932,14 +12813,17 @@ var $author$project$Main$taskRow = function (item) {
 							]))
 					])),
 				A2(
-				$author$project$Sharecrop$Ui$secondaryButton,
+				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Events$onClick(
-						$author$project$Main$SelectTask(item.id)),
+						$elm$html$Html$Attributes$href('/tasks/' + item.id),
+						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 						$author$project$Sharecrop$Ui$testId('view-task')
 					]),
-				'View')
+				_List_fromArray(
+					[
+						$elm$html$Html$text('View')
+					]))
 			]));
 };
 var $author$project$Main$tasksList = function (tasks) {
@@ -12980,8 +12864,7 @@ var $author$project$Main$tasksView = F2(
 						$elm$core$List$map,
 						$author$project$Main$taskFilterButton(state.taskStateFilter),
 						$author$project$Main$taskStateFilterOptions)),
-					$author$project$Main$tasksList(state.tasks),
-					A2($author$project$Main$taskDetailView, origin, state)
+					$author$project$Main$tasksList(state.tasks)
 				]));
 	});
 var $author$project$Main$pageView = F2(

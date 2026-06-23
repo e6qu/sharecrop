@@ -61,7 +61,6 @@ type alias LoggedInModel =
     , fundMessage : Maybe String
     , tasks : List Task.TaskListItemResponse
     , taskStateFilter : String
-    , selectedTask : Maybe TaskDetail
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
     , credentials : List Agent.AgentCredentialResponse
@@ -160,8 +159,6 @@ type Msg
     | FundAmountChanged String
     | FundClicked
     | FundReceived (Result Http.Error Ledger.TaskEscrowResponse)
-    | SelectTask String
-    | TaskDetailReceived (Result Http.Error TaskDetail)
     | OpenTaskClicked String
     | OpenTaskReceived (Result Http.Error TaskDetail)
     | RefundTaskClicked String
@@ -177,7 +174,6 @@ type Msg
     | DiscoveryIncludeReservedChanged Bool
     | DiscoveryReceived (Result Http.Error Task.TasksResponse)
     | DiscoveryViewClicked String
-    | DetailBackClicked
     | DetailReceived (Result Http.Error PublicTaskDetail)
     | ReserveClicked String
     | ReservationReceived (Result Http.Error Task.TaskReservationResponse)
@@ -269,7 +265,6 @@ emptyLoggedIn response =
     , fundMessage = Nothing
     , tasks = []
     , taskStateFilter = ""
-    , selectedTask = Nothing
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
     , credentials = []
@@ -512,20 +507,11 @@ update msg model =
         FundReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | fundMessage = Just (httpErrorLabel error) }), Cmd.none )
 
-        SelectTask taskId ->
-            withSession model (\state -> ( model, Cmd.batch [ fetchTaskDetail state.accessToken taskId, fetchSubmissions state.accessToken taskId ] ))
-
-        TaskDetailReceived (Ok detail) ->
-            ( updateLoggedIn model (\state -> { state | selectedTask = Just detail }), Cmd.none )
-
-        TaskDetailReceived (Err error) ->
-            ( updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
-
         OpenTaskClicked taskId ->
             withSession model (\state -> ( model, postOpenTask state.accessToken taskId ))
 
         OpenTaskReceived (Ok detail) ->
-            ( updateLoggedIn model (\state -> { state | selectedTask = Just detail, createMessage = Just "Task opened." })
+            ( updateLoggedIn model (\state -> { state | detail = Just detail, createMessage = Just "Task opened." })
             , refreshTasksAndDiscovery model
             )
 
@@ -597,9 +583,6 @@ update msg model =
                 )
             , Nav.pushUrl model.key ("/tasks/" ++ taskId)
             )
-
-        DetailBackClicked ->
-            ( model, Nav.pushUrl model.key "/discovery" )
 
         DetailReceived (Ok detail) ->
             ( updateLoggedIn model (\state -> { state | detail = Just detail }), Cmd.none )
@@ -1211,11 +1194,6 @@ fetchTasks token stateFilter =
 fetchCredentials : String -> Cmd Msg
 fetchCredentials token =
     authorizedRequest "GET" token "/api/agent-credentials" Http.emptyBody (Http.expectJson CredentialsReceived Agent.agentCredentialsResponseDecoder)
-
-
-fetchTaskDetail : String -> String -> Cmd Msg
-fetchTaskDetail token taskId =
-    authorizedRequest "GET" token ("/api/tasks/" ++ taskId) Http.emptyBody (Http.expectJson TaskDetailReceived taskDetailDecoder)
 
 
 postCreateTask : LoggedInModel -> Cmd Msg
@@ -2056,7 +2034,6 @@ tasksView origin state =
         , Ui.label_ "Filter by state"
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
         , tasksList state.tasks
-        , taskDetailView origin state
         ]
 
 
@@ -2109,36 +2086,8 @@ taskRow item =
             [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
             , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
             ]
-        , Ui.secondaryButton [ onClick (SelectTask item.id), testId "view-task" ] "View"
+        , a [ href ("/tasks/" ++ item.id), Html.Attributes.class Ui.secondaryButtonClass, testId "view-task" ] [ text "View" ]
         ]
-
-
-taskDetailView : String -> LoggedInModel -> Html Msg
-taskDetailView origin state =
-    case state.selectedTask of
-        Just detail ->
-            div [ Html.Attributes.class "mt-4 space-y-3 rounded-md bg-slate-50 p-4", testId "task-detail" ]
-                [ Ui.label_ detail.title
-                , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
-                , Ui.label_ ("Task " ++ detail.id)
-                , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ taskStateLabel detail.state) ]
-                , p [ Html.Attributes.class "text-sm" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
-                , p [ Html.Attributes.class "text-sm" ] [ text ("Participation: " ++ participationPolicyLabel detail.participationPolicy) ]
-                , p [ Html.Attributes.class "text-sm" ] [ text ("Reservation expiry: " ++ String.fromInt detail.reservationExpiryHours ++ " hours") ]
-                , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
-                , div [ Html.Attributes.class "flex gap-2" ]
-                    [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
-                    , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
-                    ]
-                , maybeNote state.createMessage "create-message"
-                , Ui.label_ "Response schema"
-                , Ui.codeBlock [ testId "task-schema" ] detail.responseSchemaJson
-                , submissionsList state
-                , taskInstructions origin detail.id
-                ]
-
-        Nothing ->
-            text ""
 
 
 agentsView : String -> LoggedInModel -> Html Msg
@@ -2348,13 +2297,46 @@ discoveryRow item =
 
 taskDetailPageView : String -> LoggedInModel -> Html Msg
 taskDetailPageView origin state =
+    let
+        isOwner =
+            state.detail |> Maybe.map (\detail -> detail.createdBy == state.subjectId) |> Maybe.withDefault False
+
+        backHref =
+            if isOwner then
+                "/tasks"
+
+            else
+                "/discovery"
+    in
     div [ Html.Attributes.class "space-y-6" ]
-        [ Ui.secondaryButton [ onClick DetailBackClicked, testId "detail-back" ] "Back to discovery"
-        , detailCard origin state
-        , reservationCard state
-        , submitCard state
-        , submissionsCard state
-        ]
+        ([ a [ href backHref, Html.Attributes.class Ui.secondaryButtonClass, testId "detail-back" ] [ text "Back" ]
+         , detailCard origin state
+         ]
+            ++ (if isOwner then
+                    [ ownerControlsCard state, submissionsCard state ]
+
+                else
+                    [ reservationCard state, submitCard state ]
+               )
+        )
+
+
+ownerControlsCard : LoggedInModel -> Html Msg
+ownerControlsCard state =
+    case state.detail of
+        Just detail ->
+            Ui.card
+                [ Ui.sectionTitle "Owner controls"
+                , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
+                , div [ Html.Attributes.class "flex gap-2" ]
+                    [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
+                    , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
+                    ]
+                , maybeNote state.createMessage "create-message"
+                ]
+
+        Nothing ->
+            text ""
 
 
 detailCard : String -> LoggedInModel -> Html Msg
