@@ -185,6 +185,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   );
 
   await page.getByTestId("select-organization").first().click();
+  await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]+$/);
   await expect(page.getByTestId("active-organization")).toBeVisible();
 
   await page.getByTestId("create-org-team-name").fill(teamName);

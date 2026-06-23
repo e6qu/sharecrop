@@ -39,6 +39,7 @@ type Page
     | AgentsPage
     | CollectiblesPage
     | OrganizationsPage
+    | OrganizationDetailPage String
 
 
 type alias LoggedInModel =
@@ -210,7 +211,6 @@ type Msg
     | CreateOrgNameChanged String
     | CreateOrgClicked
     | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
-    | SelectOrganization String
     | OrgBalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
@@ -346,6 +346,9 @@ pageFromUrl url =
         [ "organizations" ] ->
             OrganizationsPage
 
+        [ "organizations", organizationId ] ->
+            OrganizationDetailPage organizationId
+
         _ ->
             OverviewPage
 
@@ -379,6 +382,21 @@ pageToPath page =
 
         OrganizationsPage ->
             "/organizations"
+
+        OrganizationDetailPage organizationId ->
+            "/organizations/" ++ organizationId
+
+
+-- enterPage applies any per-page state a route needs when it becomes active, so
+-- a deep link or back/forward leaves the model consistent with the URL.
+enterPage : Page -> LoggedInModel -> LoggedInModel
+enterPage page state =
+    case page of
+        OrganizationDetailPage organizationId ->
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
+
+        _ ->
+            { state | page = page }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -730,13 +748,6 @@ update msg model =
         CreateOrgReceived (Err error) ->
             ( updateLoggedIn model (\state -> { state | orgMessage = Just (httpErrorLabel error) }), Cmd.none )
 
-        SelectOrganization organizationId ->
-            let
-                updated =
-                    updateLoggedIn model (\state -> { state | activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing })
-            in
-            withSession updated (\state -> ( updated, loadOrganization state.accessToken organizationId ))
-
         OrgBalanceReceived result ->
             ( updateLoggedIn model (\state -> { state | orgBalance = balanceFromResult result }), Cmd.none )
 
@@ -792,7 +803,7 @@ update msg model =
             in
             case model.session of
                 LoggedIn state ->
-                    ( { model | route = page, session = LoggedIn { state | page = page } }
+                    ( { model | route = page, session = LoggedIn (enterPage page state) }
                     , routeLoadCmd state.accessToken page
                     )
 
@@ -1071,6 +1082,9 @@ routeLoadCmd token page =
 
         OrganizationsPage ->
             fetchOrganizations token
+
+        OrganizationDetailPage organizationId ->
+            Cmd.batch [ fetchOrganizations token, loadOrganization token organizationId ]
 
 
 refreshCredentials : Model -> Cmd Msg
@@ -1787,6 +1801,9 @@ pageView origin state =
         OrganizationsPage ->
             organizationsView state
 
+        OrganizationDetailPage _ ->
+            organizationDetailView state
+
 
 overviewView : LoggedInModel -> Html Msg
 overviewView state =
@@ -1832,6 +1849,22 @@ organizationsView state =
             , Ui.primaryButton [ type_ "submit", testId "create-org" ] "Create organization"
             ]
         , maybeNote state.orgMessage "org-message"
+        ]
+
+
+organizationDetailView : LoggedInModel -> Html Msg
+organizationDetailView state =
+    let
+        name =
+            state.organizations
+                |> List.filter (\organization -> organization.id == state.activeOrgId)
+                |> List.head
+                |> Maybe.map .name
+                |> Maybe.withDefault state.activeOrgId
+    in
+    Ui.card
+        [ a [ href "/organizations", Html.Attributes.class Ui.secondaryButtonClass, testId "back-organizations" ] [ text "Back to organizations" ]
+        , Ui.sectionTitle name
         , activeOrganizationView state
         ]
 
@@ -1842,7 +1875,7 @@ organizationsList state =
         p [ Html.Attributes.class "text-sm text-slate-500", testId "organizations-empty" ] [ text "You do not belong to any organizations yet." ]
 
     else
-        div [ Html.Attributes.class "divide-y divide-slate-100", testId "organizations" ] (List.map (organizationRow state.activeOrgId) state.organizations)
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "organizations" ] (List.map organizationRow state.organizations)
 
 
 activeOrganizationView : LoggedInModel -> Html Msg
@@ -1893,15 +1926,11 @@ tasksListSimple identifier tasks =
             (List.map (\item -> p [ Html.Attributes.class "py-1 text-sm", testId (identifier ++ "-row") ] [ text (item.title ++ " · " ++ taskStateLabel item.state) ]) tasks)
 
 
-organizationRow : String -> Organization.OrganizationResponse -> Html Msg
-organizationRow activeOrgId organization =
+organizationRow : Organization.OrganizationResponse -> Html Msg
+organizationRow organization =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "organization-row" ]
         [ p [ Html.Attributes.class "font-medium" ] [ text organization.name ]
-        , if activeOrgId == organization.id then
-            Ui.badge "Active"
-
-          else
-            Ui.secondaryButton [ onClick (SelectOrganization organization.id), testId "select-organization" ] "Open"
+        , a [ href ("/organizations/" ++ organization.id), Html.Attributes.class Ui.secondaryButtonClass, testId "select-organization" ] [ text "Open" ]
         ]
 
 

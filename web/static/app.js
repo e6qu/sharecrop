@@ -5348,6 +5348,9 @@ var $author$project$Main$CollectiblesPage = {$: 'CollectiblesPage'};
 var $author$project$Main$CreateTaskPage = {$: 'CreateTaskPage'};
 var $author$project$Main$DiscoveryPage = {$: 'DiscoveryPage'};
 var $author$project$Main$FundingPage = {$: 'FundingPage'};
+var $author$project$Main$OrganizationDetailPage = function (a) {
+	return {$: 'OrganizationDetailPage', a: a};
+};
 var $author$project$Main$OrganizationsPage = {$: 'OrganizationsPage'};
 var $author$project$Main$OverviewPage = {$: 'OverviewPage'};
 var $author$project$Main$TaskDetailPage = function (a) {
@@ -5359,23 +5362,10 @@ var $author$project$Main$pageFromUrl = function (url) {
 		$elm$core$String$split,
 		'/',
 		A2($elm$core$String$dropLeft, 1, url.path));
-	_v0$8:
+	_v0$9:
 	while (true) {
 		if (_v0.b) {
-			if (_v0.b.b) {
-				if ((_v0.a === 'tasks') && (!_v0.b.b.b)) {
-					if (_v0.b.a === 'new') {
-						var _v1 = _v0.b;
-						return $author$project$Main$CreateTaskPage;
-					} else {
-						var _v2 = _v0.b;
-						var taskId = _v2.a;
-						return $author$project$Main$TaskDetailPage(taskId);
-					}
-				} else {
-					break _v0$8;
-				}
-			} else {
+			if (!_v0.b.b) {
 				switch (_v0.a) {
 					case 'tasks':
 						return $author$project$Main$TasksPage;
@@ -5390,11 +5380,33 @@ var $author$project$Main$pageFromUrl = function (url) {
 					case 'organizations':
 						return $author$project$Main$OrganizationsPage;
 					default:
-						break _v0$8;
+						break _v0$9;
+				}
+			} else {
+				if (!_v0.b.b.b) {
+					switch (_v0.a) {
+						case 'tasks':
+							if (_v0.b.a === 'new') {
+								var _v1 = _v0.b;
+								return $author$project$Main$CreateTaskPage;
+							} else {
+								var _v2 = _v0.b;
+								var taskId = _v2.a;
+								return $author$project$Main$TaskDetailPage(taskId);
+							}
+						case 'organizations':
+							var _v3 = _v0.b;
+							var organizationId = _v3.a;
+							return $author$project$Main$OrganizationDetailPage(organizationId);
+						default:
+							break _v0$9;
+					}
+				} else {
+					break _v0$9;
 				}
 			}
 		} else {
-			break _v0$8;
+			break _v0$9;
 		}
 	}
 	return $author$project$Main$OverviewPage;
@@ -7262,6 +7274,19 @@ var $author$project$Main$credentialsFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Main$enterPage = F2(
+	function (page, state) {
+		if (page.$ === 'OrganizationDetailPage') {
+			var organizationId = page.a;
+			return _Utils_update(
+				state,
+				{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, page: page, provisionMemberMessage: $elm$core$Maybe$Nothing});
+		} else {
+			return _Utils_update(
+				state,
+				{page: page});
+		}
+	});
 var $author$project$Main$entriesFromResult = function (result) {
 	if (result.$ === 'Ok') {
 		var response = result.a;
@@ -7751,34 +7776,6 @@ var $author$project$Main$loadAfterAuth = function (token) {
 				$author$project$Main$fetchOrganizations(token)
 			]));
 };
-var $author$project$Main$OrgBalanceReceived = function (a) {
-	return {$: 'OrgBalanceReceived', a: a};
-};
-var $author$project$Main$OrgTasksReceived = function (a) {
-	return {$: 'OrgTasksReceived', a: a};
-};
-var $author$project$Main$loadOrganization = F2(
-	function (token, organizationId) {
-		return (organizationId === '') ? $elm$core$Platform$Cmd$none : $elm$core$Platform$Cmd$batch(
-			_List_fromArray(
-				[
-					A5(
-					$author$project$Main$authorizedRequest,
-					'GET',
-					token,
-					'/api/organizations/' + (organizationId + '/credits/balance'),
-					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Main$OrgBalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder)),
-					A2($author$project$Main$fetchOrgTeams, token, organizationId),
-					A5(
-					$author$project$Main$authorizedRequest,
-					'GET',
-					token,
-					'/api/tasks?scope=organization&organization_id=' + organizationId,
-					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Main$OrgTasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder))
-				]));
-	});
 var $author$project$Main$participationPolicyTag = function (policy) {
 	switch (policy.$) {
 		case 'TaskParticipationPolicyOpen':
@@ -8458,6 +8455,34 @@ var $author$project$Main$fetchDetailCommands = F2(
 					A2($author$project$Main$fetchReservations, token, taskId)
 				]));
 	});
+var $author$project$Main$OrgBalanceReceived = function (a) {
+	return {$: 'OrgBalanceReceived', a: a};
+};
+var $author$project$Main$OrgTasksReceived = function (a) {
+	return {$: 'OrgTasksReceived', a: a};
+};
+var $author$project$Main$loadOrganization = F2(
+	function (token, organizationId) {
+		return (organizationId === '') ? $elm$core$Platform$Cmd$none : $elm$core$Platform$Cmd$batch(
+			_List_fromArray(
+				[
+					A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/organizations/' + (organizationId + '/credits/balance'),
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$OrgBalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder)),
+					A2($author$project$Main$fetchOrgTeams, token, organizationId),
+					A5(
+					$author$project$Main$authorizedRequest,
+					'GET',
+					token,
+					'/api/tasks?scope=organization&organization_id=' + organizationId,
+					$elm$http$Http$emptyBody,
+					A2($elm$http$Http$expectJson, $author$project$Main$OrgTasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder))
+				]));
+	});
 var $author$project$Main$routeLoadCmd = F2(
 	function (token, page) {
 		switch (page.$) {
@@ -8488,8 +8513,16 @@ var $author$project$Main$routeLoadCmd = F2(
 							$author$project$Main$fetchCollectibles(token),
 							A2($author$project$Main$fetchTasks, token, '')
 						]));
-			default:
+			case 'OrganizationsPage':
 				return $author$project$Main$fetchOrganizations(token);
+			default:
+				var organizationId = page.a;
+				return $elm$core$Platform$Cmd$batch(
+					_List_fromArray(
+						[
+							$author$project$Main$fetchOrganizations(token),
+							A2($author$project$Main$loadOrganization, token, organizationId)
+						]));
 		}
 	});
 var $author$project$Main$SubmitReceived = function (a) {
@@ -9848,24 +9881,6 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
-			case 'SelectOrganization':
-				var organizationId = msg.a;
-				var updated = A2(
-					$author$project$Main$updateLoggedIn,
-					model,
-					function (state) {
-						return _Utils_update(
-							state,
-							{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, provisionMemberMessage: $elm$core$Maybe$Nothing});
-					});
-				return A2(
-					$author$project$Main$withSession,
-					updated,
-					function (state) {
-						return _Utils_Tuple2(
-							updated,
-							A2($author$project$Main$loadOrganization, state.accessToken, organizationId));
-					});
 			case 'OrgBalanceReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -10055,9 +10070,7 @@ var $author$project$Main$update = F2(
 							{
 								route: page,
 								session: $author$project$Main$LoggedIn(
-									_Utils_update(
-										state,
-										{page: page}))
+									A2($author$project$Main$enterPage, page, state))
 							}),
 						A2($author$project$Main$routeLoadCmd, state.accessToken, page));
 				} else {
@@ -10345,8 +10358,11 @@ var $author$project$Main$pageToPath = function (page) {
 			return '/agents';
 		case 'CollectiblesPage':
 			return '/collectibles';
-		default:
+		case 'OrganizationsPage':
 			return '/organizations';
+		default:
+			var organizationId = page.a;
+			return '/organizations/' + organizationId;
 	}
 };
 var $author$project$Main$navLink = F4(
@@ -11483,10 +11499,6 @@ var $author$project$Main$fundingView = function (state) {
 				A2($author$project$Main$maybeNote, state.fundMessage, 'fund-message')
 			]));
 };
-var $author$project$Main$CreateOrgClicked = {$: 'CreateOrgClicked'};
-var $author$project$Main$CreateOrgNameChanged = function (a) {
-	return {$: 'CreateOrgNameChanged', a: a};
-};
 var $author$project$Main$CreateOrgTeamClicked = {$: 'CreateOrgTeamClicked'};
 var $author$project$Main$CreateOrgTeamNameChanged = function (a) {
 	return {$: 'CreateOrgTeamNameChanged', a: a};
@@ -11662,41 +11674,98 @@ var $author$project$Main$activeOrganizationView = function (state) {
 				A2($author$project$Main$maybeNote, state.provisionMemberMessage, 'provision-member-message')
 			]));
 };
-var $author$project$Main$SelectOrganization = function (a) {
-	return {$: 'SelectOrganization', a: a};
+var $elm$core$List$head = function (list) {
+	if (list.b) {
+		var x = list.a;
+		var xs = list.b;
+		return $elm$core$Maybe$Just(x);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
 };
-var $author$project$Main$organizationRow = F2(
-	function (activeOrgId, organization) {
-		return A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
-					$author$project$Sharecrop$Ui$testId('organization-row')
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$p,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('font-medium')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(organization.name)
-						])),
-					_Utils_eq(activeOrgId, organization.id) ? $author$project$Sharecrop$Ui$badge('Active') : A2(
-					$author$project$Sharecrop$Ui$secondaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Events$onClick(
-							$author$project$Main$SelectOrganization(organization.id)),
-							$author$project$Sharecrop$Ui$testId('select-organization')
-						]),
-					'Open')
-				]));
+var $elm$core$Maybe$map = F2(
+	function (f, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return $elm$core$Maybe$Just(
+				f(value));
+		} else {
+			return $elm$core$Maybe$Nothing;
+		}
 	});
+var $author$project$Main$organizationDetailView = function (state) {
+	var name = A2(
+		$elm$core$Maybe$withDefault,
+		state.activeOrgId,
+		A2(
+			$elm$core$Maybe$map,
+			function ($) {
+				return $.name;
+			},
+			$elm$core$List$head(
+				A2(
+					$elm$core$List$filter,
+					function (organization) {
+						return _Utils_eq(organization.id, state.activeOrgId);
+					},
+					state.organizations))));
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$a,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$href('/organizations'),
+						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+						$author$project$Sharecrop$Ui$testId('back-organizations')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Back to organizations')
+					])),
+				$author$project$Sharecrop$Ui$sectionTitle(name),
+				$author$project$Main$activeOrganizationView(state)
+			]));
+};
+var $author$project$Main$CreateOrgClicked = {$: 'CreateOrgClicked'};
+var $author$project$Main$CreateOrgNameChanged = function (a) {
+	return {$: 'CreateOrgNameChanged', a: a};
+};
+var $author$project$Main$organizationRow = function (organization) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
+				$author$project$Sharecrop$Ui$testId('organization-row')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('font-medium')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(organization.name)
+					])),
+				A2(
+				$elm$html$Html$a,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$href('/organizations/' + organization.id),
+						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+						$author$project$Sharecrop$Ui$testId('select-organization')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Open')
+					]))
+			]));
+};
 var $author$project$Main$organizationsList = function (state) {
 	return $elm$core$List$isEmpty(state.organizations) ? A2(
 		$elm$html$Html$p,
@@ -11715,10 +11784,7 @@ var $author$project$Main$organizationsList = function (state) {
 				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
 				$author$project$Sharecrop$Ui$testId('organizations')
 			]),
-		A2(
-			$elm$core$List$map,
-			$author$project$Main$organizationRow(state.activeOrgId),
-			state.organizations));
+		A2($elm$core$List$map, $author$project$Main$organizationRow, state.organizations));
 };
 var $author$project$Main$organizationsView = function (state) {
 	return $author$project$Sharecrop$Ui$card(
@@ -11769,8 +11835,7 @@ var $author$project$Main$organizationsView = function (state) {
 							]),
 						'Create organization')
 					])),
-				A2($author$project$Main$maybeNote, state.orgMessage, 'org-message'),
-				$author$project$Main$activeOrganizationView(state)
+				A2($author$project$Main$maybeNote, state.orgMessage, 'org-message')
 			]));
 };
 var $author$project$Main$balanceView = function (balance) {
@@ -12939,8 +13004,10 @@ var $author$project$Main$pageView = F2(
 				return A2($author$project$Main$agentsView, origin, state);
 			case 'CollectiblesPage':
 				return $author$project$Main$collectiblesView(state);
-			default:
+			case 'OrganizationsPage':
 				return $author$project$Main$organizationsView(state);
+			default:
+				return $author$project$Main$organizationDetailView(state);
 		}
 	});
 var $author$project$Main$loggedInView = F2(
