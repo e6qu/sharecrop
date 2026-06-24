@@ -2,8 +2,8 @@
 
 Prioritized queue:
 
-1. Model organizations as real entities (deferred from the economy/orgs bundle to a focused PR): give users an `org` and tasks an `org_id` — a migration plus domain/RBAC rewrite — replacing the role-string approximation used for organization visibility and review scoping. Largest pending item; touches migrations, domain, contracts, and RBAC tests.
-2. Decompose the `Main.elm` monolith (deferred from the same bundle): lift the interdependent `Model`/`Msg` types into a shared `Types` module first, then split view/update/command groups out without behavior change. On the HTTP side, `server.go` is now mostly task/submission/reservation handlers that could split next.
+1. Finish decomposing the `Main.elm` monolith: the shared `Sharecrop.Types` module is now extracted; next, split the view functions into a `View` module and the HTTP commands into an `Api`/`Commands` module (their dependence on `Msg`/`Model` now resolves through `Types`, breaking the previous cycle). On the HTTP side, `server.go` is mostly task/submission/reservation handlers that could split next.
+2. Minor demo review follow-ups deferred from the polish pass: the seed dashboard shows Credits available beside Held in escrow which can read as double-counting (present a single total or pre-deduct so it is unambiguous); pre-fill the review Settle/Tip inputs with their real defaults in normal text rather than muted placeholders; and cap or warn when a settle payout+tip exceeds the escrowed amount instead of silently clamping.
 3. Smaller schema-designer follow-ups: array-length constraints, and normalizing field names to identifier-safe keys (the designer warns on duplicate/empty names but does not rewrite them).
 4. Revisit collectible or inventory-based tips.
 5. Redesign anonymous worker identity and payout.

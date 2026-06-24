@@ -1,5 +1,11 @@
 # What We Did
 
+`task/demo-orgs-elm-split-polish` modeled demo organizations, decomposed Main.elm, and applied a specialized review:
+
+- Demo organizations as entities: demo users now belong to an organization (the agent operator is external, with no org), and organization-visibility tasks carry an org id. `canSeeTask` and `canReviewTask` scope organization tasks to members of the owning org instead of a role-string check, so external users no longer see or review org-internal work. The org name surfaces in the topbar, the persona switcher, and the task badge.
+- Main.elm decomposition: lifted the `Flags`/`Session`/`Page`/`LoggedInModel`/`TaskDetail`/`Model`/`Msg` type block out of `Main.elm` into a new `Sharecrop.Types` module (no behavior change), shrinking the monolith by ~230 lines and unblocking later view/command splits.
+- Ran a specialized multi-agent UI/UX/user-journey/product review of the evolved demo and fixed what it found: a real escrow bug (settle netted escrow/payout against the reviewer clicking Accept rather than the task's requester — now resolves the requester explicitly); the Agent/API console leaked org-internal tasks to the external agent (now lists only the persona's visible tasks); submit validation accepted the empty prefilled template (now rejects empty required fields/arrays); the simulated agent run submitted an empty skeleton (now a realistic schema-filled payload); the reservation queue offered self-approval (now hidden, and the seeded org reservation belongs to a worker); org identity was invisible (now in the topbar + persona switcher); and the task badge row was all-green (metadata pills are now neutral so only status pills carry color). A few minor items (seed-escrow presentation, settle-input default legibility, over-payout clamping) are recorded in DO_NEXT.
+
 `task/economy-orgs-and-polish` bundled a reward economy, schema validation, and team membership:
 
 - Demo reward economy: Fund now checks the requester's available balance and moves the reward credits into a per-task escrow bucket; accept/reject settles from escrow (refunding any unused credits and netting the tip) and cancel refunds it. The dashboard shows "Credits available" and "Held in escrow", and seed escrow is derived from already-funded open tasks so balances stay consistent.

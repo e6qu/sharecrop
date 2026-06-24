@@ -1,18 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 35 work, merged into `main`.
+The repository contains pull request 1 through pull request 36 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/economy-orgs-and-polish` adds a real reward economy with escrow to the demo, deepens the receive-schema designer (required/enum) with worker-submission validation, cross-links the comms feed, and adds standalone-team membership to the real app. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-orgs-elm-split-polish` models organizations as entities in the demo, decomposes `Main.elm`, and applies a specialized review's polish. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/economy-orgs-and-polish`:
+Implemented in `task/demo-orgs-elm-split-polish`:
 
-- Demo: Fund validates the requester's available balance and moves credits into a per-task escrow bucket; accept/reject settles from escrow and cancel refunds it; the dashboard shows credits available and held in escrow.
-- Demo: the receive-schema designer gains a required toggle and allowed-values (enum) per text field with duplicate/empty name warnings, and worker submissions are validated against the schema on submit (required keys, types, enum) and blocked with inline errors or confirmed as matching.
-- Demo: the comms feed cross-links persona names to their profiles; the unused difficulty field was dropped.
-- Real app: `POST /api/teams/{id}/members` lets a team owner (or an org-team manager) add members by email, with a browser add-member form on the team page and RBAC-enforced denial; e2e + Playwright cover it.
-- Deferred to focused follow-up PRs (recorded in DO_NEXT): modeling organizations as real entities (a DB migration + RBAC rewrite) and decomposing `Main.elm` (needs the Model/Msg types lifted into shared modules). Both are large refactors that warrant their own PRs.
+- Demo organizations: users belong to an organization (the agent operator is external); organization-visibility tasks carry an org id and are scoped to members by `canSeeTask`/`canReviewTask` (not a role-string check), so external users no longer see or review org-internal work. Org identity shows in the topbar, persona switcher, and task badge.
+- Elm decomposition: the `Flags`/`Session`/`Page`/`LoggedInModel`/`Model`/`Msg` type block moved out of `Main.elm` into a new `Sharecrop.Types` module (no behavior change), the prerequisite that unblocks further view/command splits.
+- Specialized UI/UX/user-journey/product review (multi-agent) then drove a polish pass: settle nets escrow/payout against the task's requester (not the reviewer settling it — a real escrow bug); the Agent/API console only lists the persona's visible tasks (no org leak to the external agent); submit validation rejects empty required fields/arrays and the simulated agent run returns a realistic filled payload; the reservation queue hides self-approval; metadata badges are neutral so only status pills carry color; a stale validation error clears on edit.
+
+Earlier branch `task/economy-orgs-and-polish` (pull request 36, merged) added a demo reward economy with escrow, schema designer required/enum + submit validation, comms-feed cross-linking, and real-app standalone-team membership.
 
 Earlier branch `task/demo-cross-linking` (pull request 35, merged) makes demo tasks and users real anchors (right-click / open-in-new-tab) with whole-row click, adds a per-row reserve / grayed-reserved control, applies a specialized UI/UX/journey/product review's fixes, switches copy-paste detection to the standard jscpd, and adds dead-code + copy-paste gates to the pre-commit framework and CI (with all GitHub Actions and tool versions pinned to the latest published). The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
