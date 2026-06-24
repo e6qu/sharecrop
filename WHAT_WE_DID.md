@@ -1,5 +1,12 @@
 # What We Did
 
+`task/ratelimit-tipkey-reviews` landed the security follow-ups and ran third-pass reviews:
+
+- Added an in-memory token-bucket rate limiter (`internal/http/rate_limit.go`): per-client-IP on the unauthenticated login/refresh/receipt endpoints and per-agent-subject on MCP requests, returning HTTP 429 when exceeded. Idle buckets are evicted so keys cannot accumulate; client IP uses the direct peer (X-Forwarded-For is not trusted). Unit-tested.
+- Gave the two `task_tip` ledger inserts derived idempotency keys (`:tip-debit` / `:tip-credit`), matching payout/refund entries, so the unique constraint would catch a double-tip if the task-lock ordering ever changed. This closes both lower-risk follow-ups that prior security reviews had recorded in BUGS.md.
+- A third-pass security review (told what was already fixed and what was in flight) returned no new findings: the authz/RBAC and ledger lenses were clean and the single raw input finding did not survive synthesis's re-verification — the expected outcome at this maturity.
+- A round-5 UI/UX review found a real logic bug and a product gap, both fixed: reject left a task open and re-submittable after releasing escrow (so it could never be paid) — reject now closes the task; and agent submissions were indistinguishable from human ones at the review surface — agent-originated reservations/submissions are now marked and rendered as "Sol Rivera · agent" with a "via MCP · scoped token" chip in place of the human track record. Also: a structured schema with no fields now warns and shows an empty state; dashboard cards have parity sub-notes; the Release button is hidden once a result is submitted; a credits/bundle reward warns on a non-positive amount; review panels size to their own content; and the docs MCP tool names match the Agent/API console.
+
 `task/http-dtos-and-reviews` continued the HTTP split, landed the deferred UI minors, and ran second-pass reviews:
 
 - Moved the HTTP request/response DTO struct declarations and the `writableResponse` interface out of `server.go` into `dtos.go` (package `httpserver`); `server.go` is about 906 lines. No behavior change.
