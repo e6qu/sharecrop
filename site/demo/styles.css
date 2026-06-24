@@ -438,6 +438,12 @@ code {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Let each review panel size to its own content instead of stretching to match
+   the taller neighbor (e.g. a one-row reservation queue beside a long decision). */
+.review-layout {
+  align-items: start;
+}
+
 .create-form,
 .mini-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -487,6 +493,17 @@ code {
   color: var(--muted);
   font-size: 0.74rem;
   font-weight: 600;
+}
+.agent-chip {
+  display: inline-block;
+  width: fit-content;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 .escrow-chip {
   display: inline-block;
