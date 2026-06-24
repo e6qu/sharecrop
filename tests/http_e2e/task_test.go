@@ -172,18 +172,18 @@ func TestReservationApprovalIsBoundToOwningTask(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
 
-	victimOwner := registerUser(t, server, "idor-victim-owner")
+	targetOwner := registerUser(t, server, "idor-target-owner")
 	worker := registerUser(t, server, "idor-worker")
 	attacker := registerUser(t, server, "idor-attacker")
 
-	// Victim's approval-policy task with a pending reservation from the worker.
-	victimCreate := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicApprovalTaskRequestJSON(victimOwner.SubjectID)), victimOwner.AccessToken)
-	defer victimCreate.Body.Close()
-	assertStatus(t, victimCreate, http.StatusCreated)
-	victimTask := decodeTaskHTTPResponse(t, victimCreate)
-	openTask(t, server, victimOwner.AccessToken, victimTask.ID)
+	// Another requester's approval-policy task with a pending reservation from the worker.
+	targetCreate := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicApprovalTaskRequestJSON(targetOwner.SubjectID)), targetOwner.AccessToken)
+	defer targetCreate.Body.Close()
+	assertStatus(t, targetCreate, http.StatusCreated)
+	targetTask := decodeTaskHTTPResponse(t, targetCreate)
+	openTask(t, server, targetOwner.AccessToken, targetTask.ID)
 
-	reserve := postJSONWithBearer(t, server.URL+"/api/tasks/"+victimTask.ID+"/reservations", []byte(`{}`), worker.AccessToken)
+	reserve := postJSONWithBearer(t, server.URL+"/api/tasks/"+targetTask.ID+"/reservations", []byte(`{}`), worker.AccessToken)
 	defer reserve.Body.Close()
 	assertStatus(t, reserve, http.StatusCreated)
 	reservation := decodeReservationHTTPResponse(t, reserve)
@@ -191,9 +191,9 @@ func TestReservationApprovalIsBoundToOwningTask(t *testing.T) {
 		t.Fatalf("reservation state = %q, want requested", reservation.State)
 	}
 
-	// The attacker owns an unrelated task and tries to approve the victim's
+	// The attacker owns an unrelated task and tries to approve another requester's
 	// reservation through it. Ownership of the attacker's task must not authorize
-	// mutating a reservation that belongs to the victim's task.
+	// mutating a reservation that belongs to a different task.
 	attackerCreate := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicApprovalTaskRequestJSON(attacker.SubjectID)), attacker.AccessToken)
 	defer attackerCreate.Body.Close()
 	assertStatus(t, attackerCreate, http.StatusCreated)
@@ -205,8 +205,8 @@ func TestReservationApprovalIsBoundToOwningTask(t *testing.T) {
 		t.Fatalf("cross-task reservation approval status = %d, want a client error", idorAttempt.StatusCode)
 	}
 
-	// The victim's reservation must still be pending, not force-approved.
-	list := getWithBearer(t, server.URL+"/api/tasks/"+victimTask.ID+"/reservations", victimOwner.AccessToken)
+	// The target reservation must still be pending, not force-approved.
+	list := getWithBearer(t, server.URL+"/api/tasks/"+targetTask.ID+"/reservations", targetOwner.AccessToken)
 	defer list.Body.Close()
 	assertStatus(t, list, http.StatusOK)
 	var listBody struct {
@@ -217,7 +217,7 @@ func TestReservationApprovalIsBoundToOwningTask(t *testing.T) {
 	}
 	for _, value := range listBody.Reservations {
 		if value.ID == reservation.ID && value.State != "requested" {
-			t.Fatalf("victim reservation state = %q after IDOR attempt, want requested", value.State)
+			t.Fatalf("target reservation state = %q after IDOR attempt, want requested", value.State)
 		}
 	}
 }
