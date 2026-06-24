@@ -1,15 +1,17 @@
 # Status
 
-The repository contains pull request 1 through pull request 43 work, merged into `main`.
+The repository contains pull request 1 through pull request 44 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-selfcontained-tasks` makes every seeded demo task fully self-contained (all data needed to solve it is embedded in the task, no external lookups/attachments/live data) and adds a "Task input" block to the real client's task detail so the embedded data is visible. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-deep-selfcontained` deepens the demo's self-containment (every task objectively solvable from its own embedded data, zero dangling references) and brings the in-browser fake backend's flows into line with the real Go backend + Elm client. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/demo-selfcontained-tasks`:
+Implemented in `task/demo-deep-selfcontained` (audited with two subagents — task self-containment and flow fidelity):
 
-- Reworked the six seeded tasks so each carries, in its inline payload, every input needed to solve it: invoice OCR text, all 8 support tickets (count corrected from a bogus 20), the 10 ledger transfers + banned accounts + flagging rules, the 6 expense lines, the 8 mixed-format dates (with an explicit day-first disambiguation rule), and the 5 reviews. Replaced the weather task (needed live data) with a self-contained expense-totaling task, and the handwriting-transcription / photo-alt-text tasks (which referenced images that were never provided) with date-normalization and review-extraction tasks. No task references a picture without providing it.
-- Real client change (benefits the shipped app too): the task detail now renders a "Task input" code block for an inline payload, between the description and the response schema. `TaskDetail` gains `payloadKind`/`payloadJson`, threaded from the existing `TaskResponse` decoder. `demo.spec.ts` asserts the input block renders the embedded invoice data.
+- Task content: the date-normalization task's day-first rule contradicted its two year-first dates — added a leading-4-digit-is-year rule and named the `iso_dates` output field; named the ledger output order and pinned the review product-extraction rule; added a freeform release-notes task so the demo exercises the freeform schema branch (the only branch no seeded task used). Confirmed no task carries a dangling reference.
+- Flow fidelity (fake backend vs real implementation): agent-credential revoke now uses `POST /:id/revoke` (the client's actual call — `DELETE /:id` silently hit the catch-all and failed); submissions are validated against the task's response schema (state `invalid` + `{path,message}` errors) and require an active reservation on non-open tasks (matching `CheckSubmissionEligibility`); `viewer_action` mirrors the real `taskViewerAction` (pure function of state + policy); request-changes reactivates the worker's reservation; discovery shows only open public tasks; funding is idempotent on `idempotency_key`; the task list honors `state`/`organization_id` filters; the error envelope uses `{error}`. `demo.spec.ts` asserts the freeform task lists and the invalid->submitted validation flow.
+
+Earlier branch `task/demo-selfcontained-tasks` (pull request 44, merged) made the seeded tasks self-contained and added the "Task input" block to the real client's task detail (`TaskDetail` gains `payloadKind`/`payloadJson`).
 
 Earlier branch `task/demo-on-real-elm` (pull request 43, merged) rebuilt the demo to run the REAL compiled Elm client against an in-browser fake backend (no drift from the shipped UI), seeded with realistic tasks, re-skinned with the pixel-art arcade theme.
 
