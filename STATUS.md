@@ -1,10 +1,17 @@
 # Status
 
-The repository contains pull request 1 through pull request 42 work, merged into `main`.
+The repository contains pull request 1 through pull request 43 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-on-real-elm` rebuilds the demo to run the REAL compiled Elm client against an in-browser fake backend (no drift from the shipped UI), seeds it with realistic agentic-work tasks, and re-skins it with the pixel-art arcade theme; a UI/UX/flow-correctness review then fixed data-shape bugs. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-selfcontained-tasks` makes every seeded demo task fully self-contained (all data needed to solve it is embedded in the task, no external lookups/attachments/live data) and adds a "Task input" block to the real client's task detail so the embedded data is visible. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/demo-selfcontained-tasks`:
+
+- Reworked the six seeded tasks so each carries, in its inline payload, every input needed to solve it: invoice OCR text, all 8 support tickets (count corrected from a bogus 20), the 10 ledger transfers + banned accounts + flagging rules, the 6 expense lines, the 8 mixed-format dates (with an explicit day-first disambiguation rule), and the 5 reviews. Replaced the weather task (needed live data) with a self-contained expense-totaling task, and the handwriting-transcription / photo-alt-text tasks (which referenced images that were never provided) with date-normalization and review-extraction tasks. No task references a picture without providing it.
+- Real client change (benefits the shipped app too): the task detail now renders a "Task input" code block for an inline payload, between the description and the response schema. `TaskDetail` gains `payloadKind`/`payloadJson`, threaded from the existing `TaskResponse` decoder. `demo.spec.ts` asserts the input block renders the embedded invoice data.
+
+Earlier branch `task/demo-on-real-elm` (pull request 43, merged) rebuilt the demo to run the REAL compiled Elm client against an in-browser fake backend (no drift from the shipped UI), seeded with realistic tasks, re-skinned with the pixel-art arcade theme.
 
 Implemented in `task/demo-on-real-elm`:
 
