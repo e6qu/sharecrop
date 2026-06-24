@@ -1,0 +1,114 @@
+/* Arcade: pixel-art / idle-game skin for the demo, layered over the real Elm
+   client's Tailwind classes. Only the demo loads this file, so the shipped app
+   is untouched. !important is used deliberately to override Tailwind utilities. */
+
+:root {
+  --pa-bg: #6b8f3a;
+  --pa-canvas: #f4ecd0;
+  --pa-surface: #fbf6e3;
+  --pa-ink: #2a2118;
+  --pa-muted: #6b5d44;
+  --pa-line: #2a2118;
+  --pa-accent: #3a7d1e;
+  --pa-accent-strong: #245a10;
+  --pa-shadow: 4px 4px 0 rgba(42, 33, 24, 0.85);
+}
+
+body,
+main.min-h-screen,
+.bg-slate-50 {
+  background: var(--pa-bg) !important;
+  color: var(--pa-ink) !important;
+  font-family: "VT323", ui-monospace, "Courier New", monospace !important;
+  font-size: 19px;
+  image-rendering: pixelated;
+}
+
+/* Headings in the pixel display font (small per-em on purpose). */
+h1, h2, h3, .text-3xl, .text-2xl, .text-lg {
+  font-family: "Press Start 2P", "VT323", monospace !important;
+  color: var(--pa-accent-strong) !important;
+  letter-spacing: 0.5px;
+  line-height: 1.5 !important;
+}
+.text-3xl { font-size: 1.25rem !important; text-shadow: 2px 2px 0 var(--pa-surface); }
+.text-2xl { font-size: 1rem !important; }
+.text-lg { font-size: 0.85rem !important; }
+.uppercase { font-family: "Press Start 2P", monospace !important; font-size: 0.55rem !important; color: var(--pa-accent) !important; }
+
+/* Cards / panels become chunky dialog boxes. */
+.bg-white,
+.rounded-md.bg-slate-50,
+.bg-slate-50.p-4 {
+  background: var(--pa-surface) !important;
+  border: 3px solid var(--pa-line) !important;
+  border-radius: 0 !important;
+  box-shadow: var(--pa-shadow) !important;
+}
+
+/* Kill rounded corners everywhere for the blocky look. */
+.rounded, .rounded-md, .rounded-lg, .rounded-full {
+  border-radius: 0 !important;
+}
+.border-slate-200, .border-slate-300, .border-slate-400 { border-color: var(--pa-line) !important; }
+.shadow-sm { box-shadow: var(--pa-shadow) !important; }
+
+/* Buttons: blocky, pressable, pixel-label. (pre.bg-slate-900 handled below.) */
+button {
+  font-family: "Press Start 2P", monospace !important;
+  font-size: 0.6rem !important;
+  border: 3px solid var(--pa-line) !important;
+  border-radius: 0 !important;
+  box-shadow: 3px 3px 0 var(--pa-line) !important;
+  white-space: nowrap;
+  transition: none !important;
+}
+button.bg-slate-900 { background: var(--pa-accent) !important; color: #fff7e0 !important; }
+button.border-slate-300 { background: var(--pa-surface) !important; color: var(--pa-ink) !important; }
+button:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--pa-line) !important; }
+button:disabled { box-shadow: none !important; transform: none; border-style: dashed !important; color: var(--pa-muted) !important; background: var(--pa-canvas) !important; }
+
+/* Nav links (each carries data-testid="nav-*") read as a menu. */
+[data-testid^="nav-"] {
+  display: inline-flex;
+  font-family: "Press Start 2P", monospace !important;
+  font-size: 0.6rem !important;
+  border: 3px solid var(--pa-line) !important;
+  border-radius: 0 !important;
+  box-shadow: 3px 3px 0 var(--pa-line);
+  background: var(--pa-surface) !important;
+  color: var(--pa-ink) !important;
+  padding: 8px 10px !important;
+}
+
+/* Inputs / textareas: square, bordered, readable pixel body font. */
+input, select, textarea {
+  border: 3px solid var(--pa-line) !important;
+  border-radius: 0 !important;
+  background: #fffdf2 !important;
+  font-family: "VT323", monospace !important;
+  font-size: 1.05rem !important;
+  color: var(--pa-ink) !important;
+}
+
+/* Code / schema blocks: terminal green on near-black. */
+pre, code, pre.bg-slate-900 {
+  background: #1b2417 !important;
+  color: #b7f06f !important;
+  border: 3px solid var(--pa-line) !important;
+  border-radius: 0 !important;
+  font-family: "VT323", monospace !important;
+  font-size: 1rem !important;
+}
+
+/* Status/reward pills become square tokens. */
+.rounded-full.bg-slate-100 {
+  border-radius: 0 !important;
+  border: 2px solid var(--pa-line) !important;
+  background: var(--pa-canvas) !important;
+  color: var(--pa-ink) !important;
+}
+
+/* Muted slate text reads on the parchment. */
+.text-slate-600, .text-slate-700 { color: var(--pa-muted) !important; }
+a.underline { color: var(--pa-accent-strong) !important; }
