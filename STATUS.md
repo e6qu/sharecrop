@@ -1,16 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 38 work, merged into `main`.
+The repository contains pull request 1 through pull request 39 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/http-split-and-security` splits `server.go` into cohesive handler files and applies a multi-agent security review (Go backend) and UI/UX/product review (demo) with fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/http-dtos-and-reviews` continues the HTTP decomposition (wire DTOs to `dtos.go`), lands the deferred demo UI minors, and applies a second-pass security review and a round-4 UI/UX review with fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/http-split-and-security`:
+Implemented in `task/http-dtos-and-reviews`:
 
-- HTTP decomposition: the task, submission, review, and credits handlers (with their request decoders and response converters) moved out of `internal/http/server.go` into `tasks.go`, `submissions.go`, `reviews.go`, and `credits.go` in package `httpserver`. `server.go` holds the router, shared types, and shared helpers (about 1186 lines, down from about 2476). No behavior change.
-- Security fixes (from a multi-agent review; authz/RBAC found no issues): the refresh-token cookie is `Secure` by default (opt out for local plain-HTTP dev with `SHARECROP_INSECURE_COOKIES=true`); MCP HTTP sessions are capped per agent subject and globally (over-limit returns 429); the submission response-value parser caps array items and object fields. Rate limiting and tip-entry idempotency keys are recorded in [BUGS.md](./BUGS.md) as accepted lower-risk follow-ups.
-- Demo fixes (from a UI/UX/product review): every open task is escrow-backed (the collectible-only audit task now carries credits); Reject defaults to paying 0 while Accept defaults to the full reward, with each amount shown on the button; the Agent/API console's "Run as Sol agent" is gated by the same claimability rules as the task page; Post Task shows only the reward inputs relevant to the chosen reward kind; tip-hint copy and the worker response nudge were clarified. Deferred minors (neutral-chip style unification, a real Docs page, a worker trust signal) are in [DO_NEXT.md](./DO_NEXT.md).
+- HTTP decomposition: the request/response DTO struct declarations and the `writableResponse` interface moved out of `internal/http/server.go` into `dtos.go` (package `httpserver`). `server.go` is about 906 lines (router, service interfaces, shared helpers). No behavior change.
+- Security: a second-pass review (aware of prior findings) found one new, real, high-severity IDOR — `ChangeReservationState` matched a reservation by id only while ownership was checked on the URL-path task, so an actor owning any task could approve/decline/cancel a reservation on another task. Fixed by binding the UPDATE to `task_id` in the same statement; covered by an e2e test. No other new issues.
+- Deferred demo UI minors landed: the two neutral metadata-chip styles are unified; the docs placeholder is a real quickstart (lifecycle, MCP connect config, scoped tokens, tool reference); and a per-persona lifetime track record (settled tasks + acceptance rate) is shown as a trust signal on profiles, the reservation queue, and submission rows.
+- Round-4 UI/UX fixes: "Run as Sol agent" now requires the Agent operator persona and (for approval-policy tasks) an approved reservation; task-list status renders as a colored pill everywhere; funding failure shows an inline reason at the control; the dashboard open-task count is per-persona; reservation-state labels are humanized.
+
+Earlier branch `task/http-split-and-security` (pull request 39, merged) split `server.go` into `tasks.go`/`submissions.go`/`reviews.go`/`credits.go` and applied a first security review (Secure cookie, MCP session caps, parser caps) and UI/UX review (escrow coherence, reject default, agent-run guard).
 
 Earlier branch `task/demo-orgs-elm-split-polish` (pull request 37, merged) modeled demo organizations as entities, started the `Main.elm` decomposition with `Sharecrop.Types`, and applied a specialized review's polish.
 
