@@ -1,17 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 39 work, merged into `main`.
+The repository contains pull request 1 through pull request 40 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/http-dtos-and-reviews` continues the HTTP decomposition (wire DTOs to `dtos.go`), lands the deferred demo UI minors, and applies a second-pass security review and a round-4 UI/UX review with fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/ratelimit-tipkey-reviews` lands the two security follow-ups (rate limiting, tip-entry idempotency keys) and applies a third-pass security review (clean) and a round-5 UI/UX review with fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/http-dtos-and-reviews`:
+Implemented in `task/ratelimit-tipkey-reviews`:
 
-- HTTP decomposition: the request/response DTO struct declarations and the `writableResponse` interface moved out of `internal/http/server.go` into `dtos.go` (package `httpserver`). `server.go` is about 906 lines (router, service interfaces, shared helpers). No behavior change.
-- Security: a second-pass review (aware of prior findings) found one new, real, high-severity IDOR — `ChangeReservationState` matched a reservation by id only while ownership was checked on the URL-path task, so an actor owning any task could approve/decline/cancel a reservation on another task. Fixed by binding the UPDATE to `task_id` in the same statement; covered by an e2e test. No other new issues.
-- Deferred demo UI minors landed: the two neutral metadata-chip styles are unified; the docs placeholder is a real quickstart (lifecycle, MCP connect config, scoped tokens, tool reference); and a per-persona lifetime track record (settled tasks + acceptance rate) is shown as a trust signal on profiles, the reservation queue, and submission rows.
-- Round-4 UI/UX fixes: "Run as Sol agent" now requires the Agent operator persona and (for approval-policy tasks) an approved reservation; task-list status renders as a colored pill everywhere; funding failure shows an inline reason at the control; the dashboard open-task count is per-persona; reservation-state labels are humanized.
+- Rate limiting: an in-memory token-bucket limiter rate-limits the unauthenticated login/refresh/receipt endpoints per client IP and MCP requests per agent subject, returning 429 when exceeded; idle buckets are evicted. Client IP uses the direct peer (X-Forwarded-For not trusted). Unit-tested.
+- Ledger: the two `task_tip` inserts now carry derived idempotency keys (`:tip-debit` / `:tip-credit`), matching payout/refund entries so the unique constraint would catch a double-tip if the task-lock ordering ever changed.
+- Security: a third-pass review (aware of prior findings and the in-flight fixes) returned no new issues — authz and ledger lenses were clean and the one raw input finding did not survive verification.
+- Round-5 UI/UX fixes: reject now closes the task (escrow released, no further worker action), ending a loop where a rejected task stayed open and re-submittable but could never be paid; agent-originated reservations/submissions are marked and render as "Sol Rivera · agent" with a "via MCP · scoped token" chip instead of the human track record; the schema designer warns + shows an empty state when structured mode has no fields; dashboard cards have parity sub-notes; the Release button is hidden once a result is submitted; a credits/bundle reward warns on a non-positive amount; review panels size to content; and the docs MCP tool names match the console.
+
+Earlier branch `task/http-dtos-and-reviews` (pull request 40, merged) moved the wire DTOs to `dtos.go`, fixed a reservation IDOR (binding the state change to `task_id`), and landed the deferred UI minors (unified chips, real docs page, trust signal).
 
 Earlier branch `task/http-split-and-security` (pull request 39, merged) split `server.go` into `tasks.go`/`submissions.go`/`reviews.go`/`credits.go` and applied a first security review (Secure cookie, MCP session caps, parser caps) and UI/UX review (escrow coherence, reject default, agent-run guard).
 

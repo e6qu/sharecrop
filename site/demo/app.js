@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v11";
+const storageKey = "sharecrop-demo-state-v12";
 
 const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
@@ -56,6 +56,14 @@ function trustLabel(userId) {
   const user = users.find((item) => item.id === userId);
   if (!user || !user.track || user.track.completed === 0) return "";
   return `${user.track.completed} tasks · ${user.track.acceptedPct}% accepted`;
+}
+
+// For an agent-originated reservation/submission, show that it arrived over a
+// scoped MCP credential (not the human's track record), since that is the
+// distinction the requester is trusting and paying on.
+function actorSignal(userId, viaAgent) {
+  if (viaAgent) return `<span class="agent-chip">via MCP · scoped token</span>`;
+  return trustLabel(userId) ? `<span class="trust-note">· ${escapeHtml(trustLabel(userId))}</span>` : "";
 }
 
 function orgName(orgId) {
@@ -235,7 +243,7 @@ const seedTasks = [
       label: "Fetch current temperature (°C) for these cities, in order:",
       items: ["Lisbon, PT", "Nairobi, KE", "Osaka, JP"],
     }],
-    reservations: [{ id: "res-weather-sol", by: "sol", state: "active", expires: "8h" }],
+    reservations: [{ id: "res-weather-sol", by: "sol", state: "active", expires: "8h", viaAgent: true }],
     submissions: [{
       id: "sub-weather-sol",
       by: "sol",
@@ -245,6 +253,7 @@ const seedTasks = [
       partialPayout: "",
       tip: "",
       ban: false,
+      viaAgent: true,
     }],
     timeline: ["Sol created a scoped agent token.", "The agent submitted readings over MCP."],
   }),
@@ -927,18 +936,23 @@ function schemaDesigner() {
     const max = lengthOf(field, "max");
     return min !== undefined && max !== undefined && min > max;
   });
+  const noUsableFields = keys.length === 0;
   const warnings = [
     duplicates.length ? `Two fields share the key "${duplicates[0]}" — the last one wins.` : "",
     hasEmpty ? "A field name with no letters or digits cannot become a key and is omitted." : "",
     hasBlank ? "Fields with no name are omitted from the schema." : "",
     impossibleRange ? "A list field has min items greater than max items — no response can satisfy it." : "",
+    noUsableFields ? "Structured mode is selected but no fields are defined — workers will receive a free-form task." : "",
   ].filter(Boolean);
   const warning = warnings.length ? `<p class="schema-warning">${escapeHtml(warnings.join(" "))}</p>` : "";
+  const fieldsBlock = noUsableFields && rows === ""
+    ? `<p class="empty-state">No fields yet — add at least one field, or switch to Free-form text.</p>`
+    : `<div class="schema-fields">${rows}</div>`;
   return `
     <div class="schema-designer wide-field">
       ${kindSelect}
       <p class="schema-hint">Design the structured result you want back. Mark fields required and, for text fields, list the allowed values workers must choose from.</p>
-      <div class="schema-fields">${rows}</div>
+      ${fieldsBlock}
       ${warning}
       <button class="button secondary" type="button" data-action="add-field">Add field</button>
       <div class="schema-block">
@@ -1146,10 +1160,10 @@ function overviewPage() {
           </div>
         </div>
         <div class="summary-grid">
-          ${metricCard("Open tasks", String(visibleTasks().filter((item) => item.lifecycle === lifecycle.open).length))}
+          ${metricCard("Open tasks", String(visibleTasks().filter((item) => item.lifecycle === lifecycle.open).length), "open to you now")}
           ${metricCard("Credits available", `${balanceOf(user.id)}`, "spendable now")}
           ${metricCard("Held in escrow", `${escrowHeldBy(user.id)}`, "committed to open tasks")}
-          ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
+          ${metricCard("Collectibles", String(inventoryOf(user.id).length), "in your inventory")}
         </div>
       </div>
       ${dashboardSpotlight(taskItem)}
@@ -1239,7 +1253,7 @@ function requesterPage() {
             ${option("bundle", "Credits + collectible", state.draftRewardKind)}
           </select>
         </label>
-        ${["credits", "bundle"].includes(state.draftRewardKind) ? `<label for="draft-credits">Credits<input id="draft-credits" data-field="draftCredits" value="${escapeAttribute(state.draftCredits)}"><span class="schema-hint">Credits are this demo's currency (think 1 credit ≈ $1), held from your balance until you accept a result.</span></label>` : ""}
+        ${["credits", "bundle"].includes(state.draftRewardKind) ? `<label for="draft-credits">Credits<input id="draft-credits" type="number" min="1" data-field="draftCredits" value="${escapeAttribute(state.draftCredits)}"><span class="${(Number.parseInt(state.draftCredits, 10) || 0) > 0 ? "schema-hint" : "schema-warning"}">${(Number.parseInt(state.draftCredits, 10) || 0) > 0 ? "Credits are this demo's currency (think 1 credit ≈ $1), held from your balance until you accept a result." : "Enter a credit amount greater than 0, or choose No reward."}</span></label>` : ""}
         ${["collectible", "bundle"].includes(state.draftRewardKind) ? `<label for="draft-collectible">Collectible<input id="draft-collectible" data-field="draftCollectible" value="${escapeAttribute(state.draftCollectible)}"></label>` : ""}
         <label for="draft-visibility">Visibility
           <select id="draft-visibility" data-field="draftVisibility">
@@ -1574,7 +1588,7 @@ function nextAction(taskItem) {
     }
     return { kind: "none", title: "Watching", explanation: "This task is open. New reservations or submissions will appear in Reviews." };
   }
-  if (taskItem.lifecycle !== lifecycle.open || taskItem.availability === availability.closed || taskItem.availability === availability.accepted) {
+  if (taskItem.lifecycle !== lifecycle.open || [availability.closed, availability.accepted, availability.rejected].includes(taskItem.availability)) {
     return { kind: "none", title: "No action", explanation: "This task is not open for new work." };
   }
   if (taskItem.banned?.includes(state.userId)) {
@@ -1709,14 +1723,15 @@ function reservationQueue(taskItem) {
   return taskItem.reservations.map((reservation) => `
     <div class="queue-row">
       <div>
-        <strong>${userLink(reservation.by)}</strong>
+        <strong>${userLink(reservation.by)}${reservation.viaAgent ? " · agent" : ""}</strong>
         <span>${escapeHtml(reservationStateLabel(reservation.state))} / expires ${escapeHtml(reservation.expires ?? "48h")}</span>
-        ${trustLabel(reservation.by) ? `<span class="trust-note">${escapeHtml(trustLabel(reservation.by))}</span>` : ""}
+        ${actorSignal(reservation.by, reservation.viaAgent)}
       </div>
       <div class="row-actions">
         ${reservation.state === "requested" && reservation.by !== state.userId ? `<button class="button secondary" data-action="declineReservation" data-user="${escapeAttribute(reservation.by)}">Decline</button><button class="button primary" data-action="approve" data-user="${escapeAttribute(reservation.by)}">Approve</button>` : ""}
         ${reservation.state === "requested" && reservation.by === state.userId ? `<span class="reserved-pill">Your request — awaiting approval</span>` : ""}
-        ${reservation.state === "active" ? `<button class="button secondary" data-action="releaseReservation" data-user="${escapeAttribute(reservation.by)}">Release</button>` : ""}
+        ${reservation.state === "active" && !taskItem.submissions.some((submission) => submission.by === reservation.by && submission.state === "submitted") ? `<button class="button secondary" data-action="releaseReservation" data-user="${escapeAttribute(reservation.by)}">Release</button>` : ""}
+        ${reservation.state === "active" && taskItem.submissions.some((submission) => submission.by === reservation.by && submission.state === "submitted") ? `<span class="reserved-pill">Result submitted — decide below</span>` : ""}
       </div>
     </div>
   `).join("");
@@ -1740,9 +1755,9 @@ function submissionList(taskItem) {
     return `
       <div class="submission-row decision-console">
         <div>
-          <strong>${userLink(submission.by)}</strong>
+          <strong>${userLink(submission.by)}${submission.viaAgent ? " · agent" : ""}</strong>
           <span class="action-chip">${escapeHtml(submissionStateLabel(submission.state))}</span>
-          ${trustLabel(submission.by) ? `<span class="trust-note">${escapeHtml(trustLabel(submission.by))}</span>` : ""}
+          ${actorSignal(submission.by, submission.viaAgent)}
         </div>
         <p class="decision-criteria"><strong>Should return</strong> — ${escapeHtml(schemaSummary(taskItem.schema))}</p>
         <code>${escapeHtml(submission.response)}</code>
@@ -2361,11 +2376,11 @@ function agentRun(taskItem) {
     availability: availability.submitted,
     reservations: [
       ...current.reservations.filter((reservation) => reservation.by !== "sol"),
-      { id: `res-${taskItem.id}-sol`, by: "sol", state: "active", expires: "8h" },
+      { id: `res-${taskItem.id}-sol`, by: "sol", state: "active", expires: "8h", viaAgent: true },
     ].slice(-4),
     submissions: [
       ...current.submissions.filter((submission) => submission.by !== "sol" || submission.state !== "submitted"),
-      { id: `sub-${taskItem.id}-sol`, by: "sol", state: "submitted", response: filledSample(taskItem.schema), reviewNote: "", partialPayout: "", tip: "", ban: false },
+      { id: `sub-${taskItem.id}-sol`, by: "sol", state: "submitted", response: filledSample(taskItem.schema), reviewNote: "", partialPayout: "", tip: "", ban: false, viaAgent: true },
     ].slice(-4),
   }), `Sol simulated an MCP agent run for ${taskItem.title}.`);
 }
@@ -2433,7 +2448,9 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
   }
   state = { ...state, reviewWarning: null };
   const nextAvailability = decision === "accepted" ? availability.accepted : decision === "rejected" ? availability.rejected : availability.changesRequested;
-  const nextLifecycle = decision === "accepted" ? lifecycle.closed : taskItem.lifecycle;
+  // Accept and reject both settle and close the task; only changes_requested
+  // leaves it open (escrow retained) for a revised submission.
+  const nextLifecycle = decision === "changes_requested" ? taskItem.lifecycle : lifecycle.closed;
   const activity = decision === "accepted"
     ? `${selectedUser().name} accepted ${userName(userId)} on ${taskItem.title} and paid ${payout + tip} credits.`
     : decision === "rejected"

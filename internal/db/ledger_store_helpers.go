@@ -412,7 +412,7 @@ func payReviewEscrow(ctx context.Context, tx pgx.Tx, command reviewEscrowCommand
 	return payoutResolved{outcome: ledger.CreditPayout{WorkerUserID: worker.Value, Amount: amountAccepted.Value}}
 }
 
-func payCreditTip(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID, rawWorkerID string, debitEntryID core.LedgerEntryID, creditEntryID core.LedgerEntryID, selection ledger.TipSelection) tipResult {
+func payCreditTip(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID, rawWorkerID string, debitEntryID core.LedgerEntryID, creditEntryID core.LedgerEntryID, idempotencyKey ledger.IdempotencyKey, selection ledger.TipSelection) tipResult {
 	tip, matched := selection.(ledger.CreditTipSelection)
 	if !matched {
 		return tipResolved{outcome: ledger.NoTip{}}
@@ -447,10 +447,15 @@ func payCreditTip(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester 
 		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock worker credit account failed")}
 	}
 
-	if _, err := tx.Exec(ctx, "insert into ledger_entries (id, account_id, kind, amount, task_id) values ($1, $2, 'task_tip', $3, $4)", debitEntryID.String(), requesterLocked.id, -tip.Amount.Int64(), taskID.String()); err != nil {
+	// Derive per-side idempotency keys (distinct from the bare payout key) so the
+	// unique constraint would catch a repeated double-tip if the task-lock ordering
+	// ever changed; today the FOR UPDATE task lock already serializes this.
+	debitKey := idempotencyKey.String() + ":tip-debit"
+	creditKey := idempotencyKey.String() + ":tip-credit"
+	if _, err := tx.Exec(ctx, "insert into ledger_entries (id, account_id, kind, amount, task_id, idempotency_key) values ($1, $2, 'task_tip', $3, $4, $5)", debitEntryID.String(), requesterLocked.id, -tip.Amount.Int64(), taskID.String(), debitKey); err != nil {
 		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task tip debit failed")}
 	}
-	if _, err := tx.Exec(ctx, "insert into ledger_entries (id, account_id, kind, amount, task_id) values ($1, $2, 'task_tip', $3, $4)", creditEntryID.String(), workerAccountID, tip.Amount.Int64(), taskID.String()); err != nil {
+	if _, err := tx.Exec(ctx, "insert into ledger_entries (id, account_id, kind, amount, task_id, idempotency_key) values ($1, $2, 'task_tip', $3, $4, $5)", creditEntryID.String(), workerAccountID, tip.Amount.Int64(), taskID.String(), creditKey); err != nil {
 		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task tip credit failed")}
 	}
 

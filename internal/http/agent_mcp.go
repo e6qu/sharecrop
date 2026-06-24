@@ -265,6 +265,11 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !server.subjectRateLimiter.allow(verified.Subject.ID.String()) {
+		writeError(w, http.StatusTooManyRequests, "too many MCP requests; slow down and retry")
+		return
+	}
+
 	sessionID := r.Header.Get(mcpSessionHeader)
 	if requestInfo.initializes {
 		if sessionID != "" {

@@ -114,7 +114,19 @@ type Server struct {
 	mcpServer           mcp.Server
 	mcpSessions         *mcpHTTPSessionStore
 	secureCookies       bool
+	ipRateLimiter       *rateLimiter
+	subjectRateLimiter  *rateLimiter
 }
+
+// Rate-limit budgets (burst capacity + steady refill per second): bound abusive
+// volume on unauthenticated endpoints (by client IP) and MCP tool calls (by agent
+// subject) without impeding normal use.
+const (
+	ipRateCapacity      = 20
+	ipRateRefillPerSec  = 5
+	mcpRateCapacity     = 60
+	mcpRateRefillPerSec = 10
+)
 
 func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService) http.Handler {
 	server := Server{
@@ -131,7 +143,9 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		mcpSessions:         newMCPHTTPSessionStore(),
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
-		secureCookies: os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
+		secureCookies:      os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
+		ipRateLimiter:      newRateLimiter(ipRateCapacity, ipRateRefillPerSec),
+		subjectRateLimiter: newRateLimiter(mcpRateCapacity, mcpRateRefillPerSec),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
@@ -712,6 +726,16 @@ func authResponseForSubject(subject auth.Subject, accessToken auth.AccessToken) 
 	default:
 		return authResponseRejected{reason: "subject is invalid"}
 	}
+}
+
+// allowByIP rate-limits an unauthenticated endpoint by client IP. It writes a
+// 429 and returns false when the caller should stop.
+func (server Server) allowByIP(w http.ResponseWriter, r *http.Request) bool {
+	if !server.ipRateLimiter.allow(clientIP(r)) {
+		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
+		return false
+	}
+	return true
 }
 
 func (server Server) setRefreshCookie(w http.ResponseWriter, refreshToken auth.RefreshTokenPlain) {

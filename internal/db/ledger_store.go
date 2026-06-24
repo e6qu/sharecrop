@@ -167,7 +167,7 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 		}
 	}
 
-	tipResult := payCreditTip(ctx, tx, command.TaskID, command.RequesterUserID, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.TipSelection)
+	tipResult := payCreditTip(ctx, tx, command.TaskID, command.RequesterUserID, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.IdempotencyKey, command.TipSelection)
 	tip, tipMatched := tipResult.(tipResolved)
 	if !tipMatched {
 		return ledger.AcceptRejected{Reason: tipResult.(tipRejected).reason}
@@ -304,7 +304,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 		return ledger.RejectRejected{Reason: payoutResult.(payoutRejected).reason}
 	}
 
-	tipResult := payCreditTip(ctx, tx, command.TaskID, command.RequesterUserID, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.TipSelection)
+	tipResult := payCreditTip(ctx, tx, command.TaskID, command.RequesterUserID, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.IdempotencyKey, command.TipSelection)
 	tip, tipMatched := tipResult.(tipResolved)
 	if !tipMatched {
 		return ledger.RejectRejected{Reason: tipResult.(tipRejected).reason}

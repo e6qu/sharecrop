@@ -32,6 +32,9 @@ func (server Server) register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) login(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	requestResult := decodeAuthRequest(r)
 	requestAccepted, requestMatched := requestResult.(authRequestAccepted)
 	if !requestMatched {
@@ -57,6 +60,9 @@ func (server Server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	cookie, err := r.Cookie("sharecrop_refresh_token")
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "refresh token is required")
