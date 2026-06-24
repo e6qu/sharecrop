@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v8";
+const storageKey = "sharecrop-demo-state-v9";
 
 const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
@@ -38,13 +38,23 @@ const pages = [
   { id: "user", label: "Profile", detailOnly: true },
 ];
 
+const organizations = { lattice: "Lattice Field Co" };
+
 const users = [
-  { id: "mara", name: "Mara Chen", role: "Requester", balance: 180 },
-  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64 },
-  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 112 },
-  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100 },
-  { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83 },
+  { id: "mara", name: "Mara Chen", role: "Requester", balance: 180, org: "lattice" },
+  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64, org: "lattice" },
+  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 112, org: "lattice" },
+  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100, org: "" },
+  { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83, org: "lattice" },
 ];
+
+function orgName(orgId) {
+  return organizations[orgId] || orgId;
+}
+
+function orgTag(user) {
+  return user.org ? orgName(user.org) : "External — no org";
+}
 
 const providers = ["Google", "Apple", "Microsoft", "Facebook", "X.com"];
 const maxLocalTasks = 6;
@@ -96,6 +106,7 @@ const seedTasks = [
     assignee: "",
     area: "Ledger Bay",
     visibility: "organization",
+    org: "lattice",
     policy: policy.approval,
     reward: rewardCredits(30),
     lifecycle: lifecycle.open,
@@ -114,7 +125,7 @@ const seedTasks = [
         ["INV-1005", "Grove Cafe", "41.25"],
       ],
     }],
-    reservations: [{ id: "res-invoice-ren", by: "ren", state: "requested", expires: "24h" }],
+    reservations: [{ id: "res-invoice-tala", by: "tala", state: "requested", expires: "24h" }],
     timeline: ["Ren requested clearance to work on invoice extraction."],
   }),
   task({
@@ -164,6 +175,7 @@ const seedTasks = [
     assignee: "tala",
     area: "Vault",
     visibility: "organization",
+    org: "lattice",
     policy: policy.reservation,
     reward: rewardCollectible(["Vault Seal"]),
     lifecycle: lifecycle.open,
@@ -292,6 +304,7 @@ const seedTasks = [
     assignee: "tala",
     area: "Archive",
     visibility: "organization",
+    org: "lattice",
     policy: policy.reservation,
     reward: rewardCredits(20),
     lifecycle: lifecycle.closed,
@@ -686,7 +699,11 @@ function canSeeTask(taskItem, user) {
     return taskItem.requester === user.id || taskItem.assignee === user.id || user.role === "Organization reviewer";
   }
   if (taskItem.visibility === "organization") {
-    return user.role !== "Implementor" || taskItem.assignee === user.id || taskItem.requester === user.id;
+    // Organization tasks are visible to their requester/assignee and to members
+    // of the owning organization — not to outside users (e.g. external agents).
+    return taskItem.requester === user.id ||
+      taskItem.assignee === user.id ||
+      (Boolean(user.org) && user.org === taskItem.org);
   }
   return true;
 }
@@ -707,9 +724,11 @@ function reviewableTasks() {
 
 function canReviewTask(taskItem, user = selectedUser()) {
   if (taskItem.requester === user.id) return true;
-  // An organization reviewer can settle organization-visibility work, but never
-  // public tasks they did not request.
-  return user.role === "Organization reviewer" && taskItem.visibility === "organization";
+  // An organization reviewer can settle organization-visibility work for their
+  // own organization, but never public tasks or other orgs' tasks.
+  return user.role === "Organization reviewer" &&
+    taskItem.visibility === "organization" &&
+    Boolean(user.org) && user.org === taskItem.org;
 }
 
 function updateTask(taskId, change, activity) {
@@ -804,13 +823,16 @@ function validateResponse(schemaJson, text) {
     const fieldValue = value[name];
     if (spec.kind === "integer" && !Number.isInteger(fieldValue)) {
       errors.push(`"${name}" must be a whole number.`);
-    } else if (spec.kind === "decimal_string" && typeof fieldValue !== "string") {
-      errors.push(`"${name}" must be a decimal sent as text.`);
+    } else if (spec.kind === "decimal_string") {
+      if (typeof fieldValue !== "string") errors.push(`"${name}" must be a decimal sent as text.`);
+      else if (spec.required && fieldValue.trim() === "") errors.push(`"${name}" is required.`);
     } else if (spec.kind === "string") {
       if (typeof fieldValue !== "string") errors.push(`"${name}" must be text.`);
-      else if (spec.enum && !spec.enum.includes(fieldValue)) errors.push(`"${name}" must be one of ${spec.enum.join(", ")}.`);
+      else if (spec.required && fieldValue.trim() === "") errors.push(`"${name}" is required.`);
+      else if (spec.enum && fieldValue !== "" && !spec.enum.includes(fieldValue)) errors.push(`"${name}" must be one of ${spec.enum.join(", ")}.`);
     } else if (spec.kind === "array") {
       if (!Array.isArray(fieldValue)) errors.push(`"${name}" must be a list.`);
+      else if (spec.required && fieldValue.length === 0) errors.push(`"${name}" needs at least one value.`);
       else if (spec.items?.enum) {
         const invalid = fieldValue.filter((item) => !spec.items.enum.includes(item));
         if (invalid.length) errors.push(`"${name}" has values outside ${spec.items.enum.join(", ")}.`);
@@ -896,6 +918,7 @@ function createDraftTask() {
     assignee: "",
     area: "Custom Board",
     visibility: state.draftVisibility,
+    org: state.draftVisibility === "organization" ? selectedUser().org : "",
     policy: state.draftPolicy,
     reward: draftReward(),
     lifecycle: lifecycle.draft,
@@ -953,7 +976,7 @@ function topbar() {
         <div class="account-menu">
           <button class="account-button" data-action="toggleLogin" aria-expanded="${state.loginOpen ? "true" : "false"}">
             <span>Viewing as — switch role ▾</span>
-            <strong>${escapeHtml(user.name)} · ${escapeHtml(user.role)}</strong>
+            <strong>${escapeHtml(user.name)} · ${escapeHtml(user.role)} · ${escapeHtml(orgTag(user))}</strong>
           </button>
           ${state.loginOpen ? loginPanel() : ""}
         </div>
@@ -969,7 +992,7 @@ function loginPanel() {
       <p class="role-switch-hint">This demo lets you role-play both sides. Switch between a requester, a worker, an agent operator, and an org reviewer to see how the same task looks to each.</p>
       <label for="demo-user">Select persona</label>
       <select id="demo-user" data-field="userId">
-        ${users.map((item) => `<option value="${escapeAttribute(item.id)}" ${item.id === state.userId ? "selected" : ""}>${escapeHtml(item.name)} - ${escapeHtml(item.role)}</option>`).join("")}
+        ${users.map((item) => `<option value="${escapeAttribute(item.id)}" ${item.id === state.userId ? "selected" : ""}>${escapeHtml(item.name)} - ${escapeHtml(item.role)} - ${escapeHtml(orgTag(item))}</option>`).join("")}
       </select>
       <div class="persona-list">
         ${users.map((item) => personaBadge(item)).join("")}
@@ -986,7 +1009,7 @@ function personaBadge(user) {
   return `
     <button class="persona-badge ${user.id === state.userId ? "selected" : ""}" data-action="choosePersona" data-user="${escapeAttribute(user.id)}" aria-pressed="${user.id === state.userId ? "true" : "false"}">
       <strong>${escapeHtml(user.name)}</strong>
-      <span>${escapeHtml(user.role)}</span>
+      <span>${escapeHtml(user.role)} · ${escapeHtml(orgTag(user))}</span>
     </button>
   `;
 }
@@ -1431,7 +1454,7 @@ function missionBriefing(taskItem) {
         ${renderTaskInputs(taskItem.inputs)}
         <div class="badge-row">
           ${toneSpan(lifecycleLabel(taskItem.lifecycle), lifecycleTone(taskItem.lifecycle))}
-          <span>${escapeHtml(visibilityLabel(taskItem.visibility))}</span>
+          <span>${escapeHtml(taskItem.visibility === "organization" && taskItem.org ? orgName(taskItem.org) : visibilityLabel(taskItem.visibility))}</span>
           <span>${escapeHtml(policyLabel(taskItem.policy))}</span>
           ${toneSpan(availabilityLabel(taskItem.availability), availabilityTone(taskItem.availability))}
         </div>
@@ -1535,6 +1558,30 @@ function sampleForSpec(spec) {
   return "";
 }
 
+// A plausibly-filled, schema-valid value — used so the simulated agent run
+// returns realistic work, not an empty skeleton.
+function filledForSpec(spec) {
+  if (!spec) return "sample";
+  if (spec.kind === "integer") return 1;
+  if (spec.kind === "decimal_string") return "1.0";
+  if (spec.kind === "array") return [filledForSpec(spec.items)];
+  if (spec.kind === "string" && Array.isArray(spec.enum) && spec.enum.length) return spec.enum[0];
+  return "sample";
+}
+
+function filledSample(schemaJson) {
+  let parsed;
+  try {
+    parsed = JSON.parse(schemaJson);
+  } catch {
+    return "{}";
+  }
+  if (!parsed || parsed.kind === "freeform" || !parsed.fields) return "Agent-generated result.";
+  const filled = {};
+  for (const [name, spec] of Object.entries(parsed.fields)) filled[name] = filledForSpec(spec);
+  return JSON.stringify(filled);
+}
+
 function schemaTemplate(schemaJson) {
   let parsed;
   try {
@@ -1592,7 +1639,8 @@ function reservationQueue(taskItem) {
         <span>${escapeHtml(reservation.state)} / expires ${escapeHtml(reservation.expires ?? "48h")}</span>
       </div>
       <div class="row-actions">
-        ${reservation.state === "requested" ? `<button class="button secondary" data-action="declineReservation" data-user="${escapeAttribute(reservation.by)}">Decline</button><button class="button primary" data-action="approve" data-user="${escapeAttribute(reservation.by)}">Approve</button>` : ""}
+        ${reservation.state === "requested" && reservation.by !== state.userId ? `<button class="button secondary" data-action="declineReservation" data-user="${escapeAttribute(reservation.by)}">Decline</button><button class="button primary" data-action="approve" data-user="${escapeAttribute(reservation.by)}">Approve</button>` : ""}
+        ${reservation.state === "requested" && reservation.by === state.userId ? `<span class="reserved-pill">Your request — awaiting approval</span>` : ""}
         ${reservation.state === "active" ? `<button class="button secondary" data-action="releaseReservation" data-user="${escapeAttribute(reservation.by)}">Release</button>` : ""}
       </div>
     </div>
@@ -1962,7 +2010,7 @@ function handleCommit(event) {
 function handleDraftInput(event) {
   const target = event.target;
   if (target.dataset.responseTask !== undefined) {
-    state = { ...state, responseDrafts: { ...state.responseDrafts, [target.dataset.responseTask]: target.value } };
+    state = { ...state, responseDrafts: { ...state.responseDrafts, [target.dataset.responseTask]: target.value }, submitNote: undefined };
     saveSoon();
     return;
   }
@@ -2177,7 +2225,7 @@ function agentRun(taskItem) {
     ].slice(-4),
     submissions: [
       ...current.submissions.filter((submission) => submission.by !== "sol" || submission.state !== "submitted"),
-      { id: `sub-${taskItem.id}-sol`, by: "sol", state: "submitted", response: schemaTemplate(taskItem.schema) || "{}", reviewNote: "", partialPayout: "", tip: "", ban: false },
+      { id: `sub-${taskItem.id}-sol`, by: "sol", state: "submitted", response: filledSample(taskItem.schema), reviewNote: "", partialPayout: "", tip: "", ban: false },
     ].slice(-4),
   }), `Sol simulated an MCP agent run for ${taskItem.title}.`);
 }
@@ -2224,14 +2272,16 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
   const settles = decision === "accepted" || decision === "rejected";
   const held = state.escrow?.[taskItem.id] ?? 0;
   if (settles) {
+    // The reward was escrowed against the task's requester (who may differ from
+    // the reviewer settling it), so release escrow and net payout + tip against
+    // the requester — never the persona clicking Accept/Reject.
+    const requesterId = taskItem.requester;
     state = {
       ...state,
       balances: {
         ...state.balances,
         [userId]: balanceOf(userId) + payout + tip,
-        // The requester already escrowed `held` at funding time; release it and
-        // net the actual payout + tip (refunding any unused escrow).
-        [state.userId]: Math.max(0, balanceOf(state.userId) + held - payout - tip),
+        [requesterId]: Math.max(0, balanceOf(requesterId) + held - payout - tip),
       },
       escrow: withoutEscrow(state.escrow, taskItem.id),
     };
