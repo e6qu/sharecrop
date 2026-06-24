@@ -47,6 +47,7 @@ type OrganizationService interface {
 	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult
 	ListStandaloneTeams(context.Context, auth.UserSubject, core.Page) org.ListTeamsResult
 	GetTeam(context.Context, auth.UserSubject, core.TeamID) org.GetTeamResult
+	AddTeamMember(context.Context, auth.UserSubject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 }
 
@@ -145,6 +146,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("GET /api/teams", server.listStandaloneTeams)
 	mux.HandleFunc("POST /api/teams", server.createStandaloneTeam)
 	mux.HandleFunc("GET /api/teams/{team_id}", server.getTeam)
+	mux.HandleFunc("POST /api/teams/{team_id}/members", server.addTeamMember)
 	mux.HandleFunc("GET /api/users/{user_id}", server.getUserProfile)
 	mux.HandleFunc("GET /api/users/{user_id}/work", server.getUserWork)
 	mux.HandleFunc("GET /api/users/{user_id}/submissions", server.getUserSubmissions)

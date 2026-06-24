@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
 )
@@ -11,6 +12,18 @@ import (
 type teamDetailResponse struct {
 	Team    teamResponse `json:"team"`
 	Members []string     `json:"members"`
+}
+
+type teamMemberRequest struct {
+	Email string `json:"email"`
+}
+
+func teamDetailFrom(got org.TeamGot) teamDetailResponse {
+	response := teamDetailResponse{Team: teamToResponse(got.Team), Members: make([]string, 0, len(got.Members))}
+	for _, member := range got.Members {
+		response.Members = append(response.Members, member.String())
+	}
+	return response
 }
 
 func (server Server) getTeam(w http.ResponseWriter, r *http.Request) {
@@ -35,11 +48,49 @@ func (server Server) getTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := teamDetailResponse{Team: teamToResponse(got.Team), Members: make([]string, 0, len(got.Members))}
-	for _, member := range got.Members {
-		response.Members = append(response.Members, member.String())
+	writeTeamDetailResponse(w, http.StatusOK, teamDetailFrom(got))
+}
+
+func (server Server) addTeamMember(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
 	}
-	writeTeamDetailResponse(w, http.StatusOK, response)
+
+	teamIDResult := core.ParseTeamID(r.PathValue("team_id"))
+	teamIDCreated, teamIDMatched := teamIDResult.(core.TeamIDCreated)
+	if !teamIDMatched {
+		writeError(w, http.StatusBadRequest, teamIDResult.(core.TeamIDRejected).Reason.Description())
+		return
+	}
+
+	var request teamMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	emailResult := auth.NewEmailAddress(request.Email)
+	emailAccepted, emailMatched := emailResult.(auth.EmailAddressAccepted)
+	if !emailMatched {
+		writeError(w, http.StatusBadRequest, emailResult.(auth.EmailAddressRejected).Reason.Description())
+		return
+	}
+
+	result := server.organizationService.AddTeamMember(r.Context(), actor.subject, teamIDCreated.Value, emailAccepted.Value)
+	if _, added := result.(org.TeamMemberAddedResult); !added {
+		writeDomainError(w, result.(org.AddTeamMemberRejected).Reason)
+		return
+	}
+
+	gotResult := server.organizationService.GetTeam(r.Context(), actor.subject, teamIDCreated.Value)
+	got, gotMatched := gotResult.(org.TeamGot)
+	if !gotMatched {
+		writeDomainError(w, gotResult.(org.GetTeamRejected).Reason)
+		return
+	}
+	writeTeamDetailResponse(w, http.StatusCreated, teamDetailFrom(got))
 }
 
 func writeTeamDetailResponse(w http.ResponseWriter, status int, response teamDetailResponse) {

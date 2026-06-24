@@ -296,6 +296,24 @@ func (store OrgStore) AddTeamMember(ctx context.Context, teamID core.TeamID, use
 	return org.TeamMemberAdded{}
 }
 
+func (store OrgStore) AddTeamMemberByEmail(ctx context.Context, teamID core.TeamID, email auth.EmailAddress) org.AddTeamMemberStoreResult {
+	var rawUserID string
+	err := store.pool.QueryRow(ctx, "select id::text from users where email = $1", email.String()).Scan(&rawUserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return org.AddTeamMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "user was not found for email address")}
+		}
+		return org.AddTeamMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "lookup user by email failed")}
+	}
+
+	userIDResult := core.ParseUserID(rawUserID)
+	userIDCreated, userIDMatched := userIDResult.(core.UserIDCreated)
+	if !userIDMatched {
+		return org.AddTeamMemberStoreRejected{Reason: userIDResult.(core.UserIDRejected).Reason}
+	}
+	return store.AddTeamMember(ctx, teamID, userIDCreated.Value)
+}
+
 func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, page core.Page) org.TeamListResult {
 	rolesResult := store.FindMemberRoles(ctx, organizationID, userID)
 	if _, matched := rolesResult.(org.MemberRolesFound); !matched {

@@ -17,6 +17,7 @@ type Store interface {
 	CreateOrganizationTeam(context.Context, core.TeamID, core.OrganizationID, TeamName, core.UserID) CreateTeamStoreResult
 	CreateStandaloneTeam(context.Context, core.TeamID, core.UserID, TeamName) CreateTeamStoreResult
 	AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult
+	AddTeamMemberByEmail(context.Context, core.TeamID, auth.EmailAddress) AddTeamMemberStoreResult
 	ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult
 	ListStandaloneTeams(context.Context, core.UserID, core.Page) TeamListResult
 	FindTeam(context.Context, core.TeamID) FindTeamResult
@@ -345,6 +346,52 @@ func (service Service) canViewTeam(ctx context.Context, actor auth.UserSubject, 
 	case OrganizationOwnedTeam:
 		_, matched := service.store.FindMemberRoles(ctx, owner.OrganizationID, actor.ID).(MemberRolesFound)
 		return matched
+	default:
+		return false
+	}
+}
+
+type AddTeamMemberResult interface {
+	addTeamMemberResult()
+}
+
+type TeamMemberAddedResult struct{}
+
+type AddTeamMemberRejected struct {
+	Reason core.DomainError
+}
+
+func (TeamMemberAddedResult) addTeamMemberResult() {}
+
+func (AddTeamMemberRejected) addTeamMemberResult() {}
+
+// AddTeamMember adds a member (by email) to a team. Only the owner of a
+// user-owned team, or a member with team-management permission in the owning
+// organization, may add members.
+func (service Service) AddTeamMember(ctx context.Context, actor auth.UserSubject, teamID core.TeamID, email auth.EmailAddress) AddTeamMemberResult {
+	findResult := service.store.FindTeam(ctx, teamID)
+	found, matched := findResult.(TeamFound)
+	if !matched {
+		return AddTeamMemberRejected{Reason: findResult.(TeamMissing).Reason}
+	}
+	if !service.canManageTeam(ctx, actor, found.Value) {
+		return AddTeamMemberRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team member management denied")}
+	}
+
+	result := service.store.AddTeamMemberByEmail(ctx, teamID, email)
+	if _, added := result.(TeamMemberAdded); !added {
+		return AddTeamMemberRejected{Reason: result.(AddTeamMemberStoreRejected).Reason}
+	}
+	return TeamMemberAddedResult{}
+}
+
+func (service Service) canManageTeam(ctx context.Context, actor auth.UserSubject, team Team) bool {
+	switch owner := team.Owner.(type) {
+	case UserOwnedTeam:
+		return owner.OwnerUserID == actor.ID
+	case OrganizationOwnedTeam:
+		_, denied := service.requirePermission(ctx, owner.OrganizationID, actor.ID, PermissionManageTeams).(PermissionDenied)
+		return !denied
 	default:
 		return false
 	}

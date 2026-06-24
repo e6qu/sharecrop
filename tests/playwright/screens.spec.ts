@@ -325,6 +325,27 @@ test("requesters set a task's assignee scope to a team", async ({ page, request 
   await expect(page.getByText("organization team")).toBeVisible();
 });
 
+test("a team owner adds a member to a standalone team", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "teammember-owner");
+  const member = await registerViaApi(request, "teammember-member");
+  const teamResponse = await request.post("/api/teams", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { name: `Crew ${crypto.randomUUID()}` },
+  });
+  expect(teamResponse.ok()).toBeTruthy();
+  const team = (await teamResponse.json()) as { id: string };
+
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.goto(`/teams/${team.id}`);
+  await expect(page.getByTestId("team-detail-name")).toBeVisible();
+  await expect(page.getByTestId("team-members-empty")).toBeVisible();
+
+  await page.getByTestId("team-member-email").fill(member.email);
+  await page.getByTestId("add-team-member").click();
+  await expect(page.getByTestId("team-member-row")).toHaveCount(1);
+});
+
 test("pages have their own URLs and deep links load", async ({ page, request }) => {
   const owner = await registerViaApi(request, "routing-owner");
   await loginViaUi(page, owner.email);
