@@ -1,6 +1,12 @@
 # What We Did
 
-`task/team-pages-and-module-split` finished the entity-page work and paid down the HTTP and browser monoliths:
+`task/demo-selfcontained-tasks-and-redesign` made the demo tasks real and redesigned the demo:
+
+- Reworked every demo seed task so it carries its own input material. Each task gained an `inputs` array of blocks (records table, list, text, or code) rendered as an "Input / materials" section in the briefing, and the objectives now reference that on-screen material. This fixes tasks that described inputs ("20 photos by URL", "the linked ledger") that did not exist anywhere — they are now completable from what is shown. The tasks are framed as reverse-MCP agentic requests: humans asking other people and their agents for a structured result.
+- Added a receive-schema designer to the Post Task page: a requester writes free-form instructions and either keeps a free-form response or builds a structured one by adding named fields with types (text, whole number, decimal, list of text); the generated response schema is shown live.
+- Redesigned the demo visuals: switched the default to the clean "showcase" theme, replaced the hard offset shadow with a soft shadow, increased the corner radius, lightened the heavy panel borders, and styled the new input tables/lists/code and schema designer. Replaced the full task briefing that was wedged onto the dashboard with a compact "continue where you left off" spotlight.
+
+Earlier, `task/team-pages-and-module-split` finished the entity-page work and paid down the HTTP and browser monoliths:
 
 - Added `GET /api/teams/{id}`, returning a team and its member roster, with a new `org.Service.GetTeam` that allows a viewer only when they own the team, belong to it, or (for an organization team) are a member of the owning organization, backed by store `FindTeam` and `ListTeamMembers`. A routed `/teams/{id}` page renders the team name, owner kind, and roster (each member linking to their profile); organization team rows link to it. An e2e test proves the roster is denied to unrelated users.
 - Added an assignee-scope selector (user or organization team) to the create-task form, wiring the existing `assignee_scope` field instead of always assigning to a user. A browser test confirms a worker sees the organization-team assignee scope.

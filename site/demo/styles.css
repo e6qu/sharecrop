@@ -15,8 +15,8 @@
   --warning: #b7791f;
   --success: #15803d;
   --danger: #b42318;
-  --shadow: 0 10px 0 rgb(31 43 30 / 16%);
-  --radius: 5px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 14px 30px -12px rgb(16 24 40 / 16%);
+  --radius: 12px;
 }
 
 body[data-mode="dark"] {
@@ -208,7 +208,7 @@ a {
 .hero-panel,
 .landing-board,
 .landing-hero {
-  border: 2px solid var(--line);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);
@@ -793,6 +793,138 @@ code {
 .schema-block pre {
   max-height: 180px;
   overflow: auto;
+}
+
+/* Task input / materials */
+.input-block {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--canvas);
+}
+
+.input-label {
+  margin: 4px 0 2px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.input-text {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.input-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.input-list li {
+  line-height: 1.5;
+}
+
+.input-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.input-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  background: var(--surface);
+}
+
+.input-table th {
+  text-align: left;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: var(--surface-strong);
+  padding: 8px 12px;
+}
+
+.input-table td {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.input-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--surface-strong) 35%, transparent);
+}
+
+.input-code {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.spotlight-panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.spotlight-objective {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.spotlight-panel .button.primary {
+  justify-self: start;
+}
+
+/* Receive-schema designer */
+.schema-designer {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--canvas);
+}
+
+.schema-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.schema-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.schema-field-row {
+  display: grid;
+  grid-template-columns: 1fr 160px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.schema-field-row input,
+.schema-field-row select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
 }
 
 .status-panel {
