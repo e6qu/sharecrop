@@ -1,5 +1,13 @@
 # What We Did
 
+`task/demo-cross-linking` made demo entities real links and acted on a specialized review:
+
+- Converted task and user references into real anchors. Task rows use a stretched `#/tasks/{id}` link over the whole row and user names are `#/users/{id}` anchors, so they support left-click, open-in-new-tab, and right-click; `handleClick` returns early for anchors so the browser handles them. The dead kanban board/card code and CSS were removed (the flat list is the only task list).
+- Added a per-row reserve control: Reserve / Request approval when claimable, the requester's context action (Fund / Open / Review queue) now carrying the row's task id, an "Open to submit/run agent" action for available tasks, or a muted non-interactive "Reserved" pill when already claimed.
+- Ran a UI/UX + user-journey + product review (multi-agent) and applied its fixes: the per-row Review-queue button now opens that row's task; available rows always show a next action; `nextAction` blocks stealing another worker's active reservation on the detail page; rows top-align so status no longer floats; rows get cursor/hover/underline affordance; the dashboard hero states the reverse-MCP value proposition; Post Task explains what a credit is; stray "mission" copy and the RPG-style S/A/B/C difficulty badge were removed. Full reward escrow accounting and linkifying the activity feed were left for DO_NEXT.
+- Replaced the bespoke copy-paste script with jscpd (the standard cross-language detector), pinned to 5.0.11 and tuned to 12 lines / 150 tokens (now also scanning `site/demo`). Added a `.pre-commit-config.yaml` that runs jscpd and `go tool deadcode`, and a CI `pre-commit` job that runs the hooks via the framework.
+- Verified every GitHub Action and tool version against its registry/release feed and pinned each to the latest published more than a day old (checkout v7.0.0, setup-go v6.4.0, setup-python v6.2.0, setup-deno v2.0.4, deno v2.8.3, pages actions v6/v5/v5; playwright kept at 1.61.0 since 1.61.1 was under a day old).
+
 `task/demo-stakeholder-review-polish` acted on a multi-stakeholder review (requester, worker, agent operator, org reviewer, first-time visitor, visual/UX, accessibility) of the demo and fixed what it surfaced:
 
 - Payout: Accept now settles the full funded reward by default instead of a canned 18-credit partial that silently underpaid, and the requester is debited the payout plus tip (credits actually move). The canned review note and amounts no longer bleed across tasks.

@@ -1,10 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 33 work, merged into `main`.
+The repository contains pull request 1 through pull request 34 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-stakeholder-review-polish` acts on a multi-stakeholder review of the demo: it fixes the payout/settle logic, makes the submission box per-task and schema-shaped, states the product value proposition, de-jargons the copy, scopes review permission, makes the Agent/API console internally consistent, and applies visual polish (dark-mode shadow, focus ring, status-colored badges, role switcher). The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-cross-linking` makes demo tasks and users real anchors (right-click / open-in-new-tab) with whole-row click, adds a per-row reserve / grayed-reserved control, applies a specialized UI/UX/journey/product review's fixes, switches copy-paste detection to the standard jscpd, and adds dead-code + copy-paste gates to the pre-commit framework and CI (with all GitHub Actions and tool versions pinned to the latest published). The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/demo-cross-linking`:
+
+- Task rows are real `#/tasks/{id}` anchors (stretched over the whole row) and user names are `#/users/{id}` anchors, so left-click, modifier-click (open in new tab), and right-click all behave natively; the click handler defers to anchors.
+- Each task row shows a Reserve / Request-approval action, a context-correct requester action (Fund/Open/Review queue, now carrying the row's task id), an "Open to submit/run" action for available tasks, or a muted "Reserved" pill when already claimed.
+- Acted on a UI/UX/user-journey/product review: per-row review-queue opens the row's task; available rows are no longer dead-ends; the detail page no longer lets a second worker steal an active reservation; rows top-align; clearer hover/link affordance; reverse-MCP value prop on the hero; a credits anchor on Post Task; "mission" jargon and the RPG-style difficulty badge removed; dead board CSS deleted.
+- Copy-paste detection now uses jscpd (pinned 5.0.11, min 12 lines / 150 tokens, scans the demo too) instead of a bespoke script; a `.pre-commit-config.yaml` runs jscpd + `go tool deadcode`, and CI runs the hooks via a `pre-commit` job.
+- All GitHub Actions and tool versions were verified against their registries and pinned to the latest published more than a day old.
 
 Implemented in `task/demo-stakeholder-review-polish`:
 

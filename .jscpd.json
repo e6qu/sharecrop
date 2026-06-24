@@ -1,0 +1,16 @@
+{
+  "minLines": 12,
+  "minTokens": 150,
+  "threshold": 0,
+  "gitignore": true,
+  "reporters": ["console"],
+  "absolute": false,
+  "ignore": [
+    "**/Sharecrop/Generated/**",
+    "web/static/**",
+    ".gocache/**",
+    ".cache/**",
+    ".elm/**",
+    "**/*.md"
+  ]
+}

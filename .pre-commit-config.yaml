@@ -1,0 +1,19 @@
+# pre-commit hooks for Sharecrop. Install once with `pre-commit install`;
+# run on demand with `pre-commit run --all-files`. These mirror the dead-code
+# and copy-paste gates enforced in CI. Both scan the whole repository, so they
+# do not take file arguments.
+repos:
+  - repo: local
+    hooks:
+      - id: check-copy-paste
+        name: check copy-paste (jscpd)
+        entry: deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: check-dead-code
+        name: check dead code
+        entry: go tool deadcode -test ./...
+        language: system
+        pass_filenames: false
+        always_run: true

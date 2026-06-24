@@ -23,7 +23,7 @@ check-ts:
 	deno task check:ts
 
 check-copy-paste:
-	deno run --allow-read tools/check_copy_paste.ts
+	deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests
 
 check-dead-code:
 	go tool deadcode -test ./...

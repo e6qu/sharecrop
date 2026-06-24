@@ -1,6 +1,6 @@
 const storageKey = "sharecrop-demo-state-v7";
 
-const productTagline = "Sharecrop is a place to request agentic tasks from other people and their agents: you post a task and a response schema, they do the work and return a structured result, and you review and pay out.";
+const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
 const policy = {
   open: "open",
@@ -159,7 +159,7 @@ const seedTasks = [
       label: "Region values found in the file (canonical options: North Vale, South Vale, East Vale):",
       items: ["Nørth Vale", "north vale", "N. Vale", "Northvale", "north  vale", "North Vale"],
     }],
-    timeline: ["Mission opened with credit escrow held."],
+    timeline: ["Task opened with the reward held in escrow."],
   }),
   task({
     id: "collectible-audit",
@@ -470,6 +470,14 @@ render();
 
 // hashFromState and applyHash keep the URL hash and the current page in sync so
 // task and user pages are linkable, refreshable, and shareable on GitHub Pages.
+function taskHref(taskId) {
+  return `#/tasks/${encodeURIComponent(taskId)}`;
+}
+
+function userHref(userId) {
+  return `#/users/${encodeURIComponent(userId)}`;
+}
+
 function hashFromState() {
   if (state.page === "task") return `#/tasks/${encodeURIComponent(state.selectedTaskId)}`;
   if (state.page === "user") return `#/users/${encodeURIComponent(state.selectedUserId)}`;
@@ -835,7 +843,7 @@ function createDraftTask() {
     reservationHours: state.draftReservationHours,
     schema: draftSchema(),
     objective: state.draftDescription || "Describe the requested result.",
-    timeline: [`${selectedUser().name} drafted the mission.`],
+    timeline: [`${selectedUser().name} drafted the task.`],
   });
   state = {
     ...state,
@@ -948,7 +956,7 @@ function userPage() {
   const requested = state.tasks.filter((item) => item.requester === user.id);
   const assigned = state.tasks.filter((item) => item.assignee === user.id);
   const taskLine = (item) =>
-    `<li><button class="link-button" data-open-task="${escapeAttribute(item.id)}">${escapeHtml(item.title)}</button> <span class="muted">${escapeHtml(availabilityLabel(item.availability))}</span></li>`;
+    `<li><a class="link-button" data-open-task="${escapeAttribute(item.id)}" href="${taskHref(item.id)}">${escapeHtml(item.title)}</a> <span class="muted">${escapeHtml(availabilityLabel(item.availability))}</span></li>`;
   return `
     <section class="panel briefing-panel">
       <div>
@@ -980,7 +988,7 @@ function dashboardSpotlight(taskItem) {
         ${toneSpan(availabilityLabel(taskItem.availability), availabilityTone(taskItem.availability))}
         <span>${escapeHtml(rewardLabel(taskItem.reward))}</span>
       </div>
-      <button class="button primary" data-open-task="${escapeAttribute(taskItem.id)}">Open task</button>
+      <a class="button primary" data-open-task="${escapeAttribute(taskItem.id)}" href="${taskHref(taskItem.id)}">Open task</a>
     </section>`;
 }
 
@@ -1094,7 +1102,7 @@ function requesterPage() {
             ${option("bundle", "Credits + collectible", state.draftRewardKind)}
           </select>
         </label>
-        <label for="draft-credits">Credits<input id="draft-credits" data-field="draftCredits" value="${escapeAttribute(state.draftCredits)}"></label>
+        <label for="draft-credits">Credits<input id="draft-credits" data-field="draftCredits" value="${escapeAttribute(state.draftCredits)}"><span class="schema-hint">Credits are this demo's currency (think 1 credit ≈ $1), held from your balance until you accept a result.</span></label>
         <label for="draft-collectible">Collectible<input id="draft-collectible" data-field="draftCollectible" value="${escapeAttribute(state.draftCollectible)}"></label>
         <label for="draft-visibility">Visibility
           <select id="draft-visibility" data-field="draftVisibility">
@@ -1268,91 +1276,41 @@ function taskListRow(taskItem) {
     <article class="task-list-row">
       <div class="task-list-main">
         <div class="task-title-row">
-          <button class="link-button task-title-link" data-open-task="${escapeAttribute(taskItem.id)}">${escapeHtml(taskItem.title)}</button>
-          <span class="rank-badge inline-rank">${escapeHtml(difficultyLabel(taskItem.difficulty))}</span>
+          <a class="link-button task-title-link stretched-link" data-open-task="${escapeAttribute(taskItem.id)}" href="${taskHref(taskItem.id)}">${escapeHtml(taskItem.title)}</a>
         </div>
         <p>${escapeHtml(taskItem.objective)}</p>
         <div class="mission-meta">
           <span>${escapeHtml(areaLabel(taskItem.area))}</span>
           <span>${escapeHtml(policyLabel(taskItem.policy))}</span>
-          <span>${escapeHtml(taskItem.assignee ? `Assigned: ${userName(taskItem.assignee)}` : `Requester: ${userName(taskItem.requester)}`)}</span>
+          <span>${taskItem.assignee ? `Assigned: ${userLink(taskItem.assignee)}` : `Requester: ${userLink(taskItem.requester)}`}</span>
         </div>
       </div>
       <div class="task-widget">
-        <span class="action-chip">${escapeHtml(availabilityLabel(taskItem.availability))}</span>
-        <span class="action-chip">${escapeHtml(cardActionLabel(action))}</span>
+        ${toneSpan(availabilityLabel(taskItem.availability), availabilityTone(taskItem.availability))}
         <div class="reward-row">${rewardChips(taskItem.reward)}</div>
       </div>
       <div class="task-actions">
         ${taskListAction(action, taskItem)}
-        <button class="button secondary" data-open-task="${escapeAttribute(taskItem.id)}">Open task page</button>
       </div>
     </article>
   `;
 }
 
 function taskListAction(action, taskItem) {
-  if (action.kind === "none" || action.kind === "submit" || action.kind === "agentRun") return "";
-  if (action.kind === "openReviewQueue") return `<button class="button primary" data-page="review">Review queue</button>`;
-  return `<button class="button primary" data-task-action="${escapeAttribute(action.kind)}" data-task-id="${escapeAttribute(taskItem.id)}">${escapeHtml(cardActionLabel(action))}</button>`;
-}
-
-function missionBoard(tasks, context, selectedId = selectedTask()?.id) {
-  const lanes = boardLanes(tasks);
-  return `
-    <div class="mission-board" data-context="${escapeAttribute(context)}">
-      ${lanes.map((lane) => `
-        <section class="mission-lane ${lane.tasks.length === 0 ? "empty-lane" : ""}" data-lane="${escapeAttribute(lane.id)}">
-          <div class="lane-header">
-            <strong>${escapeHtml(lane.label)}</strong>
-            <span>${lane.tasks.length}</span>
-          </div>
-          ${lane.tasks.length === 0 ? `<p class="empty-state">No tasks in this lane.</p>` : lane.tasks.map((item) => missionCard(item, selectedId)).join("")}
-        </section>
-      `).join("")}
-    </div>
-  `;
-}
-
-function boardLanes(tasks) {
-  const lanes = [
-    { id: "available", label: "Available", tasks: [] },
-    { id: "reserved", label: "Reserved", tasks: [] },
-    { id: "awaiting", label: "Awaiting approval", tasks: [] },
-    { id: "submitted", label: "Submitted", tasks: [] },
-    { id: "settled", label: "Settled", tasks: [] },
-  ];
-  for (const taskItem of tasks) {
-    lanes.find((lane) => lane.id === laneForTask(taskItem)).tasks.push(taskItem);
+  if (action.kind === "openReviewQueue") return `<button class="button primary compact-button" data-task-action="openReviewQueue" data-task-id="${escapeAttribute(taskItem.id)}">Review queue</button>`;
+  if (action.kind === "reserve") return `<button class="button primary compact-button" data-task-action="reserve" data-task-id="${escapeAttribute(taskItem.id)}">Reserve</button>`;
+  if (action.kind === "requestApproval") return `<button class="button primary compact-button" data-task-action="requestApproval" data-task-id="${escapeAttribute(taskItem.id)}">Request approval</button>`;
+  if (action.kind === "fund") return `<button class="button primary compact-button" data-task-action="fund" data-task-id="${escapeAttribute(taskItem.id)}">Fund</button>`;
+  if (action.kind === "openMission") return `<button class="button primary compact-button" data-task-action="openMission" data-task-id="${escapeAttribute(taskItem.id)}">Open task</button>`;
+  if (action.kind === "submit") return `<a class="button primary compact-button" data-open-task="${escapeAttribute(taskItem.id)}" href="${taskHref(taskItem.id)}">Open to submit</a>`;
+  if (action.kind === "agentRun") return `<a class="button primary compact-button" data-open-task="${escapeAttribute(taskItem.id)}" href="${taskHref(taskItem.id)}">Open to run agent</a>`;
+  const reserved = taskItem.availability === availability.reserved ||
+    taskItem.reservations.some((reservation) => reservation.state === "active" || reservation.state === "requested");
+  if (reserved) {
+    const who = taskItem.assignee ? ` by ${userName(taskItem.assignee)}` : "";
+    return `<span class="reserved-pill" title="Already reserved${escapeAttribute(who)}">Reserved</span>`;
   }
-  return lanes;
-}
-
-function laneForTask(taskItem) {
-  if ([availability.accepted, availability.rejected, availability.closed].includes(taskItem.availability) || taskItem.lifecycle === lifecycle.closed) return "settled";
-  if ([availability.submitted, availability.changesRequested].includes(taskItem.availability)) return "submitted";
-  if (taskItem.availability === availability.awaitingApproval) return "awaiting";
-  if (taskItem.availability === availability.reserved) return "reserved";
-  return "available";
-}
-
-function missionCard(taskItem, selectedId) {
-  const selected = taskItem.id === selectedId ? "selected" : "";
-  const next = nextAction(taskItem);
-  return `
-    <button class="mission-card ${selected}" data-task="${escapeAttribute(taskItem.id)}" aria-pressed="${selected ? "true" : "false"}">
-      <span class="rank-badge">${escapeHtml(difficultyLabel(taskItem.difficulty))}</span>
-      <strong>${escapeHtml(taskItem.title)}</strong>
-      <small>${escapeHtml(taskItem.objective)}</small>
-      <div class="mission-meta">
-        <span>${escapeHtml(areaLabel(taskItem.area))}</span>
-        <span>${escapeHtml(policyLabel(taskItem.policy))}</span>
-        <span>${escapeHtml(taskItem.assignee ? `Assigned: ${userName(taskItem.assignee)}` : `Requester: ${userName(taskItem.requester)}`)}</span>
-      </div>
-      <span class="action-chip">${escapeHtml(cardActionLabel(next))}</span>
-      <div class="reward-row">${rewardChips(taskItem.reward)}</div>
-    </button>
-  `;
+  return "";
 }
 
 function availabilityTone(value) {
@@ -1465,6 +1423,11 @@ function nextAction(taskItem) {
   if (taskItem.banned?.includes(state.userId)) {
     return { kind: "none", title: "Blocked", explanation: "This implementor is banned from this task." };
   }
+  const reservedByOther = (taskItem.assignee && taskItem.assignee !== state.userId) ||
+    taskItem.reservations.some((item) => item.state === "active" && item.by !== state.userId);
+  if (reservedByOther) {
+    return { kind: "none", title: "Reserved", explanation: `This task is reserved by ${userName(taskItem.assignee || "another worker")}.` };
+  }
   if (submission?.state === "submitted") {
     return { kind: "none", title: "Response received", explanation: "The requester has a submitted result to review." };
   }
@@ -1555,23 +1518,12 @@ function actionPayload(action, taskItem) {
   return "";
 }
 
-function cardActionLabel(action) {
-  if (action.kind === "fund") return "Fund";
-  if (action.kind === "openMission") return "Open";
-  if (action.kind === "reserve") return "Reserve";
-  if (action.kind === "requestApproval") return "Request approval";
-  if (action.kind === "submit") return "Submit";
-  if (action.kind === "agentRun") return "Agent run";
-  if (action.kind === "openReviewQueue") return "Review";
-  return action.title;
-}
-
 function reservationQueue(taskItem) {
   if (taskItem.reservations.length === 0) return `<p class="empty-state">No reservations for this task.</p>`;
   return taskItem.reservations.map((reservation) => `
     <div class="queue-row">
       <div>
-        <strong>${escapeHtml(userName(reservation.by))}</strong>
+        <strong>${userLink(reservation.by)}</strong>
         <span>${escapeHtml(reservation.state)} / expires ${escapeHtml(reservation.expires ?? "48h")}</span>
       </div>
       <div class="row-actions">
@@ -1590,7 +1542,7 @@ function submissionList(taskItem) {
     return `
       <div class="submission-row decision-console">
         <div>
-          <strong>${escapeHtml(userName(submission.by))}</strong>
+          <strong>${userLink(submission.by)}</strong>
           <span class="action-chip">${escapeHtml(submissionStateLabel(submission.state))}</span>
         </div>
         <p class="decision-criteria"><strong>Should return</strong> — ${escapeHtml(schemaSummary(taskItem.schema))}</p>
@@ -1620,7 +1572,7 @@ function submissionOutcome(submission) {
   return `
     <div class="submission-row outcome-row">
       <div>
-        <strong>${escapeHtml(userName(submission.by))}</strong>
+        <strong>${userLink(submission.by)}</strong>
         <span class="action-chip">${escapeHtml(submissionStateLabel(submission.state))}</span>
       </div>
       <code>${escapeHtml(submission.response)}</code>
@@ -1780,11 +1732,6 @@ function areaLabel(value) {
   return labels[value] || value;
 }
 
-function difficultyLabel(value) {
-  const labels = { S: "High effort", A: "Above average", B: "Moderate", C: "Light" };
-  return labels[value] || value;
-}
-
 function boardTitleFor(role) {
   if (role === "Requester") return "Your posted tasks";
   if (role === "Implementor") return "Available tasks and your claimed work";
@@ -1829,10 +1776,15 @@ function userName(userId) {
 
 function userLink(userId) {
   if (!userId) return "unassigned";
-  return `<button class="link-button" data-user-page="${escapeAttribute(userId)}">${escapeHtml(userName(userId))}</button>`;
+  return `<a class="link-button" data-user-page="${escapeAttribute(userId)}" href="${userHref(userId)}">${escapeHtml(userName(userId))}</a>`;
 }
 
 function handleClick(event) {
+  // Real anchors (task/user links) are left to the browser so left-click,
+  // modifier-click (open in new tab), and right-click all behave natively;
+  // hash changes are picked up by the hashchange listener.
+  if (event.target.closest("a[href]")) return;
+
   const target = event.target.closest("[data-action], [data-page], [data-mode], [data-theme], [data-open-task], [data-task-action], [data-task], [data-user-page], [data-provider]");
   if (target === null) return;
 
@@ -1964,6 +1916,9 @@ function handleAction(action, userId, submissionId) {
       return;
     case "create":
       createDraftTask();
+      return;
+    case "openReviewQueue":
+      setState({ page: "review", loginOpen: false });
       return;
   }
 
