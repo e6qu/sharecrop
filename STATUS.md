@@ -1,10 +1,21 @@
 # Status
 
-The repository contains pull request 1 through pull request 32 work, merged into `main`.
+The repository contains pull request 1 through pull request 33 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-selfcontained-tasks-and-redesign` makes the demo tasks genuinely self-contained (each carries its own input material), adds a free-form-plus-receive-schema designer to the Post Task page, and gives the demo a clean visual redesign. The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-stakeholder-review-polish` acts on a multi-stakeholder review of the demo: it fixes the payout/settle logic, makes the submission box per-task and schema-shaped, states the product value proposition, de-jargons the copy, scopes review permission, makes the Agent/API console internally consistent, and applies visual polish (dark-mode shadow, focus ring, status-colored badges, role switcher). The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/demo-stakeholder-review-polish`:
+
+- Accept now settles the full funded reward by default (the canned 18-credit partial that silently underpaid is gone), and the requester is debited the payout plus tip.
+- The submission box is per-task and prefilled from the task's schema; the seeded orchard submission matches its own schema.
+- The dashboard hero states what Sharecrop is (request agentic tasks from people and their agents); mission/payload/crate/uplink jargon is replaced with task/response/reward.
+- Schemas are shown in plain language next to the raw JSON in the designer, the briefing, and the review console; a worker sees the review note and their prior response when changes are requested.
+- The Agent/API console uses one host and token placeholder, generates schema-shaped REST and agent payloads, lists only worker scopes, and shows a policy-aware MCP workflow; an organization reviewer can no longer review public tasks they did not request.
+- Visual: dark-mode soft shadow, a visible focus ring, status-colored badges, and the persona control reframed as a role switcher.
+
+Earlier branch `task/demo-selfcontained-tasks-and-redesign` (pull request 33, merged) made the demo tasks self-contained, added the receive-schema designer, and redesigned the demo. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
 Implemented in `task/demo-selfcontained-tasks-and-redesign`:
 

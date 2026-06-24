@@ -1,6 +1,14 @@
 # What We Did
 
-`task/demo-selfcontained-tasks-and-redesign` made the demo tasks real and redesigned the demo:
+`task/demo-stakeholder-review-polish` acted on a multi-stakeholder review (requester, worker, agent operator, org reviewer, first-time visitor, visual/UX, accessibility) of the demo and fixed what it surfaced:
+
+- Payout: Accept now settles the full funded reward by default instead of a canned 18-credit partial that silently underpaid, and the requester is debited the payout plus tip (credits actually move). The canned review note and amounts no longer bleed across tasks.
+- Submissions: the response box is stored per task and prefilled from that task's schema; the orchard seed submission was corrected to match its own schema; the agent-run submission is schema-shaped.
+- Clarity: the dashboard hero states the product (request agentic tasks from people and their agents); mission/payload/reward-crate/uplink jargon is replaced with task/response/reward across copy, buttons, and timelines; schemas are rendered in plain language ("labels: list of text") next to the raw JSON in the designer, the briefing, and the review console; a worker sees the review note and their prior response when changes are requested.
+- Agent/API console: one host and one token placeholder, REST and agent payloads generated from the task schema, worker-only scopes, and a policy-aware MCP workflow. An organization reviewer can no longer review public tasks they did not request.
+- Visual: the dark-mode hard offset shadow was replaced with a soft shadow, a visible focus ring was added, status badges are color-coded by lifecycle/availability, the persona control reads as a role switcher, and the reservation-expiry field is hidden for open-submission tasks.
+
+Earlier, \`task/demo-selfcontained-tasks-and-redesign\` made the demo tasks real and redesigned the demo:
 
 - Reworked every demo seed task so it carries its own input material. Each task gained an `inputs` array of blocks (records table, list, text, or code) rendered as an "Input / materials" section in the briefing, and the objectives now reference that on-screen material. This fixes tasks that described inputs ("20 photos by URL", "the linked ledger") that did not exist anywhere — they are now completable from what is shown. The tasks are framed as reverse-MCP agentic requests: humans asking other people and their agents for a structured result.
 - Added a receive-schema designer to the Post Task page: a requester writes free-form instructions and either keeps a free-form response or builds a structured one by adding named fields with types (text, whole number, decimal, list of text); the generated response schema is shown live.

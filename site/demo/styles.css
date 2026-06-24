@@ -34,7 +34,7 @@ body[data-mode="dark"] {
   --rare: #c4b5fd;
   --warning: #fbbf24;
   --success: #4ade80;
-  --shadow: 0 10px 0 rgb(0 0 0 / 32%);
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 16px 32px -14px rgb(0 0 0 / 60%);
 }
 
 body[data-theme="corporate"] {
@@ -1217,4 +1217,67 @@ button:disabled {
   .mission-lane {
     min-width: 0;
   }
+}
+
+/* Review polish: focus, status tones, new content blocks */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+.badge-row span.badge--success {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--line));
+  background: color-mix(in srgb, var(--success) 16%, var(--surface));
+  color: var(--success);
+}
+
+.badge-row span.badge--warning {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--line));
+  background: color-mix(in srgb, var(--warning) 16%, var(--surface));
+  color: var(--warning);
+}
+
+.badge-row span.badge--danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface));
+  color: var(--danger);
+}
+
+.product-line {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.schema-friendly {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.decision-criteria {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.worker-review-notice {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--line));
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+  border-radius: var(--radius);
+}
+
+.review-note-text {
+  margin: 0;
+  font-weight: 600;
+}
+
+.role-switch-hint {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
