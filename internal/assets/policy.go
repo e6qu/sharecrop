@@ -66,6 +66,29 @@ func (RewardAllowed) rewardCheck() {}
 
 func (RewardDenied) rewardCheck() {}
 
+// AllowsTip reports whether a collectible under this policy may be voluntarily
+// gifted to a worker as a review tip. A tip is a free transfer between users, so
+// only the transferable policies permit it; non-transferable-except-payout is
+// limited to the reward-payout movement and issuer-controlled needs issuer
+// consent the platform does not model yet.
+func AllowsTip(policy TransferPolicy) RewardCheck {
+	switch policy {
+	case TransferPolicyTransferableBetweenUsers:
+		return RewardAllowed{}
+	case TransferPolicyTransferableWithinOrg:
+		// Collectibles do not yet carry an organization, so the within-org bound
+		// cannot be enforced. Deny rather than silently allow a cross-org tip,
+		// which would make this policy indistinguishable from the open one.
+		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "within-organization collectibles cannot be tipped yet")}
+	case TransferPolicyNonTransferableExceptPayout:
+		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "this collectible can only move as a reward payout, not a tip")}
+	case TransferPolicyIssuerControlled:
+		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "issuer-controlled assets cannot be tipped")}
+	default:
+		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer policy does not permit tipping")}
+	}
+}
+
 // AllowsRewardPayout reports whether a collectible under this policy may be
 // awarded to a worker when their submission is accepted. Every current policy
 // permits the task-payout movement; issuer-controlled assets require explicit

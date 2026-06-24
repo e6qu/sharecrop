@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v12";
+const storageKey = "sharecrop-demo-state-v13";
 
 const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
@@ -448,7 +448,7 @@ const seedEscrowByUser = seedTasks.filter(holdsEscrow).reduce((totals, taskItem)
 
 const seedState = {
   mode: "light",
-  theme: "showcase",
+  theme: "arcade",
   page: "overview",
   loginOpen: false,
   userId: "mara",
@@ -1405,6 +1405,7 @@ function settingsPage() {
           </div>
           <div class="theme-grid">
             ${themeButton("corporate", "Corporate")}
+            ${themeButton("arcade", "Arcade")}
             ${themeButton("rustic", "Rustic")}
             ${themeButton("blocky", "Blocky")}
             ${themeButton("showcase", "Showcase")}
@@ -1770,6 +1771,10 @@ function submissionList(taskItem) {
           <label>Settle (credits)<input type="number" min="0" inputmode="numeric" data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(payoutValue)}"></label>
           <label>Tip<input type="number" min="0" inputmode="numeric" data-field="tipAmount" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(tipValue)}"></label>
         </div>
+        ${inventoryOf(state.userId).length > 0 ? `<label>Tip a collectible<select data-field="tipCollectible" data-submission="${escapeAttribute(submission.id)}">
+          <option value="">No collectible tip</option>
+          ${inventoryOf(state.userId).map((name) => `<option value="${escapeAttribute(name)}" ${draft.tipCollectible === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}
+        </select><span class="schema-hint">Gifts one collectible from your inventory to the worker on accept.</span></label>` : `<p class="schema-hint">No collectibles in your inventory to tip — accept a rewarded task to earn some.</p>`}
         ${held > 0 ? `<p class="schema-hint">Up to ${held} credits are in escrow for this task; any tip is paid from the requester's available balance.</p>` : ""}
         ${warning}
         <label class="check-row"><input type="checkbox" data-field="banImplementor" data-submission="${escapeAttribute(submission.id)}" ${draft.banImplementor ? "checked" : ""}> Ban implementor from this task</label>
@@ -2481,6 +2486,22 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
         [userId]: [...inventoryOf(userId), ...taskItem.reward.collectibles],
       },
     };
+  }
+
+  // Collectible tip: gift one collectible from the reviewer's inventory to the
+  // worker on accept (mirrors the real app's GiftCollectible transfer).
+  if (decision === "accepted" && draft.tipCollectible && inventoryOf(state.userId).includes(draft.tipCollectible)) {
+    const reviewerInventory = inventoryOf(state.userId);
+    const tipIndex = reviewerInventory.indexOf(draft.tipCollectible);
+    state = {
+      ...state,
+      inventories: {
+        ...state.inventories,
+        [state.userId]: reviewerInventory.filter((_, position) => position !== tipIndex),
+        [userId]: [...inventoryOf(userId), draft.tipCollectible],
+      },
+    };
+    pushActivity(`${selectedUser().name} tipped ${userName(userId)} the ${draft.tipCollectible} collectible.`);
   }
 
   updateTask(taskItem.id, (current) => ({

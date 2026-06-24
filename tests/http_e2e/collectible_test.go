@@ -234,6 +234,40 @@ type collectibleHTTPResponse struct {
 	OwnerID        string `json:"owner_id"`
 }
 
+func TestCollectibleTipTransfersOnAccept(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "tip-owner")
+	worker := registerUser(t, server, "tip-worker")
+
+	// A transferable collectible the requester will tip (mintCollectible uses a
+	// non-transferable policy, which is correctly refused for tips).
+	mintResponse := postJSONWithBearer(t, server.URL+"/api/collectibles", []byte(`{"name":"Gratitude token","kind":"badge","transfer_policy":"transferable_between_users"}`), owner.AccessToken)
+	defer mintResponse.Body.Close()
+	assertStatus(t, mintResponse, http.StatusCreated)
+	tipID := decodeCollectibleHTTPResponse(t, mintResponse).ID
+
+	// A credit-funded task so the accept produces a payout that identifies the worker.
+	task := createPublicCreditUserTask(t, server, owner, 30)
+	fundTask(t, server, owner.AccessToken, task.ID, 30, "tip-fund-"+task.ID)
+	openTask(t, server, owner.AccessToken, task.ID)
+	submission := submitAuthenticated(t, server, worker.AccessToken, task.ID)
+
+	accept := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/submissions/"+submission.Submission.ID+"/accept",
+		[]byte(`{"idempotency_key":"tip-accept-`+task.ID+`","payout_amount":30,"tip_collectible_id":"`+tipID+`"}`), owner.AccessToken)
+	defer accept.Body.Close()
+	assertStatus(t, accept, http.StatusOK)
+
+	workerOwned := listCollectibles(t, server, worker.AccessToken)
+	if len(workerOwned) != 1 || workerOwned[0].ID != tipID {
+		t.Fatalf("worker should own the tipped collectible, got %+v", workerOwned)
+	}
+	if ownerOwned := listCollectibles(t, server, owner.AccessToken); len(ownerOwned) != 0 {
+		t.Fatalf("requester should no longer own the tipped collectible, got %d", len(ownerOwned))
+	}
+}
+
 func mintCollectible(t *testing.T, server *httptest.Server, accessToken string, name string) string {
 	t.Helper()
 	response := postJSONWithBearer(t, server.URL+"/api/collectibles", []byte(`{"name":"`+name+`","kind":"badge","transfer_policy":"non_transferable_except_payout"}`), accessToken)

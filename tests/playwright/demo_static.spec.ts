@@ -45,7 +45,7 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   // The reset control is always visible in the top bar, not buried in Settings.
   await page.getByTestId("topbar-reset").click();
   await expect(page.locator("body")).toHaveAttribute("data-mode", "light");
-  await expect(page.locator("body")).toHaveAttribute("data-theme", "showcase");
+  await expect(page.locator("body")).toHaveAttribute("data-theme", "arcade");
   await expect(page.getByRole("link", { name: /Demo persistence task/ }))
     .toHaveCount(0);
 });
@@ -137,7 +137,7 @@ test("static demo keeps review decisions persona-scoped", async ({ page }) => {
   await page.getByLabel("Select persona").selectOption("mara");
   await page.getByRole("button", { name: "Reviews", exact: true }).click();
   await page.getByLabel("Selected task").selectOption("orchard-labels");
-  await page.getByLabel("Tip").fill("99");
+  await page.getByLabel("Tip", { exact: true }).fill("99");
   await page.getByRole("button", { name: "Request changes" }).click();
   await expect(
     page.getByText(

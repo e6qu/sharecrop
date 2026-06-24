@@ -658,6 +658,10 @@ func (testAssetService) RefundReward(context.Context, core.UserID, core.TaskID) 
 	return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
 }
 
+func (testAssetService) GiftCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult {
+	return assets.CollectibleGifted{}
+}
+
 func (testAgentService) Revoke(_ context.Context, owner core.UserID, id core.AgentCredentialID) agent.RevokeResult {
 	labelAccepted := agent.NewLabel("Test agent").(agent.LabelAccepted)
 	return agent.CredentialRevoked{Value: agent.Credential{ID: id, UserID: owner, Label: labelAccepted.Value, Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateRevoked}}

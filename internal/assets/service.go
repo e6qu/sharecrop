@@ -11,6 +11,15 @@ type Store interface {
 	ListCollectibles(context.Context, core.UserID, core.Page) ListStoreResult
 	FundCollectibleReward(context.Context, FundRewardStoreCommand) FundRewardResult
 	RefundCollectibleReward(context.Context, RefundRewardStoreCommand) RefundRewardResult
+	GiftCollectible(context.Context, GiftStoreCommand) GiftResult
+}
+
+// GiftStoreCommand carries a validated collectible tip (a voluntary transfer of
+// an owned collectible from one user to another).
+type GiftStoreCommand struct {
+	FromUserID    core.UserID
+	ToUserID      core.UserID
+	CollectibleID core.CollectibleID
 }
 
 // FundRewardStoreCommand carries a validated collectible-reward funding request.
@@ -112,6 +121,33 @@ type FundRewardRejected struct {
 func (RewardFunded) fundRewardResult() {}
 
 func (FundRewardRejected) fundRewardResult() {}
+
+type GiftResult interface {
+	giftResult()
+}
+
+type CollectibleGifted struct {
+	Value Collectible
+}
+
+type GiftRejected struct {
+	Reason core.DomainError
+}
+
+func (CollectibleGifted) giftResult() {}
+
+func (GiftRejected) giftResult() {}
+
+// GiftCollectible transfers an owned, transferable collectible to another user
+// (a review tip). Ownership, availability, and transfer policy are enforced in
+// the store transaction.
+func (service Service) GiftCollectible(ctx context.Context, from core.UserID, to core.UserID, collectibleID core.CollectibleID) GiftResult {
+	return service.store.GiftCollectible(ctx, GiftStoreCommand{
+		FromUserID:    from,
+		ToUserID:      to,
+		CollectibleID: collectibleID,
+	})
+}
 
 func (service Service) FundReward(ctx context.Context, funder core.UserID, taskID core.TaskID, collectibleID core.CollectibleID) FundRewardResult {
 	return service.store.FundCollectibleReward(ctx, FundRewardStoreCommand{

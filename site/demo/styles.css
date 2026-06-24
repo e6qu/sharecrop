@@ -1201,6 +1201,8 @@ button:disabled {
   }
 
   .page-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
     scrollbar-width: thin;
   }
 
@@ -1342,4 +1344,228 @@ a.link-button:hover {
   padding: 6px 9px;
   font-size: 0.84rem;
   font-weight: 700;
+}
+
+/* ============================================================
+   Arcade: a pixel-art / idle-game theme (default look).
+   Farm-RPG palette + chunky hard-outlined "dialog box" panels,
+   blocky buttons with a hard offset shadow, and pixel fonts.
+   Scoped to body[data-theme="arcade"] so other themes are intact.
+   ============================================================ */
+body[data-theme="arcade"] {
+  --bg: #6b8f3a;
+  --canvas: #f4ecd0;
+  --surface: #fbf6e3;
+  --surface-strong: #e7d9b4;
+  --text: #2a2118;
+  --muted: #6b5d44;
+  --line: #2a2118;
+  --accent: #3a7d1e;
+  --accent-strong: #245a10;
+  --accent-soft: #d6e6ad;
+  --rare: #7c4dd1;
+  --warning: #c8861a;
+  --success: #2f8f2f;
+  --danger: #b23030;
+  --radius: 0px;
+  --shadow: 4px 4px 0 rgba(42, 33, 24, 0.85);
+  font-family: "VT323", ui-monospace, "Courier New", monospace;
+  font-size: 19px;
+  image-rendering: pixelated;
+  background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 4px);
+}
+
+body[data-theme="arcade"][data-mode="dark"] {
+  --bg: #20301a;
+  --canvas: #1b2417;
+  --surface: #243020;
+  --surface-strong: #324028;
+  --text: #f2ecd6;
+  --muted: #b9c2a3;
+  --line: #0e1408;
+  --accent: #8fd14f;
+  --accent-strong: #b7f06f;
+  --accent-soft: #2f4422;
+}
+
+/* Pixel headings, brand, buttons, labels. Press Start 2P is big per em,
+   so these sizes are deliberately small. */
+body[data-theme="arcade"] h1,
+body[data-theme="arcade"] h2,
+body[data-theme="arcade"] .brand,
+body[data-theme="arcade"] .eyebrow,
+body[data-theme="arcade"] .button,
+body[data-theme="arcade"] .metric-card strong {
+  font-family: "Press Start 2P", "VT323", monospace;
+  letter-spacing: 0.5px;
+  text-transform: none;
+}
+body[data-theme="arcade"] h1 { font-size: 1.25rem; line-height: 1.5; color: var(--accent-strong); text-shadow: 2px 2px 0 var(--surface-strong); }
+body[data-theme="arcade"] h2 { font-size: 0.8rem; line-height: 1.5; }
+body[data-theme="arcade"] h3 { font-size: 1.1rem; }
+body[data-theme="arcade"] .brand { font-size: 0.85rem; }
+body[data-theme="arcade"] .eyebrow { font-size: 0.5rem; color: var(--accent); }
+body[data-theme="arcade"] p,
+body[data-theme="arcade"] span,
+body[data-theme="arcade"] label,
+body[data-theme="arcade"] li { letter-spacing: 0.3px; }
+
+/* Chunky dialog-box panels and cards with a hard offset shadow. */
+body[data-theme="arcade"] .panel,
+body[data-theme="arcade"] .sub-panel,
+body[data-theme="arcade"] .metric-card,
+body[data-theme="arcade"] .flow-card,
+body[data-theme="arcade"] .topbar,
+body[data-theme="arcade"] .nav,
+body[data-theme="arcade"] .task-list-row,
+body[data-theme="arcade"] .decision-console,
+body[data-theme="arcade"] .outcome-row,
+body[data-theme="arcade"] .queue-row,
+body[data-theme="arcade"] .schema-block,
+body[data-theme="arcade"] .briefing-panel,
+body[data-theme="arcade"] .account-card {
+  border: 3px solid var(--line);
+  border-radius: 0;
+  box-shadow: var(--shadow);
+  background: var(--surface);
+}
+
+/* Blocky buttons that visibly "press". */
+body[data-theme="arcade"] .button,
+body[data-theme="arcade"] button.button,
+body[data-theme="arcade"] .theme-chip,
+body[data-theme="arcade"] .account-button {
+  border: 3px solid var(--line);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--line);
+  font-size: 0.6rem;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  transition: none;
+}
+body[data-theme="arcade"] .button.primary {
+  background: var(--accent);
+  color: #fff7e0;
+}
+body[data-theme="arcade"] .button:active,
+body[data-theme="arcade"] button.button:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--line);
+}
+body[data-theme="arcade"] .button:focus-visible {
+  outline: 3px dashed var(--accent-strong);
+  outline-offset: 2px;
+}
+
+/* Square, bordered inputs. */
+body[data-theme="arcade"] input,
+body[data-theme="arcade"] select,
+body[data-theme="arcade"] textarea {
+  border: 3px solid var(--line);
+  border-radius: 0;
+  background: #fffdf2;
+  font-family: "VT323", monospace;
+  font-size: 1.05rem;
+}
+
+/* Square pills with a hard edge; keep tone colors. */
+body[data-theme="arcade"] .badge-row span,
+body[data-theme="arcade"] .status-pill,
+body[data-theme="arcade"] .mission-meta span,
+body[data-theme="arcade"] .action-chip,
+body[data-theme="arcade"] .reward-chip,
+body[data-theme="arcade"] .agent-chip,
+body[data-theme="arcade"] .escrow-chip,
+body[data-theme="arcade"] .reserved-pill,
+body[data-theme="arcade"] .task-table-row em {
+  border-radius: 0;
+  border-width: 2px;
+}
+
+/* Reward shown as a chunky XP/coin token. */
+body[data-theme="arcade"] .reward-chip {
+  background: var(--warning);
+  color: #2a2118;
+  border: 2px solid var(--line);
+  box-shadow: 2px 2px 0 var(--line);
+}
+
+/* Metric cards become "stat plaques". */
+body[data-theme="arcade"] .metric-card strong { font-size: 1rem; color: var(--accent-strong); }
+body[data-theme="arcade"] .metric-card { background: var(--surface-strong); padding: 12px; }
+
+/* Code/schema blocks: terminal-green on dark. */
+body[data-theme="arcade"] pre,
+body[data-theme="arcade"] code {
+  border: 3px solid var(--line);
+  border-radius: 0;
+  background: #1b2417;
+  color: #b7f06f;
+  font-family: "VT323", monospace;
+  font-size: 1rem;
+}
+
+/* Active nav link reads like a selected menu item. */
+body[data-theme="arcade"] .nav a.active,
+body[data-theme="arcade"] .nav a[aria-current="page"] {
+  background: var(--accent);
+  color: #fff7e0;
+  box-shadow: 2px 2px 0 var(--line);
+}
+
+/* Drop the soft global shadows in favor of the hard pixel one. */
+body[data-theme="arcade"] .card,
+body[data-theme="arcade"] .spotlight {
+  box-shadow: var(--shadow);
+  border: 3px solid var(--line);
+  border-radius: 0;
+}
+
+/* --- Arcade review fixes (from the UI/UX pass) --- */
+
+/* Dark mode: primary buttons + active nav were near-white on light green. */
+body[data-theme="arcade"][data-mode="dark"] .button.primary,
+body[data-theme="arcade"][data-mode="dark"] .nav a.active,
+body[data-theme="arcade"][data-mode="dark"] .nav a[aria-current="page"] {
+  color: #11200a;
+}
+
+/* Keep pixel-font button labels whole; let whole buttons wrap instead of words. */
+body[data-theme="arcade"] .button {
+  white-space: nowrap;
+}
+body[data-theme="arcade"] .row-actions {
+  flex-wrap: wrap;
+}
+
+/* The schema/dialog block needs interior padding now that it has a frame. */
+body[data-theme="arcade"] .schema-block {
+  padding: 12px;
+}
+
+/* A disabled button must not look pressable: drop the hard shadow, go dashed. */
+body[data-theme="arcade"] .button:disabled,
+body[data-theme="arcade"] button.button:disabled {
+  box-shadow: none;
+  transform: none;
+  background: var(--surface-strong);
+  color: var(--muted);
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+/* Section eyebrows are far more legible in VT323 than tiny Press Start 2P. */
+body[data-theme="arcade"] .eyebrow {
+  font-family: "VT323", monospace;
+  font-size: 0.95rem;
+  letter-spacing: 1px;
+}
+
+/* Long reward labels + the escrow chip should wrap, not overflow the frame. */
+body[data-theme="arcade"] .objective-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }

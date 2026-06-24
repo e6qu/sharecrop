@@ -79,6 +79,7 @@ type AssetService interface {
 	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
 	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
+	GiftCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult
 }
 
 type SubmissionService interface {
@@ -732,6 +733,16 @@ func authResponseForSubject(subject auth.Subject, accessToken auth.AccessToken) 
 // 429 and returns false when the caller should stop.
 func (server Server) allowByIP(w http.ResponseWriter, r *http.Request) bool {
 	if !server.ipRateLimiter.allow(clientIP(r)) {
+		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
+		return false
+	}
+	return true
+}
+
+// allowBySubject rate-limits an authenticated, DB-heavy endpoint by acting
+// subject so a single account cannot spam transactional review operations.
+func (server Server) allowBySubject(w http.ResponseWriter, subjectID string) bool {
+	if !server.subjectRateLimiter.allow(subjectID) {
 		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
 		return false
 	}

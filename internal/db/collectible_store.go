@@ -219,6 +219,47 @@ func (collectibleParsed) collectibleParseResult() {}
 
 func (collectibleParseRejected) collectibleParseResult() {}
 
+func (store CollectibleStore) GiftCollectible(ctx context.Context, command assets.GiftStoreCommand) assets.GiftResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin gift collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		// Use a uniform message so a known-but-unowned id is not distinguishable
+		// from a non-existent one (a minor existence oracle on the tip path).
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
+	}
+	// Idempotent replay: if the collectible already belongs to the recipient, a
+	// retried accept (after a lost response) treats the gift as already done.
+	if collectible.value.OwnerID == command.ToUserID {
+		return assets.CollectibleGifted{Value: collectible.value}
+	}
+	if collectible.value.OwnerID != command.FromUserID {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to tip")}
+	}
+	if denied, matched := assets.AllowsTip(collectible.value.Policy).(assets.RewardDenied); matched {
+		return assets.GiftRejected{Reason: denied.Reason}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.ToUserID.String()); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer collectible failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit gift collectible failed")}
+	}
+
+	gifted := collectible.value
+	gifted.OwnerID = command.ToUserID
+	return assets.CollectibleGifted{Value: gifted}
+}
+
 func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.CollectibleID) collectibleParseResult {
 	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text from collectibles where id = $1 for update", collectibleID.String())
 	if err != nil {

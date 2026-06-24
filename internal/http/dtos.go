@@ -224,9 +224,10 @@ type idempotentRequest struct {
 }
 
 type acceptSubmissionRequest struct {
-	IdempotencyKey string `json:"idempotency_key"`
-	PayoutAmount   int64  `json:"payout_amount"`
-	TipAmount      int64  `json:"tip_amount"`
+	IdempotencyKey   string `json:"idempotency_key"`
+	PayoutAmount     int64  `json:"payout_amount"`
+	TipAmount        int64  `json:"tip_amount"`
+	TipCollectibleID string `json:"tip_collectible_id"`
 }
 
 type requestChangesRequest struct {

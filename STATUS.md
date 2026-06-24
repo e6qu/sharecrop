@@ -1,17 +1,24 @@
 # Status
 
-The repository contains pull request 1 through pull request 40 work, merged into `main`.
+The repository contains pull request 1 through pull request 41 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/ratelimit-tipkey-reviews` lands the two security follow-ups (rate limiting, tip-entry idempotency keys) and applies a third-pass security review (clean) and a round-5 UI/UX review with fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/collectible-tips-arcade-mcp` adds collectible/inventory tips (real app + demo), a full pixel-art "arcade" demo theme, MCP install/work-loop docs, and expanded contract fixtures, capped with security + UI reviews and their fixes. The out-of-process Postgres session/rate-limiter store is deferred to a focused follow-up (see DO_NEXT). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/ratelimit-tipkey-reviews`:
+Implemented in `task/collectible-tips-arcade-mcp`:
 
-- Rate limiting: an in-memory token-bucket limiter rate-limits the unauthenticated login/refresh/receipt endpoints per client IP and MCP requests per agent subject, returning 429 when exceeded; idle buckets are evicted. Client IP uses the direct peer (X-Forwarded-For not trusted). Unit-tested.
-- Ledger: the two `task_tip` inserts now carry derived idempotency keys (`:tip-debit` / `:tip-credit`), matching payout/refund entries so the unique constraint would catch a double-tip if the task-lock ordering ever changed.
-- Security: a third-pass review (aware of prior findings and the in-flight fixes) returned no new issues — authz and ledger lenses were clean and the one raw input finding did not survive verification.
-- Round-5 UI/UX fixes: reject now closes the task (escrow released, no further worker action), ending a loop where a rejected task stayed open and re-submittable but could never be paid; agent-originated reservations/submissions are marked and render as "Sol Rivera · agent" with a "via MCP · scoped token" chip instead of the human track record; the schema designer warns + shows an empty state when structured mode has no fields; dashboard cards have parity sub-notes; the Release button is hidden once a result is submitted; a credits/bundle reward warns on a non-positive amount; review panels size to content; and the docs MCP tool names match the console.
+- Collectible/inventory tips: a review accept can carry `tip_collectible_id`; after the credit settle, the asset service gifts that collectible from the requester to the worker (`assets.GiftCollectible` -> store transfer enforcing ownership, availability, and transfer policy via `AllowsTip`). The credit settle and the gift are separate per-store transactions sequenced within the request; the gift is idempotent on replay. e2e covers the transfer and policy refusal. The demo review console offers a "Tip a collectible" select.
+- Arcade theme: a full pixel-art / idle-game look (`body[data-theme="arcade"]`, now the demo default) — farm-RPG palette, chunky hard-outlined dialog-box panels with offset shadows, blocky pressable buttons, square pills, terminal-green schema blocks, Press Start 2P headings + VT323 body. Other themes remain selectable.
+- MCP docs: install (scoped agent token, `/mcp` client config, initialize handshake) and the agent work loop as concrete tool calls (poll/list_tasks, reserve, submit, review accept/reject, propose/create_task).
+- Contract fixtures: pinned the wire shape of six previously-uncovered response DTOs.
+- Reviews: a security review of the new code found only medium/low items (within-org tip not org-scoped -> now denied; idempotent gift; uniform tip error; accept/reject rate-limited) and a UI review of the arcade theme drove contrast/wrapping/padding/disabled-state/legibility fixes.
+
+Deferred to a follow-up (DO_NEXT #1): the out-of-process Postgres session/SSE/rate-limiter store. The rate limiter and MCP-session existence map cleanly to tables, but cross-process SSE replay fan-out needs `LISTEN/NOTIFY` (a distributed-pubsub task) that warrants its own PR rather than being rushed here.
+
+Earlier branch `task/ratelimit-tipkey-reviews` (pull request 41, merged) added rate limiting (per-IP and per-subject, 429) and `task_tip` idempotency keys, with a clean third-pass security review and round-5 UI fixes (reject-is-terminal, agent-vs-human distinction).
+
+Earlier branch `task/http-dtos-and-reviews` (pull request 40, merged) moved the wire DTOs to `dtos.go`, fixed a reservation IDOR (binding the state change to `task_id`), and landed the deferred UI minors (unified chips, real docs page, trust signal).
 
 Earlier branch `task/http-dtos-and-reviews` (pull request 40, merged) moved the wire DTOs to `dtos.go`, fixed a reservation IDOR (binding the state change to `task_id`), and landed the deferred UI minors (unified chips, real docs page, trust signal).
 

@@ -39,6 +39,36 @@ func TestReviewSubmissionResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"task_id":"task-1","submission_id":"submission-1","state":"rejected","review_note":"Not current.","payout_kind":"credit","payout_amount":10,"worker_user_id":"user-1","tip_amount":2}`)
 }
 
+func TestReservationResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(reservationResponse{ID: "reservation-1", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-1", State: "active", RequestedBy: "user-1"})
+	assertWireShape(t, encoded, err, `{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"active","requested_by":"user-1"}`)
+}
+
+func TestTeamResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(teamResponse{ID: "team-1", OwnerKind: "user", OrganizationID: "", OwnerUserID: "user-1", Name: "Survey crew", CreatedBy: "user-1"})
+	assertWireShape(t, encoded, err, `{"id":"team-1","owner_kind":"user","organization_id":"","owner_user_id":"user-1","name":"Survey crew","created_by":"user-1"}`)
+}
+
+func TestOrganizationResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(organizationResponse{ID: "org-1", Name: "Lattice Field Co", CreatedBy: "user-1"})
+	assertWireShape(t, encoded, err, `{"id":"org-1","name":"Lattice Field Co","created_by":"user-1"}`)
+}
+
+func TestOrganizationMemberResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(organizationMemberResponse{ID: "member-1", OrganizationID: "org-1", UserID: "user-1", Status: "active", Roles: []string{"owner"}})
+	assertWireShape(t, encoded, err, `{"id":"member-1","organization_id":"org-1","user_id":"user-1","status":"active","roles":["owner"]}`)
+}
+
+func TestTaskCapabilityTokenResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskCapabilityTokenResponse{ID: "cap-1", TaskID: "task-1", State: "active", Token: "secret-token"})
+	assertWireShape(t, encoded, err, `{"id":"cap-1","task_id":"task-1","state":"active","token":"secret-token"}`)
+}
+
+func TestSubmissionCreatedResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(submissionCreatedResponse{Submission: submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", ValidationErrors: []submissionValidationErrorResponse{}}, ReceiptToken: "receipt-1"})
+	assertWireShape(t, encoded, err, `{"submission":{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","validation_errors":[]},"receipt_token":"receipt-1"}`)
+}
+
 func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(submissionValidationErrorResponse{Path: "email", Message: "is required"})
 	assertWireShape(t, encoded, err, `{"path":"email","message":"is required"}`)
