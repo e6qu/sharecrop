@@ -51,6 +51,9 @@ func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, comm
 	})
 }
 func (server Server) findSubmissionReceipt(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	tokenResult := submission.ParseReceiptTokenPlain(r.PathValue("receipt_token"))
 	tokenAccepted, tokenMatched := tokenResult.(submission.ReceiptTokenPlainAccepted)
 	if !tokenMatched {
