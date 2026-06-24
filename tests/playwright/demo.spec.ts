@@ -44,6 +44,12 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
 
   // Boots straight into the seeded account (refresh auto-succeeds in the shim).
   await expect(page.getByText("1240 credits")).toBeVisible();
+  // Ledger + My-tasks decode and populate (seed enum values must match the real
+  // client's decoders, else Decode.list blanks the whole section).
+  await expect(page.getByText("signup_grant")).toBeVisible();
+  await page.getByRole("link", { name: "Tasks", exact: true }).click();
+  await expect(page.getByText("Verify 10 ledger transfers for fraud signals"))
+    .toBeVisible();
 
   // The real client's Discovery page lists the realistic seeded tasks.
   await page.getByRole("link", { name: "Discovery" }).click();

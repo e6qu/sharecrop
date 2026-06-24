@@ -110,5 +110,5 @@ pre, code, pre.bg-slate-900 {
 }
 
 /* Muted slate text reads on the parchment. */
-.text-slate-600, .text-slate-700 { color: var(--pa-muted) !important; }
+.text-slate-500, .text-slate-600, .text-slate-700 { color: var(--pa-muted) !important; }
 a.underline { color: var(--pa-accent-strong) !important; }

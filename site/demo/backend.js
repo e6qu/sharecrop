@@ -99,7 +99,10 @@
     balance: 1240,
     ledger: [
       { id: "entry-1", kind: "signup_grant", amount: 1500, task_id: "" },
-      { id: "entry-2", kind: "task_funding", amount: -260, task_id: "task-1" },
+      { id: "entry-2", kind: "task_escrow", amount: -260, task_id: "task-5" },
+      { id: "entry-3", kind: "task_payout", amount: -30, task_id: "task-7" },
+      { id: "entry-4", kind: "task_tip", amount: -5, task_id: "task-7" },
+      { id: "entry-5", kind: "task_refund", amount: 45, task_id: "task-8" },
     ],
     collectibles: [
       { id: "col-1", name: "Harvest Star", kind: "badge", state: "minted", transfer_policy: "transferable_between_users", owner_id: ME },
@@ -110,20 +113,23 @@
     orgTeams: { "org-lattice": [{ id: "team-survey", owner_kind: "organization", organization_id: "org-lattice", owner_user_id: "", name: "Survey crew", created_by: ME }] },
     standaloneTeams: [{ id: "team-field", owner_kind: "user", organization_id: "", owner_user_id: ME, name: "Field hands", created_by: ME }],
     teamMembers: { "team-survey": ["user-jules", "user-tala"], "team-field": ["user-tala"] },
-    credentials: [{ id: "cred-1", label: "Sol's field agent", scopes: ["tasks_read", "reservations_write", "submissions_write"], state: "active" }],
+    credentials: [
+      { id: "cred-1", label: "Sol's field agent", scopes: ["tasks_read", "submissions_write"], state: "active" },
+      { id: "cred-2", label: "Lattice reviewer agent", scopes: ["tasks_read", "submissions_review"], state: "active" },
+    ],
     series: [{ id: "series-orchard", title: "Orchard intake", position: 0 }],
     tasks: [],
   };
 
   db.tasks = [
     task({
-      id: "task-1", title: "Extract line items from 6 vendor invoices",
+      id: "task-1", title: "Extract line items from 6 vendor invoices", owner_id: "user-jules", created_by: "user-jules",
       description: "Read the 6 attached invoice scans (text below) and return, for each, the invoice id, vendor name, grand total as a decimal string, and the due date (YYYY-MM-DD). Use the exact totals; do not round.",
       reward_credit_amount: 80, escrow: 80, response_schema_json: invoiceSchema,
       payload_kind: "inline", payload_json: JSON.stringify({ invoices_text: ["INV-1041 Birch Supply — total 1240.55 due 2026-07-12", "INV-1042 Cedar Freight — total 88.10 due 2026-07-03", "INV-1043 Delta Print — total 146.20 due 2026-07-19", "INV-1044 Meadow Labs — total 902.75 due 2026-07-22", "INV-1045 Grove Cafe — total 41.25 due 2026-07-05", "INV-1046 North Mill — total 5310.00 due 2026-08-01"] }),
     }),
     task({
-      id: "task-2", title: "Classify 20 support tickets by category",
+      id: "task-2", title: "Classify 20 support tickets by category", owner_id: "user-ren", created_by: "user-ren",
       description: "Label each of the 20 support tickets (below) with exactly one category from the allowed set. Return the labels array in ticket order.",
       reward_credit_amount: 45, escrow: 45, participation_policy: "open", response_schema_json: ticketSchema,
       payload_kind: "inline", payload_json: JSON.stringify({ tickets: ["card declined at checkout", "app crashes opening reports", "how do I export to CSV?", "double charged this month", "reset 2FA device", "dark mode request"] }),
@@ -134,7 +140,7 @@
       reward_credit_amount: 60, escrow: 60, visibility_kind: "organization", visibility_id: "org-lattice",
       response_schema_json: ledgerSchema, assignee_scope: "user",
       reservations: [{ id: "res-3-tala", task_id: "task-3", assignee_kind: "user", assignee_id: "user-tala", state: "requested", requested_by: "user-tala" }],
-      participation_policy: "approval_required", availability_kind: "pending_approval",
+      participation_policy: "approval_required", availability_kind: "awaiting_approval",
     }),
     task({
       id: "task-4", title: "Return 3 temperature readings via your weather agent",
@@ -143,7 +149,7 @@
       assignee_id_seed: "user-sol",
       reservations: [{ id: "res-4-sol", task_id: "task-4", assignee_kind: "user", assignee_id: "user-sol", state: "active", requested_by: "user-sol" }],
       submissions: [{ id: "sub-4-sol", task_id: "task-4", submitter_id: "user-sol", state: "submitted", response_json: '{"readings":["21.4","20.9","22.1"]}', review_note: "", validation_errors: [], via_agent: true }],
-      availability_kind: "submitted",
+      availability_kind: "reserved",
     }),
     task({
       id: "task-5", title: "Transcribe 4 handwritten field notes",
@@ -237,13 +243,7 @@
   on("GET", "/api/tasks", (_p, url) => {
     const scope = url.searchParams.get("scope") || "";
     const includeReserved = url.searchParams.get("include_reserved") === "true";
-    let list = db.tasks.filter((t) => {
-      if (t.visibility_kind === "organization") {
-        // org tasks visible to the org's members (Mara is in Lattice).
-        return t.created_by === ME || activeAssignee(t) === ME || true;
-      }
-      return true;
-    });
+    let list = db.tasks; // default (empty scope): everything visible to the demo user
     if (scope === "user") list = db.tasks.filter((t) => t.created_by === ME);
     else if (scope === "public") list = db.tasks.filter((t) => t.visibility_kind === "public" && (includeReserved || !activeAssignee(t)));
     else if (scope === "organization") list = db.tasks.filter((t) => t.visibility_kind === "organization");
@@ -269,7 +269,9 @@
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const amount = (body && body.amount) || 0;
     if (amount > db.balance) return err(409, "insufficient credits to fund the task");
-    db.balance -= amount; t.escrow += amount; t.state = "funded";
+    // Funding only moves credits into escrow; task state is unchanged (the /open
+    // route moves draft -> open). "funded" is not a valid TaskState.
+    db.balance -= amount; t.escrow += amount;
     return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
   });
   on("POST", "/api/tasks/:id/reservations", (p) => {
@@ -290,12 +292,12 @@
   };
   on("POST", "/api/tasks/:id/reservations/:rid/approve", reservationChange("active", "reserved"));
   on("POST", "/api/tasks/:id/reservations/:rid/decline", reservationChange("declined", "available"));
-  on("POST", "/api/tasks/:id/reservations/:rid/cancel", reservationChange("cancelled", "available"));
+  on("POST", "/api/tasks/:id/reservations/:rid/cancel", reservationChange("cancelled_by_requester", "available"));
   on("GET", "/api/tasks/:id/submissions", (p) => { const t = findTask(p.id); return t ? ok({ submissions: t.submissions }) : err(404, "task not found"); });
   on("POST", "/api/tasks/:id/submissions", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const s = { id: nextId("sub"), task_id: t.id, submitter_id: ME, state: "submitted", response_json: (body && body.response_json) || "{}", review_note: "", validation_errors: [] };
-    t.submissions.push(s); t.availability_kind = "submitted";
+    t.submissions.push(s); t.availability_kind = "reserved";
     return ok({ submission: s, receipt_token: nextId("receipt") }, 201);
   });
   const decide = (state, availability) => (p, _url, body) => {
@@ -311,11 +313,11 @@
   on("POST", "/api/tasks/:id/submissions/:sid/accept", (p, url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const s = t.submissions.find((x) => x.id === p.sid); if (!s) return err(404, "submission not found");
-    s.state = "accepted"; t.availability_kind = "accepted"; t.state = "closed";
+    s.state = "accepted"; t.availability_kind = "closed"; t.state = "closed";
     return ok({ task_id: t.id, submission_id: s.id, payout_kind: t.reward_kind, payout_amount: t.reward_credit_amount || 0, worker_user_id: s.submitter_id, collectible_ids: [], tip_amount: (body && body.tip_amount) || 0 });
   });
-  on("POST", "/api/tasks/:id/submissions/:sid/reject", decide("rejected", "rejected"));
-  on("POST", "/api/tasks/:id/submissions/:sid/request-changes", decide("changes_requested", "changes_requested"));
+  on("POST", "/api/tasks/:id/submissions/:sid/reject", decide("rejected", "closed"));
+  on("POST", "/api/tasks/:id/submissions/:sid/request-changes", decide("changes_requested", "reserved"));
   on("POST", "/api/tasks/:id/capability-tokens", (p) => ok({ id: nextId("cap"), task_id: p.id, state: "active", token: "demo-capability-" + nextId("tok") }, 201));
 
   on("GET", "/api/agent-credentials", () => ok({ credentials: db.credentials }));
