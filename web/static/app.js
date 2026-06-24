@@ -7038,7 +7038,7 @@ var $author$project$Sharecrop$Api$createTaskRequestBody = function (state) {
 			]));
 };
 var $author$project$Sharecrop$Api$taskDetailFromResponse = function (response) {
-	return {assigneeScope: response.assigneeScope, availabilityKind: response.availabilityKind, createdBy: response.createdBy, description: response.description, id: response.id, participationPolicy: response.participationPolicy, reservationExpiryHours: response.reservationExpiryHours, responseSchemaJson: response.responseSchemaJSON, rewardCollectibleCount: response.rewardCollectibleCount, rewardCreditAmount: response.rewardCreditAmount, rewardKind: response.rewardKind, state: response.state, title: response.title, viewerAction: response.viewerAction};
+	return {assigneeScope: response.assigneeScope, availabilityKind: response.availabilityKind, createdBy: response.createdBy, description: response.description, id: response.id, participationPolicy: response.participationPolicy, payloadJson: response.payloadJSON, payloadKind: response.payloadKind, reservationExpiryHours: response.reservationExpiryHours, responseSchemaJson: response.responseSchemaJSON, rewardCollectibleCount: response.rewardCollectibleCount, rewardCreditAmount: response.rewardCreditAmount, rewardKind: response.rewardKind, state: response.state, title: response.title, viewerAction: response.viewerAction};
 };
 var $author$project$Sharecrop$Generated$Task$TaskResponse = function (id) {
 	return function (ownerKind) {
@@ -12800,6 +12800,19 @@ var $author$project$Sharecrop$Labels$availabilityKindLabel = function (kind) {
 			return 'closed';
 	}
 };
+var $author$project$Sharecrop$View$taskInputBlock = function (detail) {
+	return ((detail.payloadKind === 'inline') && (detail.payloadJson !== '')) ? _List_fromArray(
+		[
+			$author$project$Sharecrop$Ui$label_('Task input'),
+			A2(
+			$author$project$Sharecrop$Ui$codeBlock,
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$testId('detail-input')
+				]),
+			detail.payloadJson)
+		]) : _List_Nil;
+};
 var $author$project$Sharecrop$View$mcpInitializeCurl = function (origin) {
 	return 'curl -i -X POST ' + (origin + '/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\'');
 };
@@ -12875,65 +12888,71 @@ var $author$project$Sharecrop$View$detailCard = F2(
 		if (_v0.$ === 'Just') {
 			var detail = _v0.a;
 			return $author$project$Sharecrop$Ui$card(
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$p,
+				_Utils_ap(
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-2xl font-semibold'),
+									$author$project$Sharecrop$Ui$testId('detail-title')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(detail.title)
+								])),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
+								]),
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$badge(
+									$author$project$Sharecrop$Labels$taskStateLabel(detail.state)),
+									$author$project$Sharecrop$Ui$badge(
+									$author$project$Sharecrop$Labels$availabilityKindLabel(detail.availabilityKind)),
+									$author$project$Sharecrop$Ui$badge(
+									$author$project$Sharecrop$Labels$participationPolicyLabel(detail.participationPolicy))
+								])),
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm font-medium')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									'Reward: ' + A3($author$project$Sharecrop$Labels$rewardLabel, detail.rewardKind, detail.rewardCreditAmount, detail.rewardCollectibleCount))
+								])),
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-slate-700')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(detail.description)
+								]))
+						]),
+					_Utils_ap(
+						$author$project$Sharecrop$View$taskInputBlock(detail),
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('text-2xl font-semibold'),
-								$author$project$Sharecrop$Ui$testId('detail-title')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(detail.title)
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
-							]),
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Ui$badge(
-								$author$project$Sharecrop$Labels$taskStateLabel(detail.state)),
-								$author$project$Sharecrop$Ui$badge(
-								$author$project$Sharecrop$Labels$availabilityKindLabel(detail.availabilityKind)),
-								$author$project$Sharecrop$Ui$badge(
-								$author$project$Sharecrop$Labels$participationPolicyLabel(detail.participationPolicy))
-							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-sm font-medium')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								'Reward: ' + A3($author$project$Sharecrop$Labels$rewardLabel, detail.rewardKind, detail.rewardCreditAmount, detail.rewardCollectibleCount))
-							])),
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-sm text-slate-700')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(detail.description)
-							])),
-						$author$project$Sharecrop$Ui$label_('Response schema'),
-						A2(
-						$author$project$Sharecrop$Ui$codeBlock,
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Ui$testId('detail-schema')
-							]),
-						detail.responseSchemaJson),
-						A2($author$project$Sharecrop$View$taskInstructions, origin, detail.id)
-					]));
+								$author$project$Sharecrop$Ui$label_('Response schema'),
+								A2(
+								$author$project$Sharecrop$Ui$codeBlock,
+								_List_fromArray(
+									[
+										$author$project$Sharecrop$Ui$testId('detail-schema')
+									]),
+								detail.responseSchemaJson),
+								A2($author$project$Sharecrop$View$taskInstructions, origin, detail.id)
+							]))));
 		} else {
 			return $author$project$Sharecrop$Ui$card(
 				_List_fromArray(
