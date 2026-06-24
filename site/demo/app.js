@@ -57,7 +57,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "jules",
     area: "Field Ops",
-    difficulty: "A",
     visibility: "public",
     policy: policy.reservation,
     reward: rewardBundle(45, ["Ripe Lens"]),
@@ -96,7 +95,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Ledger Bay",
-    difficulty: "B",
     visibility: "organization",
     policy: policy.approval,
     reward: rewardCredits(30),
@@ -125,7 +123,6 @@ const seedTasks = [
     requester: "ren",
     assignee: "",
     area: "Foundry",
-    difficulty: "C",
     visibility: "public",
     policy: policy.open,
     reward: rewardNone(),
@@ -146,7 +143,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Cartography",
-    difficulty: "S",
     visibility: "public",
     policy: policy.reservation,
     reward: rewardCredits(80),
@@ -167,7 +163,6 @@ const seedTasks = [
     requester: "ren",
     assignee: "tala",
     area: "Vault",
-    difficulty: "A",
     visibility: "organization",
     policy: policy.reservation,
     reward: rewardCollectible(["Vault Seal"]),
@@ -206,7 +201,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "sol",
     area: "Uplink",
-    difficulty: "B",
     visibility: "public",
     policy: policy.approval,
     reward: rewardBundle(25, ["Storm Pin"]),
@@ -238,7 +232,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Market",
-    difficulty: "C",
     visibility: "public",
     policy: policy.open,
     reward: rewardCredits(12),
@@ -268,7 +261,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "jules",
     area: "Field Ops",
-    difficulty: "B",
     visibility: "public",
     policy: policy.open,
     reward: rewardCredits(18),
@@ -299,7 +291,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "tala",
     area: "Archive",
-    difficulty: "C",
     visibility: "organization",
     policy: policy.reservation,
     reward: rewardCredits(20),
@@ -335,7 +326,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Hangar",
-    difficulty: "A",
     visibility: "public",
     policy: policy.reservation,
     reward: rewardBundle(60, ["Drone Patch"]),
@@ -363,7 +353,6 @@ const seedTasks = [
     requester: "ren",
     assignee: "",
     area: "Docs Deck",
-    difficulty: "C",
     visibility: "public",
     policy: policy.approval,
     reward: rewardCredits(22),
@@ -384,7 +373,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Lab",
-    difficulty: "B",
     visibility: "public",
     policy: policy.reservation,
     reward: rewardCredits(26),
@@ -907,7 +895,6 @@ function createDraftTask() {
     requester: state.userId,
     assignee: "",
     area: "Custom Board",
-    difficulty: "C",
     visibility: state.draftVisibility,
     policy: state.draftPolicy,
     reward: draftReward(),
@@ -1690,11 +1677,19 @@ function reviewDraft(submission) {
   };
 }
 
+function linkifyActivity(text) {
+  let html = escapeHtml(text);
+  for (const user of users) {
+    html = html.replaceAll(escapeHtml(user.name), userLink(user.id));
+  }
+  return html;
+}
+
 function activityFeed() {
   return `
     <section class="panel activity-feed">
       <span class="eyebrow">Comms feed</span>
-      ${state.activityLog.map((entry) => `<p>${escapeHtml(entry)}</p>`).join("")}
+      ${state.activityLog.map((entry) => `<p>${linkifyActivity(entry)}</p>`).join("")}
     </section>
   `;
 }
