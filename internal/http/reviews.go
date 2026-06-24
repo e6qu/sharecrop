@@ -4,10 +4,27 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
+
+// payoutWorker reports the worker credited by an accept payout (every paid
+// payout names the worker; a zero-reward accept does not).
+func payoutWorker(payout ledger.PayoutOutcome) (core.UserID, bool) {
+	switch outcome := payout.(type) {
+	case ledger.CreditPayout:
+		return outcome.WorkerUserID, true
+	case ledger.CollectiblePayout:
+		return outcome.WorkerUserID, true
+	case ledger.BundlePayout:
+		return outcome.WorkerUserID, true
+	default:
+		var zero core.UserID
+		return zero, false
+	}
+}
 
 func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
@@ -58,11 +75,40 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate the optional collectible-tip id up front so a malformed request is
+	// rejected before any settlement happens.
+	var tipCollectibleID core.CollectibleID
+	tipCollectible := request.TipCollectibleID != ""
+	if tipCollectible {
+		collectibleIDResult := core.ParseCollectibleID(request.TipCollectibleID)
+		collectibleIDAccepted, collectibleIDMatched := collectibleIDResult.(core.CollectibleIDCreated)
+		if !collectibleIDMatched {
+			writeError(w, http.StatusBadRequest, collectibleIDResult.(core.CollectibleIDRejected).Reason.Description())
+			return
+		}
+		tipCollectibleID = collectibleIDAccepted.Value
+	}
+
 	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value, creditSelection.value, tipSelection.value)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		writeDomainError(w, result.(ledger.AcceptRejected).Reason)
 		return
+	}
+
+	// A collectible tip is a separate transfer (assets store) sequenced after the
+	// credit settle. The worker is the one the payout credited.
+	if tipCollectible {
+		worker, hasWorker := payoutWorker(accepted.Payout)
+		if !hasWorker {
+			writeError(w, http.StatusBadRequest, "a collectible tip requires a paid acceptance that identifies the worker")
+			return
+		}
+		giftResult := server.assetService.GiftCollectible(r.Context(), actor.subject.ID, worker, tipCollectibleID)
+		if _, gifted := giftResult.(assets.CollectibleGifted); !gifted {
+			writeDomainError(w, giftResult.(assets.GiftRejected).Reason)
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, acceptToResponse(accepted))

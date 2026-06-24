@@ -137,7 +137,7 @@ test("static demo keeps review decisions persona-scoped", async ({ page }) => {
   await page.getByLabel("Select persona").selectOption("mara");
   await page.getByRole("button", { name: "Reviews", exact: true }).click();
   await page.getByLabel("Selected task").selectOption("orchard-labels");
-  await page.getByLabel("Tip").fill("99");
+  await page.getByLabel("Tip", { exact: true }).fill("99");
   await page.getByRole("button", { name: "Request changes" }).click();
   await expect(
     page.getByText(

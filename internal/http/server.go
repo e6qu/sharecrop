@@ -79,6 +79,7 @@ type AssetService interface {
 	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
 	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
+	GiftCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult
 }
 
 type SubmissionService interface {

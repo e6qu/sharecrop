@@ -219,6 +219,40 @@ func (collectibleParsed) collectibleParseResult() {}
 
 func (collectibleParseRejected) collectibleParseResult() {}
 
+func (store CollectibleStore) GiftCollectible(ctx context.Context, command assets.GiftStoreCommand) assets.GiftResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin gift collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		return assets.GiftRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
+	}
+	if collectible.value.OwnerID != command.FromUserID {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "only the collectible owner can tip it")}
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to tip")}
+	}
+	if denied, matched := assets.AllowsTip(collectible.value.Policy).(assets.RewardDenied); matched {
+		return assets.GiftRejected{Reason: denied.Reason}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.ToUserID.String()); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer collectible failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit gift collectible failed")}
+	}
+
+	gifted := collectible.value
+	gifted.OwnerID = command.ToUserID
+	return assets.CollectibleGifted{Value: gifted}
+}
+
 func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.CollectibleID) collectibleParseResult {
 	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text from collectibles where id = $1 for update", collectibleID.String())
 	if err != nil {

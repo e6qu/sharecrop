@@ -83,6 +83,10 @@ func (store *memoryStore) RefundCollectibleReward(_ context.Context, _ RefundRew
 	return RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
 }
 
+func (store *memoryStore) GiftCollectible(_ context.Context, command GiftStoreCommand) GiftResult {
+	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerID: command.ToUserID}}
+}
+
 func name(t *testing.T, raw string) CollectibleName {
 	t.Helper()
 	accepted, matched := NewCollectibleName(raw).(CollectibleNameAccepted)
