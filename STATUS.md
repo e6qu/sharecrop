@@ -1,16 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 36 work, merged into `main`.
+The repository contains pull request 1 through pull request 37 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-orgs-elm-split-polish` models organizations as entities in the demo, decomposes `Main.elm`, and applies a specialized review's polish. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/elm-split-schema-polish` finishes the `Main.elm` decomposition, deepens the demo schema designer, and applies a specialized review's polish to the demo economy. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/demo-orgs-elm-split-polish`:
+Implemented in `task/elm-split-schema-polish`:
 
-- Demo organizations: users belong to an organization (the agent operator is external); organization-visibility tasks carry an org id and are scoped to members by `canSeeTask`/`canReviewTask` (not a role-string check), so external users no longer see or review org-internal work. Org identity shows in the topbar, persona switcher, and task badge.
-- Elm decomposition: the `Flags`/`Session`/`Page`/`LoggedInModel`/`Model`/`Msg` type block moved out of `Main.elm` into a new `Sharecrop.Types` module (no behavior change), the prerequisite that unblocks further view/command splits.
-- Specialized UI/UX/user-journey/product review (multi-agent) then drove a polish pass: settle nets escrow/payout against the task's requester (not the reviewer settling it — a real escrow bug); the Agent/API console only lists the persona's visible tasks (no org leak to the external agent); submit validation rejects empty required fields/arrays and the simulated agent run returns a realistic filled payload; the reservation queue hides self-approval; metadata badges are neutral so only status pills carry color; a stale validation error clears on edit.
+- Elm decomposition finished: the view layer moved to `Sharecrop.View` and the HTTP commands/encoders/decoders to `Sharecrop.Api`, leaving `Main.elm` at about 681 lines (init, update dispatch, routing, wiring). No behavior change.
+- Schema designer depth: list fields gain min/max item constraints (validated on submit), and field names are normalized to identifier-safe keys (shown inline) with a warning when min items exceed max items.
+- Demo economy polish: seed balances are net of escrow so available + escrow reconciles and closing seeded tasks no longer mints credits; the dashboard distinguishes spendable from committed credits; review Settle/Tip are numeric inputs pre-filled with real defaults; settling is bounded by escrow and tipping by spendable balance (over-limit refused with a warning); Accept/Reject show the amount paid; escrow shows on the worker task page.
+- A multi-agent UI/UX/user-journey/product review drove the above fixes; it caught a real escrow-accounting blocker (seed escrow never debited from balances) and an org-task leak in the Agent/API console (now scoped to visible tasks).
+
+Earlier branch `task/demo-orgs-elm-split-polish` (pull request 37, merged) modeled demo organizations as entities, started the `Main.elm` decomposition with `Sharecrop.Types`, and applied a specialized review's polish.
 
 Earlier branch `task/economy-orgs-and-polish` (pull request 36, merged) added a demo reward economy with escrow, schema designer required/enum + submit validation, comms-feed cross-linking, and real-app standalone-team membership.
 

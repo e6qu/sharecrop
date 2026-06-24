@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v9";
+const storageKey = "sharecrop-demo-state-v10";
 
 const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
@@ -40,10 +40,12 @@ const pages = [
 
 const organizations = { lattice: "Lattice Field Co" };
 
+// balance is the persona's TOTAL credits; seeded escrow is carved out of it at
+// startup (see seedEscrowByUser) so available + escrow reconciles to this total.
 const users = [
-  { id: "mara", name: "Mara Chen", role: "Requester", balance: 180, org: "lattice" },
+  { id: "mara", name: "Mara Chen", role: "Requester", balance: 398, org: "lattice" },
   { id: "jules", name: "Jules Park", role: "Implementor", balance: 64, org: "lattice" },
-  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 112, org: "lattice" },
+  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 134, org: "lattice" },
   { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100, org: "" },
   { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83, org: "lattice" },
 ];
@@ -420,6 +422,13 @@ const seedEscrow = Object.fromEntries(
   seedTasks.filter(holdsEscrow).map((taskItem) => [taskItem.id, taskItem.reward.credits]),
 );
 
+// Total credits a requester has committed to their open tasks; subtracted from
+// the persona's total balance to derive the spendable (available) balance.
+const seedEscrowByUser = seedTasks.filter(holdsEscrow).reduce((totals, taskItem) => {
+  totals[taskItem.requester] = (totals[taskItem.requester] || 0) + taskItem.reward.credits;
+  return totals;
+}, {});
+
 const seedState = {
   mode: "light",
   theme: "showcase",
@@ -444,7 +453,7 @@ const seedState = {
   responseDrafts: {},
   reviewDrafts: {},
   localTaskSeq: 1,
-  balances: Object.fromEntries(users.map((user) => [user.id, user.balance])),
+  balances: Object.fromEntries(users.map((user) => [user.id, user.balance - (seedEscrowByUser[user.id] || 0)])),
   escrow: seedEscrow,
   inventories: {
     mara: ["Ripe Lens", "Drone Patch", "Storm Pin"],
@@ -750,24 +759,40 @@ function enumValuesOf(field) {
   return (field.enum || "").split(",").map((value) => value.trim()).filter(Boolean);
 }
 
+// Field names are typed freely but used as JSON object keys, so normalize them
+// to lowercase identifier-safe keys (spaces/punctuation become underscores).
+function normalizeFieldName(name) {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function lengthOf(field, key) {
+  const parsed = Number.parseInt(field[key], 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 function schemaForField(field) {
   const values = enumValuesOf(field);
   let spec;
   if (field.type === "integer") spec = { kind: "integer" };
   else if (field.type === "decimal") spec = { kind: "decimal_string" };
-  else if (field.type === "string_list") spec = { kind: "array", items: values.length ? { kind: "string", enum: values } : { kind: "string" } };
-  else spec = values.length ? { kind: "string", enum: values } : { kind: "string" };
+  else if (field.type === "string_list") {
+    spec = { kind: "array", items: values.length ? { kind: "string", enum: values } : { kind: "string" } };
+    const min = lengthOf(field, "min");
+    const max = lengthOf(field, "max");
+    if (min !== undefined) spec.minItems = min;
+    if (max !== undefined) spec.maxItems = max;
+  } else spec = values.length ? { kind: "string", enum: values } : { kind: "string" };
   if (field.required) spec.required = true;
   return spec;
 }
 
 function draftSchema() {
   if (state.draftResponseKind !== "structured") return '{"kind":"freeform"}';
-  const fields = state.draftFields.filter((field) => field.name.trim() !== "");
+  const fields = state.draftFields.filter((field) => normalizeFieldName(field.name) !== "");
   if (fields.length === 0) return '{"kind":"freeform"}';
   const built = { kind: "object", fields: {} };
   fields.forEach((field) => {
-    built.fields[field.name.trim()] = schemaForField(field);
+    built.fields[normalizeFieldName(field.name)] = schemaForField(field);
   });
   return JSON.stringify(built);
 }
@@ -777,7 +802,13 @@ function friendlyType(spec) {
   if (spec.kind === "string") return spec.enum ? `one of ${spec.enum.join(", ")}` : "text";
   if (spec.kind === "integer") return "whole number";
   if (spec.kind === "decimal_string") return "decimal (a number sent as text)";
-  if (spec.kind === "array") return `list of ${friendlyType(spec.items)}`;
+  if (spec.kind === "array") {
+    const bounds = [
+      Number.isInteger(spec.minItems) ? `at least ${spec.minItems}` : "",
+      Number.isInteger(spec.maxItems) ? `at most ${spec.maxItems}` : "",
+    ].filter(Boolean).join(", ");
+    return `list of ${friendlyType(spec.items)}${bounds ? ` (${bounds})` : ""}`;
+  }
   if (spec.kind === "object") return "object";
   return spec.kind;
 }
@@ -826,6 +857,7 @@ function validateResponse(schemaJson, text) {
     } else if (spec.kind === "decimal_string") {
       if (typeof fieldValue !== "string") errors.push(`"${name}" must be a decimal sent as text.`);
       else if (spec.required && fieldValue.trim() === "") errors.push(`"${name}" is required.`);
+      else if (fieldValue.trim() !== "" && !Number.isFinite(Number(fieldValue))) errors.push(`"${name}" must be a decimal number sent as text.`);
     } else if (spec.kind === "string") {
       if (typeof fieldValue !== "string") errors.push(`"${name}" must be text.`);
       else if (spec.required && fieldValue.trim() === "") errors.push(`"${name}" is required.`);
@@ -833,6 +865,8 @@ function validateResponse(schemaJson, text) {
     } else if (spec.kind === "array") {
       if (!Array.isArray(fieldValue)) errors.push(`"${name}" must be a list.`);
       else if (spec.required && fieldValue.length === 0) errors.push(`"${name}" needs at least one value.`);
+      else if (Number.isInteger(spec.minItems) && fieldValue.length < spec.minItems) errors.push(`"${name}" needs at least ${spec.minItems} value${spec.minItems === 1 ? "" : "s"}.`);
+      else if (Number.isInteger(spec.maxItems) && fieldValue.length > spec.maxItems) errors.push(`"${name}" allows at most ${spec.maxItems} value${spec.maxItems === 1 ? "" : "s"}.`);
       else if (spec.items?.enum) {
         const invalid = fieldValue.filter((item) => !spec.items.enum.includes(item));
         if (invalid.length) errors.push(`"${name}" has values outside ${spec.items.enum.join(", ")}.`);
@@ -871,14 +905,25 @@ function schemaDesigner() {
         <label class="schema-field-required"><input type="checkbox" data-schema-required="${index}" ${field.required ? "checked" : ""}> required</label>
         <button class="button ghost" type="button" data-action="remove-field" data-index="${index}" aria-label="Remove field">Remove</button>
         ${allowsEnum(field.type) ? `<input class="schema-field-enum" data-schema-enum="${index}" value="${escapeAttribute(field.enum || "")}" placeholder="allowed values (comma-separated, optional)" aria-label="Allowed values">` : ""}
+        ${field.type === "string_list" ? `<input class="schema-field-len" type="number" min="0" data-schema-min="${index}" value="${escapeAttribute(field.min || "")}" placeholder="min items" aria-label="Minimum items"><input class="schema-field-len" type="number" min="0" data-schema-max="${index}" value="${escapeAttribute(field.max || "")}" placeholder="max items" aria-label="Maximum items">` : ""}
+        ${normalizeFieldName(field.name) && normalizeFieldName(field.name) !== field.name.trim() ? `<small class="schema-field-key">key: ${escapeHtml(normalizeFieldName(field.name))}</small>` : ""}
       </div>`)
     .join("");
-  const names = state.draftFields.map((field) => field.name.trim()).filter(Boolean);
-  const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
-  const hasEmpty = state.draftFields.some((field) => field.name.trim() === "");
+  const keys = state.draftFields.map((field) => normalizeFieldName(field.name)).filter(Boolean);
+  const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
+  const hasEmpty = state.draftFields.some((field) => normalizeFieldName(field.name) === "" && field.name.trim() !== "");
+  const hasBlank = state.draftFields.some((field) => field.name.trim() === "");
+  const impossibleRange = state.draftFields.some((field) => {
+    if (field.type !== "string_list") return false;
+    const min = lengthOf(field, "min");
+    const max = lengthOf(field, "max");
+    return min !== undefined && max !== undefined && min > max;
+  });
   const warnings = [
-    duplicates.length ? `Duplicate field name "${duplicates[0]}" — the last one wins.` : "",
-    hasEmpty ? "Fields with no name are omitted from the schema." : "",
+    duplicates.length ? `Two fields share the key "${duplicates[0]}" — the last one wins.` : "",
+    hasEmpty ? "A field name with no letters or digits cannot become a key and is omitted." : "",
+    hasBlank ? "Fields with no name are omitted from the schema." : "",
+    impossibleRange ? "A list field has min items greater than max items — no response can satisfy it." : "",
   ].filter(Boolean);
   const warning = warnings.length ? `<p class="schema-warning">${escapeHtml(warnings.join(" "))}</p>` : "";
   return `
@@ -897,7 +942,7 @@ function schemaDesigner() {
 }
 
 function addDraftField() {
-  setState({ draftFields: [...state.draftFields, { name: "", type: "string", required: false, enum: "" }] });
+  setState({ draftFields: [...state.draftFields, { name: "", type: "string", required: false, enum: "", min: "", max: "" }] });
 }
 
 function removeDraftField(index) {
@@ -1047,7 +1092,7 @@ function userPage() {
         <h2>${escapeHtml(user.name)}</h2>
         <div class="badge-row">
           <span>${escapeHtml(user.role)}</span>
-          <span>${escapeHtml(user.balance)} credits</span>
+          <span>${escapeHtml(balanceOf(user.id))} credits available</span>
         </div>
         <h3>Requested tasks</h3>
         ${requested.length ? `<ul class="objective-list">${requested.map(taskLine).join("")}</ul>` : `<p class="muted">No requested tasks.</p>`}
@@ -1093,8 +1138,8 @@ function overviewPage() {
         </div>
         <div class="summary-grid">
           ${metricCard("Open tasks", String(state.tasks.filter((item) => item.lifecycle === lifecycle.open).length))}
-          ${metricCard("Credits available", `${balanceOf(user.id)}`)}
-          ${metricCard("Held in escrow", `${escrowHeldBy(user.id)}`)}
+          ${metricCard("Credits available", `${balanceOf(user.id)}`, "spendable now")}
+          ${metricCard("Held in escrow", `${escrowHeldBy(user.id)}`, "committed to open tasks")}
           ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
         </div>
       </div>
@@ -1213,7 +1258,7 @@ function requesterPage() {
 
 function reviewPage() {
   const tasks = reviewableTasks();
-  const taskItem = activeTaskFor(tasks);
+  const taskItem = activeReviewTask();
   return `
     <section class="panel">
       <div class="page-header">
@@ -1240,7 +1285,16 @@ function reviewPage() {
 }
 
 function integrationsPage() {
-  const taskItem = selectedTask();
+  // The console exposes a task's schema and ready-to-run commands, so it must
+  // honor visibility: an external operator never sees org-only tasks here.
+  const visible = visibleTasks();
+  const taskItem = visible.find((item) => item.id === state.selectedTaskId) ?? visible[0];
+  if (!taskItem) {
+    return `
+      <section class="panel">
+        <div class="page-header"><div><span class="eyebrow">Agent/API console</span><h1>No tasks available</h1><p>No tasks are visible to this persona yet.</p></div></div>
+      </section>`;
+  }
   const host = "https://sharecrop.example";
   const compactSample = (() => {
     try {
@@ -1263,7 +1317,7 @@ function integrationsPage() {
           <h1>Provide a result for ${escapeHtml(taskItem.title)}</h1>
           <p>Sharecrop is a reverse MCP: a person or their agent connects, reads the task's schema, and returns a structured result. Every task carries ready-to-run REST and MCP steps.</p>
         </div>
-        ${taskSelect(taskItem, state.tasks)}
+        ${taskSelect(taskItem, visible)}
       </div>
       <div class="code-grid">
         <article class="sub-panel uplink-panel">
@@ -1461,7 +1515,7 @@ function missionBriefing(taskItem) {
         <ul class="objective-list">
           <li>Requester: ${userLink(taskItem.requester)}</li>
           <li>Assignee: ${userLink(taskItem.assignee)}</li>
-          <li>Reward: ${escapeHtml(rewardLabel(taskItem.reward))}</li>
+          <li>Reward: ${escapeHtml(rewardLabel(taskItem.reward))}${(state.escrow?.[taskItem.id] ?? 0) > 0 ? ` <span class="escrow-chip">${state.escrow[taskItem.id]} credits held in escrow</span>` : ""}</li>
         </ul>
         <div class="schema-block">
           <span>What to return</span>
@@ -1649,9 +1703,17 @@ function reservationQueue(taskItem) {
 
 function submissionList(taskItem) {
   if (taskItem.submissions.length === 0) return `<p class="empty-state">No submissions for this task.</p>`;
+  const held = state.escrow?.[taskItem.id] ?? 0;
   return taskItem.submissions.map((submission) => {
     const draft = reviewDraft(submission);
     if (submission.state !== "submitted") return submissionOutcome(submission);
+    const payoutValue = draft.partialPayout !== "" ? draft.partialPayout : String(taskItem.reward.credits || 0);
+    const tipValue = draft.tipAmount !== "" ? draft.tipAmount : "0";
+    const payNum = Number.parseInt(payoutValue, 10) || 0;
+    const tipNum = Number.parseInt(tipValue, 10) || 0;
+    const warning = state.reviewWarning?.submissionId === submission.id
+      ? `<p class="validate-error">${escapeHtml(state.reviewWarning.message)}</p>`
+      : "";
     return `
       <div class="submission-row decision-console">
         <div>
@@ -1665,15 +1727,17 @@ function submissionList(taskItem) {
           <strong>${escapeHtml(rewardLabel(taskItem.reward))}</strong>
         </div>
         <label>Review note<textarea data-field="reviewNote" data-submission="${escapeAttribute(submission.id)}" placeholder="Optional note to the worker">${escapeHtml(draft.reviewNote)}</textarea></label>
-        <div class="mini-grid">
-          <label>Settle (credits)<input data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.partialPayout)}" placeholder="${escapeAttribute(String(taskItem.reward.credits || 0))} — full reward"></label>
-          <label>Tip<input data-field="tipAmount" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.tipAmount)}" placeholder="0"></label>
+        <div class="pay-grid">
+          <label>Settle (credits)<input type="number" min="0" inputmode="numeric" data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(payoutValue)}"></label>
+          <label>Tip<input type="number" min="0" inputmode="numeric" data-field="tipAmount" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(tipValue)}"></label>
         </div>
+        ${held > 0 ? `<p class="schema-hint">Up to ${held} credits are in escrow for this task; the tip is paid from your available balance.</p>` : ""}
+        ${warning}
         <label class="check-row"><input type="checkbox" data-field="banImplementor" data-submission="${escapeAttribute(submission.id)}" ${draft.banImplementor ? "checked" : ""}> Ban implementor from this task</label>
         <div class="row-actions">
           <button class="button secondary" data-action="requestChanges" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Request changes</button>
-          <button class="button secondary" data-action="reject" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Reject</button>
-          <button class="button primary" data-action="accept" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Accept</button>
+          <button class="button secondary" data-action="reject" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Reject · pay ${escapeHtml(String(payNum + tipNum))}</button>
+          <button class="button primary" data-action="accept" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Accept · pay ${escapeHtml(String(payNum + tipNum))}</button>
         </div>
       </div>
     `;
@@ -1758,8 +1822,9 @@ function themeButton(value, label) {
   return `<button class="theme-chip ${state.theme === value ? "selected" : ""}" data-theme="${escapeAttribute(value)}" aria-pressed="${state.theme === value ? "true" : "false"}">${escapeHtml(label)}</button>`;
 }
 
-function metricCard(label, value) {
-  return `<div class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+function metricCard(label, value, note = "") {
+  const noteHtml = note ? `<small>${escapeHtml(note)}</small>` : "";
+  return `<div class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>${noteHtml}</div>`;
 }
 
 function flowCard(page, title, copy) {
@@ -1788,6 +1853,16 @@ function filteredBoardTasks() {
 
 function activeTaskFor(tasks) {
   return tasks.find((item) => item.id === state.selectedTaskId) ?? tasks[0] ?? null;
+}
+
+// For the Reviews page, honor an explicit selection but otherwise prefer a task
+// that actually has a pending submission, so a reviewer never lands on an empty
+// decisions panel while real work waits elsewhere in the queue.
+function activeReviewTask() {
+  const tasks = reviewableTasks();
+  return tasks.find((item) => item.id === state.selectedTaskId)
+    ?? tasks.find((item) => item.submissions.some((submission) => submission.state === "submitted"))
+    ?? tasks[0] ?? null;
 }
 
 function filterOption(value, label) {
@@ -1987,6 +2062,14 @@ function handleCommit(event) {
     updateDraftField(Number(target.dataset.schemaEnum), "enum", target.value);
     return;
   }
+  if (target.dataset.schemaMin !== undefined) {
+    updateDraftField(Number(target.dataset.schemaMin), "min", target.value);
+    return;
+  }
+  if (target.dataset.schemaMax !== undefined) {
+    updateDraftField(Number(target.dataset.schemaMax), "max", target.value);
+    return;
+  }
   if (target.dataset.field === undefined) return;
 
   const key = target.dataset.field;
@@ -2028,8 +2111,10 @@ function handleDraftInput(event) {
 
 function updateReviewDraft(submissionId, key, value, options = { render: true }) {
   const field = key === "tipAmount" ? "tipAmount" : key;
+  const clearedWarning = state.reviewWarning?.submissionId === submissionId ? null : state.reviewWarning;
   state = {
     ...state,
+    reviewWarning: clearedWarning,
     reviewDrafts: {
       ...state.reviewDrafts,
       [submissionId]: {
@@ -2117,7 +2202,7 @@ function handleAction(action, userId, submissionId) {
 }
 
 function taskForAction(action) {
-  if (isReviewAction(action)) return activeTaskFor(reviewableTasks());
+  if (isReviewAction(action)) return activeReviewTask();
   return activeTaskForCurrentPage();
 }
 
@@ -2127,7 +2212,8 @@ function isReviewAction(action) {
 
 function taskIdForPage(page) {
   if (page === "task") return selectedTask()?.id;
-  const tasks = page === "review" ? reviewableTasks() : page === "discover" ? filteredBoardTasks() : visibleTasks();
+  if (page === "review") return activeReviewTask()?.id ?? selectedTask()?.id;
+  const tasks = page === "discover" ? filteredBoardTasks() : visibleTasks();
   return activeTaskFor(tasks)?.id ?? selectedTask()?.id;
 }
 
@@ -2135,7 +2221,7 @@ function activeTaskForCurrentPage() {
   if (state.page === "task") return selectedTask();
   if (state.page === "discover") return activeTaskFor(filteredBoardTasks());
   if (state.page === "requester") return activeTaskFor(tasksForRequester());
-  if (state.page === "review") return activeTaskFor(reviewableTasks());
+  if (state.page === "review") return activeReviewTask();
   return selectedTask();
 }
 
@@ -2239,11 +2325,18 @@ function approveReservation(taskItem, userId) {
 }
 
 function declineReservation(taskItem, userId) {
-  updateTask(taskItem.id, (current) => ({
-    availability: current.assignee === userId ? availability.available : current.availability,
-    assignee: current.assignee === userId ? "" : current.assignee,
-    reservations: current.reservations.map((reservation) => reservation.by === userId ? { ...reservation, state: "declined" } : reservation),
-  }), `${selectedUser().name} declined ${userName(userId)} for ${taskItem.title}.`);
+  updateTask(taskItem.id, (current) => {
+    const reservations = current.reservations.map((reservation) => reservation.by === userId ? { ...reservation, state: "declined" } : reservation);
+    // Once nothing is pending or active, return the task to a claimable state so a
+    // declined approval request does not strand it in "awaiting approval".
+    const stillPending = reservations.some((reservation) => reservation.state === "requested" || reservation.state === "active");
+    const clears = current.assignee === userId || !stillPending;
+    return {
+      availability: clears ? availability.available : current.availability,
+      assignee: clears ? "" : current.assignee,
+      reservations,
+    };
+  }, `${selectedUser().name} declined ${userName(userId)} for ${taskItem.title}.`);
 }
 
 function releaseReservation(taskItem, userId) {
@@ -2258,9 +2351,31 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
   const submission = taskItem.submissions.find((item) => item.id === submissionId || item.by === userId);
   if (!submission || submission.state !== "submitted") return;
   const draft = reviewDraft(submission);
-  const partial = decision === "changes_requested" ? 0 : Number.parseInt(draft.partialPayout, 10) || 0;
+  // The Settle input is pre-filled with the full reward; an untouched field pays
+  // that amount for both accept and reject (a reviewer lowers it for a partial).
+  const shown = draft.partialPayout !== "" ? (Number.parseInt(draft.partialPayout, 10) || 0) : (taskItem.reward.credits || 0);
   const tip = decision === "changes_requested" ? 0 : Number.parseInt(draft.tipAmount, 10) || 0;
-  const payout = decision === "accepted" ? (partial || taskItem.reward.credits || 0) : partial;
+  const payout = decision === "changes_requested" ? 0 : shown;
+
+  const requesterId = taskItem.requester;
+  const escrowed = state.escrow?.[taskItem.id] ?? 0;
+  const settles = decision === "accepted" || decision === "rejected";
+  // A settle can never mint credits: the payout is bounded by escrow and the tip
+  // by the requester's spendable balance, instead of clamping a negative to zero.
+  if (settles && payout > escrowed) {
+    state = { ...state, reviewWarning: { submissionId: submission.id, message: `Settle of ${payout} credits exceeds the ${escrowed} held in escrow for this task. Lower the payout or fund more first.` } };
+    render();
+    saveSoon();
+    return;
+  }
+  const tipBudget = balanceOf(requesterId) + Math.max(0, escrowed - payout);
+  if (settles && tip > tipBudget) {
+    state = { ...state, reviewWarning: { submissionId: submission.id, message: `Tip of ${tip} credits exceeds the ${tipBudget} you can spend. Lower the tip or add credits.` } };
+    render();
+    saveSoon();
+    return;
+  }
+  state = { ...state, reviewWarning: null };
   const nextAvailability = decision === "accepted" ? availability.accepted : decision === "rejected" ? availability.rejected : availability.changesRequested;
   const nextLifecycle = decision === "accepted" ? lifecycle.closed : taskItem.lifecycle;
   const activity = decision === "accepted"
@@ -2269,19 +2384,17 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
     ? `${selectedUser().name} rejected ${userName(userId)} on ${taskItem.title} with ${payout + tip} credits paid.`
     : `${selectedUser().name} requested changes from ${userName(userId)} on ${taskItem.title}.`;
 
-  const settles = decision === "accepted" || decision === "rejected";
-  const held = state.escrow?.[taskItem.id] ?? 0;
   if (settles) {
     // The reward was escrowed against the task's requester (who may differ from
     // the reviewer settling it), so release escrow and net payout + tip against
-    // the requester — never the persona clicking Accept/Reject.
-    const requesterId = taskItem.requester;
+    // the requester — never the persona clicking Accept/Reject. The guards above
+    // keep this from going negative.
     state = {
       ...state,
       balances: {
         ...state.balances,
         [userId]: balanceOf(userId) + payout + tip,
-        [requesterId]: Math.max(0, balanceOf(requesterId) + held - payout - tip),
+        [requesterId]: balanceOf(requesterId) + escrowed - payout - tip,
       },
       escrow: withoutEscrow(state.escrow, taskItem.id),
     };
