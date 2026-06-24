@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v10";
+const storageKey = "sharecrop-demo-state-v11";
 
 const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
@@ -45,7 +45,7 @@ const organizations = { lattice: "Lattice Field Co" };
 const users = [
   { id: "mara", name: "Mara Chen", role: "Requester", balance: 398, org: "lattice" },
   { id: "jules", name: "Jules Park", role: "Implementor", balance: 64, org: "lattice" },
-  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 134, org: "lattice" },
+  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 160, org: "lattice" },
   { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100, org: "" },
   { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83, org: "lattice" },
 ];
@@ -179,7 +179,7 @@ const seedTasks = [
     visibility: "organization",
     org: "lattice",
     policy: policy.reservation,
-    reward: rewardCollectible(["Vault Seal"]),
+    reward: rewardBundle(26, ["Vault Seal"]),
     lifecycle: lifecycle.open,
     availability: availability.changesRequested,
     objective: "Review the transfer ledger below and flag any rows that look fraudulent — the same item moved twice, or a transfer to a banned account. Submit the transfer ids to investigate in suspicious_ids.",
@@ -1230,8 +1230,8 @@ function requesterPage() {
             ${option("bundle", "Credits + collectible", state.draftRewardKind)}
           </select>
         </label>
-        <label for="draft-credits">Credits<input id="draft-credits" data-field="draftCredits" value="${escapeAttribute(state.draftCredits)}"><span class="schema-hint">Credits are this demo's currency (think 1 credit ≈ $1), held from your balance until you accept a result.</span></label>
-        <label for="draft-collectible">Collectible<input id="draft-collectible" data-field="draftCollectible" value="${escapeAttribute(state.draftCollectible)}"></label>
+        ${["credits", "bundle"].includes(state.draftRewardKind) ? `<label for="draft-credits">Credits<input id="draft-credits" data-field="draftCredits" value="${escapeAttribute(state.draftCredits)}"><span class="schema-hint">Credits are this demo's currency (think 1 credit ≈ $1), held from your balance until you accept a result.</span></label>` : ""}
+        ${["collectible", "bundle"].includes(state.draftRewardKind) ? `<label for="draft-collectible">Collectible<input id="draft-collectible" data-field="draftCollectible" value="${escapeAttribute(state.draftCollectible)}"></label>` : ""}
         <label for="draft-visibility">Visibility
           <select id="draft-visibility" data-field="draftVisibility">
             ${option("public", "Public marketplace", state.draftVisibility)}
@@ -1331,8 +1331,8 @@ function integrationsPage() {
     }
   }
 }</pre>
-          <button class="button primary" data-action="agentRun">Run as Sol agent</button>
-          <p class="hint">Demo scopes: tasks_read, submissions_write. The button adds a schema-shaped, Sol-labeled MCP submission to this task.</p>
+          ${agentRunnable(taskItem) ? `<button class="button primary" data-action="agentRun">Run as Sol agent</button>` : `<button class="button primary" disabled>Run as Sol agent</button>`}
+          <p class="hint">${agentRunnable(taskItem) ? "Demo scopes: tasks_read, submissions_write. The button adds a schema-shaped, Sol-labeled MCP submission to this task." : "This task is not open and claimable by Sol's agent right now."}</p>
         </article>
         <article class="sub-panel uplink-panel">
           <span class="eyebrow">Worker REST</span>
@@ -1673,7 +1673,7 @@ function workerReviewNotice(taskItem) {
 function actionPayload(action, taskItem) {
   if (action.kind === "submit" || action.kind === "agentRun") {
     const summary = schemaSummary(taskItem.schema);
-    const hint = summary ? `<span class="schema-hint">Your response should match — ${escapeHtml(summary)}</span>` : "";
+    const hint = summary ? `<span class="schema-hint">Your response should match — ${escapeHtml(summary)}. Replace the placeholder values before submitting.</span>` : "";
     const note = state.submitNote && state.submitNote.taskId === taskItem.id
       ? (state.submitNote.ok
         ? `<p class="validate-ok">Response matches the schema.</p>`
@@ -1709,8 +1709,10 @@ function submissionList(taskItem) {
     if (submission.state !== "submitted") return submissionOutcome(submission);
     const payoutValue = draft.partialPayout !== "" ? draft.partialPayout : String(taskItem.reward.credits || 0);
     const tipValue = draft.tipAmount !== "" ? draft.tipAmount : "0";
+    const explicitPayout = draft.partialPayout !== "";
     const payNum = Number.parseInt(payoutValue, 10) || 0;
     const tipNum = Number.parseInt(tipValue, 10) || 0;
+    const rejectNum = explicitPayout ? payNum : 0;
     const warning = state.reviewWarning?.submissionId === submission.id
       ? `<p class="validate-error">${escapeHtml(state.reviewWarning.message)}</p>`
       : "";
@@ -1731,12 +1733,12 @@ function submissionList(taskItem) {
           <label>Settle (credits)<input type="number" min="0" inputmode="numeric" data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(payoutValue)}"></label>
           <label>Tip<input type="number" min="0" inputmode="numeric" data-field="tipAmount" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(tipValue)}"></label>
         </div>
-        ${held > 0 ? `<p class="schema-hint">Up to ${held} credits are in escrow for this task; the tip is paid from your available balance.</p>` : ""}
+        ${held > 0 ? `<p class="schema-hint">Up to ${held} credits are in escrow for this task; any tip is paid from the requester's available balance.</p>` : ""}
         ${warning}
         <label class="check-row"><input type="checkbox" data-field="banImplementor" data-submission="${escapeAttribute(submission.id)}" ${draft.banImplementor ? "checked" : ""}> Ban implementor from this task</label>
         <div class="row-actions">
           <button class="button secondary" data-action="requestChanges" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Request changes</button>
-          <button class="button secondary" data-action="reject" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Reject · pay ${escapeHtml(String(payNum + tipNum))}</button>
+          <button class="button secondary" data-action="reject" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Reject · pay ${escapeHtml(String(rejectNum + tipNum))}</button>
           <button class="button primary" data-action="accept" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Accept · pay ${escapeHtml(String(payNum + tipNum))}</button>
         </div>
       </div>
@@ -2301,7 +2303,24 @@ function submitMission(taskItem) {
   }), `${selectedUser().name} submitted a response for ${taskItem.title}.`);
 }
 
+// Whether Sol's agent can legitimately claim and submit to this task — the same
+// gates the task page enforces, so the console can't reopen a settled task or
+// steal one reserved by another worker.
+function agentRunnable(taskItem) {
+  return taskItem.lifecycle === lifecycle.open &&
+    ![availability.accepted, availability.rejected, availability.closed].includes(taskItem.availability) &&
+    !(taskItem.assignee && taskItem.assignee !== "sol") &&
+    !taskItem.reservations.some((reservation) => reservation.state === "active" && reservation.by !== "sol") &&
+    !(taskItem.banned?.includes("sol")) &&
+    !taskItem.submissions.some((submission) => submission.by === "sol" && submission.state === "submitted");
+}
+
 function agentRun(taskItem) {
+  if (!agentRunnable(taskItem)) {
+    pushActivity(`Sol's agent could not run "${taskItem.title}" — it is not open and claimable.`);
+    render();
+    return;
+  }
   updateTask(taskItem.id, (current) => ({
     assignee: "sol",
     availability: availability.submitted,
@@ -2351,11 +2370,13 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
   const submission = taskItem.submissions.find((item) => item.id === submissionId || item.by === userId);
   if (!submission || submission.state !== "submitted") return;
   const draft = reviewDraft(submission);
-  // The Settle input is pre-filled with the full reward; an untouched field pays
-  // that amount for both accept and reject (a reviewer lowers it for a partial).
-  const shown = draft.partialPayout !== "" ? (Number.parseInt(draft.partialPayout, 10) || 0) : (taskItem.reward.credits || 0);
+  // The Settle input is pre-filled with the full reward, which is the Accept
+  // default. Reject defaults to paying 0 (a fair-partial baseline the reviewer
+  // raises deliberately); an explicitly typed amount is used for either action.
+  const explicitPayout = draft.partialPayout !== "";
+  const shown = explicitPayout ? (Number.parseInt(draft.partialPayout, 10) || 0) : (taskItem.reward.credits || 0);
   const tip = decision === "changes_requested" ? 0 : Number.parseInt(draft.tipAmount, 10) || 0;
-  const payout = decision === "changes_requested" ? 0 : shown;
+  const payout = decision === "accepted" ? shown : decision === "rejected" ? (explicitPayout ? shown : 0) : 0;
 
   const requesterId = taskItem.requester;
   const escrowed = state.escrow?.[taskItem.id] ?? 0;
