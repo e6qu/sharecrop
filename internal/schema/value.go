@@ -122,6 +122,9 @@ func parseDelimitedValue(decoder *json.Decoder, delimiter json.Delim, depth int)
 func parseObjectValue(decoder *json.Decoder, depth int) ValueParseResult {
 	fields := make([]ObjectFieldValue, 0)
 	for decoder.More() {
+		if len(fields) >= maxObjectFields {
+			return ValueParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "object has too many fields")}
+		}
 		token, err := decoder.Token()
 		if err != nil {
 			return ValueParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "object field name is invalid")}
@@ -159,6 +162,9 @@ func parseObjectValue(decoder *json.Decoder, depth int) ValueParseResult {
 func parseArrayValue(decoder *json.Decoder, depth int) ValueParseResult {
 	items := make([]Value, 0)
 	for decoder.More() {
+		if len(items) >= maxArrayItems {
+			return ValueParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "array has too many items")}
+		}
 		valueResult := parseDecoderValue(decoder, depth+1)
 		valueParsed, matched := valueResult.(ValueParsed)
 		if !matched {

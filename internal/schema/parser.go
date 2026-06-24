@@ -28,6 +28,13 @@ func (SchemaParseRejected) parseResult() {}
 // are far shallower than this limit.
 const maxNestingDepth = 64
 
+// maxArrayItems and maxObjectFields bound how wide a single response value may
+// be. The HTTP/MCP body size already caps total input, but these stop a flat
+// payload from forcing one large slice/map allocation per submission.
+const maxArrayItems = 4096
+
+const maxObjectFields = 1024
+
 func ParseSchemaJSON(raw []byte) ParseResult {
 	return parseSchemaRaw(raw, 0)
 }

@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"strconv"
 	"testing"
 	"time"
 )
@@ -19,6 +20,25 @@ func TestMCPSessionStoreEvictsIdleSessions(t *testing.T) {
 	current = current.Add(mcpSessionTTL + time.Minute)
 	if store.existsForSubject("session-a", "subject-1") {
 		t.Fatalf("idle session-a should have been evicted after the TTL")
+	}
+}
+
+func TestMCPSessionStoreCapsSessionsPerSubject(t *testing.T) {
+	current := time.Unix(0, 0).UTC()
+	store := newMCPHTTPSessionStore()
+	store.now = func() time.Time { return current }
+
+	for i := 0; i < maxMCPSessionsPerSubject; i++ {
+		if !store.create("session-"+strconv.Itoa(i), "subject-cap") {
+			t.Fatalf("session %d should be admitted within the per-subject cap", i)
+		}
+	}
+	if store.create("session-overflow", "subject-cap") {
+		t.Fatalf("session beyond the per-subject cap should be refused")
+	}
+	// A different subject is unaffected by another subject's cap.
+	if !store.create("session-other", "subject-other") {
+		t.Fatalf("a different subject should still be admitted")
 	}
 }
 
