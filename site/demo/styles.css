@@ -483,6 +483,11 @@ code {
   color: var(--muted);
   font-size: 0.72rem;
 }
+.trust-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
 .escrow-chip {
   display: inline-block;
   margin-left: 6px;
@@ -651,7 +656,6 @@ code {
   gap: 6px;
 }
 
-.mission-meta span,
 .reward-chip,
 .action-chip,
 .danger-chip {
@@ -1020,6 +1024,8 @@ button:disabled {
 }
 
 .task-table-row em,
+.mission-meta span,
+.status-pill,
 .badge-row span {
   display: inline-flex;
   width: fit-content;
@@ -1218,19 +1224,19 @@ button:disabled {
   outline-offset: 2px;
 }
 
-.badge-row span.badge--success {
+.status-pill.badge--success {
   border-color: color-mix(in srgb, var(--success) 45%, var(--line));
   background: color-mix(in srgb, var(--success) 16%, var(--surface));
   color: var(--success);
 }
 
-.badge-row span.badge--warning {
+.status-pill.badge--warning {
   border-color: color-mix(in srgb, var(--warning) 45%, var(--line));
   background: color-mix(in srgb, var(--warning) 16%, var(--surface));
   color: var(--warning);
 }
 
-.badge-row span.badge--danger {
+.status-pill.badge--danger {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
   background: color-mix(in srgb, var(--danger) 16%, var(--surface));
   color: var(--danger);

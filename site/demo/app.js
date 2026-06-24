@@ -42,13 +42,21 @@ const organizations = { lattice: "Lattice Field Co" };
 
 // balance is the persona's TOTAL credits; seeded escrow is carved out of it at
 // startup (see seedEscrowByUser) so available + escrow reconciles to this total.
+// track is the persona's lifetime work record (settled tasks + acceptance rate),
+// surfaced as a trust signal when authorizing a worker or agent.
 const users = [
-  { id: "mara", name: "Mara Chen", role: "Requester", balance: 398, org: "lattice" },
-  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64, org: "lattice" },
-  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 160, org: "lattice" },
-  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100, org: "" },
-  { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83, org: "lattice" },
+  { id: "mara", name: "Mara Chen", role: "Requester", balance: 398, org: "lattice", track: { completed: 0, acceptedPct: 0 } },
+  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64, org: "lattice", track: { completed: 24, acceptedPct: 96 } },
+  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 160, org: "lattice", track: { completed: 0, acceptedPct: 0 } },
+  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100, org: "", track: { completed: 18, acceptedPct: 89 } },
+  { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83, org: "lattice", track: { completed: 31, acceptedPct: 100 } },
 ];
+
+function trustLabel(userId) {
+  const user = users.find((item) => item.id === userId);
+  if (!user || !user.track || user.track.completed === 0) return "";
+  return `${user.track.completed} tasks · ${user.track.acceptedPct}% accepted`;
+}
 
 function orgName(orgId) {
   return organizations[orgId] || orgId;
@@ -128,7 +136,7 @@ const seedTasks = [
       ],
     }],
     reservations: [{ id: "res-invoice-tala", by: "tala", state: "requested", expires: "24h" }],
-    timeline: ["Ren requested clearance to work on invoice extraction."],
+    timeline: ["Tala Stone requested clearance to work on invoice extraction."],
   }),
   task({
     id: "badge-copy",
@@ -1093,6 +1101,7 @@ function userPage() {
         <div class="badge-row">
           <span>${escapeHtml(user.role)}</span>
           <span>${escapeHtml(balanceOf(user.id))} credits available</span>
+          ${trustLabel(user.id) ? `<span>${escapeHtml(trustLabel(user.id))}</span>` : ""}
         </div>
         <h3>Requested tasks</h3>
         ${requested.length ? `<ul class="objective-list">${requested.map(taskLine).join("")}</ul>` : `<p class="muted">No requested tasks.</p>`}
@@ -1137,7 +1146,7 @@ function overviewPage() {
           </div>
         </div>
         <div class="summary-grid">
-          ${metricCard("Open tasks", String(state.tasks.filter((item) => item.lifecycle === lifecycle.open).length))}
+          ${metricCard("Open tasks", String(visibleTasks().filter((item) => item.lifecycle === lifecycle.open).length))}
           ${metricCard("Credits available", `${balanceOf(user.id)}`, "spendable now")}
           ${metricCard("Held in escrow", `${escrowHeldBy(user.id)}`, "committed to open tasks")}
           ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
@@ -1332,7 +1341,7 @@ function integrationsPage() {
   }
 }</pre>
           ${agentRunnable(taskItem) ? `<button class="button primary" data-action="agentRun">Run as Sol agent</button>` : `<button class="button primary" disabled>Run as Sol agent</button>`}
-          <p class="hint">${agentRunnable(taskItem) ? "Demo scopes: tasks_read, submissions_write. The button adds a schema-shaped, Sol-labeled MCP submission to this task." : "This task is not open and claimable by Sol's agent right now."}</p>
+          <p class="hint">${agentRunnable(taskItem) ? "Demo scopes: tasks_read, submissions_write. The button adds a schema-shaped, Sol-labeled MCP submission to this task." : selectedUser().role !== "Agent operator" ? "Switch to the Agent operator persona (Sol) to run the agent — an agent acts under its own scoped credential." : "Sol's agent can't run this task right now: it needs to be open, unclaimed by others, and (for approval-policy tasks) already approved."}</p>
         </article>
         <article class="sub-panel uplink-panel">
           <span class="eyebrow">Worker REST</span>
@@ -1464,8 +1473,18 @@ function lifecycleTone(value) {
   return "";
 }
 
+function reservationStateLabel(value) {
+  return {
+    requested: "Awaiting approval",
+    active: "Active",
+    declined: "Declined",
+    released: "Released",
+    expired: "Expired",
+  }[value] ?? value;
+}
+
 function toneSpan(label, tone) {
-  return `<span class="${tone ? `badge--${tone}` : ""}">${escapeHtml(label)}</span>`;
+  return `<span class="status-pill${tone ? ` badge--${tone}` : ""}">${escapeHtml(label)}</span>`;
 }
 
 function renderInputBlock(block) {
@@ -1528,6 +1547,7 @@ function missionBriefing(taskItem) {
         ${workerReviewNotice(taskItem)}
         ${actionPayload(action, taskItem)}
         ${actionControls(action)}
+        ${state.fundWarning?.taskId === taskItem.id ? `<p class="validate-error">${escapeHtml(state.fundWarning.message)}</p>` : ""}
       </div>
       <div class="sub-panel activity-feed">
         <h2>Task log</h2>
@@ -1690,7 +1710,8 @@ function reservationQueue(taskItem) {
     <div class="queue-row">
       <div>
         <strong>${userLink(reservation.by)}</strong>
-        <span>${escapeHtml(reservation.state)} / expires ${escapeHtml(reservation.expires ?? "48h")}</span>
+        <span>${escapeHtml(reservationStateLabel(reservation.state))} / expires ${escapeHtml(reservation.expires ?? "48h")}</span>
+        ${trustLabel(reservation.by) ? `<span class="trust-note">${escapeHtml(trustLabel(reservation.by))}</span>` : ""}
       </div>
       <div class="row-actions">
         ${reservation.state === "requested" && reservation.by !== state.userId ? `<button class="button secondary" data-action="declineReservation" data-user="${escapeAttribute(reservation.by)}">Decline</button><button class="button primary" data-action="approve" data-user="${escapeAttribute(reservation.by)}">Approve</button>` : ""}
@@ -1721,6 +1742,7 @@ function submissionList(taskItem) {
         <div>
           <strong>${userLink(submission.by)}</strong>
           <span class="action-chip">${escapeHtml(submissionStateLabel(submission.state))}</span>
+          ${trustLabel(submission.by) ? `<span class="trust-note">${escapeHtml(trustLabel(submission.by))}</span>` : ""}
         </div>
         <p class="decision-criteria"><strong>Should return</strong> — ${escapeHtml(schemaSummary(taskItem.schema))}</p>
         <code>${escapeHtml(submission.response)}</code>
@@ -2237,12 +2259,15 @@ function choosePersona(userId) {
 function fundMission(taskItem) {
   const cost = taskItem.reward.credits || 0;
   if (cost > balanceOf(state.userId)) {
+    state = { ...state, fundWarning: { taskId: taskItem.id, message: `Needs ${cost} credits but only ${balanceOf(state.userId)} available — lower the reward or switch personas.` } };
     pushActivity(`${selectedUser().name} can't fund ${taskItem.title}: needs ${cost} credits but has ${balanceOf(state.userId)} available.`);
+    render();
     return;
   }
   if (cost > 0) {
     state = {
       ...state,
+      fundWarning: null,
       balances: { ...state.balances, [state.userId]: balanceOf(state.userId) - cost },
       escrow: { ...state.escrow, [taskItem.id]: cost },
     };
@@ -2307,17 +2332,27 @@ function submitMission(taskItem) {
 // gates the task page enforces, so the console can't reopen a settled task or
 // steal one reserved by another worker.
 function agentRunnable(taskItem) {
-  return taskItem.lifecycle === lifecycle.open &&
+  // Only the agent operator persona can act as its own agent — a requester or
+  // reviewer must not be able to inject a submission under Sol's identity.
+  if (selectedUser().role !== "Agent operator") return false;
+  const claimable = taskItem.lifecycle === lifecycle.open &&
     ![availability.accepted, availability.rejected, availability.closed].includes(taskItem.availability) &&
     !(taskItem.assignee && taskItem.assignee !== "sol") &&
     !taskItem.reservations.some((reservation) => reservation.state === "active" && reservation.by !== "sol") &&
     !(taskItem.banned?.includes("sol")) &&
     !taskItem.submissions.some((submission) => submission.by === "sol" && submission.state === "submitted");
+  if (!claimable) return false;
+  // Approval-policy tasks must clear requester approval first: the agent can only
+  // submit once Sol holds an approved (active) reservation, not in one click.
+  if (taskItem.policy === policy.approval) {
+    return taskItem.reservations.some((reservation) => reservation.by === "sol" && reservation.state === "active");
+  }
+  return true;
 }
 
 function agentRun(taskItem) {
   if (!agentRunnable(taskItem)) {
-    pushActivity(`Sol's agent could not run "${taskItem.title}" — it is not open and claimable.`);
+    pushActivity(`Sol's agent could not run "${taskItem.title}" — it is not open and claimable by Sol.`);
     render();
     return;
   }

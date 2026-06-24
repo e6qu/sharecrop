@@ -17,7 +17,7 @@ type Store interface {
 	ListSeries(context.Context, core.UserID, core.Page) ListSeriesStoreResult
 	FindSeries(context.Context, core.TaskSeriesID) FindSeriesStoreResult
 	CreateReservation(context.Context, core.TaskReservationID, ReservationCommand) CreateReservationStoreResult
-	ChangeReservationState(context.Context, core.TaskReservationID, ReservationState) ChangeReservationStateStoreResult
+	ChangeReservationState(context.Context, core.TaskID, core.TaskReservationID, ReservationState) ChangeReservationStateStoreResult
 	ListReservations(context.Context, core.TaskID) ListReservationsStoreResult
 	CheckSubmissionEligibility(context.Context, core.TaskID, core.UserID) SubmissionEligibilityStoreResult
 }
@@ -451,7 +451,10 @@ func (service Service) changeReservationByRequester(ctx context.Context, actor a
 		return ReservationStateChangeRejected{Reason: rejected.reason}
 	}
 
-	storeResult := service.store.ChangeReservationState(ctx, reservationID, state)
+	// The mutation is bound to taskID in the store query, so a reservation that
+	// belongs to a different task is never touched (the post-check below is then
+	// only defense-in-depth, not the load-bearing authorization).
+	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, state)
 	changed, matched := storeResult.(ChangeReservationStateStoreAccepted)
 	if !matched {
 		rejected := storeResult.(ChangeReservationStateStoreRejected)
