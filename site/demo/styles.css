@@ -442,6 +442,11 @@ code {
 .mini-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.pay-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 
 .wide-field {
   grid-column: span 2;
@@ -477,6 +482,17 @@ code {
 .metric-card small {
   color: var(--muted);
   font-size: 0.72rem;
+}
+.escrow-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .theme-grid,
@@ -1152,7 +1168,8 @@ button:disabled {
 
   .summary-grid,
   .create-form,
-  .mini-grid {
+  .mini-grid,
+  .pay-grid {
     grid-template-columns: 1fr;
   }
 
