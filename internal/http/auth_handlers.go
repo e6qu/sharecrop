@@ -23,7 +23,7 @@ func (server Server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setRefreshCookie(w, accepted.RefreshToken)
+	server.setRefreshCookie(w, accepted.RefreshToken)
 	writeAuthResponse(w, http.StatusCreated, authResponse{
 		SubjectKind: "user",
 		SubjectID:   accepted.Subject.ID.String(),
@@ -48,7 +48,7 @@ func (server Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setRefreshCookie(w, accepted.RefreshToken)
+	server.setRefreshCookie(w, accepted.RefreshToken)
 	writeAuthResponse(w, http.StatusOK, authResponse{
 		SubjectKind: "user",
 		SubjectID:   accepted.Subject.ID.String(),
@@ -79,7 +79,7 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setRefreshCookie(w, accepted.RefreshToken)
+	server.setRefreshCookie(w, accepted.RefreshToken)
 	responseResult := authResponseForSubject(accepted.Subject, accepted.AccessToken)
 	responseAccepted, responseMatched := responseResult.(authResponseAccepted)
 	if !responseMatched {
@@ -92,7 +92,7 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) logout(w http.ResponseWriter, r *http.Request) {
-	clearRefreshCookie(w)
+	server.clearRefreshCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -105,7 +105,7 @@ func (server Server) guest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setRefreshCookie(w, accepted.RefreshToken)
+	server.setRefreshCookie(w, accepted.RefreshToken)
 	writeAuthResponse(w, http.StatusCreated, authResponse{
 		SubjectKind: "guest",
 		SubjectID:   accepted.Subject.ID.String(),

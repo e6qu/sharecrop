@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -112,6 +113,7 @@ type Server struct {
 	assetService        AssetService
 	mcpServer           mcp.Server
 	mcpSessions         *mcpHTTPSessionStore
+	secureCookies       bool
 }
 
 func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService) http.Handler {
@@ -127,6 +129,9 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		assetService:        assetService,
 		mcpServer:           mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}),
 		mcpSessions:         newMCPHTTPSessionStore(),
+		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
+		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
+		secureCookies: os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
@@ -996,23 +1001,25 @@ func authResponseForSubject(subject auth.Subject, accessToken auth.AccessToken) 
 	}
 }
 
-func setRefreshCookie(w http.ResponseWriter, refreshToken auth.RefreshTokenPlain) {
+func (server Server) setRefreshCookie(w http.ResponseWriter, refreshToken auth.RefreshTokenPlain) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "sharecrop_refresh_token",
 		Value:    refreshToken.String(),
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   server.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().UTC().Add(30 * 24 * time.Hour),
 	})
 }
 
-func clearRefreshCookie(w http.ResponseWriter) {
+func (server Server) clearRefreshCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "sharecrop_refresh_token",
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   server.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0).UTC(),

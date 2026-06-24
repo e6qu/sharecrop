@@ -281,7 +281,10 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	result := server.mcpServer.HandleRaw(r.Context(), verified.Subject, verified.Credential.Scopes, body)
 	if result.SessionID != "" {
-		server.mcpSessions.create(result.SessionID, verified.Subject.ID.String())
+		if !server.mcpSessions.create(result.SessionID, verified.Subject.ID.String()) {
+			writeError(w, http.StatusTooManyRequests, "too many active MCP sessions for this agent")
+			return
+		}
 		w.Header().Set(mcpSessionHeader, result.SessionID)
 	} else if requestInfo.initializes {
 		generatedSessionID := newMCPHTTPSessionID()
@@ -289,7 +292,10 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "MCP session could not be created")
 			return
 		}
-		server.mcpSessions.create(generatedSessionID, verified.Subject.ID.String())
+		if !server.mcpSessions.create(generatedSessionID, verified.Subject.ID.String()) {
+			writeError(w, http.StatusTooManyRequests, "too many active MCP sessions for this agent")
+			return
+		}
 		w.Header().Set(mcpSessionHeader, generatedSessionID)
 	}
 	if !result.HasResponse {

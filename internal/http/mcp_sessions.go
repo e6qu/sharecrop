@@ -19,6 +19,12 @@ const mcpLastEventIDHeader = "Last-Event-ID"
 // so abandoned sessions cannot accumulate without bound.
 const mcpSessionTTL = 30 * time.Minute
 
+// Bounds on concurrent MCP sessions to keep an authenticated agent (or a stolen
+// credential) from exhausting memory by bursting initialize calls. Sessions are
+// also evicted after mcpSessionTTL, so these caps only bound concurrency.
+const maxMCPSessionsPerSubject = 16
+const maxMCPSessionsTotal = 1024
+
 type mcpHTTPSessionStore struct {
 	mu       sync.Mutex
 	sessions map[string]*mcpHTTPSession
@@ -60,11 +66,26 @@ func (store *mcpHTTPSessionStore) evictExpiredLocked() {
 	}
 }
 
-func (store *mcpHTTPSessionStore) create(id string, subject string) {
+// create registers a new session and reports whether it was admitted. It is
+// refused when the global ceiling or the per-subject cap is reached.
+func (store *mcpHTTPSessionStore) create(id string, subject string) bool {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.evictExpiredLocked()
+	if len(store.sessions) >= maxMCPSessionsTotal {
+		return false
+	}
+	perSubject := 0
+	for _, session := range store.sessions {
+		if session.subject == subject {
+			perSubject++
+		}
+	}
+	if perSubject >= maxMCPSessionsPerSubject {
+		return false
+	}
 	store.sessions[id] = &mcpHTTPSession{id: id, subject: subject, events: make([]mcpHTTPEvent, 0), subs: make(map[int64]chan mcpHTTPEvent), lastSeen: store.now()}
+	return true
 }
 
 func (store *mcpHTTPSessionStore) existsForSubject(id string, subject string) bool {
