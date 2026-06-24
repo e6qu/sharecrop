@@ -42,13 +42,21 @@ const organizations = { lattice: "Lattice Field Co" };
 
 // balance is the persona's TOTAL credits; seeded escrow is carved out of it at
 // startup (see seedEscrowByUser) so available + escrow reconciles to this total.
+// track is the persona's lifetime work record (settled tasks + acceptance rate),
+// surfaced as a trust signal when authorizing a worker or agent.
 const users = [
-  { id: "mara", name: "Mara Chen", role: "Requester", balance: 398, org: "lattice" },
-  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64, org: "lattice" },
-  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 160, org: "lattice" },
-  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100, org: "" },
-  { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83, org: "lattice" },
+  { id: "mara", name: "Mara Chen", role: "Requester", balance: 398, org: "lattice", track: { completed: 0, acceptedPct: 0 } },
+  { id: "jules", name: "Jules Park", role: "Implementor", balance: 64, org: "lattice", track: { completed: 24, acceptedPct: 96 } },
+  { id: "ren", name: "Ren Ito", role: "Organization reviewer", balance: 160, org: "lattice", track: { completed: 0, acceptedPct: 0 } },
+  { id: "sol", name: "Sol Rivera", role: "Agent operator", balance: 100, org: "", track: { completed: 18, acceptedPct: 89 } },
+  { id: "tala", name: "Tala Stone", role: "Implementor", balance: 83, org: "lattice", track: { completed: 31, acceptedPct: 100 } },
 ];
+
+function trustLabel(userId) {
+  const user = users.find((item) => item.id === userId);
+  if (!user || !user.track || user.track.completed === 0) return "";
+  return `${user.track.completed} tasks · ${user.track.acceptedPct}% accepted`;
+}
 
 function orgName(orgId) {
   return organizations[orgId] || orgId;
@@ -1093,6 +1101,7 @@ function userPage() {
         <div class="badge-row">
           <span>${escapeHtml(user.role)}</span>
           <span>${escapeHtml(balanceOf(user.id))} credits available</span>
+          ${trustLabel(user.id) ? `<span>${escapeHtml(trustLabel(user.id))}</span>` : ""}
         </div>
         <h3>Requested tasks</h3>
         ${requested.length ? `<ul class="objective-list">${requested.map(taskLine).join("")}</ul>` : `<p class="muted">No requested tasks.</p>`}
@@ -1691,6 +1700,7 @@ function reservationQueue(taskItem) {
       <div>
         <strong>${userLink(reservation.by)}</strong>
         <span>${escapeHtml(reservation.state)} / expires ${escapeHtml(reservation.expires ?? "48h")}</span>
+        ${trustLabel(reservation.by) ? `<span class="trust-note">${escapeHtml(trustLabel(reservation.by))}</span>` : ""}
       </div>
       <div class="row-actions">
         ${reservation.state === "requested" && reservation.by !== state.userId ? `<button class="button secondary" data-action="declineReservation" data-user="${escapeAttribute(reservation.by)}">Decline</button><button class="button primary" data-action="approve" data-user="${escapeAttribute(reservation.by)}">Approve</button>` : ""}
@@ -1721,6 +1731,7 @@ function submissionList(taskItem) {
         <div>
           <strong>${userLink(submission.by)}</strong>
           <span class="action-chip">${escapeHtml(submissionStateLabel(submission.state))}</span>
+          ${trustLabel(submission.by) ? `<span class="trust-note">${escapeHtml(trustLabel(submission.by))}</span>` : ""}
         </div>
         <p class="decision-criteria"><strong>Should return</strong> — ${escapeHtml(schemaSummary(taskItem.schema))}</p>
         <code>${escapeHtml(submission.response)}</code>

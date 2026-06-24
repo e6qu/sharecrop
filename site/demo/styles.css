@@ -483,6 +483,11 @@ code {
   color: var(--muted);
   font-size: 0.72rem;
 }
+.trust-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
 .escrow-chip {
   display: inline-block;
   margin-left: 6px;
@@ -651,7 +656,6 @@ code {
   gap: 6px;
 }
 
-.mission-meta span,
 .reward-chip,
 .action-chip,
 .danger-chip {
@@ -1020,6 +1024,7 @@ button:disabled {
 }
 
 .task-table-row em,
+.mission-meta span,
 .badge-row span {
   display: inline-flex;
   width: fit-content;
