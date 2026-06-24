@@ -64,7 +64,7 @@ const seedTasks = [
     lifecycle: lifecycle.open,
     availability: availability.submitted,
     objective: "Classify each of the 6 fruit observations below as ripe, unripe, or damaged. Return one label per observation, in order, in the labels array. Accepted when all 6 have a label from that set.",
-    schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string"}}}}',
+    schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string","enum":["ripe","unripe","damaged"]},"required":true}}}',
     inputs: [{
       kind: "list",
       label: "6 fruit observations to classify, in order:",
@@ -433,7 +433,7 @@ const seedState = {
   draftTitle: "Label orchard photos",
   draftDescription: "Classify each of the 6 fruit observations as ripe, unripe, or damaged. Return one label per observation, in order, in the labels array.",
   draftResponseKind: "structured",
-  draftFields: [{ name: "labels", type: "string_list" }],
+  draftFields: [{ name: "labels", type: "string_list", required: true, enum: "ripe, unripe, damaged" }],
   draftRewardKind: "bundle",
   draftCredits: "45",
   draftCollectible: "Ripe Lens",
@@ -739,11 +739,19 @@ function appendTaskEvent(taskItem, activity) {
   return { ...taskItem, timeline: [activity, ...taskItem.timeline].slice(0, 5) };
 }
 
-function schemaForType(type) {
-  if (type === "integer") return { kind: "integer" };
-  if (type === "decimal") return { kind: "decimal_string" };
-  if (type === "string_list") return { kind: "array", items: { kind: "string" } };
-  return { kind: "string" };
+function enumValuesOf(field) {
+  return (field.enum || "").split(",").map((value) => value.trim()).filter(Boolean);
+}
+
+function schemaForField(field) {
+  const values = enumValuesOf(field);
+  let spec;
+  if (field.type === "integer") spec = { kind: "integer" };
+  else if (field.type === "decimal") spec = { kind: "decimal_string" };
+  else if (field.type === "string_list") spec = { kind: "array", items: values.length ? { kind: "string", enum: values } : { kind: "string" } };
+  else spec = values.length ? { kind: "string", enum: values } : { kind: "string" };
+  if (field.required) spec.required = true;
+  return spec;
 }
 
 function draftSchema() {
@@ -752,14 +760,14 @@ function draftSchema() {
   if (fields.length === 0) return '{"kind":"freeform"}';
   const built = { kind: "object", fields: {} };
   fields.forEach((field) => {
-    built.fields[field.name.trim()] = schemaForType(field.type);
+    built.fields[field.name.trim()] = schemaForField(field);
   });
   return JSON.stringify(built);
 }
 
 function friendlyType(spec) {
   if (!spec || !spec.kind) return "value";
-  if (spec.kind === "string") return "text";
+  if (spec.kind === "string") return spec.enum ? `one of ${spec.enum.join(", ")}` : "text";
   if (spec.kind === "integer") return "whole number";
   if (spec.kind === "decimal_string") return "decimal (a number sent as text)";
   if (spec.kind === "array") return `list of ${friendlyType(spec.items)}`;
@@ -776,10 +784,52 @@ function schemaSummary(schemaJson) {
   }
   if (!parsed || parsed.kind === "freeform") return "Free-form text — no required structure.";
   if (parsed.kind === "object" && parsed.fields) {
-    const fields = Object.entries(parsed.fields).map(([name, spec]) => `${name}: ${friendlyType(spec)}`);
+    const fields = Object.entries(parsed.fields).map(([name, spec]) => `${name}: ${friendlyType(spec)}${spec.required ? " (required)" : ""}`);
     return fields.length ? fields.join(" · ") : "Free-form text — no required structure.";
   }
   return "";
+}
+
+function validateResponse(schemaJson, text) {
+  let schema;
+  try {
+    schema = JSON.parse(schemaJson);
+  } catch {
+    return { ok: true, errors: [] };
+  }
+  if (!schema || schema.kind === "freeform" || !schema.fields) return { ok: true, errors: [] };
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { ok: false, errors: ["Response is not valid JSON."] };
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { ok: false, errors: ["Response must be a JSON object."] };
+  }
+  const errors = [];
+  for (const [name, spec] of Object.entries(schema.fields)) {
+    if (!Object.prototype.hasOwnProperty.call(value, name)) {
+      if (spec.required) errors.push(`Missing required field "${name}".`);
+      continue;
+    }
+    const fieldValue = value[name];
+    if (spec.kind === "integer" && !Number.isInteger(fieldValue)) {
+      errors.push(`"${name}" must be a whole number.`);
+    } else if (spec.kind === "decimal_string" && typeof fieldValue !== "string") {
+      errors.push(`"${name}" must be a decimal sent as text.`);
+    } else if (spec.kind === "string") {
+      if (typeof fieldValue !== "string") errors.push(`"${name}" must be text.`);
+      else if (spec.enum && !spec.enum.includes(fieldValue)) errors.push(`"${name}" must be one of ${spec.enum.join(", ")}.`);
+    } else if (spec.kind === "array") {
+      if (!Array.isArray(fieldValue)) errors.push(`"${name}" must be a list.`);
+      else if (spec.items?.enum) {
+        const invalid = fieldValue.filter((item) => !spec.items.enum.includes(item));
+        if (invalid.length) errors.push(`"${name}" has values outside ${spec.items.enum.join(", ")}.`);
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors };
 }
 
 function schemaDesigner() {
@@ -797,6 +847,7 @@ function schemaDesigner() {
         <p class="schema-hint">Workers reply in free-form text. No response schema is enforced.</p>
       </div>`;
   }
+  const allowsEnum = (type) => type === "string" || type === "string_list" || type === undefined;
   const rows = state.draftFields
     .map((field, index) => `
       <div class="schema-field-row">
@@ -807,14 +858,25 @@ function schemaDesigner() {
           ${option("decimal", "Decimal", field.type)}
           ${option("string_list", "List of text", field.type)}
         </select>
+        <label class="schema-field-required"><input type="checkbox" data-schema-required="${index}" ${field.required ? "checked" : ""}> required</label>
         <button class="button ghost" type="button" data-action="remove-field" data-index="${index}" aria-label="Remove field">Remove</button>
+        ${allowsEnum(field.type) ? `<input class="schema-field-enum" data-schema-enum="${index}" value="${escapeAttribute(field.enum || "")}" placeholder="allowed values (comma-separated, optional)" aria-label="Allowed values">` : ""}
       </div>`)
     .join("");
+  const names = state.draftFields.map((field) => field.name.trim()).filter(Boolean);
+  const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+  const hasEmpty = state.draftFields.some((field) => field.name.trim() === "");
+  const warnings = [
+    duplicates.length ? `Duplicate field name "${duplicates[0]}" — the last one wins.` : "",
+    hasEmpty ? "Fields with no name are omitted from the schema." : "",
+  ].filter(Boolean);
+  const warning = warnings.length ? `<p class="schema-warning">${escapeHtml(warnings.join(" "))}</p>` : "";
   return `
     <div class="schema-designer wide-field">
       ${kindSelect}
-      <p class="schema-hint">Design the structured result you want back. Each field becomes part of the response schema.</p>
+      <p class="schema-hint">Design the structured result you want back. Mark fields required and, for text fields, list the allowed values workers must choose from.</p>
       <div class="schema-fields">${rows}</div>
+      ${warning}
       <button class="button secondary" type="button" data-action="add-field">Add field</button>
       <div class="schema-block">
         <span>What workers must return</span>
@@ -825,7 +887,7 @@ function schemaDesigner() {
 }
 
 function addDraftField() {
-  setState({ draftFields: [...state.draftFields, { name: "", type: "string" }] });
+  setState({ draftFields: [...state.draftFields, { name: "", type: "string", required: false, enum: "" }] });
 }
 
 function removeDraftField(index) {
@@ -1524,7 +1586,12 @@ function actionPayload(action, taskItem) {
   if (action.kind === "submit" || action.kind === "agentRun") {
     const summary = schemaSummary(taskItem.schema);
     const hint = summary ? `<span class="schema-hint">Your response should match — ${escapeHtml(summary)}</span>` : "";
-    return `<label for="response-text">Your response${hint}<textarea id="response-text" data-response-task="${escapeAttribute(taskItem.id)}">${escapeHtml(responseDraftFor(taskItem))}</textarea></label>`;
+    const note = state.submitNote && state.submitNote.taskId === taskItem.id
+      ? (state.submitNote.ok
+        ? `<p class="validate-ok">Response matches the schema.</p>`
+        : `<p class="validate-error">${escapeHtml(state.submitNote.errors.join(" "))}</p>`)
+      : "";
+    return `<label for="response-text">Your response${hint}<textarea id="response-text" data-response-task="${escapeAttribute(taskItem.id)}">${escapeHtml(responseDraftFor(taskItem))}</textarea></label>${note}`;
   }
   return "";
 }
@@ -1869,6 +1936,14 @@ function handleCommit(event) {
     updateDraftField(Number(target.dataset.schemaType), "type", target.value);
     return;
   }
+  if (target.dataset.schemaRequired !== undefined) {
+    updateDraftField(Number(target.dataset.schemaRequired), "required", target.checked);
+    return;
+  }
+  if (target.dataset.schemaEnum !== undefined) {
+    updateDraftField(Number(target.dataset.schemaEnum), "enum", target.value);
+    return;
+  }
   if (target.dataset.field === undefined) return;
 
   const key = target.dataset.field;
@@ -2081,11 +2156,18 @@ function requestApproval(taskItem) {
 }
 
 function submitMission(taskItem) {
+  const response = responseDraftFor(taskItem);
+  const validation = validateResponse(taskItem.schema, response);
+  if (!validation.ok) {
+    setState({ submitNote: { taskId: taskItem.id, ok: false, errors: validation.errors } });
+    return;
+  }
+  state = { ...state, submitNote: { taskId: taskItem.id, ok: true, errors: [] } };
   updateTask(taskItem.id, (current) => ({
     availability: availability.submitted,
     submissions: [
       ...current.submissions.filter((submission) => submission.by !== state.userId || submission.state !== "submitted"),
-      { id: `sub-${taskItem.id}-${state.userId}`, by: state.userId, state: "submitted", response: responseDraftFor(taskItem), reviewNote: "", partialPayout: "", tip: "", ban: false },
+      { id: `sub-${taskItem.id}-${state.userId}`, by: state.userId, state: "submitted", response, reviewNote: "", partialPayout: "", tip: "", ban: false },
     ].slice(-4),
   }), `${selectedUser().name} submitted a response for ${taskItem.title}.`);
 }
