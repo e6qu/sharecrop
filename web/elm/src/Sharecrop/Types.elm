@@ -245,3 +245,103 @@ type Msg
     | CreateTaskOwnerChanged String
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
+
+
+pageToPath : Page -> String
+pageToPath page =
+    case page of
+        OverviewPage ->
+            "/"
+
+        TasksPage ->
+            "/tasks"
+
+        CreateTaskPage ->
+            "/tasks/new"
+
+        TaskDetailPage taskId ->
+            "/tasks/" ++ taskId
+
+        DiscoveryPage ->
+            "/discovery"
+
+        FundingPage ->
+            "/funding"
+
+        AgentsPage ->
+            "/agents"
+
+        CollectiblesPage ->
+            "/collectibles"
+
+        OrganizationsPage ->
+            "/organizations"
+
+        OrganizationDetailPage organizationId ->
+            "/organizations/" ++ organizationId
+
+        UserDetailPage userId ->
+            "/users/" ++ userId
+
+        UserWorkPage userId ->
+            "/users/" ++ userId ++ "/work"
+
+        UserSubmissionsPage userId ->
+            "/users/" ++ userId ++ "/submissions"
+
+        CollectibleDetailPage collectibleId ->
+            "/collectibles/" ++ collectibleId
+
+        SeriesDetailPage seriesId ->
+            "/series/" ++ seriesId
+
+        TeamDetailPage teamId ->
+            "/teams/" ++ teamId
+
+
+visibilityPublicTag : String
+visibilityPublicTag =
+    "public"
+
+
+visibilityDefaultTag : String
+visibilityDefaultTag =
+    "default"
+
+
+visibilityUserTag : String
+visibilityUserTag =
+    "user"
+
+
+visibilityTeamTag : String
+visibilityTeamTag =
+    "team"
+
+
+visibilityOrganizationTag : String
+visibilityOrganizationTag =
+    "organization"
+
+
+allVisibilityTags : List String
+allVisibilityTags =
+    [ visibilityPublicTag, visibilityDefaultTag, visibilityUserTag, visibilityTeamTag, visibilityOrganizationTag ]
+
+
+visibilityLabel : String -> String
+visibilityLabel tag =
+    if tag == visibilityPublicTag then
+        "Public"
+
+    else if tag == visibilityUserTag then
+        "Specific user"
+
+    else if tag == visibilityTeamTag then
+        "Team"
+
+    else if tag == visibilityOrganizationTag then
+        "Organization"
+
+    else
+        "Private (default)"
