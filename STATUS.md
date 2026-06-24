@@ -1,10 +1,20 @@
 # Status
 
-The repository contains pull request 1 through pull request 41 work, merged into `main`.
+The repository contains pull request 1 through pull request 42 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/collectible-tips-arcade-mcp` adds collectible/inventory tips (real app + demo), a full pixel-art "arcade" demo theme, MCP install/work-loop docs, and expanded contract fixtures, capped with security + UI reviews and their fixes. The out-of-process Postgres session/rate-limiter store is deferred to a focused follow-up (see DO_NEXT). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-on-real-elm` rebuilds the demo to run the REAL compiled Elm client against an in-browser fake backend (no drift from the shipped UI), seeds it with realistic agentic-work tasks, and re-skins it with the pixel-art arcade theme; a UI/UX/flow-correctness review then fixed data-shape bugs. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/demo-on-real-elm`:
+
+- The demo (`site/demo`) now serves the actual compiled Elm client (`elm.js` + `app.css`) plus `backend.js`, an XMLHttpRequest shim with a stateful in-memory store that answers every `/api/*` call from realistic seeded data (invoice extraction, ticket classification, ledger fraud-check, weather agent, transcription, alt-text — real inputs + strict response schemas). The demo is the same code as the shipped client and cannot drift. `demo.spec.ts` serves `site/demo` in-process and asserts the client boots, the ledger and My-tasks populate, and a task detail renders its schema.
+- `arcade.css` (loaded only by the demo) ports the pixel-art / idle-game theme onto the real client's Tailwind classes: grassy backdrop, parchment dialog-box panels, blocky pressable buttons/nav, terminal-green schema blocks, Press Start 2P / VT323 fonts. The shipped app never loads it.
+- Two public tasks are seeded as owned by other users so the discover -> reserve -> submit worker loop and the reverse-MCP story are reachable; one task carries an agent (`via_agent`) submission for the review side.
+- A UI/UX/flow-correctness review caught that the shim emitted enum values the real Elm decoders reject (Elm's all-or-nothing `Decode.list` blanked whole screens). Fixed every enum to the decoder-valid set (availability/task-state/ledger-kind/agent-scope/reservation-state) and the post -> fund -> open and review flows.
+- Known limitation (see BUGS.md): hard-refresh / deep-link on a demo sub-route 404s on GitHub Pages (the path-routed `Browser.application` builds root-absolute URLs under the `/sharecrop/demo/` base); in-app click navigation works.
+
+Earlier branch `task/collectible-tips-arcade-mcp` (pull request 42, merged) added collectible/inventory tips (real app + demo), the pixel-art arcade theme (on the old static demo), MCP install/work-loop docs, and expanded contract fixtures.
 
 Implemented in `task/collectible-tips-arcade-mcp`:
 
