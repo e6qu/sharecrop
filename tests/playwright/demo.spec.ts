@@ -44,4 +44,11 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
   ).toBeVisible();
   await expect(page.getByText("Classify 20 support tickets by category"))
     .toBeVisible();
+
+  // Opening a task shows the real detail view with its instructions and the
+  // typed response schema, served by the fake backend.
+  await page.getByTestId("discovery-view").first().click();
+  await expect(page.getByText("Read the 6 attached invoice scans", { exact: false }))
+    .toBeVisible();
+  await expect(page.getByText('"invoice_id"', { exact: false })).toBeVisible();
 });
