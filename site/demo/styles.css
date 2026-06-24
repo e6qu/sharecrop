@@ -826,10 +826,37 @@ code {
 }
 
 .schema-field-row {
-  display: grid;
-  grid-template-columns: 1fr 160px auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.schema-field-row .schema-field-name {
+  flex: 1 1 160px;
+}
+
+.schema-field-row .schema-field-type {
+  flex: 0 0 150px;
+}
+
+.schema-field-row .schema-field-enum {
+  flex: 1 1 100%;
+}
+
+.schema-field-required {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.schema-field-required input {
+  width: auto;
+  min-height: 0;
 }
 
 .schema-field-row input,
@@ -840,6 +867,26 @@ code {
   background: var(--surface);
   color: var(--text);
   padding: 8px 10px;
+}
+
+.schema-warning {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--warning);
+}
+
+.validate-ok {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--success);
+}
+
+.validate-error {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--danger);
 }
 
 .status-panel {

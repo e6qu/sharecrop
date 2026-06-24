@@ -454,6 +454,10 @@ func (testOrganizationService) GetTeam(context.Context, auth.UserSubject, core.T
 	return org.GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "team not found")}
 }
 
+func (testOrganizationService) AddTeamMember(context.Context, auth.UserSubject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult {
+	return org.TeamMemberAddedResult{}
+}
+
 func (testOrganizationService) CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck {
 	return org.PermissionGranted{}
 }

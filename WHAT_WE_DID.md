@@ -1,5 +1,13 @@
 # What We Did
 
+`task/economy-orgs-and-polish` bundled a reward economy, schema validation, and team membership:
+
+- Demo reward economy: Fund now checks the requester's available balance and moves the reward credits into a per-task escrow bucket; accept/reject settles from escrow (refunding any unused credits and netting the tip) and cancel refunds it. The dashboard shows "Credits available" and "Held in escrow", and seed escrow is derived from already-funded open tasks so balances stay consistent.
+- Demo schema designer + validation: each text field can be marked required and given allowed values (enum); the designer warns on duplicate/empty field names and shows the constraints in the friendly summary. Worker submissions are validated against the schema on submit — missing required keys, wrong types, and out-of-enum values are reported inline and block the submission; a valid one is confirmed and stored.
+- Demo polish: the comms/activity feed linkifies persona names to their profiles (matching the cross-linked app), and the unused difficulty field was removed from the seed data.
+- Real app standalone-team membership: `POST /api/teams/{id}/members` (org.Service.AddTeamMember + store AddTeamMemberByEmail) lets a user-owned team's owner — or a manager of an owning organization — add members by email; the team page shows an add-member form to the owner and refreshes the roster. RBAC denies others (403). Covered by an e2e test and a Playwright flow.
+- Deferred to focused follow-up PRs: modeling organizations as real entities (org id on users + tasks, a DB migration plus RBAC rewrite) and decomposing the `Main.elm` monolith (which needs the interdependent Model/Msg types lifted into shared modules first). Both are large refactors and were left out of this bundle to keep it clean and green; they are recorded in DO_NEXT.
+
 `task/demo-cross-linking` made demo entities real links and acted on a specialized review:
 
 - Converted task and user references into real anchors. Task rows use a stretched `#/tasks/{id}` link over the whole row and user names are `#/users/{id}` anchors, so they support left-click, open-in-new-tab, and right-click; `handleClick` returns early for anchors so the browser handles them. The dead kanban board/card code and CSS were removed (the flat list is the only task list).

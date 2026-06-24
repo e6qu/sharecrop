@@ -119,6 +119,10 @@ func (store *memoryStore) AddTeamMember(context.Context, core.TeamID, core.UserI
 	return TeamMemberAdded{}
 }
 
+func (store *memoryStore) AddTeamMemberByEmail(context.Context, core.TeamID, auth.EmailAddress) AddTeamMemberStoreResult {
+	return TeamMemberAdded{}
+}
+
 func (store *memoryStore) ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult {
 	return TeamsListed{Values: []Team{}}
 }

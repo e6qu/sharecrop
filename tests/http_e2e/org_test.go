@@ -137,6 +137,43 @@ func TestStandaloneTeamCreateAndList(t *testing.T) {
 	}
 }
 
+func TestStandaloneTeamMembership(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "team-owner")
+	createResponse := postJSONWithBearer(t, server.URL+"/api/teams", []byte(`{"name":"Survey crew"}`), owner.AccessToken)
+	defer createResponse.Body.Close()
+	assertStatus(t, createResponse, http.StatusCreated)
+	var team teamHTTPResponse
+	if err := json.NewDecoder(createResponse.Body).Decode(&team); err != nil {
+		t.Fatalf("decode team: %v", err)
+	}
+
+	memberEmail := "crew-member-" + uniqueTestSuffix(t) + "@example.com"
+	member := registerUserWithEmail(t, server, memberEmail)
+
+	// The owner adds a member by email and the roster reflects it.
+	addResponse := postJSONWithBearer(t, server.URL+"/api/teams/"+team.ID+"/members", []byte(`{"email":"`+memberEmail+`"}`), owner.AccessToken)
+	defer addResponse.Body.Close()
+	assertStatus(t, addResponse, http.StatusCreated)
+	var detail struct {
+		Members []string `json:"members"`
+	}
+	if err := json.NewDecoder(addResponse.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if !containsString(detail.Members, member.SubjectID) {
+		t.Fatalf("roster %v missing added member %s", detail.Members, member.SubjectID)
+	}
+
+	// A non-owner cannot add members to a team they do not own.
+	outsider := registerUser(t, server, "team-outsider")
+	outsiderResponse := postJSONWithBearer(t, server.URL+"/api/teams/"+team.ID+"/members", []byte(`{"email":"`+memberEmail+`"}`), outsider.AccessToken)
+	defer outsiderResponse.Body.Close()
+	assertStatus(t, outsiderResponse, http.StatusForbidden)
+}
+
 func TestTeamDetailRBAC(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()

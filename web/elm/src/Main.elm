@@ -135,6 +135,8 @@ type alias LoggedInModel =
     , userSubmissions : List Submission.SubmissionResponse
     , seriesDetail : Maybe TaskSeries.TaskSeriesResponse
     , teamDetail : Maybe Team.TeamDetailResponse
+    , teamMemberEmail : String
+    , teamMemberMessage : Maybe String
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
     , provisionMemberEmail : String
@@ -261,6 +263,9 @@ type Msg
     | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
     | SeriesDetailReceived (Result Http.Error TaskSeries.TaskSeriesResponse)
     | TeamDetailReceived (Result Http.Error Team.TeamDetailResponse)
+    | TeamMemberEmailChanged String
+    | AddTeamMemberClicked String
+    | AddTeamMemberReceived (Result Http.Error Team.TeamDetailResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
@@ -359,6 +364,8 @@ emptyLoggedIn response =
     , userSubmissions = []
     , seriesDetail = Nothing
     , teamDetail = Nothing
+    , teamMemberEmail = ""
+    , teamMemberMessage = Nothing
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
     , provisionMemberEmail = ""
@@ -501,7 +508,7 @@ enterPage page state =
             { state | page = page, seriesDetail = Nothing }
 
         TeamDetailPage _ ->
-            { state | page = page, teamDetail = Nothing }
+            { state | page = page, teamDetail = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         _ ->
             { state | page = page }
@@ -880,6 +887,18 @@ update msg model =
         TeamDetailReceived result ->
             ( updateLoggedIn model (\state -> { state | teamDetail = Result.toMaybe result }), Cmd.none )
 
+        TeamMemberEmailChanged value ->
+            ( updateLoggedIn model (\state -> { state | teamMemberEmail = value }), Cmd.none )
+
+        AddTeamMemberClicked teamId ->
+            withSession model (\state -> ( model, postAddTeamMember state.accessToken teamId state.teamMemberEmail ))
+
+        AddTeamMemberReceived (Ok detail) ->
+            ( updateLoggedIn model (\state -> { state | teamDetail = Just detail, teamMemberEmail = "", teamMemberMessage = Just "Member added." }), Cmd.none )
+
+        AddTeamMemberReceived (Err error) ->
+            ( updateLoggedIn model (\state -> { state | teamMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
+
         OrgTasksReceived result ->
             ( updateLoggedIn model (\state -> { state | orgTasks = tasksFromResult result }), Cmd.none )
 
@@ -1238,6 +1257,15 @@ routeLoadCmd token page =
 fetchUserProfile : String -> String -> Cmd Msg
 fetchUserProfile token userId =
     authorizedRequest "GET" token ("/api/users/" ++ userId) Http.emptyBody (Http.expectJson UserProfileReceived Task.userProfileResponseDecoder)
+
+
+postAddTeamMember : String -> String -> String -> Cmd Msg
+postAddTeamMember token teamId email =
+    authorizedRequest "POST"
+        token
+        ("/api/teams/" ++ teamId ++ "/members")
+        (Http.jsonBody (Encode.object [ ( "email", Encode.string email ) ]))
+        (Http.expectJson AddTeamMemberReceived Team.teamDetailResponseDecoder)
 
 
 refreshCredentials : Model -> Cmd Msg
@@ -2041,6 +2069,16 @@ teamDetailView teamId state =
                       else
                         div [ Html.Attributes.class "divide-y divide-slate-100", testId "team-members" ]
                             (List.map (\memberId -> a [ href ("/users/" ++ memberId), Html.Attributes.class "block py-2 text-sm underline", testId "team-member-row" ] [ text memberId ]) detail.members)
+                    , if detail.team.ownerKind == "user" && detail.team.ownerUserID == state.subjectId then
+                        form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit (AddTeamMemberClicked detail.team.id) ]
+                            [ Ui.fieldLabel "Add member by email"
+                                [ Ui.textInput [ type_ "email", placeholder "person@example.com", value state.teamMemberEmail, onInput TeamMemberEmailChanged, testId "team-member-email" ] ]
+                            , Ui.primaryButton [ type_ "submit", testId "add-team-member" ] "Add member"
+                            , maybeNote state.teamMemberMessage "team-member-message"
+                            ]
+
+                      else
+                        text ""
                     ]
 
             Nothing ->

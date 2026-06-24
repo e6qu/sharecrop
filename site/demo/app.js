@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v7";
+const storageKey = "sharecrop-demo-state-v8";
 
 const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
@@ -57,14 +57,13 @@ const seedTasks = [
     requester: "mara",
     assignee: "jules",
     area: "Field Ops",
-    difficulty: "A",
     visibility: "public",
     policy: policy.reservation,
     reward: rewardBundle(45, ["Ripe Lens"]),
     lifecycle: lifecycle.open,
     availability: availability.submitted,
     objective: "Classify each of the 6 fruit observations below as ripe, unripe, or damaged. Return one label per observation, in order, in the labels array. Accepted when all 6 have a label from that set.",
-    schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string"}}}}',
+    schema: '{"kind":"object","fields":{"labels":{"kind":"array","items":{"kind":"string","enum":["ripe","unripe","damaged"]},"required":true}}}',
     inputs: [{
       kind: "list",
       label: "6 fruit observations to classify, in order:",
@@ -96,7 +95,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Ledger Bay",
-    difficulty: "B",
     visibility: "organization",
     policy: policy.approval,
     reward: rewardCredits(30),
@@ -125,7 +123,6 @@ const seedTasks = [
     requester: "ren",
     assignee: "",
     area: "Foundry",
-    difficulty: "C",
     visibility: "public",
     policy: policy.open,
     reward: rewardNone(),
@@ -146,7 +143,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Cartography",
-    difficulty: "S",
     visibility: "public",
     policy: policy.reservation,
     reward: rewardCredits(80),
@@ -167,7 +163,6 @@ const seedTasks = [
     requester: "ren",
     assignee: "tala",
     area: "Vault",
-    difficulty: "A",
     visibility: "organization",
     policy: policy.reservation,
     reward: rewardCollectible(["Vault Seal"]),
@@ -206,7 +201,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "sol",
     area: "Uplink",
-    difficulty: "B",
     visibility: "public",
     policy: policy.approval,
     reward: rewardBundle(25, ["Storm Pin"]),
@@ -238,7 +232,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Market",
-    difficulty: "C",
     visibility: "public",
     policy: policy.open,
     reward: rewardCredits(12),
@@ -268,7 +261,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "jules",
     area: "Field Ops",
-    difficulty: "B",
     visibility: "public",
     policy: policy.open,
     reward: rewardCredits(18),
@@ -299,7 +291,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "tala",
     area: "Archive",
-    difficulty: "C",
     visibility: "organization",
     policy: policy.reservation,
     reward: rewardCredits(20),
@@ -335,7 +326,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Hangar",
-    difficulty: "A",
     visibility: "public",
     policy: policy.reservation,
     reward: rewardBundle(60, ["Drone Patch"]),
@@ -363,7 +353,6 @@ const seedTasks = [
     requester: "ren",
     assignee: "",
     area: "Docs Deck",
-    difficulty: "C",
     visibility: "public",
     policy: policy.approval,
     reward: rewardCredits(22),
@@ -384,7 +373,6 @@ const seedTasks = [
     requester: "mara",
     assignee: "",
     area: "Lab",
-    difficulty: "B",
     visibility: "public",
     policy: policy.reservation,
     reward: rewardCredits(26),
@@ -409,6 +397,16 @@ const seedTasks = [
   }),
 ];
 
+function holdsEscrow(taskItem) {
+  return (taskItem.lifecycle === lifecycle.funded || taskItem.lifecycle === lifecycle.open) &&
+    (taskItem.reward.credits || 0) > 0 &&
+    ![availability.accepted, availability.rejected, availability.closed].includes(taskItem.availability);
+}
+
+const seedEscrow = Object.fromEntries(
+  seedTasks.filter(holdsEscrow).map((taskItem) => [taskItem.id, taskItem.reward.credits]),
+);
+
 const seedState = {
   mode: "light",
   theme: "showcase",
@@ -423,7 +421,7 @@ const seedState = {
   draftTitle: "Label orchard photos",
   draftDescription: "Classify each of the 6 fruit observations as ripe, unripe, or damaged. Return one label per observation, in order, in the labels array.",
   draftResponseKind: "structured",
-  draftFields: [{ name: "labels", type: "string_list" }],
+  draftFields: [{ name: "labels", type: "string_list", required: true, enum: "ripe, unripe, damaged" }],
   draftRewardKind: "bundle",
   draftCredits: "45",
   draftCollectible: "Ripe Lens",
@@ -434,6 +432,7 @@ const seedState = {
   reviewDrafts: {},
   localTaskSeq: 1,
   balances: Object.fromEntries(users.map((user) => [user.id, user.balance])),
+  escrow: seedEscrow,
   inventories: {
     mara: ["Ripe Lens", "Drone Patch", "Storm Pin"],
     jules: ["Archive Token"],
@@ -728,11 +727,19 @@ function appendTaskEvent(taskItem, activity) {
   return { ...taskItem, timeline: [activity, ...taskItem.timeline].slice(0, 5) };
 }
 
-function schemaForType(type) {
-  if (type === "integer") return { kind: "integer" };
-  if (type === "decimal") return { kind: "decimal_string" };
-  if (type === "string_list") return { kind: "array", items: { kind: "string" } };
-  return { kind: "string" };
+function enumValuesOf(field) {
+  return (field.enum || "").split(",").map((value) => value.trim()).filter(Boolean);
+}
+
+function schemaForField(field) {
+  const values = enumValuesOf(field);
+  let spec;
+  if (field.type === "integer") spec = { kind: "integer" };
+  else if (field.type === "decimal") spec = { kind: "decimal_string" };
+  else if (field.type === "string_list") spec = { kind: "array", items: values.length ? { kind: "string", enum: values } : { kind: "string" } };
+  else spec = values.length ? { kind: "string", enum: values } : { kind: "string" };
+  if (field.required) spec.required = true;
+  return spec;
 }
 
 function draftSchema() {
@@ -741,14 +748,14 @@ function draftSchema() {
   if (fields.length === 0) return '{"kind":"freeform"}';
   const built = { kind: "object", fields: {} };
   fields.forEach((field) => {
-    built.fields[field.name.trim()] = schemaForType(field.type);
+    built.fields[field.name.trim()] = schemaForField(field);
   });
   return JSON.stringify(built);
 }
 
 function friendlyType(spec) {
   if (!spec || !spec.kind) return "value";
-  if (spec.kind === "string") return "text";
+  if (spec.kind === "string") return spec.enum ? `one of ${spec.enum.join(", ")}` : "text";
   if (spec.kind === "integer") return "whole number";
   if (spec.kind === "decimal_string") return "decimal (a number sent as text)";
   if (spec.kind === "array") return `list of ${friendlyType(spec.items)}`;
@@ -765,10 +772,52 @@ function schemaSummary(schemaJson) {
   }
   if (!parsed || parsed.kind === "freeform") return "Free-form text — no required structure.";
   if (parsed.kind === "object" && parsed.fields) {
-    const fields = Object.entries(parsed.fields).map(([name, spec]) => `${name}: ${friendlyType(spec)}`);
+    const fields = Object.entries(parsed.fields).map(([name, spec]) => `${name}: ${friendlyType(spec)}${spec.required ? " (required)" : ""}`);
     return fields.length ? fields.join(" · ") : "Free-form text — no required structure.";
   }
   return "";
+}
+
+function validateResponse(schemaJson, text) {
+  let schema;
+  try {
+    schema = JSON.parse(schemaJson);
+  } catch {
+    return { ok: true, errors: [] };
+  }
+  if (!schema || schema.kind === "freeform" || !schema.fields) return { ok: true, errors: [] };
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { ok: false, errors: ["Response is not valid JSON."] };
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { ok: false, errors: ["Response must be a JSON object."] };
+  }
+  const errors = [];
+  for (const [name, spec] of Object.entries(schema.fields)) {
+    if (!Object.prototype.hasOwnProperty.call(value, name)) {
+      if (spec.required) errors.push(`Missing required field "${name}".`);
+      continue;
+    }
+    const fieldValue = value[name];
+    if (spec.kind === "integer" && !Number.isInteger(fieldValue)) {
+      errors.push(`"${name}" must be a whole number.`);
+    } else if (spec.kind === "decimal_string" && typeof fieldValue !== "string") {
+      errors.push(`"${name}" must be a decimal sent as text.`);
+    } else if (spec.kind === "string") {
+      if (typeof fieldValue !== "string") errors.push(`"${name}" must be text.`);
+      else if (spec.enum && !spec.enum.includes(fieldValue)) errors.push(`"${name}" must be one of ${spec.enum.join(", ")}.`);
+    } else if (spec.kind === "array") {
+      if (!Array.isArray(fieldValue)) errors.push(`"${name}" must be a list.`);
+      else if (spec.items?.enum) {
+        const invalid = fieldValue.filter((item) => !spec.items.enum.includes(item));
+        if (invalid.length) errors.push(`"${name}" has values outside ${spec.items.enum.join(", ")}.`);
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors };
 }
 
 function schemaDesigner() {
@@ -786,6 +835,7 @@ function schemaDesigner() {
         <p class="schema-hint">Workers reply in free-form text. No response schema is enforced.</p>
       </div>`;
   }
+  const allowsEnum = (type) => type === "string" || type === "string_list" || type === undefined;
   const rows = state.draftFields
     .map((field, index) => `
       <div class="schema-field-row">
@@ -796,14 +846,25 @@ function schemaDesigner() {
           ${option("decimal", "Decimal", field.type)}
           ${option("string_list", "List of text", field.type)}
         </select>
+        <label class="schema-field-required"><input type="checkbox" data-schema-required="${index}" ${field.required ? "checked" : ""}> required</label>
         <button class="button ghost" type="button" data-action="remove-field" data-index="${index}" aria-label="Remove field">Remove</button>
+        ${allowsEnum(field.type) ? `<input class="schema-field-enum" data-schema-enum="${index}" value="${escapeAttribute(field.enum || "")}" placeholder="allowed values (comma-separated, optional)" aria-label="Allowed values">` : ""}
       </div>`)
     .join("");
+  const names = state.draftFields.map((field) => field.name.trim()).filter(Boolean);
+  const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+  const hasEmpty = state.draftFields.some((field) => field.name.trim() === "");
+  const warnings = [
+    duplicates.length ? `Duplicate field name "${duplicates[0]}" — the last one wins.` : "",
+    hasEmpty ? "Fields with no name are omitted from the schema." : "",
+  ].filter(Boolean);
+  const warning = warnings.length ? `<p class="schema-warning">${escapeHtml(warnings.join(" "))}</p>` : "";
   return `
     <div class="schema-designer wide-field">
       ${kindSelect}
-      <p class="schema-hint">Design the structured result you want back. Each field becomes part of the response schema.</p>
+      <p class="schema-hint">Design the structured result you want back. Mark fields required and, for text fields, list the allowed values workers must choose from.</p>
       <div class="schema-fields">${rows}</div>
+      ${warning}
       <button class="button secondary" type="button" data-action="add-field">Add field</button>
       <div class="schema-block">
         <span>What workers must return</span>
@@ -814,7 +875,7 @@ function schemaDesigner() {
 }
 
 function addDraftField() {
-  setState({ draftFields: [...state.draftFields, { name: "", type: "string" }] });
+  setState({ draftFields: [...state.draftFields, { name: "", type: "string", required: false, enum: "" }] });
 }
 
 function removeDraftField(index) {
@@ -834,7 +895,6 @@ function createDraftTask() {
     requester: state.userId,
     assignee: "",
     area: "Custom Board",
-    difficulty: "C",
     visibility: state.draftVisibility,
     policy: state.draftPolicy,
     reward: draftReward(),
@@ -1010,8 +1070,8 @@ function overviewPage() {
         </div>
         <div class="summary-grid">
           ${metricCard("Open tasks", String(state.tasks.filter((item) => item.lifecycle === lifecycle.open).length))}
-          ${metricCard("Review signals", String(reviewSignals()))}
-          ${metricCard("Credits", `${balanceOf(user.id)}`)}
+          ${metricCard("Credits available", `${balanceOf(user.id)}`)}
+          ${metricCard("Held in escrow", `${escrowHeldBy(user.id)}`)}
           ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
         </div>
       </div>
@@ -1513,7 +1573,12 @@ function actionPayload(action, taskItem) {
   if (action.kind === "submit" || action.kind === "agentRun") {
     const summary = schemaSummary(taskItem.schema);
     const hint = summary ? `<span class="schema-hint">Your response should match — ${escapeHtml(summary)}</span>` : "";
-    return `<label for="response-text">Your response${hint}<textarea id="response-text" data-response-task="${escapeAttribute(taskItem.id)}">${escapeHtml(responseDraftFor(taskItem))}</textarea></label>`;
+    const note = state.submitNote && state.submitNote.taskId === taskItem.id
+      ? (state.submitNote.ok
+        ? `<p class="validate-ok">Response matches the schema.</p>`
+        : `<p class="validate-error">${escapeHtml(state.submitNote.errors.join(" "))}</p>`)
+      : "";
+    return `<label for="response-text">Your response${hint}<textarea id="response-text" data-response-task="${escapeAttribute(taskItem.id)}">${escapeHtml(responseDraftFor(taskItem))}</textarea></label>${note}`;
   }
   return "";
 }
@@ -1612,11 +1677,19 @@ function reviewDraft(submission) {
   };
 }
 
+function linkifyActivity(text) {
+  let html = escapeHtml(text);
+  for (const user of users) {
+    html = html.replaceAll(escapeHtml(user.name), userLink(user.id));
+  }
+  return html;
+}
+
 function activityFeed() {
   return `
     <section class="panel activity-feed">
       <span class="eyebrow">Comms feed</span>
-      ${state.activityLog.map((entry) => `<p>${escapeHtml(entry)}</p>`).join("")}
+      ${state.activityLog.map((entry) => `<p>${linkifyActivity(entry)}</p>`).join("")}
     </section>
   `;
 }
@@ -1753,10 +1826,6 @@ function copyFor(role) {
   return "Each task ships REST and MCP steps so your agent can read the schema and submit a matching result.";
 }
 
-function reviewSignals() {
-  return state.tasks.filter(hasReviewWork).length;
-}
-
 function hasReviewWork(taskItem) {
   return taskItem.reservations.some((reservation) => reservation.state === "requested") ||
     taskItem.submissions.some((submission) => submission.state === "submitted");
@@ -1764,6 +1833,24 @@ function hasReviewWork(taskItem) {
 
 function balanceOf(userId) {
   return state.balances[userId] ?? 0;
+}
+
+function escrowHeldBy(userId) {
+  return state.tasks
+    .filter((taskItem) => taskItem.requester === userId)
+    .reduce((sum, taskItem) => sum + (state.escrow?.[taskItem.id] ?? 0), 0);
+}
+
+function withoutEscrow(escrow, taskId) {
+  const next = { ...escrow };
+  delete next[taskId];
+  return next;
+}
+
+function pushActivity(message) {
+  state = { ...state, activityLog: [message, ...state.activityLog].slice(0, maxActivity) };
+  saveNow();
+  render();
 }
 
 function inventoryOf(userId) {
@@ -1842,6 +1929,14 @@ function handleCommit(event) {
   }
   if (target.dataset.schemaType !== undefined) {
     updateDraftField(Number(target.dataset.schemaType), "type", target.value);
+    return;
+  }
+  if (target.dataset.schemaRequired !== undefined) {
+    updateDraftField(Number(target.dataset.schemaRequired), "required", target.checked);
+    return;
+  }
+  if (target.dataset.schemaEnum !== undefined) {
+    updateDraftField(Number(target.dataset.schemaEnum), "enum", target.value);
     return;
   }
   if (target.dataset.field === undefined) return;
@@ -2004,7 +2099,20 @@ function choosePersona(userId) {
 }
 
 function fundMission(taskItem) {
-  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.funded }), `${selectedUser().name} funded ${taskItem.title}.`);
+  const cost = taskItem.reward.credits || 0;
+  if (cost > balanceOf(state.userId)) {
+    pushActivity(`${selectedUser().name} can't fund ${taskItem.title}: needs ${cost} credits but has ${balanceOf(state.userId)} available.`);
+    return;
+  }
+  if (cost > 0) {
+    state = {
+      ...state,
+      balances: { ...state.balances, [state.userId]: balanceOf(state.userId) - cost },
+      escrow: { ...state.escrow, [taskItem.id]: cost },
+    };
+  }
+  const note = cost > 0 ? ` — ${cost} credits held in escrow` : "";
+  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.funded }), `${selectedUser().name} funded ${taskItem.title}${note}.`);
 }
 
 function openMission(taskItem) {
@@ -2012,7 +2120,16 @@ function openMission(taskItem) {
 }
 
 function cancelMission(taskItem) {
-  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.canceled, availability: availability.closed }), `${selectedUser().name} canceled ${taskItem.title}.`);
+  const held = state.escrow?.[taskItem.id] ?? 0;
+  if (held > 0) {
+    state = {
+      ...state,
+      balances: { ...state.balances, [state.userId]: balanceOf(state.userId) + held },
+      escrow: withoutEscrow(state.escrow, taskItem.id),
+    };
+  }
+  const note = held > 0 ? ` — ${held} credits refunded from escrow` : "";
+  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.canceled, availability: availability.closed }), `${selectedUser().name} canceled ${taskItem.title}${note}.`);
 }
 
 function reserveMission(taskItem) {
@@ -2034,11 +2151,18 @@ function requestApproval(taskItem) {
 }
 
 function submitMission(taskItem) {
+  const response = responseDraftFor(taskItem);
+  const validation = validateResponse(taskItem.schema, response);
+  if (!validation.ok) {
+    setState({ submitNote: { taskId: taskItem.id, ok: false, errors: validation.errors } });
+    return;
+  }
+  state = { ...state, submitNote: { taskId: taskItem.id, ok: true, errors: [] } };
   updateTask(taskItem.id, (current) => ({
     availability: availability.submitted,
     submissions: [
       ...current.submissions.filter((submission) => submission.by !== state.userId || submission.state !== "submitted"),
-      { id: `sub-${taskItem.id}-${state.userId}`, by: state.userId, state: "submitted", response: responseDraftFor(taskItem), reviewNote: "", partialPayout: "", tip: "", ban: false },
+      { id: `sub-${taskItem.id}-${state.userId}`, by: state.userId, state: "submitted", response, reviewNote: "", partialPayout: "", tip: "", ban: false },
     ].slice(-4),
   }), `${selectedUser().name} submitted a response for ${taskItem.title}.`);
 }
@@ -2097,14 +2221,21 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
     ? `${selectedUser().name} rejected ${userName(userId)} on ${taskItem.title} with ${payout + tip} credits paid.`
     : `${selectedUser().name} requested changes from ${userName(userId)} on ${taskItem.title}.`;
 
-  state = {
-    ...state,
-    balances: {
-      ...state.balances,
-      [userId]: balanceOf(userId) + payout + tip,
-      [state.userId]: Math.max(0, balanceOf(state.userId) - payout - tip),
-    },
-  };
+  const settles = decision === "accepted" || decision === "rejected";
+  const held = state.escrow?.[taskItem.id] ?? 0;
+  if (settles) {
+    state = {
+      ...state,
+      balances: {
+        ...state.balances,
+        [userId]: balanceOf(userId) + payout + tip,
+        // The requester already escrowed `held` at funding time; release it and
+        // net the actual payout + tip (refunding any unused escrow).
+        [state.userId]: Math.max(0, balanceOf(state.userId) + held - payout - tip),
+      },
+      escrow: withoutEscrow(state.escrow, taskItem.id),
+    };
+  }
 
   if (decision === "accepted" && taskItem.reward.collectibles.length > 0) {
     state = {

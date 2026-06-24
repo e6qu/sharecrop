@@ -7359,7 +7359,7 @@ var $author$project$Main$enterPage = F2(
 			case 'TeamDetailPage':
 				return _Utils_update(
 					state,
-					{page: page, teamDetail: $elm$core$Maybe$Nothing});
+					{page: page, teamDetail: $elm$core$Maybe$Nothing, teamMemberEmail: '', teamMemberMessage: $elm$core$Maybe$Nothing});
 			default:
 				return _Utils_update(
 					state,
@@ -7848,6 +7848,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		taskStateFilter: '',
 		tasks: _List_Nil,
 		teamDetail: $elm$core$Maybe$Nothing,
+		teamMemberEmail: '',
+		teamMemberMessage: $elm$core$Maybe$Nothing,
 		userProfile: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
 		userWork: _List_Nil
@@ -8027,6 +8029,38 @@ var $author$project$Main$organizationsFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Main$AddTeamMemberReceived = function (a) {
+	return {$: 'AddTeamMemberReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Team$TeamDetailResponse = F2(
+	function (team, members) {
+		return {members: members, team: team};
+	});
+var $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Team$TeamDetailResponse,
+	A2($elm$json$Json$Decode$field, 'team', $author$project$Sharecrop$Generated$Team$teamResponseDecoder),
+	A2(
+		$elm$json$Json$Decode$field,
+		'members',
+		$elm$json$Json$Decode$list($elm$json$Json$Decode$string)));
+var $author$project$Main$postAddTeamMember = F3(
+	function (token, teamId, email) {
+		return A5(
+			$author$project$Main$authorizedRequest,
+			'POST',
+			token,
+			'/api/teams/' + (teamId + '/members'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'email',
+							$elm$json$Json$Encode$string(email))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Main$AddTeamMemberReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder));
+	});
 var $author$project$Main$AuthReceived = function (a) {
 	return {$: 'AuthReceived', a: a};
 };
@@ -8695,18 +8729,6 @@ var $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder = A
 	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Team$TeamDetailResponse = F2(
-	function (team, members) {
-		return {members: members, team: team};
-	});
-var $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder = A3(
-	$elm$json$Json$Decode$map2,
-	$author$project$Sharecrop$Generated$Team$TeamDetailResponse,
-	A2($elm$json$Json$Decode$field, 'team', $author$project$Sharecrop$Generated$Team$teamResponseDecoder),
-	A2(
-		$elm$json$Json$Decode$field,
-		'members',
-		$elm$json$Json$Decode$list($elm$json$Json$Decode$string)));
 var $author$project$Main$routeLoadCmd = F2(
 	function (token, page) {
 		switch (page.$) {
@@ -10272,6 +10294,61 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'TeamMemberEmailChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Main$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{teamMemberEmail: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'AddTeamMemberClicked':
+				var teamId = msg.a;
+				return A2(
+					$author$project$Main$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A3($author$project$Main$postAddTeamMember, state.accessToken, teamId, state.teamMemberEmail));
+					});
+			case 'AddTeamMemberReceived':
+				if (msg.a.$ === 'Ok') {
+					var detail = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										teamDetail: $elm$core$Maybe$Just(detail),
+										teamMemberEmail: '',
+										teamMemberMessage: $elm$core$Maybe$Just('Member added.')
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										teamMemberMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'OrgTasksReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -13649,6 +13726,12 @@ var $author$project$Main$tasksView = F2(
 					$author$project$Main$tasksList(state.tasks)
 				]));
 	});
+var $author$project$Main$AddTeamMemberClicked = function (a) {
+	return {$: 'AddTeamMemberClicked', a: a};
+};
+var $author$project$Main$TeamMemberEmailChanged = function (a) {
+	return {$: 'TeamMemberEmailChanged', a: a};
+};
 var $author$project$Main$teamDetailView = F2(
 	function (teamId, state) {
 		return $author$project$Sharecrop$Ui$card(
@@ -13723,7 +13806,42 @@ var $author$project$Main$teamDetailView = F2(
 														$elm$html$Html$text(memberId)
 													]));
 										},
-										detail.members))
+										detail.members)),
+									((detail.team.ownerKind === 'user') && _Utils_eq(detail.team.ownerUserID, state.subjectId)) ? A2(
+									$elm$html$Html$form,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('flex flex-wrap items-end gap-2'),
+											$elm$html$Html$Events$onSubmit(
+											$author$project$Main$AddTeamMemberClicked(detail.team.id))
+										]),
+									_List_fromArray(
+										[
+											A2(
+											$author$project$Sharecrop$Ui$fieldLabel,
+											'Add member by email',
+											_List_fromArray(
+												[
+													$author$project$Sharecrop$Ui$textInput(
+													_List_fromArray(
+														[
+															$elm$html$Html$Attributes$type_('email'),
+															$elm$html$Html$Attributes$placeholder('person@example.com'),
+															$elm$html$Html$Attributes$value(state.teamMemberEmail),
+															$elm$html$Html$Events$onInput($author$project$Main$TeamMemberEmailChanged),
+															$author$project$Sharecrop$Ui$testId('team-member-email')
+														]))
+												])),
+											A2(
+											$author$project$Sharecrop$Ui$primaryButton,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$type_('submit'),
+													$author$project$Sharecrop$Ui$testId('add-team-member')
+												]),
+											'Add member'),
+											A2($author$project$Main$maybeNote, state.teamMemberMessage, 'team-member-message')
+										])) : $elm$html$Html$text('')
 								]));
 					} else {
 						return A2(
