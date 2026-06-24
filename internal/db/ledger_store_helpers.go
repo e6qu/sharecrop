@@ -448,8 +448,8 @@ func payCreditTip(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester 
 	}
 
 	// Derive per-side idempotency keys (distinct from the bare payout key) so the
-	// unique constraint would catch any double-tip if the task-lock ordering ever
-	// changed; today the FOR UPDATE task lock already serializes this.
+	// unique constraint would catch a repeated double-tip if the task-lock ordering
+	// ever changed; today the FOR UPDATE task lock already serializes this.
 	debitKey := idempotencyKey.String() + ":tip-debit"
 	creditKey := idempotencyKey.String() + ":tip-credit"
 	if _, err := tx.Exec(ctx, "insert into ledger_entries (id, account_id, kind, amount, task_id, idempotency_key) values ($1, $2, 'task_tip', $3, $4, $5)", debitEntryID.String(), requesterLocked.id, -tip.Amount.Int64(), taskID.String(), debitKey); err != nil {
