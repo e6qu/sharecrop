@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v12";
+const storageKey = "sharecrop-demo-state-v13";
 
 const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
@@ -448,7 +448,7 @@ const seedEscrowByUser = seedTasks.filter(holdsEscrow).reduce((totals, taskItem)
 
 const seedState = {
   mode: "light",
-  theme: "showcase",
+  theme: "arcade",
   page: "overview",
   loginOpen: false,
   userId: "mara",
@@ -1405,6 +1405,7 @@ function settingsPage() {
           </div>
           <div class="theme-grid">
             ${themeButton("corporate", "Corporate")}
+            ${themeButton("arcade", "Arcade")}
             ${themeButton("rustic", "Rustic")}
             ${themeButton("blocky", "Blocky")}
             ${themeButton("showcase", "Showcase")}
