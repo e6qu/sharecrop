@@ -9,13 +9,13 @@ jobs:
   static:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@v2.0.4
         with:
-          deno-version: v2.7.14
+          deno-version: v2.8.3
       - name: Check formatting
         run: make check-format
       - name: Check contracts
@@ -24,25 +24,39 @@ jobs:
         run: make check-policy
       - name: Check TypeScript
         run: make check-ts
-      - name: Check copy-paste
-        run: make check-copy-paste
-      - name: Check dead code
-        run: make check-dead-code
       - name: Lint
         run: make lint
       - name: Vet
         run: make vet
 
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+      - uses: denoland/setup-deno@v2.0.4
+        with:
+          deno-version: v2.8.3
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.x"
+      - name: Install pre-commit
+        run: pip install pre-commit
+      - name: Run pre-commit hooks (copy-paste + dead code)
+        run: pre-commit run --all-files --show-diff-on-failure
+
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@v2.0.4
         with:
-          deno-version: v2.7.14
+          deno-version: v2.8.3
       - name: Unit tests
         run: make test
 
@@ -51,13 +65,13 @@ jobs:
     env:
       ELM_BIN: /usr/local/bin/elm
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@v2.0.4
         with:
-          deno-version: v2.7.14
+          deno-version: v2.8.3
       - name: Install Elm
         run: |
           curl -L https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz -o elm.gz
@@ -89,8 +103,8 @@ jobs:
       SHARECROP_ACCESS_TOKEN_SECRET: "01234567890123456789012345678901"
       SHARECROP_MIGRATIONS_DIR: ${{ github.workspace }}/migrations
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
       - name: Run migrations
@@ -120,8 +134,8 @@ jobs:
       SHARECROP_ACCESS_TOKEN_SECRET: "01234567890123456789012345678901"
       SHARECROP_MIGRATIONS_DIR: ${{ github.workspace }}/migrations
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
       - name: Run migrations
@@ -152,13 +166,13 @@ jobs:
       SHARECROP_ACCESS_TOKEN_SECRET: "01234567890123456789012345678901"
       SHARECROP_MIGRATIONS_DIR: ${{ github.workspace }}/migrations
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@v2.0.4
         with:
-          deno-version: v2.7.14
+          deno-version: v2.8.3
       - name: Install Elm
         run: |
           curl -L https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz -o elm.gz
