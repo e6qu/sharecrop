@@ -286,16 +286,18 @@ func (store TaskStore) CreateReservation(ctx context.Context, reservationID core
 	return task.CreateReservationStoreAccepted{Value: found.value}
 }
 
-func (store TaskStore) ChangeReservationState(ctx context.Context, reservationID core.TaskReservationID, state task.ReservationState) task.ChangeReservationStateStoreResult {
+func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState) task.ChangeReservationStateStoreResult {
 	if err := store.releaseExpiredReservations(ctx); err != nil {
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
 	}
 
+	// Bind the mutation to the owning task so a reservation belonging to another
+	// task can never be flipped via a task the actor happens to own (IDOR).
 	commandTag, err := store.pool.Exec(ctx, `
 		update task_reservations
 		set state = $2, state_recorded_at = now()
-		where id = $1 and state in ('requested', 'active')
-	`, reservationID.String(), state.String())
+		where id = $1 and task_id = $3 and state in ('requested', 'active')
+	`, reservationID.String(), state.String(), taskID.String())
 	if err != nil {
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation state was not changed")}
 	}

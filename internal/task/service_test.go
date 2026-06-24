@@ -208,9 +208,9 @@ func (store *taskMemoryStore) CreateReservation(_ context.Context, reservationID
 	return CreateReservationStoreAccepted{Value: value}
 }
 
-func (store *taskMemoryStore) ChangeReservationState(_ context.Context, reservationID core.TaskReservationID, state ReservationState) ChangeReservationStateStoreResult {
+func (store *taskMemoryStore) ChangeReservationState(_ context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState) ChangeReservationStateStoreResult {
 	value, matched := store.reservations[reservationID.String()]
-	if !matched {
+	if !matched || value.TaskID != taskID {
 		return ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reservation missing")}
 	}
 	value.State = state
