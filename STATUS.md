@@ -1,10 +1,20 @@
 # Status
 
-The repository contains pull request 1 through pull request 34 work, merged into `main`.
+The repository contains pull request 1 through pull request 35 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-cross-linking` makes demo tasks and users real anchors (right-click / open-in-new-tab) with whole-row click, adds a per-row reserve / grayed-reserved control, applies a specialized UI/UX/journey/product review's fixes, switches copy-paste detection to the standard jscpd, and adds dead-code + copy-paste gates to the pre-commit framework and CI (with all GitHub Actions and tool versions pinned to the latest published). The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/economy-orgs-and-polish` adds a real reward economy with escrow to the demo, deepens the receive-schema designer (required/enum) with worker-submission validation, cross-links the comms feed, and adds standalone-team membership to the real app. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/economy-orgs-and-polish`:
+
+- Demo: Fund validates the requester's available balance and moves credits into a per-task escrow bucket; accept/reject settles from escrow and cancel refunds it; the dashboard shows credits available and held in escrow.
+- Demo: the receive-schema designer gains a required toggle and allowed-values (enum) per text field with duplicate/empty name warnings, and worker submissions are validated against the schema on submit (required keys, types, enum) and blocked with inline errors or confirmed as matching.
+- Demo: the comms feed cross-links persona names to their profiles; the unused difficulty field was dropped.
+- Real app: `POST /api/teams/{id}/members` lets a team owner (or an org-team manager) add members by email, with a browser add-member form on the team page and RBAC-enforced denial; e2e + Playwright cover it.
+- Deferred to focused follow-up PRs (recorded in DO_NEXT): modeling organizations as real entities (a DB migration + RBAC rewrite) and decomposing `Main.elm` (needs the Model/Msg types lifted into shared modules). Both are large refactors that warrant their own PRs.
+
+Earlier branch `task/demo-cross-linking` (pull request 35, merged) makes demo tasks and users real anchors (right-click / open-in-new-tab) with whole-row click, adds a per-row reserve / grayed-reserved control, applies a specialized UI/UX/journey/product review's fixes, switches copy-paste detection to the standard jscpd, and adds dead-code + copy-paste gates to the pre-commit framework and CI (with all GitHub Actions and tool versions pinned to the latest published). The branch is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
 Implemented in `task/demo-cross-linking`:
 
