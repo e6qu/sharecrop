@@ -474,6 +474,10 @@ code {
 .metric-card strong {
   font-size: 1.5rem;
 }
+.metric-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
 
 .theme-grid,
 .provider-grid {
@@ -842,6 +846,16 @@ code {
 
 .schema-field-row .schema-field-enum {
   flex: 1 1 100%;
+}
+
+.schema-field-row .schema-field-len {
+  flex: 0 0 110px;
+}
+
+.schema-field-row .schema-field-key {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .schema-field-required {

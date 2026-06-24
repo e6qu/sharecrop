@@ -750,24 +750,40 @@ function enumValuesOf(field) {
   return (field.enum || "").split(",").map((value) => value.trim()).filter(Boolean);
 }
 
+// Field names are typed freely but used as JSON object keys, so normalize them
+// to lowercase identifier-safe keys (spaces/punctuation become underscores).
+function normalizeFieldName(name) {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function lengthOf(field, key) {
+  const parsed = Number.parseInt(field[key], 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 function schemaForField(field) {
   const values = enumValuesOf(field);
   let spec;
   if (field.type === "integer") spec = { kind: "integer" };
   else if (field.type === "decimal") spec = { kind: "decimal_string" };
-  else if (field.type === "string_list") spec = { kind: "array", items: values.length ? { kind: "string", enum: values } : { kind: "string" } };
-  else spec = values.length ? { kind: "string", enum: values } : { kind: "string" };
+  else if (field.type === "string_list") {
+    spec = { kind: "array", items: values.length ? { kind: "string", enum: values } : { kind: "string" } };
+    const min = lengthOf(field, "min");
+    const max = lengthOf(field, "max");
+    if (min !== undefined) spec.minItems = min;
+    if (max !== undefined) spec.maxItems = max;
+  } else spec = values.length ? { kind: "string", enum: values } : { kind: "string" };
   if (field.required) spec.required = true;
   return spec;
 }
 
 function draftSchema() {
   if (state.draftResponseKind !== "structured") return '{"kind":"freeform"}';
-  const fields = state.draftFields.filter((field) => field.name.trim() !== "");
+  const fields = state.draftFields.filter((field) => normalizeFieldName(field.name) !== "");
   if (fields.length === 0) return '{"kind":"freeform"}';
   const built = { kind: "object", fields: {} };
   fields.forEach((field) => {
-    built.fields[field.name.trim()] = schemaForField(field);
+    built.fields[normalizeFieldName(field.name)] = schemaForField(field);
   });
   return JSON.stringify(built);
 }
@@ -777,7 +793,13 @@ function friendlyType(spec) {
   if (spec.kind === "string") return spec.enum ? `one of ${spec.enum.join(", ")}` : "text";
   if (spec.kind === "integer") return "whole number";
   if (spec.kind === "decimal_string") return "decimal (a number sent as text)";
-  if (spec.kind === "array") return `list of ${friendlyType(spec.items)}`;
+  if (spec.kind === "array") {
+    const bounds = [
+      Number.isInteger(spec.minItems) ? `at least ${spec.minItems}` : "",
+      Number.isInteger(spec.maxItems) ? `at most ${spec.maxItems}` : "",
+    ].filter(Boolean).join(", ");
+    return `list of ${friendlyType(spec.items)}${bounds ? ` (${bounds})` : ""}`;
+  }
   if (spec.kind === "object") return "object";
   return spec.kind;
 }
@@ -833,6 +855,8 @@ function validateResponse(schemaJson, text) {
     } else if (spec.kind === "array") {
       if (!Array.isArray(fieldValue)) errors.push(`"${name}" must be a list.`);
       else if (spec.required && fieldValue.length === 0) errors.push(`"${name}" needs at least one value.`);
+      else if (Number.isInteger(spec.minItems) && fieldValue.length < spec.minItems) errors.push(`"${name}" needs at least ${spec.minItems} value${spec.minItems === 1 ? "" : "s"}.`);
+      else if (Number.isInteger(spec.maxItems) && fieldValue.length > spec.maxItems) errors.push(`"${name}" allows at most ${spec.maxItems} value${spec.maxItems === 1 ? "" : "s"}.`);
       else if (spec.items?.enum) {
         const invalid = fieldValue.filter((item) => !spec.items.enum.includes(item));
         if (invalid.length) errors.push(`"${name}" has values outside ${spec.items.enum.join(", ")}.`);
@@ -871,14 +895,18 @@ function schemaDesigner() {
         <label class="schema-field-required"><input type="checkbox" data-schema-required="${index}" ${field.required ? "checked" : ""}> required</label>
         <button class="button ghost" type="button" data-action="remove-field" data-index="${index}" aria-label="Remove field">Remove</button>
         ${allowsEnum(field.type) ? `<input class="schema-field-enum" data-schema-enum="${index}" value="${escapeAttribute(field.enum || "")}" placeholder="allowed values (comma-separated, optional)" aria-label="Allowed values">` : ""}
+        ${field.type === "string_list" ? `<input class="schema-field-len" type="number" min="0" data-schema-min="${index}" value="${escapeAttribute(field.min || "")}" placeholder="min items" aria-label="Minimum items"><input class="schema-field-len" type="number" min="0" data-schema-max="${index}" value="${escapeAttribute(field.max || "")}" placeholder="max items" aria-label="Maximum items">` : ""}
+        ${normalizeFieldName(field.name) && normalizeFieldName(field.name) !== field.name.trim() ? `<small class="schema-field-key">key: ${escapeHtml(normalizeFieldName(field.name))}</small>` : ""}
       </div>`)
     .join("");
-  const names = state.draftFields.map((field) => field.name.trim()).filter(Boolean);
-  const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
-  const hasEmpty = state.draftFields.some((field) => field.name.trim() === "");
+  const keys = state.draftFields.map((field) => normalizeFieldName(field.name)).filter(Boolean);
+  const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
+  const hasEmpty = state.draftFields.some((field) => normalizeFieldName(field.name) === "" && field.name.trim() !== "");
+  const hasBlank = state.draftFields.some((field) => field.name.trim() === "");
   const warnings = [
-    duplicates.length ? `Duplicate field name "${duplicates[0]}" — the last one wins.` : "",
-    hasEmpty ? "Fields with no name are omitted from the schema." : "",
+    duplicates.length ? `Two fields share the key "${duplicates[0]}" — the last one wins.` : "",
+    hasEmpty ? "A field name with no letters or digits cannot become a key and is omitted." : "",
+    hasBlank ? "Fields with no name are omitted from the schema." : "",
   ].filter(Boolean);
   const warning = warnings.length ? `<p class="schema-warning">${escapeHtml(warnings.join(" "))}</p>` : "";
   return `
@@ -897,7 +925,7 @@ function schemaDesigner() {
 }
 
 function addDraftField() {
-  setState({ draftFields: [...state.draftFields, { name: "", type: "string", required: false, enum: "" }] });
+  setState({ draftFields: [...state.draftFields, { name: "", type: "string", required: false, enum: "", min: "", max: "" }] });
 }
 
 function removeDraftField(index) {
@@ -1093,8 +1121,8 @@ function overviewPage() {
         </div>
         <div class="summary-grid">
           ${metricCard("Open tasks", String(state.tasks.filter((item) => item.lifecycle === lifecycle.open).length))}
-          ${metricCard("Credits available", `${balanceOf(user.id)}`)}
-          ${metricCard("Held in escrow", `${escrowHeldBy(user.id)}`)}
+          ${metricCard("Credits available", `${balanceOf(user.id)}`, "spendable now")}
+          ${metricCard("Held in escrow", `${escrowHeldBy(user.id)}`, "committed to open tasks")}
           ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
         </div>
       </div>
@@ -1649,9 +1677,15 @@ function reservationQueue(taskItem) {
 
 function submissionList(taskItem) {
   if (taskItem.submissions.length === 0) return `<p class="empty-state">No submissions for this task.</p>`;
+  const held = state.escrow?.[taskItem.id] ?? 0;
   return taskItem.submissions.map((submission) => {
     const draft = reviewDraft(submission);
     if (submission.state !== "submitted") return submissionOutcome(submission);
+    const payoutValue = draft.partialPayout !== "" ? draft.partialPayout : String(taskItem.reward.credits || 0);
+    const tipValue = draft.tipAmount !== "" ? draft.tipAmount : "0";
+    const warning = state.reviewWarning?.submissionId === submission.id
+      ? `<p class="validate-error">${escapeHtml(state.reviewWarning.message)}</p>`
+      : "";
     return `
       <div class="submission-row decision-console">
         <div>
@@ -1666,9 +1700,11 @@ function submissionList(taskItem) {
         </div>
         <label>Review note<textarea data-field="reviewNote" data-submission="${escapeAttribute(submission.id)}" placeholder="Optional note to the worker">${escapeHtml(draft.reviewNote)}</textarea></label>
         <div class="mini-grid">
-          <label>Settle (credits)<input data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.partialPayout)}" placeholder="${escapeAttribute(String(taskItem.reward.credits || 0))} — full reward"></label>
-          <label>Tip<input data-field="tipAmount" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(draft.tipAmount)}" placeholder="0"></label>
+          <label>Settle (credits)<input data-field="partialPayout" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(payoutValue)}"></label>
+          <label>Tip<input data-field="tipAmount" data-submission="${escapeAttribute(submission.id)}" value="${escapeAttribute(tipValue)}"></label>
         </div>
+        ${held > 0 ? `<p class="schema-hint">Up to ${held} credits are in escrow for this task; the tip is paid from your available balance.</p>` : ""}
+        ${warning}
         <label class="check-row"><input type="checkbox" data-field="banImplementor" data-submission="${escapeAttribute(submission.id)}" ${draft.banImplementor ? "checked" : ""}> Ban implementor from this task</label>
         <div class="row-actions">
           <button class="button secondary" data-action="requestChanges" data-user="${escapeAttribute(submission.by)}" data-submission="${escapeAttribute(submission.id)}">Request changes</button>
@@ -1758,8 +1794,9 @@ function themeButton(value, label) {
   return `<button class="theme-chip ${state.theme === value ? "selected" : ""}" data-theme="${escapeAttribute(value)}" aria-pressed="${state.theme === value ? "true" : "false"}">${escapeHtml(label)}</button>`;
 }
 
-function metricCard(label, value) {
-  return `<div class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+function metricCard(label, value, note = "") {
+  const noteHtml = note ? `<small>${escapeHtml(note)}</small>` : "";
+  return `<div class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>${noteHtml}</div>`;
 }
 
 function flowCard(page, title, copy) {
@@ -1987,6 +2024,14 @@ function handleCommit(event) {
     updateDraftField(Number(target.dataset.schemaEnum), "enum", target.value);
     return;
   }
+  if (target.dataset.schemaMin !== undefined) {
+    updateDraftField(Number(target.dataset.schemaMin), "min", target.value);
+    return;
+  }
+  if (target.dataset.schemaMax !== undefined) {
+    updateDraftField(Number(target.dataset.schemaMax), "max", target.value);
+    return;
+  }
   if (target.dataset.field === undefined) return;
 
   const key = target.dataset.field;
@@ -2028,8 +2073,10 @@ function handleDraftInput(event) {
 
 function updateReviewDraft(submissionId, key, value, options = { render: true }) {
   const field = key === "tipAmount" ? "tipAmount" : key;
+  const clearedWarning = state.reviewWarning?.submissionId === submissionId ? null : state.reviewWarning;
   state = {
     ...state,
+    reviewWarning: clearedWarning,
     reviewDrafts: {
       ...state.reviewDrafts,
       [submissionId]: {
@@ -2261,6 +2308,17 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
   const partial = decision === "changes_requested" ? 0 : Number.parseInt(draft.partialPayout, 10) || 0;
   const tip = decision === "changes_requested" ? 0 : Number.parseInt(draft.tipAmount, 10) || 0;
   const payout = decision === "accepted" ? (partial || taskItem.reward.credits || 0) : partial;
+
+  // Settle is bounded by what was funded into escrow; refuse to mint credits
+  // beyond it rather than silently clamping the requester's balance to zero.
+  const escrowed = state.escrow?.[taskItem.id] ?? 0;
+  if ((decision === "accepted" || decision === "rejected") && escrowed > 0 && payout > escrowed) {
+    state = { ...state, reviewWarning: { submissionId: submission.id, message: `Settle of ${payout} credits exceeds the ${escrowed} held in escrow. Lower the payout or fund more first.` } };
+    render();
+    saveSoon();
+    return;
+  }
+  state = { ...state, reviewWarning: null };
   const nextAvailability = decision === "accepted" ? availability.accepted : decision === "rejected" ? availability.rejected : availability.changesRequested;
   const nextLifecycle = decision === "accepted" ? lifecycle.closed : taskItem.lifecycle;
   const activity = decision === "accepted"
