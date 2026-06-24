@@ -911,6 +911,8 @@ taskDetailFromResponse response =
     , availabilityKind = response.availabilityKind
     , viewerAction = response.viewerAction
     , responseSchemaJson = response.responseSchemaJSON
+    , payloadKind = response.payloadKind
+    , payloadJson = response.payloadJSON
     , createdBy = response.createdBy
     }
 

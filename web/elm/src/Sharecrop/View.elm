@@ -901,6 +901,15 @@ taskDetailPageView origin state =
         )
 
 
+taskInputBlock : TaskDetail -> List (Html Msg)
+taskInputBlock detail =
+    if detail.payloadKind == "inline" && detail.payloadJson /= "" then
+        [ Ui.label_ "Task input", Ui.codeBlock [ testId "detail-input" ] detail.payloadJson ]
+
+    else
+        []
+
+
 ownerControlsCard : LoggedInModel -> Html Msg
 ownerControlsCard state =
     case state.detail of
@@ -924,18 +933,21 @@ detailCard origin state =
     case state.detail of
         Just detail ->
             Ui.card
-                [ p [ Html.Attributes.class "text-2xl font-semibold", testId "detail-title" ] [ text detail.title ]
-                , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+                ([ p [ Html.Attributes.class "text-2xl font-semibold", testId "detail-title" ] [ text detail.title ]
+                 , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
                     [ Ui.badge (taskStateLabel detail.state)
                     , Ui.badge (availabilityKindLabel detail.availabilityKind)
                     , Ui.badge (participationPolicyLabel detail.participationPolicy)
                     ]
                 , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
-                , Ui.label_ "Response schema"
-                , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson
-                , taskInstructions origin detail.id
                 ]
+                    ++ taskInputBlock detail
+                    ++ [ Ui.label_ "Response schema"
+                       , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson
+                       , taskInstructions origin detail.id
+                       ]
+                )
 
         Nothing ->
             Ui.card [ p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading task…" ] ]

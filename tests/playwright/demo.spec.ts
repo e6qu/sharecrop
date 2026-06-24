@@ -22,15 +22,19 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
   await expect(
     page.getByText("Extract line items from 6 vendor invoices"),
   ).toBeVisible();
-  await expect(page.getByText("Classify 20 support tickets by category"))
+  await expect(page.getByText("Classify 8 support tickets by category"))
     .toBeVisible();
 
-  // Opening a task shows the real detail view with its instructions and the
-  // typed response schema, served by the fake backend.
+  // Opening a task shows the real detail view with its instructions, the
+  // self-contained Task input (all data embedded), and the response schema.
   await page.getByTestId("discovery-view").first().click();
   await expect(
-    page.getByText("Read the 6 attached invoice scans", { exact: false }),
+    page.getByText("OCR'd text of 6 vendor invoices", { exact: false }),
   )
+    .toBeVisible();
+  // The Task input block embeds the actual data needed to solve the task.
+  await expect(page.getByTestId("detail-input")).toBeVisible();
+  await expect(page.getByText("Birch Supply Co", { exact: false }))
     .toBeVisible();
   await expect(page.getByText('"invoice_id"', { exact: false })).toBeVisible();
 });

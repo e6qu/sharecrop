@@ -128,6 +128,8 @@ type alias TaskDetail =
     , availabilityKind : Task.TaskAvailabilityKind
     , viewerAction : Task.TaskViewerAction
     , responseSchemaJson : String
+    , payloadKind : String
+    , payloadJson : String
     , createdBy : String
     }
 

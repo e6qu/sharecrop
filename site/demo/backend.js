@@ -46,7 +46,8 @@
       labels: {
         kind: "array",
         required: true,
-        minItems: 1,
+        minItems: 8,
+        maxItems: 8,
         items: { kind: "string", enum: ["bug", "billing", "feature_request", "account", "other"] },
       },
     },
@@ -58,10 +59,45 @@
       reviewed_count: { kind: "integer", required: true },
     },
   });
-  const weatherSchema = JSON.stringify({
+  const expenseSchema = JSON.stringify({
     kind: "object",
-    fields: { readings: { kind: "array", required: true, minItems: 3, items: { kind: "decimal_string" } } },
+    fields: {
+      category_totals: {
+        kind: "array",
+        required: true,
+        items: {
+          kind: "object",
+          fields: {
+            category: { kind: "string", required: true, enum: ["travel", "meals", "software", "office"] },
+            total: { kind: "decimal_string", required: true },
+          },
+        },
+      },
+    },
   });
+  const dateSchema = JSON.stringify({
+    kind: "object",
+    fields: { iso_dates: { kind: "array", required: true, minItems: 8, maxItems: 8, items: { kind: "string" } } },
+  });
+  const reviewSchema = JSON.stringify({
+    kind: "object",
+    fields: {
+      items: {
+        kind: "array",
+        required: true,
+        minItems: 5,
+        maxItems: 5,
+        items: {
+          kind: "object",
+          fields: {
+            product: { kind: "string", required: true },
+            rating: { kind: "integer", required: true },
+          },
+        },
+      },
+    },
+  });
+  const pretty = (value) => JSON.stringify(value, null, 2);
 
   let seq = 100;
   const nextId = (prefix) => `${prefix}-${++seq}`;
@@ -121,47 +157,117 @@
     tasks: [],
   };
 
+  // Every task is self-contained: all data needed to solve it is embedded in the
+  // task itself (rendered as the "Task input" block), with no external lookups,
+  // attachments, or live data required.
   db.tasks = [
     task({
       id: "task-1", title: "Extract line items from 6 vendor invoices", owner_id: "user-jules", created_by: "user-jules",
-      description: "Read the 6 attached invoice scans (text below) and return, for each, the invoice id, vendor name, grand total as a decimal string, and the due date (YYYY-MM-DD). Use the exact totals; do not round.",
+      description:
+        "The Task input below contains the OCR'd text of 6 vendor invoices (one string per invoice). For each invoice, return invoice_id, vendor, total, and due_date. Rules: total is the numeric grand total with the currency symbol and thousands separators removed (e.g. \"$1,240.55\" -> \"1240.55\"); due_date is the written date converted to YYYY-MM-DD. Keep the invoices in the given order.",
       reward_credit_amount: 80, escrow: 80, response_schema_json: invoiceSchema,
-      payload_kind: "inline", payload_json: JSON.stringify({ invoices_text: ["INV-1041 Birch Supply — total 1240.55 due 2026-07-12", "INV-1042 Cedar Freight — total 88.10 due 2026-07-03", "INV-1043 Delta Print — total 146.20 due 2026-07-19", "INV-1044 Meadow Labs — total 902.75 due 2026-07-22", "INV-1045 Grove Cafe — total 41.25 due 2026-07-05", "INV-1046 North Mill — total 5310.00 due 2026-08-01"] }),
+      payload_kind: "inline",
+      payload_json: pretty({
+        invoices: [
+          "INV-1041 | Birch Supply Co | Grand total: $1,240.55 | Due 12 Jul 2026",
+          "INV-1042 | Cedar Freight | Grand total: $88.10 | Due 3 Jul 2026",
+          "INV-1043 | Delta Print | Grand total: $146.20 | Due 19 Jul 2026",
+          "INV-1044 | Meadow Labs | Grand total: $902.75 | Due 22 Jul 2026",
+          "INV-1045 | Grove Cafe | Grand total: $41.25 | Due 5 Jul 2026",
+          "INV-1046 | North Mill | Grand total: $5,310.00 | Due 1 Aug 2026",
+        ],
+      }),
     }),
     task({
-      id: "task-2", title: "Classify 20 support tickets by category", owner_id: "user-ren", created_by: "user-ren",
-      description: "Label each of the 20 support tickets (below) with exactly one category from the allowed set. Return the labels array in ticket order.",
+      id: "task-2", title: "Classify 8 support tickets by category", owner_id: "user-ren", created_by: "user-ren",
+      description:
+        "Assign each of the 8 support tickets in the Task input exactly one category from this set: bug, billing, feature_request, account, other. Return a labels array with one label per ticket, in the same order as the input.",
       reward_credit_amount: 45, escrow: 45, participation_policy: "open", response_schema_json: ticketSchema,
-      payload_kind: "inline", payload_json: JSON.stringify({ tickets: ["card declined at checkout", "app crashes opening reports", "how do I export to CSV?", "double charged this month", "reset 2FA device", "dark mode request"] }),
+      payload_kind: "inline",
+      payload_json: pretty({
+        tickets: [
+          "1. Card declined at checkout even though it has funds",
+          "2. App crashes every time I open the Reports tab",
+          "3. How do I export my data to CSV?",
+          "4. I was double charged for this month's plan",
+          "5. Can't log in — need to reset my 2FA device",
+          "6. Please add a dark mode",
+          "7. Invoice shows the wrong VAT amount",
+          "8. Just wanted to say the new dashboard looks great",
+        ],
+      }),
     }),
     task({
       id: "task-3", title: "Verify 10 ledger transfers for fraud signals",
-      description: "Review the transfer ledger (below) and flag the transfer ids that look fraudulent — the same item moved twice, or a transfer to a banned account. Return the suspicious ids and how many rows you reviewed.",
+      description:
+        "Review the 10 transfers in the Task input. Flag a transfer's id as suspicious if EITHER (a) its item_id appears in more than one transfer, OR (b) its to_account is in banned_accounts. Return suspicious_ids (the flagged transfer ids) and reviewed_count (the number of transfers you reviewed, which is 10).",
       reward_credit_amount: 60, escrow: 60, visibility_kind: "organization", visibility_id: "org-lattice",
       response_schema_json: ledgerSchema, assignee_scope: "user",
+      payload_kind: "inline",
+      payload_json: pretty({
+        banned_accounts: ["ACC-666", "ACC-999"],
+        transfers: [
+          { id: "TR-01", item_id: "ITM-A", from_account: "ACC-100", to_account: "ACC-200", amount: "120.00" },
+          { id: "TR-02", item_id: "ITM-B", from_account: "ACC-101", to_account: "ACC-201", amount: "75.50" },
+          { id: "TR-03", item_id: "ITM-C", from_account: "ACC-102", to_account: "ACC-666", amount: "300.00" },
+          { id: "TR-04", item_id: "ITM-D", from_account: "ACC-103", to_account: "ACC-202", amount: "44.00" },
+          { id: "TR-05", item_id: "ITM-A", from_account: "ACC-104", to_account: "ACC-203", amount: "120.00" },
+          { id: "TR-06", item_id: "ITM-E", from_account: "ACC-105", to_account: "ACC-204", amount: "210.10" },
+          { id: "TR-07", item_id: "ITM-F", from_account: "ACC-106", to_account: "ACC-205", amount: "9.99" },
+          { id: "TR-08", item_id: "ITM-G", from_account: "ACC-107", to_account: "ACC-999", amount: "1500.00" },
+          { id: "TR-09", item_id: "ITM-H", from_account: "ACC-108", to_account: "ACC-206", amount: "62.00" },
+          { id: "TR-10", item_id: "ITM-E", from_account: "ACC-109", to_account: "ACC-207", amount: "210.10" },
+        ],
+      }),
       reservations: [{ id: "res-3-tala", task_id: "task-3", assignee_kind: "user", assignee_id: "user-tala", state: "requested", requested_by: "user-tala" }],
       participation_policy: "approval_required", availability_kind: "awaiting_approval",
     }),
     task({
-      id: "task-4", title: "Return 3 temperature readings via your weather agent",
-      description: "Fetch the current temperature (°C) for Lisbon, Cascais, and Sintra and return them as decimal strings, in that order.",
-      reward_credit_amount: 25, reward_kind: "bundle", reward_collectible_count: 1, escrow: 25, response_schema_json: weatherSchema,
-      assignee_id_seed: "user-sol",
+      id: "task-4", title: "Categorize and total 6 expense lines",
+      description:
+        "Assign each of the 6 expense lines in the Task input to exactly one category (travel, meals, software, office), then return category_totals: for every category that has at least one expense, the sum of its amounts as a decimal string with two places. Amounts are given in the input; sum them exactly.",
+      reward_credit_amount: 25, reward_kind: "bundle", reward_collectible_count: 1, escrow: 25, response_schema_json: expenseSchema,
+      payload_kind: "inline",
+      payload_json: pretty({
+        categories: ["travel", "meals", "software", "office"],
+        expenses: [
+          { merchant: "Uber — ride to airport", amount: "32.50" },
+          { merchant: "Olive Bistro — team lunch", amount: "88.00" },
+          { merchant: "Figma — annual seat", amount: "144.00" },
+          { merchant: "Staples — printer paper, 5 reams", amount: "23.40" },
+          { merchant: "Rail — Lisbon to Porto ticket", amount: "46.10" },
+          { merchant: "Cafe — coffee with client", amount: "12.75" },
+        ],
+      }),
       reservations: [{ id: "res-4-sol", task_id: "task-4", assignee_kind: "user", assignee_id: "user-sol", state: "active", requested_by: "user-sol" }],
-      submissions: [{ id: "sub-4-sol", task_id: "task-4", submitter_id: "user-sol", state: "submitted", response_json: '{"readings":["21.4","20.9","22.1"]}', review_note: "", validation_errors: [], via_agent: true }],
+      submissions: [{ id: "sub-4-sol", task_id: "task-4", submitter_id: "user-sol", state: "submitted", response_json: pretty({ category_totals: [{ category: "travel", total: "78.60" }, { category: "meals", total: "100.75" }, { category: "software", total: "144.00" }, { category: "office", total: "23.40" }] }), review_note: "", validation_errors: [], via_agent: true }],
       availability_kind: "reserved",
     }),
     task({
-      id: "task-5", title: "Transcribe 4 handwritten field notes",
-      description: "Transcribe the 4 scanned field-note cards (text proxies below) verbatim into a notes array of strings, preserving line order.",
-      reward_credit_amount: 30, escrow: 30,
-      response_schema_json: JSON.stringify({ kind: "object", fields: { notes: { kind: "array", required: true, minItems: 4, items: { kind: "string" } } } }),
+      id: "task-5", title: "Normalize 8 dates to ISO 8601",
+      description:
+        "Convert each of the 8 dates in the Task input to ISO 8601 (YYYY-MM-DD), preserving order. For ambiguous all-numeric dates, treat the format as day-first (so \"03/04/2026\" is 4 March 2026 -> \"2026-03-04\"). Slash, dash, and dot separators all appear.",
+      reward_credit_amount: 30, escrow: 30, response_schema_json: dateSchema,
+      payload_kind: "inline",
+      payload_json: pretty({
+        dates: ["March 5, 2026", "03/04/2026", "2026/12/01", "7 Jan 2026", "11-02-2026", "Apr 30 2026", "2026.06.18", "09/10/2026"],
+      }),
     }),
     task({
-      id: "task-6", title: "Draft alt-text for 12 orchard photos",
-      description: "Write concise (<=120 char) alt-text for each of the 12 orchard photos. Return an alt_text array in photo order.",
-      reward_credit_amount: 36, escrow: 36, participation_policy: "open",
-      response_schema_json: JSON.stringify({ kind: "object", fields: { alt_text: { kind: "array", required: true, minItems: 1, items: { kind: "string" } } } }),
+      id: "task-6", title: "Extract product and rating from 5 reviews", participation_policy: "open",
+      description:
+        "Each of the 5 review lines in the Task input names a product and gives a rating out of 5. Return an items array, in order, with the product name and the rating as an integer (1-5).",
+      reward_credit_amount: 36, escrow: 36, response_schema_json: reviewSchema,
+      payload_kind: "inline",
+      payload_json: pretty({
+        reviews: [
+          "Rating: 4/5 — Orchard Boots: great grip, runs a half size small",
+          "Rating: 2/5 — Field Gloves wore through at the seams in a month",
+          "Rating: 5/5 — Sun Hat is the best I've owned, packs flat",
+          "Rating: 3/5 — Canvas Tote is sturdy but the strap is too short",
+          "Rating: 1/5 — Rain Shell soaked through in light drizzle",
+        ],
+      }),
     }),
   ];
 
