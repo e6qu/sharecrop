@@ -1,4 +1,4 @@
-const storageKey = "sharecrop-demo-state-v7";
+const storageKey = "sharecrop-demo-state-v8";
 
 const productTagline = "Sharecrop is a reverse MCP: post a task with a response schema, and a person — or their agent connecting over MCP/REST — performs it and returns a structured result you review and pay for.";
 
@@ -409,6 +409,16 @@ const seedTasks = [
   }),
 ];
 
+function holdsEscrow(taskItem) {
+  return (taskItem.lifecycle === lifecycle.funded || taskItem.lifecycle === lifecycle.open) &&
+    (taskItem.reward.credits || 0) > 0 &&
+    ![availability.accepted, availability.rejected, availability.closed].includes(taskItem.availability);
+}
+
+const seedEscrow = Object.fromEntries(
+  seedTasks.filter(holdsEscrow).map((taskItem) => [taskItem.id, taskItem.reward.credits]),
+);
+
 const seedState = {
   mode: "light",
   theme: "showcase",
@@ -434,6 +444,7 @@ const seedState = {
   reviewDrafts: {},
   localTaskSeq: 1,
   balances: Object.fromEntries(users.map((user) => [user.id, user.balance])),
+  escrow: seedEscrow,
   inventories: {
     mara: ["Ripe Lens", "Drone Patch", "Storm Pin"],
     jules: ["Archive Token"],
@@ -1010,8 +1021,8 @@ function overviewPage() {
         </div>
         <div class="summary-grid">
           ${metricCard("Open tasks", String(state.tasks.filter((item) => item.lifecycle === lifecycle.open).length))}
-          ${metricCard("Review signals", String(reviewSignals()))}
-          ${metricCard("Credits", `${balanceOf(user.id)}`)}
+          ${metricCard("Credits available", `${balanceOf(user.id)}`)}
+          ${metricCard("Held in escrow", `${escrowHeldBy(user.id)}`)}
           ${metricCard("Collectibles", String(inventoryOf(user.id).length))}
         </div>
       </div>
@@ -1753,10 +1764,6 @@ function copyFor(role) {
   return "Each task ships REST and MCP steps so your agent can read the schema and submit a matching result.";
 }
 
-function reviewSignals() {
-  return state.tasks.filter(hasReviewWork).length;
-}
-
 function hasReviewWork(taskItem) {
   return taskItem.reservations.some((reservation) => reservation.state === "requested") ||
     taskItem.submissions.some((submission) => submission.state === "submitted");
@@ -1764,6 +1771,24 @@ function hasReviewWork(taskItem) {
 
 function balanceOf(userId) {
   return state.balances[userId] ?? 0;
+}
+
+function escrowHeldBy(userId) {
+  return state.tasks
+    .filter((taskItem) => taskItem.requester === userId)
+    .reduce((sum, taskItem) => sum + (state.escrow?.[taskItem.id] ?? 0), 0);
+}
+
+function withoutEscrow(escrow, taskId) {
+  const next = { ...escrow };
+  delete next[taskId];
+  return next;
+}
+
+function pushActivity(message) {
+  state = { ...state, activityLog: [message, ...state.activityLog].slice(0, maxActivity) };
+  saveNow();
+  render();
 }
 
 function inventoryOf(userId) {
@@ -2004,7 +2029,20 @@ function choosePersona(userId) {
 }
 
 function fundMission(taskItem) {
-  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.funded }), `${selectedUser().name} funded ${taskItem.title}.`);
+  const cost = taskItem.reward.credits || 0;
+  if (cost > balanceOf(state.userId)) {
+    pushActivity(`${selectedUser().name} can't fund ${taskItem.title}: needs ${cost} credits but has ${balanceOf(state.userId)} available.`);
+    return;
+  }
+  if (cost > 0) {
+    state = {
+      ...state,
+      balances: { ...state.balances, [state.userId]: balanceOf(state.userId) - cost },
+      escrow: { ...state.escrow, [taskItem.id]: cost },
+    };
+  }
+  const note = cost > 0 ? ` — ${cost} credits held in escrow` : "";
+  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.funded }), `${selectedUser().name} funded ${taskItem.title}${note}.`);
 }
 
 function openMission(taskItem) {
@@ -2012,7 +2050,16 @@ function openMission(taskItem) {
 }
 
 function cancelMission(taskItem) {
-  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.canceled, availability: availability.closed }), `${selectedUser().name} canceled ${taskItem.title}.`);
+  const held = state.escrow?.[taskItem.id] ?? 0;
+  if (held > 0) {
+    state = {
+      ...state,
+      balances: { ...state.balances, [state.userId]: balanceOf(state.userId) + held },
+      escrow: withoutEscrow(state.escrow, taskItem.id),
+    };
+  }
+  const note = held > 0 ? ` — ${held} credits refunded from escrow` : "";
+  updateTask(taskItem.id, () => ({ lifecycle: lifecycle.canceled, availability: availability.closed }), `${selectedUser().name} canceled ${taskItem.title}${note}.`);
 }
 
 function reserveMission(taskItem) {
@@ -2097,14 +2144,21 @@ function decideSubmission(taskItem, userId, submissionId, decision) {
     ? `${selectedUser().name} rejected ${userName(userId)} on ${taskItem.title} with ${payout + tip} credits paid.`
     : `${selectedUser().name} requested changes from ${userName(userId)} on ${taskItem.title}.`;
 
-  state = {
-    ...state,
-    balances: {
-      ...state.balances,
-      [userId]: balanceOf(userId) + payout + tip,
-      [state.userId]: Math.max(0, balanceOf(state.userId) - payout - tip),
-    },
-  };
+  const settles = decision === "accepted" || decision === "rejected";
+  const held = state.escrow?.[taskItem.id] ?? 0;
+  if (settles) {
+    state = {
+      ...state,
+      balances: {
+        ...state.balances,
+        [userId]: balanceOf(userId) + payout + tip,
+        // The requester already escrowed `held` at funding time; release it and
+        // net the actual payout + tip (refunding any unused escrow).
+        [state.userId]: Math.max(0, balanceOf(state.userId) + held - payout - tip),
+      },
+      escrow: withoutEscrow(state.escrow, taskItem.id),
+    };
+  }
 
   if (decision === "accepted" && taskItem.reward.collectibles.length > 0) {
     state = {
