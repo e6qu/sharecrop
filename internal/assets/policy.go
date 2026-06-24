@@ -73,9 +73,13 @@ func (RewardDenied) rewardCheck() {}
 // consent the platform does not model yet.
 func AllowsTip(policy TransferPolicy) RewardCheck {
 	switch policy {
-	case TransferPolicyTransferableBetweenUsers,
-		TransferPolicyTransferableWithinOrg:
+	case TransferPolicyTransferableBetweenUsers:
 		return RewardAllowed{}
+	case TransferPolicyTransferableWithinOrg:
+		// Collectibles do not yet carry an organization, so the within-org bound
+		// cannot be enforced. Deny rather than silently allow a cross-org tip,
+		// which would make this policy indistinguishable from the open one.
+		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "within-organization collectibles cannot be tipped yet")}
 	case TransferPolicyNonTransferableExceptPayout:
 		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "this collectible can only move as a reward payout, not a tip")}
 	case TransferPolicyIssuerControlled:

@@ -35,6 +35,10 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !server.allowBySubject(w, actor.subject.ID.String()) {
+		return
+	}
+
 	taskIDResult := parseTaskPathValue(r)
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
@@ -76,7 +80,7 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate the optional collectible-tip id up front so a malformed request is
-	// rejected before any settlement happens.
+	// rejected before settlement happens.
 	var tipCollectibleID core.CollectibleID
 	tipCollectible := request.TipCollectibleID != ""
 	if tipCollectible {
@@ -150,6 +154,9 @@ func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
 	pathResult := server.parseReviewPath(w, r)
 	path, pathMatched := pathResult.(reviewPathAccepted)
 	if !pathMatched {
+		return
+	}
+	if !server.allowBySubject(w, path.actor.ID.String()) {
 		return
 	}
 

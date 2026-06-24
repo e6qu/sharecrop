@@ -1774,7 +1774,7 @@ function submissionList(taskItem) {
         ${inventoryOf(state.userId).length > 0 ? `<label>Tip a collectible<select data-field="tipCollectible" data-submission="${escapeAttribute(submission.id)}">
           <option value="">No collectible tip</option>
           ${inventoryOf(state.userId).map((name) => `<option value="${escapeAttribute(name)}" ${draft.tipCollectible === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}
-        </select><span class="schema-hint">Gifts one collectible from your inventory to the worker on accept.</span></label>` : ""}
+        </select><span class="schema-hint">Gifts one collectible from your inventory to the worker on accept.</span></label>` : `<p class="schema-hint">No collectibles in your inventory to tip — accept a rewarded task to earn some.</p>`}
         ${held > 0 ? `<p class="schema-hint">Up to ${held} credits are in escrow for this task; any tip is paid from the requester's available balance.</p>` : ""}
         ${warning}
         <label class="check-row"><input type="checkbox" data-field="banImplementor" data-submission="${escapeAttribute(submission.id)}" ${draft.banImplementor ? "checked" : ""}> Ban implementor from this task</label>

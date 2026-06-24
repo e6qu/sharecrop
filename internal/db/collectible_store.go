@@ -229,10 +229,17 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
 	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
 	if !collectibleMatched {
-		return assets.GiftRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
+		// Use a uniform message so a known-but-unowned id is not distinguishable
+		// from a non-existent one (a minor existence oracle on the tip path).
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
+	}
+	// Idempotent replay: if the collectible already belongs to the recipient, a
+	// retried accept (after a lost response) treats the gift as already done.
+	if collectible.value.OwnerID == command.ToUserID {
+		return assets.CollectibleGifted{Value: collectible.value}
 	}
 	if collectible.value.OwnerID != command.FromUserID {
-		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "only the collectible owner can tip it")}
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
 	}
 	if collectible.value.State != assets.CollectibleStateMinted {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to tip")}

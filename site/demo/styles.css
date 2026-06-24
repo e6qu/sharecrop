@@ -1201,6 +1201,8 @@ button:disabled {
   }
 
   .page-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
     scrollbar-width: thin;
   }
 
@@ -1518,4 +1520,52 @@ body[data-theme="arcade"] .spotlight {
   box-shadow: var(--shadow);
   border: 3px solid var(--line);
   border-radius: 0;
+}
+
+/* --- Arcade review fixes (from the UI/UX pass) --- */
+
+/* Dark mode: primary buttons + active nav were near-white on light green. */
+body[data-theme="arcade"][data-mode="dark"] .button.primary,
+body[data-theme="arcade"][data-mode="dark"] .nav a.active,
+body[data-theme="arcade"][data-mode="dark"] .nav a[aria-current="page"] {
+  color: #11200a;
+}
+
+/* Keep pixel-font button labels whole; let whole buttons wrap instead of words. */
+body[data-theme="arcade"] .button {
+  white-space: nowrap;
+}
+body[data-theme="arcade"] .row-actions {
+  flex-wrap: wrap;
+}
+
+/* The schema/dialog block needs interior padding now that it has a frame. */
+body[data-theme="arcade"] .schema-block {
+  padding: 12px;
+}
+
+/* A disabled button must not look pressable: drop the hard shadow, go dashed. */
+body[data-theme="arcade"] .button:disabled,
+body[data-theme="arcade"] button.button:disabled {
+  box-shadow: none;
+  transform: none;
+  background: var(--surface-strong);
+  color: var(--muted);
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+/* Section eyebrows are far more legible in VT323 than tiny Press Start 2P. */
+body[data-theme="arcade"] .eyebrow {
+  font-family: "VT323", monospace;
+  font-size: 0.95rem;
+  letter-spacing: 1px;
+}
+
+/* Long reward labels + the escrow chip should wrap, not overflow the frame. */
+body[data-theme="arcade"] .objective-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }

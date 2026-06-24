@@ -739,6 +739,16 @@ func (server Server) allowByIP(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+// allowBySubject rate-limits an authenticated, DB-heavy endpoint by acting
+// subject so a single account cannot spam transactional review operations.
+func (server Server) allowBySubject(w http.ResponseWriter, subjectID string) bool {
+	if !server.subjectRateLimiter.allow(subjectID) {
+		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
+		return false
+	}
+	return true
+}
+
 func (server Server) setRefreshCookie(w http.ResponseWriter, refreshToken auth.RefreshTokenPlain) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "sharecrop_refresh_token",
