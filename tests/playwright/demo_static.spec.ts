@@ -6,7 +6,7 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await page.goto(demoUrl);
 
   await expect(page.getByRole("heading", {
-    name: "Track tasks, rewards, and reviews.",
+    name: "Post a task, set the reward, review results.",
   })).toBeVisible();
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -19,7 +19,7 @@ test("static demo supports theme, user, local state, and reset flows", async ({ 
   await page.getByLabel("Select persona").selectOption("jules");
   await page.getByRole("button", { name: "Dashboard", exact: true }).click();
   await expect(page.getByRole("heading", {
-    name: "Pick a mission, claim the slot, and deliver the payload.",
+    name: "Find a task, do the work, get paid.",
   })).toBeVisible();
 
   await page.getByRole("button", { name: "Post Task", exact: true }).click();
@@ -74,13 +74,13 @@ test("static demo supports mission state transitions", async ({ page }) => {
   )
     .toBeVisible();
 
-  await page.getByLabel("Submission payload").fill(
-    '{"region":"north","quality":92}',
+  await page.getByLabel("Your response").fill(
+    '{"region":"North Vale","quality":92}',
   );
-  await page.getByRole("button", { name: "Submit payload" }).click();
+  await page.getByRole("button", { name: "Submit response" }).click();
   await expect(
     page.getByText(
-      "Jules Park submitted a payload for Standardize map-tile region names.",
+      "Jules Park submitted a response for Standardize map-tile region names.",
     ).first(),
   )
     .toBeVisible();
@@ -127,7 +127,7 @@ test("static demo keeps review decisions persona-scoped", async ({ page }) => {
   await page.getByRole("button", { name: "Reviews", exact: true }).click();
   await expect(
     page.getByText(
-      "No reservations or submitted payloads need this persona's review.",
+      "No reservations or submitted responses need this persona's review.",
     ),
   )
     .toBeVisible();
@@ -151,6 +151,6 @@ test("static demo keeps review decisions persona-scoped", async ({ page }) => {
     .click();
   await page.getByRole("button", { name: /Label orchard photos/ }).click();
   await expect(page.getByText("Task page")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Revise payload" }))
+  await expect(page.getByRole("heading", { name: "Revise response" }))
     .toBeVisible();
 });
