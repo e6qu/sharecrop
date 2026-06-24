@@ -1,17 +1,20 @@
 # Status
 
-The repository contains pull request 1 through pull request 37 work, merged into `main`.
+The repository contains pull request 1 through pull request 38 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/elm-split-schema-polish` finishes the `Main.elm` decomposition, deepens the demo schema designer, and applies a specialized review's polish to the demo economy. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/http-split-and-security` splits `server.go` into cohesive handler files and applies a multi-agent security review (Go backend) and UI/UX/product review (demo) with fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/elm-split-schema-polish`:
+Implemented in `task/http-split-and-security`:
 
-- Elm decomposition finished: the view layer moved to `Sharecrop.View` and the HTTP commands/encoders/decoders to `Sharecrop.Api`, leaving `Main.elm` at about 681 lines (init, update dispatch, routing, wiring). No behavior change.
-- Schema designer depth: list fields gain min/max item constraints (validated on submit), and field names are normalized to identifier-safe keys (shown inline) with a warning when min items exceed max items.
-- Demo economy polish: seed balances are net of escrow so available + escrow reconciles and closing seeded tasks no longer mints credits; the dashboard distinguishes spendable from committed credits; review Settle/Tip are numeric inputs pre-filled with real defaults; settling is bounded by escrow and tipping by spendable balance (over-limit refused with a warning); Accept/Reject show the amount paid; escrow shows on the worker task page.
-- A multi-agent UI/UX/user-journey/product review drove the above fixes; it caught a real escrow-accounting blocker (seed escrow never debited from balances) and an org-task leak in the Agent/API console (now scoped to visible tasks).
+- HTTP decomposition: the task, submission, review, and credits handlers (with their request decoders and response converters) moved out of `internal/http/server.go` into `tasks.go`, `submissions.go`, `reviews.go`, and `credits.go` in package `httpserver`. `server.go` holds the router, shared types, and shared helpers (about 1186 lines, down from about 2476). No behavior change.
+- Security fixes (from a multi-agent review; authz/RBAC found no issues): the refresh-token cookie is `Secure` by default (opt out for local plain-HTTP dev with `SHARECROP_INSECURE_COOKIES=true`); MCP HTTP sessions are capped per agent subject and globally (over-limit returns 429); the submission response-value parser caps array items and object fields. Rate limiting and tip-entry idempotency keys are recorded in [BUGS.md](./BUGS.md) as accepted lower-risk follow-ups.
+- Demo fixes (from a UI/UX/product review): every open task is escrow-backed (the collectible-only audit task now carries credits); Reject defaults to paying 0 while Accept defaults to the full reward, with each amount shown on the button; the Agent/API console's "Run as Sol agent" is gated by the same claimability rules as the task page; Post Task shows only the reward inputs relevant to the chosen reward kind; tip-hint copy and the worker response nudge were clarified. Deferred minors (neutral-chip style unification, a real Docs page, a worker trust signal) are in [DO_NEXT.md](./DO_NEXT.md).
+
+Earlier branch `task/demo-orgs-elm-split-polish` (pull request 37, merged) modeled demo organizations as entities, started the `Main.elm` decomposition with `Sharecrop.Types`, and applied a specialized review's polish.
+
+Earlier branch `task/elm-split-schema-polish` (pull request 38, merged) finished the `Main.elm` decomposition (`Sharecrop.View` + `Sharecrop.Api`), deepened the schema designer (min/max items, identifier-safe keys), and fixed the demo escrow accounting (seed balances net of escrow).
 
 Earlier branch `task/demo-orgs-elm-split-polish` (pull request 37, merged) modeled demo organizations as entities, started the `Main.elm` decomposition with `Sharecrop.Types`, and applied a specialized review's polish.
 
