@@ -1,5 +1,14 @@
 # What We Did
 
+`task/collectible-tips-arcade-mcp` added collectible tips, a pixel-art demo theme, MCP docs, and fixtures, with reviews:
+
+- Collectible/inventory tips (real app + demo): added `assets.AllowsTip`, `assets.GiftCollectible` (service), and a `GiftCollectible` store transfer (lock the collectible, enforce ownership + minted state + transfer policy, update `owner_user_id`); the accept handler parses `tip_collectible_id`, settles credits, derives the worker from the payout, and gifts the collectible (a separate per-store transaction sequenced after the settle; idempotent on replay; uniform not-available error). An e2e test covers a successful tip and the policy refusal. The demo review console offers a "Tip a collectible" select that transfers from the reviewer's inventory to the worker on accept.
+- Pixel-art "arcade" theme (now the demo default): a farm-RPG palette, chunky hard-outlined dialog-box panels with hard offset shadows, blocky pressable buttons, square pills, terminal-green schema blocks, and pixel fonts (Press Start 2P headings, VT323 body), inspired by Habitica / idle-clicker UIs. Scoped to `body[data-theme="arcade"]`; the other themes stay selectable.
+- MCP docs: precise install steps (scoped agent token, `/mcp` client config, an initialize handshake) and the agent work loop as concrete tool calls — poll (`list_tasks`/`get_task`/`get_task_schema`), claim (`reserve_task`), submit (`submit_response`/`get_submission_status`), review (`accept_submission`/`reject_submission`/`request_submission_changes`, approve/decline reservation), and propose (`create_task`).
+- Contract fixtures: pinned the wire JSON shape of six uncovered response DTOs (reservation, team, organization, organization member, task capability token, submission-created).
+- Reviews + fixes: a security review of the new collectible-tip/rate-limit code surfaced only medium/low items, all addressed (within-org tip denied until org is modeled, idempotent gift, uniform tip error, accept/reject now rate-limited per subject). A UI review of the arcade theme drove fixes: dark-mode primary-button/active-nav contrast, button labels kept whole (whole buttons wrap), schema-block padding, a clear disabled-button state, more legible VT323 eyebrows, scrolling mobile tabs, and wrapping reward rows.
+- Deferred: the out-of-process Postgres session/SSE/rate-limiter store (cross-process SSE replay needs `LISTEN/NOTIFY`); queued as DO_NEXT #1.
+
 `task/ratelimit-tipkey-reviews` landed the security follow-ups and ran third-pass reviews:
 
 - Added an in-memory token-bucket rate limiter (`internal/http/rate_limit.go`): per-client-IP on the unauthenticated login/refresh/receipt endpoints and per-agent-subject on MCP requests, returning HTTP 429 when exceeded. Idle buckets are evicted so keys cannot accumulate; client IP uses the direct peer (X-Forwarded-For is not trusted). Unit-tested.
