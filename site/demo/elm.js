@@ -5497,11 +5497,11 @@ var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
 var $author$project$Sharecrop$Types$RefreshReceived = function (a) {
 	return {$: 'RefreshReceived', a: a};
 };
-var $author$project$Sharecrop$Generated$Auth$AuthResponse = F3(
-	function (subjectKind, subjectID, accessToken) {
-		return {accessToken: accessToken, subjectID: subjectID, subjectKind: subjectKind};
+var $author$project$Sharecrop$Generated$Auth$AuthResponse = F4(
+	function (subjectKind, subjectID, accessToken, role) {
+		return {accessToken: accessToken, role: role, subjectID: subjectID, subjectKind: subjectKind};
 	});
-var $elm$json$Json$Decode$map3 = _Json_map3;
+var $elm$json$Json$Decode$map4 = _Json_map4;
 var $elm$json$Json$Decode$string = _Json_decodeString;
 var $author$project$Sharecrop$Generated$Auth$SubjectKindGuest = {$: 'SubjectKindGuest'};
 var $author$project$Sharecrop$Generated$Auth$SubjectKindUser = {$: 'SubjectKindUser'};
@@ -5519,12 +5519,13 @@ var $author$project$Sharecrop$Generated$Auth$subjectKindDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Auth$authResponseDecoder = A4(
-	$elm$json$Json$Decode$map3,
+var $author$project$Sharecrop$Generated$Auth$authResponseDecoder = A5(
+	$elm$json$Json$Decode$map4,
 	$author$project$Sharecrop$Generated$Auth$AuthResponse,
 	A2($elm$json$Json$Decode$field, 'subject_kind', $author$project$Sharecrop$Generated$Auth$subjectKindDecoder),
 	A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'access_token', $elm$json$Json$Decode$string));
+	A2($elm$json$Json$Decode$field, 'access_token', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'role', $elm$json$Json$Decode$string));
 var $elm$http$Http$BadStatus_ = F2(
 	function (a, b) {
 		return {$: 'BadStatus_', a: a, b: b};
@@ -6523,6 +6524,7 @@ var $author$project$Sharecrop$Types$SeriesDetailData = F3(
 		return {comments: comments, series: series, tasks: tasks};
 	});
 var $elm$json$Json$Decode$list = _Json_decodeList;
+var $elm$json$Json$Decode$map3 = _Json_map3;
 var $author$project$Sharecrop$Types$SeriesTaskEntry = F3(
 	function (id, title, state) {
 		return {id: id, state: state, title: title};
@@ -6989,7 +6991,6 @@ var $author$project$Sharecrop$Generated$Agent$agentScopeDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $elm$json$Json$Decode$map4 = _Json_map4;
 var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A5(
 	$elm$json$Json$Decode$map4,
 	$author$project$Sharecrop$Generated$Agent$AgentCredentialResponse,
@@ -8277,6 +8278,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundNonce: 0,
 		fundOrganizationId: '',
 		fundTaskId: '',
+		isAdmin: response.role === 'admin',
 		newCredential: $elm$core$Maybe$Nothing,
 		orgBalance: $elm$core$Maybe$Nothing,
 		orgCollectibles: _List_Nil,
@@ -14258,8 +14260,8 @@ var $author$project$Sharecrop$Ui$badge = function (value) {
 			]));
 };
 var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
-var $author$project$Sharecrop$View$catalogEntry = F2(
-	function (recipientId, entry) {
+var $author$project$Sharecrop$View$catalogEntry = F3(
+	function (isAdmin, recipientId, entry) {
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
@@ -14282,7 +14284,7 @@ var $author$project$Sharecrop$View$catalogEntry = F2(
 						])),
 					$author$project$Sharecrop$Ui$badge(
 					$author$project$Sharecrop$Labels$collectibleKindLabel(entry.kind)),
-					A2(
+					isAdmin ? A2(
 					$author$project$Sharecrop$Ui$secondaryButton,
 					_List_fromArray(
 						[
@@ -14293,7 +14295,7 @@ var $author$project$Sharecrop$View$catalogEntry = F2(
 							$elm$core$String$trim(recipientId) === ''),
 							$author$project$Sharecrop$Ui$testId('catalog-award')
 						]),
-					'Award')
+					'Award') : $elm$html$Html$text('')
 				]));
 	});
 var $author$project$Sharecrop$View$catalogGallery = function (state) {
@@ -14306,7 +14308,7 @@ var $author$project$Sharecrop$View$catalogGallery = function (state) {
 			]),
 		A2(
 			$elm$core$List$map,
-			$author$project$Sharecrop$View$catalogEntry(state.awardRecipientId),
+			A2($author$project$Sharecrop$View$catalogEntry, state.isAdmin, state.awardRecipientId),
 			state.collectibleCatalog));
 };
 var $author$project$Sharecrop$Types$AwardClicked = function (a) {
@@ -14526,7 +14528,7 @@ var $author$project$Sharecrop$View$collectiblesView = function (state) {
 					])),
 				$author$project$Sharecrop$View$mintForm(state),
 				$author$project$Sharecrop$View$awardForm(state),
-				$author$project$Sharecrop$View$awardRecipientControl(state),
+				state.isAdmin ? $author$project$Sharecrop$View$awardRecipientControl(state) : $elm$html$Html$text(''),
 				$author$project$Sharecrop$View$catalogGallery(state),
 				$author$project$Sharecrop$View$collectiblesList(state)
 			]));
@@ -17704,7 +17706,7 @@ var $author$project$Sharecrop$View$submissionsCard = function (state) {
 		_List_fromArray(
 			[
 				$author$project$Sharecrop$Ui$sectionTitle('Submissions'),
-				$author$project$Sharecrop$View$reviewControls(state),
+				$elm$core$List$isEmpty(state.submissions) ? $elm$html$Html$text('') : $author$project$Sharecrop$View$reviewControls(state),
 				$author$project$Sharecrop$View$submissionsList(state)
 			]));
 };
@@ -17712,7 +17714,7 @@ var $author$project$Sharecrop$Types$SubmitClicked = {$: 'SubmitClicked'};
 var $author$project$Sharecrop$Types$SubmitInputChanged = function (a) {
 	return {$: 'SubmitInputChanged', a: a};
 };
-var $author$project$Sharecrop$View$submitCard = function (state) {
+var $author$project$Sharecrop$View$submitCardForm = function (state) {
 	return A2(
 		$elm$html$Html$form,
 		_List_fromArray(
@@ -17742,6 +17744,14 @@ var $author$project$Sharecrop$View$submitCard = function (state) {
 				'Submit response'),
 				A2($author$project$Sharecrop$View$maybeNote, state.submitMessage, 'detail-submit-message')
 			]));
+};
+var $author$project$Sharecrop$View$submitCard = function (state) {
+	var _v0 = state.detail;
+	if (_v0.$ === 'Nothing') {
+		return $elm$html$Html$text('');
+	} else {
+		return $author$project$Sharecrop$View$submitCardForm(state);
+	}
 };
 var $author$project$Sharecrop$Types$AddTaskCommentClicked = function (a) {
 	return {$: 'AddTaskCommentClicked', a: a};
@@ -17852,7 +17862,7 @@ var $author$project$Sharecrop$View$taskDetailPageView = F2(
 					return _Utils_eq(detail.createdBy, state.subjectId);
 				},
 				state.detail));
-		var backHref = isOwner ? '/tasks' : '/discovery';
+		var backHref = isOwner ? '#/tasks' : '#/discovery';
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(

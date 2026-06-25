@@ -360,6 +360,11 @@ test("pages have their own URLs and deep links load", async ({ page, request }) 
   await page.getByTestId("nav-collectibles").click();
   await expect(page).toHaveURL(/\/collectibles$/);
   await expect(page.getByTestId("collectible-name")).toBeVisible();
+  // The admin-only award panel is hidden for a non-admin (role=member); the
+  // catalog gallery is still browsable but without Award buttons.
+  await expect(page.getByTestId("award-recipient-id")).toHaveCount(0);
+  await expect(page.getByTestId("catalog-award")).toHaveCount(0);
+  await expect(page.getByTestId("catalog-entry").first()).toBeVisible();
 
   // Deep-linking directly to a page loads the app on that page with the
   // session restored from the refresh cookie.

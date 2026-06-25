@@ -27,7 +27,7 @@ func (server Server) createOrganization(w http.ResponseWriter, r *http.Request) 
 	nameAccepted, nameMatched := nameResult.(org.OrganizationNameAccepted)
 	if !nameMatched {
 		rejected := nameResult.(org.OrganizationNameRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -35,7 +35,7 @@ func (server Server) createOrganization(w http.ResponseWriter, r *http.Request) 
 	created, matched := result.(org.OrganizationCreated)
 	if !matched {
 		rejected := result.(org.CreateOrganizationRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -55,7 +55,7 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 	listed, matched := result.(org.OrganizationsListed)
 	if !matched {
 		rejected := result.(org.ListOrganizationsRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -86,7 +86,7 @@ func (server Server) listOrganizationMembers(w http.ResponseWriter, r *http.Requ
 	result := server.organizationService.ListMembers(r.Context(), actor.subject, organizationIDAccepted.value, parsePage(r))
 	listed, matched := result.(org.MembersListed)
 	if !matched {
-		writeError(w, http.StatusForbidden, result.(org.ListMembersRejected).Reason.Description())
+		writeDomainError(w, result.(org.ListMembersRejected).Reason)
 		return
 	}
 
@@ -126,7 +126,7 @@ func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.
 	provisioned, matched := result.(org.MemberProvisioned)
 	if !matched {
 		rejected := result.(org.ProvisionMemberRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -154,14 +154,14 @@ func (server Server) deactivateOrganizationMember(w http.ResponseWriter, r *http
 	userIDAccepted, userIDMatched := userIDResult.(core.UserIDCreated)
 	if !userIDMatched {
 		rejected := userIDResult.(core.UserIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
 	result := server.organizationService.DeactivateMember(r.Context(), actor.subject, organizationIDAccepted.value, userIDAccepted.Value)
 	if _, matched := result.(org.MemberDeactivationAccepted); !matched {
 		rejected := result.(org.DeactivateMemberRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -195,7 +195,7 @@ func (server Server) createOrganizationTeam(w http.ResponseWriter, r *http.Reque
 	nameAccepted, nameMatched := nameResult.(org.TeamNameAccepted)
 	if !nameMatched {
 		rejected := nameResult.(org.TeamNameRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -203,7 +203,7 @@ func (server Server) createOrganizationTeam(w http.ResponseWriter, r *http.Reque
 	created, matched := result.(org.TeamCreated)
 	if !matched {
 		rejected := result.(org.CreateTeamRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -231,7 +231,7 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -261,7 +261,7 @@ func (server Server) createStandaloneTeam(w http.ResponseWriter, r *http.Request
 	nameAccepted, nameMatched := nameResult.(org.TeamNameAccepted)
 	if !nameMatched {
 		rejected := nameResult.(org.TeamNameRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -269,7 +269,7 @@ func (server Server) createStandaloneTeam(w http.ResponseWriter, r *http.Request
 	created, matched := result.(org.TeamCreated)
 	if !matched {
 		rejected := result.(org.CreateTeamRejected)
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -289,7 +289,7 @@ func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request)
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
-		writeError(w, http.StatusInternalServerError, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 

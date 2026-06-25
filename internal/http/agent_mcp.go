@@ -190,7 +190,7 @@ func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
 	result := server.taskService.Get(r.Context(), actor.subject, taskIDAccepted.value)
 	got, matched := result.(task.TaskGot)
 	if !matched {
-		writeError(w, http.StatusForbidden, result.(task.GetRejected).Reason.Description())
+		writeDomainError(w, result.(task.GetRejected).Reason)
 		return
 	}
 

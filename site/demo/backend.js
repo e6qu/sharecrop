@@ -411,7 +411,7 @@
   const ok = (body, status) => ({ status: status || 200, body: JSON.stringify(body) });
   const empty = (status) => ({ status: status || 204, body: "" });
   const err = (status, message) => ({ status, body: JSON.stringify({ error: message }) });
-  const auth = () => ({ subject_kind: "user", subject_id: ME, access_token: "demo-access-token" });
+  const auth = () => ({ subject_kind: "user", subject_id: ME, access_token: "demo-access-token", role: "admin" });
   const findTask = (id) => db.tasks.find((t) => t.id === id);
 
   function match(method, path) {
@@ -784,7 +784,7 @@
   });
   on("GET", "/api/users/:id", (p) => ok({ id: p.id, tasks: db.tasks.filter((t) => t.created_by === p.id).map(listItem) }));
   on("GET", "/api/users/:id/work", (p) => ok({ tasks: db.tasks.filter((t) => activeAssignee(t) === p.id).map(listItem) }));
-  on("GET", "/api/users/:id/submissions", () => ok({ submissions: [] }));
+  on("GET", "/api/users/:id/submissions", (p) => ok({ submissions: db.tasks.flatMap((t) => t.submissions).filter((s) => s.submitter_id === p.id) }));
   on("GET", "/api/submission-receipts/:token", () => ok({ submission: { id: "sub-receipt", task_id: "task-1", submitter_id: ME, state: "submitted", response_json: "{}", review_note: "", validation_errors: [] } }));
 
   const base = (window.location.origin && window.location.origin !== "null") ? window.location.origin : "http://demo.local";

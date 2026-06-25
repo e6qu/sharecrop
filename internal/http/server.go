@@ -914,7 +914,14 @@ type responseParts struct {
 	source   string
 }
 
-func writeAuthResponse(w http.ResponseWriter, status int, response authResponse) {
+func (server Server) writeAuthResponse(w http.ResponseWriter, status int, response authResponse) {
+	// Stamp the platform role from the bootstrap admin allowlist so the client can
+	// gate admin-only UI without a separate request.
+	if server.adminUserIDs[response.SubjectID] {
+		response.Role = "admin"
+	} else {
+		response.Role = "member"
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)

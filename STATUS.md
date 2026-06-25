@@ -1,10 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 61 work, merged into `main`.
+The repository contains pull request 1 through pull request 62 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-fidelity` aligns the in-browser demo backend (`site/demo/backend.js`) with the real Go backend's semantics (from a route-by-route divergence audit), minimizing the demo "fakes". It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/backlog-cleanup` clears bounded backlog deferrals (admin-panel gating, Go status-code consistency, demo user-submissions) and applies a UI/UX+QA boyscout review (Back-button regression, no-op review controls, broken submit form). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/backlog-cleanup`:
+
+- The auth response carries a `role` (admin/member from `SHARECROP_ADMIN_USER_IDS`); the client hides the admin award panel + catalog Award buttons for non-admins (demo role is admin, so the showcase keeps them).
+- UI/UX + QA review fixes: the task-detail Back button used a non-fragment href (regression) and dumped users on Overview — now `#/tasks`/`#/discovery`; `getTask` returns the real 404 for a missing task (was 403); a sweep replaced hardcoded `writeError` status codes with `writeDomainError` across org/series/collectible/org-credit handlers (contradictory 403-vs-500 siblings, wrong 400s) so each rejection maps to its correct status; the Submit-a-response form no longer renders when the task failed to load; review controls only render when there are submissions; the demo user-submissions endpoint now returns the user's real submissions.
+- Deferred (noted): id-picker dropdowns for free-text scope ids; org-reviewer review controls in the browser (needs a `viewer_action` extension); per-page loading-vs-error states (perpetual "Loading…" on a forbidden deep-link); and the three large standalone initiatives (out-of-process Postgres session/rate-limiter store, anonymous-worker identity, crypto reward metadata) kept in DO_NEXT.
+
+Implemented in `task/demo-fidelity`:
 
 Implemented in `task/demo-fidelity`:
 

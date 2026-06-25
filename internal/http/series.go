@@ -75,7 +75,7 @@ func (server Server) listTaskSeries(w http.ResponseWriter, r *http.Request) {
 	result := server.taskService.ListSeries(r.Context(), actor, parsePage(r))
 	listed, matched := result.(task.SeriesListed)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(task.ListSeriesRejected).Reason.Description())
+		writeDomainError(w, result.(task.ListSeriesRejected).Reason)
 		return
 	}
 
@@ -274,7 +274,7 @@ func (server Server) addTaskSeriesComment(w http.ResponseWriter, r *http.Request
 	bodyResult := task.NewCommentBody(request.Body)
 	body, matched := bodyResult.(task.CommentBodyAccepted)
 	if !matched {
-		writeError(w, http.StatusBadRequest, bodyResult.(task.CommentBodyRejected).Reason.Description())
+		writeDomainError(w, bodyResult.(task.CommentBodyRejected).Reason)
 		return
 	}
 	result := server.taskService.AddSeriesComment(r.Context(), actor, seriesID, body.Value)
@@ -302,7 +302,7 @@ func (server Server) seriesPathID(w http.ResponseWriter, r *http.Request) (core.
 	result := core.ParseTaskSeriesID(r.PathValue("series_id"))
 	seriesID, matched := result.(core.TaskSeriesIDCreated)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(core.TaskSeriesIDRejected).Reason.Description())
+		writeDomainError(w, result.(core.TaskSeriesIDRejected).Reason)
 		return core.TaskSeriesID{}, false
 	}
 	return seriesID.Value, true
@@ -312,7 +312,7 @@ func (server Server) parseSeriesTaskID(w http.ResponseWriter, raw string) (core.
 	result := core.ParseTaskID(raw)
 	taskID, matched := result.(core.TaskIDCreated)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(core.TaskIDRejected).Reason.Description())
+		writeDomainError(w, result.(core.TaskIDRejected).Reason)
 		return core.TaskID{}, false
 	}
 	return taskID.Value, true
@@ -322,13 +322,13 @@ func (server Server) seriesTitleAndDescription(w http.ResponseWriter, rawTitle s
 	titleResult := task.NewSeriesTitle(rawTitle)
 	title, titleMatched := titleResult.(task.SeriesTitleAccepted)
 	if !titleMatched {
-		writeError(w, http.StatusBadRequest, titleResult.(task.SeriesTitleRejected).Reason.Description())
+		writeDomainError(w, titleResult.(task.SeriesTitleRejected).Reason)
 		return task.SeriesTitle{}, task.SeriesDescription{}, false
 	}
 	descriptionResult := task.NewSeriesDescription(rawDescription)
 	description, descriptionMatched := descriptionResult.(task.SeriesDescriptionAccepted)
 	if !descriptionMatched {
-		writeError(w, http.StatusBadRequest, descriptionResult.(task.SeriesDescriptionRejected).Reason.Description())
+		writeDomainError(w, descriptionResult.(task.SeriesDescriptionRejected).Reason)
 		return task.SeriesTitle{}, task.SeriesDescription{}, false
 	}
 	return title.Value, description.Value, true

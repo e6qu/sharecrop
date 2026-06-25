@@ -71,6 +71,7 @@ type alias SeriesDetailData =
 type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
+    , isAdmin : Bool
     , page : Page
     , balance : Maybe Int
     , entries : List Ledger.LedgerEntryResponse

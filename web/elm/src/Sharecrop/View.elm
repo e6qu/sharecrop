@@ -1277,7 +1277,11 @@ collectiblesView state =
         , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Mint your own collectibles, award default collectibles to users, teams, or organizations, and trade collectibles to other users." ]
         , mintForm state
         , awardForm state
-        , awardRecipientControl state
+        , if state.isAdmin then
+            awardRecipientControl state
+
+          else
+            text ""
         , catalogGallery state
         , collectiblesList state
         ]
@@ -1302,16 +1306,20 @@ awardRecipientControl state =
 catalogGallery : LoggedInModel -> Html Msg
 catalogGallery state =
     div [ Html.Attributes.class "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3", testId "catalog" ]
-        (List.map (catalogEntry state.awardRecipientId) state.collectibleCatalog)
+        (List.map (catalogEntry state.isAdmin state.awardRecipientId) state.collectibleCatalog)
 
 
-catalogEntry : String -> Collectible.CollectibleCatalogEntry -> Html Msg
-catalogEntry recipientId entry =
+catalogEntry : Bool -> String -> Collectible.CollectibleCatalogEntry -> Html Msg
+catalogEntry isAdmin recipientId entry =
     div [ Html.Attributes.class "flex flex-col items-center gap-1 rounded-md border border-slate-200 p-2 text-center", testId "catalog-entry" ]
         [ Sprites.pixel entry.art 6
         , span [ Html.Attributes.class "text-xs font-medium break-words" ] [ text entry.name ]
         , Ui.badge (collectibleKindLabel entry.kind)
-        , Ui.secondaryButton [ type_ "button", onClick (AwardDefaultClicked entry.slug), disabled (String.trim recipientId == ""), testId "catalog-award" ] "Award"
+        , if isAdmin then
+            Ui.secondaryButton [ type_ "button", onClick (AwardDefaultClicked entry.slug), disabled (String.trim recipientId == ""), testId "catalog-award" ] "Award"
+
+          else
+            text ""
         ]
 
 
@@ -1440,10 +1448,10 @@ taskDetailPageView origin state =
 
         backHref =
             if isOwner then
-                "/tasks"
+                "#/tasks"
 
             else
-                "/discovery"
+                "#/discovery"
     in
     div [ Html.Attributes.class "space-y-6" ]
         ([ a [ href backHref, Html.Attributes.class Ui.secondaryButtonClass, testId "detail-back" ] [ text "Back" ]
@@ -1643,6 +1651,16 @@ reservationButtons reservation =
 
 submitCard : LoggedInModel -> Html Msg
 submitCard state =
+    case state.detail of
+        Nothing ->
+            text ""
+
+        Just _ ->
+            submitCardForm state
+
+
+submitCardForm : LoggedInModel -> Html Msg
+submitCardForm state =
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit SubmitClicked ]
         [ Ui.sectionTitle "Submit a response"
         , Ui.textarea_
@@ -1661,7 +1679,11 @@ submissionsCard : LoggedInModel -> Html Msg
 submissionsCard state =
     Ui.card
         [ Ui.sectionTitle "Submissions"
-        , reviewControls state
+        , if List.isEmpty state.submissions then
+            text ""
+
+          else
+            reviewControls state
         , submissionsList state
         ]
 

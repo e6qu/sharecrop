@@ -13,13 +13,13 @@ func (server Server) fundTaskFromOrganization(w http.ResponseWriter, r *http.Req
 	organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
 	organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
 	if !organizationMatched {
-		writeError(w, http.StatusBadRequest, organizationIDResult.(core.OrganizationIDRejected).Reason.Description())
+		writeDomainError(w, organizationIDResult.(core.OrganizationIDRejected).Reason)
 		return
 	}
 
 	check := server.organizationService.CheckOrganizationPermission(r.Context(), organizationID.Value, actor.ID, org.PermissionManageBilling)
 	if rejected, denied := check.(org.PermissionDenied); denied {
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -50,14 +50,14 @@ func (server Server) organizationCreditsBalance(w http.ResponseWriter, r *http.R
 
 	check := server.organizationService.CheckOrganizationPermission(r.Context(), organizationIDAccepted.value, actor.subject.ID, org.PermissionManageBilling)
 	if rejected, denied := check.(org.PermissionDenied); denied {
-		writeError(w, http.StatusForbidden, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
 	result := server.ledgerService.OrganizationBalance(r.Context(), organizationIDAccepted.value)
 	found, matched := result.(ledger.BalanceFound)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(ledger.BalanceRejected).Reason.Description())
+		writeDomainError(w, result.(ledger.BalanceRejected).Reason)
 		return
 	}
 

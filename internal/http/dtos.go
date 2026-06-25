@@ -9,6 +9,7 @@ type authResponse struct {
 	SubjectKind string `json:"subject_kind"`
 	SubjectID   string `json:"subject_id"`
 	AccessToken string `json:"access_token"`
+	Role        string `json:"role"`
 }
 
 type errorResponse struct {
