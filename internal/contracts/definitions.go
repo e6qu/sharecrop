@@ -498,6 +498,22 @@ func submissionModule() Module {
 				},
 			},
 			Product{
+				Name: NewElmTypeName("SubmissionCommentResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("submissionID"), JSONName: NewJSONFieldName("submission_id"), Type: StringRef{}},
+					{Name: NewElmValueName("authorUserID"), JSONName: NewJSONFieldName("author_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("body"), JSONName: NewJSONFieldName("body"), Type: StringRef{}},
+					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("SubmissionCommentsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("comments"), JSONName: NewJSONFieldName("comments"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionCommentResponse")}}},
+				},
+			},
+			Product{
 				Name: NewElmTypeName("SubmissionCreatedResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("submission"), JSONName: NewJSONFieldName("submission"), Type: NamedRef{Name: NewElmTypeName("SubmissionResponse")}},

@@ -117,6 +117,14 @@ func (services mcpServices) ListTaskComments(ctx context.Context, subject auth.U
 	return services.taskService.ListTaskComments(ctx, subject, taskID)
 }
 
+func (services mcpServices) AddSubmissionComment(ctx context.Context, subject auth.UserSubject, submissionID core.SubmissionID, body task.CommentBody) submission.SubmissionCommentResult {
+	return services.submissionService.AddSubmissionComment(ctx, subject, submissionID, body)
+}
+
+func (services mcpServices) ListSubmissionComments(ctx context.Context, subject auth.UserSubject, submissionID core.SubmissionID) submission.SubmissionCommentsResult {
+	return services.submissionService.ListSubmissionComments(ctx, subject, submissionID)
+}
+
 func (services mcpServices) ReserveTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
 	return services.taskService.Reserve(ctx, subject, taskID)
 }

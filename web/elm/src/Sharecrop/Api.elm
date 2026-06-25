@@ -403,6 +403,24 @@ postTaskComment token taskId body =
         (Http.expectJson TaskCommentReceived Task.taskCommentResponseDecoder)
 
 
+fetchSubmissionComments : String -> String -> Cmd Msg
+fetchSubmissionComments token submissionId =
+    authorizedRequest "GET"
+        token
+        ("/api/submissions/" ++ submissionId ++ "/comments")
+        Http.emptyBody
+        (Http.expectJson SubmissionCommentsReceived Submission.submissionCommentsResponseDecoder)
+
+
+addSubmissionComment : String -> String -> String -> Cmd Msg
+addSubmissionComment token submissionId body =
+    authorizedRequest "POST"
+        token
+        ("/api/submissions/" ++ submissionId ++ "/comments")
+        (Http.jsonBody (Encode.object [ ( "body", Encode.string body ) ]))
+        (Http.expectJson SubmissionCommentAdded Submission.submissionCommentResponseDecoder)
+
+
 refreshAfterAccept : Model -> Cmd Msg
 refreshAfterAccept model =
     case model.session of

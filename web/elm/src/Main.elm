@@ -135,6 +135,10 @@ emptyLoggedIn response =
     , createReferenceURL = ""
     , taskComments = []
     , taskCommentBody = ""
+    , submissionComments = []
+    , activeSubmissionCommentsID = Nothing
+    , submissionCommentBody = ""
+    , submissionCommentMessage = Nothing
     , taskAgentToken = Nothing
     , taskIntegrationOpen = False
     , taskActionMessage = Nothing
@@ -260,7 +264,7 @@ enterPage page state =
         TaskDetailPage _ ->
             -- Clear the previous task's detail substate so a task->task link does
             -- not briefly show the prior task's badges, submissions, or comments.
-            { state | page = page, detail = Nothing, reservations = [], reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, taskComments = [], taskCommentBody = "", taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
+            { state | page = page, detail = Nothing, reservations = [], reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, taskComments = [], taskCommentBody = "", submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
 
         _ ->
             { state | page = page }
@@ -969,6 +973,51 @@ update msg model =
 
         TaskCommentsReceived (Err _) ->
             ( Api.updateLoggedIn model (\state -> { state | taskComments = [] }), Cmd.none )
+
+        OpenSubmissionComments submissionId ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | activeSubmissionCommentsID = Just submissionId, submissionComments = [], submissionCommentMessage = Nothing })
+                    , Api.fetchSubmissionComments state.accessToken submissionId
+                    )
+                )
+
+        SubmissionCommentsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | submissionComments = response.comments }), Cmd.none )
+
+        SubmissionCommentsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | submissionCommentMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        SubmissionCommentBodyChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | submissionCommentBody = value }), Cmd.none )
+
+        AddSubmissionCommentClicked submissionId ->
+            Api.withSession model
+                (\state ->
+                    if String.trim state.submissionCommentBody == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | submissionCommentMessage = Just "Write a comment first." }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | submissionCommentMessage = Nothing })
+                        , Api.addSubmissionComment state.accessToken submissionId (String.trim state.submissionCommentBody)
+                        )
+                )
+
+        SubmissionCommentAdded (Ok _) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | submissionCommentBody = "" })
+                    , case state.activeSubmissionCommentsID of
+                        Just submissionId ->
+                            Api.fetchSubmissionComments state.accessToken submissionId
+
+                        Nothing ->
+                            Cmd.none
+                    )
+                )
+
+        SubmissionCommentAdded (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | submissionCommentMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         LinkClicked request ->
             case request of

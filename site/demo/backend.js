@@ -180,6 +180,7 @@
     series: [{ id: "series-orchard", owner_kind: "user", title: "Orchard intake", description: "A multi-step orchard onboarding with review rounds.", state: "published", created_by: ME, position: 0 }],
     seriesComments: { "series-orchard": [{ id: "scom-1", series_id: "series-orchard", author_user_id: ME, body: "Kicking off round one — add the intake tasks here.", created_at: "2026-06-20T10:00:00Z" }] },
     taskComments: { "task-7": [{ id: "tcom-seed", task_id: "task-7", author_user_id: "user-jules", body: "Keep each note to one sentence; link the PR for each entry.", created_at: "2026-06-22T09:00:00Z" }] },
+    submissionComments: { "sub-4-sol": [{ id: "subcom-seed", submission_id: "sub-4-sol", author_user_id: ME, body: "Totals look right — can you double-check the meals category rounding?", created_at: "2026-06-22T11:00:00Z" }] },
     appliedFunding: {},
     tasks: [],
   };
@@ -535,6 +536,12 @@
   on("POST", "/api/tasks/:id/reservations/:rid/approve", reservationChange("active", "reserved"));
   on("POST", "/api/tasks/:id/reservations/:rid/decline", reservationChange("declined", "available"));
   on("POST", "/api/tasks/:id/reservations/:rid/cancel", reservationChange("cancelled_by_requester", "available"));
+  on("GET", "/api/submissions/:id/comments", (p) => ok({ comments: db.submissionComments[p.id] || [] }));
+  on("POST", "/api/submissions/:id/comments", (p, _url, body) => {
+    const c = { id: nextId("scom"), submission_id: p.id, author_user_id: ME, body: (body && body.body) || "", created_at: "2026-06-24T10:00:00Z" };
+    (db.submissionComments[p.id] = db.submissionComments[p.id] || []).push(c);
+    return ok(c, 201);
+  });
   on("GET", "/api/tasks/:id/submissions", (p) => { const t = findTask(p.id); return t ? ok({ submissions: t.submissions }) : err(404, "task not found"); });
   on("POST", "/api/tasks/:id/submissions", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");

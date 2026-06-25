@@ -157,6 +157,10 @@ type alias LoggedInModel =
     , createReferenceURL : String
     , taskComments : List Task.TaskCommentResponse
     , taskCommentBody : String
+    , submissionComments : List Submission.SubmissionCommentResponse
+    , activeSubmissionCommentsID : Maybe String
+    , submissionCommentBody : String
+    , submissionCommentMessage : Maybe String
     , taskAgentToken : Maybe String
     , taskIntegrationOpen : Bool
     , taskActionMessage : Maybe String
@@ -349,6 +353,11 @@ type Msg
     | AddTaskCommentClicked String
     | TaskCommentReceived (Result Http.Error Task.TaskCommentResponse)
     | TaskCommentsReceived (Result Http.Error (List Task.TaskCommentResponse))
+    | OpenSubmissionComments String
+    | SubmissionCommentsReceived (Result Http.Error Submission.SubmissionCommentsResponse)
+    | SubmissionCommentBodyChanged String
+    | AddSubmissionCommentClicked String
+    | SubmissionCommentAdded (Result Http.Error Submission.SubmissionCommentResponse)
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
 

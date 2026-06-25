@@ -122,6 +122,48 @@ submissionsResponseEncoder submissionsResponse =
         [ ( "submissions", Encode.list submissionResponseEncoder submissionsResponse.submissions )
         ]
 
+type alias SubmissionCommentResponse =
+    { id : String
+    , submissionID : String
+    , authorUserID : String
+    , body : String
+    , createdAt : String
+    }
+
+submissionCommentResponseDecoder : Decoder SubmissionCommentResponse
+submissionCommentResponseDecoder =
+    Decode.map5 SubmissionCommentResponse
+        (Decode.field "id" Decode.string)
+        (Decode.field "submission_id" Decode.string)
+        (Decode.field "author_user_id" Decode.string)
+        (Decode.field "body" Decode.string)
+        (Decode.field "created_at" Decode.string)
+
+submissionCommentResponseEncoder : SubmissionCommentResponse -> Encode.Value
+submissionCommentResponseEncoder submissionCommentResponse =
+    Encode.object
+        [ ( "id", Encode.string submissionCommentResponse.id )
+        , ( "submission_id", Encode.string submissionCommentResponse.submissionID )
+        , ( "author_user_id", Encode.string submissionCommentResponse.authorUserID )
+        , ( "body", Encode.string submissionCommentResponse.body )
+        , ( "created_at", Encode.string submissionCommentResponse.createdAt )
+        ]
+
+type alias SubmissionCommentsResponse =
+    { comments : List SubmissionCommentResponse
+    }
+
+submissionCommentsResponseDecoder : Decoder SubmissionCommentsResponse
+submissionCommentsResponseDecoder =
+    Decode.map SubmissionCommentsResponse
+        (Decode.field "comments" (Decode.list submissionCommentResponseDecoder))
+
+submissionCommentsResponseEncoder : SubmissionCommentsResponse -> Encode.Value
+submissionCommentsResponseEncoder submissionCommentsResponse =
+    Encode.object
+        [ ( "comments", Encode.list submissionCommentResponseEncoder submissionCommentsResponse.comments )
+        ]
+
 type alias SubmissionCreatedResponse =
     { submission : SubmissionResponse
     , receiptToken : String

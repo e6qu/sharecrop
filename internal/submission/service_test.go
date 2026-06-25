@@ -133,13 +133,88 @@ func TestOrganizationReviewerCanListSubmissions(t *testing.T) {
 	}
 }
 
+func TestSubmissionCommentVisibility(t *testing.T) {
+	store := newSubmissionMemoryStore()
+	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
+	service := NewService(store, taskStore, submissionPermissionStore{})
+
+	submitterID := submissionTestUserID(t)
+	command := SubmitCommand{TaskID: taskStore.value.ID, SubmitterID: submitterID, ResponseSource: acceptedResponseSource(t, `{"answer":"done"}`)}
+	created := service.Submit(context.Background(), command).(SubmissionCreated)
+
+	body := acceptedCommentBody(t, "Could you clarify the scope?")
+
+	// The submission's author may comment.
+	if _, matched := service.AddSubmissionComment(context.Background(), testAuthSubject(t, submitterID), created.Value.ID, body).(SubmissionCommentAdded); !matched {
+		t.Fatalf("submitter comment was not added")
+	}
+
+	// The owner of the submission's task (the task creator) may comment.
+	ownerID := taskStore.value.CreatedBy
+	if _, matched := service.AddSubmissionComment(context.Background(), testAuthSubject(t, ownerID), created.Value.ID, body).(SubmissionCommentAdded); !matched {
+		t.Fatalf("task owner comment was not added")
+	}
+
+	listed, listMatched := service.ListSubmissionComments(context.Background(), testAuthSubject(t, ownerID), created.Value.ID).(SubmissionCommentsListed)
+	if !listMatched {
+		t.Fatalf("task owner could not list submission comments")
+	}
+	if len(listed.Values) != 2 {
+		t.Fatalf("submission comments = %d, want 2", len(listed.Values))
+	}
+
+	// An unrelated user is denied.
+	strangerID := submissionTestUserID(t)
+	if _, matched := service.AddSubmissionComment(context.Background(), testAuthSubject(t, strangerID), created.Value.ID, body).(SubmissionCommentRejected); !matched {
+		t.Fatalf("stranger comment was not rejected")
+	}
+	if _, matched := service.ListSubmissionComments(context.Background(), testAuthSubject(t, strangerID), created.Value.ID).(SubmissionCommentsListRejected); !matched {
+		t.Fatalf("stranger list was not rejected")
+	}
+}
+
+func acceptedResponseSource(t *testing.T, raw string) ResponseSource {
+	t.Helper()
+	result := NewResponseSource(raw)
+	accepted := result.(ResponseSourceAccepted)
+	return accepted.Value
+}
+
+func acceptedCommentBody(t *testing.T, raw string) task.CommentBody {
+	t.Helper()
+	result := task.NewCommentBody(raw)
+	accepted, matched := result.(task.CommentBodyAccepted)
+	if !matched {
+		t.Fatalf("comment body = %T, want CommentBodyAccepted", result)
+	}
+	return accepted.Value
+}
+
 type submissionMemoryStore struct {
-	valuesByID       map[string]Submission
-	submissionByHash map[string]string
+	valuesByID           map[string]Submission
+	submissionByHash     map[string]string
+	commentsBySubmission map[string][]SubmissionComment
 }
 
 func newSubmissionMemoryStore() *submissionMemoryStore {
-	return &submissionMemoryStore{valuesByID: make(map[string]Submission), submissionByHash: make(map[string]string)}
+	return &submissionMemoryStore{valuesByID: make(map[string]Submission), submissionByHash: make(map[string]string), commentsBySubmission: make(map[string][]SubmissionComment)}
+}
+
+func (store *submissionMemoryStore) FindSubmission(_ context.Context, submissionID core.SubmissionID) FindSubmissionStoreResult {
+	value, matched := store.valuesByID[submissionID.String()]
+	if !matched {
+		return FindSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission missing")}
+	}
+	return FindSubmissionStoreAccepted{Value: value}
+}
+
+func (store *submissionMemoryStore) CreateSubmissionComment(_ context.Context, comment SubmissionComment) CreateSubmissionCommentStoreResult {
+	store.commentsBySubmission[comment.SubmissionID.String()] = append(store.commentsBySubmission[comment.SubmissionID.String()], comment)
+	return CreateSubmissionCommentStoreAccepted{Value: comment}
+}
+
+func (store *submissionMemoryStore) ListSubmissionComments(_ context.Context, submissionID core.SubmissionID) ListSubmissionCommentsStoreResult {
+	return ListSubmissionCommentsStoreAccepted{Values: store.commentsBySubmission[submissionID.String()]}
 }
 
 func (store *submissionMemoryStore) CreateSubmission(_ context.Context, submissionID core.SubmissionID, receiptID core.SubmissionReceiptTokenID, receiptHash ReceiptTokenHash, command SubmitCommand, state State, outcome ValidationOutcome, sensitiveFields []SensitiveField) CreateSubmissionStoreResult {

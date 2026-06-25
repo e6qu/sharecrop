@@ -1,10 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 57 work, merged into `main`.
+The repository contains pull request 1 through pull request 58 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/admin-collectible-ownership` adds a real platform-admin role that gates default-collectible awarding, and real org/team ownership of collectibles (PR 1 of a sequence working down the follow-up + roadmap backlog). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/submission-comments` adds submission-level comment threads (PR 2 of a sequence working down the follow-up + roadmap backlog). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/submission-comments`:
+
+- A private comment thread on each submission between the submission's author (worker) and the task owner (requester), mirroring task comments. Migration `000022_submission_comments`, `core.SubmissionCommentID`, `submission.AddSubmissionComment`/`ListSubmissionComments` (visibility: submitter OR task owner), store, `GET`/`POST /api/submissions/{id}/comments`, MCP tools `sharecrop.add_submission_comment` / `sharecrop.list_submission_comments`, and `SubmissionCommentResponse`/`SubmissionCommentsResponse` contracts.
+- Elm: each submission row on the task detail has a "Comments" toggle that opens its thread (list + add box). Demo backend serves the routes and seeds a comment.
+- Tests: submission domain unit, http_e2e (owner + submitter can post/list; an unrelated user gets 403), and Playwright (owner comments on a worker's submission).
+- Deferred: a dedicated worker-side submission view in the client (the backend + MCP already let the worker participate; only the owner-side UI shipped this PR).
+
+Remaining queue (sequenced PRs): scheduling/recurrence; a thorough UI/UX + user-journey review pass with boyscout fixes.
 
 Implemented in `task/admin-collectible-ownership`:
 

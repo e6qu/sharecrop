@@ -36,6 +36,8 @@ type Services interface {
 	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult
 	AddTaskComment(context.Context, auth.UserSubject, core.TaskID, task.CommentBody) task.TaskCommentResult
 	ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult
+	AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult
+	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult
 	UnpublishTask(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	ReserveTask(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult
@@ -173,6 +175,10 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.UserSubject,
 		return server.callAddTaskComment(ctx, subject, arguments)
 	case toolListTaskComments:
 		return server.callListTaskComments(ctx, subject, arguments)
+	case toolAddSubmissionComment:
+		return server.callAddSubmissionComment(ctx, subject, arguments)
+	case toolListSubmissionComments:
+		return server.callListSubmissionComments(ctx, subject, arguments)
 	case toolUnpublishTask:
 		return server.callUnpublishTask(ctx, subject, arguments)
 	case toolReserveTask:

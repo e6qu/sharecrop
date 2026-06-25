@@ -32,12 +32,15 @@ const (
 	toolListSeriesComments  = "sharecrop.list_series_comments"
 	toolAddTaskComment      = "sharecrop.add_task_comment"
 	toolListTaskComments    = "sharecrop.list_task_comments"
-	toolUnpublishTask       = "sharecrop.unpublish_task"
-	toolReserveTask         = "sharecrop.reserve_task"
-	toolListReservations    = "sharecrop.list_task_reservations"
-	toolApproveReservation  = "sharecrop.approve_task_reservation"
-	toolDeclineReservation  = "sharecrop.decline_task_reservation"
-	toolCancelReservation   = "sharecrop.cancel_task_reservation"
+
+	toolAddSubmissionComment   = "sharecrop.add_submission_comment"
+	toolListSubmissionComments = "sharecrop.list_submission_comments"
+	toolUnpublishTask          = "sharecrop.unpublish_task"
+	toolReserveTask            = "sharecrop.reserve_task"
+	toolListReservations       = "sharecrop.list_task_reservations"
+	toolApproveReservation     = "sharecrop.approve_task_reservation"
+	toolDeclineReservation     = "sharecrop.decline_task_reservation"
+	toolCancelReservation      = "sharecrop.cancel_task_reservation"
 )
 
 type toolDefinition struct {
@@ -198,6 +201,18 @@ func toolDefinitions() []toolDefinition {
 			Description: "List the comment thread on a task the agent can view.",
 			Scope:       agent.ScopeTasksRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"]}`),
+		},
+		{
+			Name:        toolAddSubmissionComment,
+			Description: "Post a comment on a submission the agent authored or owns the task for, to discuss the submission while it is under review.",
+			Scope:       agent.ScopeSubmissionsWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"submission_id":{"type":"string"},"body":{"type":"string"}},"required":["submission_id","body"]}`),
+		},
+		{
+			Name:        toolListSubmissionComments,
+			Description: "List the comment thread on a submission the agent authored or owns the task for.",
+			Scope:       agent.ScopeSubmissionsRead,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"submission_id":{"type":"string"}},"required":["submission_id"]}`),
 		},
 		{
 			Name:        toolUnpublishTask,

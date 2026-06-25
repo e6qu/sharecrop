@@ -99,6 +99,26 @@ func (store SubmissionStore) FindByReceiptToken(ctx context.Context, hash submis
 	return submission.ReceiptFound{Value: values.values[0]}
 }
 
+func (store SubmissionStore) FindSubmission(ctx context.Context, submissionID core.SubmissionID) submission.FindSubmissionStoreResult {
+	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
+		where submissions.id = $1
+	`, submissionID.String())
+	if err != nil {
+		return submission.FindSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find submission failed")}
+	}
+	defer rows.Close()
+
+	valuesResult := scanSubmissionRows(rows)
+	values, matched := valuesResult.(submissionRowsAccepted)
+	if !matched {
+		return submission.FindSubmissionStoreRejected{Reason: valuesResult.(submissionRowsRejected).reason}
+	}
+	if len(values.values) != 1 {
+		return submission.FindSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found")}
+	}
+	return submission.FindSubmissionStoreAccepted{Value: values.values[0]}
+}
+
 func (store SubmissionStore) ListForSubmitter(ctx context.Context, submitterID core.UserID) submission.ListSubmissionsStoreResult {
 	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
 		where submissions.user_id = $1
