@@ -1,10 +1,16 @@
 # Status
 
-The repository contains pull request 1 through pull request 60 work, merged into `main`.
+The repository contains pull request 1 through pull request 61 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-pages-routing` switches the client to fragment (hash) routing so the GitHub Pages demo keeps a stable URL and hard-refresh works with no fallback, adds an explicit NotFoundPage and a demo-only Reset button, and makes real logout revoke the session server-side. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-fidelity` aligns the in-browser demo backend (`site/demo/backend.js`) with the real Go backend's semantics (from a route-by-route divergence audit), minimizing the demo "fakes". It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/demo-fidelity`:
+
+- A specialized agent compared all ~69 demo routes to the Go handlers/domain; the high-impact divergences are fixed so the demo rejects and mutates the way prod does: review actions (accept/reject/request-changes) only act on `submitted` work (accept also requires an open task with no prior accepted submission); task lifecycle (open/cancel/unpublish), refund (draft/open + has-escrow), funding (already-funded), and reservation (open state, non-open policy, not your own task) are state-machine guarded with the real 409s; task-create now honors the owner / visibility-scope / assignee / reservation fields (so org-owned and org-scoped tasks store correctly); series add/remove/reorder keep `series_kind` consistent; the seeded "Golden Sickle" collectible's policy matches its catalog template.
+- Intentional demo affordances kept (and documented in the file header): auto-login on refresh, the Reset button, and unvalidated tokens with a single seeded "you".
+- Deferred (low impact, noted): user-submissions page is still a stub list; member/team provisioning shows a synthetic id rather than the typed email.
 
 Implemented in `task/demo-pages-routing`:
 

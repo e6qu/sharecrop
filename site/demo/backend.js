@@ -165,7 +165,7 @@
     ],
     collectibles: [
       { id: "col-1", name: "Harvest Star", kind: "badge", state: "minted", transfer_policy: "transferable_between_users", owner_id: ME, owner_kind: "user", art: "harvest-star" },
-      { id: "col-2", name: "Golden Sickle", kind: "badge", state: "minted", transfer_policy: "non_transferable_except_payout", owner_id: ME, owner_kind: "user", art: "golden-sickle" },
+      { id: "col-2", name: "Golden Sickle", kind: "badge", state: "minted", transfer_policy: "transferable_between_users", owner_id: ME, owner_kind: "user", art: "golden-sickle" },
     ],
     organizations: [{ id: "org-lattice", name: "Lattice Field Co", created_by: ME }],
     orgBalances: { "org-lattice": 7200 },
@@ -272,7 +272,7 @@
       availability_kind: "reserved",
     }),
     task({
-      id: "task-5", title: "Normalize 8 dates to ISO 8601", series_kind: "existing", series_id: "series-orchard", series_position: 1,
+      id: "task-5", title: "Normalize 8 dates to ISO 8601", series_kind: "existing_series", series_id: "series-orchard", series_position: 1,
       description:
         "Convert each of the 8 dates in the Task input to ISO 8601 (YYYY-MM-DD) and return them, in order, as an iso_dates array. Rules: if a date leads with a 4-digit number, treat it as the year (YYYY/MM/DD or YYYY.MM.DD); otherwise, for ambiguous all-numeric dates, treat the format as month-first (so \"03/04/2026\" is March 4, 2026 -> \"2026-03-04\"). Slash, dash, and dot separators all appear.",
       reward_credit_amount: 30, escrow: 30, response_schema_json: dateSchema,
@@ -282,7 +282,7 @@
       }),
     }),
     task({
-      id: "task-6", title: "Extract product and rating from 5 reviews", participation_policy: "open", series_kind: "existing", series_id: "series-orchard", series_position: 2,
+      id: "task-6", title: "Extract product and rating from 5 reviews", participation_policy: "open", series_kind: "existing_series", series_id: "series-orchard", series_position: 2,
       description:
         "Each of the 5 review lines in the Task input starts with \"Rating: N/5\" and then, after an em dash, names a product. The product name is the proper-noun phrase between the em dash and the next colon (e.g. \"Orchard Boots\"). Return an items array, in order, with that product name and the rating N as an integer (1-5).",
       reward_credit_amount: 36, escrow: 36, response_schema_json: reviewSchema,
@@ -456,12 +456,32 @@
   });
   on("GET", "/api/tasks/:id", (p) => { const t = findTask(p.id); return t ? ok(detail(t)) : err(404, "task not found"); });
   on("POST", "/api/tasks", async (_p, _url, body) => {
+    // Honor the owner / visibility scope / assignee / reservation fields the
+    // client sends, so an org-owned or org-scoped task is stored as such (and
+    // shows up under its org), matching the real backend.
+    const owner = (body && body.owner) || {};
+    const ownerKind = owner.kind || "user";
+    const ownerId = ownerKind === "organization" ? (owner.organization_id || "") : (owner.user_id || ME);
+    const visibility = (body && body.visibility) || {};
+    const visibilityKind = visibility.kind || "public";
+    const visibilityId = visibilityKind === "organization"
+      ? (visibility.organization_id || "")
+      : visibilityKind === "team"
+      ? (visibility.team_id || "")
+      : visibilityKind === "user"
+      ? (visibility.user_id || "")
+      : "";
+    const participation = (body && body.participation) || {};
     const t = task({
       title: body.title || "Untitled task", description: body.description || "",
+      owner_kind: ownerKind, owner_id: ownerId,
       reward_kind: (body.reward && body.reward.kind) || "none",
       reward_credit_amount: (body.reward && body.reward.credit_amount) || 0,
-      participation_policy: (body.participation && body.participation.policy) || "reservation_required",
-      visibility_kind: (body.visibility && body.visibility.kind) || "public",
+      participation_policy: participation.policy || "open",
+      assignee_scope: participation.assignee_scope || "user",
+      reservation_expiry_hours: participation.reservation_expiry_hours || 48,
+      visibility_kind: visibilityKind,
+      visibility_id: visibilityId,
       response_schema_json: body.response_schema_json || '{"kind":"freeform"}',
       task_type: body.task_type || "general",
       reference_url: body.reference_url || "",
@@ -472,9 +492,11 @@
     db.tasks.unshift(t);
     return ok(detail(t), 201);
   });
-  on("POST", "/api/tasks/:id/open", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); t.state = "open"; return ok(detail(t)); });
-  on("POST", "/api/tasks/:id/cancel", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); t.state = "cancelled"; return ok(detail(t)); });
-  on("POST", "/api/tasks/:id/unpublish", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); t.state = "draft"; return ok(detail(t)); });
+  // Lifecycle transitions are state-machine guarded exactly like the real backend
+  // (open: draft only; cancel: draft/open; unpublish: open only).
+  on("POST", "/api/tasks/:id/open", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); if (t.state !== "draft") return err(409, "only draft tasks can be opened"); t.state = "open"; return ok(detail(t)); });
+  on("POST", "/api/tasks/:id/cancel", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); if (t.state !== "draft" && t.state !== "open") return err(409, "only draft or open tasks can be cancelled"); t.state = "cancelled"; t.availability_kind = "closed"; return ok(detail(t)); });
+  on("POST", "/api/tasks/:id/unpublish", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); if (t.state !== "open") return err(409, "only open tasks can be unpublished"); t.state = "draft"; return ok(detail(t)); });
   on("GET", "/api/tasks/:id/comments", (p) => ok({ comments: db.taskComments[p.id] || [] }));
   on("POST", "/api/tasks/:id/comments", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
@@ -486,11 +508,11 @@
     // Release any escrow back to the owner and cancel the task. Mirrors the
     // real backend's refund: returns the escrow shape the client decodes.
     const t = findTask(p.id); if (!t) return err(404, "task not found");
+    if (t.state !== "draft" && t.state !== "open") return err(409, "only draft or open tasks can be refunded");
     const released = t.escrow || 0;
-    if (released > 0) {
-      db.balance += released;
-      db.ledger.push({ id: nextId("entry"), kind: "task_refund", amount: released, task_id: t.id });
-    }
+    if (released === 0) return err(409, "task has no escrow to refund");
+    funderAdjust(t, released);
+    db.ledger.push({ id: nextId("entry"), kind: "task_refund", amount: released, task_id: t.id });
     t.escrow = 0; t.state = "cancelled"; t.availability_kind = "closed";
     return ok({ task_id: t.id, amount: 0, state: "refunded" });
   });
@@ -501,6 +523,9 @@
     // the real backend's idempotency_key guard).
     const key = body && body.idempotency_key;
     if (key && db.appliedFunding[key]) return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
+    // Escrow is a single hold, not additive: re-funding an already-funded task is
+    // rejected (matches the real backend's "task is already funded").
+    if ((t.escrow || 0) > 0) return err(409, "task is already funded");
     // Org-owned tasks fund from the organization wallet; personal tasks from the
     // user balance. The funder is remembered so refunds/tips return to it.
     const orgId = (body && body.organization_id) || "";
@@ -519,6 +544,9 @@
   });
   on("POST", "/api/tasks/:id/reservations", (p) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
+    if (t.state !== "open") return err(409, "only open tasks can be reserved");
+    if (t.participation_policy === "open") return err(409, "task does not require reservation");
+    if (t.created_by === ME) return err(409, "task requester cannot reserve their own task");
     const state = t.participation_policy === "approval_required" ? "requested" : "active";
     const r = { id: nextId("res"), task_id: t.id, assignee_kind: "user", assignee_id: ME, state, requested_by: ME };
     t.reservations.push(r);
@@ -579,6 +607,7 @@
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const s = t.submissions.find((x) => x.id === p.sid);
     if (!s) return err(404, "submission not found");
+    if (s.state !== "submitted") return err(409, "only submitted work can be reviewed");
     s.state = state; s.review_note = (body && body.review_note) || "";
     t.availability_kind = availability;
     const reservation = t.reservations.find((r) => r.assignee_id === s.submitter_id);
@@ -606,6 +635,9 @@
   on("POST", "/api/tasks/:id/submissions/:sid/accept", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const s = t.submissions.find((x) => x.id === p.sid); if (!s) return err(404, "submission not found");
+    if (s.state !== "submitted") return err(409, "only submitted work can be accepted");
+    if (t.state !== "open") return err(409, "only open tasks can be reviewed");
+    if (t.submissions.some((x) => x.state === "accepted")) return err(409, "task already has an accepted submission");
     const escrow = t.escrow || 0;
     const payout = Math.min((body && body.payout_amount) || t.reward_credit_amount || 0, escrow);
     const refund = Math.max(0, escrow - payout);
@@ -729,12 +761,12 @@
     const s = findSeries(p.id); if (!s) return err(404, "series not found");
     const t = findTask(body && body.task_id); if (!t) return err(404, "task not found");
     const max = db.tasks.filter((x) => x.series_id === s.id).reduce((m, x) => Math.max(m, x.series_position || 0), 0);
-    t.series_id = s.id; t.series_position = max + 1;
+    t.series_id = s.id; t.series_position = max + 1; t.series_kind = "existing_series";
     return ok(seriesDetail(s));
   });
   on("DELETE", "/api/task-series/:id/tasks/:taskId", (p) => {
     const s = findSeries(p.id); if (!s) return err(404, "series not found");
-    const t = findTask(p.taskId); if (t && t.series_id === s.id) { t.series_id = ""; t.series_position = 0; }
+    const t = findTask(p.taskId); if (t && t.series_id === s.id) { t.series_id = ""; t.series_position = 0; t.series_kind = "standalone"; }
     return ok(seriesDetail(s));
   });
   on("POST", "/api/task-series/:id/reorder", (p, _url, body) => {
