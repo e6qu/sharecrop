@@ -146,7 +146,7 @@
       { id: "cred-1", label: "Sol's field agent", scopes: ["tasks_read", "submissions_write"], state: "active" },
       { id: "cred-2", label: "Lattice reviewer agent", scopes: ["tasks_read", "submissions_review"], state: "active" },
     ],
-    series: [{ id: "series-orchard", title: "Orchard intake", position: 0 }],
+    series: [{ id: "series-orchard", owner_kind: "user", title: "Orchard intake", created_by: ME, position: 0 }],
     appliedFunding: {},
     tasks: [],
   };
@@ -250,7 +250,7 @@
     task({
       id: "task-6", title: "Extract product and rating from 5 reviews", participation_policy: "open",
       description:
-        "Each of the 5 review lines in the Task input names a product and gives a rating out of 5. The product name is the proper-noun phrase immediately after the em dash and before the first colon (e.g. \"Orchard Boots\"). Return an items array, in order, with that product name and the rating as an integer (1-5).",
+        "Each of the 5 review lines in the Task input starts with \"Rating: N/5\" and then, after an em dash, names a product. The product name is the proper-noun phrase between the em dash and the next colon (e.g. \"Orchard Boots\"). Return an items array, in order, with that product name and the rating N as an integer (1-5).",
       reward_credit_amount: 36, escrow: 36, response_schema_json: reviewSchema,
       payload_kind: "inline",
       payload_json: pretty({

@@ -10925,7 +10925,7 @@ var $author$project$Sharecrop$View$revokeButton = function (credential) {
 			$elm$html$Html$span,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class('text-xs text-slate-400')
+					$elm$html$Html$Attributes$class('text-xs text-slate-600')
 				]),
 			_List_fromArray(
 				[

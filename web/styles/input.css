@@ -2,3 +2,13 @@
 
 @source "../elm/src/**/*.elm";
 @source "../static/index.html";
+
+/* Tailwind v4's preflight renders ::placeholder at 50% of the text color, which
+   lands around 2.7:1 on white and fails WCAG AA. Pin placeholders to slate-500
+   (#64748b = 4.76:1) and keep them opaque. */
+@layer base {
+  ::placeholder {
+    color: #64748b;
+    opacity: 1;
+  }
+}
