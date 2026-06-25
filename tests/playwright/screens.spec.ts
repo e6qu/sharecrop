@@ -119,7 +119,9 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await ownerRow.getByTestId("view-task").click();
   await expect(page.getByTestId("toggle-integration")).toBeVisible();
   await page.getByTestId("open-task").click();
-  await expect(page.getByTestId("create-message")).toContainText("Task opened");
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "Task opened",
+  );
 
   const worker = await registerViaApi(request, "reservation-ui-worker");
   await page.getByTestId("logout").click();
@@ -310,7 +312,9 @@ test("requesters set a task's assignee scope to a team", async ({ page, request 
     "view-task",
   ).click();
   await page.getByTestId("open-task").click();
-  await expect(page.getByTestId("create-message")).toContainText("Task opened");
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "Task opened",
+  );
 
   // A worker viewing the task sees the organization-team assignee scope.
   const worker = await registerViaApi(request, "assignee-worker");
@@ -590,4 +594,31 @@ test("a user mints a personal agent token with MCP install commands on their own
   await page.goto(`/users/${other.body.subject_id}`);
   await expect(page.getByTestId("user-id")).toBeVisible();
   await expect(page.getByTestId("mint-user-token")).toHaveCount(0);
+});
+
+test("the create-task template menu prefills the schema, and Freeform shows the designer", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "template-menu");
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.getByTestId("nav-create-task").click();
+
+  // Freeform (the default) shows the structured schema designer.
+  await expect(page.getByTestId("schema-add-field")).toBeVisible();
+
+  // Choosing a template prefills the description + schema and replaces the
+  // designer with an explanatory note.
+  await page.getByTestId("create-task-type").selectOption("code_review");
+  await expect(page.getByTestId("template-schema-note")).toBeVisible();
+  await expect(page.getByTestId("schema-add-field")).toHaveCount(0);
+  await expect(page.getByTestId("create-response-schema")).toHaveValue(
+    /"verdict"/,
+  );
+  await expect(page.getByTestId("create-description")).not.toHaveValue("");
+
+  // Back to Freeform restores the designer and resets the schema.
+  await page.getByTestId("create-task-type").selectOption("general");
+  await expect(page.getByTestId("schema-add-field")).toBeVisible();
+  await expect(page.getByTestId("create-response-schema")).toHaveValue(
+    /freeform/,
+  );
 });

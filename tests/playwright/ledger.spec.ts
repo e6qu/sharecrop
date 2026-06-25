@@ -14,7 +14,7 @@ test("registering shows the signup grant balance and ledger entry", async ({ pag
   await page.getByTestId("register").click();
 
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
-  await expect(page.getByTestId("ledger")).toContainText("signup_grant");
+  await expect(page.getByTestId("ledger")).toContainText("Signup grant");
 });
 
 test("funding a task escrows credits and lowers the balance", async ({ page, request }) => {

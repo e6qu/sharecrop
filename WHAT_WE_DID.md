@@ -1,5 +1,15 @@
 # What We Did
 
+`task/create-template-menu` reframed task creation around templates and applied a batch of usability fixes from a specialized UI/UX review:
+
+- Create-task: the "Task type" select became a **Template** menu — "Freeform (no template)" or a named template (Code review, Security review, Product review, UI/UX review, QA testing). Freeform shows the structured schema designer; selecting a template hides the designer, prefills the description + response schema, and shows a note explaining that. `CreateTaskTypeChanged` now clears `createSchemaFields` when applying a template (and resets to a freeform schema when switching back), which fixes the designer-vs-raw-JSON silent-clobber the review flagged.
+- `createMessage` leak (review P0): the task-detail owner-controls card now has its own `taskActionMessage`, so "Created task X" no longer appears under owner controls and "Task opened/refunded" no longer appears under the create form.
+- Reservation-expiry field (review P1): shown and validated only when participation is `reservation_required`/`approval_required` (shared `Labels.participationUsesReservation`), instead of always-on and always-blocking.
+- Labels (review P2): `kindLabel` returns human ledger labels and the ledger renders signed, colored amounts; `collectibleKindLabel` returns "Unique"/"Edition"/"Badge"; a new `scopeLabel` names agent scopes, and the scope checkbox uses the shared styled checkbox via `onCheck`.
+- Stale task detail (review P3): `enterPage` clears the previous task's detail/submissions/reservations/comments/token state for `TaskDetailPage`, so a task→task link no longer flashes the prior task's content.
+- Generic reference-URL helper. Playwright covers the template menu (prefill + designer toggle); label/message assertions updated.
+- Deferred from the review (noted, not done this PR): chooser buttons → radio/aria semantics, org-ID free-text → picker dropdowns, award-collectible disabled-state, a unified secret-display convention.
+
 `task/round-fuzz-mobile-design` was a fuzz + mobile/UI-UX/contrast + demo-functionality review round (two specialized subagents) with a design-surface increase and boyscout fixes:
 
 - Fuzz: added `FuzzAgentValueParsers` (internal/agent) over the credential value parsers — the scope enum, the label, and the secret, which base64-decodes untrusted input. Crash-free; the existing schema/value/token/parsePage/task-value targets were re-run.
