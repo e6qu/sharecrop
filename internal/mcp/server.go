@@ -28,6 +28,13 @@ type Services interface {
 	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
+	CreateSeries(context.Context, auth.UserSubject, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
+	ChangeSeriesState(context.Context, auth.UserSubject, core.TaskSeriesID, task.SeriesStateTransition) task.SeriesMutationResult
+	AddTaskToSeries(context.Context, auth.UserSubject, core.TaskSeriesID, core.TaskID) task.SeriesMutationResult
+	RemoveTaskFromSeries(context.Context, auth.UserSubject, core.TaskSeriesID, core.TaskID) task.SeriesMutationResult
+	AddSeriesComment(context.Context, auth.UserSubject, core.TaskSeriesID, task.CommentBody) task.SeriesCommentResult
+	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult
+	UnpublishTask(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	ReserveTask(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult
 	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
@@ -142,6 +149,26 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.UserSubject,
 		return server.callListTaskSeries(ctx, subject)
 	case toolGetTaskSeries:
 		return server.callGetTaskSeries(ctx, subject, arguments)
+	case toolCreateSeries:
+		return server.callCreateSeries(ctx, subject, arguments)
+	case toolAddTaskToSeries:
+		return server.callAddTaskToSeries(ctx, subject, arguments)
+	case toolRemoveSeriesTask:
+		return server.callRemoveTaskFromSeries(ctx, subject, arguments)
+	case toolPublishSeries:
+		return server.callChangeSeriesState(ctx, subject, arguments, task.PublishSeriesState)
+	case toolUnpublishSeries:
+		return server.callChangeSeriesState(ctx, subject, arguments, task.UnpublishSeriesState)
+	case toolCloseSeries:
+		return server.callChangeSeriesState(ctx, subject, arguments, task.CloseSeriesState)
+	case toolReopenSeries:
+		return server.callChangeSeriesState(ctx, subject, arguments, task.ReopenSeriesState)
+	case toolAddSeriesComment:
+		return server.callAddSeriesComment(ctx, subject, arguments)
+	case toolListSeriesComments:
+		return server.callListSeriesComments(ctx, subject, arguments)
+	case toolUnpublishTask:
+		return server.callUnpublishTask(ctx, subject, arguments)
 	case toolReserveTask:
 		return server.callReserveTask(ctx, subject, arguments)
 	case toolListReservations:

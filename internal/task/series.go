@@ -104,6 +104,10 @@ func (service Service) requireSeriesViewPermission(ctx context.Context, actor au
 	if series.CreatedBy == actor.ID {
 		return viewPermissionAccepted{}
 	}
+	// A draft series is private to its creator until published.
+	if series.State == SeriesStateDraft {
+		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series view access denied")}
+	}
 	switch typed := series.Owner.(type) {
 	case UserOwner:
 		if typed.UserID == actor.ID {

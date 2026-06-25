@@ -146,7 +146,8 @@
       { id: "cred-1", label: "Sol's field agent", scopes: ["tasks_read", "submissions_write"], state: "active" },
       { id: "cred-2", label: "Lattice reviewer agent", scopes: ["tasks_read", "submissions_review"], state: "active" },
     ],
-    series: [{ id: "series-orchard", owner_kind: "user", title: "Orchard intake", created_by: ME, position: 0 }],
+    series: [{ id: "series-orchard", owner_kind: "user", title: "Orchard intake", description: "A multi-step orchard onboarding with review rounds.", state: "published", created_by: ME, position: 0 }],
+    seriesComments: { "series-orchard": [{ id: "scom-1", series_id: "series-orchard", author_user_id: ME, body: "Kicking off round one — add the intake tasks here.", created_at: "2026-06-20T10:00:00Z" }] },
     appliedFunding: {},
     tasks: [],
   };
@@ -571,8 +572,53 @@
     return ok({ team, members: db.teamMembers[p.id] }, 201);
   });
 
+  const findSeries = (id) => db.series.find((x) => x.id === id);
+  function seriesDetail(s) {
+    const tasks = db.tasks
+      .filter((t) => t.series_id === s.id)
+      .sort((a, b) => (a.series_position || 0) - (b.series_position || 0))
+      .map((t) => ({ id: t.id, title: t.title, state: t.state }));
+    return { series: s, tasks, comments: db.seriesComments[s.id] || [] };
+  }
   on("GET", "/api/task-series", () => ok({ series: db.series }));
-  on("GET", "/api/task-series/:id", (p) => { const s = db.series.find((x) => x.id === p.id); return s ? ok(s) : err(404, "series not found"); });
+  on("POST", "/api/task-series", (_p, _url, body) => {
+    const s = { id: nextId("series"), owner_kind: "user", title: (body && body.title) || "Series", description: (body && body.description) || "", state: "draft", created_by: ME };
+    db.series.unshift(s);
+    db.seriesComments[s.id] = [];
+    return ok(seriesDetail(s), 201);
+  });
+  on("GET", "/api/task-series/:id", (p) => { const s = findSeries(p.id); return s ? ok(seriesDetail(s)) : err(404, "series not found"); });
+  on("PATCH", "/api/task-series/:id", (p, _url, body) => { const s = findSeries(p.id); if (!s) return err(404, "series not found"); s.title = (body && body.title) || s.title; s.description = (body && body.description) || ""; return ok(seriesDetail(s)); });
+  const setSeriesState = (state) => (p) => { const s = findSeries(p.id); if (!s) return err(404, "series not found"); s.state = state; return ok(seriesDetail(s)); };
+  on("POST", "/api/task-series/:id/publish", setSeriesState("published"));
+  on("POST", "/api/task-series/:id/unpublish", setSeriesState("draft"));
+  on("POST", "/api/task-series/:id/close", setSeriesState("closed"));
+  on("POST", "/api/task-series/:id/reopen", setSeriesState("draft"));
+  on("POST", "/api/task-series/:id/tasks", (p, _url, body) => {
+    const s = findSeries(p.id); if (!s) return err(404, "series not found");
+    const t = findTask(body && body.task_id); if (!t) return err(404, "task not found");
+    const max = db.tasks.filter((x) => x.series_id === s.id).reduce((m, x) => Math.max(m, x.series_position || 0), 0);
+    t.series_id = s.id; t.series_position = max + 1;
+    return ok(seriesDetail(s));
+  });
+  on("DELETE", "/api/task-series/:id/tasks/:taskId", (p) => {
+    const s = findSeries(p.id); if (!s) return err(404, "series not found");
+    const t = findTask(p.taskId); if (t && t.series_id === s.id) { t.series_id = null; t.series_position = 0; }
+    return ok(seriesDetail(s));
+  });
+  on("POST", "/api/task-series/:id/reorder", (p, _url, body) => {
+    const s = findSeries(p.id); if (!s) return err(404, "series not found");
+    const ids = (body && body.task_ids) || [];
+    ids.forEach((id, index) => { const t = findTask(id); if (t && t.series_id === s.id) t.series_position = index + 1; });
+    return ok(seriesDetail(s));
+  });
+  on("GET", "/api/task-series/:id/comments", (p) => ok({ comments: db.seriesComments[p.id] || [] }));
+  on("POST", "/api/task-series/:id/comments", (p, _url, body) => {
+    const s = findSeries(p.id); if (!s) return err(404, "series not found");
+    const comment = { id: nextId("scom"), series_id: s.id, author_user_id: ME, body: (body && body.body) || "", created_at: "2026-06-25T12:00:00Z" };
+    (db.seriesComments[s.id] = db.seriesComments[s.id] || []).push(comment);
+    return ok(comment, 201);
+  });
   on("GET", "/api/users/:id", (p) => ok({ id: p.id, tasks: db.tasks.filter((t) => t.created_by === p.id).map(listItem) }));
   on("GET", "/api/users/:id/work", (p) => ok({ tasks: db.tasks.filter((t) => activeAssignee(t) === p.id).map(listItem) }));
   on("GET", "/api/users/:id/submissions", () => ok({ submissions: [] }));

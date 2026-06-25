@@ -525,3 +525,48 @@ func toolContent(content []struct {
 	}
 	return content[0].Text
 }
+
+func TestMCPSeriesLifecycle(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "mcp-series")
+	ownerAgent := createAgentCredential(t, server, owner.AccessToken, []string{"tasks_read", "tasks_write"})
+	session := initializeMCPSession(t, server, ownerAgent)
+
+	created := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `1`, "sharecrop.create_series",
+		`{"title":"Agent series","description":"Built over MCP."}`)))
+	var seriesDetail struct {
+		Series struct {
+			ID    string `json:"id"`
+			State string `json:"state"`
+		} `json:"series"`
+	}
+	if err := json.Unmarshal([]byte(created), &seriesDetail); err != nil {
+		t.Fatalf("decode create_series: %v (%s)", err, created)
+	}
+	if seriesDetail.Series.State != "draft" {
+		t.Fatalf("created series state = %q, want draft", seriesDetail.Series.State)
+	}
+
+	seriesTask := createPublicCreditUserTask(t, server, owner, 10)
+	added := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `2`, "sharecrop.add_task_to_series",
+		`{"series_id":"`+seriesDetail.Series.ID+`","task_id":"`+seriesTask.ID+`"}`)))
+	if !strings.Contains(added, seriesTask.ID) {
+		t.Fatalf("add_task_to_series did not include the task: %s", added)
+	}
+
+	published := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `3`, "sharecrop.publish_series",
+		`{"series_id":"`+seriesDetail.Series.ID+`"}`)))
+	if !strings.Contains(published, `"state":"published"`) {
+		t.Fatalf("publish_series did not publish: %s", published)
+	}
+
+	toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `4`, "sharecrop.add_series_comment",
+		`{"series_id":"`+seriesDetail.Series.ID+`","body":"Ready for round two."}`)))
+	comments := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `5`, "sharecrop.list_series_comments",
+		`{"series_id":"`+seriesDetail.Series.ID+`"}`)))
+	if !strings.Contains(comments, "round two") {
+		t.Fatalf("list_series_comments missing the posted comment: %s", comments)
+	}
+}

@@ -56,10 +56,19 @@ type TaskService interface {
 	Get(context.Context, auth.UserSubject, core.TaskID) task.GetResult
 	Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
+	Unpublish(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult
 	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
 	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
+	CreateSeries(context.Context, auth.UserSubject, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
+	UpdateSeries(context.Context, auth.UserSubject, core.TaskSeriesID, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
+	ChangeSeriesState(context.Context, auth.UserSubject, core.TaskSeriesID, task.SeriesStateTransition) task.SeriesMutationResult
+	AddTaskToSeries(context.Context, auth.UserSubject, core.TaskSeriesID, core.TaskID) task.SeriesMutationResult
+	RemoveTaskFromSeries(context.Context, auth.UserSubject, core.TaskSeriesID, core.TaskID) task.SeriesMutationResult
+	ReorderSeries(context.Context, auth.UserSubject, core.TaskSeriesID, []core.TaskID) task.SeriesMutationResult
+	AddSeriesComment(context.Context, auth.UserSubject, core.TaskSeriesID, task.CommentBody) task.SeriesCommentResult
+	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult
 	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
@@ -191,8 +200,20 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/request-changes", server.requestSubmissionChanges)
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/reject", server.rejectSubmission)
 	mux.HandleFunc("GET /api/tasks/{task_id}", server.getTask)
+	mux.HandleFunc("POST /api/tasks/{task_id}/unpublish", server.unpublishTask)
 	mux.HandleFunc("GET /api/task-series", server.listTaskSeries)
+	mux.HandleFunc("POST /api/task-series", server.createTaskSeries)
 	mux.HandleFunc("GET /api/task-series/{series_id}", server.getTaskSeries)
+	mux.HandleFunc("PATCH /api/task-series/{series_id}", server.updateTaskSeries)
+	mux.HandleFunc("POST /api/task-series/{series_id}/publish", server.publishTaskSeries)
+	mux.HandleFunc("POST /api/task-series/{series_id}/unpublish", server.unpublishTaskSeries)
+	mux.HandleFunc("POST /api/task-series/{series_id}/close", server.closeTaskSeries)
+	mux.HandleFunc("POST /api/task-series/{series_id}/reopen", server.reopenTaskSeries)
+	mux.HandleFunc("POST /api/task-series/{series_id}/tasks", server.addTaskToSeriesHandler)
+	mux.HandleFunc("DELETE /api/task-series/{series_id}/tasks/{task_id}", server.removeTaskFromSeriesHandler)
+	mux.HandleFunc("POST /api/task-series/{series_id}/reorder", server.reorderTaskSeries)
+	mux.HandleFunc("GET /api/task-series/{series_id}/comments", server.listTaskSeriesComments)
+	mux.HandleFunc("POST /api/task-series/{series_id}/comments", server.addTaskSeriesComment)
 	mux.HandleFunc("POST /api/collectibles", server.mintCollectible)
 	mux.HandleFunc("GET /api/collectibles", server.listCollectibles)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)

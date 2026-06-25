@@ -221,6 +221,43 @@ func (services fakeServices) GetSeries(_ context.Context, _ auth.UserSubject, _ 
 	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
 }
 
+func (services fakeServices) CreateSeries(_ context.Context, subject auth.UserSubject, title task.SeriesTitle, description task.SeriesDescription) task.SeriesMutationResult {
+	seriesID := core.NewTaskSeriesID().(core.TaskSeriesIDCreated)
+	return task.SeriesMutated{Value: task.SeriesDetail{Series: task.Series{
+		ID:          seriesID.Value,
+		Owner:       task.UserOwner{UserID: subject.ID},
+		Title:       title,
+		Description: description,
+		State:       task.SeriesStateDraft,
+		CreatedBy:   subject.ID,
+	}}}
+}
+
+func (services fakeServices) ChangeSeriesState(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID, _ task.SeriesStateTransition) task.SeriesMutationResult {
+	return task.SeriesMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (services fakeServices) AddTaskToSeries(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID, _ core.TaskID) task.SeriesMutationResult {
+	return task.SeriesMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (services fakeServices) RemoveTaskFromSeries(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID, _ core.TaskID) task.SeriesMutationResult {
+	return task.SeriesMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (services fakeServices) AddSeriesComment(_ context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, body task.CommentBody) task.SeriesCommentResult {
+	commentID := core.NewSeriesCommentID().(core.SeriesCommentIDCreated)
+	return task.SeriesCommentAdded{Value: task.SeriesComment{ID: commentID.Value, SeriesID: seriesID, AuthorID: subject.ID, Body: body}}
+}
+
+func (services fakeServices) ListSeriesComments(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID) task.SeriesCommentsResult {
+	return task.SeriesCommentsListed{Values: nil}
+}
+
+func (services fakeServices) UnpublishTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
+	return task.TaskStateChanged{Value: task.Task{ID: taskID, Owner: task.UserOwner{UserID: subject.ID}, State: task.StateDraft, CreatedBy: subject.ID}}
+}
+
 func (services fakeServices) ReserveTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationCreated{Value: task.Reservation{

@@ -728,3 +728,46 @@ func refreshTokenIDFromIDResult(result id.IDResult) RefreshTokenIDResult {
 		return RefreshTokenIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
+
+type SeriesCommentID struct {
+	value id.ID
+}
+
+type SeriesCommentIDResult interface {
+	seriesCommentIDResult()
+}
+
+type SeriesCommentIDCreated struct {
+	Value SeriesCommentID
+}
+
+type SeriesCommentIDRejected struct {
+	Reason DomainError
+}
+
+func (SeriesCommentIDCreated) seriesCommentIDResult() {}
+
+func (SeriesCommentIDRejected) seriesCommentIDResult() {}
+
+func NewSeriesCommentID() SeriesCommentIDResult {
+	return seriesCommentIDFromIDResult(id.New())
+}
+
+func ParseSeriesCommentID(raw string) SeriesCommentIDResult {
+	return seriesCommentIDFromIDResult(id.Parse(raw))
+}
+
+func (id SeriesCommentID) String() string {
+	return id.value.String()
+}
+
+func seriesCommentIDFromIDResult(result id.IDResult) SeriesCommentIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return SeriesCommentIDCreated{Value: SeriesCommentID{value: typed.Value}}
+	case id.IDRejected:
+		return SeriesCommentIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return SeriesCommentIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}

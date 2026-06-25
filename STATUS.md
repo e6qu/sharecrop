@@ -1,10 +1,20 @@
 # Status
 
-The repository contains pull request 1 through pull request 47 work, merged into `main`.
+The repository contains pull request 1 through pull request 48 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/lifecycle-parity` (PR1 of a 4-PR roadmap from a full user-journey/gap review) makes the post-and-work-a-task lifecycle complete for both agents (MCP) and humans (web UI). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and the roadmap in [DO_NEXT.md](./DO_NEXT.md).
+- Active branch `task/series-first-class` makes task series a first-class domain: series carry a description and a draft/published/closed lifecycle, support a comment thread, own a stable URL, and let the creator add/remove/reorder member tasks. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/series-first-class`:
+
+- Domain/DB (`migration 000018`): `task_series` gains `description`, `state` (draft/published/closed), `updated_at`; a `series_comments` table; an index on `tasks(series_id)`. New domain types (`SeriesState` + transitions publish/unpublish/close/reopen, `SeriesDescription`, `CommentBody`, `SeriesComment`, `core.SeriesCommentID`) and creator-only service methods (Create/Update/ChangeState/AddTask/RemoveTask/Reorder/AddComment/ListComments). A draft series is private to its creator, and a task whose series is not published cannot be reserved or submitted to (enforced in the reserve and submission-eligibility store queries). Tasks also gained an `Unpublish` transition (open -> draft).
+- HTTP: `POST/GET /api/task-series`, `GET/PATCH /api/task-series/{id}`, `POST .../{publish,unpublish,close,reopen}`, `POST/DELETE .../tasks[/{task_id}]`, `POST .../reorder`, `GET/POST .../comments`, and `POST /api/tasks/{id}/unpublish`. The series detail response carries series + ordered tasks + comments. Creator-only edits return 403.
+- MCP: `create_series`, `add_task_to_series`, `remove_task_from_series`, `publish_series`/`unpublish_series`/`close_series`/`reopen_series`, `add_series_comment`, `list_series_comments`, and `unpublish_task`.
+- Elm UI: a `/series` list page (with a create form) in the nav, a stable `/series/{id}` detail page showing the series, its ordered tasks (linked to `/tasks/{id}`), and its comment thread, with creator-only controls (rename, publish/unpublish/close/reopen, add task by id, remove, reorder up/down) and an add-comment box; each task detail links back to its series. Generated contract `TaskSeriesResponse` gained `description`/`state` and a new `SeriesCommentResponse`.
+- Demo + tests: the in-browser fake backend implements the full series surface; an http_e2e test drives create -> add task -> publish -> comment and asserts creator-only 403; an MCP e2e test drives create_series -> add_task_to_series -> publish -> comment; a Playwright test exercises the series UI end to end.
+
+Earlier branch `task/lifecycle-parity` (pull request 48, merged) made the post-and-work-a-task lifecycle complete for both agents (MCP `open_task`/`fund_task` + participation in `create_task`, `list_tasks` state filter, `review_note` in status) and humans (UI authors response schema + payload), and fixed the MCP install scope docs.
 
 Implemented in `task/lifecycle-parity`:
 

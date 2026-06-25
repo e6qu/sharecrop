@@ -9,15 +9,19 @@ type alias TaskSeriesResponse =
     { id : String
     , ownerKind : String
     , title : String
+    , description : String
+    , state : String
     , createdBy : String
     }
 
 taskSeriesResponseDecoder : Decoder TaskSeriesResponse
 taskSeriesResponseDecoder =
-    Decode.map4 TaskSeriesResponse
+    Decode.map6 TaskSeriesResponse
         (Decode.field "id" Decode.string)
         (Decode.field "owner_kind" Decode.string)
         (Decode.field "title" Decode.string)
+        (Decode.field "description" Decode.string)
+        (Decode.field "state" Decode.string)
         (Decode.field "created_by" Decode.string)
 
 taskSeriesResponseEncoder : TaskSeriesResponse -> Encode.Value
@@ -26,7 +30,36 @@ taskSeriesResponseEncoder taskSeriesResponse =
         [ ( "id", Encode.string taskSeriesResponse.id )
         , ( "owner_kind", Encode.string taskSeriesResponse.ownerKind )
         , ( "title", Encode.string taskSeriesResponse.title )
+        , ( "description", Encode.string taskSeriesResponse.description )
+        , ( "state", Encode.string taskSeriesResponse.state )
         , ( "created_by", Encode.string taskSeriesResponse.createdBy )
+        ]
+
+type alias SeriesCommentResponse =
+    { id : String
+    , seriesID : String
+    , authorUserID : String
+    , body : String
+    , createdAt : String
+    }
+
+seriesCommentResponseDecoder : Decoder SeriesCommentResponse
+seriesCommentResponseDecoder =
+    Decode.map5 SeriesCommentResponse
+        (Decode.field "id" Decode.string)
+        (Decode.field "series_id" Decode.string)
+        (Decode.field "author_user_id" Decode.string)
+        (Decode.field "body" Decode.string)
+        (Decode.field "created_at" Decode.string)
+
+seriesCommentResponseEncoder : SeriesCommentResponse -> Encode.Value
+seriesCommentResponseEncoder seriesCommentResponse =
+    Encode.object
+        [ ( "id", Encode.string seriesCommentResponse.id )
+        , ( "series_id", Encode.string seriesCommentResponse.seriesID )
+        , ( "author_user_id", Encode.string seriesCommentResponse.authorUserID )
+        , ( "body", Encode.string seriesCommentResponse.body )
+        , ( "created_at", Encode.string seriesCommentResponse.createdAt )
         ]
 
 type alias TaskSeriesListResponse =

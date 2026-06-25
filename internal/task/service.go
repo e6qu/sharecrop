@@ -16,6 +16,14 @@ type Store interface {
 	CreateCapabilityToken(context.Context, core.TaskCapabilityTokenID, core.TaskID, CapabilityTokenHash) CreateCapabilityTokenStoreResult
 	ListSeries(context.Context, core.UserID, core.Page) ListSeriesStoreResult
 	FindSeries(context.Context, core.TaskSeriesID) FindSeriesStoreResult
+	CreateSeries(context.Context, Series) SeriesMutationStoreResult
+	UpdateSeries(context.Context, core.TaskSeriesID, SeriesTitle, SeriesDescription) SeriesMutationStoreResult
+	UpdateSeriesState(context.Context, core.TaskSeriesID, SeriesState) SeriesMutationStoreResult
+	AddTaskToSeries(context.Context, core.TaskSeriesID, core.TaskID) SeriesMutationStoreResult
+	RemoveTaskFromSeries(context.Context, core.TaskSeriesID, core.TaskID) SeriesMutationStoreResult
+	ReorderSeries(context.Context, core.TaskSeriesID, []core.TaskID) SeriesMutationStoreResult
+	CreateSeriesComment(context.Context, SeriesComment) CreateSeriesCommentStoreResult
+	ListSeriesComments(context.Context, core.TaskSeriesID) ListSeriesCommentsStoreResult
 	CreateReservation(context.Context, core.TaskReservationID, ReservationCommand) CreateReservationStoreResult
 	ChangeReservationState(context.Context, core.TaskID, core.TaskReservationID, ReservationState) ChangeReservationStateStoreResult
 	ListReservations(context.Context, core.TaskID) ListReservationsStoreResult
@@ -123,6 +131,10 @@ func (service Service) Open(ctx context.Context, actor auth.UserSubject, taskID 
 
 func (service Service) Cancel(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ChangeStateResult {
 	return service.changeState(ctx, actor, taskID, CancelState)
+}
+
+func (service Service) Unpublish(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ChangeStateResult {
+	return service.changeState(ctx, actor, taskID, UnpublishState)
 }
 
 type StateTransition func(State) StateTransitionResult
