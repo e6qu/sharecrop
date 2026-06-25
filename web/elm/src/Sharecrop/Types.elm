@@ -131,6 +131,8 @@ type alias LoggedInModel =
     , orgTeams : List Team.TeamResponse
     , orgMembers : List Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
+    , orgCollectibles : List Collectible.CollectibleResponse
+    , teamCollectibles : List Collectible.CollectibleResponse
     , userProfile : Maybe Task.UserProfileResponse
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
@@ -332,6 +334,8 @@ type Msg
     | AddTeamMemberClicked String
     | AddTeamMemberReceived (Result Http.Error Team.TeamDetailResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
+    | OrgCollectiblesReceived (Result Http.Error Collectible.CollectiblesResponse)
+    | TeamCollectiblesReceived (Result Http.Error Collectible.CollectiblesResponse)
     | CreateOrgTeamNameChanged String
     | CreateOrgTeamClicked
     | CreateOrgTeamReceived (Result Http.Error Team.TeamResponse)

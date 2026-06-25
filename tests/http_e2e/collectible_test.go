@@ -232,15 +232,28 @@ type collectibleHTTPResponse struct {
 	State          string `json:"state"`
 	TransferPolicy string `json:"transfer_policy"`
 	OwnerID        string `json:"owner_id"`
+	OwnerKind      string `json:"owner_kind"`
 	Art            string `json:"art"`
 }
 
 func TestDefaultCollectibleCatalogAwardAndTransfer(t *testing.T) {
+	// Register the users on a bootstrap server first so their ids are known, then
+	// rebuild the server with the admin allowlist pointing at the admin user (the
+	// shared database persists the registrations).
+	bootstrap := newAuthHTTPServer(t, t.Context())
+	admin := registerUser(t, bootstrap, "collectible-admin")
+	recipient := registerUser(t, bootstrap, "collectible-recipient")
+	bootstrap.Close()
+
+	t.Setenv("SHARECROP_ADMIN_USER_IDS", admin.SubjectID)
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
 
-	admin := registerUser(t, server, "collectible-admin")
-	recipient := registerUser(t, server, "collectible-recipient")
+	// A non-admin cannot award default collectibles.
+	forbidden := postJSONWithBearer(t, server.URL+"/api/collectibles/award",
+		[]byte(`{"slug":"harvest-star","recipient_kind":"user","recipient_id":"`+recipient.SubjectID+`"}`), recipient.AccessToken)
+	defer forbidden.Body.Close()
+	assertStatus(t, forbidden, http.StatusForbidden)
 
 	// The catalog exposes the 25 default collectibles, each with a sprite slug.
 	catalogResponse := getWithBearer(t, server.URL+"/api/collectibles/catalog", admin.AccessToken)
@@ -285,11 +298,28 @@ func TestDefaultCollectibleCatalogAwardAndTransfer(t *testing.T) {
 		t.Fatalf("admin holdings after trade = %+v, want the traded collectible", held)
 	}
 
-	// Awarding to a team is demo-only on the real backend.
+	// An admin can also award to a team or organization; the holding shows up in
+	// that owner's collectibles (the recipient subject id stands in for a team id).
 	teamAward := postJSONWithBearer(t, server.URL+"/api/collectibles/award",
-		[]byte(`{"slug":"harvest-star","recipient_kind":"team","recipient_id":"`+recipient.SubjectID+`"}`), admin.AccessToken)
+		[]byte(`{"slug":"golden-sickle","recipient_kind":"team","recipient_id":"`+recipient.SubjectID+`"}`), admin.AccessToken)
 	defer teamAward.Body.Close()
-	assertStatus(t, teamAward, http.StatusBadRequest)
+	assertStatus(t, teamAward, http.StatusCreated)
+	teamCollectible := decodeCollectibleHTTPResponse(t, teamAward)
+	if teamCollectible.OwnerKind != "team" {
+		t.Fatalf("team-awarded owner kind = %q, want team", teamCollectible.OwnerKind)
+	}
+	teamHoldings := getWithBearer(t, server.URL+"/api/teams/"+recipient.SubjectID+"/collectibles", admin.AccessToken)
+	defer teamHoldings.Body.Close()
+	assertStatus(t, teamHoldings, http.StatusOK)
+	var teamBody struct {
+		Collectibles []collectibleHTTPResponse `json:"collectibles"`
+	}
+	if err := json.NewDecoder(teamHoldings.Body).Decode(&teamBody); err != nil {
+		t.Fatalf("decode team holdings: %v", err)
+	}
+	if len(teamBody.Collectibles) != 1 || teamBody.Collectibles[0].ID != teamCollectible.ID {
+		t.Fatalf("team holdings = %+v, want the team-awarded collectible", teamBody.Collectibles)
+	}
 }
 
 func TestCollectibleTipTransfersOnAccept(t *testing.T) {

@@ -164,8 +164,8 @@
       { id: "entry-5", kind: "task_refund", amount: 45, task_id: "task-8" },
     ],
     collectibles: [
-      { id: "col-1", name: "Harvest Star", kind: "badge", state: "minted", transfer_policy: "transferable_between_users", owner_id: ME, art: "harvest-star" },
-      { id: "col-2", name: "Golden Sickle", kind: "badge", state: "minted", transfer_policy: "non_transferable_except_payout", owner_id: ME, art: "golden-sickle" },
+      { id: "col-1", name: "Harvest Star", kind: "badge", state: "minted", transfer_policy: "transferable_between_users", owner_id: ME, owner_kind: "user", art: "harvest-star" },
+      { id: "col-2", name: "Golden Sickle", kind: "badge", state: "minted", transfer_policy: "non_transferable_except_payout", owner_id: ME, owner_kind: "user", art: "golden-sickle" },
     ],
     organizations: [{ id: "org-lattice", name: "Lattice Field Co", created_by: ME }],
     orgBalances: { "org-lattice": 7200 },
@@ -632,7 +632,7 @@
 
   on("GET", "/api/collectibles", () => ok({ collectibles: db.collectibles.filter((c) => c.owner_id === ME) }));
   on("POST", "/api/collectibles", (_p, _url, body) => {
-    const c = { id: nextId("col"), name: (body && body.name) || "Collectible", kind: (body && body.kind) || "badge", state: "minted", transfer_policy: (body && body.transfer_policy) || "transferable_between_users", owner_id: ME, art: (body && body.art) || "" };
+    const c = { id: nextId("col"), name: (body && body.name) || "Collectible", kind: (body && body.kind) || "badge", state: "minted", transfer_policy: (body && body.transfer_policy) || "transferable_between_users", owner_id: ME, owner_kind: "user", art: (body && body.art) || "" };
     db.collectibles.push(c);
     return ok(c, 201);
   });
@@ -653,6 +653,9 @@
     db.collectibles.push(c);
     return ok(c, 201);
   });
+  // Holdings of an organization or team (e.g. defaults an admin awarded to them).
+  on("GET", "/api/organizations/:id/collectibles", (p) => ok({ collectibles: db.collectibles.filter((c) => c.owner_kind === "organization" && c.owner_id === p.id) }));
+  on("GET", "/api/teams/:id/collectibles", (p) => ok({ collectibles: db.collectibles.filter((c) => c.owner_kind === "team" && c.owner_id === p.id) }));
   // Trade: move a collectible to another user.
   on("POST", "/api/collectibles/:id/transfer", (p, _url, body) => {
     const c = db.collectibles.find((x) => x.id === p.id);

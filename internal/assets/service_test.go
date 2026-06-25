@@ -50,7 +50,7 @@ func TestNewCollectibleNameRejectsBlank(t *testing.T) {
 func TestServiceMintCreatesMintedCollectible(t *testing.T) {
 	store := &memoryStore{}
 	service := NewService(store)
-	minted, matched := service.Mint(context.Background(), newUserID(t), name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout, "golden-sickle").(CollectibleMinted)
+	minted, matched := service.Mint(context.Background(), CollectibleOwnerKindUser, newUserID(t).String(), name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout, "golden-sickle").(CollectibleMinted)
 	if !matched {
 		t.Fatalf("mint was rejected")
 	}
@@ -75,6 +75,10 @@ func (store *memoryStore) ListCollectibles(_ context.Context, _ core.UserID, _ c
 	return ListStoreListed{Values: store.created}
 }
 
+func (store *memoryStore) ListCollectiblesByOwner(_ context.Context, _ string, _ string, _ core.Page) ListStoreResult {
+	return ListStoreListed{Values: store.created}
+}
+
 func (store *memoryStore) FundCollectibleReward(_ context.Context, _ FundRewardStoreCommand) FundRewardResult {
 	return FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
 }
@@ -84,7 +88,7 @@ func (store *memoryStore) RefundCollectibleReward(_ context.Context, _ RefundRew
 }
 
 func (store *memoryStore) GiftCollectible(_ context.Context, command GiftStoreCommand) GiftResult {
-	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerID: command.ToUserID}}
+	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindUser, OwnerID: command.ToUserID.String()}}
 }
 
 func name(t *testing.T, raw string) CollectibleName {

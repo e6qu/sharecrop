@@ -103,12 +103,13 @@ func mintIntegrationCollectible(t *testing.T, store db.CollectibleStore, owner c
 	idCreated := core.NewCollectibleID().(core.CollectibleIDCreated)
 	nameAccepted := assets.NewCollectibleName(name).(assets.CollectibleNameAccepted)
 	collectible := assets.Collectible{
-		ID:      idCreated.Value,
-		Name:    nameAccepted.Value,
-		Kind:    assets.CollectibleKindBadge,
-		State:   assets.CollectibleStateMinted,
-		Policy:  assets.TransferPolicyNonTransferableExceptPayout,
-		OwnerID: owner,
+		ID:        idCreated.Value,
+		Name:      nameAccepted.Value,
+		Kind:      assets.CollectibleKindBadge,
+		State:     assets.CollectibleStateMinted,
+		Policy:    assets.TransferPolicyNonTransferableExceptPayout,
+		OwnerKind: assets.CollectibleOwnerKindUser,
+		OwnerID:   owner.String(),
 	}
 	if _, matched := store.CreateCollectible(context.Background(), collectible).(assets.CreateStoreAccepted); !matched {
 		t.Fatalf("create collectible rejected")

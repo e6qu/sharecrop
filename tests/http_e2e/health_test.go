@@ -288,11 +288,15 @@ func (healthAgentService) List(context.Context, core.UserID, core.Page) agent.Li
 
 type healthAssetService struct{}
 
-func (healthAssetService) Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult {
+func (healthAssetService) Mint(context.Context, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult {
 	return assets.MintRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 func (healthAssetService) ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult {
+	return assets.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) ListByOwner(context.Context, string, string, core.Page) assets.ListResult {
 	return assets.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

@@ -3,6 +3,7 @@ package httpserver
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -22,6 +23,7 @@ type collectibleResponse struct {
 	State          string `json:"state"`
 	TransferPolicy string `json:"transfer_policy"`
 	OwnerID        string `json:"owner_id"`
+	OwnerKind      string `json:"owner_kind"`
 	Art            string `json:"art"`
 }
 
@@ -94,7 +96,7 @@ func (server Server) mintCollectible(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.assetService.Mint(r.Context(), actor.subject.ID, name.Value, kind.Value, policy.Value, request.Art)
+	result := server.assetService.Mint(r.Context(), assets.CollectibleOwnerKindUser, actor.subject.ID.String(), name.Value, kind.Value, policy.Value, request.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(assets.MintRejected).Reason.Description())
@@ -131,8 +133,13 @@ func (server Server) collectibleCatalog(w http.ResponseWriter, r *http.Request) 
 // the recipient. Trading then lets the recipient move it on.
 func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
-	if _, matched := actorResult.(userSubjectAccepted); !matched {
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
 		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	if !server.adminUserIDs[actor.subject.ID.String()] {
+		writeError(w, http.StatusForbidden, "awarding default collectibles requires a platform administrator")
 		return
 	}
 
@@ -146,14 +153,16 @@ func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "unknown default collectible")
 		return
 	}
-	if request.RecipientKind != "" && request.RecipientKind != "user" {
-		writeError(w, http.StatusBadRequest, "awarding to a team or organization is only available in the demo")
+	recipientKind := request.RecipientKind
+	if recipientKind == "" {
+		recipientKind = assets.CollectibleOwnerKindUser
+	}
+	if !assets.ValidCollectibleOwnerKind(recipientKind) {
+		writeError(w, http.StatusBadRequest, "recipient kind must be user, team, or organization")
 		return
 	}
-	recipientResult := core.ParseUserID(request.RecipientID)
-	recipient, recipientMatched := recipientResult.(core.UserIDCreated)
-	if !recipientMatched {
-		writeError(w, http.StatusBadRequest, recipientResult.(core.UserIDRejected).Reason.Description())
+	if strings.TrimSpace(request.RecipientID) == "" {
+		writeError(w, http.StatusBadRequest, "recipient id is required")
 		return
 	}
 	nameResult := assets.NewCollectibleName(entry.Name)
@@ -163,7 +172,7 @@ func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.assetService.Mint(r.Context(), recipient.Value, name.Value, entry.Kind, entry.Policy, entry.Art)
+	result := server.assetService.Mint(r.Context(), recipientKind, strings.TrimSpace(request.RecipientID), name.Value, entry.Kind, entry.Policy, entry.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(assets.MintRejected).Reason.Description())
@@ -296,6 +305,41 @@ type actorSubject struct {
 	ID core.UserID
 }
 
+// listOrganizationCollectibles and listTeamCollectibles expose the collectibles
+// held by an organization or team (e.g. defaults an admin awarded to them).
+func (server Server) listOrganizationCollectibles(w http.ResponseWriter, r *http.Request) {
+	server.listOwnerCollectibles(w, r, assets.CollectibleOwnerKindOrganization)
+}
+
+func (server Server) listTeamCollectibles(w http.ResponseWriter, r *http.Request) {
+	server.listOwnerCollectibles(w, r, assets.CollectibleOwnerKindTeam)
+}
+
+func (server Server) listOwnerCollectibles(w http.ResponseWriter, r *http.Request, ownerKind string) {
+	actorResult := server.requireUserSubject(r)
+	if _, matched := actorResult.(userSubjectAccepted); !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	ownerID := strings.TrimSpace(r.PathValue("id"))
+	if ownerID == "" {
+		writeError(w, http.StatusBadRequest, "owner id is required")
+		return
+	}
+
+	result := server.assetService.ListByOwner(r.Context(), ownerKind, ownerID, parsePage(r))
+	listed, matched := result.(assets.CollectiblesListed)
+	if !matched {
+		writeError(w, http.StatusBadRequest, result.(assets.ListRejected).Reason.Description())
+		return
+	}
+	response := collectiblesResponse{Collectibles: make([]collectibleResponse, 0, len(listed.Values))}
+	for index := range listed.Values {
+		response.Collectibles = append(response.Collectibles, collectibleToResponse(listed.Values[index]))
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 func collectibleToResponse(value assets.Collectible) collectibleResponse {
 	return collectibleResponse{
 		ID:             value.ID.String(),
@@ -303,7 +347,8 @@ func collectibleToResponse(value assets.Collectible) collectibleResponse {
 		Kind:           value.Kind.String(),
 		State:          value.State.String(),
 		TransferPolicy: value.Policy.String(),
-		OwnerID:        value.OwnerID.String(),
+		OwnerID:        value.OwnerID,
+		OwnerKind:      value.OwnerKind,
 		Art:            value.Art,
 	}
 }

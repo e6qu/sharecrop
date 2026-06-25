@@ -130,18 +130,20 @@ type alias CollectibleResponse =
     , state : CollectibleState
     , transferPolicy : CollectibleTransferPolicy
     , ownerID : String
+    , ownerKind : String
     , art : String
     }
 
 collectibleResponseDecoder : Decoder CollectibleResponse
 collectibleResponseDecoder =
-    Decode.map7 CollectibleResponse
+    Decode.map8 CollectibleResponse
         (Decode.field "id" Decode.string)
         (Decode.field "name" Decode.string)
         (Decode.field "kind" collectibleKindDecoder)
         (Decode.field "state" collectibleStateDecoder)
         (Decode.field "transfer_policy" collectibleTransferPolicyDecoder)
         (Decode.field "owner_id" Decode.string)
+        (Decode.field "owner_kind" Decode.string)
         (Decode.field "art" Decode.string)
 
 collectibleResponseEncoder : CollectibleResponse -> Encode.Value
@@ -153,6 +155,7 @@ collectibleResponseEncoder collectibleResponse =
         , ( "state", collectibleStateEncoder collectibleResponse.state )
         , ( "transfer_policy", collectibleTransferPolicyEncoder collectibleResponse.transferPolicy )
         , ( "owner_id", Encode.string collectibleResponse.ownerID )
+        , ( "owner_kind", Encode.string collectibleResponse.ownerKind )
         , ( "art", Encode.string collectibleResponse.art )
         ]
 

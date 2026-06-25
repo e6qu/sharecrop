@@ -177,10 +177,31 @@ teamDetailView teamId state =
 
                       else
                         text ""
+                    , Ui.sectionTitle "Collectibles"
+                    , collectiblesHoldingsList "team-collectibles" state.teamCollectibles
                     ]
 
             Nothing ->
                 p [ Html.Attributes.class "text-sm text-slate-500", testId "team-detail-missing" ] [ text ("Loading team " ++ teamId ++ "…") ]
+        ]
+
+
+collectiblesHoldingsList : String -> List Collectible.CollectibleResponse -> Html Msg
+collectiblesHoldingsList idPrefix collectibles =
+    if List.isEmpty collectibles then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId (idPrefix ++ "-empty") ] [ text "No collectibles yet." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId idPrefix ]
+            (List.map collectibleHoldingRow collectibles)
+
+
+collectibleHoldingRow : Collectible.CollectibleResponse -> Html Msg
+collectibleHoldingRow c =
+    div [ Html.Attributes.class "flex items-center gap-2 py-2", testId "collectible-holding-row" ]
+        [ Sprites.pixel c.art 5
+        , span [ Html.Attributes.class "text-sm font-medium" ] [ text c.name ]
+        , Ui.badge (collectibleKindLabel c.kind)
         ]
 
 
@@ -578,6 +599,8 @@ activeOrganizationView state =
                 , Ui.primaryButton [ type_ "submit", testId "provision-member" ] "Provision member"
                 ]
             , maybeNote state.provisionMemberMessage "provision-member-message"
+            , Ui.sectionTitle "Collectibles"
+            , collectiblesHoldingsList "org-collectibles" state.orgCollectibles
             ]
 
 

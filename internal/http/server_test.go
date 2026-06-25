@@ -685,12 +685,16 @@ func (testAgentService) List(context.Context, core.UserID, core.Page) agent.List
 
 type testAssetService struct{}
 
-func (testAssetService) Mint(_ context.Context, owner core.UserID, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
+func (testAssetService) Mint(_ context.Context, ownerKind string, ownerID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
 	idCreated := core.NewCollectibleID().(core.CollectibleIDCreated)
-	return assets.CollectibleMinted{Value: assets.Collectible{ID: idCreated.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerID: owner, Art: art}}
+	return assets.CollectibleMinted{Value: assets.Collectible{ID: idCreated.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerKind: ownerKind, OwnerID: ownerID, Art: art}}
 }
 
 func (testAssetService) ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult {
+	return assets.CollectiblesListed{Values: []assets.Collectible{}}
+}
+
+func (testAssetService) ListByOwner(context.Context, string, string, core.Page) assets.ListResult {
 	return assets.CollectiblesListed{Values: []assets.Collectible{}}
 }
 
