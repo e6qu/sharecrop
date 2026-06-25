@@ -478,6 +478,8 @@ type alias TaskResponse =
     , ownerID : String
     , title : String
     , description : String
+    , taskType : String
+    , referenceURL : String
     , rewardKind : String
     , rewardCreditAmount : Int
     , rewardCollectibleCount : Int
@@ -506,30 +508,36 @@ taskResponseDecoder =
         (Decode.field "owner_id" Decode.string)
         (Decode.field "title" Decode.string)
         (Decode.field "description" Decode.string)
+        (Decode.field "task_type" Decode.string)
+        (Decode.field "reference_url" Decode.string)
         (Decode.field "reward_kind" Decode.string)
-        (Decode.field "reward_credit_amount" Decode.int)
-        (Decode.field "reward_collectible_count" Decode.int)
         |> Decode.andThen
             (\finish ->
                 Decode.map8 finish
+                    (Decode.field "reward_credit_amount" Decode.int)
+                    (Decode.field "reward_collectible_count" Decode.int)
                     (Decode.field "participation_policy" taskParticipationPolicyDecoder)
                     (Decode.field "assignee_scope" taskAssigneeScopeDecoder)
                     (Decode.field "reservation_expiry_hours" Decode.int)
                     (Decode.field "state" taskStateDecoder)
                     (Decode.field "visibility_kind" taskVisibilityKindDecoder)
                     (Decode.field "visibility_id" Decode.string)
-                    (Decode.field "availability_kind" taskAvailabilityKindDecoder)
-                    (Decode.field "viewer_action" taskViewerActionDecoder)
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map7 finish
+                Decode.map8 finish
+                    (Decode.field "availability_kind" taskAvailabilityKindDecoder)
+                    (Decode.field "viewer_action" taskViewerActionDecoder)
                     (Decode.field "series_kind" Decode.string)
                     (Decode.field "series_id" Decode.string)
                     (Decode.field "series_position" Decode.int)
                     (Decode.field "response_schema_json" Decode.string)
                     (Decode.field "payload_kind" Decode.string)
                     (Decode.field "payload_json" Decode.string)
+            )
+        |> Decode.andThen
+            (\finish ->
+                Decode.map finish
                     (Decode.field "created_by" Decode.string)
             )
 
@@ -541,6 +549,8 @@ taskResponseEncoder taskResponse =
         , ( "owner_id", Encode.string taskResponse.ownerID )
         , ( "title", Encode.string taskResponse.title )
         , ( "description", Encode.string taskResponse.description )
+        , ( "task_type", Encode.string taskResponse.taskType )
+        , ( "reference_url", Encode.string taskResponse.referenceURL )
         , ( "reward_kind", Encode.string taskResponse.rewardKind )
         , ( "reward_credit_amount", Encode.int taskResponse.rewardCreditAmount )
         , ( "reward_collectible_count", Encode.int taskResponse.rewardCollectibleCount )
@@ -559,6 +569,33 @@ taskResponseEncoder taskResponse =
         , ( "payload_kind", Encode.string taskResponse.payloadKind )
         , ( "payload_json", Encode.string taskResponse.payloadJSON )
         , ( "created_by", Encode.string taskResponse.createdBy )
+        ]
+
+type alias TaskCommentResponse =
+    { id : String
+    , taskID : String
+    , authorUserID : String
+    , body : String
+    , createdAt : String
+    }
+
+taskCommentResponseDecoder : Decoder TaskCommentResponse
+taskCommentResponseDecoder =
+    Decode.map5 TaskCommentResponse
+        (Decode.field "id" Decode.string)
+        (Decode.field "task_id" Decode.string)
+        (Decode.field "author_user_id" Decode.string)
+        (Decode.field "body" Decode.string)
+        (Decode.field "created_at" Decode.string)
+
+taskCommentResponseEncoder : TaskCommentResponse -> Encode.Value
+taskCommentResponseEncoder taskCommentResponse =
+    Encode.object
+        [ ( "id", Encode.string taskCommentResponse.id )
+        , ( "task_id", Encode.string taskCommentResponse.taskID )
+        , ( "author_user_id", Encode.string taskCommentResponse.authorUserID )
+        , ( "body", Encode.string taskCommentResponse.body )
+        , ( "created_at", Encode.string taskCommentResponse.createdAt )
         ]
 
 type alias TasksResponse =

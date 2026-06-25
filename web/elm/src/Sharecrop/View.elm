@@ -638,6 +638,8 @@ createTaskView state =
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit CreateTaskClicked ]
         [ Ui.sectionTitle "Create a task"
         , Ui.fieldLabel "Title" [ Ui.textInput [ type_ "text", placeholder "Short, descriptive title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ] ]
+        , Ui.fieldLabel "Task type" [ taskTypeSelect state.createTaskType ]
+        , Ui.fieldLabel "Reference URL (e.g. the pull request)" [ Ui.textInput [ type_ "text", placeholder "https://github.com/org/repo/pull/123", value state.createReferenceURL, onInput CreateReferenceURLChanged, testId "create-reference-url" ] ]
         , Ui.fieldLabel "Description" [ Ui.textarea_ [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ] ]
         , Ui.fieldLabel "Response schema (JSON)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
         , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
@@ -654,6 +656,86 @@ createTaskView state =
         , Ui.primaryButton [ type_ "submit", testId "create-task" ] "Create task"
         , maybeNote state.createMessage "create-message"
         ]
+
+
+allTaskTypes : List String
+allTaskTypes =
+    [ "general", "code_review", "security_review", "product_review", "ui_ux_review", "qa_testing" ]
+
+
+taskTypeLabel : String -> String
+taskTypeLabel tag =
+    case tag of
+        "code_review" ->
+            "Code review"
+
+        "security_review" ->
+            "Security review"
+
+        "product_review" ->
+            "Product review"
+
+        "ui_ux_review" ->
+            "UI/UX review"
+
+        "qa_testing" ->
+            "QA testing"
+
+        _ ->
+            "General"
+
+
+taskTypeSelect : String -> Html Msg
+taskTypeSelect selectedType =
+    select
+        [ Html.Attributes.class Ui.fieldClass
+        , value selectedType
+        , onInput CreateTaskTypeChanged
+        , testId "create-task-type"
+        ]
+        (List.map (taskTypeOption selectedType) allTaskTypes)
+
+
+taskTypeOption : String -> String -> Html Msg
+taskTypeOption selectedType tag =
+    option [ value tag, selected (selectedType == tag) ] [ text (taskTypeLabel tag) ]
+
+
+taskTemplate : String -> Maybe { description : String, schema : String }
+taskTemplate taskType =
+    case taskType of
+        "code_review" ->
+            Just
+                { description = "Review the linked pull request. Identify correctness, design, and style issues, then give an overall verdict."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"summary\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"issues\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"verdict\",\"presence\":\"required\",\"schema\":{\"kind\":\"enum\",\"values\":[\"approve\",\"request_changes\",\"comment\"]}}]}"
+                }
+
+        "security_review" ->
+            Just
+                { description = "Perform a security review of the linked code. List vulnerabilities with remediation and an overall severity."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"summary\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"findings\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"severity\",\"presence\":\"required\",\"schema\":{\"kind\":\"enum\",\"values\":[\"none\",\"low\",\"medium\",\"high\",\"critical\"]}}]}"
+                }
+
+        "product_review" ->
+            Just
+                { description = "Review the linked product or feature. Assess clarity, value, and gaps, then recommend next steps."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"summary\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"strengths\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"recommendations\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}}]}"
+                }
+
+        "ui_ux_review" ->
+            Just
+                { description = "Review the linked UI/UX. Check usability, accessibility, and visual consistency, then list issues."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"summary\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"issues\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"accessibility\",\"presence\":\"required\",\"schema\":{\"kind\":\"enum\",\"values\":[\"pass\",\"fail\"]}}]}"
+                }
+
+        "qa_testing" ->
+            Just
+                { description = "Test the linked build against its requirements. Report the cases you ran and the overall result."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"summary\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"cases\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"result\",\"presence\":\"required\",\"schema\":{\"kind\":\"enum\",\"values\":[\"pass\",\"fail\"]}}]}"
+                }
+
+        _ ->
+            Nothing
 
 
 visibilityButton : String -> String -> Html Msg
@@ -1048,7 +1130,37 @@ taskDetailPageView origin state =
                 else
                     [ reservationCard state, submitCard state ]
                )
+            ++ [ taskCommentsCard state ]
         )
+
+
+taskCommentsCard : LoggedInModel -> Html Msg
+taskCommentsCard state =
+    case state.detail of
+        Just detail ->
+            Ui.card
+                [ Ui.sectionTitle "Discussion"
+                , if List.isEmpty state.taskComments then
+                    p [ Html.Attributes.class "text-sm text-slate-500", testId "task-comments-empty" ] [ text "No comments yet." ]
+
+                  else
+                    div [ Html.Attributes.class "space-y-2", testId "task-comments" ] (List.map taskCommentRow state.taskComments)
+                , form [ Html.Attributes.class "space-y-2", onSubmit (AddTaskCommentClicked detail.id) ]
+                    [ Ui.textarea_ [ placeholder "Add a comment", value state.taskCommentBody, onInput TaskCommentBodyChanged, testId "task-comment-body" ]
+                    , Ui.primaryButton [ type_ "submit", testId "add-task-comment" ] "Comment"
+                    ]
+                ]
+
+        Nothing ->
+            text ""
+
+
+taskCommentRow : Task.TaskCommentResponse -> Html Msg
+taskCommentRow comment =
+    div [ Html.Attributes.class "rounded-md border border-slate-200 bg-white p-3", testId "task-comment" ]
+        [ p [ Html.Attributes.class "text-xs font-medium text-slate-500" ] [ text comment.authorUserID ]
+        , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text comment.body ]
+        ]
 
 
 seriesLinkBlock : TaskDetail -> List (Html Msg)
@@ -1058,6 +1170,26 @@ seriesLinkBlock detail =
 
     else
         [ a [ href ("/series/" ++ detail.seriesID), Html.Attributes.class "text-sm underline", testId "task-series-link" ] [ text "Part of a series" ] ]
+
+
+taskTypeBadge : TaskDetail -> List (Html Msg)
+taskTypeBadge detail =
+    if detail.taskType == "" || detail.taskType == "general" then
+        []
+
+    else
+        [ span [ testId "detail-type" ] [ Ui.badge (taskTypeLabel detail.taskType) ] ]
+
+
+referenceBlock : TaskDetail -> List (Html Msg)
+referenceBlock detail =
+    if detail.referenceURL == "" then
+        []
+
+    else
+        [ Ui.label_ "Reference"
+        , a [ href detail.referenceURL, Html.Attributes.class "text-sm underline", testId "detail-reference" ] [ text detail.referenceURL ]
+        ]
 
 
 taskInputBlock : TaskDetail -> List (Html Msg)
@@ -1094,13 +1226,16 @@ detailCard origin state =
             Ui.card
                 ([ p [ Html.Attributes.class "text-2xl font-semibold", testId "detail-title" ] [ text detail.title ]
                  , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
-                    [ Ui.badge (taskStateLabel detail.state)
-                    , Ui.badge (availabilityKindLabel detail.availabilityKind)
-                    , Ui.badge (participationPolicyLabel detail.participationPolicy)
-                    ]
+                    ([ Ui.badge (taskStateLabel detail.state)
+                     , Ui.badge (availabilityKindLabel detail.availabilityKind)
+                     , Ui.badge (participationPolicyLabel detail.participationPolicy)
+                     ]
+                        ++ taskTypeBadge detail
+                    )
                 , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
                 ]
+                    ++ referenceBlock detail
                     ++ seriesLinkBlock detail
                     ++ taskInputBlock detail
                     ++ [ Ui.label_ "Response schema"

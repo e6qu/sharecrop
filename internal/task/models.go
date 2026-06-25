@@ -7,6 +7,8 @@ type Task struct {
 	Owner          Owner
 	Title          Title
 	Description    Description
+	Type           TaskType
+	Reference      ReferenceURL
 	Reward         RewardSpec
 	Participation  ParticipationPolicy
 	AssigneeScope  AssigneeScope

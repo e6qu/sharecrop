@@ -40,12 +40,12 @@ func (store TaskStore) CreateTask(ctx context.Context, seriesID core.TaskSeriesI
 	_, err = tx.Exec(ctx, `
 		insert into tasks (
 			id, series_id, series_position, owner_kind, user_id, team_id, organization_id, title, description,
-			reward_kind, reward_credit_amount, participation_policy, assignee_scope, reservation_expires_after_hours,
+			task_type, reference_url, reward_kind, reward_credit_amount, participation_policy, assignee_scope, reservation_expires_after_hours,
 			state, response_schema_json, data_payload_kind, data_payload_json, created_by_user_id
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20::jsonb, $21)
 	`, taskID.String(), seriesColumns.seriesID, seriesColumns.position, ownerColumns.kind, ownerColumns.userID, ownerColumns.teamID, ownerColumns.organizationID,
-		command.Title.String(), command.Description.String(), rewardColumns.kind, rewardColumns.creditAmount, command.Participation.String(), command.AssigneeScope.String(), command.ReservationTTL.Hours(), task.StateDraft.String(), command.ResponseSchema.String(), payloadColumns.kind, payloadColumns.source, command.Actor.ID.String())
+		command.Title.String(), command.Description.String(), command.Type.String(), command.Reference.String(), rewardColumns.kind, rewardColumns.creditAmount, command.Participation.String(), command.AssigneeScope.String(), command.ReservationTTL.Hours(), task.StateDraft.String(), command.ResponseSchema.String(), payloadColumns.kind, payloadColumns.source, command.Actor.ID.String())
 	if err != nil {
 		return task.CreateTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task failed")}
 	}
@@ -580,7 +580,7 @@ func reservationInitialState(policy string) reservationInitialStateResult {
 // single-task select and the list select, so the column list lives in one place.
 const taskBaseColumns = `
 		tasks.id::text, tasks.owner_kind, coalesce(tasks.user_id::text, ''), coalesce(tasks.team_id::text, ''),
-		coalesce(tasks.organization_id::text, ''), tasks.title, tasks.description, tasks.state,
+		coalesce(tasks.organization_id::text, ''), tasks.title, tasks.description, tasks.task_type, tasks.reference_url, tasks.state,
 		tasks.reward_kind, coalesce(tasks.reward_credit_amount, 0),
 		coalesce((
 			select count(*)
@@ -761,7 +761,7 @@ func scanTaskListItemRow(rows pgx.Rows) taskListItemRowResult {
 	var rawActiveAssigneeUserID string
 	var rawActiveAssigneeOrganizationID string
 	var rawActiveAssigneeTeamID string
-	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID); err != nil {
+	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID); err != nil {
 		return taskListItemRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
 	taskResult := row.parse()
@@ -881,6 +881,8 @@ type taskBaseRow struct {
 	ownerOrganizationID      string
 	title                    string
 	description              string
+	taskType                 string
+	referenceURL             string
 	state                    string
 	rewardKind               string
 	rewardCreditAmount       int64
@@ -901,18 +903,18 @@ type taskBaseRow struct {
 }
 
 func (row taskBaseRow) parse() taskRowResult {
-	return parseTaskRow(row.taskID, row.ownerKind, row.ownerUserID, row.ownerTeamID, row.ownerOrganizationID, row.title, row.description, row.state, row.rewardKind, row.rewardCreditAmount, row.rewardCollectibleCount, row.participationPolicy, row.assigneeScope, row.reservationTTLHours, row.visibilityKind, row.visibilityUserID, row.visibilityTeamID, row.visibilityOrganizationID, row.seriesID, row.seriesPosition, row.responseSchema, row.payloadKind, row.payload, row.createdBy)
+	return parseTaskRow(row.taskID, row.ownerKind, row.ownerUserID, row.ownerTeamID, row.ownerOrganizationID, row.title, row.description, row.taskType, row.referenceURL, row.state, row.rewardKind, row.rewardCreditAmount, row.rewardCollectibleCount, row.participationPolicy, row.assigneeScope, row.reservationTTLHours, row.visibilityKind, row.visibilityUserID, row.visibilityTeamID, row.visibilityOrganizationID, row.seriesID, row.seriesPosition, row.responseSchema, row.payloadKind, row.payload, row.createdBy)
 }
 
 func scanTaskRow(rows pgx.Rows) taskRowResult {
 	var row taskBaseRow
-	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy); err != nil {
+	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy); err != nil {
 		return taskRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
 	return row.parse()
 }
 
-func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawRewardCollectibleCount int, rawParticipationPolicy string, rawAssigneeScope string, rawReservationTTLHours int, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string) taskRowResult {
+func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawTaskType string, rawReferenceURL string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawRewardCollectibleCount int, rawParticipationPolicy string, rawAssigneeScope string, rawReservationTTLHours int, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string) taskRowResult {
 	taskIDResult := core.ParseTaskID(rawTaskID)
 	taskID, taskIDMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskIDMatched {
@@ -936,6 +938,16 @@ func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, 
 	if !descriptionMatched {
 		rejected := descriptionResult.(task.DescriptionRejected)
 		return taskRowRejected{reason: rejected.Reason}
+	}
+	taskTypeResult := task.ParseTaskType(rawTaskType)
+	taskType, taskTypeMatched := taskTypeResult.(task.TaskTypeAccepted)
+	if !taskTypeMatched {
+		return taskRowRejected{reason: taskTypeResult.(task.TaskTypeRejected).Reason}
+	}
+	referenceResult := task.NewReferenceURL(rawReferenceURL)
+	reference, referenceMatched := referenceResult.(task.ReferenceURLAccepted)
+	if !referenceMatched {
+		return taskRowRejected{reason: referenceResult.(task.ReferenceURLRejected).Reason}
 	}
 	stateResult := task.ParseState(rawState)
 	state, stateMatched := stateResult.(task.StateAccepted)
@@ -997,7 +1009,7 @@ func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, 
 		rejected := createdByResult.(core.UserIDRejected)
 		return taskRowRejected{reason: rejected.Reason}
 	}
-	return taskRowAccepted{value: task.Task{ID: taskID.Value, Owner: owner.value, Title: title.Value, Description: description.Value, Reward: reward.value, Participation: participation.Value, AssigneeScope: assigneeScope.Value, ReservationTTL: ttl.Value, State: state.Value, Visibility: visibility.value, Placement: placement.value, ResponseSchema: schemaSource.Value, Payload: payload.value, CreatedBy: createdBy.Value}}
+	return taskRowAccepted{value: task.Task{ID: taskID.Value, Owner: owner.value, Title: title.Value, Description: description.Value, Type: taskType.Value, Reference: reference.Value, Reward: reward.value, Participation: participation.Value, AssigneeScope: assigneeScope.Value, ReservationTTL: ttl.Value, State: state.Value, Visibility: visibility.value, Placement: placement.value, ResponseSchema: schemaSource.Value, Payload: payload.value, CreatedBy: createdBy.Value}}
 }
 
 type rewardSpecResult interface {

@@ -195,3 +195,73 @@ func TestFirstClassSeriesLifecycle(t *testing.T) {
 	defer forbidden.Body.Close()
 	assertStatus(t, forbidden, http.StatusForbidden)
 }
+
+func TestTaskTypeReferenceAndComments(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "task-type-rest")
+	body := `{
+		"owner":{"kind":"user","user_id":"` + owner.SubjectID + `","team_id":"","organization_id":""},
+		"title":"Review PR 7",
+		"description":"Review the linked pull request.",
+		"task_type":"code_review",
+		"reference_url":"https://github.com/example/repo/pull/7",
+		"reward":{"kind":"none","credit_amount":0},
+		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+	createResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(body), owner.AccessToken)
+	defer createResponse.Body.Close()
+	assertStatus(t, createResponse, http.StatusCreated)
+	var created struct {
+		ID           string `json:"id"`
+		TaskType     string `json:"task_type"`
+		ReferenceURL string `json:"reference_url"`
+	}
+	if err := json.NewDecoder(createResponse.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create task: %v", err)
+	}
+	if created.TaskType != "code_review" {
+		t.Fatalf("task_type = %q, want code_review", created.TaskType)
+	}
+	if created.ReferenceURL != "https://github.com/example/repo/pull/7" {
+		t.Fatalf("reference_url = %q, want the PR url", created.ReferenceURL)
+	}
+
+	// A bad reference URL is rejected.
+	badBody := `{
+		"owner":{"kind":"user","user_id":"` + owner.SubjectID + `","team_id":"","organization_id":""},
+		"title":"Bad ref","description":"x","reference_url":"not-a-url",
+		"reward":{"kind":"none","credit_amount":0},
+		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}","payload":{"kind":"none","json":""}
+	}`
+	badResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(badBody), owner.AccessToken)
+	defer badResponse.Body.Close()
+	assertStatus(t, badResponse, http.StatusBadRequest)
+
+	// Comment on the task and read the thread back.
+	commentResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+created.ID+"/comments",
+		[]byte(`{"body":"Which branch should I diff against?"}`), owner.AccessToken)
+	defer commentResponse.Body.Close()
+	assertStatus(t, commentResponse, http.StatusCreated)
+
+	listComments := getWithBearer(t, server.URL+"/api/tasks/"+created.ID+"/comments", owner.AccessToken)
+	defer listComments.Body.Close()
+	assertStatus(t, listComments, http.StatusOK)
+	var comments struct {
+		Comments []struct {
+			Body string `json:"body"`
+		} `json:"comments"`
+	}
+	if err := json.NewDecoder(listComments.Body).Decode(&comments); err != nil {
+		t.Fatalf("decode comments: %v", err)
+	}
+	if len(comments.Comments) != 1 || !strings.Contains(comments.Comments[0].Body, "branch") {
+		t.Fatalf("task comments = %+v, want the posted comment", comments.Comments)
+	}
+}

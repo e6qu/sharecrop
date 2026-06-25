@@ -304,11 +304,25 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		return taskRequestRejected{reason: rejected.reason}
 	}
 
+	taskTypeResult := task.ParseTaskType(request.TaskType)
+	taskTypeAccepted, taskTypeMatched := taskTypeResult.(task.TaskTypeAccepted)
+	if !taskTypeMatched {
+		return taskRequestRejected{reason: taskTypeResult.(task.TaskTypeRejected).Reason.Description()}
+	}
+
+	referenceResult := task.NewReferenceURL(request.ReferenceURL)
+	referenceAccepted, referenceMatched := referenceResult.(task.ReferenceURLAccepted)
+	if !referenceMatched {
+		return taskRequestRejected{reason: referenceResult.(task.ReferenceURLRejected).Reason.Description()}
+	}
+
 	return taskRequestAccepted{command: task.CreateCommand{
 		Actor:          actor,
 		Owner:          ownerAccepted.value,
 		Title:          titleAccepted.Value,
 		Description:    descriptionAccepted.Value,
+		Type:           taskTypeAccepted.Value,
+		Reference:      referenceAccepted.Value,
 		Reward:         rewardAccepted.value,
 		Participation:  participationAccepted.policy,
 		AssigneeScope:  participationAccepted.assigneeScope,
@@ -656,6 +670,8 @@ func taskToResponse(value task.Task) taskResponse {
 		OwnerID:                owner.id,
 		Title:                  value.Title.String(),
 		Description:            value.Description.String(),
+		TaskType:               value.Type.String(),
+		ReferenceURL:           value.Reference.String(),
 		RewardKind:             reward.kind,
 		RewardCreditAmount:     reward.amount,
 		RewardCollectibleCount: reward.collectibleCount,

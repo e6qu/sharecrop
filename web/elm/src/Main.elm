@@ -120,6 +120,10 @@ emptyLoggedIn response =
     , provisionMemberEmail = ""
     , provisionMemberMessage = Nothing
     , createTaskOwner = ""
+    , createTaskType = "general"
+    , createReferenceURL = ""
+    , taskComments = []
+    , taskCommentBody = ""
     }
 
 
@@ -311,6 +315,8 @@ update msg model =
                         , createDescription = ""
                         , createResponseSchema = "{\"kind\":\"freeform\"}"
                         , createPayloadJson = ""
+                        , createTaskType = "general"
+                        , createReferenceURL = ""
                         , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
                         , createReservationHours = "48"
                         , createMessage = Just ("Created task " ++ created.id)
@@ -422,6 +428,8 @@ update msg model =
                         , submissions = []
                         , submitInput = ""
                         , submitMessage = Nothing
+                        , taskComments = []
+                        , taskCommentBody = ""
                     }
                 )
             , Nav.pushUrl model.key ("/tasks/" ++ taskId)
@@ -734,6 +742,40 @@ update msg model =
 
         CreateTaskOwnerChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createTaskOwner = value }), Cmd.none )
+
+        CreateTaskTypeChanged value ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    case View.taskTemplate value of
+                        Just template ->
+                            { state | createTaskType = value, createDescription = template.description, createResponseSchema = template.schema }
+
+                        Nothing ->
+                            { state | createTaskType = value }
+                )
+            , Cmd.none
+            )
+
+        CreateReferenceURLChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | createReferenceURL = value }), Cmd.none )
+
+        TaskCommentBodyChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | taskCommentBody = value }), Cmd.none )
+
+        AddTaskCommentClicked taskId ->
+            Api.withSession model (\state -> ( model, Api.postTaskComment state.accessToken taskId (String.trim state.taskCommentBody) ))
+
+        TaskCommentReceived (Ok comment) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskComments = state.taskComments ++ [ comment ], taskCommentBody = "" }), Cmd.none )
+
+        TaskCommentReceived (Err _) ->
+            ( model, Cmd.none )
+
+        TaskCommentsReceived (Ok comments) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskComments = comments }), Cmd.none )
+
+        TaskCommentsReceived (Err _) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskComments = [] }), Cmd.none )
 
         LinkClicked request ->
             case request of

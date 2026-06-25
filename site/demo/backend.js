@@ -148,6 +148,7 @@
     ],
     series: [{ id: "series-orchard", owner_kind: "user", title: "Orchard intake", description: "A multi-step orchard onboarding with review rounds.", state: "published", created_by: ME, position: 0 }],
     seriesComments: { "series-orchard": [{ id: "scom-1", series_id: "series-orchard", author_user_id: ME, body: "Kicking off round one — add the intake tasks here.", created_at: "2026-06-20T10:00:00Z" }] },
+    taskComments: {},
     appliedFunding: {},
     tasks: [],
   };
@@ -296,6 +297,7 @@
   function detail(t) {
     return {
       id: t.id, owner_kind: t.owner_kind, owner_id: t.owner_id, title: t.title, description: t.description,
+      task_type: t.task_type || "general", reference_url: t.reference_url || "",
       reward_kind: t.reward_kind, reward_credit_amount: t.reward_credit_amount, reward_collectible_count: t.reward_collectible_count,
       participation_policy: t.participation_policy, assignee_scope: t.assignee_scope, reservation_expiry_hours: t.reservation_expiry_hours,
       state: t.state, visibility_kind: t.visibility_kind, visibility_id: t.visibility_id, series_kind: t.series_kind,
@@ -417,6 +419,8 @@
       participation_policy: (body.participation && body.participation.policy) || "reservation_required",
       visibility_kind: (body.visibility && body.visibility.kind) || "public",
       response_schema_json: body.response_schema_json || '{"kind":"freeform"}',
+      task_type: body.task_type || "general",
+      reference_url: body.reference_url || "",
       payload_kind: (body.payload && body.payload.kind === "json" && body.payload.json) ? "inline" : "none",
       payload_json: (body.payload && body.payload.kind === "json") ? body.payload.json : "",
       state: "draft", availability_kind: "available",
@@ -426,6 +430,14 @@
   });
   on("POST", "/api/tasks/:id/open", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); t.state = "open"; return ok(detail(t)); });
   on("POST", "/api/tasks/:id/cancel", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); t.state = "cancelled"; return ok(detail(t)); });
+  on("POST", "/api/tasks/:id/unpublish", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); t.state = "draft"; return ok(detail(t)); });
+  on("GET", "/api/tasks/:id/comments", (p) => ok({ comments: db.taskComments[p.id] || [] }));
+  on("POST", "/api/tasks/:id/comments", (p, _url, body) => {
+    const t = findTask(p.id); if (!t) return err(404, "task not found");
+    const comment = { id: nextId("tcom"), task_id: t.id, author_user_id: ME, body: (body && body.body) || "", created_at: "2026-06-25T12:00:00Z" };
+    (db.taskComments[t.id] = db.taskComments[t.id] || []).push(comment);
+    return ok(comment, 201);
+  });
   on("POST", "/api/tasks/:id/refund", (p) => {
     // Release any escrow back to the owner and cancel the task. Mirrors the
     // real backend's refund: returns the escrow shape the client decodes.

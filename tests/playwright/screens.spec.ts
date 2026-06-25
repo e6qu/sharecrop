@@ -453,3 +453,42 @@ test("a creator manages a first-class task series end to end", async ({ page, re
     page.getByTestId("series-comment").filter({ hasText: "Round one" }),
   ).toHaveCount(1);
 });
+
+test("a requester uses a code-review template with a PR link and comments on the task", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "template-owner");
+  const title = `Code review ${crypto.randomUUID()}`;
+  const prURL = "https://github.com/example/repo/pull/7";
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("create-title").fill(title);
+  // Pick the code-review template (prefills description + response schema) and
+  // point it at a specific pull request.
+  await page.getByTestId("create-task-type").selectOption("code_review");
+  await page.getByTestId("create-reference-url").fill(prURL);
+  await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+
+  await page.getByTestId("nav-tasks").click();
+  const ownerRow = page.getByTestId("task-row").filter({ hasText: title });
+  await ownerRow.getByTestId("view-task").click();
+
+  // The task shows its type and the clickable PR reference.
+  await expect(page.getByTestId("detail-type")).toBeVisible();
+  await expect(page.getByTestId("detail-reference")).toHaveAttribute(
+    "href",
+    prURL,
+  );
+
+  // Comment on the task (clarifying question).
+  await page.getByTestId("task-comment-body").fill(
+    "Which branch should I diff against?",
+  );
+  await page.getByTestId("add-task-comment").click();
+  await expect(
+    page.getByTestId("task-comment").filter({ hasText: "Which branch" }),
+  ).toHaveCount(1);
+});

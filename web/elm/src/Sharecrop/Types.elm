@@ -136,6 +136,10 @@ type alias LoggedInModel =
     , provisionMemberEmail : String
     , provisionMemberMessage : Maybe String
     , createTaskOwner : String
+    , createTaskType : String
+    , createReferenceURL : String
+    , taskComments : List Task.TaskCommentResponse
+    , taskCommentBody : String
     }
 
 
@@ -157,6 +161,8 @@ type alias TaskDetail =
     , payloadJson : String
     , createdBy : String
     , seriesID : String
+    , taskType : String
+    , referenceURL : String
     }
 
 
@@ -293,6 +299,12 @@ type Msg
     | ProvisionMemberClicked
     | ProvisionMemberReceived (Result Http.Error ())
     | CreateTaskOwnerChanged String
+    | CreateTaskTypeChanged String
+    | CreateReferenceURLChanged String
+    | TaskCommentBodyChanged String
+    | AddTaskCommentClicked String
+    | TaskCommentReceived (Result Http.Error Task.TaskCommentResponse)
+    | TaskCommentsReceived (Result Http.Error (List Task.TaskCommentResponse))
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
 

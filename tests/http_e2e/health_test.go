@@ -170,6 +170,14 @@ func (healthTaskService) ListSeriesComments(context.Context, auth.UserSubject, c
 	return task.SeriesCommentsListed{Values: nil}
 }
 
+func (healthTaskService) AddTaskComment(context.Context, auth.UserSubject, core.TaskID, task.CommentBody) task.TaskCommentResult {
+	return task.TaskCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthTaskService) ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult {
+	return task.TaskCommentsListed{Values: nil}
+}
+
 func (healthTaskService) List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
 	return task.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
