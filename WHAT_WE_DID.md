@@ -1,5 +1,11 @@
 # What We Did
 
+`task/fuzz-journeys-uiux` was a fuzz + user-journey + UI/UX review round (two specialized subagents) with opportunistic boyscout fixes:
+
+- Fuzzing: `internal/task/fuzz_test.go` `FuzzTaskValueParsers` exercises the value parsers added for templates/series/comments (task type, reference URL, comment body, series state/description) — no panics, and an accepted reference URL is always an absolute http(s) URL (confirming the real backend rejects `javascript:` and relative URLs).
+- Journey/flow fixes: the demo `validateValue` understood only the designer/seed schema dialect (fields as a map, `items`, `required`), so tasks created from the new templates (canonical `fields` array, `item`, `presence`, `kind:"enum"`) had their submissions silently accepted; it now handles both dialects (and a real `enum` kind). The flagship seeded series `series-orchard` was published with a "tasks added here" comment but had zero member tasks; linked two seeded tasks (positions 1-2). A worker who submits an invalid response now sees the field-level `path: message` errors, not just "(invalid)".
+- UI/UX fixes (contrast verified clean by the reviewer): comment authors render as links to their user page instead of a raw UUID; long reference URLs and comment bodies wrap (`break-all`/`break-words`) instead of overflowing the card; the task reference link opens in a new tab with `rel="noopener noreferrer"`; and arcade-theme anchor buttons (Open/View/Back) now get the chunky pixel-button treatment for consistency.
+
 `task/dev-templates-comments` added pre-baked developer task types, a typed reference URL, and per-task comments:
 
 - A task now carries a `task_type` (general, code_review, security_review, product_review, ui_ux_review, qa_testing) and an optional `reference_url` (validated as an absolute http(s) URL — the specific pull request or resource to work on). `migration 000019` adds both columns (with a CHECK on the type and an index), plus a `task_comments` table. New domain: `TaskType`, `ReferenceURL`, `TaskComment`, `core.TaskCommentID`, and viewer-gated `AddTaskComment`/`ListTaskComments`.

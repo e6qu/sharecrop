@@ -240,7 +240,7 @@
       availability_kind: "reserved",
     }),
     task({
-      id: "task-5", title: "Normalize 8 dates to ISO 8601",
+      id: "task-5", title: "Normalize 8 dates to ISO 8601", series_kind: "existing", series_id: "series-orchard", series_position: 1,
       description:
         "Convert each of the 8 dates in the Task input to ISO 8601 (YYYY-MM-DD) and return them, in order, as an iso_dates array. Rules: if a date leads with a 4-digit number, treat it as the year (YYYY/MM/DD or YYYY.MM.DD); otherwise, for ambiguous all-numeric dates, treat the format as month-first (so \"03/04/2026\" is March 4, 2026 -> \"2026-03-04\"). Slash, dash, and dot separators all appear.",
       reward_credit_amount: 30, escrow: 30, response_schema_json: dateSchema,
@@ -250,7 +250,7 @@
       }),
     }),
     task({
-      id: "task-6", title: "Extract product and rating from 5 reviews", participation_policy: "open",
+      id: "task-6", title: "Extract product and rating from 5 reviews", participation_policy: "open", series_kind: "existing", series_id: "series-orchard", series_position: 2,
       description:
         "Each of the 5 review lines in the Task input starts with \"Rating: N/5\" and then, after an em dash, names a product. The product name is the proper-noun phrase between the em dash and the next colon (e.g. \"Orchard Boots\"). Return an items array, in order, with that product name and the rating N as an integer (1-5).",
       reward_credit_amount: 36, escrow: 36, response_schema_json: reviewSchema,
@@ -329,13 +329,19 @@
       case "object": {
         if (typeof value !== "object" || value === null || Array.isArray(value)) return [{ path, message: "value must be an object" }];
         const errs = [];
-        for (const [name, field] of Object.entries(schema.fields || {})) {
-          const fp = path ? path + "." + name : name;
-          if (!(name in value)) {
+        // Support both schema dialects: the designer/seed format (fields is a
+        // map of name -> subschema with a `required` flag) and the canonical
+        // contract format (fields is an array of {name, presence, schema}).
+        const fields = Array.isArray(schema.fields)
+          ? schema.fields.map((f) => ({ name: f.name, required: f.presence === "required" || f.required === true, sub: f.schema || f }))
+          : Object.entries(schema.fields || {}).map(([name, f]) => ({ name, required: f.required === true || f.presence === "required", sub: f }));
+        for (const field of fields) {
+          const fp = path ? path + "." + field.name : field.name;
+          if (!(field.name in value)) {
             if (field.required) errs.push({ path: fp, message: "required field is missing" });
             continue;
           }
-          errs.push(...validateValue(field, value[name], fp));
+          errs.push(...validateValue(field.sub, value[field.name], fp));
         }
         return errs;
       }
@@ -344,8 +350,13 @@
         const errs = [];
         if (schema.minItems != null && value.length < schema.minItems) errs.push({ path, message: `expected at least ${schema.minItems} items` });
         if (schema.maxItems != null && value.length > schema.maxItems) errs.push({ path, message: `expected at most ${schema.maxItems} items` });
-        value.forEach((v, i) => errs.push(...validateValue(schema.items, v, `${path}[${i}]`)));
+        const itemSchema = schema.item || schema.items;
+        value.forEach((v, i) => errs.push(...validateValue(itemSchema, v, `${path}[${i}]`)));
         return errs;
+      }
+      case "enum": {
+        if (typeof value !== "string") return [{ path, message: "value must be a string" }];
+        return (schema.values || []).includes(value) ? [] : [{ path, message: `must be one of: ${(schema.values || []).join(", ")}` }];
       }
       case "string":
       case "decimal_string": {

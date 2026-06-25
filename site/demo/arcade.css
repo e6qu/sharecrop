@@ -72,6 +72,21 @@ button.border-slate-300 { background: var(--pa-surface) !important; color: var(-
 button:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--pa-line) !important; }
 button:disabled { box-shadow: none !important; transform: none; border-style: dashed !important; color: var(--pa-muted) !important; background: var(--pa-canvas) !important; }
 
+/* Anchor "buttons" (the secondary-button class on <a>, e.g. Open / View / Back)
+   match the chunky pixel buttons instead of rendering as thin muted boxes. */
+a.border-slate-300 {
+  display: inline-flex;
+  font-family: "Press Start 2P", monospace !important;
+  font-size: 0.6rem !important;
+  border: 3px solid var(--pa-line) !important;
+  border-radius: 0 !important;
+  box-shadow: 3px 3px 0 var(--pa-line) !important;
+  background: var(--pa-surface) !important;
+  color: var(--pa-ink) !important;
+  padding: 8px 10px !important;
+  text-decoration: none !important;
+}
+
 /* Nav links (each carries data-testid="nav-*") read as a menu. */
 [data-testid^="nav-"] {
   display: inline-flex;
