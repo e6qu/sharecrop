@@ -1,5 +1,15 @@
 # What We Did
 
+`task/demo-fidelity` minimized the in-browser demo's "fakes" so `site/demo/backend.js` behaves like the real Go backend. A specialized agent compared all ~69 demo routes to the Go handlers/domain; the high-impact divergences are fixed:
+
+- **Review state machine.** accept/reject/request-changes now act only on `submitted` work (409 otherwise); accept additionally requires an open task and rejects when a submission was already accepted — so double-clicking Accept or reviewing an `invalid`/seeded submission no longer replays payouts and drifts the balance.
+- **Lifecycle + economy guards** matching prod's 409s: open (draft only), cancel (draft/open), unpublish (open only); refund (draft/open + must have escrow, and it returns to the funding wallet); funding (rejects re-funding an already-funded task — escrow is a single hold); reservation (open state, non-open policy, and the requester can't reserve their own task).
+- **Create fidelity.** task-create honors the `owner` (so org-owned tasks store `owner_kind`/`owner_id`), the `visibility` scope id, the `assignee_scope`, and `reservation_expiry_hours` — previously all dropped, which made org-owned/org-scoped tasks look user-owned and miss their org page.
+- **Series consistency.** add/reorder set `series_kind = "existing_series"` and remove resets to `"standalone"`; the seed values were aligned (was `"existing"`).
+- **Seed nit.** the seeded "Golden Sickle" collectible is now `transferable_between_users`, matching its catalog template (was inconsistently non-transferable).
+- **Intentional demo affordances kept** and documented in the file header: auto-login on `/api/auth/refresh`, the Reset button, and unvalidated tokens with a single seeded "you" (Mara).
+- The 31-test Playwright suite still passes (no flow regressions). Deferred (low impact, noted): the user-submissions page stub and member/team provisioning showing a synthetic id rather than the typed email.
+
 `task/demo-pages-routing` fixed the GitHub Pages demo URL/refresh problem cleanly (no fallback), and hardened logout:
 
 - **Fragment (hash) routing.** The demo runs at `/sharecrop/demo/` but the client built root-absolute paths, so click-navigation left the base and hard-refresh/deep-links 404'd (Pages bounced to the site root). Rather than add a 404.html SPA fallback + base-path threading (a "needless fallback" that hides bugs), the router now keeps the whole route in the URL **fragment** (`#/...`). The path stays a real file, so hard-refresh and deep-links work with **no 404.html, no base-path config, and no Go SPA catch-all**. `pageFromUrl` reads `url.fragment`; every internal href is `#/...`; the two path-building `Nav.pushUrl` calls became `#/...`.
