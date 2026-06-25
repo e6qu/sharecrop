@@ -1,15 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 45 work, merged into `main`.
+The repository contains pull request 1 through pull request 46 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/fuzz-and-polish` adds Go native fuzz tests over the untrusted-input parsers, fixes a JSON-encoding bug they found, and applies a usability review of the demo (refund + per-org balance dead-ends, an undiscoverable award flow, an ambiguous example). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/fuzz-flows-contrast` adds a second fuzz target, fixes WCAG contrast and focus failures found by a contrast review, and fixes a demo flow dead-end plus two example-wording issues. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/fuzz-and-polish`:
+Implemented in `task/fuzz-flows-contrast`:
 
-- Fuzzing: `FuzzParseSchemaJSON`/`FuzzParseValueJSON`/`FuzzValidate` (schema parse + value parse + validate + sensitivity index + redact), `FuzzVerifyAccessToken` (asserts no panic and no token forgery), `FuzzHandleRaw` (the MCP JSON-RPC transport always emits valid JSON or no response). The value-parser round-trip fuzz found that `EncodeValueJSON` used `strconv.Quote` (Go literal syntax), which emits `\x7f`-style escapes that are invalid JSON; switched to `encoding/json` so the redacted submission source is always valid JSON. The crasher is checked in as a regression seed under `internal/schema/testdata`. Confirmed the nested-union validator is not a DoS: blow-up only occurs with exponential-size input that a body-size cap already prevents.
-- Demo usability (audited with two subagents — example correctness and flow dead-ends): the fake backend now serves `POST /api/tasks/:id/refund` (the Refund owner control hit the catch-all and failed to decode) and `GET /api/organizations/:id/credits/balance` (org balance was stuck on "Loading…"); the date-normalization task's rule said "day-first" while its worked example was month-first — made them consistent; reworded an ambiguous support-ticket example; relabeled the collectibles award flow so the task picker and per-collectible Award button read as one two-step action. `demo.spec.ts` covers the refund and org-balance flows.
+- Fuzzing: added `FuzzParsePage` (`internal/http`) — arbitrary `?limit=&offset=` query strings must yield a `core.Page` with limit in [1,200] and offset >= 0, so no query can reach SQL as an out-of-range LIMIT or negative OFFSET. Holds.
+- Contrast/UI (computed real WCAG ratios; verified only the page-title h1 sits on the bare page background, the rest is inside parchment cards): the arcade theme's green page background was lightened (`#6b8f3a` -> `#b3cf86`) so the on-green title clears AA (2.21:1 -> 4.79:1) and body ink reaches 9.17:1; added a visible keyboard focus outline (the theme had none — WCAG 2.4.7); pinned arcade placeholders to the muted ink (was ~3:1). Shipped app: the "revoked" credential label moved `text-slate-400` -> `text-slate-600` (2.56:1 -> 7.58:1), and a base `::placeholder` rule pins placeholders to slate-500 (4.76:1, was ~2.7:1).
+- Demo flows/examples (audited with two subagents): the task-series detail seed lacked `owner_kind`/`created_by`, so `GET /api/task-series/:id` (and the series list) failed to decode and the series page hung on "Loading series…"; seeded the contract fields. Reworded the review-extraction task whose "before the first colon" rule collided with the "Rating:" prefix. Every other client route was verified to have a correctly-shaped handler and every seeded task remains self-contained.
+
+Earlier branch `task/fuzz-and-polish` (pull request 46, merged) added Go native fuzz tests over the schema/auth/MCP parsers, fixed an `EncodeValueJSON` invalid-JSON bug they found (`strconv.Quote` -> `encoding/json`; crasher kept as a regression seed under `internal/schema/testdata`), and fixed two demo dead-ends (`POST /tasks/:id/refund`, per-org balance) plus an ambiguous example and the award-flow labels.
 
 Earlier branch `task/demo-deep-selfcontained` (pull request 45, merged) deepened the demo's self-containment (every task objectively solvable from its own embedded data, zero dangling references) and brought the in-browser fake backend's flows into line with the real Go backend + Elm client (schema-validated submissions, reservation eligibility, `POST /:id/revoke`, pure-function `viewer_action`, idempotent funding, honored list filters, `{error}` envelope).
 

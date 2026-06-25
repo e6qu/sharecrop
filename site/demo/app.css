@@ -614,6 +614,12 @@
     }
   }
 }
+@layer base {
+  ::placeholder {
+    color: #64748b;
+    opacity: 1;
+  }
+}
 @property --tw-space-y-reverse {
   syntax: "*";
   inherits: false;

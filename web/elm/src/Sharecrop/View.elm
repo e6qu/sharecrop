@@ -742,7 +742,7 @@ revokeButton credential =
             Ui.secondaryButton [ onClick (RevokeClicked credential.id), testId "revoke-credential" ] "Revoke"
 
         Agent.AgentCredentialStateRevoked ->
-            span [ Html.Attributes.class "text-xs text-slate-400" ] [ text "revoked" ]
+            span [ Html.Attributes.class "text-xs text-slate-600" ] [ text "revoked" ]
 
 
 

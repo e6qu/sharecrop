@@ -3,7 +3,11 @@
    is untouched. !important is used deliberately to override Tailwind utilities. */
 
 :root {
-  --pa-bg: #6b8f3a;
+  /* Lightened from #6b8f3a so the on-green page title and any stray body text
+     clear WCAG AA: the dark heading ink (#245a10) reaches 4.79:1 and body ink
+     9.17:1 here, versus 2.21:1 and 4.22:1 on the old darker green. Cards, nav,
+     and buttons sit on parchment and are unaffected. */
+  --pa-bg: #b3cf86;
   --pa-canvas: #f4ecd0;
   --pa-surface: #fbf6e3;
   --pa-ink: #2a2118;
@@ -112,3 +116,26 @@ pre, code, pre.bg-slate-900 {
 /* Muted slate text reads on the parchment. */
 .text-slate-500, .text-slate-600, .text-slate-700 { color: var(--pa-muted) !important; }
 a.underline { color: var(--pa-accent-strong) !important; }
+
+/* Visible keyboard focus. The Tailwind focus styles use focus:outline-none plus
+   a border color change, which the blocky 3px border above overrides, so the
+   theme otherwise has no focus indicator (WCAG 2.4.7). A hard pixel outline in
+   the strong accent reads on both parchment (7.6:1) and the page green (4.8:1). */
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible,
+a:focus-visible,
+[data-testid^="nav-"]:focus-visible {
+  outline: 3px solid var(--pa-accent-strong) !important;
+  outline-offset: 2px;
+}
+
+/* Placeholders: app.css renders these at 50% of the text color (~3:1 on the
+   pale input), below AA. Pin them to the muted ink (5.1:1+) and keep them
+   fully opaque so the hint is legible. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--pa-muted) !important;
+  opacity: 1 !important;
+}
