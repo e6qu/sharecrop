@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -187,9 +188,9 @@ func (server Server) callGetTaskSchema(ctx context.Context, subject auth.UserSub
 
 func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
-		Title              string `json:"title"`
-		Description        string `json:"description"`
-		ResponseSchemaJSON string `json:"response_schema_json"`
+		Title               string `json:"title"`
+		Description         string `json:"description"`
+		ResponseSchemaJSON  string `json:"response_schema_json"`
 		Visibility          string `json:"visibility"`
 		RewardKind          string `json:"reward_kind"`
 		RewardCreditAmount  int64  `json:"reward_credit_amount"`
@@ -596,10 +597,23 @@ func (server Server) callRejectSubmission(ctx context.Context, subject auth.User
 }
 
 type seriesSummary struct {
+	ID          string `json:"id"`
+	OwnerKind   string `json:"owner_kind"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	State       string `json:"state"`
+	CreatedBy   string `json:"created_by"`
+}
+
+type seriesCommentSummary struct {
 	ID        string `json:"id"`
-	OwnerKind string `json:"owner_kind"`
-	Title     string `json:"title"`
-	CreatedBy string `json:"created_by"`
+	AuthorID  string `json:"author_user_id"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+type seriesCommentsPayload struct {
+	Comments []seriesCommentSummary `json:"comments"`
 }
 
 type seriesListPayload struct {
@@ -695,11 +709,21 @@ func (server Server) callChangeReservation(ctx context.Context, subject auth.Use
 
 func seriesToSummary(value task.Series) seriesSummary {
 	return seriesSummary{
-		ID:        value.ID.String(),
-		OwnerKind: ownerKind(value.Owner),
-		Title:     value.Title.String(),
-		CreatedBy: value.CreatedBy.String(),
+		ID:          value.ID.String(),
+		OwnerKind:   ownerKind(value.Owner),
+		Title:       value.Title.String(),
+		Description: value.Description.String(),
+		State:       value.State.String(),
+		CreatedBy:   value.CreatedBy.String(),
 	}
+}
+
+func seriesDetailToPayload(detail task.SeriesDetail) seriesDetailPayload {
+	tasks := make([]taskSummary, 0, len(detail.Tasks))
+	for index := range detail.Tasks {
+		tasks = append(tasks, taskToSummary(detail.Tasks[index]))
+	}
+	return seriesDetailPayload{Series: seriesToSummary(detail.Series), Tasks: tasks}
 }
 
 type parsedTaskReservationIDs struct {
@@ -785,6 +809,164 @@ func (reservationsPayload) payloadValue() {}
 func (seriesListPayload) payloadValue() {}
 
 func (seriesDetailPayload) payloadValue() {}
+
+func (seriesCommentsPayload) payloadValue() {}
+
+func (seriesCommentSummary) payloadValue() {}
+
+func (server Server) callCreateSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	titleResult := task.NewSeriesTitle(args.Title)
+	title, titleMatched := titleResult.(task.SeriesTitleAccepted)
+	if !titleMatched {
+		return toolProtocolError{code: codeInvalidParams, message: titleResult.(task.SeriesTitleRejected).Reason.Description()}
+	}
+	descriptionResult := task.NewSeriesDescription(args.Description)
+	description, descriptionMatched := descriptionResult.(task.SeriesDescriptionAccepted)
+	if !descriptionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: descriptionResult.(task.SeriesDescriptionRejected).Reason.Description()}
+	}
+	return server.seriesMutationResult(server.services.CreateSeries(ctx, subject, title.Value, description.Value))
+}
+
+func (server Server) callAddTaskToSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	seriesID, taskID, problem := parseSeriesAndTaskID(arguments)
+	if problem != nil {
+		return problem
+	}
+	return server.seriesMutationResult(server.services.AddTaskToSeries(ctx, subject, seriesID, taskID))
+}
+
+func (server Server) callRemoveTaskFromSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	seriesID, taskID, problem := parseSeriesAndTaskID(arguments)
+	if problem != nil {
+		return problem
+	}
+	return server.seriesMutationResult(server.services.RemoveTaskFromSeries(ctx, subject, seriesID, taskID))
+}
+
+func (server Server) callChangeSeriesState(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage, transition task.SeriesStateTransition) toolResult {
+	seriesID, problem := parseSeriesID(arguments)
+	if problem != nil {
+		return problem
+	}
+	return server.seriesMutationResult(server.services.ChangeSeriesState(ctx, subject, seriesID, transition))
+}
+
+func (server Server) callAddSeriesComment(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		SeriesID string `json:"series_id"`
+		Body     string `json:"body"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	seriesResult := core.ParseTaskSeriesID(args.SeriesID)
+	seriesID, seriesMatched := seriesResult.(core.TaskSeriesIDCreated)
+	if !seriesMatched {
+		return toolProtocolError{code: codeInvalidParams, message: seriesResult.(core.TaskSeriesIDRejected).Reason.Description()}
+	}
+	bodyResult := task.NewCommentBody(args.Body)
+	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
+	if !bodyMatched {
+		return toolProtocolError{code: codeInvalidParams, message: bodyResult.(task.CommentBodyRejected).Reason.Description()}
+	}
+	result := server.services.AddSeriesComment(ctx, subject, seriesID.Value, body.Value)
+	added, matched := result.(task.SeriesCommentAdded)
+	if !matched {
+		return toolFailed{message: result.(task.SeriesCommentRejected).Reason.Description()}
+	}
+	return marshalPayload(commentToSummary(added.Value))
+}
+
+func (server Server) callListSeriesComments(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	seriesID, problem := parseSeriesID(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.ListSeriesComments(ctx, subject, seriesID)
+	listed, matched := result.(task.SeriesCommentsListed)
+	if !matched {
+		return toolFailed{message: result.(task.SeriesCommentsListRejected).Reason.Description()}
+	}
+	comments := make([]seriesCommentSummary, 0, len(listed.Values))
+	for index := range listed.Values {
+		comments = append(comments, commentToSummary(listed.Values[index]))
+	}
+	return marshalPayload(seriesCommentsPayload{Comments: comments})
+}
+
+func (server Server) callUnpublishTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	taskID, problem := parseTaskID(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.UnpublishTask(ctx, subject, taskID)
+	changed, matched := result.(task.TaskStateChanged)
+	if !matched {
+		return toolFailed{message: result.(task.ChangeStateRejected).Reason.Description()}
+	}
+	return marshalPayload(taskToDetail(changed.Value))
+}
+
+func (server Server) seriesMutationResult(result task.SeriesMutationResult) toolResult {
+	mutated, matched := result.(task.SeriesMutated)
+	if !matched {
+		return toolFailed{message: result.(task.SeriesMutationRejected).Reason.Description()}
+	}
+	return marshalPayload(seriesDetailToPayload(mutated.Value))
+}
+
+func commentToSummary(value task.SeriesComment) seriesCommentSummary {
+	return seriesCommentSummary{
+		ID:        value.ID.String(),
+		AuthorID:  value.AuthorID.String(),
+		Body:      value.Body.String(),
+		CreatedAt: value.CreatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func parseSeriesID(arguments json.RawMessage) (core.TaskSeriesID, toolResult) {
+	var args struct {
+		SeriesID string `json:"series_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return core.TaskSeriesID{}, invalidArguments()
+	}
+	result := core.ParseTaskSeriesID(args.SeriesID)
+	seriesID, matched := result.(core.TaskSeriesIDCreated)
+	if !matched {
+		return core.TaskSeriesID{}, toolProtocolError{code: codeInvalidParams, message: result.(core.TaskSeriesIDRejected).Reason.Description()}
+	}
+	return seriesID.Value, nil
+}
+
+func parseSeriesAndTaskID(arguments json.RawMessage) (core.TaskSeriesID, core.TaskID, toolResult) {
+	var args struct {
+		SeriesID string `json:"series_id"`
+		TaskID   string `json:"task_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return core.TaskSeriesID{}, core.TaskID{}, invalidArguments()
+	}
+	seriesResult := core.ParseTaskSeriesID(args.SeriesID)
+	seriesID, seriesMatched := seriesResult.(core.TaskSeriesIDCreated)
+	if !seriesMatched {
+		return core.TaskSeriesID{}, core.TaskID{}, toolProtocolError{code: codeInvalidParams, message: seriesResult.(core.TaskSeriesIDRejected).Reason.Description()}
+	}
+	taskResult := core.ParseTaskID(args.TaskID)
+	taskID, taskMatched := taskResult.(core.TaskIDCreated)
+	if !taskMatched {
+		return core.TaskSeriesID{}, core.TaskID{}, toolProtocolError{code: codeInvalidParams, message: taskResult.(core.TaskIDRejected).Reason.Description()}
+	}
+	return seriesID.Value, taskID.Value, nil
+}
 
 type parsedTaskSubmissionIDs struct {
 	taskID       core.TaskID

@@ -21,6 +21,16 @@ const (
 	toolRejectSubmission    = "sharecrop.reject_submission"
 	toolListTaskSeries      = "sharecrop.list_task_series"
 	toolGetTaskSeries       = "sharecrop.get_task_series"
+	toolCreateSeries        = "sharecrop.create_series"
+	toolAddTaskToSeries     = "sharecrop.add_task_to_series"
+	toolRemoveSeriesTask    = "sharecrop.remove_task_from_series"
+	toolPublishSeries       = "sharecrop.publish_series"
+	toolUnpublishSeries     = "sharecrop.unpublish_series"
+	toolCloseSeries         = "sharecrop.close_series"
+	toolReopenSeries        = "sharecrop.reopen_series"
+	toolAddSeriesComment    = "sharecrop.add_series_comment"
+	toolListSeriesComments  = "sharecrop.list_series_comments"
+	toolUnpublishTask       = "sharecrop.unpublish_task"
 	toolReserveTask         = "sharecrop.reserve_task"
 	toolListReservations    = "sharecrop.list_task_reservations"
 	toolApproveReservation  = "sharecrop.approve_task_reservation"
@@ -120,6 +130,66 @@ func toolDefinitions() []toolDefinition {
 			Description: "Get a task series and its ordered tasks.",
 			Scope:       agent.ScopeTasksRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
+		},
+		{
+			Name:        toolCreateSeries,
+			Description: "Create a draft task series the agent's user owns. Add tasks to it as work proceeds, then publish it. Returns the series and its tasks.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"}},"required":["title"]}`),
+		},
+		{
+			Name:        toolAddTaskToSeries,
+			Description: "Append a task the agent's user created to the end of one of its series. Useful for multi-round feedback cycles where new tasks are added over time.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"},"task_id":{"type":"string"}},"required":["series_id","task_id"]}`),
+		},
+		{
+			Name:        toolRemoveSeriesTask,
+			Description: "Remove a task from one of the agent's series (the task itself is not deleted).",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"},"task_id":{"type":"string"}},"required":["series_id","task_id"]}`),
+		},
+		{
+			Name:        toolPublishSeries,
+			Description: "Publish a draft series so it becomes visible to others.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
+		},
+		{
+			Name:        toolUnpublishSeries,
+			Description: "Move a published series back to draft so it is private again.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
+		},
+		{
+			Name:        toolCloseSeries,
+			Description: "Close a series, retiring it.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
+		},
+		{
+			Name:        toolReopenSeries,
+			Description: "Reopen a closed series back to draft.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
+		},
+		{
+			Name:        toolAddSeriesComment,
+			Description: "Post a comment on a series the agent can view, for clarifying questions and feedback between rounds.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"},"body":{"type":"string"}},"required":["series_id","body"]}`),
+		},
+		{
+			Name:        toolListSeriesComments,
+			Description: "List the comment thread on a series the agent can view.",
+			Scope:       agent.ScopeTasksRead,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
+		},
+		{
+			Name:        toolUnpublishTask,
+			Description: "Move an open task the agent's user owns back to draft so it is no longer discoverable or workable.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"]}`),
 		},
 		{
 			Name:        toolReserveTask,

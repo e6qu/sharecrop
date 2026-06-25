@@ -65,7 +65,7 @@ func seriesSelectSQL() string {
 	return `
 		select task_series.id::text, task_series.owner_kind, coalesce(task_series.user_id::text, ''),
 			coalesce(task_series.team_id::text, ''), coalesce(task_series.organization_id::text, ''),
-			task_series.title, task_series.created_by_user_id::text
+			task_series.title, task_series.description, task_series.state, task_series.created_by_user_id::text
 		from task_series
 	`
 }
@@ -95,11 +95,13 @@ func scanSeriesRows(rows pgx.Rows) seriesRowsResult {
 		var rawOwnerTeamID string
 		var rawOwnerOrganizationID string
 		var rawTitle string
+		var rawDescription string
+		var rawState string
 		var rawCreatedBy string
-		if err := rows.Scan(&rawID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawCreatedBy); err != nil {
+		if err := rows.Scan(&rawID, &rawOwnerKind, &rawOwnerUserID, &rawOwnerTeamID, &rawOwnerOrganizationID, &rawTitle, &rawDescription, &rawState, &rawCreatedBy); err != nil {
 			return seriesRowsRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task series failed")}
 		}
-		parsed := parseSeriesRow(rawID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawCreatedBy)
+		parsed := parseSeriesRow(rawID, rawOwnerKind, rawOwnerUserID, rawOwnerTeamID, rawOwnerOrganizationID, rawTitle, rawDescription, rawState, rawCreatedBy)
 		accepted, matched := parsed.(seriesRowAccepted)
 		if !matched {
 			return seriesRowsRejected{reason: parsed.(seriesRowRejected).reason}
@@ -131,7 +133,7 @@ func (seriesRowAccepted) seriesRowResult() {}
 
 func (seriesRowRejected) seriesRowResult() {}
 
-func parseSeriesRow(rawID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawCreatedBy string) seriesRowResult {
+func parseSeriesRow(rawID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawState string, rawCreatedBy string) seriesRowResult {
 	idResult := core.ParseTaskSeriesID(rawID)
 	seriesID, idMatched := idResult.(core.TaskSeriesIDCreated)
 	if !idMatched {
@@ -152,10 +154,22 @@ func parseSeriesRow(rawID string, rawOwnerKind string, rawOwnerUserID string, ra
 	if !createdByMatched {
 		return seriesRowRejected{reason: createdByResult.(core.UserIDRejected).Reason}
 	}
+	descriptionResult := task.NewSeriesDescription(rawDescription)
+	description, descriptionMatched := descriptionResult.(task.SeriesDescriptionAccepted)
+	if !descriptionMatched {
+		return seriesRowRejected{reason: descriptionResult.(task.SeriesDescriptionRejected).Reason}
+	}
+	stateResult := task.ParseSeriesState(rawState)
+	state, stateMatched := stateResult.(task.SeriesStateAccepted)
+	if !stateMatched {
+		return seriesRowRejected{reason: stateResult.(task.SeriesStateRejected).Reason}
+	}
 	return seriesRowAccepted{value: task.Series{
-		ID:        seriesID.Value,
-		Owner:     owner.value,
-		Title:     title.Value,
-		CreatedBy: createdBy.Value,
+		ID:          seriesID.Value,
+		Owner:       owner.value,
+		Title:       title.Value,
+		Description: description.Value,
+		State:       state.Value,
+		CreatedBy:   createdBy.Value,
 	}}
 }

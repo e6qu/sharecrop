@@ -82,6 +82,9 @@ func (server Server) openTask(w http.ResponseWriter, r *http.Request) {
 func (server Server) cancelTask(w http.ResponseWriter, r *http.Request) {
 	server.changeTaskState(w, r, server.taskService.Cancel)
 }
+func (server Server) unpublishTask(w http.ResponseWriter, r *http.Request) {
+	server.changeTaskState(w, r, server.taskService.Unpublish)
+}
 func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)

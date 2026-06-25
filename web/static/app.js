@@ -5359,6 +5359,7 @@ var $author$project$Sharecrop$Types$OverviewPage = {$: 'OverviewPage'};
 var $author$project$Sharecrop$Types$SeriesDetailPage = function (a) {
 	return {$: 'SeriesDetailPage', a: a};
 };
+var $author$project$Sharecrop$Types$SeriesListPage = {$: 'SeriesListPage'};
 var $author$project$Sharecrop$Types$TaskDetailPage = function (a) {
 	return {$: 'TaskDetailPage', a: a};
 };
@@ -5380,7 +5381,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 		$elm$core$String$split,
 		'/',
 		A2($elm$core$String$dropLeft, 1, url.path));
-	_v0$15:
+	_v0$16:
 	while (true) {
 		if (_v0.b) {
 			if (!_v0.b.b) {
@@ -5395,10 +5396,12 @@ var $author$project$Main$pageFromUrl = function (url) {
 						return $author$project$Sharecrop$Types$AgentsPage;
 					case 'collectibles':
 						return $author$project$Sharecrop$Types$CollectiblesPage;
+					case 'series':
+						return $author$project$Sharecrop$Types$SeriesListPage;
 					case 'organizations':
 						return $author$project$Sharecrop$Types$OrganizationsPage;
 					default:
-						break _v0$15;
+						break _v0$16;
 				}
 			} else {
 				if (!_v0.b.b.b) {
@@ -5433,7 +5436,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 							var userId = _v7.a;
 							return $author$project$Sharecrop$Types$UserDetailPage(userId);
 						default:
-							break _v0$15;
+							break _v0$16;
 					}
 				} else {
 					if ((_v0.a === 'users') && (!_v0.b.b.b.b)) {
@@ -5449,15 +5452,15 @@ var $author$project$Main$pageFromUrl = function (url) {
 								var _v11 = _v10.b;
 								return $author$project$Sharecrop$Types$UserSubmissionsPage(userId);
 							default:
-								break _v0$15;
+								break _v0$16;
 						}
 					} else {
-						break _v0$15;
+						break _v0$16;
 					}
 				}
 			}
 		} else {
-			break _v0$15;
+			break _v0$16;
 		}
 	}
 	return $author$project$Sharecrop$Types$OverviewPage;
@@ -6451,6 +6454,144 @@ var $author$project$Sharecrop$Api$acceptCommand = F3(
 			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
 	});
+var $author$project$Sharecrop$Types$SeriesCommentReceived = function (a) {
+	return {$: 'SeriesCommentReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$TaskSeries$SeriesCommentResponse = F5(
+	function (id, seriesID, authorUserID, body, createdAt) {
+		return {authorUserID: authorUserID, body: body, createdAt: createdAt, id: id, seriesID: seriesID};
+	});
+var $elm$json$Json$Decode$map5 = _Json_map5;
+var $author$project$Sharecrop$Generated$TaskSeries$seriesCommentResponseDecoder = A6(
+	$elm$json$Json$Decode$map5,
+	$author$project$Sharecrop$Generated$TaskSeries$SeriesCommentResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'series_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'author_user_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'body', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Api$addSeriesCommentCommand = F3(
+	function (model, state, seriesId) {
+		return $elm$core$String$isEmpty(
+			$elm$core$String$trim(state.seriesCommentBody)) ? _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							seriesMessage: $elm$core$Maybe$Just('A comment is required.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{seriesMessage: $elm$core$Maybe$Nothing});
+				}),
+			A5(
+				$author$project$Sharecrop$Api$authorizedRequest,
+				'POST',
+				state.accessToken,
+				'/api/task-series/' + (seriesId + '/comments'),
+				$elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'body',
+								$elm$json$Json$Encode$string(
+									$elm$core$String$trim(state.seriesCommentBody)))
+							]))),
+				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesCommentReceived, $author$project$Sharecrop$Generated$TaskSeries$seriesCommentResponseDecoder)));
+	});
+var $author$project$Sharecrop$Types$SeriesMutationReceived = function (a) {
+	return {$: 'SeriesMutationReceived', a: a};
+};
+var $author$project$Sharecrop$Types$SeriesDetailData = F3(
+	function (series, tasks, comments) {
+		return {comments: comments, series: series, tasks: tasks};
+	});
+var $elm$json$Json$Decode$list = _Json_decodeList;
+var $author$project$Sharecrop$Types$SeriesTaskEntry = F3(
+	function (id, title, state) {
+		return {id: id, state: state, title: title};
+	});
+var $author$project$Sharecrop$Api$seriesTaskEntryDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Types$SeriesTaskEntry,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$TaskSeries$TaskSeriesResponse = F6(
+	function (id, ownerKind, title, description, state, createdBy) {
+		return {createdBy: createdBy, description: description, id: id, ownerKind: ownerKind, state: state, title: title};
+	});
+var $elm$json$Json$Decode$map6 = _Json_map6;
+var $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
+	$author$project$Sharecrop$Generated$TaskSeries$TaskSeriesResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'description', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Api$seriesDetailDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Types$SeriesDetailData,
+	A2($elm$json$Json$Decode$field, 'series', $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder),
+	A2(
+		$elm$json$Json$Decode$field,
+		'tasks',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Api$seriesTaskEntryDecoder)),
+	A2(
+		$elm$json$Json$Decode$field,
+		'comments',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$TaskSeries$seriesCommentResponseDecoder)));
+var $author$project$Sharecrop$Api$addSeriesTaskCommand = F3(
+	function (model, state, seriesId) {
+		return $elm$core$String$isEmpty(
+			$elm$core$String$trim(state.addSeriesTaskId)) ? _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							seriesMessage: $elm$core$Maybe$Just('A task ID is required.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{seriesMessage: $elm$core$Maybe$Nothing});
+				}),
+			A5(
+				$author$project$Sharecrop$Api$authorizedRequest,
+				'POST',
+				state.accessToken,
+				'/api/task-series/' + (seriesId + '/tasks'),
+				$elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'task_id',
+								$elm$json$Json$Encode$string(
+									$elm$core$String$trim(state.addSeriesTaskId)))
+							]))),
+				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
+	});
 var $author$project$Sharecrop$Types$AwardReceived = function (a) {
 	return {$: 'AwardReceived', a: a};
 };
@@ -6515,7 +6656,6 @@ var $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDec
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $elm$json$Json$Decode$map6 = _Json_map6;
 var $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder = A7(
 	$elm$json$Json$Decode$map6,
 	$author$project$Sharecrop$Generated$Collectible$CollectibleResponse,
@@ -6656,7 +6796,6 @@ var $author$project$Sharecrop$Generated$Agent$agentScopeDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $elm$json$Json$Decode$list = _Json_decodeList;
 var $elm$json$Json$Decode$map4 = _Json_map4;
 var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A5(
 	$elm$json$Json$Decode$map4,
@@ -6850,6 +6989,52 @@ var $author$project$Sharecrop$Api$createOrgTeamCommand = F2(
 									$elm$core$String$trim(state.createOrgTeamName)))
 							]))),
 				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CreateOrgTeamReceived, $author$project$Sharecrop$Generated$Team$teamResponseDecoder)));
+	});
+var $author$project$Sharecrop$Api$seriesBody = F2(
+	function (title, description) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'title',
+					$elm$json$Json$Encode$string(
+						$elm$core$String$trim(title))),
+					_Utils_Tuple2(
+					'description',
+					$elm$json$Json$Encode$string(description))
+				]));
+	});
+var $author$project$Sharecrop$Api$createSeriesCommand = F2(
+	function (model, state) {
+		return $elm$core$String$isEmpty(
+			$elm$core$String$trim(state.createSeriesTitle)) ? _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							seriesMessage: $elm$core$Maybe$Just('A series title is required.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{seriesMessage: $elm$core$Maybe$Nothing});
+				}),
+			A5(
+				$author$project$Sharecrop$Api$authorizedRequest,
+				'POST',
+				state.accessToken,
+				'/api/task-series',
+				$elm$http$Http$jsonBody(
+					A2($author$project$Sharecrop$Api$seriesBody, state.createSeriesTitle, state.createSeriesDescription)),
+				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
 	});
 var $author$project$Sharecrop$Types$CreateTaskReceived = function (a) {
 	return {$: 'CreateTaskReceived', a: a};
@@ -7054,7 +7239,7 @@ var $author$project$Sharecrop$Api$createTaskRequestBody = function (state) {
 			]));
 };
 var $author$project$Sharecrop$Api$taskDetailFromResponse = function (response) {
-	return {assigneeScope: response.assigneeScope, availabilityKind: response.availabilityKind, createdBy: response.createdBy, description: response.description, id: response.id, participationPolicy: response.participationPolicy, payloadJson: response.payloadJSON, payloadKind: response.payloadKind, reservationExpiryHours: response.reservationExpiryHours, responseSchemaJson: response.responseSchemaJSON, rewardCollectibleCount: response.rewardCollectibleCount, rewardCreditAmount: response.rewardCreditAmount, rewardKind: response.rewardKind, state: response.state, title: response.title, viewerAction: response.viewerAction};
+	return {assigneeScope: response.assigneeScope, availabilityKind: response.availabilityKind, createdBy: response.createdBy, description: response.description, id: response.id, participationPolicy: response.participationPolicy, payloadJson: response.payloadJSON, payloadKind: response.payloadKind, reservationExpiryHours: response.reservationExpiryHours, responseSchemaJson: response.responseSchemaJSON, rewardCollectibleCount: response.rewardCollectibleCount, rewardCreditAmount: response.rewardCreditAmount, rewardKind: response.rewardKind, seriesID: response.seriesID, state: response.state, title: response.title, viewerAction: response.viewerAction};
 };
 var $author$project$Sharecrop$Generated$Task$TaskResponse = function (id) {
 	return function (ownerKind) {
@@ -7368,10 +7553,14 @@ var $author$project$Main$enterPage = F2(
 				return _Utils_update(
 					state,
 					{page: page, userSubmissions: _List_Nil});
+			case 'SeriesListPage':
+				return _Utils_update(
+					state,
+					{page: page, seriesMessage: $elm$core$Maybe$Nothing});
 			case 'SeriesDetailPage':
 				return _Utils_update(
 					state,
-					{page: page, seriesDetail: $elm$core$Maybe$Nothing});
+					{addSeriesTaskId: '', page: page, seriesCommentBody: '', seriesDetail: $elm$core$Maybe$Nothing, seriesMessage: $elm$core$Maybe$Nothing, seriesRenameDescription: '', seriesRenameTitle: ''});
 			case 'TeamDetailPage':
 				return _Utils_update(
 					state,
@@ -7803,6 +7992,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 	return {
 		accessToken: response.accessToken,
 		activeOrgId: '',
+		addSeriesTaskId: '',
 		agentLabel: '',
 		agentMessage: $elm$core$Maybe$Nothing,
 		agentScopes: _List_fromArray(
@@ -7828,6 +8018,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		createScopeOrganizationId: '',
 		createScopeTeamId: '',
 		createScopeUserId: '',
+		createSeriesDescription: '',
+		createSeriesTitle: '',
 		createTaskOwner: '',
 		createTitle: '',
 		createVisibility: $author$project$Sharecrop$Types$visibilityDefaultTag,
@@ -7858,7 +8050,12 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		reviewNote: '',
 		reviewPartialCredit: '',
 		reviewTip: '',
+		seriesCommentBody: '',
 		seriesDetail: $elm$core$Maybe$Nothing,
+		seriesList: _List_Nil,
+		seriesMessage: $elm$core$Maybe$Nothing,
+		seriesRenameDescription: '',
+		seriesRenameTitle: '',
 		subjectId: response.subjectID,
 		submissions: _List_Nil,
 		submitInput: '',
@@ -7879,6 +8076,16 @@ var $author$project$Main$loggedInForPage = F2(
 		return _Utils_update(
 			state,
 			{page: page});
+	});
+var $elm$core$Maybe$map = F2(
+	function (f, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return $elm$core$Maybe$Just(
+				f(value));
+		} else {
+			return $elm$core$Maybe$Nothing;
+		}
 	});
 var $author$project$Sharecrop$Api$membersFromResult = function (result) {
 	if (result.$ === 'Ok') {
@@ -7975,7 +8182,6 @@ var $author$project$Sharecrop$Generated$Organization$OrganizationMemberResponse 
 	function (id, organizationID, userID, status, roles) {
 		return {id: id, organizationID: organizationID, roles: roles, status: status, userID: userID};
 	});
-var $elm$json$Json$Decode$map5 = _Json_map5;
 var $author$project$Sharecrop$Generated$Organization$MembershipStatusActive = {$: 'MembershipStatusActive'};
 var $author$project$Sharecrop$Generated$Organization$MembershipStatusDeactivated = {$: 'MembershipStatusDeactivated'};
 var $author$project$Sharecrop$Generated$Organization$MembershipStatusRemoved = {$: 'MembershipStatusRemoved'};
@@ -8547,6 +8753,16 @@ var $author$project$Sharecrop$Api$rejectCommand = F3(
 			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
 	});
+var $author$project$Sharecrop$Api$removeSeriesTaskCommand = F3(
+	function (token, seriesId, taskId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'DELETE',
+			token,
+			'/api/task-series/' + (seriesId + ('/tasks/' + taskId)),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
+	});
 var $author$project$Sharecrop$Api$requestChangesBody = function (reviewNote) {
 	return $elm$json$Json$Encode$object(
 		_List_fromArray(
@@ -8654,9 +8870,6 @@ var $author$project$Sharecrop$Api$revokeAgent = F2(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AgentRevoked, $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder));
 	});
-var $author$project$Sharecrop$Types$SeriesDetailReceived = function (a) {
-	return {$: 'SeriesDetailReceived', a: a};
-};
 var $author$project$Sharecrop$Types$TeamDetailReceived = function (a) {
 	return {$: 'TeamDetailReceived', a: a};
 };
@@ -8676,6 +8889,41 @@ var $author$project$Sharecrop$Api$fetchDetailCommands = F2(
 					A2($author$project$Sharecrop$Api$fetchReservations, token, taskId)
 				]));
 	});
+var $author$project$Sharecrop$Types$SeriesDetailReceived = function (a) {
+	return {$: 'SeriesDetailReceived', a: a};
+};
+var $author$project$Sharecrop$Api$fetchSeriesDetail = F2(
+	function (token, seriesId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/task-series/' + seriesId,
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesDetailReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
+	});
+var $author$project$Sharecrop$Types$SeriesListReceived = function (a) {
+	return {$: 'SeriesListReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$TaskSeries$TaskSeriesListResponse = function (series) {
+	return {series: series};
+};
+var $author$project$Sharecrop$Generated$TaskSeries$taskSeriesListResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$TaskSeries$TaskSeriesListResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'series',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchSeriesList = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'GET',
+		token,
+		'/api/task-series',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesListReceived, $author$project$Sharecrop$Generated$TaskSeries$taskSeriesListResponseDecoder));
+};
 var $author$project$Sharecrop$Types$UserProfileReceived = function (a) {
 	return {$: 'UserProfileReceived', a: a};
 };
@@ -8736,17 +8984,6 @@ var $author$project$Sharecrop$Api$loadOrganization = F2(
 					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgTasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder))
 				]));
 	});
-var $author$project$Sharecrop$Generated$TaskSeries$TaskSeriesResponse = F4(
-	function (id, ownerKind, title, createdBy) {
-		return {createdBy: createdBy, id: id, ownerKind: ownerKind, title: title};
-	});
-var $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder = A5(
-	$elm$json$Json$Decode$map4,
-	$author$project$Sharecrop$Generated$TaskSeries$TaskSeriesResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$routeLoadCmd = F2(
 	function (token, page) {
 		switch (page.$) {
@@ -8810,15 +9047,11 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F2(
 					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserSubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
 			case 'CollectibleDetailPage':
 				return $author$project$Sharecrop$Api$fetchCollectibles(token);
+			case 'SeriesListPage':
+				return $author$project$Sharecrop$Api$fetchSeriesList(token);
 			case 'SeriesDetailPage':
 				var seriesId = page.a;
-				return A5(
-					$author$project$Sharecrop$Api$authorizedRequest,
-					'GET',
-					token,
-					'/api/task-series/' + seriesId,
-					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesDetailReceived, $author$project$Sharecrop$Generated$TaskSeries$taskSeriesResponseDecoder));
+				return A2($author$project$Sharecrop$Api$fetchSeriesDetail, token, seriesId);
 			default:
 				var teamId = page.a;
 				return A5(
@@ -8829,6 +9062,204 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F2(
 					$elm$http$Http$emptyBody,
 					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamDetailReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder));
 		}
+	});
+var $author$project$Sharecrop$Api$seriesFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return response.series;
+	} else {
+		return _List_Nil;
+	}
+};
+var $author$project$Main$seriesListRefresh = function (model) {
+	var _v0 = model.session;
+	if (_v0.$ === 'LoggedIn') {
+		var state = _v0.a;
+		return _Utils_eq(state.page, $author$project$Sharecrop$Types$SeriesListPage) ? $author$project$Sharecrop$Api$fetchSeriesList(state.accessToken) : $elm$core$Platform$Cmd$none;
+	} else {
+		return $elm$core$Platform$Cmd$none;
+	}
+};
+var $author$project$Main$seriesRenameDescriptionFor = F2(
+	function (result, fallback) {
+		if (result.$ === 'Ok') {
+			var data = result.a;
+			return data.series.description;
+		} else {
+			return fallback;
+		}
+	});
+var $author$project$Main$seriesRenameTitleFor = F2(
+	function (result, fallback) {
+		if (result.$ === 'Ok') {
+			var data = result.a;
+			return data.series.title;
+		} else {
+			return fallback;
+		}
+	});
+var $elm$core$Basics$ge = _Utils_ge;
+var $elm$core$List$filter = F2(
+	function (isGood, list) {
+		return A3(
+			$elm$core$List$foldr,
+			F2(
+				function (x, xs) {
+					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
+				}),
+			_List_Nil,
+			list);
+	});
+var $elm$core$List$head = function (list) {
+	if (list.b) {
+		var x = list.a;
+		var xs = list.b;
+		return $elm$core$Maybe$Just(x);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
+var $author$project$Sharecrop$Api$indexOf = F2(
+	function (value, items) {
+		return A2(
+			$elm$core$Maybe$map,
+			$elm$core$Tuple$first,
+			$elm$core$List$head(
+				A2(
+					$elm$core$List$filter,
+					function (_v0) {
+						var item = _v0.b;
+						return _Utils_eq(item, value);
+					},
+					A2(
+						$elm$core$List$indexedMap,
+						F2(
+							function (index, item) {
+								return _Utils_Tuple2(index, item);
+							}),
+						items))));
+	});
+var $elm$core$List$drop = F2(
+	function (n, list) {
+		drop:
+		while (true) {
+			if (n <= 0) {
+				return list;
+			} else {
+				if (!list.b) {
+					return list;
+				} else {
+					var x = list.a;
+					var xs = list.b;
+					var $temp$n = n - 1,
+						$temp$list = xs;
+					n = $temp$n;
+					list = $temp$list;
+					continue drop;
+				}
+			}
+		}
+	});
+var $author$project$Sharecrop$Api$swapAt = F3(
+	function (a, b, items) {
+		var valueAt = function (index) {
+			return $elm$core$List$head(
+				A2($elm$core$List$drop, index, items));
+		};
+		var _v0 = _Utils_Tuple2(
+			valueAt(a),
+			valueAt(b));
+		if ((_v0.a.$ === 'Just') && (_v0.b.$ === 'Just')) {
+			var va = _v0.a.a;
+			var vb = _v0.b.a;
+			return A2(
+				$elm$core$List$indexedMap,
+				F2(
+					function (index, item) {
+						return _Utils_eq(index, a) ? vb : (_Utils_eq(index, b) ? va : item);
+					}),
+				items);
+		} else {
+			return items;
+		}
+	});
+var $author$project$Sharecrop$Api$moveSeriesTaskOrder = F3(
+	function (up, taskId, tasks) {
+		var ids = A2(
+			$elm$core$List$map,
+			function ($) {
+				return $.id;
+			},
+			tasks);
+		var _v0 = A2($author$project$Sharecrop$Api$indexOf, taskId, ids);
+		if (_v0.$ === 'Just') {
+			var index = _v0.a;
+			var target = up ? (index - 1) : (index + 1);
+			return ((target < 0) || (_Utils_cmp(
+				target,
+				$elm$core$List$length(ids)) > -1)) ? ids : A3($author$project$Sharecrop$Api$swapAt, index, target, ids);
+		} else {
+			return ids;
+		}
+	});
+var $author$project$Sharecrop$Api$reorderSeriesCommand = F3(
+	function (token, seriesId, taskIds) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/task-series/' + (seriesId + '/reorder'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'task_ids',
+							A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, taskIds))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
+	});
+var $author$project$Sharecrop$Api$withSession = F2(
+	function (model, run) {
+		var _v0 = model.session;
+		if (_v0.$ === 'LoggedIn') {
+			var state = _v0.a;
+			return run(state);
+		} else {
+			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+		}
+	});
+var $author$project$Main$seriesReorder = F4(
+	function (model, seriesId, taskId, up) {
+		return A2(
+			$author$project$Sharecrop$Api$withSession,
+			model,
+			function (state) {
+				var _v0 = state.seriesDetail;
+				if (_v0.$ === 'Just') {
+					var data = _v0.a;
+					return _Utils_Tuple2(
+						model,
+						A3(
+							$author$project$Sharecrop$Api$reorderSeriesCommand,
+							state.accessToken,
+							seriesId,
+							A3($author$project$Sharecrop$Api$moveSeriesTaskOrder, up, taskId, data.tasks)));
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			});
+	});
+var $author$project$Sharecrop$Api$seriesStateCommand = F3(
+	function (token, seriesId, action) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/task-series/' + (seriesId + ('/' + action)),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(_List_Nil)),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
 	});
 var $author$project$Sharecrop$Api$submissionsFromResult = function (result) {
 	if (result.$ === 'Ok') {
@@ -8974,17 +9405,6 @@ var $elm$url$Url$toString = function (url) {
 					_Utils_ap(http, url.host)),
 				url.path)));
 };
-var $elm$core$List$filter = F2(
-	function (isGood, list) {
-		return A3(
-			$elm$core$List$foldr,
-			F2(
-				function (x, xs) {
-					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
-				}),
-			_List_Nil,
-			list);
-	});
 var $elm$core$List$any = F2(
 	function (isOkay, list) {
 		any:
@@ -9025,15 +9445,37 @@ var $author$project$Sharecrop$Api$toggleScope = F2(
 			},
 			scopes) : A2($elm$core$List$cons, scope, scopes);
 	});
-var $author$project$Sharecrop$Api$withSession = F2(
-	function (model, run) {
-		var _v0 = model.session;
-		if (_v0.$ === 'LoggedIn') {
-			var state = _v0.a;
-			return run(state);
-		} else {
-			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-		}
+var $author$project$Sharecrop$Api$updateSeriesCommand = F3(
+	function (model, state, seriesId) {
+		return $elm$core$String$isEmpty(
+			$elm$core$String$trim(state.seriesRenameTitle)) ? _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							seriesMessage: $elm$core$Maybe$Just('A series title is required.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{seriesMessage: $elm$core$Maybe$Nothing});
+				}),
+			A5(
+				$author$project$Sharecrop$Api$authorizedRequest,
+				'PATCH',
+				state.accessToken,
+				'/api/task-series/' + seriesId,
+				$elm$http$Http$jsonBody(
+					A2($author$project$Sharecrop$Api$seriesBody, state.seriesRenameTitle, state.seriesRenameDescription)),
+				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
 	});
 var $author$project$Main$update = F2(
 	function (msg, model) {
@@ -10310,6 +10752,51 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'SeriesListReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									seriesList: $author$project$Sharecrop$Api$seriesFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateSeriesTitleChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createSeriesTitle: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateSeriesDescriptionChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createSeriesDescription: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateSeriesClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return A2($author$project$Sharecrop$Api$createSeriesCommand, model, state);
+					});
 			case 'SeriesDetailReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -10320,10 +10807,224 @@ var $author$project$Main$update = F2(
 							return _Utils_update(
 								state,
 								{
-									seriesDetail: $elm$core$Result$toMaybe(result)
+									seriesDetail: $elm$core$Result$toMaybe(result),
+									seriesRenameDescription: A2($author$project$Main$seriesRenameDescriptionFor, result, state.seriesRenameDescription),
+									seriesRenameTitle: A2($author$project$Main$seriesRenameTitleFor, result, state.seriesRenameTitle)
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'SeriesMutationReceived':
+				if (msg.a.$ === 'Ok') {
+					var data = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										addSeriesTaskId: '',
+										createSeriesDescription: '',
+										createSeriesTitle: '',
+										seriesDetail: $elm$core$Maybe$Just(data),
+										seriesMessage: $elm$core$Maybe$Just('Series saved.'),
+										seriesRenameDescription: data.series.description,
+										seriesRenameTitle: data.series.title
+									});
+							}),
+						$author$project$Main$seriesListRefresh(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										seriesMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'PublishSeriesClicked':
+				var seriesId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A3($author$project$Sharecrop$Api$seriesStateCommand, state.accessToken, seriesId, 'publish'));
+					});
+			case 'UnpublishSeriesClicked':
+				var seriesId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A3($author$project$Sharecrop$Api$seriesStateCommand, state.accessToken, seriesId, 'unpublish'));
+					});
+			case 'CloseSeriesClicked':
+				var seriesId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A3($author$project$Sharecrop$Api$seriesStateCommand, state.accessToken, seriesId, 'close'));
+					});
+			case 'ReopenSeriesClicked':
+				var seriesId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A3($author$project$Sharecrop$Api$seriesStateCommand, state.accessToken, seriesId, 'reopen'));
+					});
+			case 'AddSeriesTaskIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{addSeriesTaskId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'AddSeriesTaskClicked':
+				var seriesId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return A3($author$project$Sharecrop$Api$addSeriesTaskCommand, model, state, seriesId);
+					});
+			case 'RemoveSeriesTaskClicked':
+				var seriesId = msg.a;
+				var taskId = msg.b;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A3($author$project$Sharecrop$Api$removeSeriesTaskCommand, state.accessToken, seriesId, taskId));
+					});
+			case 'MoveSeriesTaskUpClicked':
+				var seriesId = msg.a;
+				var taskId = msg.b;
+				return A4($author$project$Main$seriesReorder, model, seriesId, taskId, true);
+			case 'MoveSeriesTaskDownClicked':
+				var seriesId = msg.a;
+				var taskId = msg.b;
+				return A4($author$project$Main$seriesReorder, model, seriesId, taskId, false);
+			case 'SeriesCommentBodyChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{seriesCommentBody: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'AddSeriesCommentClicked':
+				var seriesId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return A3($author$project$Sharecrop$Api$addSeriesCommentCommand, model, state, seriesId);
+					});
+			case 'SeriesCommentReceived':
+				if (msg.a.$ === 'Ok') {
+					var comment = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										seriesCommentBody: '',
+										seriesDetail: A2(
+											$elm$core$Maybe$map,
+											function (data) {
+												return _Utils_update(
+													data,
+													{
+														comments: _Utils_ap(
+															data.comments,
+															_List_fromArray(
+																[comment]))
+													});
+											},
+											state.seriesDetail)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										seriesMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'SeriesRenameTitleChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{seriesRenameTitle: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SeriesRenameDescriptionChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{seriesRenameDescription: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'UpdateSeriesClicked':
+				var seriesId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return A3($author$project$Sharecrop$Api$updateSeriesCommand, model, state, seriesId);
+					});
 			case 'TeamDetailReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -10871,6 +11572,8 @@ var $author$project$Sharecrop$Types$pageToPath = function (page) {
 		case 'CollectibleDetailPage':
 			var collectibleId = page.a;
 			return '/collectibles/' + collectibleId;
+		case 'SeriesListPage':
+			return '/series';
 		case 'SeriesDetailPage':
 			var seriesId = page.a;
 			return '/series/' + seriesId;
@@ -10914,6 +11617,7 @@ var $author$project$Sharecrop$View$navBar = function (current) {
 				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$FundingPage, 'funding', 'Funding'),
 				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$AgentsPage, 'agents', 'Agents'),
 				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CollectiblesPage, 'collectibles', 'Collectibles'),
+				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$SeriesListPage, 'series-list', 'Series'),
 				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OrganizationsPage, 'organizations', 'Organizations'),
 				A2(
 				$author$project$Sharecrop$Ui$secondaryButton,
@@ -12499,25 +13203,6 @@ var $author$project$Sharecrop$View$activeOrganizationView = function (state) {
 				A2($author$project$Sharecrop$View$maybeNote, state.provisionMemberMessage, 'provision-member-message')
 			]));
 };
-var $elm$core$List$head = function (list) {
-	if (list.b) {
-		var x = list.a;
-		var xs = list.b;
-		return $elm$core$Maybe$Just(x);
-	} else {
-		return $elm$core$Maybe$Nothing;
-	}
-};
-var $elm$core$Maybe$map = F2(
-	function (f, maybe) {
-		if (maybe.$ === 'Just') {
-			var value = maybe.a;
-			return $elm$core$Maybe$Just(
-				f(value));
-		} else {
-			return $elm$core$Maybe$Nothing;
-		}
-	});
 var $author$project$Sharecrop$View$organizationDetailView = function (state) {
 	var name = A2(
 		$elm$core$Maybe$withDefault,
@@ -12811,63 +13496,478 @@ var $author$project$Sharecrop$View$overviewView = function (state) {
 				$author$project$Sharecrop$View$ledgerView(state.entries)
 			]));
 };
+var $author$project$Sharecrop$Types$AddSeriesCommentClicked = function (a) {
+	return {$: 'AddSeriesCommentClicked', a: a};
+};
+var $author$project$Sharecrop$Types$SeriesCommentBodyChanged = function (a) {
+	return {$: 'SeriesCommentBodyChanged', a: a};
+};
+var $author$project$Sharecrop$View$seriesCommentRow = function (comment) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('rounded-md border border-slate-200 bg-white p-3'),
+				$author$project$Sharecrop$Ui$testId('series-comment')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-500')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(comment.authorUserID)
+					])),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-700')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(comment.body)
+					]))
+			]));
+};
+var $author$project$Sharecrop$View$seriesCommentsSection = F3(
+	function (seriesId, state, data) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$sectionTitle('Discussion'),
+					$elm$core$List$isEmpty(data.comments) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+							$author$project$Sharecrop$Ui$testId('series-comments-empty')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No comments yet.')
+						])) : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('space-y-2'),
+							$author$project$Sharecrop$Ui$testId('series-comments')
+						]),
+					A2($elm$core$List$map, $author$project$Sharecrop$View$seriesCommentRow, data.comments)),
+					A2(
+					$elm$html$Html$form,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('space-y-2'),
+							$elm$html$Html$Events$onSubmit(
+							$author$project$Sharecrop$Types$AddSeriesCommentClicked(seriesId))
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$textarea_(
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$placeholder('Add a comment'),
+									$elm$html$Html$Attributes$value(state.seriesCommentBody),
+									$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$SeriesCommentBodyChanged),
+									$author$project$Sharecrop$Ui$testId('series-comment-body')
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$primaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('submit'),
+									$author$project$Sharecrop$Ui$testId('add-series-comment')
+								]),
+							'Comment')
+						]))
+				]));
+	});
+var $author$project$Sharecrop$Types$AddSeriesTaskClicked = function (a) {
+	return {$: 'AddSeriesTaskClicked', a: a};
+};
+var $author$project$Sharecrop$Types$AddSeriesTaskIdChanged = function (a) {
+	return {$: 'AddSeriesTaskIdChanged', a: a};
+};
+var $author$project$Sharecrop$Types$SeriesRenameDescriptionChanged = function (a) {
+	return {$: 'SeriesRenameDescriptionChanged', a: a};
+};
+var $author$project$Sharecrop$Types$SeriesRenameTitleChanged = function (a) {
+	return {$: 'SeriesRenameTitleChanged', a: a};
+};
+var $author$project$Sharecrop$Types$UpdateSeriesClicked = function (a) {
+	return {$: 'UpdateSeriesClicked', a: a};
+};
+var $author$project$Sharecrop$Types$CloseSeriesClicked = function (a) {
+	return {$: 'CloseSeriesClicked', a: a};
+};
+var $author$project$Sharecrop$Types$PublishSeriesClicked = function (a) {
+	return {$: 'PublishSeriesClicked', a: a};
+};
+var $author$project$Sharecrop$Types$ReopenSeriesClicked = function (a) {
+	return {$: 'ReopenSeriesClicked', a: a};
+};
+var $author$project$Sharecrop$Types$UnpublishSeriesClicked = function (a) {
+	return {$: 'UnpublishSeriesClicked', a: a};
+};
+var $author$project$Sharecrop$View$seriesStateButtons = function (series) {
+	return (series.state === 'draft') ? _List_fromArray(
+		[
+			A2(
+			$author$project$Sharecrop$Ui$secondaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('button'),
+					$elm$html$Html$Events$onClick(
+					$author$project$Sharecrop$Types$PublishSeriesClicked(series.id)),
+					$author$project$Sharecrop$Ui$testId('series-publish')
+				]),
+			'Publish')
+		]) : ((series.state === 'published') ? _List_fromArray(
+		[
+			A2(
+			$author$project$Sharecrop$Ui$secondaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('button'),
+					$elm$html$Html$Events$onClick(
+					$author$project$Sharecrop$Types$UnpublishSeriesClicked(series.id)),
+					$author$project$Sharecrop$Ui$testId('series-unpublish')
+				]),
+			'Unpublish'),
+			A2(
+			$author$project$Sharecrop$Ui$secondaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('button'),
+					$elm$html$Html$Events$onClick(
+					$author$project$Sharecrop$Types$CloseSeriesClicked(series.id)),
+					$author$project$Sharecrop$Ui$testId('series-close')
+				]),
+			'Close')
+		]) : ((series.state === 'closed') ? _List_fromArray(
+		[
+			A2(
+			$author$project$Sharecrop$Ui$secondaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('button'),
+					$elm$html$Html$Events$onClick(
+					$author$project$Sharecrop$Types$ReopenSeriesClicked(series.id)),
+					$author$project$Sharecrop$Ui$testId('series-reopen')
+				]),
+			'Reopen')
+		]) : _List_Nil));
+};
+var $author$project$Sharecrop$View$seriesCreatorControls = F2(
+	function (series, state) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-3 rounded-md bg-slate-50 p-4'),
+					$author$project$Sharecrop$Ui$testId('series-creator-controls')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$sectionTitle('Manage series'),
+					A2(
+					$elm$html$Html$form,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('space-y-2'),
+							$elm$html$Html$Events$onSubmit(
+							$author$project$Sharecrop$Types$UpdateSeriesClicked(series.id))
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$author$project$Sharecrop$Ui$fieldLabel,
+							'Title',
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$textInput(
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('text'),
+											$elm$html$Html$Attributes$placeholder('Series title'),
+											$elm$html$Html$Attributes$value(state.seriesRenameTitle),
+											$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$SeriesRenameTitleChanged),
+											$author$project$Sharecrop$Ui$testId('series-rename-title')
+										]))
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$fieldLabel,
+							'Description',
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$textarea_(
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$placeholder('Description'),
+											$elm$html$Html$Attributes$value(state.seriesRenameDescription),
+											$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$SeriesRenameDescriptionChanged),
+											$author$project$Sharecrop$Ui$testId('series-rename-description')
+										]))
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$primaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('submit'),
+									$author$project$Sharecrop$Ui$testId('series-update')
+								]),
+							'Save changes')
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+						]),
+					$author$project$Sharecrop$View$seriesStateButtons(series)),
+					A2(
+					$elm$html$Html$form,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap items-end gap-2'),
+							$elm$html$Html$Events$onSubmit(
+							$author$project$Sharecrop$Types$AddSeriesTaskClicked(series.id))
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$author$project$Sharecrop$Ui$fieldLabel,
+							'Add task by ID',
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$textInput(
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('text'),
+											$elm$html$Html$Attributes$placeholder('task id'),
+											$elm$html$Html$Attributes$value(state.addSeriesTaskId),
+											$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AddSeriesTaskIdChanged),
+											$author$project$Sharecrop$Ui$testId('series-add-task-id')
+										]))
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$primaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('submit'),
+									$author$project$Sharecrop$Ui$testId('series-add-task')
+								]),
+							'Add task')
+						]))
+				]));
+	});
+var $author$project$Sharecrop$Types$MoveSeriesTaskDownClicked = F2(
+	function (a, b) {
+		return {$: 'MoveSeriesTaskDownClicked', a: a, b: b};
+	});
+var $author$project$Sharecrop$Types$MoveSeriesTaskUpClicked = F2(
+	function (a, b) {
+		return {$: 'MoveSeriesTaskUpClicked', a: a, b: b};
+	});
+var $author$project$Sharecrop$Types$RemoveSeriesTaskClicked = F2(
+	function (a, b) {
+		return {$: 'RemoveSeriesTaskClicked', a: a, b: b};
+	});
+var $author$project$Sharecrop$View$seriesTaskRow = F3(
+	function (seriesId, isCreator, entry) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex flex-wrap items-center justify-between gap-2 py-2'),
+					$author$project$Sharecrop$Ui$testId('series-task-row')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$a,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$href('/tasks/' + entry.id),
+							$elm$html$Html$Attributes$class('text-sm underline'),
+							$author$project$Sharecrop$Ui$testId('series-task-link')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(entry.title + (' · ' + entry.state))
+						])),
+					isCreator ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex gap-2')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									A2($author$project$Sharecrop$Types$MoveSeriesTaskUpClicked, seriesId, entry.id)),
+									$author$project$Sharecrop$Ui$testId('series-task-up')
+								]),
+							'Up'),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									A2($author$project$Sharecrop$Types$MoveSeriesTaskDownClicked, seriesId, entry.id)),
+									$author$project$Sharecrop$Ui$testId('series-task-down')
+								]),
+							'Down'),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									A2($author$project$Sharecrop$Types$RemoveSeriesTaskClicked, seriesId, entry.id)),
+									$author$project$Sharecrop$Ui$testId('series-remove-task')
+								]),
+							'Remove')
+						])) : $elm$html$Html$text('')
+				]));
+	});
+var $author$project$Sharecrop$View$seriesTasksSection = F3(
+	function (seriesId, isCreator, data) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$sectionTitle('Tasks'),
+					$elm$core$List$isEmpty(data.tasks) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+							$author$project$Sharecrop$Ui$testId('series-tasks-empty')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No tasks in this series yet.')
+						])) : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+							$author$project$Sharecrop$Ui$testId('series-tasks')
+						]),
+					A2(
+						$elm$core$List$map,
+						A2($author$project$Sharecrop$View$seriesTaskRow, seriesId, isCreator),
+						data.tasks))
+				]));
+	});
+var $author$project$Sharecrop$View$wrapBadge = F2(
+	function (identifier, badge) {
+		return A2(
+			$elm$html$Html$span,
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			_List_fromArray(
+				[badge]));
+	});
 var $author$project$Sharecrop$View$seriesDetailView = F2(
 	function (seriesId, state) {
 		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
 				[
+					A2(
+					$elm$html$Html$a,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$href('/series'),
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+							$author$project$Sharecrop$Ui$testId('back-series')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Back to series')
+						])),
 					function () {
 					var _v0 = state.seriesDetail;
 					if (_v0.$ === 'Just') {
-						var series = _v0.a;
+						var data = _v0.a;
+						var isCreator = _Utils_eq(data.series.createdBy, state.subjectId);
 						return A2(
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('space-y-2'),
+									$elm$html$Html$Attributes$class('mt-3 space-y-4'),
 									$author$project$Sharecrop$Ui$testId('series-detail')
 								]),
 							_List_fromArray(
 								[
 									A2(
-									$elm$html$Html$p,
+									$elm$html$Html$div,
 									_List_fromArray(
 										[
-											$elm$html$Html$Attributes$class('text-2xl font-semibold'),
-											$author$project$Sharecrop$Ui$testId('series-detail-title')
+											$elm$html$Html$Attributes$class('space-y-2')
 										]),
 									_List_fromArray(
 										[
-											$elm$html$Html$text(series.title)
+											A2(
+											$elm$html$Html$p,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('text-2xl font-semibold'),
+													$author$project$Sharecrop$Ui$testId('series-detail-title')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(data.series.title)
+												])),
+											A2(
+											$author$project$Sharecrop$View$wrapBadge,
+											'series-state',
+											$author$project$Sharecrop$Ui$badge(data.series.state)),
+											A2(
+											$elm$html$Html$p,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('text-sm text-slate-700')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(data.series.description)
+												]))
 										])),
-									$author$project$Sharecrop$Ui$label_('Series ' + series.id),
-									A2(
-									$elm$html$Html$p,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$class('text-sm')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('Owner kind: ' + series.ownerKind)
-										])),
-									A2(
-									$elm$html$Html$p,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$class('text-sm')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('Created by: ' + series.createdBy)
-										]))
+									A3($author$project$Sharecrop$View$seriesTasksSection, seriesId, isCreator, data),
+									isCreator ? A2($author$project$Sharecrop$View$seriesCreatorControls, data.series, state) : $elm$html$Html$text(''),
+									A3($author$project$Sharecrop$View$seriesCommentsSection, seriesId, state, data),
+									A2($author$project$Sharecrop$View$maybeNote, state.seriesMessage, 'series-message')
 								]));
 					} else {
 						return A2(
 							$elm$html$Html$p,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+									$elm$html$Html$Attributes$class('mt-3 text-sm text-slate-500'),
 									$author$project$Sharecrop$Ui$testId('series-detail-missing')
 								]),
 							_List_fromArray(
@@ -12878,6 +13978,141 @@ var $author$project$Sharecrop$View$seriesDetailView = F2(
 				}()
 				]));
 	});
+var $author$project$Sharecrop$Types$CreateSeriesClicked = {$: 'CreateSeriesClicked'};
+var $author$project$Sharecrop$Types$CreateSeriesDescriptionChanged = function (a) {
+	return {$: 'CreateSeriesDescriptionChanged', a: a};
+};
+var $author$project$Sharecrop$Types$CreateSeriesTitleChanged = function (a) {
+	return {$: 'CreateSeriesTitleChanged', a: a};
+};
+var $author$project$Sharecrop$View$seriesRow = function (series) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex flex-wrap items-center justify-between gap-2 py-2'),
+				$author$project$Sharecrop$Ui$testId('series-row')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-sm font-medium')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(series.title)
+							])),
+						$author$project$Sharecrop$Ui$badge(series.state)
+					])),
+				A2(
+				$elm$html$Html$a,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$href('/series/' + series.id),
+						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+						$author$project$Sharecrop$Ui$testId('open-series')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Open')
+					]))
+			]));
+};
+var $author$project$Sharecrop$View$seriesListView = function (state) {
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Task series'),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-600')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Group related tasks into an ordered series with its own discussion thread.')
+					])),
+				A2(
+				$elm$html$Html$form,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('mt-3 space-y-2'),
+						$elm$html$Html$Events$onSubmit($author$project$Sharecrop$Types$CreateSeriesClicked)
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'Title',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('text'),
+										$elm$html$Html$Attributes$placeholder('Series title'),
+										$elm$html$Html$Attributes$value(state.createSeriesTitle),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateSeriesTitleChanged),
+										$author$project$Sharecrop$Ui$testId('series-create-title')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'Description',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textarea_(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$placeholder('What is this series about?'),
+										$elm$html$Html$Attributes$value(state.createSeriesDescription),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateSeriesDescriptionChanged),
+										$author$project$Sharecrop$Ui$testId('series-create-description')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('submit'),
+								$author$project$Sharecrop$Ui$testId('create-series')
+							]),
+						'Create series'),
+						A2($author$project$Sharecrop$View$maybeNote, state.seriesMessage, 'series-message')
+					])),
+				$author$project$Sharecrop$Ui$sectionTitle('Your series'),
+				$elm$core$List$isEmpty(state.seriesList) ? A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+						$author$project$Sharecrop$Ui$testId('series-empty')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('No series yet.')
+					])) : A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+						$author$project$Sharecrop$Ui$testId('series')
+					]),
+				A2($elm$core$List$map, $author$project$Sharecrop$View$seriesRow, state.seriesList))
+			]));
+};
 var $author$project$Sharecrop$Labels$availabilityKindLabel = function (kind) {
 	switch (kind.$) {
 		case 'TaskAvailabilityKindAvailable':
@@ -12889,6 +14124,23 @@ var $author$project$Sharecrop$Labels$availabilityKindLabel = function (kind) {
 		default:
 			return 'closed';
 	}
+};
+var $author$project$Sharecrop$View$seriesLinkBlock = function (detail) {
+	return (detail.seriesID === '') ? _List_Nil : _List_fromArray(
+		[
+			A2(
+			$elm$html$Html$a,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$href('/series/' + detail.seriesID),
+					$elm$html$Html$Attributes$class('text-sm underline'),
+					$author$project$Sharecrop$Ui$testId('task-series-link')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('Part of a series')
+				]))
+		]);
 };
 var $author$project$Sharecrop$View$taskInputBlock = function (detail) {
 	return (((detail.payloadKind === 'inline') || (detail.payloadKind === 'json')) && (detail.payloadJson !== '')) ? _List_fromArray(
@@ -13030,19 +14282,21 @@ var $author$project$Sharecrop$View$detailCard = F2(
 								]))
 						]),
 					_Utils_ap(
-						$author$project$Sharecrop$View$taskInputBlock(detail),
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Ui$label_('Response schema'),
-								A2(
-								$author$project$Sharecrop$Ui$codeBlock,
-								_List_fromArray(
-									[
-										$author$project$Sharecrop$Ui$testId('detail-schema')
-									]),
-								detail.responseSchemaJson),
-								A2($author$project$Sharecrop$View$taskInstructions, origin, detail.id)
-							]))));
+						$author$project$Sharecrop$View$seriesLinkBlock(detail),
+						_Utils_ap(
+							$author$project$Sharecrop$View$taskInputBlock(detail),
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$label_('Response schema'),
+									A2(
+									$author$project$Sharecrop$Ui$codeBlock,
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$testId('detail-schema')
+										]),
+									detail.responseSchemaJson),
+									A2($author$project$Sharecrop$View$taskInstructions, origin, detail.id)
+								])))));
 		} else {
 			return $author$project$Sharecrop$Ui$card(
 				_List_fromArray(
@@ -14237,6 +15491,8 @@ var $author$project$Sharecrop$View$pageView = F2(
 			case 'CollectibleDetailPage':
 				var collectibleId = _v0.a;
 				return A2($author$project$Sharecrop$View$collectibleDetailView, collectibleId, state);
+			case 'SeriesListPage':
+				return $author$project$Sharecrop$View$seriesListView(state);
 			case 'SeriesDetailPage':
 				var seriesId = _v0.a;
 				return A2($author$project$Sharecrop$View$seriesDetailView, seriesId, state);

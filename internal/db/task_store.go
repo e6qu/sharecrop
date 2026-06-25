@@ -223,6 +223,9 @@ func (store TaskStore) CreateReservation(ctx context.Context, reservationID core
 	if state != task.StateOpen.String() {
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can be reserved")}
 	}
+	if blocked := store.taskSeriesBlocksExecution(ctx, command.TaskID); blocked != nil {
+		return task.CreateReservationStoreRejected{Reason: *blocked}
+	}
 
 	reservationStateResult := reservationInitialState(policy)
 	reservationState, reservationStateMatched := reservationStateResult.(reservationInitialStateAccepted)
@@ -344,6 +347,9 @@ func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID co
 	err := store.pool.QueryRow(ctx, "select participation_policy from tasks where id = $1", taskID.String()).Scan(&policy)
 	if err != nil {
 		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if blocked := store.taskSeriesBlocksExecution(ctx, taskID); blocked != nil {
+		return task.SubmissionEligibilityRejected{Reason: *blocked}
 	}
 	var banned bool
 	if err := store.pool.QueryRow(ctx, `

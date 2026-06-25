@@ -39,8 +39,23 @@ type Page
     | UserWorkPage String
     | UserSubmissionsPage String
     | CollectibleDetailPage String
+    | SeriesListPage
     | SeriesDetailPage String
     | TeamDetailPage String
+
+
+type alias SeriesTaskEntry =
+    { id : String
+    , title : String
+    , state : String
+    }
+
+
+type alias SeriesDetailData =
+    { series : TaskSeries.TaskSeriesResponse
+    , tasks : List SeriesTaskEntry
+    , comments : List TaskSeries.SeriesCommentResponse
+    }
 
 
 type alias LoggedInModel =
@@ -104,7 +119,15 @@ type alias LoggedInModel =
     , userProfile : Maybe Task.UserProfileResponse
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
-    , seriesDetail : Maybe TaskSeries.TaskSeriesResponse
+    , seriesDetail : Maybe SeriesDetailData
+    , seriesList : List TaskSeries.TaskSeriesResponse
+    , createSeriesTitle : String
+    , createSeriesDescription : String
+    , seriesMessage : Maybe String
+    , addSeriesTaskId : String
+    , seriesCommentBody : String
+    , seriesRenameTitle : String
+    , seriesRenameDescription : String
     , teamDetail : Maybe Team.TeamDetailResponse
     , teamMemberEmail : String
     , teamMemberMessage : Maybe String
@@ -133,6 +156,7 @@ type alias TaskDetail =
     , payloadKind : String
     , payloadJson : String
     , createdBy : String
+    , seriesID : String
     }
 
 
@@ -236,7 +260,27 @@ type Msg
     | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
     | UserWorkReceived (Result Http.Error Task.TasksResponse)
     | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
-    | SeriesDetailReceived (Result Http.Error TaskSeries.TaskSeriesResponse)
+    | SeriesListReceived (Result Http.Error TaskSeries.TaskSeriesListResponse)
+    | CreateSeriesTitleChanged String
+    | CreateSeriesDescriptionChanged String
+    | CreateSeriesClicked
+    | SeriesDetailReceived (Result Http.Error SeriesDetailData)
+    | SeriesMutationReceived (Result Http.Error SeriesDetailData)
+    | PublishSeriesClicked String
+    | UnpublishSeriesClicked String
+    | CloseSeriesClicked String
+    | ReopenSeriesClicked String
+    | AddSeriesTaskIdChanged String
+    | AddSeriesTaskClicked String
+    | RemoveSeriesTaskClicked String String
+    | MoveSeriesTaskUpClicked String String
+    | MoveSeriesTaskDownClicked String String
+    | SeriesCommentBodyChanged String
+    | AddSeriesCommentClicked String
+    | SeriesCommentReceived (Result Http.Error TaskSeries.SeriesCommentResponse)
+    | SeriesRenameTitleChanged String
+    | SeriesRenameDescriptionChanged String
+    | UpdateSeriesClicked String
     | TeamDetailReceived (Result Http.Error Team.TeamDetailResponse)
     | TeamMemberEmailChanged String
     | AddTeamMemberClicked String
@@ -297,6 +341,9 @@ pageToPath page =
 
         CollectibleDetailPage collectibleId ->
             "/collectibles/" ++ collectibleId
+
+        SeriesListPage ->
+            "/series"
 
         SeriesDetailPage seriesId ->
             "/series/" ++ seriesId

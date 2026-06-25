@@ -303,8 +303,11 @@ routeLoadCmd token page =
         CollectibleDetailPage _ ->
             fetchCollectibles token
 
+        SeriesListPage ->
+            fetchSeriesList token
+
         SeriesDetailPage seriesId ->
-            authorizedRequest "GET" token ("/api/task-series/" ++ seriesId) Http.emptyBody (Http.expectJson SeriesDetailReceived TaskSeries.taskSeriesResponseDecoder)
+            fetchSeriesDetail token seriesId
 
         TeamDetailPage teamId ->
             authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
@@ -932,12 +935,204 @@ taskDetailFromResponse response =
     , payloadKind = response.payloadKind
     , payloadJson = response.payloadJSON
     , createdBy = response.createdBy
+    , seriesID = response.seriesID
     }
 
 
 publicTaskDetailFromResponse : Task.TaskResponse -> PublicTaskDetail
 publicTaskDetailFromResponse response =
     taskDetailFromResponse response
+
+
+seriesTaskEntryDecoder : Decode.Decoder SeriesTaskEntry
+seriesTaskEntryDecoder =
+    Decode.map3 SeriesTaskEntry
+        (Decode.field "id" Decode.string)
+        (Decode.field "title" Decode.string)
+        (Decode.field "state" Decode.string)
+
+
+seriesDetailDecoder : Decode.Decoder SeriesDetailData
+seriesDetailDecoder =
+    Decode.map3 SeriesDetailData
+        (Decode.field "series" TaskSeries.taskSeriesResponseDecoder)
+        (Decode.field "tasks" (Decode.list seriesTaskEntryDecoder))
+        (Decode.field "comments" (Decode.list TaskSeries.seriesCommentResponseDecoder))
+
+
+seriesFromResult : Result Http.Error TaskSeries.TaskSeriesListResponse -> List TaskSeries.TaskSeriesResponse
+seriesFromResult result =
+    case result of
+        Ok response ->
+            response.series
+
+        Err _ ->
+            []
+
+
+fetchSeriesList : String -> Cmd Msg
+fetchSeriesList token =
+    authorizedRequest "GET" token "/api/task-series" Http.emptyBody (Http.expectJson SeriesListReceived TaskSeries.taskSeriesListResponseDecoder)
+
+
+fetchSeriesDetail : String -> String -> Cmd Msg
+fetchSeriesDetail token seriesId =
+    authorizedRequest "GET" token ("/api/task-series/" ++ seriesId) Http.emptyBody (Http.expectJson SeriesDetailReceived seriesDetailDecoder)
+
+
+createSeriesCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+createSeriesCommand model state =
+    if String.isEmpty (String.trim state.createSeriesTitle) then
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Just "A series title is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Nothing })
+        , authorizedRequest "POST"
+            state.accessToken
+            "/api/task-series"
+            (Http.jsonBody (seriesBody state.createSeriesTitle state.createSeriesDescription))
+            (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+        )
+
+
+updateSeriesCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+updateSeriesCommand model state seriesId =
+    if String.isEmpty (String.trim state.seriesRenameTitle) then
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Just "A series title is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Nothing })
+        , authorizedRequest "PATCH"
+            state.accessToken
+            ("/api/task-series/" ++ seriesId)
+            (Http.jsonBody (seriesBody state.seriesRenameTitle state.seriesRenameDescription))
+            (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+        )
+
+
+seriesStateCommand : String -> String -> String -> Cmd Msg
+seriesStateCommand token seriesId action =
+    authorizedRequest "POST"
+        token
+        ("/api/task-series/" ++ seriesId ++ "/" ++ action)
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+
+
+addSeriesTaskCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+addSeriesTaskCommand model state seriesId =
+    if String.isEmpty (String.trim state.addSeriesTaskId) then
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Just "A task ID is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Nothing })
+        , authorizedRequest "POST"
+            state.accessToken
+            ("/api/task-series/" ++ seriesId ++ "/tasks")
+            (Http.jsonBody (Encode.object [ ( "task_id", Encode.string (String.trim state.addSeriesTaskId) ) ]))
+            (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+        )
+
+
+removeSeriesTaskCommand : String -> String -> String -> Cmd Msg
+removeSeriesTaskCommand token seriesId taskId =
+    authorizedRequest "DELETE"
+        token
+        ("/api/task-series/" ++ seriesId ++ "/tasks/" ++ taskId)
+        Http.emptyBody
+        (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+
+
+reorderSeriesCommand : String -> String -> List String -> Cmd Msg
+reorderSeriesCommand token seriesId taskIds =
+    authorizedRequest "POST"
+        token
+        ("/api/task-series/" ++ seriesId ++ "/reorder")
+        (Http.jsonBody (Encode.object [ ( "task_ids", Encode.list Encode.string taskIds ) ]))
+        (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+
+
+addSeriesCommentCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+addSeriesCommentCommand model state seriesId =
+    if String.isEmpty (String.trim state.seriesCommentBody) then
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Just "A comment is required." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Nothing })
+        , authorizedRequest "POST"
+            state.accessToken
+            ("/api/task-series/" ++ seriesId ++ "/comments")
+            (Http.jsonBody (Encode.object [ ( "body", Encode.string (String.trim state.seriesCommentBody) ) ]))
+            (Http.expectJson SeriesCommentReceived TaskSeries.seriesCommentResponseDecoder)
+        )
+
+
+moveSeriesTaskOrder : Bool -> String -> List SeriesTaskEntry -> List String
+moveSeriesTaskOrder up taskId tasks =
+    let
+        ids =
+            List.map .id tasks
+    in
+    case indexOf taskId ids of
+        Just index ->
+            let
+                target =
+                    if up then
+                        index - 1
+
+                    else
+                        index + 1
+            in
+            if target < 0 || target >= List.length ids then
+                ids
+
+            else
+                swapAt index target ids
+
+        Nothing ->
+            ids
+
+
+indexOf : String -> List String -> Maybe Int
+indexOf value items =
+    items
+        |> List.indexedMap (\index item -> ( index, item ))
+        |> List.filter (\( _, item ) -> item == value)
+        |> List.head
+        |> Maybe.map Tuple.first
+
+
+swapAt : Int -> Int -> List String -> List String
+swapAt a b items =
+    let
+        valueAt index =
+            items |> List.drop index |> List.head
+    in
+    case ( valueAt a, valueAt b ) of
+        ( Just va, Just vb ) ->
+            List.indexedMap
+                (\index item ->
+                    if index == a then
+                        vb
+
+                    else if index == b then
+                        va
+
+                    else
+                        item
+                )
+                items
+
+        _ ->
+            items
+
+
+seriesBody : String -> String -> Encode.Value
+seriesBody title description =
+    Encode.object
+        [ ( "title", Encode.string (String.trim title) )
+        , ( "description", Encode.string description )
+        ]
 
 
 

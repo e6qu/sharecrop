@@ -400,3 +400,56 @@ test("requesters author a response schema and task input that the detail surface
   await expect(page.getByTestId("detail-input")).toContainText("pr_url");
   await expect(page.getByTestId("detail-schema")).toContainText("array");
 });
+
+test("a creator manages a first-class task series end to end", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "series-owner");
+  const seriesTitle = `Series ${crypto.randomUUID()}`;
+
+  // A task the owner created, to add to the series.
+  const taskTitle = `Series task ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(taskTitle, owner.body.subject_id, "public", 0),
+  });
+  const seriesTask = (await taskResponse.json()) as TaskBody;
+
+  await loginViaUi(page, owner.email);
+
+  // Create a series from the Series page.
+  await page.getByTestId("nav-series-list").click();
+  await page.getByTestId("series-create-title").fill(seriesTitle);
+  await page.getByTestId("series-create-description").fill(
+    "A demo onboarding series with review rounds.",
+  );
+  await page.getByTestId("create-series").click();
+  const seriesRow = page.getByTestId("series-row").filter({
+    hasText: seriesTitle,
+  });
+  await expect(seriesRow).toHaveCount(1);
+
+  // Open it; the URL is stable and the detail renders.
+  await seriesRow.getByTestId("open-series").click();
+  await expect(page).toHaveURL(/\/series\/[0-9a-f-]+$/);
+  await expect(page.getByTestId("series-detail-title")).toContainText(
+    seriesTitle,
+  );
+
+  // Add the owner's task to the series, then publish it.
+  await page.getByTestId("series-add-task-id").fill(seriesTask.id);
+  await page.getByTestId("series-add-task").click();
+  await expect(
+    page.getByTestId("series-task-row").filter({ hasText: taskTitle }),
+  ).toHaveCount(1);
+
+  await page.getByTestId("series-publish").click();
+  await expect(page.getByTestId("series-state")).toContainText("ublished");
+
+  // Comment on the series.
+  await page.getByTestId("series-comment-body").fill(
+    "Round one is ready for review.",
+  );
+  await page.getByTestId("add-series-comment").click();
+  await expect(
+    page.getByTestId("series-comment").filter({ hasText: "Round one" }),
+  ).toHaveCount(1);
+});

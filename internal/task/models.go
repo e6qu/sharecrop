@@ -51,10 +51,12 @@ type ListItem struct {
 }
 
 type Series struct {
-	ID        core.TaskSeriesID
-	Owner     Owner
-	Title     SeriesTitle
-	CreatedBy core.UserID
+	ID          core.TaskSeriesID
+	Owner       Owner
+	Title       SeriesTitle
+	Description SeriesDescription
+	State       SeriesState
+	CreatedBy   core.UserID
 }
 
 type CapabilityToken struct {
@@ -460,6 +462,13 @@ func CancelState(current State) StateTransitionResult {
 	default:
 		return StateTransitionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task cannot be cancelled from this state")}
 	}
+}
+
+func UnpublishState(current State) StateTransitionResult {
+	if current != StateOpen {
+		return StateTransitionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only an open task can be moved back to draft")}
+	}
+	return StateTransitionAccepted{Value: StateDraft}
 }
 
 type Visibility interface {

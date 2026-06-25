@@ -104,6 +104,14 @@ emptyLoggedIn response =
     , userWork = []
     , userSubmissions = []
     , seriesDetail = Nothing
+    , seriesList = []
+    , createSeriesTitle = ""
+    , createSeriesDescription = ""
+    , seriesMessage = Nothing
+    , addSeriesTaskId = ""
+    , seriesCommentBody = ""
+    , seriesRenameTitle = ""
+    , seriesRenameDescription = ""
     , teamDetail = Nothing
     , teamMemberEmail = ""
     , teamMemberMessage = Nothing
@@ -151,6 +159,9 @@ pageFromUrl url =
         [ "collectibles", collectibleId ] ->
             CollectibleDetailPage collectibleId
 
+        [ "series" ] ->
+            SeriesListPage
+
         [ "series", seriesId ] ->
             SeriesDetailPage seriesId
 
@@ -193,8 +204,11 @@ enterPage page state =
         UserSubmissionsPage _ ->
             { state | page = page, userSubmissions = [] }
 
+        SeriesListPage ->
+            { state | page = page, seriesMessage = Nothing }
+
         SeriesDetailPage _ ->
-            { state | page = page, seriesDetail = Nothing }
+            { state | page = page, seriesDetail = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
 
         TeamDetailPage _ ->
             { state | page = page, teamDetail = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
@@ -578,8 +592,95 @@ update msg model =
         UserSubmissionsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.submissionsFromResult result }), Cmd.none )
 
+        SeriesListReceived result ->
+            ( Api.updateLoggedIn model (\state -> { state | seriesList = Api.seriesFromResult result }), Cmd.none )
+
+        CreateSeriesTitleChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | createSeriesTitle = value }), Cmd.none )
+
+        CreateSeriesDescriptionChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | createSeriesDescription = value }), Cmd.none )
+
+        CreateSeriesClicked ->
+            Api.withSession model (\state -> Api.createSeriesCommand model state)
+
         SeriesDetailReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | seriesDetail = Result.toMaybe result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | seriesDetail = Result.toMaybe result, seriesRenameTitle = seriesRenameTitleFor result state.seriesRenameTitle, seriesRenameDescription = seriesRenameDescriptionFor result state.seriesRenameDescription }), Cmd.none )
+
+        SeriesMutationReceived (Ok data) ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | seriesDetail = Just data
+                        , createSeriesTitle = ""
+                        , createSeriesDescription = ""
+                        , addSeriesTaskId = ""
+                        , seriesRenameTitle = data.series.title
+                        , seriesRenameDescription = data.series.description
+                        , seriesMessage = Just "Series saved."
+                    }
+                )
+            , seriesListRefresh model
+            )
+
+        SeriesMutationReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | seriesMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        PublishSeriesClicked seriesId ->
+            Api.withSession model (\state -> ( model, Api.seriesStateCommand state.accessToken seriesId "publish" ))
+
+        UnpublishSeriesClicked seriesId ->
+            Api.withSession model (\state -> ( model, Api.seriesStateCommand state.accessToken seriesId "unpublish" ))
+
+        CloseSeriesClicked seriesId ->
+            Api.withSession model (\state -> ( model, Api.seriesStateCommand state.accessToken seriesId "close" ))
+
+        ReopenSeriesClicked seriesId ->
+            Api.withSession model (\state -> ( model, Api.seriesStateCommand state.accessToken seriesId "reopen" ))
+
+        AddSeriesTaskIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | addSeriesTaskId = value }), Cmd.none )
+
+        AddSeriesTaskClicked seriesId ->
+            Api.withSession model (\state -> Api.addSeriesTaskCommand model state seriesId)
+
+        RemoveSeriesTaskClicked seriesId taskId ->
+            Api.withSession model (\state -> ( model, Api.removeSeriesTaskCommand state.accessToken seriesId taskId ))
+
+        MoveSeriesTaskUpClicked seriesId taskId ->
+            seriesReorder model seriesId taskId True
+
+        MoveSeriesTaskDownClicked seriesId taskId ->
+            seriesReorder model seriesId taskId False
+
+        SeriesCommentBodyChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | seriesCommentBody = value }), Cmd.none )
+
+        AddSeriesCommentClicked seriesId ->
+            Api.withSession model (\state -> Api.addSeriesCommentCommand model state seriesId)
+
+        SeriesCommentReceived (Ok comment) ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | seriesCommentBody = ""
+                        , seriesDetail = Maybe.map (\data -> { data | comments = data.comments ++ [ comment ] }) state.seriesDetail
+                    }
+                )
+            , Cmd.none
+            )
+
+        SeriesCommentReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | seriesMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        SeriesRenameTitleChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | seriesRenameTitle = value }), Cmd.none )
+
+        SeriesRenameDescriptionChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | seriesRenameDescription = value }), Cmd.none )
+
+        UpdateSeriesClicked seriesId ->
+            Api.withSession model (\state -> Api.updateSeriesCommand model state seriesId)
 
         TeamDetailReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | teamDetail = Result.toMaybe result }), Cmd.none )
@@ -655,3 +756,50 @@ update msg model =
 
                 LoggedOut ->
                     ( { model | route = page }, Cmd.none )
+
+
+seriesListRefresh : Model -> Cmd Msg
+seriesListRefresh model =
+    case model.session of
+        LoggedIn state ->
+            if state.page == SeriesListPage then
+                Api.fetchSeriesList state.accessToken
+
+            else
+                Cmd.none
+
+        LoggedOut ->
+            Cmd.none
+
+
+seriesReorder : Model -> String -> String -> Bool -> ( Model, Cmd Msg )
+seriesReorder model seriesId taskId up =
+    Api.withSession model
+        (\state ->
+            case state.seriesDetail of
+                Just data ->
+                    ( model, Api.reorderSeriesCommand state.accessToken seriesId (Api.moveSeriesTaskOrder up taskId data.tasks) )
+
+                Nothing ->
+                    ( model, Cmd.none )
+        )
+
+
+seriesRenameTitleFor : Result Http.Error SeriesDetailData -> String -> String
+seriesRenameTitleFor result fallback =
+    case result of
+        Ok data ->
+            data.series.title
+
+        Err _ ->
+            fallback
+
+
+seriesRenameDescriptionFor : Result Http.Error SeriesDetailData -> String -> String
+seriesRenameDescriptionFor result fallback =
+    case result of
+        Ok data ->
+            data.series.description
+
+        Err _ ->
+            fallback

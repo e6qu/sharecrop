@@ -10,6 +10,7 @@ import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
+import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, escrowStateLabel, kindLabel, participationPolicyLabel, participationPolicyTag, reservationStateLabel, rewardLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
 import Sharecrop.Types exposing (..)
@@ -73,6 +74,7 @@ navBar current =
         , navLink current FundingPage "funding" "Funding"
         , navLink current AgentsPage "agents" "Agents"
         , navLink current CollectiblesPage "collectibles" "Collectibles"
+        , navLink current SeriesListPage "series-list" "Series"
         , navLink current OrganizationsPage "organizations" "Organizations"
         , Ui.secondaryButton [ type_ "button", onClick LogoutClicked, testId "logout" ] "Log out"
         ]
@@ -136,6 +138,9 @@ pageView origin state =
         CollectibleDetailPage collectibleId ->
             collectibleDetailView collectibleId state
 
+        SeriesListPage ->
+            seriesListView state
+
         SeriesDetailPage seriesId ->
             seriesDetailView seriesId state
 
@@ -195,20 +200,162 @@ collectibleDetailView collectibleId state =
         ]
 
 
+seriesListView : LoggedInModel -> Html Msg
+seriesListView state =
+    Ui.card
+        [ Ui.sectionTitle "Task series"
+        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Group related tasks into an ordered series with its own discussion thread." ]
+        , form [ Html.Attributes.class "mt-3 space-y-2", onSubmit CreateSeriesClicked ]
+            [ Ui.fieldLabel "Title"
+                [ Ui.textInput [ type_ "text", placeholder "Series title", value state.createSeriesTitle, onInput CreateSeriesTitleChanged, testId "series-create-title" ] ]
+            , Ui.fieldLabel "Description"
+                [ Ui.textarea_ [ placeholder "What is this series about?", value state.createSeriesDescription, onInput CreateSeriesDescriptionChanged, testId "series-create-description" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "create-series" ] "Create series"
+            , maybeNote state.seriesMessage "series-message"
+            ]
+        , Ui.sectionTitle "Your series"
+        , if List.isEmpty state.seriesList then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "series-empty" ] [ text "No series yet." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "series" ] (List.map seriesRow state.seriesList)
+        ]
+
+
+seriesRow : TaskSeries.TaskSeriesResponse -> Html Msg
+seriesRow series =
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "series-row" ]
+        [ div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+            [ p [ Html.Attributes.class "text-sm font-medium" ] [ text series.title ]
+            , Ui.badge series.state
+            ]
+        , a [ href ("/series/" ++ series.id), Html.Attributes.class Ui.secondaryButtonClass, testId "open-series" ] [ text "Open" ]
+        ]
+
+
 seriesDetailView : String -> LoggedInModel -> Html Msg
 seriesDetailView seriesId state =
     Ui.card
-        [ case state.seriesDetail of
-            Just series ->
-                div [ Html.Attributes.class "space-y-2", testId "series-detail" ]
-                    [ p [ Html.Attributes.class "text-2xl font-semibold", testId "series-detail-title" ] [ text series.title ]
-                    , Ui.label_ ("Series " ++ series.id)
-                    , p [ Html.Attributes.class "text-sm" ] [ text ("Owner kind: " ++ series.ownerKind) ]
-                    , p [ Html.Attributes.class "text-sm" ] [ text ("Created by: " ++ series.createdBy) ]
+        [ a [ href "/series", Html.Attributes.class Ui.secondaryButtonClass, testId "back-series" ] [ text "Back to series" ]
+        , case state.seriesDetail of
+            Just data ->
+                let
+                    isCreator =
+                        data.series.createdBy == state.subjectId
+                in
+                div [ Html.Attributes.class "mt-3 space-y-4", testId "series-detail" ]
+                    [ div [ Html.Attributes.class "space-y-2" ]
+                        [ p [ Html.Attributes.class "text-2xl font-semibold", testId "series-detail-title" ] [ text data.series.title ]
+                        , Ui.badge data.series.state |> wrapBadge "series-state"
+                        , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text data.series.description ]
+                        ]
+                    , seriesTasksSection seriesId isCreator data
+                    , if isCreator then
+                        seriesCreatorControls data.series state
+
+                      else
+                        text ""
+                    , seriesCommentsSection seriesId state data
+                    , maybeNote state.seriesMessage "series-message"
                     ]
 
             Nothing ->
-                p [ Html.Attributes.class "text-sm text-slate-500", testId "series-detail-missing" ] [ text ("Loading series " ++ seriesId ++ "…") ]
+                p [ Html.Attributes.class "mt-3 text-sm text-slate-500", testId "series-detail-missing" ] [ text ("Loading series " ++ seriesId ++ "…") ]
+        ]
+
+
+wrapBadge : String -> Html Msg -> Html Msg
+wrapBadge identifier badge =
+    span [ testId identifier ] [ badge ]
+
+
+seriesTasksSection : String -> Bool -> SeriesDetailData -> Html Msg
+seriesTasksSection seriesId isCreator data =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ Ui.sectionTitle "Tasks"
+        , if List.isEmpty data.tasks then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "series-tasks-empty" ] [ text "No tasks in this series yet." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "series-tasks" ]
+                (List.map (seriesTaskRow seriesId isCreator) data.tasks)
+        ]
+
+
+seriesTaskRow : String -> Bool -> SeriesTaskEntry -> Html Msg
+seriesTaskRow seriesId isCreator entry =
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "series-task-row" ]
+        [ a [ href ("/tasks/" ++ entry.id), Html.Attributes.class "text-sm underline", testId "series-task-link" ] [ text (entry.title ++ " · " ++ entry.state) ]
+        , if isCreator then
+            div [ Html.Attributes.class "flex gap-2" ]
+                [ Ui.secondaryButton [ type_ "button", onClick (MoveSeriesTaskUpClicked seriesId entry.id), testId "series-task-up" ] "Up"
+                , Ui.secondaryButton [ type_ "button", onClick (MoveSeriesTaskDownClicked seriesId entry.id), testId "series-task-down" ] "Down"
+                , Ui.secondaryButton [ type_ "button", onClick (RemoveSeriesTaskClicked seriesId entry.id), testId "series-remove-task" ] "Remove"
+                ]
+
+          else
+            text ""
+        ]
+
+
+seriesCreatorControls : TaskSeries.TaskSeriesResponse -> LoggedInModel -> Html Msg
+seriesCreatorControls series state =
+    div [ Html.Attributes.class "space-y-3 rounded-md bg-slate-50 p-4", testId "series-creator-controls" ]
+        [ Ui.sectionTitle "Manage series"
+        , form [ Html.Attributes.class "space-y-2", onSubmit (UpdateSeriesClicked series.id) ]
+            [ Ui.fieldLabel "Title"
+                [ Ui.textInput [ type_ "text", placeholder "Series title", value state.seriesRenameTitle, onInput SeriesRenameTitleChanged, testId "series-rename-title" ] ]
+            , Ui.fieldLabel "Description"
+                [ Ui.textarea_ [ placeholder "Description", value state.seriesRenameDescription, onInput SeriesRenameDescriptionChanged, testId "series-rename-description" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "series-update" ] "Save changes"
+            ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (seriesStateButtons series)
+        , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit (AddSeriesTaskClicked series.id) ]
+            [ Ui.fieldLabel "Add task by ID"
+                [ Ui.textInput [ type_ "text", placeholder "task id", value state.addSeriesTaskId, onInput AddSeriesTaskIdChanged, testId "series-add-task-id" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "series-add-task" ] "Add task"
+            ]
+        ]
+
+
+seriesStateButtons : TaskSeries.TaskSeriesResponse -> List (Html Msg)
+seriesStateButtons series =
+    if series.state == "draft" then
+        [ Ui.secondaryButton [ type_ "button", onClick (PublishSeriesClicked series.id), testId "series-publish" ] "Publish" ]
+
+    else if series.state == "published" then
+        [ Ui.secondaryButton [ type_ "button", onClick (UnpublishSeriesClicked series.id), testId "series-unpublish" ] "Unpublish"
+        , Ui.secondaryButton [ type_ "button", onClick (CloseSeriesClicked series.id), testId "series-close" ] "Close"
+        ]
+
+    else if series.state == "closed" then
+        [ Ui.secondaryButton [ type_ "button", onClick (ReopenSeriesClicked series.id), testId "series-reopen" ] "Reopen" ]
+
+    else
+        []
+
+
+seriesCommentsSection : String -> LoggedInModel -> SeriesDetailData -> Html Msg
+seriesCommentsSection seriesId state data =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ Ui.sectionTitle "Discussion"
+        , if List.isEmpty data.comments then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "series-comments-empty" ] [ text "No comments yet." ]
+
+          else
+            div [ Html.Attributes.class "space-y-2", testId "series-comments" ] (List.map seriesCommentRow data.comments)
+        , form [ Html.Attributes.class "space-y-2", onSubmit (AddSeriesCommentClicked seriesId) ]
+            [ Ui.textarea_ [ placeholder "Add a comment", value state.seriesCommentBody, onInput SeriesCommentBodyChanged, testId "series-comment-body" ]
+            , Ui.primaryButton [ type_ "submit", testId "add-series-comment" ] "Comment"
+            ]
+        ]
+
+
+seriesCommentRow : TaskSeries.SeriesCommentResponse -> Html Msg
+seriesCommentRow comment =
+    div [ Html.Attributes.class "rounded-md border border-slate-200 bg-white p-3", testId "series-comment" ]
+        [ p [ Html.Attributes.class "text-xs font-medium text-slate-500" ] [ text comment.authorUserID ]
+        , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text comment.body ]
         ]
 
 
@@ -904,6 +1051,15 @@ taskDetailPageView origin state =
         )
 
 
+seriesLinkBlock : TaskDetail -> List (Html Msg)
+seriesLinkBlock detail =
+    if detail.seriesID == "" then
+        []
+
+    else
+        [ a [ href ("/series/" ++ detail.seriesID), Html.Attributes.class "text-sm underline", testId "task-series-link" ] [ text "Part of a series" ] ]
+
+
 taskInputBlock : TaskDetail -> List (Html Msg)
 taskInputBlock detail =
     if (detail.payloadKind == "inline" || detail.payloadKind == "json") && detail.payloadJson /= "" then
@@ -945,6 +1101,7 @@ detailCard origin state =
                 , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
                 ]
+                    ++ seriesLinkBlock detail
                     ++ taskInputBlock detail
                     ++ [ Ui.label_ "Response schema"
                        , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson

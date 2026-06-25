@@ -267,6 +267,59 @@ func (store *taskMemoryStore) FindSeries(_ context.Context, seriesID core.TaskSe
 	return FindSeriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task series missing")}
 }
 
+func (store *taskMemoryStore) seriesDetail(seriesID core.TaskSeriesID) SeriesMutationStoreResult {
+	for index := range store.series {
+		if store.series[index].ID == seriesID {
+			return SeriesMutationStoreAccepted{Value: SeriesDetail{Series: store.series[index], Tasks: nil}}
+		}
+	}
+	return SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task series missing")}
+}
+
+func (store *taskMemoryStore) CreateSeries(_ context.Context, series Series) SeriesMutationStoreResult {
+	store.series = append(store.series, series)
+	return SeriesMutationStoreAccepted{Value: SeriesDetail{Series: series, Tasks: nil}}
+}
+
+func (store *taskMemoryStore) UpdateSeries(_ context.Context, seriesID core.TaskSeriesID, title SeriesTitle, description SeriesDescription) SeriesMutationStoreResult {
+	for index := range store.series {
+		if store.series[index].ID == seriesID {
+			store.series[index].Title = title
+			store.series[index].Description = description
+		}
+	}
+	return store.seriesDetail(seriesID)
+}
+
+func (store *taskMemoryStore) UpdateSeriesState(_ context.Context, seriesID core.TaskSeriesID, state SeriesState) SeriesMutationStoreResult {
+	for index := range store.series {
+		if store.series[index].ID == seriesID {
+			store.series[index].State = state
+		}
+	}
+	return store.seriesDetail(seriesID)
+}
+
+func (store *taskMemoryStore) AddTaskToSeries(_ context.Context, seriesID core.TaskSeriesID, _ core.TaskID) SeriesMutationStoreResult {
+	return store.seriesDetail(seriesID)
+}
+
+func (store *taskMemoryStore) RemoveTaskFromSeries(_ context.Context, seriesID core.TaskSeriesID, _ core.TaskID) SeriesMutationStoreResult {
+	return store.seriesDetail(seriesID)
+}
+
+func (store *taskMemoryStore) ReorderSeries(_ context.Context, seriesID core.TaskSeriesID, _ []core.TaskID) SeriesMutationStoreResult {
+	return store.seriesDetail(seriesID)
+}
+
+func (store *taskMemoryStore) CreateSeriesComment(_ context.Context, comment SeriesComment) CreateSeriesCommentStoreResult {
+	return CreateSeriesCommentStoreAccepted{Value: comment}
+}
+
+func (store *taskMemoryStore) ListSeriesComments(_ context.Context, _ core.TaskSeriesID) ListSeriesCommentsStoreResult {
+	return ListSeriesCommentsStoreAccepted{Values: nil}
+}
+
 func (store *taskPermissionStore) grant(organizationID core.OrganizationID, userID core.UserID, roles ...org.Role) {
 	store.grants = append(store.grants, taskPermissionGrant{organizationID: organizationID, userID: userID, roles: roles})
 }

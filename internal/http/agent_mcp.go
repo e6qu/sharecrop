@@ -81,6 +81,34 @@ func (services mcpServices) GetSeries(ctx context.Context, subject auth.UserSubj
 	return services.taskService.GetSeries(ctx, subject, seriesID)
 }
 
+func (services mcpServices) CreateSeries(ctx context.Context, subject auth.UserSubject, title task.SeriesTitle, description task.SeriesDescription) task.SeriesMutationResult {
+	return services.taskService.CreateSeries(ctx, subject, title, description)
+}
+
+func (services mcpServices) ChangeSeriesState(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, transition task.SeriesStateTransition) task.SeriesMutationResult {
+	return services.taskService.ChangeSeriesState(ctx, subject, seriesID, transition)
+}
+
+func (services mcpServices) AddTaskToSeries(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, taskID core.TaskID) task.SeriesMutationResult {
+	return services.taskService.AddTaskToSeries(ctx, subject, seriesID, taskID)
+}
+
+func (services mcpServices) RemoveTaskFromSeries(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, taskID core.TaskID) task.SeriesMutationResult {
+	return services.taskService.RemoveTaskFromSeries(ctx, subject, seriesID, taskID)
+}
+
+func (services mcpServices) AddSeriesComment(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, body task.CommentBody) task.SeriesCommentResult {
+	return services.taskService.AddSeriesComment(ctx, subject, seriesID, body)
+}
+
+func (services mcpServices) ListSeriesComments(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID) task.SeriesCommentsResult {
+	return services.taskService.ListSeriesComments(ctx, subject, seriesID)
+}
+
+func (services mcpServices) UnpublishTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
+	return services.taskService.Unpublish(ctx, subject, taskID)
+}
+
 func (services mcpServices) ReserveTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
 	return services.taskService.Reserve(ctx, subject, taskID)
 }
