@@ -12,14 +12,6 @@
 
   const ME = "user-mara";
 
-  const users = {
-    "user-mara": { id: "user-mara", name: "Mara Chen" },
-    "user-jules": { id: "user-jules", name: "Jules Park" },
-    "user-ren": { id: "user-ren", name: "Ren Ito" },
-    "user-sol": { id: "user-sol", name: "Sol Rivera" },
-    "user-tala": { id: "user-tala", name: "Tala Stone" },
-  };
-
   // Realistic, deep example tasks: concrete instructions, real-looking input
   // payloads, and strict response schemas a requester would actually post.
   const invoiceSchema = JSON.stringify({
@@ -154,6 +146,7 @@
       { id: "cred-2", label: "Lattice reviewer agent", scopes: ["tasks_read", "submissions_review"], state: "active" },
     ],
     series: [{ id: "series-orchard", title: "Orchard intake", position: 0 }],
+    appliedFunding: {},
     tasks: [],
   };
 
@@ -200,7 +193,7 @@
     task({
       id: "task-3", title: "Verify 10 ledger transfers for fraud signals",
       description:
-        "Review the 10 transfers in the Task input. Flag a transfer's id as suspicious if EITHER (a) its item_id appears in more than one transfer, OR (b) its to_account is in banned_accounts. Return suspicious_ids (the flagged transfer ids) and reviewed_count (the number of transfers you reviewed, which is 10).",
+        "Review the 10 transfers in the Task input. Flag a transfer's id as suspicious if EITHER (a) its item_id appears in more than one transfer, OR (b) its to_account is in banned_accounts. Return suspicious_ids (the flagged transfer ids, in input order) and reviewed_count (the number of transfers you reviewed, which is 10).",
       reward_credit_amount: 60, escrow: 60, visibility_kind: "organization", visibility_id: "org-lattice",
       response_schema_json: ledgerSchema, assignee_scope: "user",
       payload_kind: "inline",
@@ -246,7 +239,7 @@
     task({
       id: "task-5", title: "Normalize 8 dates to ISO 8601",
       description:
-        "Convert each of the 8 dates in the Task input to ISO 8601 (YYYY-MM-DD), preserving order. For ambiguous all-numeric dates, treat the format as day-first (so \"03/04/2026\" is 4 March 2026 -> \"2026-03-04\"). Slash, dash, and dot separators all appear.",
+        "Convert each of the 8 dates in the Task input to ISO 8601 (YYYY-MM-DD) and return them, in order, as an iso_dates array. Rules: if a date leads with a 4-digit number, treat it as the year (YYYY/MM/DD or YYYY.MM.DD); otherwise, for ambiguous all-numeric dates, treat the format as day-first (so \"03/04/2026\" is 4 March 2026 -> \"2026-03-04\"). Slash, dash, and dot separators all appear.",
       reward_credit_amount: 30, escrow: 30, response_schema_json: dateSchema,
       payload_kind: "inline",
       payload_json: pretty({
@@ -256,16 +249,32 @@
     task({
       id: "task-6", title: "Extract product and rating from 5 reviews", participation_policy: "open",
       description:
-        "Each of the 5 review lines in the Task input names a product and gives a rating out of 5. Return an items array, in order, with the product name and the rating as an integer (1-5).",
+        "Each of the 5 review lines in the Task input names a product and gives a rating out of 5. The product name is the proper-noun phrase immediately after the em dash and before the first colon (e.g. \"Orchard Boots\"). Return an items array, in order, with that product name and the rating as an integer (1-5).",
       reward_credit_amount: 36, escrow: 36, response_schema_json: reviewSchema,
       payload_kind: "inline",
       payload_json: pretty({
         reviews: [
           "Rating: 4/5 — Orchard Boots: great grip, runs a half size small",
-          "Rating: 2/5 — Field Gloves wore through at the seams in a month",
-          "Rating: 5/5 — Sun Hat is the best I've owned, packs flat",
-          "Rating: 3/5 — Canvas Tote is sturdy but the strap is too short",
-          "Rating: 1/5 — Rain Shell soaked through in light drizzle",
+          "Rating: 2/5 — Field Gloves: wore through at the seams in a month",
+          "Rating: 5/5 — Sun Hat: the best I've owned, packs flat",
+          "Rating: 3/5 — Canvas Tote: sturdy but the strap is too short",
+          "Rating: 1/5 — Rain Shell: soaked through in light drizzle",
+        ],
+      }),
+    }),
+    task({
+      id: "task-7", title: "Write release notes for 5 changelog entries", owner_id: "user-jules", created_by: "user-jules", participation_policy: "open",
+      description:
+        "Turn each of the 5 raw changelog entries in the Task input into one customer-facing release note: a single sentence, plain language, no internal ticket ids. Return a JSON object with a notes array of 5 strings, in the same order as the input. (This task uses a freeform response schema, so the exact shape is up to you — just keep it to the 5 notes in order.)",
+      reward_credit_amount: 20, escrow: 20, response_schema_json: '{"kind":"freeform"}',
+      payload_kind: "inline",
+      payload_json: pretty({
+        changelog: [
+          "PROj-412: fix null deref when exporting empty report",
+          "PROj-418: add CSV export button to the Reports tab",
+          "PROj-421: bump session timeout from 15m to 60m",
+          "PROj-430: dark mode for the dashboard",
+          "PROj-435: 2x faster invoice search via new index",
         ],
       }),
     }),
@@ -297,17 +306,55 @@
     const active = t.reservations.find((r) => r.state === "active");
     return active ? active.assignee_id : "";
   }
+  // Mirrors the real backend's taskViewerAction: a pure function of state +
+  // participation policy (viewer-independent), so the demo matches production.
   function viewerAction(t) {
-    if (t.created_by === ME) return "none";
-    if (t.state !== "open" || ["accepted", "rejected", "closed"].includes(t.availability_kind)) return "none";
-    const mine = t.reservations.find((r) => r.assignee_id === ME);
-    const sub = t.submissions.find((s) => s.submitter_id === ME);
-    if (sub && sub.state === "submitted") return "none";
-    if (sub && sub.state === "changes_requested") return "submit";
-    if (activeAssignee(t) && activeAssignee(t) !== ME) return "none";
-    if (t.participation_policy === "approval_required" && (!mine || mine.state === "requested")) return "request_approval";
-    if (t.participation_policy === "reservation_required" && !mine) return "reserve";
-    return "submit";
+    if (t.state !== "open") return "none";
+    if (t.participation_policy === "open") return "submit";
+    if (t.participation_policy === "reservation_required") return "reserve";
+    if (t.participation_policy === "approval_required") return "request_approval";
+    return "none";
+  }
+
+  // Minimal validator matching the response-schema format the designer emits
+  // (kind: object|array|string|integer|decimal_string|freeform). Returns the
+  // same {path, message} validation errors the real backend produces.
+  function validateValue(schema, value, path) {
+    if (!schema || schema.kind === "freeform") return [];
+    switch (schema.kind) {
+      case "object": {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return [{ path, message: "value must be an object" }];
+        const errs = [];
+        for (const [name, field] of Object.entries(schema.fields || {})) {
+          const fp = path ? path + "." + name : name;
+          if (!(name in value)) {
+            if (field.required) errs.push({ path: fp, message: "required field is missing" });
+            continue;
+          }
+          errs.push(...validateValue(field, value[name], fp));
+        }
+        return errs;
+      }
+      case "array": {
+        if (!Array.isArray(value)) return [{ path, message: "value must be an array" }];
+        const errs = [];
+        if (schema.minItems != null && value.length < schema.minItems) errs.push({ path, message: `expected at least ${schema.minItems} items` });
+        if (schema.maxItems != null && value.length > schema.maxItems) errs.push({ path, message: `expected at most ${schema.maxItems} items` });
+        value.forEach((v, i) => errs.push(...validateValue(schema.items, v, `${path}[${i}]`)));
+        return errs;
+      }
+      case "string":
+      case "decimal_string": {
+        if (typeof value !== "string") return [{ path, message: "value must be a string" }];
+        if (schema.enum && !schema.enum.includes(value)) return [{ path, message: `must be one of: ${schema.enum.join(", ")}` }];
+        if (schema.kind === "decimal_string" && !/^-?\d+(\.\d+)?$/.test(value)) return [{ path, message: "must be a decimal string" }];
+        return [];
+      }
+      case "integer":
+        return (typeof value === "number" && Number.isInteger(value)) ? [] : [{ path, message: "value must be an integer" }];
+      default:
+        return [];
+    }
   }
 
   // --- routing ---
@@ -315,7 +362,7 @@
   const on = (method, pattern, handler) => routes.push({ method, parts: pattern.split("/"), handler });
   const ok = (body, status) => ({ status: status || 200, body: JSON.stringify(body) });
   const empty = (status) => ({ status: status || 204, body: "" });
-  const err = (status, message) => ({ status, body: JSON.stringify({ message }) });
+  const err = (status, message) => ({ status, body: JSON.stringify({ error: message }) });
   const auth = () => ({ subject_kind: "user", subject_id: ME, access_token: "demo-access-token" });
   const findTask = (id) => db.tasks.find((t) => t.id === id);
 
@@ -349,10 +396,14 @@
   on("GET", "/api/tasks", (_p, url) => {
     const scope = url.searchParams.get("scope") || "";
     const includeReserved = url.searchParams.get("include_reserved") === "true";
+    const stateFilter = url.searchParams.get("state") || "";
+    const orgId = url.searchParams.get("organization_id") || "";
     let list = db.tasks; // default (empty scope): everything visible to the demo user
     if (scope === "user") list = db.tasks.filter((t) => t.created_by === ME);
-    else if (scope === "public") list = db.tasks.filter((t) => t.visibility_kind === "public" && (includeReserved || !activeAssignee(t)));
-    else if (scope === "organization") list = db.tasks.filter((t) => t.visibility_kind === "organization");
+    // Discovery shows open public tasks only (mirrors the real public scope).
+    else if (scope === "public") list = db.tasks.filter((t) => t.visibility_kind === "public" && t.state === "open" && (includeReserved || !activeAssignee(t)));
+    else if (scope === "organization") list = db.tasks.filter((t) => t.visibility_kind === "organization" && (!orgId || t.visibility_id === orgId));
+    if (stateFilter) list = list.filter((t) => t.state === stateFilter);
     return ok({ tasks: list.map(listItem) });
   });
   on("GET", "/api/tasks/:id", (p) => { const t = findTask(p.id); return t ? ok(detail(t)) : err(404, "task not found"); });
@@ -374,10 +425,15 @@
   on("POST", "/api/tasks/:id/funding", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const amount = (body && body.amount) || 0;
+    // Idempotent funding: replaying the same key does not double-charge (mirrors
+    // the real backend's idempotency_key guard).
+    const key = body && body.idempotency_key;
+    if (key && db.appliedFunding[key]) return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
     if (amount > db.balance) return err(409, "insufficient credits to fund the task");
     // Funding only moves credits into escrow; task state is unchanged (the /open
     // route moves draft -> open). "funded" is not a valid TaskState.
     db.balance -= amount; t.escrow += amount;
+    if (key) db.appliedFunding[key] = true;
     return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
   });
   on("POST", "/api/tasks/:id/reservations", (p) => {
@@ -402,8 +458,26 @@
   on("GET", "/api/tasks/:id/submissions", (p) => { const t = findTask(p.id); return t ? ok({ submissions: t.submissions }) : err(404, "task not found"); });
   on("POST", "/api/tasks/:id/submissions", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
-    const s = { id: nextId("sub"), task_id: t.id, submitter_id: ME, state: "submitted", response_json: (body && body.response_json) || "{}", review_note: "", validation_errors: [] };
-    t.submissions.push(s); t.availability_kind = "reserved";
+    // Reservation eligibility: non-open tasks require an active reservation first
+    // (mirrors CheckSubmissionEligibility in the real backend).
+    const mineActive = t.reservations.find((r) => r.assignee_id === ME && r.state === "active");
+    if (t.participation_policy !== "open" && !mineActive) return err(409, "reserve the task before submitting");
+    // Validate the response against the task's response schema; an invalid
+    // submission is recorded with state "invalid" + validation_errors (the
+    // designer's strict schemas are the whole point, so the demo enforces them).
+    const raw = (body && body.response_json) || "";
+    let parsed = null, parseFailed = false;
+    try { parsed = JSON.parse(raw || "null"); } catch (_) { parseFailed = true; }
+    let schema = null;
+    try { schema = JSON.parse(t.response_schema_json); } catch (_) { schema = null; }
+    const errors = parseFailed ? [{ path: "response", message: "response must be valid JSON" }] : validateValue(schema, parsed, "response");
+    const state = errors.length ? "invalid" : "submitted";
+    const s = { id: nextId("sub"), task_id: t.id, submitter_id: ME, state, response_json: raw || "{}", review_note: "", validation_errors: errors };
+    t.submissions.push(s);
+    if (state === "submitted") {
+      t.availability_kind = "reserved"; // availability stays reserved; the submission state carries "submitted"
+      if (mineActive) mineActive.state = "submitted";
+    }
     return ok({ submission: s, receipt_token: nextId("receipt") }, 201);
   });
   const decide = (state, availability) => (p, _url, body) => {
@@ -411,7 +485,14 @@
     const s = t.submissions.find((x) => x.id === p.sid);
     if (!s) return err(404, "submission not found");
     s.state = state; s.review_note = (body && body.review_note) || "";
-    t.availability_kind = availability; if (state !== "changes_requested") t.state = "closed";
+    t.availability_kind = availability;
+    const reservation = t.reservations.find((r) => r.assignee_id === s.submitter_id);
+    if (state === "changes_requested") {
+      // Return the worker to an active reservation so they can resubmit.
+      if (reservation) reservation.state = "active";
+    } else {
+      t.state = "closed";
+    }
     const worker = s.submitter_id;
     const payout = state === "accepted" ? (t.reward_credit_amount || 0) : ((body && body.payout_amount) || 0);
     return ok({ task_id: t.id, submission_id: s.id, state, review_note: s.review_note, payout_kind: t.reward_kind, payout_amount: payout, worker_user_id: worker, tip_amount: (body && body.tip_amount) || 0 });
@@ -432,7 +513,12 @@
     db.credentials.push(cred);
     return ok({ credential: cred, secret: "demo-secret-" + nextId("s") }, 201);
   });
-  on("DELETE", "/api/agent-credentials/:id", (p) => { const c = db.credentials.find((x) => x.id === p.id); if (c) c.state = "revoked"; return ok(c || {}); });
+  on("POST", "/api/agent-credentials/:id/revoke", (p) => {
+    const c = db.credentials.find((x) => x.id === p.id);
+    if (!c) return err(404, "credential not found");
+    c.state = "revoked";
+    return ok(c);
+  });
 
   on("GET", "/api/collectibles", () => ok({ collectibles: db.collectibles.filter((c) => c.owner_id === ME) }));
   on("POST", "/api/collectibles", (_p, _url, body) => {

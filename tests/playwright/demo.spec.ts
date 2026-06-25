@@ -24,6 +24,8 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
   ).toBeVisible();
   await expect(page.getByText("Classify 8 support tickets by category"))
     .toBeVisible();
+  await expect(page.getByText("Write release notes for 5 changelog entries"))
+    .toBeVisible();
 
   // Opening a task shows the real detail view with its instructions, the
   // self-contained Task input (all data embedded), and the response schema.
@@ -37,4 +39,21 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
   await expect(page.getByText("Birch Supply Co", { exact: false }))
     .toBeVisible();
   await expect(page.getByText('"invoice_id"', { exact: false })).toBeVisible();
+
+  // Reserve-then-submit, with the response validated against the task schema
+  // (the demo enforces the schema like the real backend): a malformed response
+  // is recorded "invalid", a schema-correct one "submitted".
+  await page.getByTestId("reserve-task").click();
+  await page.getByTestId("detail-submit-input").fill("{}");
+  await page.getByTestId("detail-submit").click();
+  await expect(page.getByTestId("detail-submit-message")).toContainText(
+    "invalid",
+  );
+  await page.getByTestId("detail-submit-input").fill(
+    '{"invoices":[{"invoice_id":"INV-1041","vendor":"Birch Supply Co","total":"1240.55","due_date":"2026-07-12"}]}',
+  );
+  await page.getByTestId("detail-submit").click();
+  await expect(page.getByTestId("detail-submit-message")).toContainText(
+    "submitted",
+  );
 });
