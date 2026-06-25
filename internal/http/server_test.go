@@ -376,6 +376,10 @@ func (testAuth) Login(context.Context, auth.EmailAddress, auth.PasswordSecret) a
 	}
 }
 
+func (testAuth) Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult {
+	return auth.LogoutDone{}
+}
+
 func (testAuth) Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult {
 	idResult := core.NewUserID()
 	idCreated := idResult.(core.UserIDCreated)

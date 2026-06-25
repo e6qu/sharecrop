@@ -40,7 +40,7 @@ sessionView model =
             authView model
 
         LoggedIn state ->
-            loggedInView model.origin state
+            loggedInView model state
 
 
 authView : Model -> Html Msg
@@ -58,16 +58,16 @@ authView model =
         ]
 
 
-loggedInView : String -> LoggedInModel -> Html Msg
-loggedInView origin state =
+loggedInView : Model -> LoggedInModel -> Html Msg
+loggedInView model state =
     div [ Html.Attributes.class "space-y-6" ]
-        [ navBar state.page state.subjectId
-        , pageView origin state
+        [ navBar model.demo state.page state.subjectId
+        , pageView model.origin state
         ]
 
 
-navBar : Page -> String -> Html Msg
-navBar current subjectId =
+navBar : Bool -> Page -> String -> Html Msg
+navBar demo current subjectId =
     div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
         [ navLink current OverviewPage "overview" "Overview"
         , navLink current TasksPage "tasks" "Tasks"
@@ -78,8 +78,13 @@ navBar current subjectId =
         , navLink current CollectiblesPage "collectibles" "Collectibles"
         , navLink current SeriesListPage "series-list" "Series"
         , navLink current OrganizationsPage "organizations" "Organizations"
-        , a [ href ("/users/" ++ subjectId), Html.Attributes.class Ui.secondaryButtonClass, testId "nav-profile" ] [ text "Profile" ]
+        , a [ href ("#/users/" ++ subjectId), Html.Attributes.class Ui.secondaryButtonClass, testId "nav-profile" ] [ text "Profile" ]
         , Ui.secondaryButton [ type_ "button", onClick LogoutClicked, testId "logout" ] "Log out"
+        , if demo then
+            Ui.secondaryButton [ type_ "button", onClick ResetDemoClicked, testId "reset-demo" ] "Reset demo"
+
+          else
+            text ""
         ]
 
 
@@ -93,7 +98,7 @@ navLink current target identifier labelText =
             else
                 Ui.secondaryButtonClass
     in
-    a [ href (pageToPath target), Html.Attributes.class styleClass, testId ("nav-" ++ identifier) ] [ text labelText ]
+    a [ href ("#" ++ pageToPath target), Html.Attributes.class styleClass, testId ("nav-" ++ identifier) ] [ text labelText ]
 
 
 pageView : String -> LoggedInModel -> Html Msg
@@ -150,6 +155,13 @@ pageView origin state =
         TeamDetailPage teamId ->
             teamDetailView teamId state
 
+        NotFoundPage ->
+            Ui.card
+                [ Ui.sectionTitle "Page not found"
+                , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "That page does not exist." ]
+                , a [ href "#/", Html.Attributes.class Ui.secondaryButtonClass, testId "not-found-home" ] [ text "Go to overview" ]
+                ]
+
 
 teamDetailView : String -> LoggedInModel -> Html Msg
 teamDetailView teamId state =
@@ -166,7 +178,7 @@ teamDetailView teamId state =
 
                       else
                         div [ Html.Attributes.class "divide-y divide-slate-100", testId "team-members" ]
-                            (List.map (\memberId -> a [ href ("/users/" ++ memberId), Html.Attributes.class "block py-2 text-sm underline", testId "team-member-row" ] [ text memberId ]) detail.members)
+                            (List.map (\memberId -> a [ href ("#/users/" ++ memberId), Html.Attributes.class "block py-2 text-sm underline", testId "team-member-row" ] [ text memberId ]) detail.members)
                     , if detail.team.ownerKind == "user" && detail.team.ownerUserID == state.subjectId then
                         form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit (AddTeamMemberClicked detail.team.id) ]
                             [ Ui.fieldLabel "Add member by email"
@@ -208,7 +220,7 @@ collectibleHoldingRow c =
 collectibleDetailView : String -> LoggedInModel -> Html Msg
 collectibleDetailView collectibleId state =
     Ui.card
-        [ a [ href "/collectibles", Html.Attributes.class Ui.secondaryButtonClass, testId "back-collectibles" ] [ text "Back to collectibles" ]
+        [ a [ href "#/collectibles", Html.Attributes.class Ui.secondaryButtonClass, testId "back-collectibles" ] [ text "Back to collectibles" ]
         , case List.filter (\collectible -> collectible.id == collectibleId) state.collectibles of
             collectible :: _ ->
                 div [ Html.Attributes.class "mt-3 space-y-2", testId "collectible-detail" ]
@@ -263,14 +275,14 @@ seriesRow series =
             [ p [ Html.Attributes.class "text-sm font-medium" ] [ text series.title ]
             , Ui.badge series.state
             ]
-        , a [ href ("/series/" ++ series.id), Html.Attributes.class Ui.secondaryButtonClass, testId "open-series" ] [ text "Open" ]
+        , a [ href ("#/series/" ++ series.id), Html.Attributes.class Ui.secondaryButtonClass, testId "open-series" ] [ text "Open" ]
         ]
 
 
 seriesDetailView : String -> LoggedInModel -> Html Msg
 seriesDetailView seriesId state =
     Ui.card
-        [ a [ href "/series", Html.Attributes.class Ui.secondaryButtonClass, testId "back-series" ] [ text "Back to series" ]
+        [ a [ href "#/series", Html.Attributes.class Ui.secondaryButtonClass, testId "back-series" ] [ text "Back to series" ]
         , case state.seriesDetail of
             Just data ->
                 let
@@ -319,7 +331,7 @@ seriesTasksSection seriesId isCreator data =
 seriesTaskRow : String -> Bool -> SeriesTaskEntry -> Html Msg
 seriesTaskRow seriesId isCreator entry =
     div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "series-task-row" ]
-        [ a [ href ("/tasks/" ++ entry.id), Html.Attributes.class "w-full text-sm underline break-words sm:w-auto", testId "series-task-link" ] [ text (entry.title ++ " · " ++ entry.state) ]
+        [ a [ href ("#/tasks/" ++ entry.id), Html.Attributes.class "w-full text-sm underline break-words sm:w-auto", testId "series-task-link" ] [ text (entry.title ++ " · " ++ entry.state) ]
         , if isCreator then
             div [ Html.Attributes.class "flex flex-wrap gap-2" ]
                 [ Ui.secondaryButton [ type_ "button", onClick (MoveSeriesTaskUpClicked seriesId entry.id), testId "series-task-up" ] "Up"
@@ -388,7 +400,7 @@ seriesCommentsSection seriesId state data =
 seriesCommentRow : TaskSeries.SeriesCommentResponse -> Html Msg
 seriesCommentRow comment =
     div [ Html.Attributes.class "rounded-md border border-slate-200 bg-white p-3", testId "series-comment" ]
-        [ a [ href ("/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
+        [ a [ href ("#/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
         , p [ Html.Attributes.class "text-sm text-slate-700 break-words" ] [ text comment.body ]
         ]
 
@@ -396,21 +408,21 @@ seriesCommentRow comment =
 userTaskListView : String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
 userTaskListView heading identifier userId tasks =
     Ui.card
-        [ a [ href ("/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
+        [ a [ href ("#/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
         , Ui.sectionTitle heading
         , if List.isEmpty tasks then
             p [ Html.Attributes.class "text-sm text-slate-500", testId (identifier ++ "-empty") ] [ text "Nothing to show." ]
 
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId identifier ]
-                (List.map (\item -> a [ href ("/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId (identifier ++ "-row") ] [ text (item.title ++ " · " ++ taskStateLabel item.state) ]) tasks)
+                (List.map (\item -> a [ href ("#/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId (identifier ++ "-row") ] [ text (item.title ++ " · " ++ taskStateLabel item.state) ]) tasks)
         ]
 
 
 userSubmissionsView : String -> List Submission.SubmissionResponse -> Html Msg
 userSubmissionsView userId submissions =
     Ui.card
-        [ a [ href ("/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
+        [ a [ href ("#/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
         , Ui.sectionTitle "Submissions"
         , if List.isEmpty submissions then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "user-submissions-empty" ] [ text "No submissions." ]
@@ -420,7 +432,7 @@ userSubmissionsView userId submissions =
                 (List.map
                     (\item ->
                         div [ Html.Attributes.class "space-y-1 py-2", testId "user-submission-row" ]
-                            [ a [ href ("/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline" ] [ text ("Task " ++ item.taskID) ]
+                            [ a [ href ("#/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline" ] [ text ("Task " ++ item.taskID) ]
                             , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (submissionStateLabel item.state) ]
                             ]
                     )
@@ -436,8 +448,8 @@ userDetailView origin userId state =
             [ Ui.sectionTitle "User"
             , p [ Html.Attributes.class "text-sm font-medium", testId "user-id" ] [ text userId ]
             , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-                [ a [ href ("/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Public work" ]
-                , a [ href ("/users/" ++ userId ++ "/submissions"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-submissions-link" ] [ text "Submissions" ]
+                [ a [ href ("#/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Public work" ]
+                , a [ href ("#/users/" ++ userId ++ "/submissions"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-submissions-link" ] [ text "Submissions" ]
                 ]
             , Ui.sectionTitle "Public tasks"
             , case state.userProfile of
@@ -449,7 +461,7 @@ userDetailView origin userId state =
                         div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-tasks" ]
                             (List.map
                                 (\item ->
-                                    a [ href ("/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId "user-task-row" ] [ text item.title ]
+                                    a [ href ("#/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId "user-task-row" ] [ text item.title ]
                                 )
                                 profile.tasks
                             )
@@ -557,7 +569,7 @@ organizationDetailView state =
                 |> Maybe.withDefault state.activeOrgId
     in
     Ui.card
-        [ a [ href "/organizations", Html.Attributes.class Ui.secondaryButtonClass, testId "back-organizations" ] [ text "Back to organizations" ]
+        [ a [ href "#/organizations", Html.Attributes.class Ui.secondaryButtonClass, testId "back-organizations" ] [ text "Back to organizations" ]
         , Ui.sectionTitle name
         , activeOrganizationView state
         ]
@@ -611,7 +623,7 @@ orgTeamsList teams =
 
     else
         div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-teams" ]
-            (List.map (\team -> a [ href ("/teams/" ++ team.id), Html.Attributes.class "block py-1 text-sm underline", testId "org-team-row" ] [ text team.name ]) teams)
+            (List.map (\team -> a [ href ("#/teams/" ++ team.id), Html.Attributes.class "block py-1 text-sm underline", testId "org-team-row" ] [ text team.name ]) teams)
 
 
 orgMembersList : List Organization.OrganizationMemberResponse -> Html Msg
@@ -634,7 +646,7 @@ orgMemberRow member =
                 String.join ", " (List.map organizationRoleText member.roles)
     in
     div [ Html.Attributes.class "flex items-center justify-between gap-2 py-2", testId "org-member-row" ]
-        [ a [ href ("/users/" ++ member.userID), Html.Attributes.class "text-sm font-medium underline", testId "org-member-link" ] [ text member.userID ]
+        [ a [ href ("#/users/" ++ member.userID), Html.Attributes.class "text-sm font-medium underline", testId "org-member-link" ] [ text member.userID ]
         , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (roles ++ " · " ++ membershipStatusText member.status) ]
         ]
 
@@ -688,7 +700,7 @@ organizationRow : Organization.OrganizationResponse -> Html Msg
 organizationRow organization =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "organization-row" ]
         [ p [ Html.Attributes.class "font-medium" ] [ text organization.name ]
-        , a [ href ("/organizations/" ++ organization.id), Html.Attributes.class Ui.secondaryButtonClass, testId "select-organization" ] [ text "Open" ]
+        , a [ href ("#/organizations/" ++ organization.id), Html.Attributes.class Ui.secondaryButtonClass, testId "select-organization" ] [ text "Open" ]
         ]
 
 
@@ -1174,7 +1186,7 @@ taskRow item =
             [ p [ Html.Attributes.class "font-medium break-words" ] [ text item.title ]
             , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
             ]
-        , a [ href ("/tasks/" ++ item.id), Html.Attributes.class (Ui.secondaryButtonClass ++ " shrink-0"), testId "view-task" ] [ text "View" ]
+        , a [ href ("#/tasks/" ++ item.id), Html.Attributes.class (Ui.secondaryButtonClass ++ " shrink-0"), testId "view-task" ] [ text "View" ]
         ]
 
 
@@ -1365,7 +1377,7 @@ collectibleRow awardTaskId collectible =
     div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "collectible-row" ]
         [ div [ Html.Attributes.class "flex min-w-0 flex-wrap items-center gap-2" ]
             [ Sprites.pixel collectible.art 5
-            , a [ href ("/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline break-words", testId "collectible-link" ] [ text collectible.name ]
+            , a [ href ("#/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline break-words", testId "collectible-link" ] [ text collectible.name ]
             , Ui.badge (collectibleStateLabel collectible.state)
             , span [ Html.Attributes.class "text-xs text-slate-500" ] [ text (collectibleKindLabel collectible.kind) ]
             ]
@@ -1472,7 +1484,7 @@ taskCommentsCard state =
 taskCommentRow : Task.TaskCommentResponse -> Html Msg
 taskCommentRow comment =
     div [ Html.Attributes.class "rounded-md border border-slate-200 bg-white p-3", testId "task-comment" ]
-        [ a [ href ("/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
+        [ a [ href ("#/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
         , p [ Html.Attributes.class "text-sm text-slate-700 break-words" ] [ text comment.body ]
         ]
 
@@ -1483,7 +1495,7 @@ seriesLinkBlock detail =
         []
 
     else
-        [ a [ href ("/series/" ++ detail.seriesID), Html.Attributes.class "text-sm underline", testId "task-series-link" ] [ text "Part of a series" ] ]
+        [ a [ href ("#/series/" ++ detail.seriesID), Html.Attributes.class "text-sm underline", testId "task-series-link" ] [ text "Part of a series" ] ]
 
 
 taskTypeBadge : TaskDetail -> List (Html Msg)
@@ -1733,7 +1745,7 @@ submissionCommentsThread state submission =
 submissionCommentRow : Submission.SubmissionCommentResponse -> Html Msg
 submissionCommentRow comment =
     div [ Html.Attributes.class "rounded-md border border-slate-200 bg-white p-3", testId "submission-comment" ]
-        [ a [ href ("/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
+        [ a [ href ("#/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
         , p [ Html.Attributes.class "text-sm text-slate-700 break-words" ] [ text comment.body ]
         ]
 

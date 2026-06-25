@@ -22,11 +22,13 @@
           origin: pageOrigin && pageOrigin !== "null"
             ? pageOrigin
             : "https://sharecrop.example",
+          demo: true,
         },
       });
       app.ports.copyToClipboard.subscribe((t) => {
         if (navigator.clipboard) navigator.clipboard.writeText(t);
       });
+      app.ports.reloadDemo.subscribe(() => window.location.reload());
     </script>
   </body>
 </html>

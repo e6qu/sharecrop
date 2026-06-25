@@ -259,6 +259,17 @@ func (store *memoryStore) StoreRefreshToken(_ context.Context, record RefreshTok
 	return StoreRefreshTokenAccepted{}
 }
 
+func (store *memoryStore) RevokeRefreshFamily(_ context.Context, hash RefreshTokenHash) RevokeRefreshFamilyResult {
+	if record, exists := store.refreshByHash[hash.String()]; exists {
+		for storedHash, active := range store.refreshByHash {
+			if active.FamilyID.String() == record.FamilyID.String() {
+				delete(store.refreshByHash, storedHash)
+			}
+		}
+	}
+	return RefreshFamilyRevoked{}
+}
+
 func (store *memoryStore) ConsumeRefreshToken(_ context.Context, hash RefreshTokenHash, consumedAt time.Time) ConsumeRefreshTokenResult {
 	record, exists := store.refreshByHash[hash.String()]
 	if !exists {

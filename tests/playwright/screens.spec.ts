@@ -249,7 +249,7 @@ test("a user profile page lists the user's public tasks", async ({ page, request
   // Wait for login to establish the session and refresh cookie before the
   // deep-link reload, otherwise the reload races the login response.
   await expect(page.getByTestId("balance")).toBeVisible();
-  await page.goto(`/users/${owner.body.subject_id}`);
+  await page.goto(`/#/users/${owner.body.subject_id}`);
   await expect(page.getByTestId("user-id")).toContainText(
     owner.body.subject_id,
   );
@@ -339,7 +339,7 @@ test("a team owner adds a member to a standalone team", async ({ page, request }
 
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toBeVisible();
-  await page.goto(`/teams/${team.id}`);
+  await page.goto(`/#/teams/${team.id}`);
   await expect(page.getByTestId("team-detail-name")).toBeVisible();
   await expect(page.getByTestId("team-members-empty")).toBeVisible();
 
@@ -363,9 +363,21 @@ test("pages have their own URLs and deep links load", async ({ page, request }) 
 
   // Deep-linking directly to a page loads the app on that page with the
   // session restored from the refresh cookie.
-  await page.goto("/organizations");
-  await expect(page).toHaveURL(/\/organizations$/);
+  await page.goto("/#/organizations");
+  await expect(page).toHaveURL(/#\/organizations$/);
   await expect(page.getByTestId("create-org-name")).toBeVisible();
+
+  // Hash routing: a hard refresh on a deep link stays put — no server fallback.
+  await page.reload();
+  await expect(page).toHaveURL(/#\/organizations$/);
+  await expect(page.getByTestId("create-org-name")).toBeVisible();
+
+  // Unknown routes get an explicit not-found page, not a silent redirect.
+  await page.goto("/#/does-not-exist");
+  await expect(page.getByTestId("not-found-home")).toBeVisible();
+
+  // The demo-only Reset button is absent on the real app (demo flag is false).
+  await expect(page.getByTestId("reset-demo")).toHaveCount(0);
 });
 
 test("requesters author a response schema and task input that the detail surfaces", async ({ page, request }) => {
@@ -591,7 +603,7 @@ test("a user mints a personal agent token with MCP install commands on their own
 
   // Another user's page does not expose the token section.
   const other = await registerViaApi(request, "user-token-other");
-  await page.goto(`/users/${other.body.subject_id}`);
+  await page.goto(`/#/users/${other.body.subject_id}`);
   await expect(page.getByTestId("user-id")).toBeVisible();
   await expect(page.getByTestId("mint-user-token")).toHaveCount(0);
 });

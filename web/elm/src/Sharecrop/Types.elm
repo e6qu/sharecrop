@@ -16,7 +16,7 @@ import Url exposing (Url)
 
 
 type alias Flags =
-    { origin : String }
+    { origin : String, demo : Bool }
 
 
 type Session
@@ -42,6 +42,7 @@ type Page
     | SeriesListPage
     | SeriesDetailPage String
     | TeamDetailPage String
+    | NotFoundPage
 
 
 type alias SchemaFieldDraft =
@@ -200,6 +201,7 @@ type alias PublicTaskDetail =
 
 type alias Model =
     { origin : String
+    , demo : Bool
     , key : Nav.Key
     , route : Page
     , email : String
@@ -363,6 +365,7 @@ type Msg
     | SubmissionCommentAdded (Result Http.Error Submission.SubmissionCommentResponse)
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
+    | ResetDemoClicked
 
 
 pageToPath : Page -> String
@@ -418,6 +421,9 @@ pageToPath page =
 
         TeamDetailPage teamId ->
             "/teams/" ++ teamId
+
+        NotFoundPage ->
+            "/not-found"
 
 
 visibilityPublicTag : String

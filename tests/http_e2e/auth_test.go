@@ -104,6 +104,48 @@ func TestRefreshTokenReuseRevokesFamilyHTTP(t *testing.T) {
 	}
 }
 
+func TestLogoutRevokesSession(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	email := "logout-" + uniqueTestSuffix(t) + "@example.com"
+	registerResponse := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{
+		Email:    email,
+		Password: "correct horse battery staple",
+	}, nil)
+	defer registerResponse.Body.Close()
+	assertStatus(t, registerResponse, http.StatusCreated)
+	cookie := findRefreshCookie(t, registerResponse)
+
+	// Logging out revokes the session family, so the refresh cookie can no longer
+	// resume the session.
+	logoutRequest, err := http.NewRequest(http.MethodPost, server.URL+"/api/auth/logout", http.NoBody)
+	if err != nil {
+		t.Fatalf("create logout request: %v", err)
+	}
+	logoutRequest.AddCookie(cookie)
+	logoutResponse, err := http.DefaultClient.Do(logoutRequest)
+	if err != nil {
+		t.Fatalf("post logout: %v", err)
+	}
+	defer logoutResponse.Body.Close()
+	assertStatus(t, logoutResponse, http.StatusNoContent)
+
+	refreshResponse := postRefresh(t, server, cookie)
+	defer refreshResponse.Body.Close()
+	if refreshResponse.StatusCode == http.StatusOK {
+		t.Fatalf("refresh succeeded after logout, want rejection")
+	}
+
+	// Logging in again is not blocked.
+	loginResponse := postAuthJSON(t, server.URL+"/api/auth/login", authHTTPRequest{
+		Email:    email,
+		Password: "correct horse battery staple",
+	}, nil)
+	defer loginResponse.Body.Close()
+	assertStatus(t, loginResponse, http.StatusOK)
+}
+
 func postRefresh(t *testing.T, server *httptest.Server, cookie *http.Cookie) *http.Response {
 	t.Helper()
 	request, err := http.NewRequest(http.MethodPost, server.URL+"/api/auth/refresh", http.NoBody)

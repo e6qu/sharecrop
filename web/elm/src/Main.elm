@@ -32,9 +32,13 @@ main =
 port copyToClipboard : String -> Cmd msg
 
 
+port reloadDemo : () -> Cmd msg
+
+
 initialModel : Flags -> Nav.Key -> Url -> Model
 initialModel flags key url =
     { origin = flags.origin
+    , demo = flags.demo
     , key = key
     , route = pageFromUrl url
     , email = ""
@@ -185,7 +189,14 @@ loggedInForPage response page =
 
 pageFromUrl : Url -> Page
 pageFromUrl url =
-    case String.split "/" (String.dropLeft 1 url.path) of
+    let
+        fragment =
+            Maybe.withDefault "" url.fragment
+    in
+    case String.split "/" (String.dropLeft 1 fragment) of
+        [ "" ] ->
+            OverviewPage
+
         [ "tasks" ] ->
             TasksPage
 
@@ -235,7 +246,7 @@ pageFromUrl url =
             UserSubmissionsPage userId
 
         _ ->
-            OverviewPage
+            NotFoundPage
 
 
 -- enterPage applies any per-page state a route needs when it becomes active, so
@@ -533,7 +544,7 @@ update msg model =
 
         LogoutClicked ->
             ( { model | session = LoggedOut, email = "", password = "" }
-            , Cmd.batch [ Api.postLogout, Nav.pushUrl model.key "/" ]
+            , Cmd.batch [ Api.postLogout, Nav.pushUrl model.key "#/" ]
             )
 
         LogoutReceived _ ->
@@ -568,7 +579,7 @@ update msg model =
                         , taskIntegrationOpen = False
                     }
                 )
-            , Nav.pushUrl model.key ("/tasks/" ++ taskId)
+            , Nav.pushUrl model.key ("#/tasks/" ++ taskId)
             )
 
         DetailReceived (Ok detail) ->
@@ -1059,6 +1070,9 @@ update msg model =
 
                 LoggedOut ->
                     ( { model | route = page }, Cmd.none )
+
+        ResetDemoClicked ->
+            ( model, reloadDemo () )
 
 
 seriesListRefresh : Model -> Cmd Msg
