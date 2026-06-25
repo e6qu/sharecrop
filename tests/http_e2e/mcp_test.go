@@ -84,6 +84,59 @@ func TestMCPAgentDiscoverSubmitAcceptFlow(t *testing.T) {
 	}
 }
 
+func TestMCPAgentCreatesFundsOpensWorkableTask(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "mcp-poster")
+	worker := registerUser(t, server, "mcp-picker")
+
+	ownerAgent := createAgentCredential(t, server, owner.AccessToken, []string{"tasks_read", "tasks_write"})
+	workerAgent := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write", "submissions_read"})
+	ownerSession := initializeMCPSession(t, server, ownerAgent)
+	workerSession := initializeMCPSession(t, server, workerAgent)
+
+	// An agent posts a public, credit-reward, open-participation task.
+	created := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `1`, "sharecrop.create_task",
+		`{"title":"Code review PR 7","description":"Review https://example.test/pr/7 and report findings.","response_schema_json":"{\"kind\":\"freeform\"}","visibility":"public","reward_kind":"credit","reward_credit_amount":20,"participation_policy":"open"}`)))
+	var createdDetail struct {
+		ID    string `json:"id"`
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal([]byte(created), &createdDetail); err != nil {
+		t.Fatalf("decode create payload: %v (%s)", err, created)
+	}
+	if createdDetail.State != "draft" {
+		t.Fatalf("created state = %q, want draft", createdDetail.State)
+	}
+
+	// The agent funds the escrow and opens the task.
+	funded := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `2`, "sharecrop.fund_task",
+		`{"task_id":"`+createdDetail.ID+`","amount":20,"idempotency_key":"mcp-fund-`+createdDetail.ID+`"}`)))
+	if !strings.Contains(funded, "held") {
+		t.Fatalf("fund payload not held: %s", funded)
+	}
+	opened := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `3`, "sharecrop.open_task",
+		`{"task_id":"`+createdDetail.ID+`"}`)))
+	if !strings.Contains(opened, `"state":"open"`) {
+		t.Fatalf("open payload not open: %s", opened)
+	}
+
+	// A different worker agent can now submit to it, proving the agent-created
+	// task carries a valid participation policy and is genuinely workable.
+	submit := toolText(t, decodeRPC(t, mcpCall(t, server, workerAgent, workerSession, `4`, "sharecrop.submit_response",
+		`{"task_id":"`+createdDetail.ID+`","response_json":"{\"finding\":\"looks good\"}"}`)))
+	if !strings.Contains(submit, `"state":"submitted"`) {
+		t.Fatalf("submit not submitted (task was not workable): %s", submit)
+	}
+
+	// And the open task is discoverable through the state-filtered public list.
+	list := toolText(t, decodeRPC(t, mcpCall(t, server, workerAgent, workerSession, `5`, "sharecrop.list_tasks", `{"scope":"public","state":"open"}`)))
+	if !strings.Contains(list, createdDetail.ID) {
+		t.Fatalf("public open list missing created task: %s", list)
+	}
+}
+
 func TestMCPEnforcesScopes(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()

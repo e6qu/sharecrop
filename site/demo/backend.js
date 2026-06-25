@@ -416,6 +416,8 @@
       participation_policy: (body.participation && body.participation.policy) || "reservation_required",
       visibility_kind: (body.visibility && body.visibility.kind) || "public",
       response_schema_json: body.response_schema_json || '{"kind":"freeform"}',
+      payload_kind: (body.payload && body.payload.kind === "json" && body.payload.json) ? "inline" : "none",
+      payload_json: (body.payload && body.payload.kind === "json") ? body.payload.json : "",
       state: "draft", availability_kind: "available",
     });
     db.tasks.unshift(t);

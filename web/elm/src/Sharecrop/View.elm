@@ -492,6 +492,8 @@ createTaskView state =
         [ Ui.sectionTitle "Create a task"
         , Ui.fieldLabel "Title" [ Ui.textInput [ type_ "text", placeholder "Short, descriptive title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ] ]
         , Ui.fieldLabel "Description" [ Ui.textarea_ [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ] ]
+        , Ui.fieldLabel "Response schema (JSON)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
+        , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
         , Ui.fieldLabel "Credit reward" [ Ui.textInput [ type_ "number", placeholder "Blank for no reward", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
         , ownerChooser state
         , Ui.label_ "Participation"
@@ -904,7 +906,7 @@ taskDetailPageView origin state =
 
 taskInputBlock : TaskDetail -> List (Html Msg)
 taskInputBlock detail =
-    if detail.payloadKind == "inline" && detail.payloadJson /= "" then
+    if (detail.payloadKind == "inline" || detail.payloadKind == "json") && detail.payloadJson /= "" then
         [ Ui.label_ "Task input", Ui.codeBlock [ testId "detail-input" ] detail.payloadJson ]
 
     else

@@ -365,3 +365,38 @@ test("pages have their own URLs and deep links load", async ({ page, request }) 
   await expect(page).toHaveURL(/\/organizations$/);
   await expect(page.getByTestId("create-org-name")).toBeVisible();
 });
+
+test("requesters author a response schema and task input that the detail surfaces", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "schema-author");
+  const title = `Authored ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill(
+    "Review the PR in the task input and list your findings.",
+  );
+  // A human can now author a structured (non-freeform) response schema and an
+  // embedded payload, both previously hardcoded in the client.
+  await page.getByTestId("create-response-schema").fill(
+    '{"kind":"array","item":{"kind":"string"}}',
+  );
+  await page.getByTestId("create-payload").fill(
+    '{"pr_url":"https://example.test/pr/7"}',
+  );
+  await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+
+  await page.getByTestId("nav-tasks").click();
+  const ownerRow = page.getByTestId("task-row").filter({ hasText: title });
+  await expect(ownerRow).toHaveCount(1);
+  await ownerRow.getByTestId("view-task").click();
+
+  // The authored payload renders as the Task input, and the authored schema is
+  // shown back on the task detail.
+  await expect(page.getByTestId("detail-input")).toContainText("pr_url");
+  await expect(page.getByTestId("detail-schema")).toContainText("array");
+});
