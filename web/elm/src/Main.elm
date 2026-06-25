@@ -69,6 +69,7 @@ emptyLoggedIn response =
     , fundAmount = ""
     , fundOrganizationId = ""
     , fundMessage = Nothing
+    , fundNonce = 0
     , tasks = []
     , taskStateFilter = ""
     , agentLabel = ""
@@ -96,6 +97,7 @@ emptyLoggedIn response =
     , collectibleMessage = Nothing
     , awardTaskId = ""
     , awardMessage = Nothing
+    , awardDefaultMessage = Nothing
     , collectibleCatalog = []
     , awardRecipientKind = "user"
     , awardRecipientId = ""
@@ -135,6 +137,7 @@ emptyLoggedIn response =
     , createReferenceURL = ""
     , taskComments = []
     , taskCommentBody = ""
+    , taskCommentMessage = Nothing
     , submissionComments = []
     , activeSubmissionCommentsID = Nothing
     , submissionCommentBody = ""
@@ -260,6 +263,9 @@ enterPage page state =
 
         TeamDetailPage _ ->
             { state | page = page, teamDetail = Nothing, teamCollectibles = [], teamMemberEmail = "", teamMemberMessage = Nothing }
+
+        CollectibleDetailPage _ ->
+            { state | page = page, transferMessage = Nothing, transferRecipientId = "" }
 
         TaskDetailPage _ ->
             -- Clear the previous task's detail substate so a task->task link does
@@ -448,7 +454,11 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | fundOrganizationId = value }), Cmd.none )
 
         FundClicked ->
-            Api.withSession model (\state -> Api.fundTaskCommand model state)
+            let
+                bumped =
+                    Api.updateLoggedIn model (\state -> { state | fundNonce = state.fundNonce + 1 })
+            in
+            Api.withSession bumped (\state -> Api.fundTaskCommand bumped state)
 
         FundReceived (Ok escrow) ->
             ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (View.fundSuccessLabel escrow) }), Api.refreshLedger model )
@@ -709,7 +719,7 @@ update msg model =
             Api.withSession model
                 (\state ->
                     if String.trim state.awardRecipientId == "" then
-                        ( Api.updateLoggedIn model (\current -> { current | awardMessage = Just "Enter a recipient id first." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | awardDefaultMessage = Just "Enter a recipient id first." }), Cmd.none )
 
                     else
                         ( model, Api.awardDefaultCollectible state.accessToken slug state.awardRecipientKind state.awardRecipientId )
@@ -718,12 +728,12 @@ update msg model =
         AwardDefaultReceived (Ok _) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | awardMessage = Just "Awarded the collectible." })
+                    Api.updateLoggedIn model (\state -> { state | awardDefaultMessage = Just "Awarded the collectible." })
             in
             ( updated, Api.refreshCollectibles updated )
 
-        AwardDefaultReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
+        AwardDefaultReceived (Err _) ->
+            ( Api.updateLoggedIn model (\state -> { state | awardDefaultMessage = Just "Only platform admins can award default collectibles." }), Cmd.none )
 
         TransferRecipientIdChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | transferRecipientId = value }), Cmd.none )
@@ -960,13 +970,22 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | taskCommentBody = value }), Cmd.none )
 
         AddTaskCommentClicked taskId ->
-            Api.withSession model (\state -> ( model, Api.postTaskComment state.accessToken taskId (String.trim state.taskCommentBody) ))
+            Api.withSession model
+                (\state ->
+                    if String.trim state.taskCommentBody == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | taskCommentMessage = Just "Write a comment first." }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | taskCommentMessage = Nothing })
+                        , Api.postTaskComment state.accessToken taskId (String.trim state.taskCommentBody)
+                        )
+                )
 
         TaskCommentReceived (Ok comment) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskComments = state.taskComments ++ [ comment ], taskCommentBody = "" }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskComments = state.taskComments ++ [ comment ], taskCommentBody = "", taskCommentMessage = Nothing }), Cmd.none )
 
-        TaskCommentReceived (Err _) ->
-            ( model, Cmd.none )
+        TaskCommentReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskCommentMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         TaskCommentsReceived (Ok comments) ->
             ( Api.updateLoggedIn model (\state -> { state | taskComments = comments }), Cmd.none )

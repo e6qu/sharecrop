@@ -1,5 +1,21 @@
 # What We Did
 
+`task/uiux-journey-review` was a thorough UI/UX + user-journey review round (two specialized subagents) with boyscout fixes, and it recorded a product decision:
+
+- **Scheduling/recurrence descoped server-side** (decision 2026-06-25): recurring/scheduled task posting is a local-agent responsibility (a client cron/work-loop calling the existing MCP/API `create_task`/`open_task`/`fund_task`). No server scheduler/`task_schedules`/recurrence model. Recorded in `DO_NEXT.md` and the parity-roadmap memory so it isn't re-proposed.
+- **No contrast failures** were found across the newest surfaces (collectibles gallery/award/trade, org/team holdings, submission comments, template/schema designer) — verified with computed WCAG ratios.
+- **Bug fixes** (all from the review):
+  - Re-funding a task was a silent no-op — `fundingRequestBody` hardcoded `idempotency_key = "fund:" ++ taskId`, so a second funding replayed. Now keyed per attempt (`fundNonce`), so adding escrow works while network retries stay idempotent.
+  - Award feedback cross-contaminated: award-to-task and admin award-default shared `awardMessage`. Split into `awardMessage` / `awardDefaultMessage`.
+  - `transferMessage`/`transferRecipientId` leaked across collectible detail pages — added a `CollectibleDetailPage` reset to `enterPage`.
+  - The task-detail card stayed stale after accept/reject/request-changes — `refreshAfterAccept` now refetches the task detail + reservations.
+  - Task-comment add now guards empty bodies and surfaces errors (was posting blank / swallowing failures), matching the submission/series threads.
+  - The catalog Award and "Award to selected task" buttons are disabled until a recipient/task is chosen.
+  - Exclusive chooser buttons (participation/visibility/assignee/owner/collectible-kind/policy/award-kind/state-filter) gained `aria-pressed`.
+  - The admin-award 403 shows a friendly message plus an admin-only note on the panel.
+  - Demo: removing a task from a series sets `series_id = ""` (not `null`), which previously blanked the strict-decoded task detail.
+- **Deferred (flagged):** full `is_admin`-on-session gating to hide the admin panel for non-admins; org-reviewer review controls in the browser (today only the literal creator sees them); free-text id inputs → picker dropdowns; org/team holdings auto-refresh right after an award.
+
 `task/submission-comments` added a private comment thread on each submission (PR 2 of the backlog sequence), mirroring the existing task-comment vertical end to end:
 
 - **Domain/store/HTTP:** migration `000022_submission_comments`; `core.SubmissionCommentID`; `submission.AddSubmissionComment`/`ListSubmissionComments` with a visibility rule that permits only the submission's author (worker) or the owner of its task (requester); `GET`/`POST /api/submissions/{id}/comments`.

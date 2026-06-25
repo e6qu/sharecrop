@@ -91,6 +91,7 @@ type alias LoggedInModel =
     , fundAmount : String
     , fundOrganizationId : String
     , fundMessage : Maybe String
+    , fundNonce : Int
     , tasks : List Task.TaskListItemResponse
     , taskStateFilter : String
     , agentLabel : String
@@ -118,6 +119,7 @@ type alias LoggedInModel =
     , collectibleMessage : Maybe String
     , awardTaskId : String
     , awardMessage : Maybe String
+    , awardDefaultMessage : Maybe String
     , collectibleCatalog : List Collectible.CollectibleCatalogEntry
     , awardRecipientKind : String
     , awardRecipientId : String
@@ -157,6 +159,7 @@ type alias LoggedInModel =
     , createReferenceURL : String
     , taskComments : List Task.TaskCommentResponse
     , taskCommentBody : String
+    , taskCommentMessage : Maybe String
     , submissionComments : List Submission.SubmissionCommentResponse
     , activeSubmissionCommentsID : Maybe String
     , submissionCommentBody : String

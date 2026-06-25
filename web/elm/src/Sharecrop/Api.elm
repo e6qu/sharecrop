@@ -108,7 +108,7 @@ fundTaskCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 fundTaskCommand model state =
     case String.toInt state.fundAmount of
         Just amount ->
-            ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount state.fundOrganizationId )
+            ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount state.fundOrganizationId state.fundNonce )
 
         Nothing ->
             ( updateLoggedIn model (\current -> { current | fundMessage = Just "Amount must be a whole number of credits." }), Cmd.none )
@@ -430,6 +430,8 @@ refreshAfterAccept model =
                     Cmd.batch
                         [ fetchSubmissions state.accessToken taskId
                         , fetchBalance state.accessToken
+                        , fetchPublicTaskDetail state.accessToken taskId
+                        , fetchReservations state.accessToken taskId
                         ]
 
                 _ ->
@@ -531,12 +533,12 @@ fetchReservations token taskId =
     authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/reservations") Http.emptyBody (Http.expectJson ReservationsReceived Task.taskReservationsResponseDecoder)
 
 
-postFunding : String -> String -> Int -> String -> Cmd Msg
-postFunding token taskId amount organizationId =
+postFunding : String -> String -> Int -> String -> Int -> Cmd Msg
+postFunding token taskId amount organizationId nonce =
     authorizedRequest "POST"
         token
         ("/api/tasks/" ++ taskId ++ "/funding")
-        (Http.jsonBody (fundingRequestBody taskId amount organizationId))
+        (Http.jsonBody (fundingRequestBody taskId amount organizationId nonce))
         (Http.expectJson FundReceived Ledger.taskEscrowResponseDecoder)
 
 
@@ -820,11 +822,11 @@ revokeAgent token credentialId =
         (Http.expectJson AgentRevoked Agent.agentCredentialResponseDecoder)
 
 
-fundingRequestBody : String -> Int -> String -> Encode.Value
-fundingRequestBody taskId amount organizationId =
+fundingRequestBody : String -> Int -> String -> Int -> Encode.Value
+fundingRequestBody taskId amount organizationId nonce =
     Encode.object
         [ ( "amount", Encode.int amount )
-        , ( "idempotency_key", Encode.string ("fund:" ++ taskId) )
+        , ( "idempotency_key", Encode.string ("fund:" ++ taskId ++ ":" ++ String.fromInt nonce) )
         , ( "organization_id", Encode.string organizationId )
         ]
 

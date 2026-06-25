@@ -1,19 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 58 work, merged into `main`.
+The repository contains pull request 1 through pull request 59 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/submission-comments` adds submission-level comment threads (PR 2 of a sequence working down the follow-up + roadmap backlog). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/uiux-journey-review` is a thorough UI/UX + user-journey review round (two specialized subagents) with boyscout fixes, and it records the scheduling/recurrence descope decision. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/submission-comments`:
+Implemented in `task/uiux-journey-review`:
 
-- A private comment thread on each submission between the submission's author (worker) and the task owner (requester), mirroring task comments. Migration `000022_submission_comments`, `core.SubmissionCommentID`, `submission.AddSubmissionComment`/`ListSubmissionComments` (visibility: submitter OR task owner), store, `GET`/`POST /api/submissions/{id}/comments`, MCP tools `sharecrop.add_submission_comment` / `sharecrop.list_submission_comments`, and `SubmissionCommentResponse`/`SubmissionCommentsResponse` contracts.
-- Elm: each submission row on the task detail has a "Comments" toggle that opens its thread (list + add box). Demo backend serves the routes and seeds a comment.
-- Tests: submission domain unit, http_e2e (owner + submitter can post/list; an unrelated user gets 403), and Playwright (owner comments on a worker's submission).
-- Deferred: a dedicated worker-side submission view in the client (the backend + MCP already let the worker participate; only the owner-side UI shipped this PR).
+- Scheduling/recurrence is intentionally NOT a server feature — it's a local-agent responsibility (cron/work-loop over the MCP/API). Recorded in `DO_NEXT.md` so it isn't re-proposed.
+- Bug fixes from the review (no contrast failures were found): re-funding a task is no longer a silent no-op (per-attempt funding idempotency key); award-to-task vs admin award-default feedback no longer cross-contaminate (`awardDefaultMessage` split out); the trade message/recipient no longer leak across collectible detail pages (`enterPage` reset); the task detail refetches after a review action (no stale open/available state); the task-comment add guards empty bodies and surfaces errors; the catalog Award and award-to-task buttons are disabled until a recipient/task is chosen; exclusive chooser buttons gained `aria-pressed`; the admin award error is friendlier with an admin-only note; the demo sets `series_id = ""` (not `null`) when a task leaves a series (was blanking the task detail).
+- Deferred (noted): full `is_admin`-on-session gating to hide the admin panel for non-admins; org-reviewer review controls in the UI (currently only the literal creator); free-text id inputs → picker dropdowns; org/team holdings auto-refresh after an award.
 
-Remaining queue (sequenced PRs): scheduling/recurrence; a thorough UI/UX + user-journey review pass with boyscout fixes.
+Backlog now: the standing "Other queued work" in `DO_NEXT.md` (Pages base-path; out-of-process session/rate-limiter; anonymous worker identity; user/org tokens; crypto reward metadata) and the deferred items above.
 
 Implemented in `task/admin-collectible-ownership`:
 
