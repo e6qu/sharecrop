@@ -14,9 +14,11 @@ import (
 
 // Services is the set of domain operations the MCP adapter exposes as tools.
 type Services interface {
-	ListTasks(context.Context, auth.UserSubject, task.ListScope) task.ListResult
+	ListTasks(context.Context, auth.UserSubject, task.ListScope, task.ListFilters) task.ListResult
 	GetTask(context.Context, auth.UserSubject, core.TaskID) task.GetResult
 	CreateTask(context.Context, task.CreateCommand) task.CreateResult
+	OpenTask(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
+	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
 	SubmitResponse(context.Context, submission.SubmitCommand) submission.SubmitResult
 	GetSubmissionStatus(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListTaskSubmissions(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
@@ -120,6 +122,10 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.UserSubject,
 		return server.callGetTaskSchema(ctx, subject, arguments)
 	case toolCreateTask:
 		return server.callCreateTask(ctx, subject, arguments)
+	case toolOpenTask:
+		return server.callOpenTask(ctx, subject, arguments)
+	case toolFundTask:
+		return server.callFundTask(ctx, subject, arguments)
 	case toolSubmitResponse:
 		return server.callSubmitResponse(ctx, subject, arguments)
 	case toolGetSubmissionStatus:

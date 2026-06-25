@@ -739,9 +739,27 @@ createTaskRequestBody state =
         , ( "participation", createParticipationBody state )
         , ( "visibility", createVisibilityBody state )
         , ( "placement", Encode.object [ ( "kind", Encode.string "standalone" ), ( "series_id", Encode.string "" ), ( "series_title", Encode.string "" ), ( "series_position", Encode.int 0 ) ] )
-        , ( "response_schema_json", Encode.string "{\"kind\":\"freeform\"}" )
-        , ( "payload", Encode.object [ ( "kind", Encode.string "none" ), ( "json", Encode.string "" ) ] )
+        , ( "response_schema_json", Encode.string (createSchemaString state) )
+        , ( "payload", createPayloadBody state )
         ]
+
+
+createSchemaString : LoggedInModel -> String
+createSchemaString state =
+    if String.trim state.createResponseSchema == "" then
+        "{\"kind\":\"freeform\"}"
+
+    else
+        state.createResponseSchema
+
+
+createPayloadBody : LoggedInModel -> Encode.Value
+createPayloadBody state =
+    if String.trim state.createPayloadJson == "" then
+        Encode.object [ ( "kind", Encode.string "none" ), ( "json", Encode.string "" ) ]
+
+    else
+        Encode.object [ ( "kind", Encode.string "json" ), ( "json", Encode.string state.createPayloadJson ) ]
 
 
 createRewardBody : String -> Encode.Value

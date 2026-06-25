@@ -51,6 +51,8 @@ type alias LoggedInModel =
     , entries : List Ledger.LedgerEntryResponse
     , createTitle : String
     , createDescription : String
+    , createResponseSchema : String
+    , createPayloadJson : String
     , createRewardAmount : String
     , createVisibility : String
     , createScopeUserId : String
@@ -162,6 +164,8 @@ type Msg
     | TaskStateFilterChanged String
     | CreateTitleChanged String
     | CreateDescriptionChanged String
+    | CreateResponseSchemaChanged String
+    | CreatePayloadChanged String
     | CreateRewardAmountChanged String
     | CreateVisibilityChanged String
     | CreateScopeUserIdChanged String

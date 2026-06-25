@@ -11,6 +11,8 @@ const (
 	toolGetTask             = "sharecrop.get_task"
 	toolGetTaskSchema       = "sharecrop.get_task_schema"
 	toolCreateTask          = "sharecrop.create_task"
+	toolOpenTask            = "sharecrop.open_task"
+	toolFundTask            = "sharecrop.fund_task"
 	toolSubmitResponse      = "sharecrop.submit_response"
 	toolGetSubmissionStatus = "sharecrop.get_submission_status"
 	toolListTaskSubmissions = "sharecrop.list_task_submissions"
@@ -37,9 +39,9 @@ func toolDefinitions() []toolDefinition {
 	return []toolDefinition{
 		{
 			Name:        toolListTasks,
-			Description: "List tasks the agent is permitted to see. Scope is \"public\" or \"user\".",
+			Description: "List tasks the agent is permitted to see. Scope is \"public\" (open tasks to work) or \"user\" (the agent's own tasks). Optional state filters to one of draft, open, closed, cancelled, expired.",
 			Scope:       agent.ScopeTasksRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"scope":{"type":"string","enum":["public","user"]}},"required":["scope"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"scope":{"type":"string","enum":["public","user"]},"state":{"type":"string","enum":["draft","open","closed","cancelled","expired"]}},"required":["scope"]}`),
 		},
 		{
 			Name:        toolGetTask,
@@ -55,9 +57,21 @@ func toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolCreateTask,
-			Description: "Create a user-owned task. Visibility is \"user\" or \"public\". Reward kind is \"none\", \"credit\", \"collectible\", or \"bundle\".",
+			Description: "Create a user-owned task in draft state. Visibility is \"user\" or \"public\". Reward kind is \"none\", \"credit\", \"collectible\", or \"bundle\". participation_policy (default \"open\") controls how workers claim it: \"open\" lets anyone submit, \"reservation_required\" makes them reserve first, \"approval_required\" makes them request approval. After creating, call fund_task (for credit or bundle rewards) and then open_task so others can pick it up.",
 			Scope:       agent.ScopeTasksWrite,
-			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"visibility":{"type":"string","enum":["user","public"]},"reward_kind":{"type":"string","enum":["none","credit","collectible","bundle"]},"reward_credit_amount":{"type":"integer","minimum":1}},"required":["title","description","response_schema_json","visibility","reward_kind"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"visibility":{"type":"string","enum":["user","public"]},"reward_kind":{"type":"string","enum":["none","credit","collectible","bundle"]},"reward_credit_amount":{"type":"integer","minimum":1},"participation_policy":{"type":"string","enum":["open","reservation_required","approval_required"]}},"required":["title","description","response_schema_json","visibility","reward_kind"]}`),
+		},
+		{
+			Name:        toolOpenTask,
+			Description: "Open a draft task the agent's user owns so it becomes discoverable and workable. A credit or bundle reward task must be funded first.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"]}`),
+		},
+		{
+			Name:        toolFundTask,
+			Description: "Escrow credits from the agent's user onto a task they own, so an accepted submission can be paid. amount is in credit base units; idempotency_key makes a retried fund safe.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"amount":{"type":"integer","minimum":1},"idempotency_key":{"type":"string"}},"required":["task_id","amount","idempotency_key"]}`),
 		},
 		{
 			Name:        toolSubmitResponse,

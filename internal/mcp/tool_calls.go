@@ -55,11 +55,18 @@ type submitPayload struct {
 	ReceiptToken string `json:"receipt_token"`
 }
 
+type fundPayload struct {
+	TaskID string `json:"task_id"`
+	Amount int64  `json:"amount"`
+	State  string `json:"state"`
+}
+
 type statusPayload struct {
 	SubmissionID string `json:"submission_id"`
 	TaskID       string `json:"task_id"`
 	State        string `json:"state"`
 	ResponseJSON string `json:"response_json"`
+	ReviewNote   string `json:"review_note"`
 }
 
 type submissionSummary struct {
@@ -113,6 +120,7 @@ type reservationsPayload struct {
 func (server Server) callListTasks(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
 		Scope string `json:"scope"`
+		State string `json:"state"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
@@ -128,7 +136,17 @@ func (server Server) callListTasks(ctx context.Context, subject auth.UserSubject
 		return toolProtocolError{code: codeInvalidParams, message: "scope must be public or user"}
 	}
 
-	result := server.services.ListTasks(ctx, subject, scope)
+	filters := task.NoListFilters()
+	if args.State != "" {
+		stateResult := task.ParseState(args.State)
+		stateAccepted, stateMatched := stateResult.(task.StateAccepted)
+		if !stateMatched {
+			return toolProtocolError{code: codeInvalidParams, message: stateResult.(task.StateRejected).Reason.Description()}
+		}
+		filters.State = task.StateEquals{Value: stateAccepted.Value}
+	}
+
+	result := server.services.ListTasks(ctx, subject, scope, filters)
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		return toolFailed{message: result.(task.ListRejected).Reason.Description()}
@@ -172,9 +190,10 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		Title              string `json:"title"`
 		Description        string `json:"description"`
 		ResponseSchemaJSON string `json:"response_schema_json"`
-		Visibility         string `json:"visibility"`
-		RewardKind         string `json:"reward_kind"`
-		RewardCreditAmount int64  `json:"reward_credit_amount"`
+		Visibility          string `json:"visibility"`
+		RewardKind          string `json:"reward_kind"`
+		RewardCreditAmount  int64  `json:"reward_credit_amount"`
+		ParticipationPolicy string `json:"participation_policy"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
@@ -214,12 +233,25 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		return toolProtocolError{code: codeInvalidParams, message: rewardResult.(mcpRewardRejected).reason}
 	}
 
+	participationRaw := args.ParticipationPolicy
+	if participationRaw == "" {
+		participationRaw = task.ParticipationPolicyOpen.String()
+	}
+	participationResult := task.ParseParticipationPolicy(participationRaw)
+	participationAccepted, participationMatched := participationResult.(task.ParticipationPolicyAccepted)
+	if !participationMatched {
+		return toolProtocolError{code: codeInvalidParams, message: participationResult.(task.ParticipationPolicyRejected).Reason.Description()}
+	}
+
 	command := task.CreateCommand{
 		Actor:          subject,
 		Owner:          task.UserOwner{UserID: subject.ID},
 		Title:          titleAccepted.Value,
 		Description:    descriptionAccepted.Value,
 		Reward:         reward.value,
+		Participation:  participationAccepted.Value,
+		AssigneeScope:  task.AssigneeScopeUser,
+		ReservationTTL: task.DefaultReservationTTL(),
 		Visibility:     visibility,
 		Placement:      task.StandalonePlacement{},
 		ResponseSchema: schemaSourceAccepted.Value,
@@ -231,6 +263,55 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		return toolFailed{message: result.(task.CreateRejected).Reason.Description()}
 	}
 	return marshalPayload(taskToDetail(created.Value))
+}
+
+func (server Server) callOpenTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	taskID, problem := parseTaskID(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.OpenTask(ctx, subject, taskID)
+	changed, matched := result.(task.TaskStateChanged)
+	if !matched {
+		return toolFailed{message: result.(task.ChangeStateRejected).Reason.Description()}
+	}
+	return marshalPayload(taskToDetail(changed.Value))
+}
+
+func (server Server) callFundTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		TaskID         string `json:"task_id"`
+		Amount         int64  `json:"amount"`
+		IdempotencyKey string `json:"idempotency_key"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	taskIDResult := core.ParseTaskID(args.TaskID)
+	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
+	if !taskMatched {
+		return toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}
+	}
+	amountResult := ledger.NewCreditAmount(args.Amount)
+	amount, amountMatched := amountResult.(ledger.CreditAmountAccepted)
+	if !amountMatched {
+		return toolProtocolError{code: codeInvalidParams, message: amountResult.(ledger.CreditAmountRejected).Reason.Description()}
+	}
+	keyResult := ledger.NewIdempotencyKey(args.IdempotencyKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		return toolProtocolError{code: codeInvalidParams, message: keyResult.(ledger.IdempotencyKeyRejected).Reason.Description()}
+	}
+	result := server.services.FundTask(ctx, subject.ID, taskID.Value, amount.Value, key.Value)
+	funded, matched := result.(ledger.TaskFunded)
+	if !matched {
+		return toolFailed{message: result.(ledger.FundRejected).Reason.Description()}
+	}
+	return marshalPayload(fundPayload{
+		TaskID: funded.Escrow.TaskID.String(),
+		Amount: funded.Escrow.Amount.Int64(),
+		State:  funded.Escrow.State.String(),
+	})
 }
 
 type mcpRewardResult interface {
@@ -334,6 +415,7 @@ func (server Server) callGetSubmissionStatus(ctx context.Context, arguments json
 		TaskID:       found.Value.TaskID.String(),
 		State:        found.Value.State.String(),
 		ResponseJSON: found.Value.ResponseSource.String(),
+		ReviewNote:   found.Value.ReviewNote.String(),
 	})
 }
 
@@ -683,6 +765,8 @@ func (tasksPayload) payloadValue() {}
 func (taskDetail) payloadValue() {}
 
 func (schemaPayload) payloadValue() {}
+
+func (fundPayload) payloadValue() {}
 
 func (submitPayload) payloadValue() {}
 

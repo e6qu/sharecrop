@@ -125,7 +125,7 @@ type fakeServices struct {
 	rejectGet bool
 }
 
-func (services fakeServices) ListTasks(_ context.Context, _ auth.UserSubject, _ task.ListScope) task.ListResult {
+func (services fakeServices) ListTasks(_ context.Context, _ auth.UserSubject, _ task.ListScope, _ task.ListFilters) task.ListResult {
 	return task.TasksListed{Values: []task.ListItem{}}
 }
 
@@ -157,6 +157,20 @@ func (services fakeServices) CreateTask(_ context.Context, command task.CreateCo
 		Payload:        command.Payload,
 		CreatedBy:      command.Actor.ID,
 	}}
+}
+
+func (services fakeServices) OpenTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
+	return task.TaskStateChanged{Value: task.Task{
+		ID:         taskID,
+		Owner:      task.UserOwner{UserID: subject.ID},
+		Visibility: task.UserVisibility{UserID: subject.ID},
+		State:      task.StateOpen,
+		CreatedBy:  subject.ID,
+	}}
+}
+
+func (services fakeServices) FundTask(_ context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
+	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
 }
 
 func (services fakeServices) SubmitResponse(_ context.Context, command submission.SubmitCommand) submission.SubmitResult {

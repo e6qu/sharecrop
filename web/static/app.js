@@ -6920,6 +6920,27 @@ var $author$project$Sharecrop$Api$createParticipationBody = function (state) {
 					$author$project$Sharecrop$Api$reservationHoursValue(state.createReservationHours)))
 			]));
 };
+var $author$project$Sharecrop$Api$createPayloadBody = function (state) {
+	return ($elm$core$String$trim(state.createPayloadJson) === '') ? $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'kind',
+				$elm$json$Json$Encode$string('none')),
+				_Utils_Tuple2(
+				'json',
+				$elm$json$Json$Encode$string(''))
+			])) : $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'kind',
+				$elm$json$Json$Encode$string('json')),
+				_Utils_Tuple2(
+				'json',
+				$elm$json$Json$Encode$string(state.createPayloadJson))
+			]));
+};
 var $author$project$Sharecrop$Api$createRewardBody = function (rawAmount) {
 	var _v0 = $elm$core$String$toInt(rawAmount);
 	if (_v0.$ === 'Just') {
@@ -6955,6 +6976,9 @@ var $author$project$Sharecrop$Api$createRewardBody = function (rawAmount) {
 					$elm$json$Json$Encode$int(0))
 				]));
 	}
+};
+var $author$project$Sharecrop$Api$createSchemaString = function (state) {
+	return ($elm$core$String$trim(state.createResponseSchema) === '') ? '{\"kind\":\"freeform\"}' : state.createResponseSchema;
 };
 var $author$project$Sharecrop$Types$visibilityOrganizationTag = 'organization';
 var $author$project$Sharecrop$Types$visibilityTeamTag = 'team';
@@ -7022,19 +7046,11 @@ var $author$project$Sharecrop$Api$createTaskRequestBody = function (state) {
 						]))),
 				_Utils_Tuple2(
 				'response_schema_json',
-				$elm$json$Json$Encode$string('{\"kind\":\"freeform\"}')),
+				$elm$json$Json$Encode$string(
+					$author$project$Sharecrop$Api$createSchemaString(state))),
 				_Utils_Tuple2(
 				'payload',
-				$elm$json$Json$Encode$object(
-					_List_fromArray(
-						[
-							_Utils_Tuple2(
-							'kind',
-							$elm$json$Json$Encode$string('none')),
-							_Utils_Tuple2(
-							'json',
-							$elm$json$Json$Encode$string(''))
-						])))
+				$author$project$Sharecrop$Api$createPayloadBody(state))
 			]));
 };
 var $author$project$Sharecrop$Api$taskDetailFromResponse = function (response) {
@@ -7805,7 +7821,9 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		createOrgName: '',
 		createOrgTeamName: '',
 		createParticipationPolicy: $author$project$Sharecrop$Labels$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
+		createPayloadJson: '',
 		createReservationHours: '48',
+		createResponseSchema: '{\"kind\":\"freeform\"}',
 		createRewardAmount: '',
 		createScopeOrganizationId: '',
 		createScopeTeamId: '',
@@ -9173,6 +9191,30 @@ var $author$project$Main$update = F2(
 								{createDescription: value});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'CreateResponseSchemaChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createResponseSchema: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreatePayloadChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{createPayloadJson: value});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'CreateRewardAmountChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -9290,7 +9332,9 @@ var $author$project$Main$update = F2(
 										createDescription: '',
 										createMessage: $elm$core$Maybe$Just('Created task ' + created.id),
 										createParticipationPolicy: $author$project$Sharecrop$Labels$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
+										createPayloadJson: '',
 										createReservationHours: '48',
+										createResponseSchema: '{\"kind\":\"freeform\"}',
 										createTitle: '',
 										fundAmount: (created.rewardKind === 'credit') ? $elm$core$String$fromInt(created.rewardCreditAmount) : state.fundAmount,
 										fundTaskId: created.id
@@ -11654,8 +11698,14 @@ var $author$project$Sharecrop$View$collectiblesView = function (state) {
 var $author$project$Sharecrop$Types$CreateDescriptionChanged = function (a) {
 	return {$: 'CreateDescriptionChanged', a: a};
 };
+var $author$project$Sharecrop$Types$CreatePayloadChanged = function (a) {
+	return {$: 'CreatePayloadChanged', a: a};
+};
 var $author$project$Sharecrop$Types$CreateReservationHoursChanged = function (a) {
 	return {$: 'CreateReservationHoursChanged', a: a};
+};
+var $author$project$Sharecrop$Types$CreateResponseSchemaChanged = function (a) {
+	return {$: 'CreateResponseSchemaChanged', a: a};
 };
 var $author$project$Sharecrop$Types$CreateRewardAmountChanged = function (a) {
 	return {$: 'CreateRewardAmountChanged', a: a};
@@ -11899,6 +11949,36 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateDescriptionChanged),
 								$elm$html$Html$Attributes$rows(3),
 								$author$project$Sharecrop$Ui$testId('create-description')
+							]))
+					])),
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Response schema (JSON)',
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$Ui$textarea_(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$placeholder('{\"kind\":\"freeform\"}'),
+								$elm$html$Html$Attributes$value(state.createResponseSchema),
+								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateResponseSchemaChanged),
+								$elm$html$Html$Attributes$rows(3),
+								$author$project$Sharecrop$Ui$testId('create-response-schema')
+							]))
+					])),
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Task input (JSON, optional)',
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$Ui$textarea_(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$placeholder('Embed any data the worker needs, or leave blank'),
+								$elm$html$Html$Attributes$value(state.createPayloadJson),
+								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreatePayloadChanged),
+								$elm$html$Html$Attributes$rows(3),
+								$author$project$Sharecrop$Ui$testId('create-payload')
 							]))
 					])),
 				A2(
@@ -12811,7 +12891,7 @@ var $author$project$Sharecrop$Labels$availabilityKindLabel = function (kind) {
 	}
 };
 var $author$project$Sharecrop$View$taskInputBlock = function (detail) {
-	return ((detail.payloadKind === 'inline') && (detail.payloadJson !== '')) ? _List_fromArray(
+	return (((detail.payloadKind === 'inline') || (detail.payloadKind === 'json')) && (detail.payloadJson !== '')) ? _List_fromArray(
 		[
 			$author$project$Sharecrop$Ui$label_('Task input'),
 			A2(

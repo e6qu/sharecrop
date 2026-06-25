@@ -50,6 +50,8 @@ emptyLoggedIn response =
     , entries = []
     , createTitle = ""
     , createDescription = ""
+    , createResponseSchema = "{\"kind\":\"freeform\"}"
+    , createPayloadJson = ""
     , createRewardAmount = ""
     , createVisibility = visibilityDefaultTag
     , createScopeUserId = ""
@@ -254,6 +256,12 @@ update msg model =
         CreateDescriptionChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createDescription = value }), Cmd.none )
 
+        CreateResponseSchemaChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | createResponseSchema = value }), Cmd.none )
+
+        CreatePayloadChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | createPayloadJson = value }), Cmd.none )
+
         CreateRewardAmountChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createRewardAmount = value }), Cmd.none )
 
@@ -287,6 +295,8 @@ update msg model =
                     { state
                         | createTitle = ""
                         , createDescription = ""
+                        , createResponseSchema = "{\"kind\":\"freeform\"}"
+                        , createPayloadJson = ""
                         , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
                         , createReservationHours = "48"
                         , createMessage = Just ("Created task " ++ created.id)

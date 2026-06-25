@@ -25,8 +25,8 @@ type mcpServices struct {
 	ledgerService     LedgerService
 }
 
-func (services mcpServices) ListTasks(ctx context.Context, subject auth.UserSubject, scope task.ListScope) task.ListResult {
-	return services.taskService.List(ctx, subject, scope, task.NoListFilters(), core.DefaultPage())
+func (services mcpServices) ListTasks(ctx context.Context, subject auth.UserSubject, scope task.ListScope, filters task.ListFilters) task.ListResult {
+	return services.taskService.List(ctx, subject, scope, filters, core.DefaultPage())
 }
 
 func (services mcpServices) GetTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.GetResult {
@@ -35,6 +35,14 @@ func (services mcpServices) GetTask(ctx context.Context, subject auth.UserSubjec
 
 func (services mcpServices) CreateTask(ctx context.Context, command task.CreateCommand) task.CreateResult {
 	return services.taskService.Create(ctx, command)
+}
+
+func (services mcpServices) OpenTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
+	return services.taskService.Open(ctx, subject, taskID)
+}
+
+func (services mcpServices) FundTask(ctx context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, key ledger.IdempotencyKey) ledger.FundResult {
+	return services.ledgerService.FundTask(ctx, funder, taskID, amount, key)
 }
 
 func (services mcpServices) SubmitResponse(ctx context.Context, command submission.SubmitCommand) submission.SubmitResult {

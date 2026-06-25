@@ -1,16 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 46 work, merged into `main`.
+The repository contains pull request 1 through pull request 47 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/fuzz-flows-contrast` adds a second fuzz target, fixes WCAG contrast and focus failures found by a contrast review, and fixes a demo flow dead-end plus two example-wording issues. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/lifecycle-parity` (PR1 of a 4-PR roadmap from a full user-journey/gap review) makes the post-and-work-a-task lifecycle complete for both agents (MCP) and humans (web UI). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and the roadmap in [DO_NEXT.md](./DO_NEXT.md).
 
-Implemented in `task/fuzz-flows-contrast`:
+Implemented in `task/lifecycle-parity`:
 
-- Fuzzing: added `FuzzParsePage` (`internal/http`) — arbitrary `?limit=&offset=` query strings must yield a `core.Page` with limit in [1,200] and offset >= 0, so no query can reach SQL as an out-of-range LIMIT or negative OFFSET. Holds.
-- Contrast/UI (computed real WCAG ratios; verified only the page-title h1 sits on the bare page background, the rest is inside parchment cards): the arcade theme's green page background was lightened (`#6b8f3a` -> `#b3cf86`) so the on-green title clears AA (2.21:1 -> 4.79:1) and body ink reaches 9.17:1; added a visible keyboard focus outline (the theme had none — WCAG 2.4.7); pinned arcade placeholders to the muted ink (was ~3:1). Shipped app: the "revoked" credential label moved `text-slate-400` -> `text-slate-600` (2.56:1 -> 7.58:1), and a base `::placeholder` rule pins placeholders to slate-500 (4.76:1, was ~2.7:1).
-- Demo flows/examples (audited with two subagents): the task-series detail seed lacked `owner_kind`/`created_by`, so `GET /api/task-series/:id` (and the series list) failed to decode and the series page hung on "Loading series…"; seeded the contract fields. Reworded the review-extraction task whose "before the first colon" rule collided with the "Rating:" prefix. Every other client route was verified to have a correctly-shaped handler and every seeded task remains self-contained.
+- MCP: `create_task` now sets a participation policy (new optional `participation_policy` arg, default `open`) plus assignee scope and reservation TTL, so an agent-created task is reservable/workable (previously it was written with an empty policy and could not be worked). Added `open_task` and `fund_task` tools (scope `tasks_write`) so an agent can fund escrow and publish a draft — an agent can now post a workable task end to end. `list_tasks` gained an optional `state` filter; `get_submission_status` now returns `review_note` so a worker sees reviewer feedback. An http_e2e test drives create -> fund -> open -> a different worker submits.
+- Human UI: the create-task form now authors a response schema and an embedded JSON payload (both were hardcoded to freeform/none in `Api.elm`); the task-detail input block renders the real backend's `json` payload kind as well as the demo's `inline`. A Playwright test authors a schema + payload and asserts the detail surfaces both.
+- Docs: the MCP install scopes were wrong (`reservations_write`/`reviews_write` do not exist) — corrected to the real set (`tasks_read/tasks_write/submissions_read/submissions_write/submissions_review`) and documented `fund_task`/`open_task` in the propose-work loop.
+
+Earlier branch `task/fuzz-flows-contrast` (pull request 47, merged) added the `FuzzParsePage` pagination fuzz, fixed WCAG contrast/focus failures (arcade page-green lightened, focus outline added, placeholder contrast, the "revoked" label), and fixed a task-series detail decode dead-end plus an ambiguous example.
 
 Earlier branch `task/fuzz-and-polish` (pull request 46, merged) added Go native fuzz tests over the schema/auth/MCP parsers, fixed an `EncodeValueJSON` invalid-JSON bug they found (`strconv.Quote` -> `encoding/json`; crasher kept as a regression seed under `internal/schema/testdata`), and fixed two demo dead-ends (`POST /tasks/:id/refund`, per-org balance) plus an ambiguous example and the award-flow labels.
 
