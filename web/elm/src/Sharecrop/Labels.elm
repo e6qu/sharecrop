@@ -43,8 +43,19 @@ collectiblePolicyTag policy =
 
 
 collectiblePolicyLabel : Collectible.CollectibleTransferPolicy -> String
-collectiblePolicyLabel =
-    collectiblePolicyTag
+collectiblePolicyLabel policy =
+    case policy of
+        Collectible.CollectibleTransferPolicyNonTransferableExceptPayout ->
+            "Non-transferable except payout"
+
+        Collectible.CollectibleTransferPolicyTransferableBetweenUsers ->
+            "Transferable between users"
+
+        Collectible.CollectibleTransferPolicyTransferableWithinOrganization ->
+            "Transferable within organization"
+
+        Collectible.CollectibleTransferPolicyIssuerControlled ->
+            "Issuer controlled"
 
 
 collectibleStateLabel : Collectible.CollectibleState -> String

@@ -64,7 +64,7 @@ button {
   border: 3px solid var(--pa-line) !important;
   border-radius: 0 !important;
   box-shadow: 3px 3px 0 var(--pa-line) !important;
-  white-space: nowrap;
+  white-space: normal;
   transition: none !important;
 }
 button.bg-slate-900 { background: var(--pa-accent) !important; color: #fff7e0 !important; }

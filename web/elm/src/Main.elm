@@ -51,6 +51,7 @@ emptyLoggedIn response =
     , createTitle = ""
     , createDescription = ""
     , createResponseSchema = "{\"kind\":\"freeform\"}"
+    , createSchemaFields = []
     , createPayloadJson = ""
     , createRewardAmount = ""
     , createVisibility = visibilityDefaultTag
@@ -124,6 +125,31 @@ emptyLoggedIn response =
     , createReferenceURL = ""
     , taskComments = []
     , taskCommentBody = ""
+    }
+
+
+updateFieldAt : Int -> (SchemaFieldDraft -> SchemaFieldDraft) -> List SchemaFieldDraft -> List SchemaFieldDraft
+updateFieldAt index transform fields =
+    List.indexedMap
+        (\i field ->
+            if i == index then
+                transform field
+
+            else
+                field
+        )
+        fields
+
+
+applySchemaFields : (List SchemaFieldDraft -> List SchemaFieldDraft) -> LoggedInModel -> LoggedInModel
+applySchemaFields transform state =
+    let
+        nextFields =
+            transform state.createSchemaFields
+    in
+    { state
+        | createSchemaFields = nextFields
+        , createResponseSchema = View.schemaFromFields nextFields
     }
 
 
@@ -277,6 +303,44 @@ update msg model =
         CreateResponseSchemaChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createResponseSchema = value }), Cmd.none )
 
+        AddSchemaFieldClicked ->
+            ( Api.updateLoggedIn model
+                (applySchemaFields
+                    (\fields -> fields ++ [ { name = "", kind = "string", required = True } ])
+                )
+            , Cmd.none
+            )
+
+        RemoveSchemaFieldClicked index ->
+            ( Api.updateLoggedIn model
+                (applySchemaFields
+                    (\fields ->
+                        List.indexedMap Tuple.pair fields
+                            |> List.filter (\( i, _ ) -> i /= index)
+                            |> List.map Tuple.second
+                    )
+                )
+            , Cmd.none
+            )
+
+        SchemaFieldNameChanged index value ->
+            ( Api.updateLoggedIn model
+                (applySchemaFields (updateFieldAt index (\field -> { field | name = value })))
+            , Cmd.none
+            )
+
+        SchemaFieldKindChanged index value ->
+            ( Api.updateLoggedIn model
+                (applySchemaFields (updateFieldAt index (\field -> { field | kind = value })))
+            , Cmd.none
+            )
+
+        SchemaFieldRequiredChanged index value ->
+            ( Api.updateLoggedIn model
+                (applySchemaFields (updateFieldAt index (\field -> { field | required = value })))
+            , Cmd.none
+            )
+
         CreatePayloadChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createPayloadJson = value }), Cmd.none )
 
@@ -314,6 +378,7 @@ update msg model =
                         | createTitle = ""
                         , createDescription = ""
                         , createResponseSchema = "{\"kind\":\"freeform\"}"
+                        , createSchemaFields = []
                         , createPayloadJson = ""
                         , createTaskType = "general"
                         , createReferenceURL = ""

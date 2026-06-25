@@ -1,5 +1,12 @@
 # What We Did
 
+`task/mobile-demo-design` was a mobile-usability + demo-completeness + design-surface round (two specialized review subagents) plus a re-run fuzz pass:
+
+- Demo full functionality: the in-browser fake backend now moves credits on review. Accept releases the held escrow, records a `task_payout`, refunds any unpaid remainder to the balance, and charges a tip — previously it closed the task without moving any credits, so the seeded reward economy had no payoff. Reject/request-changes honor partial credit + tip and refund the rest (request-changes leaves escrow held). Added the missing `POST /api/tasks/:id/unpublish` demo route. Seeded task-7 with a `task_type`, `reference_url`, and a comment so those recently-added surfaces are visible without creating a task.
+- Mobile: added a Playwright mobile project (`mobile.spec.ts` at 375x667) asserting no horizontal overflow across every page; it caught genuine overflows (the collectibles policy/award buttons, long-ID rows). Fixes: responsive outer page padding (`p-4 sm:p-8`) and card padding; 44px-min tap targets on buttons via `Ui` button classes; action rows wrap with shrink-0/min-w-0; review buttons stack on mobile; long-ID rows get `min-w-0`/`break-words`; inline forms let the field grow/shrink (`fieldLabel` gains `grow min-w-0`); arcade buttons may wrap. The collectible transfer-policy labels became human-readable ("Transferable within organization" instead of `transferable_within_organization`), which also removed an unbreakable-token overflow.
+- Design/edit surface: the create-task form gained a structured response-schema designer — add fields (name, type, required) and the schema JSON is generated for you, with the raw JSON kept as an advanced fallback; the field rows stack on mobile.
+- Fuzzing: re-ran the suite to confirm the new MCP tools (covered by `FuzzHandleRaw`) and all value parsers stay crash-free.
+
 `task/fuzz-journeys-uiux` was a fuzz + user-journey + UI/UX review round (two specialized subagents) with opportunistic boyscout fixes:
 
 - Fuzzing: `internal/task/fuzz_test.go` `FuzzTaskValueParsers` exercises the value parsers added for templates/series/comments (task type, reference URL, comment body, series state/description) — no panics, and an accepted reference URL is always an absolute http(s) URL (confirming the real backend rejects `javascript:` and relative URLs).
