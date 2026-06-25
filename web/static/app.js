@@ -11413,8 +11413,18 @@ var $author$project$Sharecrop$View$awardForm = function (state) {
 			]),
 		_List_fromArray(
 			[
-				$author$project$Sharecrop$Ui$label_('Award to a task'),
+				$author$project$Sharecrop$Ui$label_('Award a collectible to a task'),
 				A4($author$project$Sharecrop$View$taskPicker, 'award-task-id', state.awardTaskId, $author$project$Sharecrop$Types$AwardTaskIdChanged, state.tasks),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs text-slate-500')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Choose the task here, then press Award next to a collectible below.')
+					])),
 				A2($author$project$Sharecrop$View$maybeNote, state.awardMessage, 'award-message')
 			]));
 };
@@ -11433,7 +11443,7 @@ var $author$project$Sharecrop$View$awardCollectibleButton = function (collectibl
 					$author$project$Sharecrop$Types$AwardClicked(collectible.id)),
 					$author$project$Sharecrop$Ui$testId('award-collectible')
 				]),
-			'Award');
+			'Award to selected task');
 	} else {
 		return $elm$html$Html$text('');
 	}

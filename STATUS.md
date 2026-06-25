@@ -1,15 +1,17 @@
 # Status
 
-The repository contains pull request 1 through pull request 44 work, merged into `main`.
+The repository contains pull request 1 through pull request 45 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/demo-deep-selfcontained` deepens the demo's self-containment (every task objectively solvable from its own embedded data, zero dangling references) and brings the in-browser fake backend's flows into line with the real Go backend + Elm client. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/fuzz-and-polish` adds Go native fuzz tests over the untrusted-input parsers, fixes a JSON-encoding bug they found, and applies a usability review of the demo (refund + per-org balance dead-ends, an undiscoverable award flow, an ambiguous example). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/demo-deep-selfcontained` (audited with two subagents — task self-containment and flow fidelity):
+Implemented in `task/fuzz-and-polish`:
 
-- Task content: the date-normalization task's day-first rule contradicted its two year-first dates — added a leading-4-digit-is-year rule and named the `iso_dates` output field; named the ledger output order and pinned the review product-extraction rule; added a freeform release-notes task so the demo exercises the freeform schema branch (the only branch no seeded task used). Confirmed no task carries a dangling reference.
-- Flow fidelity (fake backend vs real implementation): agent-credential revoke now uses `POST /:id/revoke` (the client's actual call — `DELETE /:id` silently hit the catch-all and failed); submissions are validated against the task's response schema (state `invalid` + `{path,message}` errors) and require an active reservation on non-open tasks (matching `CheckSubmissionEligibility`); `viewer_action` mirrors the real `taskViewerAction` (pure function of state + policy); request-changes reactivates the worker's reservation; discovery shows only open public tasks; funding is idempotent on `idempotency_key`; the task list honors `state`/`organization_id` filters; the error envelope uses `{error}`. `demo.spec.ts` asserts the freeform task lists and the invalid->submitted validation flow.
+- Fuzzing: `FuzzParseSchemaJSON`/`FuzzParseValueJSON`/`FuzzValidate` (schema parse + value parse + validate + sensitivity index + redact), `FuzzVerifyAccessToken` (asserts no panic and no token forgery), `FuzzHandleRaw` (the MCP JSON-RPC transport always emits valid JSON or no response). The value-parser round-trip fuzz found that `EncodeValueJSON` used `strconv.Quote` (Go literal syntax), which emits `\x7f`-style escapes that are invalid JSON; switched to `encoding/json` so the redacted submission source is always valid JSON. The crasher is checked in as a regression seed under `internal/schema/testdata`. Confirmed the nested-union validator is not a DoS: blow-up only occurs with exponential-size input that a body-size cap already prevents.
+- Demo usability (audited with two subagents — example correctness and flow dead-ends): the fake backend now serves `POST /api/tasks/:id/refund` (the Refund owner control hit the catch-all and failed to decode) and `GET /api/organizations/:id/credits/balance` (org balance was stuck on "Loading…"); the date-normalization task's rule said "day-first" while its worked example was month-first — made them consistent; reworded an ambiguous support-ticket example; relabeled the collectibles award flow so the task picker and per-collectible Award button read as one two-step action. `demo.spec.ts` covers the refund and org-balance flows.
+
+Earlier branch `task/demo-deep-selfcontained` (pull request 45, merged) deepened the demo's self-containment (every task objectively solvable from its own embedded data, zero dangling references) and brought the in-browser fake backend's flows into line with the real Go backend + Elm client (schema-validated submissions, reservation eligibility, `POST /:id/revoke`, pure-function `viewer_action`, idempotent funding, honored list filters, `{error}` envelope).
 
 Earlier branch `task/demo-selfcontained-tasks` (pull request 44, merged) made the seeded tasks self-contained and added the "Task input" block to the real client's task detail (`TaskDetail` gains `payloadKind`/`payloadJson`).
 

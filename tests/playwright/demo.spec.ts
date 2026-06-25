@@ -57,3 +57,35 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
     "submitted",
   );
 });
+
+test("demo organization page shows a funded balance, not a stuck spinner", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1240 credits")).toBeVisible();
+
+  await page.getByRole("link", { name: "Organizations" }).click();
+  await page.getByTestId("select-organization").first().click();
+
+  // The fake backend serves a per-organization balance, so the label resolves
+  // to a real number instead of being stuck on "Loading…".
+  await expect(page.getByText("Balance: 7200 credits")).toBeVisible();
+  await expect(page.getByText("Balance: Loading…")).toHaveCount(0);
+});
+
+test("demo owner can refund a funded task they own", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1240 credits")).toBeVisible();
+
+  await page.getByRole("link", { name: "Tasks", exact: true }).click();
+  await page
+    .getByTestId("task-row")
+    .filter({ hasText: "Verify 10 ledger transfers for fraud signals" })
+    .getByTestId("view-task")
+    .click();
+
+  // The owner controls offer Refund; the fake backend implements /refund and
+  // returns the escrow shape the client decodes, so the action succeeds.
+  await page.getByTestId("refund-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Task refunded and cancelled.",
+  );
+});
