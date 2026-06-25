@@ -354,8 +354,8 @@ seriesCommentsSection seriesId state data =
 seriesCommentRow : TaskSeries.SeriesCommentResponse -> Html Msg
 seriesCommentRow comment =
     div [ Html.Attributes.class "rounded-md border border-slate-200 bg-white p-3", testId "series-comment" ]
-        [ p [ Html.Attributes.class "text-xs font-medium text-slate-500" ] [ text comment.authorUserID ]
-        , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text comment.body ]
+        [ a [ href ("/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
+        , p [ Html.Attributes.class "text-sm text-slate-700 break-words" ] [ text comment.body ]
         ]
 
 
@@ -1158,8 +1158,8 @@ taskCommentsCard state =
 taskCommentRow : Task.TaskCommentResponse -> Html Msg
 taskCommentRow comment =
     div [ Html.Attributes.class "rounded-md border border-slate-200 bg-white p-3", testId "task-comment" ]
-        [ p [ Html.Attributes.class "text-xs font-medium text-slate-500" ] [ text comment.authorUserID ]
-        , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text comment.body ]
+        [ a [ href ("/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
+        , p [ Html.Attributes.class "text-sm text-slate-700 break-words" ] [ text comment.body ]
         ]
 
 
@@ -1188,7 +1188,7 @@ referenceBlock detail =
 
     else
         [ Ui.label_ "Reference"
-        , a [ href detail.referenceURL, Html.Attributes.class "text-sm underline", testId "detail-reference" ] [ text detail.referenceURL ]
+        , a [ href detail.referenceURL, Html.Attributes.target "_blank", Html.Attributes.rel "noopener noreferrer", Html.Attributes.class "text-sm underline break-all", testId "detail-reference" ] [ text detail.referenceURL ]
         ]
 
 
@@ -1527,7 +1527,15 @@ fundSuccessLabel escrow =
 
 submitSuccessLabel : Submission.SubmissionCreatedResponse -> String
 submitSuccessLabel created =
-    "Submission " ++ created.submission.id ++ " (" ++ submissionStateLabel created.submission.state ++ ")."
+    let
+        base =
+            "Submission " ++ created.submission.id ++ " (" ++ submissionStateLabel created.submission.state ++ ")."
+    in
+    if List.isEmpty created.submission.validationErrors then
+        base
+
+    else
+        base ++ " " ++ String.join "; " (List.map (\error -> error.path ++ ": " ++ error.message) created.submission.validationErrors)
 
 
 mintSuccessLabel : Collectible.CollectibleResponse -> String

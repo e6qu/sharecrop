@@ -9410,7 +9410,16 @@ var $author$project$Sharecrop$Labels$submissionStateLabel = function (state) {
 	}
 };
 var $author$project$Sharecrop$View$submitSuccessLabel = function (created) {
-	return 'Submission ' + (created.submission.id + (' (' + ($author$project$Sharecrop$Labels$submissionStateLabel(created.submission.state) + ').')));
+	var base = 'Submission ' + (created.submission.id + (' (' + ($author$project$Sharecrop$Labels$submissionStateLabel(created.submission.state) + ').')));
+	return $elm$core$List$isEmpty(created.submission.validationErrors) ? base : (base + (' ' + A2(
+		$elm$core$String$join,
+		'; ',
+		A2(
+			$elm$core$List$map,
+			function (error) {
+				return error.path + (': ' + error.message);
+			},
+			created.submission.validationErrors))));
 };
 var $author$project$Sharecrop$View$taskTemplate = function (taskType) {
 	switch (taskType) {
@@ -13793,10 +13802,11 @@ var $author$project$Sharecrop$View$seriesCommentRow = function (comment) {
 		_List_fromArray(
 			[
 				A2(
-				$elm$html$Html$p,
+				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-500')
+						$elm$html$Html$Attributes$href('/users/' + comment.authorUserID),
+						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-600 underline')
 					]),
 				_List_fromArray(
 					[
@@ -13806,7 +13816,7 @@ var $author$project$Sharecrop$View$seriesCommentRow = function (comment) {
 				$elm$html$Html$p,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('text-sm text-slate-700')
+						$elm$html$Html$Attributes$class('text-sm text-slate-700 break-words')
 					]),
 				_List_fromArray(
 					[
@@ -14405,6 +14415,8 @@ var $author$project$Sharecrop$Labels$availabilityKindLabel = function (kind) {
 			return 'closed';
 	}
 };
+var $elm$html$Html$Attributes$rel = _VirtualDom_attribute('rel');
+var $elm$html$Html$Attributes$target = $elm$html$Html$Attributes$stringProperty('target');
 var $author$project$Sharecrop$View$referenceBlock = function (detail) {
 	return (detail.referenceURL === '') ? _List_Nil : _List_fromArray(
 		[
@@ -14414,7 +14426,9 @@ var $author$project$Sharecrop$View$referenceBlock = function (detail) {
 			_List_fromArray(
 				[
 					$elm$html$Html$Attributes$href(detail.referenceURL),
-					$elm$html$Html$Attributes$class('text-sm underline'),
+					$elm$html$Html$Attributes$target('_blank'),
+					$elm$html$Html$Attributes$rel('noopener noreferrer'),
+					$elm$html$Html$Attributes$class('text-sm underline break-all'),
 					$author$project$Sharecrop$Ui$testId('detail-reference')
 				]),
 			_List_fromArray(
@@ -15266,10 +15280,11 @@ var $author$project$Sharecrop$View$taskCommentRow = function (comment) {
 		_List_fromArray(
 			[
 				A2(
-				$elm$html$Html$p,
+				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-500')
+						$elm$html$Html$Attributes$href('/users/' + comment.authorUserID),
+						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-600 underline')
 					]),
 				_List_fromArray(
 					[
@@ -15279,7 +15294,7 @@ var $author$project$Sharecrop$View$taskCommentRow = function (comment) {
 				$elm$html$Html$p,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('text-sm text-slate-700')
+						$elm$html$Html$Attributes$class('text-sm text-slate-700 break-words')
 					]),
 				_List_fromArray(
 					[

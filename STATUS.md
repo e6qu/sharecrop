@@ -1,10 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 49 work, merged into `main`.
+The repository contains pull request 1 through pull request 50 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/dev-templates-comments` adds pre-baked developer task types (code review, security review, product review, UI/UX review, QA testing), a typed reference URL (the pull request to work on), and a per-task comment thread. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/fuzz-journeys-uiux` is a fuzz + journey + UI/UX review round with opportunistic fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/fuzz-journeys-uiux`:
+
+- Fuzzing: added `internal/task/fuzz_test.go` `FuzzTaskValueParsers` over the new untrusted-input value parsers (`ParseTaskType`, `NewReferenceURL`, `NewCommentBody`, `NewSeriesDescription`, `ParseSeriesState`); asserts no panic and that an accepted reference URL is always an absolute http(s) URL. Holds.
+- Journey/flow review (subagent): the demo's submission validator only understood the designer/seed schema dialect, so template-created tasks (canonical `fields` array / `item` / `presence` / `kind:enum`) bypassed validation — `validateValue` now handles both dialects. The flagship seeded series had no member tasks — linked two seeded tasks to it. The worker's submit feedback now lists the field-level validation errors, not just the state.
+- UI/UX review (subagent, WCAG ratios computed — no contrast regressions): comment authors are now links to the user page; long reference URLs and comment bodies wrap (`break-all`/`break-words`); the task reference link opens in a new tab with `rel="noopener noreferrer"`; and arcade-theme anchor "buttons" (Open/View/Back) now match the pixel buttons instead of rendering as thin muted boxes.
+
+Earlier branch `task/dev-templates-comments` (pull request 50, merged) added pre-baked developer task types, a typed reference URL, and a per-task comment thread.
 
 Implemented in `task/dev-templates-comments`:
 
