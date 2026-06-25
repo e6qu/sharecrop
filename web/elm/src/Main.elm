@@ -1,4 +1,4 @@
-module Main exposing (main)
+port module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Nav
@@ -27,6 +27,9 @@ main =
         , onUrlRequest = LinkClicked
         , onUrlChange = UrlChanged
         }
+
+
+port copyToClipboard : String -> Cmd msg
 
 
 initialModel : Flags -> Nav.Key -> Url -> Model
@@ -125,6 +128,8 @@ emptyLoggedIn response =
     , createReferenceURL = ""
     , taskComments = []
     , taskCommentBody = ""
+    , taskAgentToken = Nothing
+    , taskIntegrationOpen = False
     }
 
 
@@ -456,6 +461,21 @@ update msg model =
         AgentCreated (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | agentMessage = Just (httpErrorLabel error) }), Cmd.none )
 
+        ToggleTaskIntegration ->
+            ( Api.updateLoggedIn model (\state -> { state | taskIntegrationOpen = not state.taskIntegrationOpen }), Cmd.none )
+
+        MintTaskTokenClicked ->
+            Api.withSession model (\state -> ( model, Api.mintTaskToken state.accessToken ))
+
+        TaskTokenMinted (Ok created) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskAgentToken = Just created.secret }), Cmd.none )
+
+        TaskTokenMinted (Err _) ->
+            ( model, Cmd.none )
+
+        CopyClicked clipboardText ->
+            ( model, copyToClipboard clipboardText )
+
         RevokeClicked credentialId ->
             Api.withSession model (\state -> ( model, Api.revokeAgent state.accessToken credentialId ))
 
@@ -495,6 +515,8 @@ update msg model =
                         , submitMessage = Nothing
                         , taskComments = []
                         , taskCommentBody = ""
+                        , taskAgentToken = Nothing
+                        , taskIntegrationOpen = False
                     }
                 )
             , Nav.pushUrl model.key ("/tasks/" ++ taskId)

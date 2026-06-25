@@ -55,8 +55,15 @@ test("tasks panel lists user tasks and shows agent curl examples", async ({ page
     "Agent task from the browser",
   );
   await page.getByTestId("view-task").click();
-  await expect(page.getByTestId("task-mcp-submit")).toContainText("/mcp");
-  await expect(page.getByTestId("task-mcp-submit")).toContainText(
+
+  // The API & MCP panel is collapsed; open it and mint a token, then the MCP
+  // submit example shows the real tool call (no placeholders).
+  await page.getByTestId("toggle-integration").click();
+  await page.getByTestId("mint-task-token").click();
+  await expect(page.getByTestId("integration-mcp-submit")).toContainText(
     "sharecrop.submit_response",
+  );
+  await expect(page.getByTestId("integration-mcp-submit")).not.toContainText(
+    "<",
   );
 });

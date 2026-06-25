@@ -407,6 +407,25 @@ func (userSubjectAccepted) userSubjectResult() {}
 
 func (userSubjectRejected) userSubjectResult() {}
 
+// requireWorkerSubject resolves a request to an acting user subject from either
+// a user access token or an agent credential that holds the required scope. This
+// lets a single agent token drive the worker REST endpoints as well as MCP (an
+// agent credential always acts as its owning user, exactly as it does over MCP).
+func (server Server) requireWorkerSubject(r *http.Request, scope agent.Scope) userSubjectResult {
+	if accepted, matched := server.requireUserSubject(r).(userSubjectAccepted); matched {
+		return accepted
+	}
+	verifyResult := server.verifyAgent(r)
+	verified, matched := verifyResult.(agent.CredentialVerified)
+	if !matched {
+		return userSubjectRejected{reason: "a user access token or an agent credential is required"}
+	}
+	if _, granted := verified.Credential.Scopes.Allows(scope).(agent.ScopeGranted); !granted {
+		return userSubjectRejected{reason: "the agent credential is missing the " + scope.String() + " scope"}
+	}
+	return userSubjectAccepted{subject: verified.Subject}
+}
+
 func (server Server) requireUserSubject(r *http.Request) userSubjectResult {
 	rawHeader := r.Header.Get("Authorization")
 	rawToken, matched := strings.CutPrefix(rawHeader, "Bearer ")

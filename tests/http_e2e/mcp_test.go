@@ -570,3 +570,33 @@ func TestMCPSeriesLifecycle(t *testing.T) {
 		t.Fatalf("list_series_comments missing the posted comment: %s", comments)
 	}
 }
+
+func TestRESTAcceptsAgentToken(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "rest-agent-owner")
+	worker := registerUser(t, server, "rest-agent-worker")
+	task := createPublicCreditUserTask(t, server, owner, 20)
+	fundTask(t, server, owner.AccessToken, task.ID, 20, "fund-"+task.ID)
+	openTask(t, server, owner.AccessToken, task.ID)
+
+	// A worker's agent token (not the user JWT) can drive the worker REST loop.
+	workerToken := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write"})
+
+	getResponse := getWithBearer(t, server.URL+"/api/tasks/"+task.ID, workerToken)
+	defer getResponse.Body.Close()
+	assertStatus(t, getResponse, http.StatusOK)
+
+	submitResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/submissions",
+		[]byte(`{"response_json":"{}"}`), workerToken)
+	defer submitResponse.Body.Close()
+	assertStatus(t, submitResponse, http.StatusCreated)
+
+	// A token missing the submissions_write scope is rejected on submit.
+	readOnly := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read"})
+	deniedResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/submissions",
+		[]byte(`{"response_json":"{}"}`), readOnly)
+	defer deniedResponse.Body.Close()
+	assertStatus(t, deniedResponse, http.StatusUnauthorized)
+}

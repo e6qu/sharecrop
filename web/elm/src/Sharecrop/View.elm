@@ -1340,7 +1340,7 @@ detailCard origin state =
                     ++ taskInputBlock detail
                     ++ [ Ui.label_ "Response schema"
                        , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson
-                       , taskInstructions origin detail.id
+                       , taskIntegration origin detail.id state
                        ]
                 )
 
@@ -1564,60 +1564,117 @@ mcpConfig origin secret =
     ++ "\" }\n    }\n  }\n}"
 
 
-taskInstructions : String -> String -> Html Msg
-taskInstructions origin taskId =
+copyButton : String -> Html Msg
+copyButton clipboardText =
+    Ui.secondaryButton [ onClick (CopyClicked clipboardText), testId "copy-command" ] "Copy"
+
+
+taskIntegration : String -> String -> LoggedInModel -> Html Msg
+taskIntegration origin taskId state =
+    let
+        indicator =
+            if state.taskIntegrationOpen then
+                " ▾"
+
+            else
+                " ▸"
+
+        body =
+            if state.taskIntegrationOpen then
+                taskIntegrationBody origin taskId state
+
+            else
+                text ""
+    in
     div [ Html.Attributes.class "space-y-3", testId "task-instructions" ]
-        [ Ui.label_ "REST API"
-        , Ui.codeBlock [ testId "task-rest-submit" ] (restSubmitCurl origin taskId)
-        , Ui.codeBlock [ testId "task-rest-reserve" ] (restReserveCurl origin taskId)
-        , Ui.label_ "MCP"
-        , Ui.codeBlock [ testId "task-mcp-initialize" ] (mcpInitializeCurl origin)
-        , Ui.codeBlock [ testId "task-mcp-submit" ] (mcpSubmitCurl origin taskId)
-        , Ui.codeBlock [ testId "task-mcp-schema" ] (mcpSchemaCurl origin taskId)
+        [ Ui.secondaryButton [ onClick ToggleTaskIntegration, testId "toggle-integration" ] ("API & MCP" ++ indicator)
+        , body
         ]
 
 
-restSubmitCurl : String -> String -> String
-restSubmitCurl origin taskId =
+taskIntegrationBody : String -> String -> LoggedInModel -> Html Msg
+taskIntegrationBody origin taskId state =
+    case state.taskAgentToken of
+        Nothing ->
+            div [ Html.Attributes.class "space-y-2" ]
+                [ p [ Html.Attributes.class "text-sm text-slate-700" ] [ text "Create an agent token to get runnable, copy-paste commands for this task." ]
+                , Ui.primaryButton [ onClick MintTaskTokenClicked, testId "mint-task-token" ] "Create agent token"
+                ]
+
+        Just token ->
+            div [ Html.Attributes.class "space-y-4" ]
+                [ div [ Html.Attributes.class "space-y-2" ]
+                    [ Ui.label_ "Agent token"
+                    , Ui.codeBlock [ testId "integration-token" ] token
+                    , copyButton token
+                    , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text "Use this as the Bearer token below. Treat it like a password." ]
+                    , Ui.secondaryButton [ onClick MintTaskTokenClicked, testId "mint-task-token" ] "Rotate"
+                    ]
+                , Ui.label_ "MCP"
+                , integrationEntry "Install the MCP server (add to your .mcp.json or Claude config):" "integration-mcp-config" (mcpConfig origin token)
+                , integrationEntry "Fetch the response schema your submission must match:" "integration-mcp-schema" (mcpSchemaBody taskId)
+                , integrationEntry "Submit your response to this task:" "integration-mcp-submit" (mcpSubmitBody taskId)
+                , Ui.label_ "REST API"
+                , integrationEntry "Get this task over REST:" "integration-rest-get" (restGetCurl origin taskId token)
+                , integrationEntry "Reserve this task:" "integration-rest-reserve" (restReserveCurl origin taskId token)
+                , integrationEntry "Submit your response:" "integration-rest-submit" (restSubmitCurl origin taskId token)
+                ]
+
+
+integrationEntry : String -> String -> String -> Html Msg
+integrationEntry description identifier command =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ p [ Html.Attributes.class "text-sm text-slate-700" ] [ text description ]
+        , Ui.codeBlock [ testId identifier ] command
+        , copyButton command
+        ]
+
+
+mcpSchemaBody : String -> String
+mcpSchemaBody taskId =
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.get_task_schema\",\"arguments\":{\"task_id\":\""
+        ++ taskId
+        ++ "\"}}}"
+
+
+mcpSubmitBody : String -> String
+mcpSubmitBody taskId =
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.submit_response\",\"arguments\":{\"task_id\":\""
+        ++ taskId
+        ++ "\",\"response_json\":\"{}\"}}}"
+
+
+restGetCurl : String -> String -> String -> String
+restGetCurl origin taskId token =
+    "curl "
+        ++ origin
+        ++ "/api/tasks/"
+        ++ taskId
+        ++ " -H \"Authorization: Bearer "
+        ++ token
+        ++ "\""
+
+
+restReserveCurl : String -> String -> String -> String
+restReserveCurl origin taskId token =
     "curl -X POST "
         ++ origin
         ++ "/api/tasks/"
         ++ taskId
-        ++ "/submissions \\\n  -H \"Authorization: Bearer <ACCESS_TOKEN>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"response_json\":\"{}\"}'"
+        ++ "/reservations -H \"Authorization: Bearer "
+        ++ token
+        ++ "\""
 
 
-restReserveCurl : String -> String -> String
-restReserveCurl origin taskId =
+restSubmitCurl : String -> String -> String -> String
+restSubmitCurl origin taskId token =
     "curl -X POST "
         ++ origin
         ++ "/api/tasks/"
         ++ taskId
-        ++ "/reservations \\\n  -H \"Authorization: Bearer <ACCESS_TOKEN>\""
-
-
-mcpInitializeCurl : String -> String
-mcpInitializeCurl origin =
-    "curl -i -X POST "
-        ++ origin
-        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}'"
-
-
-mcpSubmitCurl : String -> String -> String
-mcpSubmitCurl origin taskId =
-    "curl -X POST "
-        ++ origin
-        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Mcp-Session-Id: <MCP_SESSION_ID>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.submit_response\",\"arguments\":{\"task_id\":\""
-        ++ taskId
-        ++ "\",\"response_json\":\"{}\"}}}'"
-
-
-mcpSchemaCurl : String -> String -> String
-mcpSchemaCurl origin taskId =
-    "curl -X POST "
-        ++ origin
-        ++ "/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Mcp-Session-Id: <MCP_SESSION_ID>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.get_task_schema\",\"arguments\":{\"task_id\":\""
-        ++ taskId
-        ++ "\"}}}'"
+        ++ "/submissions -H \"Authorization: Bearer "
+        ++ token
+        ++ "\" -H \"Content-Type: application/json\" -d '{\"response_json\":\"{}\"}'"
 
 
 fundSuccessLabel : Ledger.TaskEscrowResponse -> String

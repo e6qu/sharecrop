@@ -1,10 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 51 work, merged into `main`.
+The repository contains pull request 1 through pull request 52 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/mobile-demo-design` is a mobile-usability + demo-completeness + design-surface round (two specialized review subagents) with a re-run fuzz pass. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/task-integration-panel` reworks the task detail's API/MCP instructions into a uniform, collapsible, placeholder-free panel and lets one agent token drive both REST and MCP. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/task-integration-panel`:
+
+- One token for REST + MCP: a new `requireWorkerSubject(r, scope)` accepts either a user access token or an agent credential holding the required scope (acting as its owning user, exactly as over MCP), applied to the worker REST endpoints `GET /api/tasks/{id}` (tasks_read), reserve and submit (submissions_write). An http_e2e test proves an agent token works on those endpoints and is scope-gated.
+- Task detail "API & MCP" panel: collapsed by default; a "Create agent token" button mints an agent credential inline and shows the real token (copyable); below it, uniform REST and MCP entries each carry a one-line description, a copy button (via a new `copyToClipboard` Elm port wired in both index.html files), and real values (origin, task id, token) with no placeholders. MCP is shown as the `.mcp.json` install plus JSON-RPC tool-call bodies (no manual session id); REST as curl using the same token. The old `<ACCESS_TOKEN>`/`<AGENT_TOKEN>`/`<MCP_SESSION_ID>` examples were removed.
+- Playwright covers the collapsed-by-default panel, minting a real token, and placeholder-free commands.
+
+Earlier branch `task/mobile-demo-design` (pull request 52, merged) made the demo credit economy work on review actions, fixed mobile usability (a mobile Playwright project caught real overflows), and added a structured response-schema designer.
 
 Implemented in `task/mobile-demo-design`:
 

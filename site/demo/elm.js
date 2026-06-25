@@ -6821,6 +6821,7 @@ var $author$project$Sharecrop$Api$collectiblesFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Main$copyToClipboard = _Platform_outgoingPort('copyToClipboard', $elm$json$Json$Encode$string);
 var $author$project$Sharecrop$Types$AgentCreated = function (a) {
 	return {$: 'AgentCreated', a: a};
 };
@@ -8147,8 +8148,10 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		submissions: _List_Nil,
 		submitInput: '',
 		submitMessage: $elm$core$Maybe$Nothing,
+		taskAgentToken: $elm$core$Maybe$Nothing,
 		taskCommentBody: '',
 		taskComments: _List_Nil,
+		taskIntegrationOpen: false,
 		taskStateFilter: '',
 		tasks: _List_Nil,
 		teamDetail: $elm$core$Maybe$Nothing,
@@ -8264,6 +8267,24 @@ var $author$project$Sharecrop$Api$mintCommand = F2(
 var $author$project$Sharecrop$View$mintSuccessLabel = function (collectible) {
 	return 'Minted ' + (collectible.name + (' (' + ($author$project$Sharecrop$Labels$collectibleStateLabel(collectible.state) + ').')));
 };
+var $author$project$Sharecrop$Types$TaskTokenMinted = function (a) {
+	return {$: 'TaskTokenMinted', a: a};
+};
+var $author$project$Sharecrop$Api$mintTaskToken = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'POST',
+		token,
+		'/api/agent-credentials',
+		$elm$http$Http$jsonBody(
+			A2(
+				$author$project$Sharecrop$Api$agentRequestBody,
+				'Task worker token',
+				_List_fromArray(
+					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead]))),
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TaskTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
+};
+var $elm$core$Basics$not = _Basics_not;
 var $author$project$Sharecrop$Generated$Organization$OrganizationMembersResponse = function (members) {
 	return {members: members};
 };
@@ -10302,6 +10323,49 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'ToggleTaskIntegration':
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{taskIntegrationOpen: !state.taskIntegrationOpen});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'MintTaskTokenClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							$author$project$Sharecrop$Api$mintTaskToken(state.accessToken));
+					});
+			case 'TaskTokenMinted':
+				if (msg.a.$ === 'Ok') {
+					var created = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										taskAgentToken: $elm$core$Maybe$Just(created.secret)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'CopyClicked':
+				var clipboardText = msg.a;
+				return _Utils_Tuple2(
+					model,
+					$author$project$Main$copyToClipboard(clipboardText));
 			case 'RevokeClicked':
 				var credentialId = msg.a;
 				return A2(
@@ -10370,7 +10434,7 @@ var $author$project$Main$update = F2(
 						function (s) {
 							return _Utils_update(
 								s,
-								{detail: $elm$core$Maybe$Nothing, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil});
+								{detail: $elm$core$Maybe$Nothing, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
 						}),
 					A2($elm$browser$Browser$Navigation$pushUrl, model.key, '/tasks/' + taskId));
 			case 'DetailReceived':
@@ -13522,7 +13586,6 @@ var $author$project$Sharecrop$View$discoveryList = function (tasks) {
 			]),
 		A2($elm$core$List$map, $author$project$Sharecrop$View$discoveryRow, tasks));
 };
-var $elm$core$Basics$not = _Basics_not;
 var $author$project$Sharecrop$View$discoveryView = function (state) {
 	return $author$project$Sharecrop$Ui$card(
 		_List_fromArray(
@@ -14832,27 +14895,186 @@ var $author$project$Sharecrop$View$taskInputBlock = function (detail) {
 			detail.payloadJson)
 		]) : _List_Nil;
 };
-var $author$project$Sharecrop$View$mcpInitializeCurl = function (origin) {
-	return 'curl -i -X POST ' + (origin + '/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\'');
+var $author$project$Sharecrop$Types$ToggleTaskIntegration = {$: 'ToggleTaskIntegration'};
+var $author$project$Sharecrop$Types$MintTaskTokenClicked = {$: 'MintTaskTokenClicked'};
+var $author$project$Sharecrop$Types$CopyClicked = function (a) {
+	return {$: 'CopyClicked', a: a};
 };
-var $author$project$Sharecrop$View$mcpSchemaCurl = F2(
-	function (origin, taskId) {
-		return 'curl -X POST ' + (origin + ('/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Mcp-Session-Id: <MCP_SESSION_ID>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \'{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.get_task_schema\",\"arguments\":{\"task_id\":\"' + (taskId + '\"}}}\'')));
+var $author$project$Sharecrop$View$copyButton = function (clipboardText) {
+	return A2(
+		$author$project$Sharecrop$Ui$secondaryButton,
+		_List_fromArray(
+			[
+				$elm$html$Html$Events$onClick(
+				$author$project$Sharecrop$Types$CopyClicked(clipboardText)),
+				$author$project$Sharecrop$Ui$testId('copy-command')
+			]),
+		'Copy');
+};
+var $author$project$Sharecrop$View$integrationEntry = F3(
+	function (description, identifier, command) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-700')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(description)
+						])),
+					A2(
+					$author$project$Sharecrop$Ui$codeBlock,
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$testId(identifier)
+						]),
+					command),
+					$author$project$Sharecrop$View$copyButton(command)
+				]));
 	});
-var $author$project$Sharecrop$View$mcpSubmitCurl = F2(
-	function (origin, taskId) {
-		return 'curl -X POST ' + (origin + ('/mcp \\\n  -H \"Authorization: Bearer <AGENT_TOKEN>\" \\\n  -H \"Mcp-Session-Id: <MCP_SESSION_ID>\" \\\n  -H \"Accept: application/json, text/event-stream\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \'{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.submit_response\",\"arguments\":{\"task_id\":\"' + (taskId + '\",\"response_json\":\"{}\"}}}\'')));
+var $author$project$Sharecrop$View$mcpSchemaBody = function (taskId) {
+	return '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.get_task_schema\",\"arguments\":{\"task_id\":\"' + (taskId + '\"}}}');
+};
+var $author$project$Sharecrop$View$mcpSubmitBody = function (taskId) {
+	return '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"sharecrop.submit_response\",\"arguments\":{\"task_id\":\"' + (taskId + '\",\"response_json\":\"{}\"}}}');
+};
+var $author$project$Sharecrop$View$restGetCurl = F3(
+	function (origin, taskId, token) {
+		return 'curl ' + (origin + ('/api/tasks/' + (taskId + (' -H \"Authorization: Bearer ' + (token + '\"')))));
 	});
-var $author$project$Sharecrop$View$restReserveCurl = F2(
-	function (origin, taskId) {
-		return 'curl -X POST ' + (origin + ('/api/tasks/' + (taskId + '/reservations \\\n  -H \"Authorization: Bearer <ACCESS_TOKEN>\"')));
+var $author$project$Sharecrop$View$restReserveCurl = F3(
+	function (origin, taskId, token) {
+		return 'curl -X POST ' + (origin + ('/api/tasks/' + (taskId + ('/reservations -H \"Authorization: Bearer ' + (token + '\"')))));
 	});
-var $author$project$Sharecrop$View$restSubmitCurl = F2(
-	function (origin, taskId) {
-		return 'curl -X POST ' + (origin + ('/api/tasks/' + (taskId + '/submissions \\\n  -H \"Authorization: Bearer <ACCESS_TOKEN>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \'{\"response_json\":\"{}\"}\'')));
+var $author$project$Sharecrop$View$restSubmitCurl = F3(
+	function (origin, taskId, token) {
+		return 'curl -X POST ' + (origin + ('/api/tasks/' + (taskId + ('/submissions -H \"Authorization: Bearer ' + (token + '\" -H \"Content-Type: application/json\" -d \'{\"response_json\":\"{}\"}\'')))));
 	});
-var $author$project$Sharecrop$View$taskInstructions = F2(
-	function (origin, taskId) {
+var $author$project$Sharecrop$View$taskIntegrationBody = F3(
+	function (origin, taskId, state) {
+		var _v0 = state.taskAgentToken;
+		if (_v0.$ === 'Nothing') {
+			return A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-2')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-sm text-slate-700')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Create an agent token to get runnable, copy-paste commands for this task.')
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$MintTaskTokenClicked),
+								$author$project$Sharecrop$Ui$testId('mint-task-token')
+							]),
+						'Create agent token')
+					]));
+		} else {
+			var token = _v0.a;
+			return A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-4')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('space-y-2')
+							]),
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$label_('Agent token'),
+								A2(
+								$author$project$Sharecrop$Ui$codeBlock,
+								_List_fromArray(
+									[
+										$author$project$Sharecrop$Ui$testId('integration-token')
+									]),
+								token),
+								$author$project$Sharecrop$View$copyButton(token),
+								A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-sm text-slate-700')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Use this as the Bearer token below. Treat it like a password.')
+									])),
+								A2(
+								$author$project$Sharecrop$Ui$secondaryButton,
+								_List_fromArray(
+									[
+										$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$MintTaskTokenClicked),
+										$author$project$Sharecrop$Ui$testId('mint-task-token')
+									]),
+								'Rotate')
+							])),
+						$author$project$Sharecrop$Ui$label_('MCP'),
+						A3(
+						$author$project$Sharecrop$View$integrationEntry,
+						'Install the MCP server (add to your .mcp.json or Claude config):',
+						'integration-mcp-config',
+						A2($author$project$Sharecrop$View$mcpConfig, origin, token)),
+						A3(
+						$author$project$Sharecrop$View$integrationEntry,
+						'Fetch the response schema your submission must match:',
+						'integration-mcp-schema',
+						$author$project$Sharecrop$View$mcpSchemaBody(taskId)),
+						A3(
+						$author$project$Sharecrop$View$integrationEntry,
+						'Submit your response to this task:',
+						'integration-mcp-submit',
+						$author$project$Sharecrop$View$mcpSubmitBody(taskId)),
+						$author$project$Sharecrop$Ui$label_('REST API'),
+						A3(
+						$author$project$Sharecrop$View$integrationEntry,
+						'Get this task over REST:',
+						'integration-rest-get',
+						A3($author$project$Sharecrop$View$restGetCurl, origin, taskId, token)),
+						A3(
+						$author$project$Sharecrop$View$integrationEntry,
+						'Reserve this task:',
+						'integration-rest-reserve',
+						A3($author$project$Sharecrop$View$restReserveCurl, origin, taskId, token)),
+						A3(
+						$author$project$Sharecrop$View$integrationEntry,
+						'Submit your response:',
+						'integration-rest-submit',
+						A3($author$project$Sharecrop$View$restSubmitCurl, origin, taskId, token))
+					]));
+		}
+	});
+var $author$project$Sharecrop$View$taskIntegration = F3(
+	function (origin, taskId, state) {
+		var indicator = state.taskIntegrationOpen ? ' ▾' : ' ▸';
+		var body = state.taskIntegrationOpen ? A3($author$project$Sharecrop$View$taskIntegrationBody, origin, taskId, state) : $elm$html$Html$text('');
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
@@ -14862,43 +15084,15 @@ var $author$project$Sharecrop$View$taskInstructions = F2(
 				]),
 			_List_fromArray(
 				[
-					$author$project$Sharecrop$Ui$label_('REST API'),
 					A2(
-					$author$project$Sharecrop$Ui$codeBlock,
+					$author$project$Sharecrop$Ui$secondaryButton,
 					_List_fromArray(
 						[
-							$author$project$Sharecrop$Ui$testId('task-rest-submit')
+							$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$ToggleTaskIntegration),
+							$author$project$Sharecrop$Ui$testId('toggle-integration')
 						]),
-					A2($author$project$Sharecrop$View$restSubmitCurl, origin, taskId)),
-					A2(
-					$author$project$Sharecrop$Ui$codeBlock,
-					_List_fromArray(
-						[
-							$author$project$Sharecrop$Ui$testId('task-rest-reserve')
-						]),
-					A2($author$project$Sharecrop$View$restReserveCurl, origin, taskId)),
-					$author$project$Sharecrop$Ui$label_('MCP'),
-					A2(
-					$author$project$Sharecrop$Ui$codeBlock,
-					_List_fromArray(
-						[
-							$author$project$Sharecrop$Ui$testId('task-mcp-initialize')
-						]),
-					$author$project$Sharecrop$View$mcpInitializeCurl(origin)),
-					A2(
-					$author$project$Sharecrop$Ui$codeBlock,
-					_List_fromArray(
-						[
-							$author$project$Sharecrop$Ui$testId('task-mcp-submit')
-						]),
-					A2($author$project$Sharecrop$View$mcpSubmitCurl, origin, taskId)),
-					A2(
-					$author$project$Sharecrop$Ui$codeBlock,
-					_List_fromArray(
-						[
-							$author$project$Sharecrop$Ui$testId('task-mcp-schema')
-						]),
-					A2($author$project$Sharecrop$View$mcpSchemaCurl, origin, taskId))
+					'API & MCP' + indicator),
+					body
 				]));
 	});
 var $author$project$Sharecrop$View$taskTypeBadge = function (detail) {
@@ -14992,7 +15186,7 @@ var $author$project$Sharecrop$View$detailCard = F2(
 												$author$project$Sharecrop$Ui$testId('detail-schema')
 											]),
 										detail.responseSchemaJson),
-										A2($author$project$Sharecrop$View$taskInstructions, origin, detail.id)
+										A3($author$project$Sharecrop$View$taskIntegration, origin, detail.id, state)
 									]))))));
 		} else {
 			return $author$project$Sharecrop$Ui$card(

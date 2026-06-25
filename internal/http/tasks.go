@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/schema"
@@ -86,7 +87,7 @@ func (server Server) unpublishTask(w http.ResponseWriter, r *http.Request) {
 	server.changeTaskState(w, r, server.taskService.Unpublish)
 }
 func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
+	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
