@@ -96,6 +96,11 @@ emptyLoggedIn response =
     , collectibleMessage = Nothing
     , awardTaskId = ""
     , awardMessage = Nothing
+    , collectibleCatalog = []
+    , awardRecipientKind = "user"
+    , awardRecipientId = ""
+    , transferRecipientId = ""
+    , transferMessage = Nothing
     , organizations = []
     , createOrgName = ""
     , orgMessage = Nothing
@@ -681,6 +686,61 @@ update msg model =
 
         AwardReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        CollectibleCatalogReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | collectibleCatalog = response.entries }), Cmd.none )
+
+        CollectibleCatalogReceived (Err _) ->
+            ( model, Cmd.none )
+
+        AwardRecipientKindChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | awardRecipientKind = value }), Cmd.none )
+
+        AwardRecipientIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | awardRecipientId = value }), Cmd.none )
+
+        AwardDefaultClicked slug ->
+            Api.withSession model
+                (\state ->
+                    if String.trim state.awardRecipientId == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | awardMessage = Just "Enter a recipient id first." }), Cmd.none )
+
+                    else
+                        ( model, Api.awardDefaultCollectible state.accessToken slug state.awardRecipientKind state.awardRecipientId )
+                )
+
+        AwardDefaultReceived (Ok _) ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | awardMessage = Just "Awarded the collectible." })
+            in
+            ( updated, Api.refreshCollectibles updated )
+
+        AwardDefaultReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        TransferRecipientIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | transferRecipientId = value }), Cmd.none )
+
+        TransferCollectibleClicked collectibleId ->
+            Api.withSession model
+                (\state ->
+                    if String.trim state.transferRecipientId == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | transferMessage = Just "Enter a recipient id first." }), Cmd.none )
+
+                    else
+                        ( model, Api.transferCollectible state.accessToken collectibleId state.transferRecipientId )
+                )
+
+        TransferCollectibleReceived (Ok _) ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | transferMessage = Just "Transferred." })
+            in
+            ( updated, Api.refreshCollectibles updated )
+
+        TransferCollectibleReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | transferMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         OrganizationsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | organizations = Api.organizationsFromResult result }), Cmd.none )

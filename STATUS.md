@@ -1,10 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 55 work, merged into `main`.
+The repository contains pull request 1 through pull request 56 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/create-template-menu` turns the create-task "Task type" field into an explicit Template/Freeform menu and applies a batch of usability fixes from a specialized UI/UX review. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/default-collectibles` adds 25 hand-crafted pixel-art default collectibles with an admin award flow (to users/teams/orgs) and user-to-user trading. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/default-collectibles`:
+
+- A catalog of 25 default collectibles (farm/harvest theme; kind doubles as rarity — badge/edition/unique), defined in `internal/assets/catalog.go` and rendered as hand-crafted CSS pixel sprites (`web/elm/src/Sharecrop/Sprites.elm`, `pixel slug cell`). Collectibles gained an `art` slug (migration `000020`, `Collectible.Art`, contracts).
+- Real backend: `GET /api/collectibles/catalog`, `POST /api/collectibles/award` (mints a catalog copy to a user; rejects team/org with a demo-only note), and `POST /api/collectibles/{id}/transfer` (user→user, policy-enforced via the existing `GiftCollectible`). `Mint` carries the art slug.
+- Demo: the catalog gallery, an admin "award to user/team/org" panel, and trading are fully playable; awarding to yourself shows the new copy in your holdings.
+- Elm: a catalog gallery on the Collectibles page, sprites on holdings + detail, an award-recipient control, and a Trade form on the collectible detail.
+- Tests: assets unit, http_e2e (catalog/award/transfer + team-award rejection), Playwright (demo gallery + award + trade), and the mobile overflow test now covers the gallery.
+- Deferred (flagged): real-backend org/team ownership (collectibles stay user-owned on the real DB; org/team award is showcased in the demo) and a real system-admin role (award is currently an ungated faucet).
 
 Implemented in `task/create-template-menu`:
 

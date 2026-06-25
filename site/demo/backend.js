@@ -12,6 +12,37 @@
 
   const ME = "user-mara";
 
+  // The 25 default collectibles (mirrors internal/assets/catalog.go). All are
+  // tradeable; kind doubles as rarity (badge=common, edition=rare, unique=legendary).
+  const catalogEntry = (slug, name, kind) => ({ slug, name, kind, transfer_policy: "transferable_between_users", art: slug });
+  const COLLECTIBLE_CATALOG = [
+    catalogEntry("harvest-star", "Harvest Star", "badge"),
+    catalogEntry("golden-sickle", "Golden Sickle", "badge"),
+    catalogEntry("seedling", "Seedling", "badge"),
+    catalogEntry("sun-token", "Sun Token", "badge"),
+    catalogEntry("rain-drop", "Rain Drop", "badge"),
+    catalogEntry("wheat-sheaf", "Wheat Sheaf", "badge"),
+    catalogEntry("red-barn", "Red Barn", "badge"),
+    catalogEntry("scarecrow", "Scarecrow", "badge"),
+    catalogEntry("honey-pot", "Honey Pot", "badge"),
+    catalogEntry("pumpkin", "Pumpkin", "badge"),
+    catalogEntry("apple", "Apple", "badge"),
+    catalogEntry("carrot", "Carrot", "badge"),
+    catalogEntry("beehive", "Beehive", "badge"),
+    catalogEntry("windmill", "Windmill", "badge"),
+    catalogEntry("tractor", "Tractor", "badge"),
+    catalogEntry("silver-plow", "Silver Plow", "edition"),
+    catalogEntry("golden-egg", "Golden Egg", "edition"),
+    catalogEntry("prize-cow", "Prize Cow", "edition"),
+    catalogEntry("lucky-clover", "Lucky Clover", "edition"),
+    catalogEntry("full-moon-harvest", "Full-Moon Harvest", "edition"),
+    catalogEntry("cornucopia", "Cornucopia", "unique"),
+    catalogEntry("first-harvest-trophy", "First-Harvest Trophy", "unique"),
+    catalogEntry("founders-seed", "Founder's Seed", "unique"),
+    catalogEntry("rainbow-field", "Rainbow Field", "unique"),
+    catalogEntry("golden-combine", "Golden Combine", "unique"),
+  ];
+
   // Realistic, deep example tasks: concrete instructions, real-looking input
   // payloads, and strict response schemas a requester would actually post.
   const invoiceSchema = JSON.stringify({
@@ -133,8 +164,8 @@
       { id: "entry-5", kind: "task_refund", amount: 45, task_id: "task-8" },
     ],
     collectibles: [
-      { id: "col-1", name: "Harvest Star", kind: "badge", state: "minted", transfer_policy: "transferable_between_users", owner_id: ME },
-      { id: "col-2", name: "Golden Sickle", kind: "badge", state: "minted", transfer_policy: "non_transferable_except_payout", owner_id: ME },
+      { id: "col-1", name: "Harvest Star", kind: "badge", state: "minted", transfer_policy: "transferable_between_users", owner_id: ME, art: "harvest-star" },
+      { id: "col-2", name: "Golden Sickle", kind: "badge", state: "minted", transfer_policy: "non_transferable_except_payout", owner_id: ME, art: "golden-sickle" },
     ],
     organizations: [{ id: "org-lattice", name: "Lattice Field Co", created_by: ME }],
     orgBalances: { "org-lattice": 7200 },
@@ -601,9 +632,36 @@
 
   on("GET", "/api/collectibles", () => ok({ collectibles: db.collectibles.filter((c) => c.owner_id === ME) }));
   on("POST", "/api/collectibles", (_p, _url, body) => {
-    const c = { id: nextId("col"), name: (body && body.name) || "Collectible", kind: (body && body.kind) || "badge", state: "minted", transfer_policy: (body && body.transfer_policy) || "transferable_between_users", owner_id: ME };
+    const c = { id: nextId("col"), name: (body && body.name) || "Collectible", kind: (body && body.kind) || "badge", state: "minted", transfer_policy: (body && body.transfer_policy) || "transferable_between_users", owner_id: ME, art: (body && body.art) || "" };
     db.collectibles.push(c);
     return ok(c, 201);
+  });
+  // The default-collectible catalog (mirrors internal/assets/catalog.go). Kind
+  // doubles as rarity: badge=common, edition=rare, unique=legendary.
+  on("GET", "/api/collectibles/catalog", () => ok({ entries: COLLECTIBLE_CATALOG }));
+  // Admin award: mint a fresh copy of a default collectible owned by the
+  // recipient (a user, team, or organization). Awarding to yourself makes the
+  // copy show up in your holdings immediately.
+  on("POST", "/api/collectibles/award", (_p, _url, body) => {
+    const slug = body && body.slug;
+    const entry = COLLECTIBLE_CATALOG.find((e) => e.slug === slug);
+    if (!entry) return err(400, "unknown default collectible");
+    const recipientKind = (body && body.recipient_kind) || "user";
+    const recipientId = (body && body.recipient_id) || "";
+    if (recipientId === "") return err(400, "recipient is required");
+    const c = { id: nextId("col"), name: entry.name, kind: entry.kind, state: "minted", transfer_policy: entry.transfer_policy, owner_id: recipientId, owner_kind: recipientKind, art: entry.art };
+    db.collectibles.push(c);
+    return ok(c, 201);
+  });
+  // Trade: move a collectible to another user.
+  on("POST", "/api/collectibles/:id/transfer", (p, _url, body) => {
+    const c = db.collectibles.find((x) => x.id === p.id);
+    if (!c) return err(404, "collectible not found");
+    const recipientId = (body && body.recipient_id) || "";
+    if (recipientId === "") return err(400, "recipient is required");
+    if (c.transfer_policy !== "transferable_between_users") return err(409, "this collectible cannot be traded");
+    c.owner_id = recipientId; c.owner_kind = "user";
+    return ok(c);
   });
   on("POST", "/api/tasks/:id/collectible-reward", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");

@@ -138,4 +138,5 @@ type Collectible struct {
 	State   CollectibleState
 	Policy  TransferPolicy
 	OwnerID core.UserID
+	Art     string
 }

@@ -130,17 +130,19 @@ type alias CollectibleResponse =
     , state : CollectibleState
     , transferPolicy : CollectibleTransferPolicy
     , ownerID : String
+    , art : String
     }
 
 collectibleResponseDecoder : Decoder CollectibleResponse
 collectibleResponseDecoder =
-    Decode.map6 CollectibleResponse
+    Decode.map7 CollectibleResponse
         (Decode.field "id" Decode.string)
         (Decode.field "name" Decode.string)
         (Decode.field "kind" collectibleKindDecoder)
         (Decode.field "state" collectibleStateDecoder)
         (Decode.field "transfer_policy" collectibleTransferPolicyDecoder)
         (Decode.field "owner_id" Decode.string)
+        (Decode.field "art" Decode.string)
 
 collectibleResponseEncoder : CollectibleResponse -> Encode.Value
 collectibleResponseEncoder collectibleResponse =
@@ -151,6 +153,7 @@ collectibleResponseEncoder collectibleResponse =
         , ( "state", collectibleStateEncoder collectibleResponse.state )
         , ( "transfer_policy", collectibleTransferPolicyEncoder collectibleResponse.transferPolicy )
         , ( "owner_id", Encode.string collectibleResponse.ownerID )
+        , ( "art", Encode.string collectibleResponse.art )
         ]
 
 type alias CollectiblesResponse =
@@ -166,4 +169,46 @@ collectiblesResponseEncoder : CollectiblesResponse -> Encode.Value
 collectiblesResponseEncoder collectiblesResponse =
     Encode.object
         [ ( "collectibles", Encode.list collectibleResponseEncoder collectiblesResponse.collectibles )
+        ]
+
+type alias CollectibleCatalogEntry =
+    { slug : String
+    , name : String
+    , kind : CollectibleKind
+    , transferPolicy : CollectibleTransferPolicy
+    , art : String
+    }
+
+collectibleCatalogEntryDecoder : Decoder CollectibleCatalogEntry
+collectibleCatalogEntryDecoder =
+    Decode.map5 CollectibleCatalogEntry
+        (Decode.field "slug" Decode.string)
+        (Decode.field "name" Decode.string)
+        (Decode.field "kind" collectibleKindDecoder)
+        (Decode.field "transfer_policy" collectibleTransferPolicyDecoder)
+        (Decode.field "art" Decode.string)
+
+collectibleCatalogEntryEncoder : CollectibleCatalogEntry -> Encode.Value
+collectibleCatalogEntryEncoder collectibleCatalogEntry =
+    Encode.object
+        [ ( "slug", Encode.string collectibleCatalogEntry.slug )
+        , ( "name", Encode.string collectibleCatalogEntry.name )
+        , ( "kind", collectibleKindEncoder collectibleCatalogEntry.kind )
+        , ( "transfer_policy", collectibleTransferPolicyEncoder collectibleCatalogEntry.transferPolicy )
+        , ( "art", Encode.string collectibleCatalogEntry.art )
+        ]
+
+type alias CollectibleCatalogResponse =
+    { entries : List CollectibleCatalogEntry
+    }
+
+collectibleCatalogResponseDecoder : Decoder CollectibleCatalogResponse
+collectibleCatalogResponseDecoder =
+    Decode.map CollectibleCatalogResponse
+        (Decode.field "entries" (Decode.list collectibleCatalogEntryDecoder))
+
+collectibleCatalogResponseEncoder : CollectibleCatalogResponse -> Encode.Value
+collectibleCatalogResponseEncoder collectibleCatalogResponse =
+    Encode.object
+        [ ( "entries", Encode.list collectibleCatalogEntryEncoder collectibleCatalogResponse.entries )
         ]

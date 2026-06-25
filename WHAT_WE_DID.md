@@ -1,5 +1,15 @@
 # What We Did
 
+`task/default-collectibles` added 25 hand-crafted pixel-art default collectibles with an admin award flow and user-to-user trading, in a single PR:
+
+- **25-item catalog** (`internal/assets/catalog.go`): a farm/harvest-themed set where `kind` doubles as rarity — 15 badges (common), 5 editions (rare), 5 unique (legendary), all tradeable. Each carries an `art` slug.
+- **Pixel sprites** (`web/elm/src/Sharecrop/Sprites.elm`): each of the 25 is a hand-authored CSS pixel-art icon (`pixel slug cell` → a grid of colored cells), themed to the arcade palette. Shown in the catalog gallery, on holdings rows, and large on the detail page.
+- **Model/contracts:** collectibles gained an `art` field — migration `000020`, `assets.Collectible.Art`, `Mint(..., art)`, `CollectibleResponse.art`, plus generated `CollectibleCatalogEntry`/`CollectibleCatalogResponse` types.
+- **Real backend endpoints:** `GET /api/collectibles/catalog`; `POST /api/collectibles/award` (mints a catalog copy owned by a user; team/org recipients are rejected with a demo-only note); `POST /api/collectibles/{id}/transfer` (user→user, reusing the policy-enforced `GiftCollectible`).
+- **Demo (full showcase):** `backend.js` seeds the 25-entry catalog, implements award to user/team/org (owner_kind) and transfer; the Collectibles page has an admin award-recipient control and the gallery; awarding to yourself surfaces the copy in your holdings; trading moves it on. The transfer confirmation is rendered at the detail-card level so it persists after the traded item leaves your holdings.
+- **Tests:** `assets` unit, `http_e2e` (catalog count, award, holdings, trade-back, team-award rejection), Playwright (`demo.spec` gallery + award + trade); the mobile overflow test now also covers the gallery.
+- **Deferred (flagged in the PR):** real-DB org/team *ownership* of collectibles (the real backend keeps user ownership; org/team awarding is demonstrated in the demo) and a real system-admin role (award is an ungated faucet for now).
+
 `task/create-template-menu` reframed task creation around templates and applied a batch of usability fixes from a specialized UI/UX review:
 
 - Create-task: the "Task type" select became a **Template** menu — "Freeform (no template)" or a named template (Code review, Security review, Product review, UI/UX review, QA testing). Freeform shows the structured schema designer; selecting a template hides the designer, prefills the description + response schema, and shows a note explaining that. `CreateTaskTypeChanged` now clears `createSchemaFields` when applying a template (and resets to a freeform schema when switching back), which fixes the designer-vs-raw-JSON silent-clobber the review flagged.

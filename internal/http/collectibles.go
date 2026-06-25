@@ -12,6 +12,7 @@ type mintCollectibleRequest struct {
 	Name           string `json:"name"`
 	Kind           string `json:"kind"`
 	TransferPolicy string `json:"transfer_policy"`
+	Art            string `json:"art"`
 }
 
 type collectibleResponse struct {
@@ -21,19 +22,44 @@ type collectibleResponse struct {
 	State          string `json:"state"`
 	TransferPolicy string `json:"transfer_policy"`
 	OwnerID        string `json:"owner_id"`
+	Art            string `json:"art"`
 }
 
 type collectiblesResponse struct {
 	Collectibles []collectibleResponse `json:"collectibles"`
 }
 
+type catalogEntryResponse struct {
+	Slug           string `json:"slug"`
+	Name           string `json:"name"`
+	Kind           string `json:"kind"`
+	TransferPolicy string `json:"transfer_policy"`
+	Art            string `json:"art"`
+}
+
+type collectibleCatalogResponse struct {
+	Entries []catalogEntryResponse `json:"entries"`
+}
+
 type collectibleRewardRequest struct {
 	CollectibleID string `json:"collectible_id"`
+}
+
+type awardCollectibleRequest struct {
+	Slug          string `json:"slug"`
+	RecipientKind string `json:"recipient_kind"`
+	RecipientID   string `json:"recipient_id"`
+}
+
+type transferCollectibleRequest struct {
+	RecipientID string `json:"recipient_id"`
 }
 
 func (collectibleResponse) writableResponse() {}
 
 func (collectiblesResponse) writableResponse() {}
+
+func (collectibleCatalogResponse) writableResponse() {}
 
 func (server Server) mintCollectible(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
@@ -68,7 +94,7 @@ func (server Server) mintCollectible(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.assetService.Mint(r.Context(), actor.subject.ID, name.Value, kind.Value, policy.Value)
+	result := server.assetService.Mint(r.Context(), actor.subject.ID, name.Value, kind.Value, policy.Value, request.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(assets.MintRejected).Reason.Description())
@@ -76,6 +102,110 @@ func (server Server) mintCollectible(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, collectibleToResponse(minted.Value))
+}
+
+// collectibleCatalog lists the platform's default collectibles (the templates an
+// admin can award). It is a fixed, code-defined set, so no store is consulted.
+func (server Server) collectibleCatalog(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	if _, matched := actorResult.(userSubjectAccepted); !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+
+	entries := assets.Catalog()
+	response := collectibleCatalogResponse{Entries: make([]catalogEntryResponse, 0, len(entries))}
+	for index := range entries {
+		response.Entries = append(response.Entries, catalogEntryResponse{
+			Slug:           entries[index].Slug,
+			Name:           entries[index].Name,
+			Kind:           entries[index].Kind.String(),
+			TransferPolicy: entries[index].Policy.String(),
+			Art:            entries[index].Art,
+		})
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+// awardCollectible mints a fresh copy of a default-catalog collectible owned by
+// the recipient. Trading then lets the recipient move it on.
+func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	if _, matched := actorResult.(userSubjectAccepted); !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+
+	var request awardCollectibleRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	entry, found := assets.CatalogBySlug(request.Slug)
+	if !found {
+		writeError(w, http.StatusBadRequest, "unknown default collectible")
+		return
+	}
+	if request.RecipientKind != "" && request.RecipientKind != "user" {
+		writeError(w, http.StatusBadRequest, "awarding to a team or organization is only available in the demo")
+		return
+	}
+	recipientResult := core.ParseUserID(request.RecipientID)
+	recipient, recipientMatched := recipientResult.(core.UserIDCreated)
+	if !recipientMatched {
+		writeError(w, http.StatusBadRequest, recipientResult.(core.UserIDRejected).Reason.Description())
+		return
+	}
+	nameResult := assets.NewCollectibleName(entry.Name)
+	name, nameMatched := nameResult.(assets.CollectibleNameAccepted)
+	if !nameMatched {
+		writeError(w, http.StatusBadRequest, nameResult.(assets.CollectibleNameRejected).Reason.Description())
+		return
+	}
+
+	result := server.assetService.Mint(r.Context(), recipient.Value, name.Value, entry.Kind, entry.Policy, entry.Art)
+	minted, matched := result.(assets.CollectibleMinted)
+	if !matched {
+		writeError(w, http.StatusBadRequest, result.(assets.MintRejected).Reason.Description())
+		return
+	}
+	writeJSON(w, http.StatusCreated, collectibleToResponse(minted.Value))
+}
+
+// transferCollectible moves an owned, transferable collectible to another user,
+// enforcing the transfer policy in the store transaction.
+func (server Server) transferCollectible(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	collectibleIDResult := core.ParseCollectibleID(r.PathValue("id"))
+	collectibleID, idMatched := collectibleIDResult.(core.CollectibleIDCreated)
+	if !idMatched {
+		writeError(w, http.StatusBadRequest, collectibleIDResult.(core.CollectibleIDRejected).Reason.Description())
+		return
+	}
+	var request transferCollectibleRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	recipientResult := core.ParseUserID(request.RecipientID)
+	recipient, recipientMatched := recipientResult.(core.UserIDCreated)
+	if !recipientMatched {
+		writeError(w, http.StatusBadRequest, recipientResult.(core.UserIDRejected).Reason.Description())
+		return
+	}
+
+	result := server.assetService.GiftCollectible(r.Context(), actor.subject.ID, recipient.Value, collectibleID.Value)
+	gifted, matched := result.(assets.CollectibleGifted)
+	if !matched {
+		writeDomainError(w, result.(assets.GiftRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusOK, collectibleToResponse(gifted.Value))
 }
 
 func (server Server) listCollectibles(w http.ResponseWriter, r *http.Request) {
@@ -174,5 +304,6 @@ func collectibleToResponse(value assets.Collectible) collectibleResponse {
 		State:          value.State.String(),
 		TransferPolicy: value.Policy.String(),
 		OwnerID:        value.OwnerID.String(),
+		Art:            value.Art,
 	}
 }

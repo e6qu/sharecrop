@@ -118,6 +118,11 @@ type alias LoggedInModel =
     , collectibleMessage : Maybe String
     , awardTaskId : String
     , awardMessage : Maybe String
+    , collectibleCatalog : List Collectible.CollectibleCatalogEntry
+    , awardRecipientKind : String
+    , awardRecipientId : String
+    , transferRecipientId : String
+    , transferMessage : Maybe String
     , organizations : List Organization.OrganizationResponse
     , createOrgName : String
     , orgMessage : Maybe String
@@ -283,6 +288,14 @@ type Msg
     | AwardTaskIdChanged String
     | AwardClicked String
     | AwardReceived (Result Http.Error Collectible.CollectibleResponse)
+    | CollectibleCatalogReceived (Result Http.Error Collectible.CollectibleCatalogResponse)
+    | AwardRecipientKindChanged String
+    | AwardRecipientIdChanged String
+    | AwardDefaultClicked String
+    | AwardDefaultReceived (Result Http.Error Collectible.CollectibleResponse)
+    | TransferRecipientIdChanged String
+    | TransferCollectibleClicked String
+    | TransferCollectibleReceived (Result Http.Error Collectible.CollectibleResponse)
     | OrganizationsReceived (Result Http.Error Organization.OrganizationsResponse)
     | CreateOrgNameChanged String
     | CreateOrgClicked
