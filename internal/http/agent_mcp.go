@@ -165,7 +165,7 @@ func (agentCredentialCreatedResponse) writableResponse() {}
 func (agentCredentialsResponse) writableResponse() {}
 
 func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
+	actorResult := server.requireWorkerSubject(r, agent.ScopeTasksRead)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)

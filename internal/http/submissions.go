@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
 
 func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
+	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)

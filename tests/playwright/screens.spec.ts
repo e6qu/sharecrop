@@ -117,9 +117,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   const ownerRow = page.getByTestId("task-row").filter({ hasText: title });
   await expect(ownerRow).toHaveCount(1);
   await ownerRow.getByTestId("view-task").click();
-  await expect(page.getByTestId("task-instructions")).toContainText(
-    "sharecrop.get_task_schema",
-  );
+  await expect(page.getByTestId("toggle-integration")).toBeVisible();
   await page.getByTestId("open-task").click();
   await expect(page.getByTestId("create-message")).toContainText("Task opened");
 
@@ -523,4 +521,36 @@ test("a requester builds a response schema with the structured designer", async 
     "view-task",
   ).click();
   await expect(page.getByTestId("detail-schema")).toContainText("summary");
+});
+
+test("the task API & MCP panel mints a real token and shows placeholder-free commands", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "integration-owner");
+  const title = `Integration ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 0),
+  });
+  const task = (await taskResponse.json()) as TaskBody;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
+    "view-task",
+  ).click();
+
+  // The integration panel is collapsed by default.
+  await expect(page.getByTestId("mint-task-token")).toBeHidden();
+  await page.getByTestId("toggle-integration").click();
+
+  // Mint an agent token; the commands then embed the real token (no <...>).
+  await page.getByTestId("mint-task-token").click();
+  await expect(page.getByTestId("integration-token")).toBeVisible();
+  const restSubmit = page.getByTestId("integration-rest-submit");
+  await expect(restSubmit).toContainText(`/api/tasks/${task.id}/submissions`);
+  await expect(restSubmit).toContainText("Authorization: Bearer ");
+  await expect(restSubmit).not.toContainText("<");
+  await expect(page.getByTestId("integration-mcp-config")).not.toContainText(
+    "<",
+  );
+  await expect(page.getByTestId("copy-command").first()).toBeVisible();
 });

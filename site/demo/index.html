@@ -15,9 +15,12 @@
     <script src="./backend.js"></script>
     <script src="./elm.js"></script>
     <script>
-      Elm.Main.init({
+      const app = Elm.Main.init({
         node: document.getElementById("app"),
         flags: { origin: window.location.origin },
+      });
+      app.ports.copyToClipboard.subscribe((t) => {
+        if (navigator.clipboard) navigator.clipboard.writeText(t);
       });
     </script>
   </body>

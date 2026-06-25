@@ -148,6 +148,8 @@ type alias LoggedInModel =
     , createReferenceURL : String
     , taskComments : List Task.TaskCommentResponse
     , taskCommentBody : String
+    , taskAgentToken : Maybe String
+    , taskIntegrationOpen : Bool
     }
 
 
@@ -233,6 +235,10 @@ type Msg
     | ToggleScope Agent.AgentScope
     | CreateAgentClicked
     | AgentCreated (Result Http.Error Agent.AgentCredentialCreatedResponse)
+    | ToggleTaskIntegration
+    | MintTaskTokenClicked
+    | TaskTokenMinted (Result Http.Error Agent.AgentCredentialCreatedResponse)
+    | CopyClicked String
     | RevokeClicked String
     | AgentRevoked (Result Http.Error Agent.AgentCredentialResponse)
     | LogoutClicked

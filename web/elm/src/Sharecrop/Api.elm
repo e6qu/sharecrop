@@ -554,6 +554,15 @@ postAgent token agentLabel scopes =
         (Http.expectJson AgentCreated Agent.agentCredentialCreatedResponseDecoder)
 
 
+mintTaskToken : String -> Cmd Msg
+mintTaskToken token =
+    authorizedRequest "POST"
+        token
+        "/api/agent-credentials"
+        (Http.jsonBody (agentRequestBody "Task worker token" [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeSubmissionsRead ]))
+        (Http.expectJson TaskTokenMinted Agent.agentCredentialCreatedResponseDecoder)
+
+
 postSubmission : String -> String -> String -> Cmd Msg
 postSubmission token taskId responseJson =
     authorizedRequest "POST"
