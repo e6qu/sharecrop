@@ -52,6 +52,7 @@ emptyLoggedIn : Auth.AuthResponse -> LoggedInModel
 emptyLoggedIn response =
     { accessToken = response.accessToken
     , subjectId = response.subjectID
+    , isAdmin = response.role == "admin"
     , page = OverviewPage
     , balance = Nothing
     , entries = []

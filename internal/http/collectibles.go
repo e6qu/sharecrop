@@ -80,26 +80,26 @@ func (server Server) mintCollectible(w http.ResponseWriter, r *http.Request) {
 	nameResult := assets.NewCollectibleName(request.Name)
 	name, nameMatched := nameResult.(assets.CollectibleNameAccepted)
 	if !nameMatched {
-		writeError(w, http.StatusBadRequest, nameResult.(assets.CollectibleNameRejected).Reason.Description())
+		writeDomainError(w, nameResult.(assets.CollectibleNameRejected).Reason)
 		return
 	}
 	kindResult := assets.ParseCollectibleKind(request.Kind)
 	kind, kindMatched := kindResult.(assets.CollectibleKindAccepted)
 	if !kindMatched {
-		writeError(w, http.StatusBadRequest, kindResult.(assets.CollectibleKindRejected).Reason.Description())
+		writeDomainError(w, kindResult.(assets.CollectibleKindRejected).Reason)
 		return
 	}
 	policyResult := assets.ParseTransferPolicy(request.TransferPolicy)
 	policy, policyMatched := policyResult.(assets.TransferPolicyAccepted)
 	if !policyMatched {
-		writeError(w, http.StatusBadRequest, policyResult.(assets.TransferPolicyRejected).Reason.Description())
+		writeDomainError(w, policyResult.(assets.TransferPolicyRejected).Reason)
 		return
 	}
 
 	result := server.assetService.Mint(r.Context(), assets.CollectibleOwnerKindUser, actor.subject.ID.String(), name.Value, kind.Value, policy.Value, request.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(assets.MintRejected).Reason.Description())
+		writeDomainError(w, result.(assets.MintRejected).Reason)
 		return
 	}
 
@@ -168,14 +168,14 @@ func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 	nameResult := assets.NewCollectibleName(entry.Name)
 	name, nameMatched := nameResult.(assets.CollectibleNameAccepted)
 	if !nameMatched {
-		writeError(w, http.StatusBadRequest, nameResult.(assets.CollectibleNameRejected).Reason.Description())
+		writeDomainError(w, nameResult.(assets.CollectibleNameRejected).Reason)
 		return
 	}
 
 	result := server.assetService.Mint(r.Context(), recipientKind, strings.TrimSpace(request.RecipientID), name.Value, entry.Kind, entry.Policy, entry.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(assets.MintRejected).Reason.Description())
+		writeDomainError(w, result.(assets.MintRejected).Reason)
 		return
 	}
 	writeJSON(w, http.StatusCreated, collectibleToResponse(minted.Value))
@@ -193,7 +193,7 @@ func (server Server) transferCollectible(w http.ResponseWriter, r *http.Request)
 	collectibleIDResult := core.ParseCollectibleID(r.PathValue("id"))
 	collectibleID, idMatched := collectibleIDResult.(core.CollectibleIDCreated)
 	if !idMatched {
-		writeError(w, http.StatusBadRequest, collectibleIDResult.(core.CollectibleIDRejected).Reason.Description())
+		writeDomainError(w, collectibleIDResult.(core.CollectibleIDRejected).Reason)
 		return
 	}
 	var request transferCollectibleRequest
@@ -204,7 +204,7 @@ func (server Server) transferCollectible(w http.ResponseWriter, r *http.Request)
 	recipientResult := core.ParseUserID(request.RecipientID)
 	recipient, recipientMatched := recipientResult.(core.UserIDCreated)
 	if !recipientMatched {
-		writeError(w, http.StatusBadRequest, recipientResult.(core.UserIDRejected).Reason.Description())
+		writeDomainError(w, recipientResult.(core.UserIDRejected).Reason)
 		return
 	}
 
@@ -228,7 +228,7 @@ func (server Server) listCollectibles(w http.ResponseWriter, r *http.Request) {
 	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID, parsePage(r))
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(assets.ListRejected).Reason.Description())
+		writeDomainError(w, result.(assets.ListRejected).Reason)
 		return
 	}
 
@@ -253,7 +253,7 @@ func (server Server) fundCollectibleReward(w http.ResponseWriter, r *http.Reques
 	collectibleIDResult := core.ParseCollectibleID(request.CollectibleID)
 	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
 	if !collectibleMatched {
-		writeError(w, http.StatusBadRequest, collectibleIDResult.(core.CollectibleIDRejected).Reason.Description())
+		writeDomainError(w, collectibleIDResult.(core.CollectibleIDRejected).Reason)
 		return
 	}
 
@@ -330,7 +330,7 @@ func (server Server) listOwnerCollectibles(w http.ResponseWriter, r *http.Reques
 	result := server.assetService.ListByOwner(r.Context(), ownerKind, ownerID, parsePage(r))
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(assets.ListRejected).Reason.Description())
+		writeDomainError(w, result.(assets.ListRejected).Reason)
 		return
 	}
 	response := collectiblesResponse{Collectibles: make([]collectibleResponse, 0, len(listed.Values))}

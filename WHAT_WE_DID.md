@@ -1,5 +1,14 @@
 # What We Did
 
+`task/backlog-cleanup` cleared bounded backlog deferrals and applied a UI/UX + QA boyscout review (one background review agent):
+
+- **Admin-panel gating.** The auth response now carries a `role` ("admin"/"member", stamped from `SHARECROP_ADMIN_USER_IDS` in `writeAuthResponse`; contract field added as a string since the codebase bans `Bool` in contracts). The client stores `isAdmin` and **hides the "Admin: award" panel and the catalog Award buttons for non-admins** (the catalog stays browsable). The demo's auth role is `admin`, so the showcase keeps them.
+- **Back-button regression (critical).** The task-detail Back button used a non-fragment href (`/tasks`), which after the hash-routing switch dumped users on Overview. Now `#/tasks` / `#/discovery`.
+- **Go status codes.** `getTask` returned 403 for a *missing* task — now `writeDomainError` (real 404). A sweep replaced hardcoded `writeError(w, http.Status…, reason.Description())` with `writeDomainError(w, reason)` across the organization/series/collectible/org-credit handlers, fixing contradictory siblings (one list endpoint 403, its twin 500) and wrong 400s so each rejection maps to its correct status. Validated by the http_e2e status assertions.
+- **Dead/no-op controls.** The "Submit a response" form no longer renders when the task failed to load (was a live form posting to an unreadable task); review controls (note/payout/tip/ban) render only when there are submissions (was a full review form above "No submissions").
+- **Demo user-submissions** endpoint returns the user's real submissions (was always `[]`).
+- **Deferred (noted):** id-picker dropdowns for free-text scope ids; org-reviewer review controls in the browser (needs a `viewer_action` "manage" value); per-page loading-vs-error states (a forbidden deep-link still shows a perpetual "Loading…"); plus the three large standalone initiatives (out-of-process Postgres session/rate-limiter store, anonymous-worker identity, crypto reward metadata) kept in DO_NEXT. The QA review found **no WCAG contrast failures** and confirmed full demo route/decoder parity.
+
 `task/demo-fidelity` minimized the in-browser demo's "fakes" so `site/demo/backend.js` behaves like the real Go backend. A specialized agent compared all ~69 demo routes to the Go handlers/domain; the high-impact divergences are fixed:
 
 - **Review state machine.** accept/reject/request-changes now act only on `submitted` work (409 otherwise); accept additionally requires an open task and rejects when a submission was already accepted — so double-clicking Accept or reviewing an `invalid`/seeded submission no longer replays payouts and drifts the balance.
