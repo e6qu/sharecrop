@@ -86,8 +86,9 @@ type AgentService interface {
 }
 
 type AssetService interface {
-	Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult
+	Mint(context.Context, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult
 	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
+	ListByOwner(context.Context, string, string, core.Page) assets.ListResult
 	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
 	GiftCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult
@@ -128,6 +129,7 @@ type Server struct {
 	secureCookies       bool
 	ipRateLimiter       *rateLimiter
 	subjectRateLimiter  *rateLimiter
+	adminUserIDs        map[string]bool
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
@@ -158,6 +160,9 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		secureCookies:      os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
 		ipRateLimiter:      newRateLimiter(ipRateCapacity, ipRateRefillPerSec),
 		subjectRateLimiter: newRateLimiter(mcpRateCapacity, mcpRateRefillPerSec),
+		// Platform admins (e.g. for awarding default collectibles) are bootstrapped
+		// from a comma-separated env list of user ids.
+		adminUserIDs: parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS")),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
@@ -223,6 +228,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("GET /api/collectibles/catalog", server.collectibleCatalog)
 	mux.HandleFunc("POST /api/collectibles/award", server.awardCollectible)
 	mux.HandleFunc("POST /api/collectibles/{id}/transfer", server.transferCollectible)
+	mux.HandleFunc("GET /api/organizations/{id}/collectibles", server.listOrganizationCollectibles)
+	mux.HandleFunc("GET /api/teams/{id}/collectibles", server.listTeamCollectibles)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-refund", server.refundCollectibleReward)
 	mux.HandleFunc("POST /api/agent-credentials", server.createAgentCredential)
@@ -409,6 +416,32 @@ type userSubjectRejected struct {
 func (userSubjectAccepted) userSubjectResult() {}
 
 func (userSubjectRejected) userSubjectResult() {}
+
+// parseAdminUserIDs builds the set of platform-admin user ids from a
+// comma-separated env value, ignoring blank entries.
+func parseAdminUserIDs(raw string) map[string]bool {
+	admins := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			admins[trimmed] = true
+		}
+	}
+	return admins
+}
+
+// requireAdmin resolves a request to a platform-admin user subject, rejecting
+// authenticated-but-non-admin users with a forbidden result.
+func (server Server) requireAdmin(r *http.Request) userSubjectResult {
+	accepted, matched := server.requireUserSubject(r).(userSubjectAccepted)
+	if !matched {
+		return userSubjectRejected{reason: "a user access token is required"}
+	}
+	if !server.adminUserIDs[accepted.subject.ID.String()] {
+		return userSubjectRejected{reason: "this action requires a platform administrator"}
+	}
+	return accepted
+}
 
 // requireWorkerSubject resolves a request to an acting user subject from either
 // a user access token or an agent credential that holds the required scope. This

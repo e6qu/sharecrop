@@ -1,5 +1,12 @@
 # What We Did
 
+`task/admin-collectible-ownership` finished the two collectible follow-ups — a real admin gate on awarding, and real org/team ownership (PR 1 of a sequence burning down the follow-up + roadmap backlog):
+
+- **Platform-admin role:** the server reads `SHARECROP_ADMIN_USER_IDS` (comma-separated user ids) into an admin set (`parseAdminUserIDs`) and a `requireAdmin` helper. `POST /api/collectibles/award` now returns 401 (unauthenticated) / 403 (authenticated non-admin); only an admin can mint catalog copies. The demo award panel is unchanged (the demo has no real auth, so it stays the showcase).
+- **Org/team ownership:** migration `000021` adds `owner_kind` to collectibles and drops the users foreign key on `owner_user_id` so it can hold any owner entity's uuid. `assets.Collectible` now has `OwnerKind string` + `OwnerID string`; the fund/tip/transfer flows require `OwnerKind == "user"`. Awarding accepts `recipient_kind` ∈ {user, team, organization}. New `GET /api/organizations/{id}/collectibles` and `GET /api/teams/{id}/collectibles` (service `ListByOwner`, store `ListCollectiblesByOwner`), surfaced as a "Collectibles" holdings section on the org and team detail pages. `CollectibleResponse` gained `owner_kind` (contracts regenerated); the demo seeds/award/mint set `owner_kind`.
+- **Tests:** http_e2e covers the admin gate (non-admin 403), award to a user and to a team, the team holdings endpoint, and trade-back; assets unit + integration updated for the new owner fields; the store's list loop was extracted to a shared helper to satisfy copy-paste detection.
+- Bootstrap note: the http_e2e admin test registers users on one server, then rebuilds with `SHARECROP_ADMIN_USER_IDS` set to the admin id (the shared test DB persists registrations).
+
 `task/default-collectibles` added 25 hand-crafted pixel-art default collectibles with an admin award flow and user-to-user trading, in a single PR:
 
 - **25-item catalog** (`internal/assets/catalog.go`): a farm/harvest-themed set where `kind` doubles as rarity — 15 badges (common), 5 editions (rare), 5 unique (legendary), all tradeable. Each carries an `art` slug.

@@ -19,9 +19,9 @@ func NewCollectibleStore(pool *pgxpool.Pool) CollectibleStore {
 
 func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible assets.Collectible) assets.CreateStoreResult {
 	_, err := store.pool.Exec(ctx, `
-		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, art)
-		values ($1, $2, $3, $4, $5, $6, $7)
-	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID.String(), collectible.Art)
+		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, owner_kind, art)
+		values ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID, collectible.OwnerKind, collectible.Art)
 	if err != nil {
 		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible failed")}
 	}
@@ -30,9 +30,9 @@ func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible
 
 func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) assets.ListStoreResult {
 	rows, err := store.pool.Query(ctx, `
-		select id::text, name, kind, state, transfer_policy, owner_user_id::text, art
+		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, art
 		from collectibles
-		where owner_user_id = $1
+		where owner_user_id = $1 and owner_kind = 'user'
 		order by created_at desc, id
 		limit $2 offset $3
 	`, owner.String(), page.Limit(), page.Offset())
@@ -40,7 +40,27 @@ func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.U
 		return assets.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list collectibles failed")}
 	}
 	defer rows.Close()
+	return collectListedCollectibles(rows)
+}
 
+func (store CollectibleStore) ListCollectiblesByOwner(ctx context.Context, ownerKind string, ownerID string, page core.Page) assets.ListStoreResult {
+	rows, err := store.pool.Query(ctx, `
+		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, art
+		from collectibles
+		where owner_user_id = $1 and owner_kind = $2
+		order by created_at desc, id
+		limit $3 offset $4
+	`, ownerID, ownerKind, page.Limit(), page.Offset())
+	if err != nil {
+		return assets.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list collectibles failed")}
+	}
+	defer rows.Close()
+	return collectListedCollectibles(rows)
+}
+
+// collectListedCollectibles scans every row of a collectibles query into the
+// listed-store result, rejecting on the first unparsable row.
+func collectListedCollectibles(rows pgx.Rows) assets.ListStoreResult {
 	values := make([]assets.Collectible, 0)
 	for rows.Next() {
 		parsed := scanCollectible(rows)
@@ -68,7 +88,7 @@ func (store CollectibleStore) FundCollectibleReward(ctx context.Context, command
 	if !collectibleMatched {
 		return assets.FundRewardRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
 	}
-	if collectible.value.OwnerID != command.FunderUserID {
+	if collectible.value.OwnerKind != assets.CollectibleOwnerKindUser || collectible.value.OwnerID != command.FunderUserID.String() {
 		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "only the collectible owner can fund a task with it")}
 	}
 	if collectible.value.State != assets.CollectibleStateMinted {
@@ -235,10 +255,10 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 	}
 	// Idempotent replay: if the collectible already belongs to the recipient, a
 	// retried accept (after a lost response) treats the gift as already done.
-	if collectible.value.OwnerID == command.ToUserID {
+	if collectible.value.OwnerKind == assets.CollectibleOwnerKindUser && collectible.value.OwnerID == command.ToUserID.String() {
 		return assets.CollectibleGifted{Value: collectible.value}
 	}
-	if collectible.value.OwnerID != command.FromUserID {
+	if collectible.value.OwnerKind != assets.CollectibleOwnerKindUser || collectible.value.OwnerID != command.FromUserID.String() {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
 	}
 	if collectible.value.State != assets.CollectibleStateMinted {
@@ -248,7 +268,7 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 		return assets.GiftRejected{Reason: denied.Reason}
 	}
 
-	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.ToUserID.String()); err != nil {
+	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, owner_kind = 'user', state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.ToUserID.String()); err != nil {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer collectible failed")}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -256,12 +276,13 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 	}
 
 	gifted := collectible.value
-	gifted.OwnerID = command.ToUserID
+	gifted.OwnerKind = assets.CollectibleOwnerKindUser
+	gifted.OwnerID = command.ToUserID.String()
 	return assets.CollectibleGifted{Value: gifted}
 }
 
 func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.CollectibleID) collectibleParseResult {
-	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, art from collectibles where id = $1 for update", collectibleID.String())
+	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, art from collectibles where id = $1 for update", collectibleID.String())
 	if err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock collectible failed")}
 	}
@@ -273,7 +294,7 @@ func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.Collecti
 }
 
 func findCollectible(ctx context.Context, tx pgx.Tx, rawCollectibleID string) collectibleParseResult {
-	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, art from collectibles where id = $1", rawCollectibleID)
+	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, art from collectibles where id = $1", rawCollectibleID)
 	if err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible failed")}
 	}
@@ -291,14 +312,15 @@ func scanCollectible(rows pgx.Rows) collectibleParseResult {
 	var rawState string
 	var rawPolicy string
 	var rawOwner string
+	var rawOwnerKind string
 	var rawArt string
-	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawArt); err != nil {
+	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawOwnerKind, &rawArt); err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible failed")}
 	}
-	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawArt)
+	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawOwnerKind, rawArt)
 }
 
-func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string, rawArt string) collectibleParseResult {
+func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string, rawOwnerKind string, rawArt string) collectibleParseResult {
 	idResult := core.ParseCollectibleID(rawID)
 	collectibleID, idMatched := idResult.(core.CollectibleIDCreated)
 	if !idMatched {
@@ -324,18 +346,17 @@ func parseCollectible(rawID string, rawName string, rawKind string, rawState str
 	if !policyMatched {
 		return collectibleParseRejected{reason: policyResult.(assets.TransferPolicyRejected).Reason}
 	}
-	ownerResult := core.ParseUserID(rawOwner)
-	owner, ownerMatched := ownerResult.(core.UserIDCreated)
-	if !ownerMatched {
-		return collectibleParseRejected{reason: ownerResult.(core.UserIDRejected).Reason}
+	if !assets.ValidCollectibleOwnerKind(rawOwnerKind) {
+		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "collectible owner kind is invalid")}
 	}
 	return collectibleParsed{value: assets.Collectible{
-		ID:      collectibleID.Value,
-		Name:    name.Value,
-		Kind:    kind.Value,
-		State:   state.Value,
-		Policy:  policy.Value,
-		OwnerID: owner.Value,
-		Art:     rawArt,
+		ID:        collectibleID.Value,
+		Name:      name.Value,
+		Kind:      kind.Value,
+		State:     state.Value,
+		Policy:    policy.Value,
+		OwnerKind: rawOwnerKind,
+		OwnerID:   rawOwner,
+		Art:       rawArt,
 	}}
 }

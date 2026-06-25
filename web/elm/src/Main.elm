@@ -109,6 +109,8 @@ emptyLoggedIn response =
     , orgTeams = []
     , orgMembers = []
     , orgTasks = []
+    , orgCollectibles = []
+    , teamCollectibles = []
     , userProfile = Nothing
     , userWork = []
     , userSubmissions = []
@@ -235,7 +237,7 @@ enterPage : Page -> LoggedInModel -> LoggedInModel
 enterPage page state =
     case page of
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgCollectibles = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing }
@@ -253,7 +255,7 @@ enterPage page state =
             { state | page = page, seriesDetail = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
 
         TeamDetailPage _ ->
-            { state | page = page, teamDetail = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
+            { state | page = page, teamDetail = Nothing, teamCollectibles = [], teamMemberEmail = "", teamMemberMessage = Nothing }
 
         TaskDetailPage _ ->
             -- Clear the previous task's detail substate so a task->task link does
@@ -882,6 +884,18 @@ update msg model =
 
         OrgTasksReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgTasks = Api.tasksFromResult result }), Cmd.none )
+
+        OrgCollectiblesReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgCollectibles = response.collectibles }), Cmd.none )
+
+        OrgCollectiblesReceived (Err _) ->
+            ( model, Cmd.none )
+
+        TeamCollectiblesReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | teamCollectibles = response.collectibles }), Cmd.none )
+
+        TeamCollectiblesReceived (Err _) ->
+            ( model, Cmd.none )
 
         CreateOrgTeamNameChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createOrgTeamName = value }), Cmd.none )

@@ -6727,9 +6727,9 @@ var $author$project$Main$applySchemaFields = F2(
 var $author$project$Sharecrop$Types$AwardReceived = function (a) {
 	return {$: 'AwardReceived', a: a};
 };
-var $author$project$Sharecrop$Generated$Collectible$CollectibleResponse = F7(
-	function (id, name, kind, state, transferPolicy, ownerID, art) {
-		return {art: art, id: id, kind: kind, name: name, ownerID: ownerID, state: state, transferPolicy: transferPolicy};
+var $author$project$Sharecrop$Generated$Collectible$CollectibleResponse = F8(
+	function (id, name, kind, state, transferPolicy, ownerID, ownerKind, art) {
+		return {art: art, id: id, kind: kind, name: name, ownerID: ownerID, ownerKind: ownerKind, state: state, transferPolicy: transferPolicy};
 	});
 var $author$project$Sharecrop$Generated$Collectible$CollectibleKindBadge = {$: 'CollectibleKindBadge'};
 var $author$project$Sharecrop$Generated$Collectible$CollectibleKindEdition = {$: 'CollectibleKindEdition'};
@@ -6788,9 +6788,9 @@ var $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDec
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $elm$json$Json$Decode$map7 = _Json_map7;
-var $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder = A8(
-	$elm$json$Json$Decode$map7,
+var $elm$json$Json$Decode$map8 = _Json_map8;
+var $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder = A9(
+	$elm$json$Json$Decode$map8,
 	$author$project$Sharecrop$Generated$Collectible$CollectibleResponse,
 	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
@@ -6798,6 +6798,7 @@ var $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder =
 	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Collectible$collectibleStateDecoder),
 	A2($elm$json$Json$Decode$field, 'transfer_policy', $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDecoder),
 	A2($elm$json$Json$Decode$field, 'owner_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'art', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$collectibleRewardRequestBody = function (collectibleId) {
 	return $elm$json$Json$Encode$object(
@@ -7447,7 +7448,6 @@ var $author$project$Sharecrop$Generated$Task$TaskResponse = function (id) {
 	};
 };
 var $elm$json$Json$Decode$int = _Json_decodeInt;
-var $elm$json$Json$Decode$map8 = _Json_map8;
 var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeOrganizationTeam = {$: 'TaskAssigneeScopeOrganizationTeam'};
 var $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser = {$: 'TaskAssigneeScopeUser'};
 var $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder = A2(
@@ -7706,7 +7706,7 @@ var $author$project$Main$enterPage = F2(
 				var organizationId = page.a;
 				return _Utils_update(
 					state,
-					{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgMembers: _List_Nil, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, page: page, provisionMemberMessage: $elm$core$Maybe$Nothing});
+					{activeOrgId: organizationId, orgBalance: $elm$core$Maybe$Nothing, orgCollectibles: _List_Nil, orgMembers: _List_Nil, orgTasks: _List_Nil, orgTeamMessage: $elm$core$Maybe$Nothing, orgTeams: _List_Nil, page: page, provisionMemberMessage: $elm$core$Maybe$Nothing});
 			case 'UserDetailPage':
 				return _Utils_update(
 					state,
@@ -7730,7 +7730,7 @@ var $author$project$Main$enterPage = F2(
 			case 'TeamDetailPage':
 				return _Utils_update(
 					state,
-					{page: page, teamDetail: $elm$core$Maybe$Nothing, teamMemberEmail: '', teamMemberMessage: $elm$core$Maybe$Nothing});
+					{page: page, teamCollectibles: _List_Nil, teamDetail: $elm$core$Maybe$Nothing, teamMemberEmail: '', teamMemberMessage: $elm$core$Maybe$Nothing});
 			case 'TaskDetailPage':
 				return _Utils_update(
 					state,
@@ -8210,6 +8210,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundTaskId: '',
 		newCredential: $elm$core$Maybe$Nothing,
 		orgBalance: $elm$core$Maybe$Nothing,
+		orgCollectibles: _List_Nil,
 		orgMembers: _List_Nil,
 		orgMessage: $elm$core$Maybe$Nothing,
 		orgTasks: _List_Nil,
@@ -8243,6 +8244,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		taskIntegrationOpen: false,
 		taskStateFilter: '',
 		tasks: _List_Nil,
+		teamCollectibles: _List_Nil,
 		teamDetail: $elm$core$Maybe$Nothing,
 		teamMemberEmail: '',
 		teamMemberMessage: $elm$core$Maybe$Nothing,
@@ -8725,6 +8727,7 @@ var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F7(
 	function (id, taskID, submitterID, state, responseJSON, reviewNote, validationErrors) {
 		return {id: id, responseJSON: responseJSON, reviewNote: reviewNote, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
 	});
+var $elm$json$Json$Decode$map7 = _Json_map7;
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
@@ -9198,6 +9201,19 @@ var $author$project$Sharecrop$Api$fetchDetailCommands = F2(
 					A2($author$project$Sharecrop$Api$fetchTaskComments, token, taskId)
 				]));
 	});
+var $author$project$Sharecrop$Types$OrgCollectiblesReceived = function (a) {
+	return {$: 'OrgCollectiblesReceived', a: a};
+};
+var $author$project$Sharecrop$Api$fetchOrganizationCollectibles = F2(
+	function (token, orgId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/organizations/' + (orgId + '/collectibles'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$SeriesDetailReceived = function (a) {
 	return {$: 'SeriesDetailReceived', a: a};
 };
@@ -9233,6 +9249,19 @@ var $author$project$Sharecrop$Api$fetchSeriesList = function (token) {
 		$elm$http$Http$emptyBody,
 		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesListReceived, $author$project$Sharecrop$Generated$TaskSeries$taskSeriesListResponseDecoder));
 };
+var $author$project$Sharecrop$Types$TeamCollectiblesReceived = function (a) {
+	return {$: 'TeamCollectiblesReceived', a: a};
+};
+var $author$project$Sharecrop$Api$fetchTeamCollectibles = F2(
+	function (token, teamId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/teams/' + (teamId + '/collectibles'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$UserProfileReceived = function (a) {
 	return {$: 'UserProfileReceived', a: a};
 };
@@ -9332,7 +9361,8 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F2(
 					_List_fromArray(
 						[
 							$author$project$Sharecrop$Api$fetchOrganizations(token),
-							A2($author$project$Sharecrop$Api$loadOrganization, token, organizationId)
+							A2($author$project$Sharecrop$Api$loadOrganization, token, organizationId),
+							A2($author$project$Sharecrop$Api$fetchOrganizationCollectibles, token, organizationId)
 						]));
 			case 'UserDetailPage':
 				var userId = page.a;
@@ -9364,13 +9394,18 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F2(
 				return A2($author$project$Sharecrop$Api$fetchSeriesDetail, token, seriesId);
 			default:
 				var teamId = page.a;
-				return A5(
-					$author$project$Sharecrop$Api$authorizedRequest,
-					'GET',
-					token,
-					'/api/teams/' + teamId,
-					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamDetailReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder));
+				return $elm$core$Platform$Cmd$batch(
+					_List_fromArray(
+						[
+							A5(
+							$author$project$Sharecrop$Api$authorizedRequest,
+							'GET',
+							token,
+							'/api/teams/' + teamId,
+							$elm$http$Http$emptyBody,
+							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamDetailReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder)),
+							A2($author$project$Sharecrop$Api$fetchTeamCollectibles, token, teamId)
+						]));
 		}
 	});
 var $elm$core$Tuple$second = function (_v0) {
@@ -11819,6 +11854,38 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'OrgCollectiblesReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{orgCollectibles: response.collectibles});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'TeamCollectiblesReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{teamCollectibles: response.collectibles});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
 			case 'CreateOrgTeamNameChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -15077,6 +15144,52 @@ var $author$project$Sharecrop$View$balanceLabel = function (balance) {
 		return 'Loading…';
 	}
 };
+var $author$project$Sharecrop$View$collectibleHoldingRow = function (c) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex items-center gap-2 py-2'),
+				$author$project$Sharecrop$Ui$testId('collectible-holding-row')
+			]),
+		_List_fromArray(
+			[
+				A2($author$project$Sharecrop$Sprites$pixel, c.art, 5),
+				A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm font-medium')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(c.name)
+					])),
+				$author$project$Sharecrop$Ui$badge(
+				$author$project$Sharecrop$Labels$collectibleKindLabel(c.kind))
+			]));
+};
+var $author$project$Sharecrop$View$collectiblesHoldingsList = F2(
+	function (idPrefix, collectibles) {
+		return $elm$core$List$isEmpty(collectibles) ? A2(
+			$elm$html$Html$p,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+					$author$project$Sharecrop$Ui$testId(idPrefix + '-empty')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('No collectibles yet.')
+				])) : A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+					$author$project$Sharecrop$Ui$testId(idPrefix)
+				]),
+			A2($elm$core$List$map, $author$project$Sharecrop$View$collectibleHoldingRow, collectibles));
+	});
 var $author$project$Sharecrop$View$membershipStatusText = function (status) {
 	switch (status.$) {
 		case 'MembershipStatusActive':
@@ -15321,7 +15434,9 @@ var $author$project$Sharecrop$View$activeOrganizationView = function (state) {
 							]),
 						'Provision member')
 					])),
-				A2($author$project$Sharecrop$View$maybeNote, state.provisionMemberMessage, 'provision-member-message')
+				A2($author$project$Sharecrop$View$maybeNote, state.provisionMemberMessage, 'provision-member-message'),
+				$author$project$Sharecrop$Ui$sectionTitle('Collectibles'),
+				A2($author$project$Sharecrop$View$collectiblesHoldingsList, 'org-collectibles', state.orgCollectibles)
 			]));
 };
 var $author$project$Sharecrop$View$organizationDetailView = function (state) {
@@ -17594,7 +17709,9 @@ var $author$project$Sharecrop$View$teamDetailView = F2(
 												]),
 											'Add member'),
 											A2($author$project$Sharecrop$View$maybeNote, state.teamMemberMessage, 'team-member-message')
-										])) : $elm$html$Html$text('')
+										])) : $elm$html$Html$text(''),
+									$author$project$Sharecrop$Ui$sectionTitle('Collectibles'),
+									A2($author$project$Sharecrop$View$collectiblesHoldingsList, 'team-collectibles', state.teamCollectibles)
 								]));
 					} else {
 						return A2(

@@ -130,13 +130,32 @@ func (name CollectibleName) String() string {
 	return name.value
 }
 
-// Collectible is a platform-issued, non-fungible asset owned by a user.
+// Collectible is a platform-issued, non-fungible asset. It is owned by a user, a
+// team, or an organization (OwnerKind disambiguates the OwnerID).
 type Collectible struct {
-	ID      core.CollectibleID
-	Name    CollectibleName
-	Kind    CollectibleKind
-	State   CollectibleState
-	Policy  TransferPolicy
-	OwnerID core.UserID
-	Art     string
+	ID        core.CollectibleID
+	Name      CollectibleName
+	Kind      CollectibleKind
+	State     CollectibleState
+	Policy    TransferPolicy
+	OwnerKind string
+	OwnerID   string
+	Art       string
+}
+
+// CollectibleOwnerKindUser/Team/Organization are the owner-kind tags.
+const (
+	CollectibleOwnerKindUser         = "user"
+	CollectibleOwnerKindTeam         = "team"
+	CollectibleOwnerKindOrganization = "organization"
+)
+
+// ValidCollectibleOwnerKind reports whether a raw owner-kind tag is recognized.
+func ValidCollectibleOwnerKind(kind string) bool {
+	switch kind {
+	case CollectibleOwnerKindUser, CollectibleOwnerKindTeam, CollectibleOwnerKindOrganization:
+		return true
+	default:
+		return false
+	}
 }

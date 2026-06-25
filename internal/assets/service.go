@@ -9,6 +9,7 @@ import (
 type Store interface {
 	CreateCollectible(context.Context, Collectible) CreateStoreResult
 	ListCollectibles(context.Context, core.UserID, core.Page) ListStoreResult
+	ListCollectiblesByOwner(context.Context, string, string, core.Page) ListStoreResult
 	FundCollectibleReward(context.Context, FundRewardStoreCommand) FundRewardResult
 	RefundCollectibleReward(context.Context, RefundRewardStoreCommand) RefundRewardResult
 	GiftCollectible(context.Context, GiftStoreCommand) GiftResult
@@ -59,7 +60,7 @@ func (CollectibleMinted) mintResult() {}
 
 func (MintRejected) mintResult() {}
 
-func (service Service) Mint(ctx context.Context, owner core.UserID, name CollectibleName, kind CollectibleKind, policy TransferPolicy, art string) MintResult {
+func (service Service) Mint(ctx context.Context, ownerKind string, ownerID string, name CollectibleName, kind CollectibleKind, policy TransferPolicy, art string) MintResult {
 	idResult := core.NewCollectibleID()
 	idCreated, matched := idResult.(core.CollectibleIDCreated)
 	if !matched {
@@ -67,13 +68,14 @@ func (service Service) Mint(ctx context.Context, owner core.UserID, name Collect
 	}
 
 	collectible := Collectible{
-		ID:      idCreated.Value,
-		Name:    name,
-		Kind:    kind,
-		State:   CollectibleStateMinted,
-		Policy:  policy,
-		OwnerID: owner,
-		Art:     art,
+		ID:        idCreated.Value,
+		Name:      name,
+		Kind:      kind,
+		State:     CollectibleStateMinted,
+		Policy:    policy,
+		OwnerKind: ownerKind,
+		OwnerID:   ownerID,
+		Art:       art,
 	}
 	storeResult := service.store.CreateCollectible(ctx, collectible)
 	if rejected, rejectedMatched := storeResult.(CreateStoreRejected); rejectedMatched {
@@ -100,6 +102,17 @@ func (ListRejected) listResult() {}
 
 func (service Service) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) ListResult {
 	storeResult := service.store.ListCollectibles(ctx, owner, page)
+	listed, matched := storeResult.(ListStoreListed)
+	if !matched {
+		return ListRejected{Reason: storeResult.(ListStoreRejected).Reason}
+	}
+	return CollectiblesListed{Values: listed.Values}
+}
+
+// ListByOwner lists the collectibles held by one owner entity (a user, team, or
+// organization).
+func (service Service) ListByOwner(ctx context.Context, ownerKind string, ownerID string, page core.Page) ListResult {
+	storeResult := service.store.ListCollectiblesByOwner(ctx, ownerKind, ownerID, page)
 	listed, matched := storeResult.(ListStoreListed)
 	if !matched {
 		return ListRejected{Reason: storeResult.(ListStoreRejected).Reason}

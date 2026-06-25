@@ -289,7 +289,7 @@ routeLoadCmd token page =
             fetchOrganizations token
 
         OrganizationDetailPage organizationId ->
-            Cmd.batch [ fetchOrganizations token, loadOrganization token organizationId ]
+            Cmd.batch [ fetchOrganizations token, loadOrganization token organizationId, fetchOrganizationCollectibles token organizationId ]
 
         UserDetailPage userId ->
             fetchUserProfile token userId
@@ -310,7 +310,20 @@ routeLoadCmd token page =
             fetchSeriesDetail token seriesId
 
         TeamDetailPage teamId ->
-            authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
+            Cmd.batch
+                [ authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
+                , fetchTeamCollectibles token teamId
+                ]
+
+
+fetchOrganizationCollectibles : String -> String -> Cmd Msg
+fetchOrganizationCollectibles token orgId =
+    authorizedRequest "GET" token ("/api/organizations/" ++ orgId ++ "/collectibles") Http.emptyBody (Http.expectJson OrgCollectiblesReceived Collectible.collectiblesResponseDecoder)
+
+
+fetchTeamCollectibles : String -> String -> Cmd Msg
+fetchTeamCollectibles token teamId =
+    authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/collectibles") Http.emptyBody (Http.expectJson TeamCollectiblesReceived Collectible.collectiblesResponseDecoder)
 
 
 fetchUserProfile : String -> String -> Cmd Msg

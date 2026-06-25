@@ -1,10 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 56 work, merged into `main`.
+The repository contains pull request 1 through pull request 57 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/default-collectibles` adds 25 hand-crafted pixel-art default collectibles with an admin award flow (to users/teams/orgs) and user-to-user trading. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/admin-collectible-ownership` adds a real platform-admin role that gates default-collectible awarding, and real org/team ownership of collectibles (PR 1 of a sequence working down the follow-up + roadmap backlog). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/admin-collectible-ownership`:
+
+- Platform admins are bootstrapped from `SHARECROP_ADMIN_USER_IDS` (comma-separated user ids). `POST /api/collectibles/award` now requires an admin (401 unauth / 403 non-admin); the demo award panel stays open since the demo has no real auth.
+- Collectibles can be owned by a user, team, or organization: migration `000021` adds `owner_kind` and drops the users FK on `owner_user_id`; `assets.Collectible` carries `OwnerKind`/`OwnerID` (string); fund/tip/transfer require user ownership. Awarding accepts `recipient_kind` (user/team/organization). New `GET /api/organizations/{id}/collectibles` and `GET /api/teams/{id}/collectibles`, shown on the org/team detail pages. `CollectibleResponse.owner_kind` added to contracts.
+- Tests: http_e2e covers the admin gate (403 for non-admin), award to user + team, org/team holdings, and trade-back; assets/integration updated.
+
+Remaining queue (sequenced PRs): submission-level comments; scheduling/recurrence; a thorough UI/UX + user-journey review pass with boyscout fixes.
 
 Implemented in `task/default-collectibles`:
 
