@@ -48,6 +48,8 @@ type alias SchemaFieldDraft =
     { name : String
     , kind : String
     , required : Bool
+    , itemKind : String
+    , enumValues : String
     }
 
 
@@ -211,6 +213,8 @@ type Msg
     | SchemaFieldNameChanged Int String
     | SchemaFieldKindChanged Int String
     | SchemaFieldRequiredChanged Int Bool
+    | SchemaFieldItemKindChanged Int String
+    | SchemaFieldEnumValuesChanged Int String
     | CreatePayloadChanged String
     | CreateRewardAmountChanged String
     | CreateVisibilityChanged String

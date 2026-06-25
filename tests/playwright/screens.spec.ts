@@ -510,6 +510,18 @@ test("a requester builds a response schema with the structured designer", async 
     /"name":"summary"/,
   );
 
+  // A second field as an enum with allowed values flows into the schema JSON.
+  await page.getByTestId("schema-add-field").click();
+  await page.getByTestId("schema-field-name").nth(1).fill("rating");
+  await page.getByTestId("schema-field-kind").nth(1).selectOption("enum");
+  await page.getByTestId("schema-field-enum-values").fill("low, medium, high");
+  await expect(page.getByTestId("create-response-schema")).toHaveValue(
+    /"kind":"enum"/,
+  );
+  await expect(page.getByTestId("create-response-schema")).toHaveValue(
+    /"high"/,
+  );
+
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
   await expect(page.getByTestId("create-message")).toContainText(
@@ -560,8 +572,9 @@ test("a user mints a personal agent token with MCP install commands on their own
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toBeVisible();
 
-  // Own user page: the agent-access section is present.
-  await page.goto(`/users/${owner.body.subject_id}`);
+  // The Profile nav link goes to the user's own page, where the agent-access
+  // section is present.
+  await page.getByTestId("nav-profile").click();
   await expect(page.getByTestId("mint-user-token")).toBeVisible();
   await page.getByTestId("mint-user-token").click();
   await expect(page.getByTestId("user-token")).toBeVisible();

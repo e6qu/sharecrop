@@ -312,7 +312,7 @@ update msg model =
         AddSchemaFieldClicked ->
             ( Api.updateLoggedIn model
                 (applySchemaFields
-                    (\fields -> fields ++ [ { name = "", kind = "string", required = True } ])
+                    (\fields -> fields ++ [ { name = "", kind = "string", required = True, itemKind = "string", enumValues = "" } ])
                 )
             , Cmd.none
             )
@@ -344,6 +344,18 @@ update msg model =
         SchemaFieldRequiredChanged index value ->
             ( Api.updateLoggedIn model
                 (applySchemaFields (updateFieldAt index (\field -> { field | required = value })))
+            , Cmd.none
+            )
+
+        SchemaFieldItemKindChanged index value ->
+            ( Api.updateLoggedIn model
+                (applySchemaFields (updateFieldAt index (\field -> { field | itemKind = value })))
+            , Cmd.none
+            )
+
+        SchemaFieldEnumValuesChanged index value ->
+            ( Api.updateLoggedIn model
+                (applySchemaFields (updateFieldAt index (\field -> { field | enumValues = value })))
             , Cmd.none
             )
 

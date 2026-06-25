@@ -469,10 +469,19 @@
     // the real backend's idempotency_key guard).
     const key = body && body.idempotency_key;
     if (key && db.appliedFunding[key]) return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
-    if (amount > db.balance) return err(409, "insufficient credits to fund the task");
+    // Org-owned tasks fund from the organization wallet; personal tasks from the
+    // user balance. The funder is remembered so refunds/tips return to it.
+    const orgId = (body && body.organization_id) || "";
+    if (orgId) {
+      if (amount > (db.orgBalances[orgId] || 0)) return err(409, "insufficient organization credits to fund the task");
+      db.orgBalances[orgId] -= amount; t.fundedOrg = orgId;
+    } else {
+      if (amount > db.balance) return err(409, "insufficient credits to fund the task");
+      db.balance -= amount;
+    }
     // Funding only moves credits into escrow; task state is unchanged (the /open
     // route moves draft -> open). "funded" is not a valid TaskState.
-    db.balance -= amount; t.escrow += amount;
+    t.escrow += amount;
     if (key) db.appliedFunding[key] = true;
     return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
   });
@@ -523,6 +532,11 @@
   function pushLedger(kind, amount, taskId) {
     db.ledger.push({ id: nextId("entry"), kind, amount, task_id: taskId });
   }
+  // Refunds and tips return to whichever wallet funded the task (org or personal).
+  function funderAdjust(t, amount) {
+    if (t.fundedOrg) db.orgBalances[t.fundedOrg] = (db.orgBalances[t.fundedOrg] || 0) + amount;
+    else db.balance += amount;
+  }
   const decide = (state, availability) => (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const s = t.submissions.find((x) => x.id === p.sid);
@@ -544,8 +558,8 @@
       const refund = Math.max(0, escrow - payout);
       tip = (body && body.tip_amount) || 0;
       if (payout > 0) pushLedger("task_payout", -payout, t.id);
-      if (refund > 0) { db.balance += refund; pushLedger("task_refund", refund, t.id); }
-      if (tip > 0) { db.balance -= tip; pushLedger("task_tip", -tip, t.id); }
+      if (refund > 0) { funderAdjust(t, refund); pushLedger("task_refund", refund, t.id); }
+      if (tip > 0) { funderAdjust(t, -tip); pushLedger("task_tip", -tip, t.id); }
       t.escrow = 0;
       t.state = "closed";
     }
@@ -563,8 +577,8 @@
     // refunded, and a tip is charged from the current balance. Ledger entries
     // make all of this visible.
     if (payout > 0) pushLedger("task_payout", -payout, t.id);
-    if (refund > 0) { db.balance += refund; pushLedger("task_refund", refund, t.id); }
-    if (tip > 0) { db.balance -= tip; pushLedger("task_tip", -tip, t.id); }
+    if (refund > 0) { funderAdjust(t, refund); pushLedger("task_refund", refund, t.id); }
+    if (tip > 0) { funderAdjust(t, -tip); pushLedger("task_tip", -tip, t.id); }
     s.state = "accepted"; t.escrow = 0; t.availability_kind = "closed"; t.state = "closed";
     return ok({ task_id: t.id, submission_id: s.id, payout_kind: t.reward_kind, payout_amount: payout, worker_user_id: s.submitter_id, collectible_ids: [], tip_amount: tip });
   });
