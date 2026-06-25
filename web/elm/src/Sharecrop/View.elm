@@ -4,6 +4,7 @@ import Browser
 import Html exposing (Html, a, div, form, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
 import Html.Attributes exposing (checked, disabled, href, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
+import Json.Encode as Encode
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
@@ -21,7 +22,7 @@ view : Model -> Browser.Document Msg
 view model =
     { title = "Sharecrop"
     , body =
-        [ main_ [ Html.Attributes.class "min-h-screen bg-slate-50 p-8 text-slate-950" ]
+        [ main_ [ Html.Attributes.class "min-h-screen bg-slate-50 p-4 text-slate-950 sm:p-8" ]
             [ div [ Html.Attributes.class "mx-auto max-w-3xl space-y-6" ]
                 [ Ui.pageTitle "Sharecrop"
                 , sessionView model
@@ -285,9 +286,9 @@ seriesTasksSection seriesId isCreator data =
 seriesTaskRow : String -> Bool -> SeriesTaskEntry -> Html Msg
 seriesTaskRow seriesId isCreator entry =
     div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "series-task-row" ]
-        [ a [ href ("/tasks/" ++ entry.id), Html.Attributes.class "text-sm underline", testId "series-task-link" ] [ text (entry.title ++ " · " ++ entry.state) ]
+        [ a [ href ("/tasks/" ++ entry.id), Html.Attributes.class "w-full text-sm underline break-words sm:w-auto", testId "series-task-link" ] [ text (entry.title ++ " · " ++ entry.state) ]
         , if isCreator then
-            div [ Html.Attributes.class "flex gap-2" ]
+            div [ Html.Attributes.class "flex flex-wrap gap-2" ]
                 [ Ui.secondaryButton [ type_ "button", onClick (MoveSeriesTaskUpClicked seriesId entry.id), testId "series-task-up" ] "Up"
                 , Ui.secondaryButton [ type_ "button", onClick (MoveSeriesTaskDownClicked seriesId entry.id), testId "series-task-down" ] "Down"
                 , Ui.secondaryButton [ type_ "button", onClick (RemoveSeriesTaskClicked seriesId entry.id), testId "series-remove-task" ] "Remove"
@@ -641,7 +642,8 @@ createTaskView state =
         , Ui.fieldLabel "Task type" [ taskTypeSelect state.createTaskType ]
         , Ui.fieldLabel "Reference URL (e.g. the pull request)" [ Ui.textInput [ type_ "text", placeholder "https://github.com/org/repo/pull/123", value state.createReferenceURL, onInput CreateReferenceURLChanged, testId "create-reference-url" ] ]
         , Ui.fieldLabel "Description" [ Ui.textarea_ [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ] ]
-        , Ui.fieldLabel "Response schema (JSON)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
+        , schemaDesignerView state
+        , Ui.fieldLabel "Response schema (JSON, advanced)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
         , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
         , Ui.fieldLabel "Credit reward" [ Ui.textInput [ type_ "number", placeholder "Blank for no reward", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
         , ownerChooser state
@@ -656,6 +658,104 @@ createTaskView state =
         , Ui.primaryButton [ type_ "submit", testId "create-task" ] "Create task"
         , maybeNote state.createMessage "create-message"
         ]
+
+
+schemaFromFields : List SchemaFieldDraft -> String
+schemaFromFields fields =
+    let
+        named =
+            List.filter (\field -> String.trim field.name /= "") fields
+    in
+    if List.isEmpty named then
+        "{\"kind\":\"freeform\"}"
+
+    else
+        Encode.encode 0
+            (Encode.object
+                [ ( "kind", Encode.string "object" )
+                , ( "fields", Encode.list encodeSchemaField named )
+                ]
+            )
+
+
+encodeSchemaField : SchemaFieldDraft -> Encode.Value
+encodeSchemaField field =
+    Encode.object
+        [ ( "name", Encode.string (String.trim field.name) )
+        , ( "presence"
+          , Encode.string
+                (if field.required then
+                    "required"
+
+                 else
+                    "may_omit"
+                )
+          )
+        , ( "schema", Encode.object [ ( "kind", Encode.string field.kind ) ] )
+        ]
+
+
+schemaFieldKinds : List String
+schemaFieldKinds =
+    [ "string", "integer", "decimal_string", "freeform" ]
+
+
+schemaDesignerView : LoggedInModel -> Html Msg
+schemaDesignerView state =
+    div [ Html.Attributes.class "space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4" ]
+        [ Ui.label_ "Response schema designer"
+        , p [ Html.Attributes.class "text-xs text-slate-500" ]
+            [ text "Add fields to build an object schema without writing JSON. With no fields the schema is freeform." ]
+        , div [ Html.Attributes.class "space-y-2" ]
+            (List.indexedMap schemaFieldRow state.createSchemaFields)
+        , Ui.secondaryButton [ type_ "button", onClick AddSchemaFieldClicked, testId "schema-add-field" ] "Add field"
+        ]
+
+
+schemaFieldRow : Int -> SchemaFieldDraft -> Html Msg
+schemaFieldRow index field =
+    div [ Html.Attributes.class "flex flex-col gap-2 rounded-md border border-slate-200 bg-white p-3 sm:flex-row sm:items-end" ]
+        [ div [ Html.Attributes.class "w-full sm:flex-1" ]
+            [ Ui.fieldLabel "Field name"
+                [ Ui.textInput
+                    [ type_ "text"
+                    , placeholder "summary"
+                    , value field.name
+                    , onInput (SchemaFieldNameChanged index)
+                    , testId "schema-field-name"
+                    ]
+                ]
+            ]
+        , div [ Html.Attributes.class "w-full sm:w-auto" ]
+            [ Ui.fieldLabel "Type"
+                [ select
+                    [ Html.Attributes.class Ui.fieldClass
+                    , value field.kind
+                    , onInput (SchemaFieldKindChanged index)
+                    , testId "schema-field-kind"
+                    ]
+                    (List.map (schemaKindOption field.kind) schemaFieldKinds)
+                ]
+            ]
+        , label [ Html.Attributes.class "flex min-h-[44px] w-full items-center gap-2 text-sm text-slate-700 sm:w-auto" ]
+            [ Html.input
+                [ type_ "checkbox"
+                , checked field.required
+                , onCheck (SchemaFieldRequiredChanged index)
+                , testId "schema-field-required"
+                ]
+                []
+            , text "Required"
+            ]
+        , Ui.secondaryButton
+            [ type_ "button", onClick (RemoveSchemaFieldClicked index), testId "schema-field-remove", Html.Attributes.class "w-full sm:w-auto" ]
+            "Remove"
+        ]
+
+
+schemaKindOption : String -> String -> Html Msg
+schemaKindOption selectedKind kind =
+    option [ value kind, selected (kind == selectedKind) ] [ text kind ]
 
 
 allTaskTypes : List String
@@ -892,12 +992,12 @@ tasksList tasks =
 
 taskRow : Task.TaskListItemResponse -> Html Msg
 taskRow item =
-    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "task-row" ]
-        [ div []
-            [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
+    div [ Html.Attributes.class "flex items-center justify-between gap-3 py-2", testId "task-row" ]
+        [ div [ Html.Attributes.class "min-w-0" ]
+            [ p [ Html.Attributes.class "font-medium break-words" ] [ text item.title ]
+            , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
             ]
-        , a [ href ("/tasks/" ++ item.id), Html.Attributes.class Ui.secondaryButtonClass, testId "view-task" ] [ text "View" ]
+        , a [ href ("/tasks/" ++ item.id), Html.Attributes.class (Ui.secondaryButtonClass ++ " shrink-0"), testId "view-task" ] [ text "View" ]
         ]
 
 
@@ -1050,9 +1150,9 @@ collectiblesList state =
 
 collectibleRow : Collectible.CollectibleResponse -> Html Msg
 collectibleRow collectible =
-    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "collectible-row" ]
-        [ div [ Html.Attributes.class "flex items-center gap-2" ]
-            [ a [ href ("/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline", testId "collectible-link" ] [ text collectible.name ]
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "collectible-row" ]
+        [ div [ Html.Attributes.class "flex min-w-0 flex-wrap items-center gap-2" ]
+            [ a [ href ("/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline break-words", testId "collectible-link" ] [ text collectible.name ]
             , Ui.badge (collectibleStateLabel collectible.state)
             , span [ Html.Attributes.class "text-xs text-slate-500" ] [ text (collectibleKindLabel collectible.kind) ]
             ]
@@ -1094,12 +1194,12 @@ discoveryList tasks =
 
 discoveryRow : Task.TaskListItemResponse -> Html Msg
 discoveryRow item =
-    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "discovery-task-row" ]
-        [ div []
-            [ p [ Html.Attributes.class "font-medium" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item) ]
+    div [ Html.Attributes.class "flex items-center justify-between gap-3 py-2", testId "discovery-task-row" ]
+        [ div [ Html.Attributes.class "min-w-0" ]
+            [ p [ Html.Attributes.class "font-medium break-words" ] [ text item.title ]
+            , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item) ]
             ]
-        , Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View"
+        , div [ Html.Attributes.class "shrink-0" ] [ Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View" ]
         ]
 
 
@@ -1398,7 +1498,7 @@ reviewButtons : LoggedInModel -> Submission.SubmissionResponse -> Html Msg
 reviewButtons state submission =
     case submission.state of
         Submission.SubmissionStateSubmitted ->
-            div [ Html.Attributes.class "flex flex-wrap justify-end gap-2" ]
+            div [ Html.Attributes.class "flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end" ]
                 [ Ui.secondaryButton [ onClick (RequestChangesClicked submission.id), disabled (String.trim state.reviewNote == ""), testId "request-changes" ] "Request changes"
                 , Ui.secondaryButton [ onClick (RejectClicked submission.id), disabled (String.trim state.reviewNote == ""), testId "reject-submission" ] "Reject"
                 , Ui.primaryButton [ onClick (AcceptClicked submission.id), testId "accept-submission" ] "Accept"

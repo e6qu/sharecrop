@@ -1,10 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 50 work, merged into `main`.
+The repository contains pull request 1 through pull request 51 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/fuzz-journeys-uiux` is a fuzz + journey + UI/UX review round with opportunistic fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/mobile-demo-design` is a mobile-usability + demo-completeness + design-surface round (two specialized review subagents) with a re-run fuzz pass. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/mobile-demo-design`:
+
+- Demo full functionality: accepting a submission now releases escrow, pays out, refunds any remainder, and charges tips with visible ledger entries (it previously closed the task without moving any credits); reject/request-changes honor partial credit + tip and refund the rest. Seeded a task with a `task_type`, a `reference_url`, and a comment so those surfaces are visible. Added the `unpublish` task route.
+- Mobile: a Playwright mobile project (`mobile.spec.ts`, 375x667) asserts no horizontal overflow across pages; it caught real overflows. Fixes: responsive outer/card padding, 44px tap targets and shrink/wrap on action rows, stacked review buttons, `min-w-0`/`break-words` on long-ID rows, wrap-friendly inline forms, and wrappable arcade buttons. Collectible transfer policies now show readable labels (e.g. "Transferable within organization") instead of raw tags, which also fixed an unbreakable-token overflow.
+- Design/edit surface: the create-task form gained a structured response-schema designer (add fields with name/type/required -> generated schema JSON) alongside the raw JSON, mobile-friendly.
+- Fuzzing: re-ran the suite (FuzzHandleRaw covers the new MCP tools, plus the schema/value/token/parsePage/task-value targets) — all green.
+
+Earlier branch `task/fuzz-journeys-uiux` (pull request 51, merged) added the task-value fuzz, fixed the demo validator for template schemas, the empty flagship series, worker-visible validation errors, and several UI/UX nits.
 
 Implemented in `task/fuzz-journeys-uiux`:
 

@@ -44,6 +44,13 @@ type Page
     | TeamDetailPage String
 
 
+type alias SchemaFieldDraft =
+    { name : String
+    , kind : String
+    , required : Bool
+    }
+
+
 type alias SeriesTaskEntry =
     { id : String
     , title : String
@@ -67,6 +74,7 @@ type alias LoggedInModel =
     , createTitle : String
     , createDescription : String
     , createResponseSchema : String
+    , createSchemaFields : List SchemaFieldDraft
     , createPayloadJson : String
     , createRewardAmount : String
     , createVisibility : String
@@ -195,6 +203,11 @@ type Msg
     | CreateTitleChanged String
     | CreateDescriptionChanged String
     | CreateResponseSchemaChanged String
+    | AddSchemaFieldClicked
+    | RemoveSchemaFieldClicked Int
+    | SchemaFieldNameChanged Int String
+    | SchemaFieldKindChanged Int String
+    | SchemaFieldRequiredChanged Int Bool
     | CreatePayloadChanged String
     | CreateRewardAmountChanged String
     | CreateVisibilityChanged String

@@ -148,7 +148,7 @@
     ],
     series: [{ id: "series-orchard", owner_kind: "user", title: "Orchard intake", description: "A multi-step orchard onboarding with review rounds.", state: "published", created_by: ME, position: 0 }],
     seriesComments: { "series-orchard": [{ id: "scom-1", series_id: "series-orchard", author_user_id: ME, body: "Kicking off round one — add the intake tasks here.", created_at: "2026-06-20T10:00:00Z" }] },
-    taskComments: {},
+    taskComments: { "task-7": [{ id: "tcom-seed", task_id: "task-7", author_user_id: "user-jules", body: "Keep each note to one sentence; link the PR for each entry.", created_at: "2026-06-22T09:00:00Z" }] },
     appliedFunding: {},
     tasks: [],
   };
@@ -267,6 +267,7 @@
     }),
     task({
       id: "task-7", title: "Write release notes for 5 changelog entries", owner_id: "user-jules", created_by: "user-jules", participation_policy: "open",
+      task_type: "product_review", reference_url: "https://github.com/example/app/releases/tag/v2.0",
       description:
         "Turn each of the 5 raw changelog entries in the Task input into one customer-facing release note: a single sentence, plain language, no internal ticket ids. Return a JSON object with a notes array of 5 strings, in the same order as the input. (This task uses a freeform response schema, so the exact shape is up to you — just keep it to the 5 notes in order.)",
       reward_credit_amount: 20, escrow: 20, response_schema_json: '{"kind":"freeform"}',
@@ -519,6 +520,9 @@
     }
     return ok({ submission: s, receipt_token: nextId("receipt") }, 201);
   });
+  function pushLedger(kind, amount, taskId) {
+    db.ledger.push({ id: nextId("entry"), kind, amount, task_id: taskId });
+  }
   const decide = (state, availability) => (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const s = t.submissions.find((x) => x.id === p.sid);
@@ -526,21 +530,43 @@
     s.state = state; s.review_note = (body && body.review_note) || "";
     t.availability_kind = availability;
     const reservation = t.reservations.find((r) => r.assignee_id === s.submitter_id);
+    let payout = 0;
+    let tip = 0;
     if (state === "changes_requested") {
-      // Return the worker to an active reservation so they can resubmit.
+      // Return the worker to an active reservation so they can resubmit; escrow
+      // stays held and no credits move.
       if (reservation) reservation.state = "active";
     } else {
+      // Rejected: optional partial credit to the worker, the rest refunded, and
+      // an optional tip charged from the requester balance.
+      const escrow = t.escrow || 0;
+      payout = Math.min((body && body.partial_credit_amount) || 0, escrow);
+      const refund = Math.max(0, escrow - payout);
+      tip = (body && body.tip_amount) || 0;
+      if (payout > 0) pushLedger("task_payout", -payout, t.id);
+      if (refund > 0) { db.balance += refund; pushLedger("task_refund", refund, t.id); }
+      if (tip > 0) { db.balance -= tip; pushLedger("task_tip", -tip, t.id); }
+      t.escrow = 0;
       t.state = "closed";
     }
-    const worker = s.submitter_id;
-    const payout = state === "accepted" ? (t.reward_credit_amount || 0) : ((body && body.payout_amount) || 0);
-    return ok({ task_id: t.id, submission_id: s.id, state, review_note: s.review_note, payout_kind: t.reward_kind, payout_amount: payout, worker_user_id: worker, tip_amount: (body && body.tip_amount) || 0 });
+    return ok({ task_id: t.id, submission_id: s.id, state, review_note: s.review_note, payout_kind: t.reward_kind, payout_amount: payout, worker_user_id: s.submitter_id, tip_amount: tip });
   };
-  on("POST", "/api/tasks/:id/submissions/:sid/accept", (p, url, body) => {
+  on("POST", "/api/tasks/:id/submissions/:sid/accept", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const s = t.submissions.find((x) => x.id === p.sid); if (!s) return err(404, "submission not found");
-    s.state = "accepted"; t.availability_kind = "closed"; t.state = "closed";
-    return ok({ task_id: t.id, submission_id: s.id, payout_kind: t.reward_kind, payout_amount: t.reward_credit_amount || 0, worker_user_id: s.submitter_id, collectible_ids: [], tip_amount: (body && body.tip_amount) || 0 });
+    const escrow = t.escrow || 0;
+    const payout = Math.min((body && body.payout_amount) || t.reward_credit_amount || 0, escrow);
+    const refund = Math.max(0, escrow - payout);
+    const tip = (body && body.tip_amount) || 0;
+    // The escrow was deducted from the requester wallet at funding time, so a
+    // payout leaves the held escrow (no balance change), an unpaid remainder is
+    // refunded, and a tip is charged from the current balance. Ledger entries
+    // make all of this visible.
+    if (payout > 0) pushLedger("task_payout", -payout, t.id);
+    if (refund > 0) { db.balance += refund; pushLedger("task_refund", refund, t.id); }
+    if (tip > 0) { db.balance -= tip; pushLedger("task_tip", -tip, t.id); }
+    s.state = "accepted"; t.escrow = 0; t.availability_kind = "closed"; t.state = "closed";
+    return ok({ task_id: t.id, submission_id: s.id, payout_kind: t.reward_kind, payout_amount: payout, worker_user_id: s.submitter_id, collectible_ids: [], tip_amount: tip });
   });
   on("POST", "/api/tasks/:id/submissions/:sid/reject", decide("rejected", "closed"));
   on("POST", "/api/tasks/:id/submissions/:sid/request-changes", decide("changes_requested", "reserved"));

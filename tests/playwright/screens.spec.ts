@@ -492,3 +492,35 @@ test("a requester uses a code-review template with a PR link and comments on the
     page.getByTestId("task-comment").filter({ hasText: "Which branch" }),
   ).toHaveCount(1);
 });
+
+test("a requester builds a response schema with the structured designer", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "designer-owner");
+  const title = `Designed ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill(
+    "Summarize the linked material.",
+  );
+
+  // Build the schema from fields instead of writing JSON; the advanced textarea
+  // reflects the generated schema.
+  await page.getByTestId("schema-add-field").click();
+  await page.getByTestId("schema-field-name").fill("summary");
+  await expect(page.getByTestId("create-response-schema")).toHaveValue(
+    /"name":"summary"/,
+  );
+
+  await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
+    "view-task",
+  ).click();
+  await expect(page.getByTestId("detail-schema")).toContainText("summary");
+});

@@ -11,7 +11,7 @@ testId value =
 
 card : List (Html msg) -> Html msg
 card children =
-    Html.div [ class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" ] children
+    Html.div [ class "space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" ] children
 
 
 sectionTitle : String -> Html msg
@@ -31,7 +31,7 @@ label_ value =
 
 fieldLabel : String -> List (Html msg) -> Html msg
 fieldLabel labelText controls =
-    label [ class "block space-y-1 text-sm font-medium text-slate-700" ]
+    label [ class "block min-w-0 grow space-y-1 text-sm font-medium text-slate-700" ]
         (span [] [ text labelText ] :: controls)
 
 
@@ -94,12 +94,12 @@ noteText identifier message =
 
 primaryButtonClass : String
 primaryButtonClass =
-    "rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+    "inline-flex min-h-[44px] items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
 
 
 secondaryButtonClass : String
 secondaryButtonClass =
-    "rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+    "inline-flex min-h-[44px] items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
 
 
 dangerButtonClass : String
