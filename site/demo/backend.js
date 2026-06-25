@@ -137,6 +137,7 @@
       { id: "col-2", name: "Golden Sickle", kind: "badge", state: "minted", transfer_policy: "non_transferable_except_payout", owner_id: ME },
     ],
     organizations: [{ id: "org-lattice", name: "Lattice Field Co", created_by: ME }],
+    orgBalances: { "org-lattice": 7200 },
     members: { "org-lattice": [{ id: "mem-1", organization_id: "org-lattice", user_id: ME, status: "active", roles: ["owner"] }] },
     orgTeams: { "org-lattice": [{ id: "team-survey", owner_kind: "organization", organization_id: "org-lattice", owner_user_id: "", name: "Survey crew", created_by: ME }] },
     standaloneTeams: [{ id: "team-field", owner_kind: "user", organization_id: "", owner_user_id: ME, name: "Field hands", created_by: ME }],
@@ -179,7 +180,7 @@
       payload_kind: "inline",
       payload_json: pretty({
         tickets: [
-          "1. Card declined at checkout even though it has funds",
+          "1. You charged my card again after I cancelled my plan last month",
           "2. App crashes every time I open the Reports tab",
           "3. How do I export my data to CSV?",
           "4. I was double charged for this month's plan",
@@ -239,7 +240,7 @@
     task({
       id: "task-5", title: "Normalize 8 dates to ISO 8601",
       description:
-        "Convert each of the 8 dates in the Task input to ISO 8601 (YYYY-MM-DD) and return them, in order, as an iso_dates array. Rules: if a date leads with a 4-digit number, treat it as the year (YYYY/MM/DD or YYYY.MM.DD); otherwise, for ambiguous all-numeric dates, treat the format as day-first (so \"03/04/2026\" is 4 March 2026 -> \"2026-03-04\"). Slash, dash, and dot separators all appear.",
+        "Convert each of the 8 dates in the Task input to ISO 8601 (YYYY-MM-DD) and return them, in order, as an iso_dates array. Rules: if a date leads with a 4-digit number, treat it as the year (YYYY/MM/DD or YYYY.MM.DD); otherwise, for ambiguous all-numeric dates, treat the format as month-first (so \"03/04/2026\" is March 4, 2026 -> \"2026-03-04\"). Slash, dash, and dot separators all appear.",
       reward_credit_amount: 30, escrow: 30, response_schema_json: dateSchema,
       payload_kind: "inline",
       payload_json: pretty({
@@ -422,6 +423,18 @@
   });
   on("POST", "/api/tasks/:id/open", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); t.state = "open"; return ok(detail(t)); });
   on("POST", "/api/tasks/:id/cancel", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); t.state = "cancelled"; return ok(detail(t)); });
+  on("POST", "/api/tasks/:id/refund", (p) => {
+    // Release any escrow back to the owner and cancel the task. Mirrors the
+    // real backend's refund: returns the escrow shape the client decodes.
+    const t = findTask(p.id); if (!t) return err(404, "task not found");
+    const released = t.escrow || 0;
+    if (released > 0) {
+      db.balance += released;
+      db.ledger.push({ id: nextId("entry"), kind: "task_refund", amount: released, task_id: t.id });
+    }
+    t.escrow = 0; t.state = "cancelled"; t.availability_kind = "closed";
+    return ok({ task_id: t.id, amount: 0, state: "refunded" });
+  });
   on("POST", "/api/tasks/:id/funding", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const amount = (body && body.amount) || 0;
@@ -536,6 +549,7 @@
 
   on("GET", "/api/organizations", () => ok({ organizations: db.organizations }));
   on("POST", "/api/organizations", (_p, _url, body) => { const o = { id: nextId("org"), name: (body && body.name) || "Org", created_by: ME }; db.organizations.push(o); db.members[o.id] = [{ id: nextId("mem"), organization_id: o.id, user_id: ME, status: "active", roles: ["owner"] }]; db.orgTeams[o.id] = []; return ok(o, 201); });
+  on("GET", "/api/organizations/:id/credits/balance", (p) => ok({ amount: db.orgBalances[p.id] || 0 }));
   on("GET", "/api/organizations/:id/members", (p) => ok({ members: db.members[p.id] || [] }));
   on("POST", "/api/organizations/:id/members", (p, _url, body) => { const m = { id: nextId("mem"), organization_id: p.id, user_id: nextId("user"), status: "active", roles: (body && body.roles) || ["member"] }; (db.members[p.id] = db.members[p.id] || []).push(m); return ok(m, 201); });
   on("GET", "/api/organizations/:id/teams", (p) => ok({ teams: db.orgTeams[p.id] || [] }));

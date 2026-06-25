@@ -801,8 +801,9 @@ chooserButton isSelected msg identifier labelText =
 awardForm : LoggedInModel -> Html Msg
 awardForm state =
     div [ Html.Attributes.class "mt-4 space-y-3" ]
-        [ Ui.label_ "Award to a task"
+        [ Ui.label_ "Award a collectible to a task"
         , taskPicker "award-task-id" state.awardTaskId AwardTaskIdChanged state.tasks
+        , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text "Choose the task here, then press Award next to a collectible below." ]
         , maybeNote state.awardMessage "award-message"
         ]
 
@@ -832,7 +833,7 @@ awardCollectibleButton : Collectible.CollectibleResponse -> Html Msg
 awardCollectibleButton collectible =
     case collectible.state of
         Collectible.CollectibleStateMinted ->
-            Ui.secondaryButton [ type_ "button", onClick (AwardClicked collectible.id), testId "award-collectible" ] "Award"
+            Ui.secondaryButton [ type_ "button", onClick (AwardClicked collectible.id), testId "award-collectible" ] "Award to selected task"
 
         _ ->
             text ""

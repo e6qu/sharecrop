@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -86,5 +87,13 @@ func writeArrayJSON(builder *strings.Builder, value ArrayValue) EncodeValueResul
 }
 
 func writeJSONString(builder *strings.Builder, value string) {
-	builder.WriteString(strconv.Quote(value))
+	// strconv.Quote produces Go literal syntax, not JSON: it escapes bytes such
+	// as 0x7f as \x7f, which JSON does not permit, so a round-tripped value
+	// would be invalid JSON. encoding/json escapes strings to the JSON grammar.
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		builder.WriteString(strconv.Quote(value))
+		return
+	}
+	builder.Write(encoded)
 }
