@@ -771,3 +771,46 @@ func seriesCommentIDFromIDResult(result id.IDResult) SeriesCommentIDResult {
 		return SeriesCommentIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
+
+type TaskCommentID struct {
+	value id.ID
+}
+
+type TaskCommentIDResult interface {
+	taskCommentIDResult()
+}
+
+type TaskCommentIDCreated struct {
+	Value TaskCommentID
+}
+
+type TaskCommentIDRejected struct {
+	Reason DomainError
+}
+
+func (TaskCommentIDCreated) taskCommentIDResult() {}
+
+func (TaskCommentIDRejected) taskCommentIDResult() {}
+
+func NewTaskCommentID() TaskCommentIDResult {
+	return taskCommentIDFromIDResult(id.New())
+}
+
+func ParseTaskCommentID(raw string) TaskCommentIDResult {
+	return taskCommentIDFromIDResult(id.Parse(raw))
+}
+
+func (id TaskCommentID) String() string {
+	return id.value.String()
+}
+
+func taskCommentIDFromIDResult(result id.IDResult) TaskCommentIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return TaskCommentIDCreated{Value: TaskCommentID{value: typed.Value}}
+	case id.IDRejected:
+		return TaskCommentIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return TaskCommentIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}

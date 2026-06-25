@@ -109,6 +109,14 @@ func (services mcpServices) UnpublishTask(ctx context.Context, subject auth.User
 	return services.taskService.Unpublish(ctx, subject, taskID)
 }
 
+func (services mcpServices) AddTaskComment(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, body task.CommentBody) task.TaskCommentResult {
+	return services.taskService.AddTaskComment(ctx, subject, taskID, body)
+}
+
+func (services mcpServices) ListTaskComments(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.TaskCommentsResult {
+	return services.taskService.ListTaskComments(ctx, subject, taskID)
+}
+
 func (services mcpServices) ReserveTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
 	return services.taskService.Reserve(ctx, subject, taskID)
 }

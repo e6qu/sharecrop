@@ -24,6 +24,8 @@ type Store interface {
 	ReorderSeries(context.Context, core.TaskSeriesID, []core.TaskID) SeriesMutationStoreResult
 	CreateSeriesComment(context.Context, SeriesComment) CreateSeriesCommentStoreResult
 	ListSeriesComments(context.Context, core.TaskSeriesID) ListSeriesCommentsStoreResult
+	CreateTaskComment(context.Context, TaskComment) CreateTaskCommentStoreResult
+	ListTaskComments(context.Context, core.TaskID) ListTaskCommentsStoreResult
 	CreateReservation(context.Context, core.TaskReservationID, ReservationCommand) CreateReservationStoreResult
 	ChangeReservationState(context.Context, core.TaskID, core.TaskReservationID, ReservationState) ChangeReservationStateStoreResult
 	ListReservations(context.Context, core.TaskID) ListReservationsStoreResult
@@ -48,6 +50,8 @@ type CreateCommand struct {
 	Owner          Owner
 	Title          Title
 	Description    Description
+	Type           TaskType
+	Reference      ReferenceURL
 	Reward         RewardSpec
 	Participation  ParticipationPolicy
 	AssigneeScope  AssigneeScope

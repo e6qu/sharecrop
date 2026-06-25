@@ -30,6 +30,8 @@ const (
 	toolReopenSeries        = "sharecrop.reopen_series"
 	toolAddSeriesComment    = "sharecrop.add_series_comment"
 	toolListSeriesComments  = "sharecrop.list_series_comments"
+	toolAddTaskComment      = "sharecrop.add_task_comment"
+	toolListTaskComments    = "sharecrop.list_task_comments"
 	toolUnpublishTask       = "sharecrop.unpublish_task"
 	toolReserveTask         = "sharecrop.reserve_task"
 	toolListReservations    = "sharecrop.list_task_reservations"
@@ -67,9 +69,9 @@ func toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolCreateTask,
-			Description: "Create a user-owned task in draft state. Visibility is \"user\" or \"public\". Reward kind is \"none\", \"credit\", \"collectible\", or \"bundle\". participation_policy (default \"open\") controls how workers claim it: \"open\" lets anyone submit, \"reservation_required\" makes them reserve first, \"approval_required\" makes them request approval. After creating, call fund_task (for credit or bundle rewards) and then open_task so others can pick it up.",
+			Description: "Create a user-owned task in draft state. Visibility is \"user\" or \"public\". Reward kind is \"none\", \"credit\", \"collectible\", or \"bundle\". participation_policy (default \"open\") controls how workers claim it. task_type is one of general, code_review, security_review, product_review, ui_ux_review, qa_testing (default general). reference_url is an optional absolute http(s) URL the work targets, e.g. the pull request to review. After creating, call fund_task (for credit or bundle rewards) and then open_task so others can pick it up.",
 			Scope:       agent.ScopeTasksWrite,
-			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"visibility":{"type":"string","enum":["user","public"]},"reward_kind":{"type":"string","enum":["none","credit","collectible","bundle"]},"reward_credit_amount":{"type":"integer","minimum":1},"participation_policy":{"type":"string","enum":["open","reservation_required","approval_required"]}},"required":["title","description","response_schema_json","visibility","reward_kind"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"visibility":{"type":"string","enum":["user","public"]},"reward_kind":{"type":"string","enum":["none","credit","collectible","bundle"]},"reward_credit_amount":{"type":"integer","minimum":1},"participation_policy":{"type":"string","enum":["open","reservation_required","approval_required"]},"task_type":{"type":"string","enum":["general","code_review","security_review","product_review","ui_ux_review","qa_testing"]},"reference_url":{"type":"string"}},"required":["title","description","response_schema_json","visibility","reward_kind"]}`),
 		},
 		{
 			Name:        toolOpenTask,
@@ -184,6 +186,18 @@ func toolDefinitions() []toolDefinition {
 			Description: "List the comment thread on a series the agent can view.",
 			Scope:       agent.ScopeTasksRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"}},"required":["series_id"]}`),
+		},
+		{
+			Name:        toolAddTaskComment,
+			Description: "Post a comment on a task the agent can view, for clarifying questions on a detailed task such as a code review.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"body":{"type":"string"}},"required":["task_id","body"]}`),
+		},
+		{
+			Name:        toolListTaskComments,
+			Description: "List the comment thread on a task the agent can view.",
+			Scope:       agent.ScopeTasksRead,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"]}`),
 		},
 		{
 			Name:        toolUnpublishTask,

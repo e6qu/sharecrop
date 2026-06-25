@@ -542,6 +542,14 @@ func (testTaskService) ListSeriesComments(context.Context, auth.UserSubject, cor
 	return task.SeriesCommentsListed{Values: nil}
 }
 
+func (testTaskService) AddTaskComment(context.Context, auth.UserSubject, core.TaskID, task.CommentBody) task.TaskCommentResult {
+	return task.TaskCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
+}
+
+func (testTaskService) ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult {
+	return task.TaskCommentsListed{Values: nil}
+}
+
 func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
 	return task.TasksListed{Values: []task.ListItem{}}
 }

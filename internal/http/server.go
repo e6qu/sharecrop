@@ -69,6 +69,8 @@ type TaskService interface {
 	ReorderSeries(context.Context, auth.UserSubject, core.TaskSeriesID, []core.TaskID) task.SeriesMutationResult
 	AddSeriesComment(context.Context, auth.UserSubject, core.TaskSeriesID, task.CommentBody) task.SeriesCommentResult
 	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult
+	AddTaskComment(context.Context, auth.UserSubject, core.TaskID, task.CommentBody) task.TaskCommentResult
+	ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult
 	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
@@ -201,6 +203,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/reject", server.rejectSubmission)
 	mux.HandleFunc("GET /api/tasks/{task_id}", server.getTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/unpublish", server.unpublishTask)
+	mux.HandleFunc("GET /api/tasks/{task_id}/comments", server.listTaskComments)
+	mux.HandleFunc("POST /api/tasks/{task_id}/comments", server.addTaskComment)
 	mux.HandleFunc("GET /api/task-series", server.listTaskSeries)
 	mux.HandleFunc("POST /api/task-series", server.createTaskSeries)
 	mux.HandleFunc("GET /api/task-series/{series_id}", server.getTaskSeries)

@@ -365,6 +365,8 @@ func taskModule() Module {
 					{Name: NewElmValueName("ownerID"), JSONName: NewJSONFieldName("owner_id"), Type: StringRef{}},
 					{Name: NewElmValueName("title"), JSONName: NewJSONFieldName("title"), Type: StringRef{}},
 					{Name: NewElmValueName("description"), JSONName: NewJSONFieldName("description"), Type: StringRef{}},
+					{Name: NewElmValueName("taskType"), JSONName: NewJSONFieldName("task_type"), Type: StringRef{}},
+					{Name: NewElmValueName("referenceURL"), JSONName: NewJSONFieldName("reference_url"), Type: StringRef{}},
 					{Name: NewElmValueName("rewardKind"), JSONName: NewJSONFieldName("reward_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("rewardCreditAmount"), JSONName: NewJSONFieldName("reward_credit_amount"), Type: IntRef{}},
 					{Name: NewElmValueName("rewardCollectibleCount"), JSONName: NewJSONFieldName("reward_collectible_count"), Type: IntRef{}},
@@ -383,6 +385,16 @@ func taskModule() Module {
 					{Name: NewElmValueName("payloadKind"), JSONName: NewJSONFieldName("payload_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("payloadJSON"), JSONName: NewJSONFieldName("payload_json"), Type: StringRef{}},
 					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("TaskCommentResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					{Name: NewElmValueName("authorUserID"), JSONName: NewJSONFieldName("author_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("body"), JSONName: NewJSONFieldName("body"), Type: StringRef{}},
+					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
 				},
 			},
 			Product{

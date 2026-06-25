@@ -1,5 +1,11 @@
 # What We Did
 
+`task/dev-templates-comments` added pre-baked developer task types, a typed reference URL, and per-task comments:
+
+- A task now carries a `task_type` (general, code_review, security_review, product_review, ui_ux_review, qa_testing) and an optional `reference_url` (validated as an absolute http(s) URL — the specific pull request or resource to work on). `migration 000019` adds both columns (with a CHECK on the type and an index), plus a `task_comments` table. New domain: `TaskType`, `ReferenceURL`, `TaskComment`, `core.TaskCommentID`, and viewer-gated `AddTaskComment`/`ListTaskComments`.
+- The create-task form gained a task-type picker that prefills the description and response schema from a client-side template catalog (each developer type ships a description skeleton and a ready-made object schema), plus a reference-URL field; the task detail shows the type badge, a clickable reference link, and a comment thread. `create_task` (HTTP + MCP) accepts `task_type`/`reference_url`, task responses and `get_task` expose them, and new `add_task_comment`/`list_task_comments` MCP tools plus `GET/POST /api/tasks/{id}/comments` back the thread. Generated `TaskResponse` gained the two fields; new `TaskCommentResponse`.
+- The demo fake backend stores the type/reference and serves the comment endpoints. Tests: an http_e2e round-trip (type + reference + bad-URL rejection + comment thread) and a Playwright test driving the code-review template, the PR link, and a task comment.
+
 `task/series-first-class` promoted task series from a grouping label to a first-class managed domain:
 
 - A series now carries a description and a `draft`/`published`/`closed` lifecycle (transitions publish/unpublish/close/reopen), supports a comment thread, owns a stable `/series/{id}` URL, and lets its creator add, remove, and reorder member tasks. Only the creator can edit a series; a draft series is private to its creator, and a task whose series is not published cannot be reserved or submitted to (enforced in the reserve and submission-eligibility store queries). Tasks gained an `Unpublish` transition (open -> draft) so a task can be pulled back to draft.

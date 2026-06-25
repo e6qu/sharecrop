@@ -1,10 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 48 work, merged into `main`.
+The repository contains pull request 1 through pull request 49 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/series-first-class` makes task series a first-class domain: series carry a description and a draft/published/closed lifecycle, support a comment thread, own a stable URL, and let the creator add/remove/reorder member tasks. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/dev-templates-comments` adds pre-baked developer task types (code review, security review, product review, UI/UX review, QA testing), a typed reference URL (the pull request to work on), and a per-task comment thread. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/dev-templates-comments`:
+
+- Domain/DB (`migration 000019`): `tasks` gains `task_type` (constrained enum, default `general`) and `reference_url`; a `task_comments` table; an index on `tasks(task_type)`. New domain types `TaskType` and `ReferenceURL` (absolute http(s) validation), set on `Task` and `CreateCommand`; `TaskComment` + creator/viewer-gated `AddTaskComment`/`ListTaskComments` service methods.
+- HTTP: `POST /api/tasks` accepts `task_type`/`reference_url`; task responses expose them; `GET/POST /api/tasks/{id}/comments`. MCP: `create_task` gains `task_type`/`reference_url` args, `get_task` returns them, and new `add_task_comment`/`list_task_comments` tools.
+- Elm UI: the create-task form has a task-type picker that prefills the description and response schema from a client-side template catalog, plus a reference-URL input; the task detail shows the type badge, a clickable reference link, and a task comment thread. Generated `TaskResponse` gains `task_type`/`reference_url`; new `TaskCommentResponse`.
+- Demo + tests: the fake backend stores the type/reference and serves the task-comment endpoints; http_e2e covers the type/reference round-trip, bad-URL rejection, and the comment thread; a Playwright test drives the code-review template + PR link + a task comment.
+
+Earlier branch `task/series-first-class` (pull request 49, merged) made task series a first-class domain: series carry a description and a draft/published/closed lifecycle, support a comment thread, own a stable URL, and let the creator add/remove/reorder member tasks.
 
 Implemented in `task/series-first-class`:
 

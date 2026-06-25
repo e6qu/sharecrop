@@ -58,6 +58,8 @@ type taskRequest struct {
 	Owner              taskOwnerRequest         `json:"owner"`
 	Title              string                   `json:"title"`
 	Description        string                   `json:"description"`
+	TaskType           string                   `json:"task_type"`
+	ReferenceURL       string                   `json:"reference_url"`
 	Reward             taskRewardRequest        `json:"reward"`
 	Participation      taskParticipationRequest `json:"participation"`
 	Visibility         taskVisibilityRequest    `json:"visibility"`
@@ -122,6 +124,8 @@ type taskResponse struct {
 	OwnerID                string `json:"owner_id"`
 	Title                  string `json:"title"`
 	Description            string `json:"description"`
+	TaskType               string `json:"task_type"`
+	ReferenceURL           string `json:"reference_url"`
 	RewardKind             string `json:"reward_kind"`
 	RewardCreditAmount     int64  `json:"reward_credit_amount"`
 	RewardCollectibleCount int    `json:"reward_collectible_count"`

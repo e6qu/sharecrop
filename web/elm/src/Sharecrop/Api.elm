@@ -369,7 +369,25 @@ refreshDetailReservations model =
 
 fetchDetailCommands : String -> String -> Cmd Msg
 fetchDetailCommands token taskId =
-    Cmd.batch [ fetchPublicTaskDetail token taskId, fetchSubmissions token taskId, fetchReservations token taskId ]
+    Cmd.batch [ fetchPublicTaskDetail token taskId, fetchSubmissions token taskId, fetchReservations token taskId, fetchTaskComments token taskId ]
+
+
+fetchTaskComments : String -> String -> Cmd Msg
+fetchTaskComments token taskId =
+    authorizedRequest "GET"
+        token
+        ("/api/tasks/" ++ taskId ++ "/comments")
+        Http.emptyBody
+        (Http.expectJson TaskCommentsReceived (Decode.field "comments" (Decode.list Task.taskCommentResponseDecoder)))
+
+
+postTaskComment : String -> String -> String -> Cmd Msg
+postTaskComment token taskId body =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/comments")
+        (Http.jsonBody (Encode.object [ ( "body", Encode.string body ) ]))
+        (Http.expectJson TaskCommentReceived Task.taskCommentResponseDecoder)
 
 
 refreshAfterAccept : Model -> Cmd Msg
@@ -744,6 +762,8 @@ createTaskRequestBody state =
         , ( "placement", Encode.object [ ( "kind", Encode.string "standalone" ), ( "series_id", Encode.string "" ), ( "series_title", Encode.string "" ), ( "series_position", Encode.int 0 ) ] )
         , ( "response_schema_json", Encode.string (createSchemaString state) )
         , ( "payload", createPayloadBody state )
+        , ( "task_type", Encode.string state.createTaskType )
+        , ( "reference_url", Encode.string state.createReferenceURL )
         ]
 
 
@@ -936,6 +956,8 @@ taskDetailFromResponse response =
     , payloadJson = response.payloadJSON
     , createdBy = response.createdBy
     , seriesID = response.seriesID
+    , taskType = response.taskType
+    , referenceURL = response.referenceURL
     }
 
 

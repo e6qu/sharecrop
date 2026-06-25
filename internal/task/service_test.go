@@ -320,6 +320,14 @@ func (store *taskMemoryStore) ListSeriesComments(_ context.Context, _ core.TaskS
 	return ListSeriesCommentsStoreAccepted{Values: nil}
 }
 
+func (store *taskMemoryStore) CreateTaskComment(_ context.Context, comment TaskComment) CreateTaskCommentStoreResult {
+	return CreateTaskCommentStoreAccepted{Value: comment}
+}
+
+func (store *taskMemoryStore) ListTaskComments(_ context.Context, _ core.TaskID) ListTaskCommentsStoreResult {
+	return ListTaskCommentsStoreAccepted{Values: nil}
+}
+
 func (store *taskPermissionStore) grant(organizationID core.OrganizationID, userID core.UserID, roles ...org.Role) {
 	store.grants = append(store.grants, taskPermissionGrant{organizationID: organizationID, userID: userID, roles: roles})
 }

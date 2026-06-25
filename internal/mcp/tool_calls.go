@@ -30,6 +30,8 @@ type taskDetail struct {
 	OwnerKind          string `json:"owner_kind"`
 	Title              string `json:"title"`
 	Description        string `json:"description"`
+	TaskType           string `json:"task_type"`
+	ReferenceURL       string `json:"reference_url"`
 	RewardKind         string `json:"reward_kind"`
 	RewardAmount       int64  `json:"reward_credit_amount"`
 	Collectibles       int    `json:"reward_collectible_count"`
@@ -195,9 +197,22 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		RewardKind          string `json:"reward_kind"`
 		RewardCreditAmount  int64  `json:"reward_credit_amount"`
 		ParticipationPolicy string `json:"participation_policy"`
+		TaskType            string `json:"task_type"`
+		ReferenceURL        string `json:"reference_url"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
+	}
+
+	taskTypeResult := task.ParseTaskType(args.TaskType)
+	taskTypeAccepted, taskTypeMatched := taskTypeResult.(task.TaskTypeAccepted)
+	if !taskTypeMatched {
+		return toolProtocolError{code: codeInvalidParams, message: taskTypeResult.(task.TaskTypeRejected).Reason.Description()}
+	}
+	referenceResult := task.NewReferenceURL(args.ReferenceURL)
+	referenceAccepted, referenceMatched := referenceResult.(task.ReferenceURLAccepted)
+	if !referenceMatched {
+		return toolProtocolError{code: codeInvalidParams, message: referenceResult.(task.ReferenceURLRejected).Reason.Description()}
 	}
 
 	titleResult := task.NewTitle(args.Title)
@@ -249,6 +264,8 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		Owner:          task.UserOwner{UserID: subject.ID},
 		Title:          titleAccepted.Value,
 		Description:    descriptionAccepted.Value,
+		Type:           taskTypeAccepted.Value,
+		Reference:      referenceAccepted.Value,
 		Reward:         reward.value,
 		Participation:  participationAccepted.Value,
 		AssigneeScope:  task.AssigneeScopeUser,
@@ -902,6 +919,59 @@ func (server Server) callListSeriesComments(ctx context.Context, subject auth.Us
 	return marshalPayload(seriesCommentsPayload{Comments: comments})
 }
 
+func (server Server) callAddTaskComment(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		TaskID string `json:"task_id"`
+		Body   string `json:"body"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	taskResult := core.ParseTaskID(args.TaskID)
+	taskID, taskMatched := taskResult.(core.TaskIDCreated)
+	if !taskMatched {
+		return toolProtocolError{code: codeInvalidParams, message: taskResult.(core.TaskIDRejected).Reason.Description()}
+	}
+	bodyResult := task.NewCommentBody(args.Body)
+	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
+	if !bodyMatched {
+		return toolProtocolError{code: codeInvalidParams, message: bodyResult.(task.CommentBodyRejected).Reason.Description()}
+	}
+	result := server.services.AddTaskComment(ctx, subject, taskID.Value, body.Value)
+	added, matched := result.(task.TaskCommentAdded)
+	if !matched {
+		return toolFailed{message: result.(task.TaskCommentRejected).Reason.Description()}
+	}
+	return marshalPayload(seriesCommentSummary{
+		ID:        added.Value.ID.String(),
+		AuthorID:  added.Value.AuthorID.String(),
+		Body:      added.Value.Body.String(),
+		CreatedAt: added.Value.CreatedAt.UTC().Format(time.RFC3339),
+	})
+}
+
+func (server Server) callListTaskComments(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	taskID, problem := parseTaskID(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.ListTaskComments(ctx, subject, taskID)
+	listed, matched := result.(task.TaskCommentsListed)
+	if !matched {
+		return toolFailed{message: result.(task.TaskCommentsListRejected).Reason.Description()}
+	}
+	comments := make([]seriesCommentSummary, 0, len(listed.Values))
+	for index := range listed.Values {
+		comments = append(comments, seriesCommentSummary{
+			ID:        listed.Values[index].ID.String(),
+			AuthorID:  listed.Values[index].AuthorID.String(),
+			Body:      listed.Values[index].Body.String(),
+			CreatedAt: listed.Values[index].CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return marshalPayload(seriesCommentsPayload{Comments: comments})
+}
+
 func (server Server) callUnpublishTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	taskID, problem := parseTaskID(arguments)
 	if problem != nil {
@@ -1011,6 +1081,8 @@ func taskToDetail(value task.Task) taskDetail {
 		OwnerKind:          ownerKind(value.Owner),
 		Title:              value.Title.String(),
 		Description:        value.Description.String(),
+		TaskType:           value.Type.String(),
+		ReferenceURL:       value.Reference.String(),
 		RewardKind:         rewardKind,
 		RewardAmount:       rewardAmount,
 		Collectibles:       collectibleCount,
