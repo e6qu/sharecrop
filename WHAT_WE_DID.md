@@ -1,5 +1,13 @@
 # What We Did
 
+`task/round-fuzz-mobile-design` was a fuzz + mobile/UI-UX/contrast + demo-functionality review round (two specialized subagents) with a design-surface increase and boyscout fixes:
+
+- Fuzz: added `FuzzAgentValueParsers` (internal/agent) over the credential value parsers — the scope enum, the label, and the secret, which base64-decodes untrusted input. Crash-free; the existing schema/value/token/parsePage/task-value targets were re-run.
+- Design/edit surface: the structured response-schema designer gained `enum` (comma-separated allowed values) and `array` (item type) field kinds, alongside the scalar kinds. `SchemaFieldDraft` carries `itemKind`/`enumValues`; `encodeFieldSchema` emits the right schema per kind. The designer can now express the developer-template schemas (which use enum/array), not just flat scalar objects.
+- Mobile/UI-UX (from the review): `Ui.fieldClass` gained `min-h-[44px]` so all inputs/selects meet the 44px tap target; the schema-row Required checkbox now uses the shared styled `checkboxClass` instead of a tiny raw input; `copyButton` is full-width on a phone; the designer helper text moved from slate-500 to slate-600 for contrast headroom. The mobile Playwright test now opens the task API/MCP panel and mints a token, and visits the profile agent-access card, asserting no horizontal overflow on those long-code-block surfaces. The contrast review found no WCAG failures.
+- Usability: added a "Profile" nav link to the user's own page — last round's user-page token had no in-app navigation to reach it.
+- Demo boyscout (from the demo audit): opening the demo from `file://` no longer renders `null/mcp` commands (both index.html files fall back to a placeholder origin); org-owned task funding debits the organization wallet (not the personal balance), and refunds/tips return to whichever wallet funded the task. The audit otherwise confirmed full route/decoder parity and that prior fixes (economy, seeds, validator) hold.
+
 `task/user-page-token` put a personal agent token and MCP install commands on the user's own profile page:
 
 - On `/users/{id}` when the viewer is that user (`userId == subjectId`), a "Your agent access" card mints a full-capability agent credential inline (scopes tasks_read/tasks_write/submissions_read/submissions_write/submissions_review) and shows the real token in a copyable code block with a Rotate button. The section is omitted entirely when viewing someone else's page, so the token is owner-only.

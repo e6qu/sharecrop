@@ -60,13 +60,13 @@ authView model =
 loggedInView : String -> LoggedInModel -> Html Msg
 loggedInView origin state =
     div [ Html.Attributes.class "space-y-6" ]
-        [ navBar state.page
+        [ navBar state.page state.subjectId
         , pageView origin state
         ]
 
 
-navBar : Page -> Html Msg
-navBar current =
+navBar : Page -> String -> Html Msg
+navBar current subjectId =
     div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
         [ navLink current OverviewPage "overview" "Overview"
         , navLink current TasksPage "tasks" "Tasks"
@@ -77,6 +77,7 @@ navBar current =
         , navLink current CollectiblesPage "collectibles" "Collectibles"
         , navLink current SeriesListPage "series-list" "Series"
         , navLink current OrganizationsPage "organizations" "Organizations"
+        , a [ href ("/users/" ++ subjectId), Html.Attributes.class Ui.secondaryButtonClass, testId "nav-profile" ] [ text "Profile" ]
         , Ui.secondaryButton [ type_ "button", onClick LogoutClicked, testId "logout" ] "Log out"
         ]
 
@@ -732,21 +733,53 @@ encodeSchemaField field =
                     "may_omit"
                 )
           )
-        , ( "schema", Encode.object [ ( "kind", Encode.string field.kind ) ] )
+        , ( "schema", encodeFieldSchema field )
         ]
+
+
+encodeFieldSchema : SchemaFieldDraft -> Encode.Value
+encodeFieldSchema field =
+    case field.kind of
+        "enum" ->
+            Encode.object
+                [ ( "kind", Encode.string "enum" )
+                , ( "values", Encode.list Encode.string (enumValueList field.enumValues) )
+                ]
+
+        "array" ->
+            Encode.object
+                [ ( "kind", Encode.string "array" )
+                , ( "item", Encode.object [ ( "kind", Encode.string field.itemKind ) ] )
+                ]
+
+        other ->
+            Encode.object [ ( "kind", Encode.string other ) ]
+
+
+enumValueList : String -> List String
+enumValueList raw =
+    raw
+        |> String.split ","
+        |> List.map String.trim
+        |> List.filter (\value -> value /= "")
 
 
 schemaFieldKinds : List String
 schemaFieldKinds =
-    [ "string", "integer", "decimal_string", "freeform" ]
+    [ "string", "integer", "decimal_string", "enum", "array", "freeform" ]
+
+
+schemaItemKinds : List String
+schemaItemKinds =
+    [ "string", "integer", "decimal_string" ]
 
 
 schemaDesignerView : LoggedInModel -> Html Msg
 schemaDesignerView state =
     div [ Html.Attributes.class "space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4" ]
         [ Ui.label_ "Response schema designer"
-        , p [ Html.Attributes.class "text-xs text-slate-500" ]
-            [ text "Add fields to build an object schema without writing JSON. With no fields the schema is freeform." ]
+        , p [ Html.Attributes.class "text-xs text-slate-600" ]
+            [ text "Add fields to build an object schema without writing JSON. Pick a type per field — enum and array prompt for their values. With no fields the schema is freeform." ]
         , div [ Html.Attributes.class "space-y-2" ]
             (List.indexedMap schemaFieldRow state.createSchemaFields)
         , Ui.secondaryButton [ type_ "button", onClick AddSchemaFieldClicked, testId "schema-add-field" ] "Add field"
@@ -755,43 +788,80 @@ schemaDesignerView state =
 
 schemaFieldRow : Int -> SchemaFieldDraft -> Html Msg
 schemaFieldRow index field =
-    div [ Html.Attributes.class "flex flex-col gap-2 rounded-md border border-slate-200 bg-white p-3 sm:flex-row sm:items-end" ]
-        [ div [ Html.Attributes.class "w-full sm:flex-1" ]
-            [ Ui.fieldLabel "Field name"
-                [ Ui.textInput
-                    [ type_ "text"
-                    , placeholder "summary"
-                    , value field.name
-                    , onInput (SchemaFieldNameChanged index)
-                    , testId "schema-field-name"
+    div [ Html.Attributes.class "space-y-2 rounded-md border border-slate-200 bg-white p-3" ]
+        [ div [ Html.Attributes.class "flex flex-col gap-2 sm:flex-row sm:items-end" ]
+            [ div [ Html.Attributes.class "w-full sm:flex-1" ]
+                [ Ui.fieldLabel "Field name"
+                    [ Ui.textInput
+                        [ type_ "text"
+                        , placeholder "summary"
+                        , value field.name
+                        , onInput (SchemaFieldNameChanged index)
+                        , testId "schema-field-name"
+                        ]
                     ]
                 ]
-            ]
-        , div [ Html.Attributes.class "w-full sm:w-auto" ]
-            [ Ui.fieldLabel "Type"
-                [ select
-                    [ Html.Attributes.class Ui.fieldClass
-                    , value field.kind
-                    , onInput (SchemaFieldKindChanged index)
-                    , testId "schema-field-kind"
+            , div [ Html.Attributes.class "w-full sm:w-auto" ]
+                [ Ui.fieldLabel "Type"
+                    [ select
+                        [ Html.Attributes.class Ui.fieldClass
+                        , value field.kind
+                        , onInput (SchemaFieldKindChanged index)
+                        , testId "schema-field-kind"
+                        ]
+                        (List.map (schemaKindOption field.kind) schemaFieldKinds)
                     ]
-                    (List.map (schemaKindOption field.kind) schemaFieldKinds)
                 ]
-            ]
-        , label [ Html.Attributes.class "flex min-h-[44px] w-full items-center gap-2 text-sm text-slate-700 sm:w-auto" ]
-            [ Html.input
-                [ type_ "checkbox"
-                , checked field.required
-                , onCheck (SchemaFieldRequiredChanged index)
-                , testId "schema-field-required"
+            , label [ Html.Attributes.class "flex min-h-[44px] w-full items-center gap-2 text-sm text-slate-700 sm:w-auto" ]
+                [ Html.input
+                    [ type_ "checkbox"
+                    , Html.Attributes.class Ui.checkboxClass
+                    , checked field.required
+                    , onCheck (SchemaFieldRequiredChanged index)
+                    , testId "schema-field-required"
+                    ]
+                    []
+                , text "Required"
                 ]
-                []
-            , text "Required"
+            , Ui.secondaryButton
+                [ type_ "button", onClick (RemoveSchemaFieldClicked index), testId "schema-field-remove", Html.Attributes.class "w-full sm:w-auto" ]
+                "Remove"
             ]
-        , Ui.secondaryButton
-            [ type_ "button", onClick (RemoveSchemaFieldClicked index), testId "schema-field-remove", Html.Attributes.class "w-full sm:w-auto" ]
-            "Remove"
+        , schemaFieldDetail index field
         ]
+
+
+schemaFieldDetail : Int -> SchemaFieldDraft -> Html Msg
+schemaFieldDetail index field =
+    case field.kind of
+        "enum" ->
+            div [ Html.Attributes.class "w-full" ]
+                [ Ui.fieldLabel "Allowed values (comma-separated)"
+                    [ Ui.textInput
+                        [ type_ "text"
+                        , placeholder "low, medium, high"
+                        , value field.enumValues
+                        , onInput (SchemaFieldEnumValuesChanged index)
+                        , testId "schema-field-enum-values"
+                        ]
+                    ]
+                ]
+
+        "array" ->
+            div [ Html.Attributes.class "w-full sm:w-auto" ]
+                [ Ui.fieldLabel "Item type"
+                    [ select
+                        [ Html.Attributes.class Ui.fieldClass
+                        , value field.itemKind
+                        , onInput (SchemaFieldItemKindChanged index)
+                        , testId "schema-field-item-kind"
+                        ]
+                        (List.map (schemaKindOption field.itemKind) schemaItemKinds)
+                    ]
+                ]
+
+        _ ->
+            text ""
 
 
 schemaKindOption : String -> String -> Html Msg
@@ -1607,7 +1677,7 @@ mcpConfig origin secret =
 
 copyButton : String -> Html Msg
 copyButton clipboardText =
-    Ui.secondaryButton [ onClick (CopyClicked clipboardText), testId "copy-command" ] "Copy"
+    Ui.secondaryButton [ onClick (CopyClicked clipboardText), testId "copy-command", Html.Attributes.class "w-full sm:w-auto" ] "Copy"
 
 
 taskIntegration : String -> String -> LoggedInModel -> Html Msg

@@ -109,7 +109,7 @@ dangerButtonClass =
 
 fieldClass : String
 fieldClass =
-    "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+    "w-full min-h-[44px] rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
 
 
 checkboxClass : String

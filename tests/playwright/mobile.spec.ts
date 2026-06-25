@@ -50,4 +50,17 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
   await page.getByTestId("discovery-view").first().click();
   await expect(page.getByTestId("detail-title")).toBeVisible();
   await expectNoHorizontalOverflow("task detail");
+
+  // The expanded API & MCP panel with a minted token: long curl/JSON/.mcp.json
+  // code blocks must stay contained on a phone.
+  await page.getByTestId("toggle-integration").click();
+  await page.getByTestId("mint-task-token").click();
+  await expect(page.getByTestId("integration-token")).toBeVisible();
+  await expectNoHorizontalOverflow("task detail with API & MCP panel");
+
+  // The user's own profile page mints a personal token with long MCP commands.
+  await page.getByTestId("nav-profile").click();
+  await page.getByTestId("mint-user-token").click();
+  await expect(page.getByTestId("user-token")).toBeVisible();
+  await expectNoHorizontalOverflow("profile agent access");
 });

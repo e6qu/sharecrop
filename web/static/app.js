@@ -6592,6 +6592,83 @@ var $author$project$Sharecrop$Api$addSeriesTaskCommand = F3(
 							]))),
 				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
 	});
+var $elm$core$List$filter = F2(
+	function (isGood, list) {
+		return A3(
+			$elm$core$List$foldr,
+			F2(
+				function (x, xs) {
+					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
+				}),
+			_List_Nil,
+			list);
+	});
+var $elm$core$Basics$neq = _Utils_notEqual;
+var $author$project$Sharecrop$View$enumValueList = function (raw) {
+	return A2(
+		$elm$core$List$filter,
+		function (value) {
+			return value !== '';
+		},
+		A2(
+			$elm$core$List$map,
+			$elm$core$String$trim,
+			A2($elm$core$String$split, ',', raw)));
+};
+var $elm$json$Json$Encode$list = F2(
+	function (func, entries) {
+		return _Json_wrap(
+			A3(
+				$elm$core$List$foldl,
+				_Json_addEntry(func),
+				_Json_emptyArray(_Utils_Tuple0),
+				entries));
+	});
+var $author$project$Sharecrop$View$encodeFieldSchema = function (field) {
+	var _v0 = field.kind;
+	switch (_v0) {
+		case 'enum':
+			return $elm$json$Json$Encode$object(
+				_List_fromArray(
+					[
+						_Utils_Tuple2(
+						'kind',
+						$elm$json$Json$Encode$string('enum')),
+						_Utils_Tuple2(
+						'values',
+						A2(
+							$elm$json$Json$Encode$list,
+							$elm$json$Json$Encode$string,
+							$author$project$Sharecrop$View$enumValueList(field.enumValues)))
+					]));
+		case 'array':
+			return $elm$json$Json$Encode$object(
+				_List_fromArray(
+					[
+						_Utils_Tuple2(
+						'kind',
+						$elm$json$Json$Encode$string('array')),
+						_Utils_Tuple2(
+						'item',
+						$elm$json$Json$Encode$object(
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'kind',
+									$elm$json$Json$Encode$string(field.itemKind))
+								])))
+					]));
+		default:
+			var other = _v0;
+			return $elm$json$Json$Encode$object(
+				_List_fromArray(
+					[
+						_Utils_Tuple2(
+						'kind',
+						$elm$json$Json$Encode$string(other))
+					]));
+	}
+};
 var $author$project$Sharecrop$View$encodeSchemaField = function (field) {
 	return $elm$json$Json$Encode$object(
 		_List_fromArray(
@@ -6606,26 +6683,9 @@ var $author$project$Sharecrop$View$encodeSchemaField = function (field) {
 					field.required ? 'required' : 'may_omit')),
 				_Utils_Tuple2(
 				'schema',
-				$elm$json$Json$Encode$object(
-					_List_fromArray(
-						[
-							_Utils_Tuple2(
-							'kind',
-							$elm$json$Json$Encode$string(field.kind))
-						])))
+				$author$project$Sharecrop$View$encodeFieldSchema(field))
 			]));
 };
-var $elm$core$List$filter = F2(
-	function (isGood, list) {
-		return A3(
-			$elm$core$List$foldr,
-			F2(
-				function (x, xs) {
-					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
-				}),
-			_List_Nil,
-			list);
-	});
 var $elm$core$List$isEmpty = function (xs) {
 	if (!xs.b) {
 		return true;
@@ -6633,16 +6693,6 @@ var $elm$core$List$isEmpty = function (xs) {
 		return false;
 	}
 };
-var $elm$json$Json$Encode$list = F2(
-	function (func, entries) {
-		return _Json_wrap(
-			A3(
-				$elm$core$List$foldl,
-				_Json_addEntry(func),
-				_Json_emptyArray(_Utils_Tuple0),
-				entries));
-	});
-var $elm$core$Basics$neq = _Utils_notEqual;
 var $author$project$Sharecrop$View$schemaFromFields = function (fields) {
 	var named = A2(
 		$elm$core$List$filter,
@@ -9873,7 +9923,7 @@ var $author$project$Main$update = F2(
 									fields,
 									_List_fromArray(
 										[
-											{kind: 'string', name: '', required: true}
+											{enumValues: '', itemKind: 'string', kind: 'string', name: '', required: true}
 										]));
 							})),
 					$elm$core$Platform$Cmd$none);
@@ -9946,6 +9996,40 @@ var $author$project$Main$update = F2(
 									return _Utils_update(
 										field,
 										{required: value});
+								}))),
+					$elm$core$Platform$Cmd$none);
+			case 'SchemaFieldItemKindChanged':
+				var index = msg.a;
+				var value = msg.b;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						$author$project$Main$applySchemaFields(
+							A2(
+								$author$project$Main$updateFieldAt,
+								index,
+								function (field) {
+									return _Utils_update(
+										field,
+										{itemKind: value});
+								}))),
+					$elm$core$Platform$Cmd$none);
+			case 'SchemaFieldEnumValuesChanged':
+				var index = msg.a;
+				var value = msg.b;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						$author$project$Main$applySchemaFields(
+							A2(
+								$author$project$Main$updateFieldAt,
+								index,
+								function (field) {
+									return _Utils_update(
+										field,
+										{enumValues: value});
 								}))),
 					$elm$core$Platform$Cmd$none);
 			case 'CreatePayloadChanged':
@@ -11929,7 +12013,7 @@ var $author$project$Sharecrop$Ui$secondaryButton = F2(
 					$elm$html$Html$text(labelText)
 				]));
 	});
-var $author$project$Sharecrop$Ui$fieldClass = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none';
+var $author$project$Sharecrop$Ui$fieldClass = 'w-full min-h-[44px] rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none';
 var $elm$html$Html$input = _VirtualDom_node('input');
 var $author$project$Sharecrop$Ui$textInput = function (attrs) {
 	return A2(
@@ -12082,35 +12166,48 @@ var $author$project$Sharecrop$View$navLink = F4(
 					$elm$html$Html$text(labelText)
 				]));
 	});
-var $author$project$Sharecrop$View$navBar = function (current) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
-			]),
-		_List_fromArray(
-			[
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OverviewPage, 'overview', 'Overview'),
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$TasksPage, 'tasks', 'Tasks'),
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CreateTaskPage, 'create-task', 'New task'),
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$DiscoveryPage, 'discovery', 'Discovery'),
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$FundingPage, 'funding', 'Funding'),
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$AgentsPage, 'agents', 'Agents'),
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CollectiblesPage, 'collectibles', 'Collectibles'),
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$SeriesListPage, 'series-list', 'Series'),
-				A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OrganizationsPage, 'organizations', 'Organizations'),
-				A2(
-				$author$project$Sharecrop$Ui$secondaryButton,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('button'),
-						$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$LogoutClicked),
-						$author$project$Sharecrop$Ui$testId('logout')
-					]),
-				'Log out')
-			]));
-};
+var $author$project$Sharecrop$View$navBar = F2(
+	function (current, subjectId) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
+				]),
+			_List_fromArray(
+				[
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OverviewPage, 'overview', 'Overview'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$TasksPage, 'tasks', 'Tasks'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CreateTaskPage, 'create-task', 'New task'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$DiscoveryPage, 'discovery', 'Discovery'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$FundingPage, 'funding', 'Funding'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$AgentsPage, 'agents', 'Agents'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CollectiblesPage, 'collectibles', 'Collectibles'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$SeriesListPage, 'series-list', 'Series'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OrganizationsPage, 'organizations', 'Organizations'),
+					A2(
+					$elm$html$Html$a,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$href('/users/' + subjectId),
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+							$author$project$Sharecrop$Ui$testId('nav-profile')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Profile')
+						])),
+					A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$LogoutClicked),
+							$author$project$Sharecrop$Ui$testId('logout')
+						]),
+					'Log out')
+				]));
+	});
 var $author$project$Sharecrop$Types$AgentLabelChanged = function (a) {
 	return {$: 'AgentLabelChanged', a: a};
 };
@@ -13045,6 +13142,7 @@ var $author$project$Sharecrop$Types$SchemaFieldRequiredChanged = F2(
 	function (a, b) {
 		return {$: 'SchemaFieldRequiredChanged', a: a, b: b};
 	});
+var $author$project$Sharecrop$Ui$checkboxClass = 'h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-2 focus:ring-slate-500';
 var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $elm$html$Html$Events$targetChecked = A2(
 	$elm$json$Json$Decode$at,
@@ -13057,8 +13155,16 @@ var $elm$html$Html$Events$onCheck = function (tagger) {
 		'change',
 		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
 };
-var $author$project$Sharecrop$View$schemaFieldKinds = _List_fromArray(
-	['string', 'integer', 'decimal_string', 'freeform']);
+var $author$project$Sharecrop$Types$SchemaFieldEnumValuesChanged = F2(
+	function (a, b) {
+		return {$: 'SchemaFieldEnumValuesChanged', a: a, b: b};
+	});
+var $author$project$Sharecrop$Types$SchemaFieldItemKindChanged = F2(
+	function (a, b) {
+		return {$: 'SchemaFieldItemKindChanged', a: a, b: b};
+	});
+var $author$project$Sharecrop$View$schemaItemKinds = _List_fromArray(
+	['string', 'integer', 'decimal_string']);
 var $author$project$Sharecrop$View$schemaKindOption = F2(
 	function (selectedKind, kind) {
 		return A2(
@@ -13074,42 +13180,38 @@ var $author$project$Sharecrop$View$schemaKindOption = F2(
 					$elm$html$Html$text(kind)
 				]));
 	});
-var $author$project$Sharecrop$View$schemaFieldRow = F2(
+var $author$project$Sharecrop$View$schemaFieldDetail = F2(
 	function (index, field) {
-		return A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('flex flex-col gap-2 rounded-md border border-slate-200 bg-white p-3 sm:flex-row sm:items-end')
-				]),
-			_List_fromArray(
-				[
-					A2(
+		var _v0 = field.kind;
+		switch (_v0) {
+			case 'enum':
+				return A2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('w-full sm:flex-1')
+							$elm$html$Html$Attributes$class('w-full')
 						]),
 					_List_fromArray(
 						[
 							A2(
 							$author$project$Sharecrop$Ui$fieldLabel,
-							'Field name',
+							'Allowed values (comma-separated)',
 							_List_fromArray(
 								[
 									$author$project$Sharecrop$Ui$textInput(
 									_List_fromArray(
 										[
 											$elm$html$Html$Attributes$type_('text'),
-											$elm$html$Html$Attributes$placeholder('summary'),
-											$elm$html$Html$Attributes$value(field.name),
+											$elm$html$Html$Attributes$placeholder('low, medium, high'),
+											$elm$html$Html$Attributes$value(field.enumValues),
 											$elm$html$Html$Events$onInput(
-											$author$project$Sharecrop$Types$SchemaFieldNameChanged(index)),
-											$author$project$Sharecrop$Ui$testId('schema-field-name')
+											$author$project$Sharecrop$Types$SchemaFieldEnumValuesChanged(index)),
+											$author$project$Sharecrop$Ui$testId('schema-field-enum-values')
 										]))
 								]))
-						])),
-					A2(
+						]));
+			case 'array':
+				return A2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
@@ -13119,7 +13221,7 @@ var $author$project$Sharecrop$View$schemaFieldRow = F2(
 						[
 							A2(
 							$author$project$Sharecrop$Ui$fieldLabel,
-							'Type',
+							'Item type',
 							_List_fromArray(
 								[
 									A2(
@@ -13127,49 +13229,130 @@ var $author$project$Sharecrop$View$schemaFieldRow = F2(
 									_List_fromArray(
 										[
 											$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
-											$elm$html$Html$Attributes$value(field.kind),
+											$elm$html$Html$Attributes$value(field.itemKind),
 											$elm$html$Html$Events$onInput(
-											$author$project$Sharecrop$Types$SchemaFieldKindChanged(index)),
-											$author$project$Sharecrop$Ui$testId('schema-field-kind')
+											$author$project$Sharecrop$Types$SchemaFieldItemKindChanged(index)),
+											$author$project$Sharecrop$Ui$testId('schema-field-item-kind')
 										]),
 									A2(
 										$elm$core$List$map,
-										$author$project$Sharecrop$View$schemaKindOption(field.kind),
-										$author$project$Sharecrop$View$schemaFieldKinds))
+										$author$project$Sharecrop$View$schemaKindOption(field.itemKind),
+										$author$project$Sharecrop$View$schemaItemKinds))
 								]))
-						])),
+						]));
+			default:
+				return $elm$html$Html$text('');
+		}
+	});
+var $author$project$Sharecrop$View$schemaFieldKinds = _List_fromArray(
+	['string', 'integer', 'decimal_string', 'enum', 'array', 'freeform']);
+var $author$project$Sharecrop$View$schemaFieldRow = F2(
+	function (index, field) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2 rounded-md border border-slate-200 bg-white p-3')
+				]),
+			_List_fromArray(
+				[
 					A2(
-					$elm$html$Html$label,
+					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('flex min-h-[44px] w-full items-center gap-2 text-sm text-slate-700 sm:w-auto')
+							$elm$html$Html$Attributes$class('flex flex-col gap-2 sm:flex-row sm:items-end')
 						]),
 					_List_fromArray(
 						[
 							A2(
-							$elm$html$Html$input,
+							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$type_('checkbox'),
-									$elm$html$Html$Attributes$checked(field.required),
-									$elm$html$Html$Events$onCheck(
-									$author$project$Sharecrop$Types$SchemaFieldRequiredChanged(index)),
-									$author$project$Sharecrop$Ui$testId('schema-field-required')
+									$elm$html$Html$Attributes$class('w-full sm:flex-1')
 								]),
-							_List_Nil),
-							$elm$html$Html$text('Required')
+							_List_fromArray(
+								[
+									A2(
+									$author$project$Sharecrop$Ui$fieldLabel,
+									'Field name',
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$textInput(
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$type_('text'),
+													$elm$html$Html$Attributes$placeholder('summary'),
+													$elm$html$Html$Attributes$value(field.name),
+													$elm$html$Html$Events$onInput(
+													$author$project$Sharecrop$Types$SchemaFieldNameChanged(index)),
+													$author$project$Sharecrop$Ui$testId('schema-field-name')
+												]))
+										]))
+								])),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('w-full sm:w-auto')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$author$project$Sharecrop$Ui$fieldLabel,
+									'Type',
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$select,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+													$elm$html$Html$Attributes$value(field.kind),
+													$elm$html$Html$Events$onInput(
+													$author$project$Sharecrop$Types$SchemaFieldKindChanged(index)),
+													$author$project$Sharecrop$Ui$testId('schema-field-kind')
+												]),
+											A2(
+												$elm$core$List$map,
+												$author$project$Sharecrop$View$schemaKindOption(field.kind),
+												$author$project$Sharecrop$View$schemaFieldKinds))
+										]))
+								])),
+							A2(
+							$elm$html$Html$label,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('flex min-h-[44px] w-full items-center gap-2 text-sm text-slate-700 sm:w-auto')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$input,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('checkbox'),
+											$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$checkboxClass),
+											$elm$html$Html$Attributes$checked(field.required),
+											$elm$html$Html$Events$onCheck(
+											$author$project$Sharecrop$Types$SchemaFieldRequiredChanged(index)),
+											$author$project$Sharecrop$Ui$testId('schema-field-required')
+										]),
+									_List_Nil),
+									$elm$html$Html$text('Required')
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									$author$project$Sharecrop$Types$RemoveSchemaFieldClicked(index)),
+									$author$project$Sharecrop$Ui$testId('schema-field-remove'),
+									$elm$html$Html$Attributes$class('w-full sm:w-auto')
+								]),
+							'Remove')
 						])),
-					A2(
-					$author$project$Sharecrop$Ui$secondaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$type_('button'),
-							$elm$html$Html$Events$onClick(
-							$author$project$Sharecrop$Types$RemoveSchemaFieldClicked(index)),
-							$author$project$Sharecrop$Ui$testId('schema-field-remove'),
-							$elm$html$Html$Attributes$class('w-full sm:w-auto')
-						]),
-					'Remove')
+					A2($author$project$Sharecrop$View$schemaFieldDetail, index, field)
 				]));
 	});
 var $author$project$Sharecrop$View$schemaDesignerView = function (state) {
@@ -13186,11 +13369,11 @@ var $author$project$Sharecrop$View$schemaDesignerView = function (state) {
 				$elm$html$Html$p,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('text-xs text-slate-500')
+						$elm$html$Html$Attributes$class('text-xs text-slate-600')
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text('Add fields to build an object schema without writing JSON. With no fields the schema is freeform.')
+						$elm$html$Html$text('Add fields to build an object schema without writing JSON. Pick a type per field — enum and array prompt for their values. With no fields the schema is freeform.')
 					])),
 				A2(
 				$elm$html$Html$div,
@@ -13515,7 +13698,6 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 var $author$project$Sharecrop$Types$DiscoveryIncludeReservedChanged = function (a) {
 	return {$: 'DiscoveryIncludeReservedChanged', a: a};
 };
-var $author$project$Sharecrop$Ui$checkboxClass = 'h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-2 focus:ring-slate-500';
 var $author$project$Sharecrop$Ui$checkbox = F2(
 	function (attrs, labelText) {
 		return A2(
@@ -14952,7 +15134,8 @@ var $author$project$Sharecrop$View$copyButton = function (clipboardText) {
 			[
 				$elm$html$Html$Events$onClick(
 				$author$project$Sharecrop$Types$CopyClicked(clipboardText)),
-				$author$project$Sharecrop$Ui$testId('copy-command')
+				$author$project$Sharecrop$Ui$testId('copy-command'),
+				$elm$html$Html$Attributes$class('w-full sm:w-auto')
 			]),
 		'Copy');
 };
@@ -16636,7 +16819,7 @@ var $author$project$Sharecrop$View$loggedInView = F2(
 				]),
 			_List_fromArray(
 				[
-					$author$project$Sharecrop$View$navBar(state.page),
+					A2($author$project$Sharecrop$View$navBar, state.page, state.subjectId),
 					A2($author$project$Sharecrop$View$pageView, origin, state)
 				]));
 	});

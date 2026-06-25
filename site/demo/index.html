@@ -15,9 +15,14 @@
     <script src="./backend.js"></script>
     <script src="./elm.js"></script>
     <script>
+      const pageOrigin = window.location.origin;
       const app = Elm.Main.init({
         node: document.getElementById("app"),
-        flags: { origin: window.location.origin },
+        flags: {
+          origin: pageOrigin && pageOrigin !== "null"
+            ? pageOrigin
+            : "https://sharecrop.example",
+        },
       });
       app.ports.copyToClipboard.subscribe((t) => {
         if (navigator.clipboard) navigator.clipboard.writeText(t);

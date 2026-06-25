@@ -1,15 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 53 work, merged into `main`.
+The repository contains pull request 1 through pull request 54 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/user-page-token` adds a personal agent token (mint/rotate, copyable, owner-only) and copyable MCP install/update commands to the user's own profile page. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/round-fuzz-mobile-design` is a fuzz + mobile/UI-UX/contrast + demo-functionality review round (two specialized subagents) with a design-surface increase and boyscout fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/user-page-token`:
+Implemented in `task/round-fuzz-mobile-design`:
 
-- On the user's own profile page (`/users/{id}` when `userId == subjectId`), a "Your agent access" card mints a full-capability personal agent credential inline and shows the real token (copyable, owner-only) with a Rotate button. Below it, copyable MCP install commands: `claude mcp add ...` (Claude Code), an update command (`claude mcp remove && claude mcp add`), and the `.mcp.json` config block (Codex / Claude Desktop / generic). All values are real (no placeholders); copy buttons use the existing clipboard port. The section is not shown when viewing another user's page.
-- Playwright covers minting on your own page (token + install commands, placeholder-free) and its absence on another user's page.
+- Fuzz: added `FuzzAgentValueParsers` over the agent credential value parsers (scope enum, label, and the base64-decoding secret) — crash-free.
+- Design/edit surface: the structured response-schema designer now supports `enum` (comma-separated allowed values) and `array` (item type), in addition to the scalar kinds — it can now express the developer-template schemas.
+- Mobile/UI-UX: form inputs/selects get a 44px min height (`Ui.fieldClass`); the schema-row Required checkbox uses the shared styled checkbox; Copy buttons span full width on a phone; the designer helper text moved to a higher-contrast slate-600. The mobile Playwright test now also exercises the expanded task API/MCP panel (with a minted token) and the profile agent-access card for horizontal overflow.
+- New "Profile" nav link to the user's own page (the user-page token feature had no in-app navigation to reach it).
+- Demo boyscout: a `file://` origin no longer renders `null/...` commands (both index.html files sanitize it); org-owned task funding now debits the organization wallet and refunds/tips return to it.
+- Two specialized reviews (mobile/UI-UX/contrast, demo-functionality/journeys) found no contrast failures and no route/decoder gaps.
 
 Earlier branch `task/task-integration-panel` (pull request 53, merged) reworked the task detail's API/MCP instructions into a uniform, collapsible, placeholder-free panel and made one agent token drive both REST and MCP.
 
