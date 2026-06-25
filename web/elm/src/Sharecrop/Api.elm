@@ -563,6 +563,15 @@ mintTaskToken token =
         (Http.expectJson TaskTokenMinted Agent.agentCredentialCreatedResponseDecoder)
 
 
+mintUserToken : String -> Cmd Msg
+mintUserToken token =
+    authorizedRequest "POST"
+        token
+        "/api/agent-credentials"
+        (Http.jsonBody (agentRequestBody "Personal agent token" [ Agent.AgentScopeTasksRead, Agent.AgentScopeTasksWrite, Agent.AgentScopeSubmissionsRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeSubmissionsReview ]))
+        (Http.expectJson UserTokenMinted Agent.agentCredentialCreatedResponseDecoder)
+
+
 postSubmission : String -> String -> String -> Cmd Msg
 postSubmission token taskId responseJson =
     authorizedRequest "POST"

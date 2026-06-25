@@ -130,6 +130,7 @@ emptyLoggedIn response =
     , taskCommentBody = ""
     , taskAgentToken = Nothing
     , taskIntegrationOpen = False
+    , userAgentToken = Nothing
     }
 
 
@@ -471,6 +472,15 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | taskAgentToken = Just created.secret }), Cmd.none )
 
         TaskTokenMinted (Err _) ->
+            ( model, Cmd.none )
+
+        MintUserTokenClicked ->
+            Api.withSession model (\state -> ( model, Api.mintUserToken state.accessToken ))
+
+        UserTokenMinted (Ok created) ->
+            ( Api.updateLoggedIn model (\state -> { state | userAgentToken = Just created.secret }), Cmd.none )
+
+        UserTokenMinted (Err _) ->
             ( model, Cmd.none )
 
         CopyClicked clipboardText ->

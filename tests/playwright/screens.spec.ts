@@ -554,3 +554,27 @@ test("the task API & MCP panel mints a real token and shows placeholder-free com
   );
   await expect(page.getByTestId("copy-command").first()).toBeVisible();
 });
+
+test("a user mints a personal agent token with MCP install commands on their own page", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "user-token");
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+
+  // Own user page: the agent-access section is present.
+  await page.goto(`/users/${owner.body.subject_id}`);
+  await expect(page.getByTestId("mint-user-token")).toBeVisible();
+  await page.getByTestId("mint-user-token").click();
+  await expect(page.getByTestId("user-token")).toBeVisible();
+  await expect(page.getByTestId("user-mcp-install")).toContainText(
+    "claude mcp add",
+  );
+  await expect(page.getByTestId("user-mcp-install")).toContainText("/mcp");
+  await expect(page.getByTestId("user-mcp-install")).not.toContainText("<");
+  await expect(page.getByTestId("copy-command").first()).toBeVisible();
+
+  // Another user's page does not expose the token section.
+  const other = await registerViaApi(request, "user-token-other");
+  await page.goto(`/users/${other.body.subject_id}`);
+  await expect(page.getByTestId("user-id")).toBeVisible();
+  await expect(page.getByTestId("mint-user-token")).toHaveCount(0);
+});
