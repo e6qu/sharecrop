@@ -54,12 +54,29 @@ func collectibleModule() Module {
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("CollectibleState")}},
 					{Name: NewElmValueName("transferPolicy"), JSONName: NewJSONFieldName("transfer_policy"), Type: NamedRef{Name: NewElmTypeName("CollectibleTransferPolicy")}},
 					{Name: NewElmValueName("ownerID"), JSONName: NewJSONFieldName("owner_id"), Type: StringRef{}},
+					{Name: NewElmValueName("art"), JSONName: NewJSONFieldName("art"), Type: StringRef{}},
 				},
 			},
 			Product{
 				Name: NewElmTypeName("CollectiblesResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("collectibles"), JSONName: NewJSONFieldName("collectibles"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("CollectibleResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("CollectibleCatalogEntry"),
+				Fields: []Field{
+					{Name: NewElmValueName("slug"), JSONName: NewJSONFieldName("slug"), Type: StringRef{}},
+					{Name: NewElmValueName("name"), JSONName: NewJSONFieldName("name"), Type: StringRef{}},
+					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("CollectibleKind")}},
+					{Name: NewElmValueName("transferPolicy"), JSONName: NewJSONFieldName("transfer_policy"), Type: NamedRef{Name: NewElmTypeName("CollectibleTransferPolicy")}},
+					{Name: NewElmValueName("art"), JSONName: NewJSONFieldName("art"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("CollectibleCatalogResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("entries"), JSONName: NewJSONFieldName("entries"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("CollectibleCatalogEntry")}}},
 				},
 			},
 		},

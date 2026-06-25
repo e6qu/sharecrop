@@ -13,6 +13,7 @@ import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
+import Sharecrop.Sprites as Sprites
 import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, escrowStateLabel, kindLabel, participationPolicyLabel, participationPolicyTag, participationUsesReservation, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
 import Sharecrop.Types exposing (..)
 import Sharecrop.Ui as Ui exposing (testId)
@@ -190,15 +191,25 @@ collectibleDetailView collectibleId state =
         , case List.filter (\collectible -> collectible.id == collectibleId) state.collectibles of
             collectible :: _ ->
                 div [ Html.Attributes.class "mt-3 space-y-2", testId "collectible-detail" ]
-                    [ p [ Html.Attributes.class "text-2xl font-semibold", testId "collectible-detail-name" ] [ text collectible.name ]
+                    [ Sprites.pixel collectible.art 10
+                    , p [ Html.Attributes.class "text-2xl font-semibold", testId "collectible-detail-name" ] [ text collectible.name ]
                     , Ui.label_ ("Collectible " ++ collectible.id)
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Kind: " ++ collectibleKindLabel collectible.kind) ]
                     , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ collectibleStateLabel collectible.state) ]
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Transfer policy: " ++ collectiblePolicyLabel collectible.transferPolicy) ]
+                    , div [ Html.Attributes.class "mt-3 space-y-2" ]
+                        [ Ui.label_ "Trade to another user"
+                        , Ui.textInput [ type_ "text", placeholder "Recipient user id", value state.transferRecipientId, onInput TransferRecipientIdChanged, testId "transfer-recipient-id" ]
+                        , Ui.primaryButton [ type_ "button", onClick (TransferCollectibleClicked collectible.id), testId "transfer-collectible" ] "Trade"
+                        ]
                     ]
 
             [] ->
-                p [ Html.Attributes.class "mt-3 text-sm text-slate-500", testId "collectible-detail-missing" ] [ text "This collectible is not in your holdings." ]
+                p [ Html.Attributes.class "mt-3 text-sm text-slate-500", testId "collectible-detail-missing" ] [ text "This collectible is no longer in your holdings." ]
+
+        -- Rendered at the card level so a successful trade's confirmation persists
+        -- even after the traded collectible leaves your holdings.
+        , maybeNote state.transferMessage "transfer-message"
         ]
 
 
@@ -1228,10 +1239,43 @@ collectiblesView : LoggedInModel -> Html Msg
 collectiblesView state =
     Ui.card
         [ Ui.sectionTitle "Collectibles"
-        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Mint collectibles and award them to tasks." ]
+        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Mint your own collectibles, award default collectibles to users, teams, or organizations, and trade collectibles to other users." ]
         , mintForm state
         , awardForm state
+        , awardRecipientControl state
+        , catalogGallery state
         , collectiblesList state
+        ]
+
+
+awardRecipientControl : LoggedInModel -> Html Msg
+awardRecipientControl state =
+    div [ Html.Attributes.class "mt-4 space-y-3" ]
+        [ Ui.label_ "Admin: award a default collectible"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ chooserButton (state.awardRecipientKind == "user") (AwardRecipientKindChanged "user") "award-kind-user" "User"
+            , chooserButton (state.awardRecipientKind == "team") (AwardRecipientKindChanged "team") "award-kind-team" "Team"
+            , chooserButton (state.awardRecipientKind == "organization") (AwardRecipientKindChanged "organization") "award-kind-organization" "Organization"
+            ]
+        , Ui.textInput [ type_ "text", placeholder "Recipient id", value state.awardRecipientId, onInput AwardRecipientIdChanged, testId "award-recipient-id" ]
+        , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text "Pick a recipient, then Award a collectible below." ]
+        , maybeNote state.awardMessage "award-default-message"
+        ]
+
+
+catalogGallery : LoggedInModel -> Html Msg
+catalogGallery state =
+    div [ Html.Attributes.class "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3", testId "catalog" ]
+        (List.map catalogEntry state.collectibleCatalog)
+
+
+catalogEntry : Collectible.CollectibleCatalogEntry -> Html Msg
+catalogEntry entry =
+    div [ Html.Attributes.class "flex flex-col items-center gap-1 rounded-md border border-slate-200 p-2 text-center", testId "catalog-entry" ]
+        [ Sprites.pixel entry.art 6
+        , span [ Html.Attributes.class "text-xs font-medium break-words" ] [ text entry.name ]
+        , Ui.badge (collectibleKindLabel entry.kind)
+        , Ui.secondaryButton [ type_ "button", onClick (AwardDefaultClicked entry.slug), testId "catalog-award" ] "Award"
         ]
 
 
@@ -1296,7 +1340,8 @@ collectibleRow : Collectible.CollectibleResponse -> Html Msg
 collectibleRow collectible =
     div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "collectible-row" ]
         [ div [ Html.Attributes.class "flex min-w-0 flex-wrap items-center gap-2" ]
-            [ a [ href ("/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline break-words", testId "collectible-link" ] [ text collectible.name ]
+            [ Sprites.pixel collectible.art 5
+            , a [ href ("/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline break-words", testId "collectible-link" ] [ text collectible.name ]
             , Ui.badge (collectibleStateLabel collectible.state)
             , span [ Html.Attributes.class "text-xs text-slate-500" ] [ text (collectibleKindLabel collectible.kind) ]
             ]

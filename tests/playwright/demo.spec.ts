@@ -89,3 +89,27 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
     "Task refunded and cancelled.",
   );
 });
+
+test("the collectibles catalog renders sprites, awards a default, and trades it", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1240 credits")).toBeVisible();
+  await page.getByRole("link", { name: "Collectibles", exact: true }).click();
+
+  // The 25 default collectibles render as a gallery of pixel sprites.
+  await expect(page.getByTestId("catalog-entry")).toHaveCount(25);
+
+  // Award one to myself (the demo user id), then it appears in my holdings.
+  await page.getByTestId("award-recipient-id").fill("user-mara");
+  await page.getByTestId("catalog-award").first().click();
+  await expect(page.getByTestId("award-default-message")).toContainText(
+    "Awarded",
+  );
+  // Open the newly held collectible and trade it to another user.
+  await page.getByTestId("collectible-link").first().click();
+  await expect(page.getByTestId("collectible-detail-name")).toBeVisible();
+  await page.getByTestId("transfer-recipient-id").fill("user-jules");
+  await page.getByTestId("transfer-collectible").click();
+  await expect(page.getByTestId("transfer-message")).toContainText(
+    "Transferred",
+  );
+});

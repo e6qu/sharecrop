@@ -86,7 +86,7 @@ type AgentService interface {
 }
 
 type AssetService interface {
-	Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy) assets.MintResult
+	Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult
 	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
 	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
@@ -220,6 +220,9 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/task-series/{series_id}/comments", server.addTaskSeriesComment)
 	mux.HandleFunc("POST /api/collectibles", server.mintCollectible)
 	mux.HandleFunc("GET /api/collectibles", server.listCollectibles)
+	mux.HandleFunc("GET /api/collectibles/catalog", server.collectibleCatalog)
+	mux.HandleFunc("POST /api/collectibles/award", server.awardCollectible)
+	mux.HandleFunc("POST /api/collectibles/{id}/transfer", server.transferCollectible)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-refund", server.refundCollectibleReward)
 	mux.HandleFunc("POST /api/agent-credentials", server.createAgentCredential)

@@ -59,7 +59,7 @@ func (CollectibleMinted) mintResult() {}
 
 func (MintRejected) mintResult() {}
 
-func (service Service) Mint(ctx context.Context, owner core.UserID, name CollectibleName, kind CollectibleKind, policy TransferPolicy) MintResult {
+func (service Service) Mint(ctx context.Context, owner core.UserID, name CollectibleName, kind CollectibleKind, policy TransferPolicy, art string) MintResult {
 	idResult := core.NewCollectibleID()
 	idCreated, matched := idResult.(core.CollectibleIDCreated)
 	if !matched {
@@ -73,6 +73,7 @@ func (service Service) Mint(ctx context.Context, owner core.UserID, name Collect
 		State:   CollectibleStateMinted,
 		Policy:  policy,
 		OwnerID: owner,
+		Art:     art,
 	}
 	storeResult := service.store.CreateCollectible(ctx, collectible)
 	if rejected, rejectedMatched := storeResult.(CreateStoreRejected); rejectedMatched {

@@ -6727,9 +6727,9 @@ var $author$project$Main$applySchemaFields = F2(
 var $author$project$Sharecrop$Types$AwardReceived = function (a) {
 	return {$: 'AwardReceived', a: a};
 };
-var $author$project$Sharecrop$Generated$Collectible$CollectibleResponse = F6(
-	function (id, name, kind, state, transferPolicy, ownerID) {
-		return {id: id, kind: kind, name: name, ownerID: ownerID, state: state, transferPolicy: transferPolicy};
+var $author$project$Sharecrop$Generated$Collectible$CollectibleResponse = F7(
+	function (id, name, kind, state, transferPolicy, ownerID, art) {
+		return {art: art, id: id, kind: kind, name: name, ownerID: ownerID, state: state, transferPolicy: transferPolicy};
 	});
 var $author$project$Sharecrop$Generated$Collectible$CollectibleKindBadge = {$: 'CollectibleKindBadge'};
 var $author$project$Sharecrop$Generated$Collectible$CollectibleKindEdition = {$: 'CollectibleKindEdition'};
@@ -6788,15 +6788,17 @@ var $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDec
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder = A7(
-	$elm$json$Json$Decode$map6,
+var $elm$json$Json$Decode$map7 = _Json_map7;
+var $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder = A8(
+	$elm$json$Json$Decode$map7,
 	$author$project$Sharecrop$Generated$Collectible$CollectibleResponse,
 	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'kind', $author$project$Sharecrop$Generated$Collectible$collectibleKindDecoder),
 	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Collectible$collectibleStateDecoder),
 	A2($elm$json$Json$Decode$field, 'transfer_policy', $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDecoder),
-	A2($elm$json$Json$Decode$field, 'owner_id', $elm$json$Json$Decode$string));
+	A2($elm$json$Json$Decode$field, 'owner_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'art', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$collectibleRewardRequestBody = function (collectibleId) {
 	return $elm$json$Json$Encode$object(
 		_List_fromArray(
@@ -6841,6 +6843,32 @@ var $author$project$Sharecrop$Api$awardCommand = F3(
 						{awardMessage: $elm$core$Maybe$Nothing});
 				}),
 			A3($author$project$Sharecrop$Api$postCollectibleReward, state.accessToken, state.awardTaskId, collectibleId));
+	});
+var $author$project$Sharecrop$Types$AwardDefaultReceived = function (a) {
+	return {$: 'AwardDefaultReceived', a: a};
+};
+var $author$project$Sharecrop$Api$awardDefaultCollectible = F4(
+	function (token, slug, recipientKind, recipientId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/collectibles/award',
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'slug',
+							$elm$json$Json$Encode$string(slug)),
+							_Utils_Tuple2(
+							'recipient_kind',
+							$elm$json$Json$Encode$string(recipientKind)),
+							_Utils_Tuple2(
+							'recipient_id',
+							$elm$json$Json$Encode$string(recipientId))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AwardDefaultReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
 	});
 var $author$project$Sharecrop$Labels$collectibleStateLabel = function (state) {
 	switch (state.$) {
@@ -8140,8 +8168,11 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		agentScopes: _List_fromArray(
 			[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite]),
 		awardMessage: $elm$core$Maybe$Nothing,
+		awardRecipientId: '',
+		awardRecipientKind: 'user',
 		awardTaskId: '',
 		balance: $elm$core$Maybe$Nothing,
+		collectibleCatalog: _List_Nil,
 		collectibleKind: $author$project$Sharecrop$Generated$Collectible$CollectibleKindBadge,
 		collectibleMessage: $elm$core$Maybe$Nothing,
 		collectibleName: '',
@@ -8215,6 +8246,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		teamDetail: $elm$core$Maybe$Nothing,
 		teamMemberEmail: '',
 		teamMemberMessage: $elm$core$Maybe$Nothing,
+		transferMessage: $elm$core$Maybe$Nothing,
+		transferRecipientId: '',
 		userAgentToken: $elm$core$Maybe$Nothing,
 		userProfile: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
@@ -8692,7 +8725,6 @@ var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F7(
 	function (id, taskID, submitterID, state, responseJSON, reviewNote, validationErrors) {
 		return {id: id, responseJSON: responseJSON, reviewNote: reviewNote, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
 	});
-var $elm$json$Json$Decode$map7 = _Json_map7;
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
@@ -9102,6 +9134,40 @@ var $author$project$Sharecrop$Types$UserSubmissionsReceived = function (a) {
 var $author$project$Sharecrop$Types$UserWorkReceived = function (a) {
 	return {$: 'UserWorkReceived', a: a};
 };
+var $author$project$Sharecrop$Types$CollectibleCatalogReceived = function (a) {
+	return {$: 'CollectibleCatalogReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Collectible$CollectibleCatalogResponse = function (entries) {
+	return {entries: entries};
+};
+var $author$project$Sharecrop$Generated$Collectible$CollectibleCatalogEntry = F5(
+	function (slug, name, kind, transferPolicy, art) {
+		return {art: art, kind: kind, name: name, slug: slug, transferPolicy: transferPolicy};
+	});
+var $author$project$Sharecrop$Generated$Collectible$collectibleCatalogEntryDecoder = A6(
+	$elm$json$Json$Decode$map5,
+	$author$project$Sharecrop$Generated$Collectible$CollectibleCatalogEntry,
+	A2($elm$json$Json$Decode$field, 'slug', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'kind', $author$project$Sharecrop$Generated$Collectible$collectibleKindDecoder),
+	A2($elm$json$Json$Decode$field, 'transfer_policy', $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDecoder),
+	A2($elm$json$Json$Decode$field, 'art', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Collectible$collectibleCatalogResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Collectible$CollectibleCatalogResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'entries',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Collectible$collectibleCatalogEntryDecoder)));
+var $author$project$Sharecrop$Api$fetchCollectibleCatalog = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'GET',
+		token,
+		'/api/collectibles/catalog',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CollectibleCatalogReceived, $author$project$Sharecrop$Generated$Collectible$collectibleCatalogResponseDecoder));
+};
 var $author$project$Sharecrop$Types$TaskCommentsReceived = function (a) {
 	return {$: 'TaskCommentsReceived', a: a};
 };
@@ -9255,6 +9321,7 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F2(
 					_List_fromArray(
 						[
 							$author$project$Sharecrop$Api$fetchCollectibles(token),
+							$author$project$Sharecrop$Api$fetchCollectibleCatalog(token),
 							A2($author$project$Sharecrop$Api$fetchTasks, token, '')
 						]));
 			case 'OrganizationsPage':
@@ -9709,6 +9776,26 @@ var $author$project$Sharecrop$Api$toggleScope = F2(
 				return !_Utils_eq(existing, scope);
 			},
 			scopes) : A2($elm$core$List$cons, scope, scopes);
+	});
+var $author$project$Sharecrop$Types$TransferCollectibleReceived = function (a) {
+	return {$: 'TransferCollectibleReceived', a: a};
+};
+var $author$project$Sharecrop$Api$transferCollectible = F3(
+	function (token, collectibleId, recipientId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/collectibles/' + (collectibleId + '/transfer'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'recipient_id',
+							$elm$json$Json$Encode$string(recipientId))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TransferCollectibleReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
 	});
 var $author$project$Main$updateFieldAt = F3(
 	function (index, transform, fields) {
@@ -11066,6 +11153,162 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										awardMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'CollectibleCatalogReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{collectibleCatalog: response.entries});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'AwardRecipientKindChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{awardRecipientKind: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'AwardRecipientIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{awardRecipientId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'AwardDefaultClicked':
+				var slug = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return ($elm$core$String$trim(state.awardRecipientId) === '') ? _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{
+											awardMessage: $elm$core$Maybe$Just('Enter a recipient id first.')
+										});
+								}),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+							model,
+							A4($author$project$Sharecrop$Api$awardDefaultCollectible, state.accessToken, slug, state.awardRecipientKind, state.awardRecipientId));
+					});
+			case 'AwardDefaultReceived':
+				if (msg.a.$ === 'Ok') {
+					var updated = A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									awardMessage: $elm$core$Maybe$Just('Awarded the collectible.')
+								});
+						});
+					return _Utils_Tuple2(
+						updated,
+						$author$project$Sharecrop$Api$refreshCollectibles(updated));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										awardMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'TransferRecipientIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{transferRecipientId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'TransferCollectibleClicked':
+				var collectibleId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return ($elm$core$String$trim(state.transferRecipientId) === '') ? _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{
+											transferMessage: $elm$core$Maybe$Just('Enter a recipient id first.')
+										});
+								}),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+							model,
+							A3($author$project$Sharecrop$Api$transferCollectible, state.accessToken, collectibleId, state.transferRecipientId));
+					});
+			case 'TransferCollectibleReceived':
+				if (msg.a.$ === 'Ok') {
+					var updated = A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									transferMessage: $elm$core$Maybe$Just('Transferred.')
+								});
+						});
+					return _Utils_Tuple2(
+						updated,
+						$author$project$Sharecrop$Api$refreshCollectibles(updated));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										transferMessage: $elm$core$Maybe$Just(
 											$author$project$Sharecrop$Labels$httpErrorLabel(error))
 									});
 							}),
@@ -12567,6 +12810,12 @@ var $author$project$Sharecrop$View$agentsView = F2(
 					$author$project$Sharecrop$View$credentialsList(state.credentials)
 				]));
 	});
+var $author$project$Sharecrop$Types$TransferCollectibleClicked = function (a) {
+	return {$: 'TransferCollectibleClicked', a: a};
+};
+var $author$project$Sharecrop$Types$TransferRecipientIdChanged = function (a) {
+	return {$: 'TransferRecipientIdChanged', a: a};
+};
 var $author$project$Sharecrop$Labels$collectibleKindLabel = function (kind) {
 	switch (kind.$) {
 		case 'CollectibleKindUnique':
@@ -12589,6 +12838,742 @@ var $author$project$Sharecrop$Labels$collectiblePolicyLabel = function (policy) 
 			return 'Issuer controlled';
 	}
 };
+var $elm$core$Dict$fromList = function (assocs) {
+	return A3(
+		$elm$core$List$foldl,
+		F2(
+			function (_v0, dict) {
+				var key = _v0.a;
+				var value = _v0.b;
+				return A3($elm$core$Dict$insert, key, value, dict);
+			}),
+		$elm$core$Dict$empty,
+		assocs);
+};
+var $author$project$Sharecrop$Sprites$grey = '#9aa0a6';
+var $author$project$Sharecrop$Sprites$ink = '#2a2118';
+var $author$project$Sharecrop$Sprites$white = '#ffffff';
+var $author$project$Sharecrop$Sprites$placeholderPalette = _List_fromArray(
+	[
+		_Utils_Tuple2(
+		_Utils_chr('k'),
+		$author$project$Sharecrop$Sprites$ink),
+		_Utils_Tuple2(
+		_Utils_chr('w'),
+		$author$project$Sharecrop$Sprites$white),
+		_Utils_Tuple2(
+		_Utils_chr('g'),
+		$author$project$Sharecrop$Sprites$grey)
+	]);
+var $author$project$Sharecrop$Sprites$placeholderRows = _List_fromArray(
+	['kkkkkkkkkkkk', 'kgggggggggk.', 'kgwwwwwwwgk.', 'kgwwkkkwwgk.', 'kgwkkgkkwgk.', 'kgwwwwkkwgk.', 'kgwwwkkwwgk.', 'kgwwkkwwwgk.', 'kgwwwwwwwgk.', 'kgwwkkwwwgk.', 'kgggggggggk.', 'kkkkkkkkkkkk']);
+var $author$project$Sharecrop$Sprites$brownDark = '#5e3a1a';
+var $author$project$Sharecrop$Sprites$green = '#3a7d1e';
+var $author$project$Sharecrop$Sprites$greenLight = '#7bb661';
+var $author$project$Sharecrop$Sprites$red = '#c0392b';
+var $author$project$Sharecrop$Sprites$apple = _Utils_Tuple2(
+	_List_fromArray(
+		['......b.....', '.....b.gg...', '.....b.gGg..', '...kkbkk....', '..krrrwrrk..', '.krrrrrwrrk.', '.krrrrrrrrk.', '.krrrrrrrrk.', '.krrrrrrrrk.', '..krrrrrrk..', '..krrrrrrk..', '...kkrrkk...']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('r'),
+			$author$project$Sharecrop$Sprites$red),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			'#e88'),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brownDark),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$green),
+			_Utils_Tuple2(
+			_Utils_chr('G'),
+			$author$project$Sharecrop$Sprites$greenLight)
+		]));
+var $author$project$Sharecrop$Sprites$gold = '#f2c14e';
+var $author$project$Sharecrop$Sprites$goldDark = '#e8a33d';
+var $author$project$Sharecrop$Sprites$beehive = _Utils_Tuple2(
+	_List_fromArray(
+		['.....kk.....', '...kkooKK...', '..kooooooak.', '.kooooooooak', '.kKKKKKKKKak', '.koooooooook', '.kKKKKKKKKak', '.kooooooooak', '.kKKKkkKKKak', '.koookkooook', '.kKKkkkkKKak', '..kkkkkkkk..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('K'),
+			$author$project$Sharecrop$Sprites$goldDark),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$brownDark)
+		]));
+var $author$project$Sharecrop$Sprites$orange = '#e8772e';
+var $author$project$Sharecrop$Sprites$orangeDark = '#c25618';
+var $author$project$Sharecrop$Sprites$carrot = _Utils_Tuple2(
+	_List_fromArray(
+		['...g.g.g....', '..gGgGgGg...', '...gkgkg....', '....kkk.....', '...koook....', '...koaok....', '...koook....', '....koak....', '....koak....', '.....kok....', '.....kak....', '......k.....']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$orange),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$orangeDark),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$green),
+			_Utils_Tuple2(
+			_Utils_chr('G'),
+			$author$project$Sharecrop$Sprites$greenLight)
+		]));
+var $author$project$Sharecrop$Sprites$brown = '#8a5a2b';
+var $author$project$Sharecrop$Sprites$cornucopia = _Utils_Tuple2(
+	_List_fromArray(
+		['..........k.', '........kbbk', '.......kbbk.', '......kbbk.r', '....kbbbkrAr', '...kbbbkoArp', '..kbbbkroArp', '.kbbbkAoArpp', '.kbbkrAoArp.', 'kbbkroArp...', 'kbbkkArp....', '.kkkkkk.....']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brown),
+			_Utils_Tuple2(
+			_Utils_chr('r'),
+			$author$project$Sharecrop$Sprites$red),
+			_Utils_Tuple2(
+			_Utils_chr('A'),
+			$author$project$Sharecrop$Sprites$orange),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('p'),
+			'#9a4fb0')
+		]));
+var $author$project$Sharecrop$Sprites$firstHarvestTrophy = _Utils_Tuple2(
+	_List_fromArray(
+		['kkkkkkkkkkk.', 'koooooooook.', 'h koooooook h', 'hokooooookoh', 'hokooooookoh', '.hokoooookh.', '..kooooook..', '...kooook...', '....koak....', '....koak....', '...kooook...', '..kkkkkkkk..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$goldDark),
+			_Utils_Tuple2(
+			_Utils_chr('h'),
+			$author$project$Sharecrop$Sprites$goldDark)
+		]));
+var $author$project$Sharecrop$Sprites$foundersSeed = _Utils_Tuple2(
+	_List_fromArray(
+		['....hhhh....', '..hhwwwwhh..', '.hwwwwwwwwh.', '.hwwkkkkwwh.', 'hwwkooookwwh', 'hwkooaaookwh', 'hwkoaaaaokwh', 'hwkooaaookwh', 'hwwkooookwwh', '.hwwkkkkwwh.', '.hhwwwwwwhh.', '..hhhhhhhh..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$goldDark),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			'#fdeeb0'),
+			_Utils_Tuple2(
+			_Utils_chr('h'),
+			'#fff6cf')
+		]));
+var $author$project$Sharecrop$Sprites$greenDark = '#245a10';
+var $author$project$Sharecrop$Sprites$moon = '#e8e6d0';
+var $author$project$Sharecrop$Sprites$nightField = '#1c2b14';
+var $author$project$Sharecrop$Sprites$fullMoonHarvest = _Utils_Tuple2(
+	_List_fromArray(
+		['nnnnnnnnnnnn', 'nnnn.mmm.nnn', 'nn.mmmMmm.nn', 'n.mmmmmmmm.n', 'n.mmMmmmmm.n', 'n.mmmmmMmm.n', 'nn.mmmmmm.nn', 'nnn.mmmm.nnn', 'nnnnnnnnnnnn', 'ffffffffffff', 'fFfFfFfFfFfF', 'FfFfFfFfFfFf']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('n'),
+			$author$project$Sharecrop$Sprites$nightField),
+			_Utils_Tuple2(
+			_Utils_chr('m'),
+			$author$project$Sharecrop$Sprites$moon),
+			_Utils_Tuple2(
+			_Utils_chr('M'),
+			$author$project$Sharecrop$Sprites$grey),
+			_Utils_Tuple2(
+			_Utils_chr('f'),
+			$author$project$Sharecrop$Sprites$greenDark),
+			_Utils_Tuple2(
+			_Utils_chr('F'),
+			$author$project$Sharecrop$Sprites$green)
+		]));
+var $author$project$Sharecrop$Sprites$greyLight = '#cdd1d6';
+var $author$project$Sharecrop$Sprites$goldenCombine = _Utils_Tuple2(
+	_List_fromArray(
+		['............', 'ooo.....kkk.', 'oaao..kkoook', 'oaaokkkooook', 'oaaooooooook', 'kkkkkooooook', 'kwwwkkkkkkkk', 'kwwwkooooook', 'kkkkkkkkkkk.', '.kykk.kykk..', 'kywwyk kywyk', '.kkk...kkk..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$goldDark),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			$author$project$Sharecrop$Sprites$greyLight),
+			_Utils_Tuple2(
+			_Utils_chr('y'),
+			$author$project$Sharecrop$Sprites$goldDark)
+		]));
+var $author$project$Sharecrop$Sprites$goldenEgg = _Utils_Tuple2(
+	_List_fromArray(
+		['....kkkk....', '...kooowk...', '..kooowook..', '.kooowoook..', '.koowooaook.', 'koowoooaaok.', 'kooooooaaok.', 'koooooaaaok.', 'kooooaaaook.', '.kooaaaaok..', '.kkoaaaokk..', '...kkkkk....']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$goldDark),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			'#fdeeb0')
+		]));
+var $author$project$Sharecrop$Sprites$goldenSickle = _Utils_Tuple2(
+	_List_fromArray(
+		['...kkkkkk...', '..koooooak..', '.kookkkkoak.', 'kook....koak', 'koa......koa', 'kk........kk', '...........k', '.......kk...', '.......bbk..', '......kbbk..', '......kbbk..', '......kbbk..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$goldDark),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brown)
+		]));
+var $author$project$Sharecrop$Sprites$harvestStar = _Utils_Tuple2(
+	_List_fromArray(
+		['......kk........', '.....koak.......', '.....koak.......', '....koooak.....', 'kkkkooooakkkk..', '.koooooooooak..', '..koooooooak...', '...kooooooak...', '...koooooak....', '..kooak.kooak..', '.kooak...kooak.', '.kak......kak..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$goldDark)
+		]));
+var $author$project$Sharecrop$Sprites$amber = '#d9952b';
+var $author$project$Sharecrop$Sprites$honeyPot = _Utils_Tuple2(
+	_List_fromArray(
+		['.......kk...', '.......bk...', '......bbk...', '....kbbbk...', '...koooook..', '..kkkkkkkk..', '..kaaaaaak..', '.kahhhhhhak.', '.kahhhhhhak.', '.kahhhhhhak.', '.kaahhhhaak.', '..kkaaaakk..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brown),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$amber),
+			_Utils_Tuple2(
+			_Utils_chr('h'),
+			'#f0b84a')
+		]));
+var $author$project$Sharecrop$Sprites$luckyClover = _Utils_Tuple2(
+	_List_fromArray(
+		['..kk....kk..', '.kGGk..kGGk.', 'kGgGGkkGGgGk', 'kGGGGGGGGGGk', '.kGGGGGGGGk.', '..kkGddGkk..', '...kGddGk...', '.kGGGddGGGk.', 'kGgGGddGGgGk', 'kGGGGddGGGGk', '.kGGkddkGGk.', '..kk.dd.kk..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('G'),
+			$author$project$Sharecrop$Sprites$green),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$greenLight),
+			_Utils_Tuple2(
+			_Utils_chr('d'),
+			$author$project$Sharecrop$Sprites$greenDark)
+		]));
+var $author$project$Sharecrop$Sprites$pink = '#e08aa8';
+var $author$project$Sharecrop$Sprites$prizeCow = _Utils_Tuple2(
+	_List_fromArray(
+		['............', '.kk.....kk..', 'kwwk...kwwk.', 'kwwkkkkkwwk.', '.kwwwwwwwwk.', 'kwbbwwwbbwwk', 'kwbbwwwbbwwk', 'kwwwwpwwwwwk', 'kkwwwwwwwwkk', '.kwwkkkkwwk.', '.kkk.kk.kkk.', '............']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			$author$project$Sharecrop$Sprites$white),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brownDark),
+			_Utils_Tuple2(
+			_Utils_chr('p'),
+			$author$project$Sharecrop$Sprites$pink)
+		]));
+var $author$project$Sharecrop$Sprites$pumpkin = _Utils_Tuple2(
+	_List_fromArray(
+		['......gg....', '.....gGg....', '.....gg.....', '...kkkkkkk..', '..koaoaoaok.', '.koaoaoaoaok', '.koaoaoaoaok', '.koaoaoaoaok', '.koaoaoaoaok', '..koaoaoaok.', '...kkkkkkk..', '...........']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$orange),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$orangeDark),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$green),
+			_Utils_Tuple2(
+			_Utils_chr('G'),
+			$author$project$Sharecrop$Sprites$greenLight)
+		]));
+var $author$project$Sharecrop$Sprites$blue = '#4a90d9';
+var $author$project$Sharecrop$Sprites$rainDrop = _Utils_Tuple2(
+	_List_fromArray(
+		['.....kk.....', '.....bb.....', '....kbbk....', '....bbbb....', '...kbbwbk...', '...bbbwbb...', '..kbbbbbbk..', '..bbwbbbbb..', '..bbwbbbbb..', '..kbbbbbbk..', '...kbbbbk...', '....kkkk....']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$blue),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			'#bcdcf5')
+		]));
+var $author$project$Sharecrop$Sprites$rainbowField = _Utils_Tuple2(
+	_List_fromArray(
+		['...rrrrrr...', '..rooooor...', '.rooyyyoor..', '.oyygggyyo..', 'oyggbbbggyo.', 'yggbbppbbggy', 'ggbbp..pbbgg', 'gbbp....pbbg', '............', 'GGGGGGGGGGGG', 'GdGdGdGdGdGd', 'dGdGdGdGdGdG']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('r'),
+			$author$project$Sharecrop$Sprites$red),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$orange),
+			_Utils_Tuple2(
+			_Utils_chr('y'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$green),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$blue),
+			_Utils_Tuple2(
+			_Utils_chr('p'),
+			'#9a4fb0'),
+			_Utils_Tuple2(
+			_Utils_chr('G'),
+			$author$project$Sharecrop$Sprites$green),
+			_Utils_Tuple2(
+			_Utils_chr('d'),
+			$author$project$Sharecrop$Sprites$greenDark)
+		]));
+var $author$project$Sharecrop$Sprites$redBarn = _Utils_Tuple2(
+	_List_fromArray(
+		['.....kk.....', '...kkrrkk...', '.kkrrrrrrkk.', 'krrrrrrrrrrk', 'krrrrrrrrrrk', 'krwwrrrrwwrk', 'krwwrrrrwwrk', 'krrrwwwwrrrk', 'krrwkkkkwrrk', 'krrwkwwkwrrk', 'krrwkwwkwrrk', 'kkkwkkkkwkkk']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('r'),
+			$author$project$Sharecrop$Sprites$red),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			$author$project$Sharecrop$Sprites$white)
+		]));
+var $author$project$Sharecrop$Sprites$scarecrow = _Utils_Tuple2(
+	_List_fromArray(
+		['....kkkkk...', '...kaaaaak..', '..kkkkkkkkk.', '....ooooo...', '...okxoxko..', '...ooooooo..', '...okwwwko..', '..o..ggg..o.', 'ooooogggooooo', '...kogggok..', '....ggggg...', '....b...b...']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$brownDark),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('x'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			$author$project$Sharecrop$Sprites$white),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$red),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brown)
+		]));
+var $author$project$Sharecrop$Sprites$seedling = _Utils_Tuple2(
+	_List_fromArray(
+		['............', '....k..k....', '...kgk.kgk..', '..kgGgkgGgk.', '..kgGgGgGgk.', '...kgkGkgk..', '.....kGk....', '.....kGk....', '..bbbbbbbbb.', '.bsssssssssb', '.bsbsbsbsbsb', '.bbbbbbbbbb.']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$greenLight),
+			_Utils_Tuple2(
+			_Utils_chr('G'),
+			$author$project$Sharecrop$Sprites$green),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brownDark),
+			_Utils_Tuple2(
+			_Utils_chr('s'),
+			$author$project$Sharecrop$Sprites$brown)
+		]));
+var $author$project$Sharecrop$Sprites$silverPlow = _Utils_Tuple2(
+	_List_fromArray(
+		['............', '........kk..', '.......kgsk.', '......kgssk.', '.kk..kgssk..', 'kssk.kgsk...', 'kgsskgsk....', '.kgsgssk....', '..kgssk.....', '...kgsk.....', '....kk......', '............']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('s'),
+			$author$project$Sharecrop$Sprites$white),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$grey)
+		]));
+var $author$project$Sharecrop$Sprites$sunToken = _Utils_Tuple2(
+	_List_fromArray(
+		['..r..r..r..r', '...r.r..r.r.', '....kkkkk...', 'r..koooook.r', '..koooooook.', 'r.koooooook.', '..koooooook.', 'r.koooooook.', '..koooooook.', 'r..koooook.r', '....kkkkk...', '..r.r.r.r.r.']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$goldDark),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('r'),
+			$author$project$Sharecrop$Sprites$goldDark)
+		]));
+var $author$project$Sharecrop$Sprites$tractor = _Utils_Tuple2(
+	_List_fromArray(
+		['............', '......kkkk..', '.....kgggk..', '..kkkkgggk..', '.kgggkkkkk..', '.kgggggggk..', 'kkgggggggkk.', 'kykkkkkkkyk.', 'kywkkkkkywk.', '.kywkkkywk..', 'yk.kywyk.ky.', '............']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('g'),
+			$author$project$Sharecrop$Sprites$green),
+			_Utils_Tuple2(
+			_Utils_chr('y'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			$author$project$Sharecrop$Sprites$greyLight)
+		]));
+var $author$project$Sharecrop$Sprites$wheatSheaf = _Utils_Tuple2(
+	_List_fromArray(
+		['..o..o..o...', '.oao.oao.oa.', '.oao.oao.oa.', '..o..o..o...', '.oao.oao.oa.', '..o.aoa..o..', '...oaoao....', '...oaoao....', '...bbbbb....', '..bbBBBbb...', '...bbbbb....', '..o.....o..']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$gold),
+			_Utils_Tuple2(
+			_Utils_chr('a'),
+			$author$project$Sharecrop$Sprites$goldDark),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brown),
+			_Utils_Tuple2(
+			_Utils_chr('B'),
+			$author$project$Sharecrop$Sprites$brownDark)
+		]));
+var $author$project$Sharecrop$Sprites$windmill = _Utils_Tuple2(
+	_List_fromArray(
+		['kw......wk..', '.kww..wwk...', '..kwwwwk....', '...kook.....', '..wwkkww....', '..wwkkww....', '...kook.....', '...kbbk.....', '..kbwwbk....', '..kbwwbk....', '..kbwwbk....', '..kkkkkk....']),
+	_List_fromArray(
+		[
+			_Utils_Tuple2(
+			_Utils_chr('k'),
+			$author$project$Sharecrop$Sprites$ink),
+			_Utils_Tuple2(
+			_Utils_chr('w'),
+			$author$project$Sharecrop$Sprites$white),
+			_Utils_Tuple2(
+			_Utils_chr('o'),
+			$author$project$Sharecrop$Sprites$red),
+			_Utils_Tuple2(
+			_Utils_chr('b'),
+			$author$project$Sharecrop$Sprites$brown)
+		]));
+var $author$project$Sharecrop$Sprites$sprite = function (slug) {
+	switch (slug) {
+		case 'harvest-star':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$harvestStar);
+		case 'golden-sickle':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$goldenSickle);
+		case 'seedling':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$seedling);
+		case 'sun-token':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$sunToken);
+		case 'rain-drop':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$rainDrop);
+		case 'wheat-sheaf':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$wheatSheaf);
+		case 'red-barn':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$redBarn);
+		case 'scarecrow':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$scarecrow);
+		case 'honey-pot':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$honeyPot);
+		case 'pumpkin':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$pumpkin);
+		case 'apple':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$apple);
+		case 'carrot':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$carrot);
+		case 'beehive':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$beehive);
+		case 'windmill':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$windmill);
+		case 'tractor':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$tractor);
+		case 'silver-plow':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$silverPlow);
+		case 'golden-egg':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$goldenEgg);
+		case 'prize-cow':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$prizeCow);
+		case 'lucky-clover':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$luckyClover);
+		case 'full-moon-harvest':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$fullMoonHarvest);
+		case 'cornucopia':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$cornucopia);
+		case 'first-harvest-trophy':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$firstHarvestTrophy);
+		case 'founders-seed':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$foundersSeed);
+		case 'rainbow-field':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$rainbowField);
+		case 'golden-combine':
+			return $elm$core$Maybe$Just($author$project$Sharecrop$Sprites$goldenCombine);
+		default:
+			return $elm$core$Maybe$Nothing;
+	}
+};
+var $elm$core$List$append = F2(
+	function (xs, ys) {
+		if (!ys.b) {
+			return xs;
+		} else {
+			return A3($elm$core$List$foldr, $elm$core$List$cons, ys, xs);
+		}
+	});
+var $elm$core$List$concat = function (lists) {
+	return A3($elm$core$List$foldr, $elm$core$List$append, _List_Nil, lists);
+};
+var $elm$core$List$concatMap = F2(
+	function (f, list) {
+		return $elm$core$List$concat(
+			A2($elm$core$List$map, f, list));
+	});
+var $elm$core$List$maximum = function (list) {
+	if (list.b) {
+		var x = list.a;
+		var xs = list.b;
+		return $elm$core$Maybe$Just(
+			A3($elm$core$List$foldl, $elm$core$Basics$max, x, xs));
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
+var $elm$core$List$repeatHelp = F3(
+	function (result, n, value) {
+		repeatHelp:
+		while (true) {
+			if (n <= 0) {
+				return result;
+			} else {
+				var $temp$result = A2($elm$core$List$cons, value, result),
+					$temp$n = n - 1,
+					$temp$value = value;
+				result = $temp$result;
+				n = $temp$n;
+				value = $temp$value;
+				continue repeatHelp;
+			}
+		}
+	});
+var $elm$core$List$repeat = F2(
+	function (n, value) {
+		return A3($elm$core$List$repeatHelp, _List_Nil, n, value);
+	});
+var $elm$core$String$foldr = _String_foldr;
+var $elm$core$String$toList = function (string) {
+	return A3($elm$core$String$foldr, $elm$core$List$cons, _List_Nil, string);
+};
+var $author$project$Sharecrop$Sprites$paddedChars = F2(
+	function (columns, row) {
+		var chars = $elm$core$String$toList(row);
+		return _Utils_ap(
+			chars,
+			A2(
+				$elm$core$List$repeat,
+				columns - $elm$core$List$length(chars),
+				_Utils_chr('.')));
+	});
+var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
+var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
+var $author$project$Sharecrop$Sprites$renderCell = F3(
+	function (cellPx, palette, key) {
+		var background = function () {
+			switch (key.valueOf()) {
+				case '.':
+					return 'transparent';
+				case ' ':
+					return 'transparent';
+				default:
+					return A2(
+						$elm$core$Maybe$withDefault,
+						'transparent',
+						A2($elm$core$Dict$get, key, palette));
+			}
+		}();
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					A2($elm$html$Html$Attributes$style, 'width', cellPx),
+					A2($elm$html$Html$Attributes$style, 'height', cellPx),
+					A2($elm$html$Html$Attributes$style, 'background-color', background)
+				]),
+			_List_Nil);
+	});
+var $author$project$Sharecrop$Sprites$spriteFrom = F3(
+	function (cell, rows, palette) {
+		var columns = A2(
+			$elm$core$Maybe$withDefault,
+			0,
+			$elm$core$List$maximum(
+				A2($elm$core$List$map, $elm$core$String$length, rows)));
+		var cellPx = $elm$core$String$fromInt(cell) + 'px';
+		var cells = A2(
+			$elm$core$List$map,
+			A2($author$project$Sharecrop$Sprites$renderCell, cellPx, palette),
+			A2(
+				$elm$core$List$concatMap,
+				$author$project$Sharecrop$Sprites$paddedChars(columns),
+				rows));
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					A2($elm$html$Html$Attributes$style, 'display', 'grid'),
+					A2(
+					$elm$html$Html$Attributes$style,
+					'grid-template-columns',
+					'repeat(' + ($elm$core$String$fromInt(columns) + (', ' + (cellPx + ')')))),
+					A2(
+					$elm$html$Html$Attributes$style,
+					'width',
+					$elm$core$String$fromInt(columns * cell) + 'px'),
+					A2(
+					$elm$html$Html$Attributes$style,
+					'height',
+					$elm$core$String$fromInt(
+						$elm$core$List$length(rows) * cell) + 'px'),
+					A2($elm$html$Html$Attributes$style, 'image-rendering', 'pixelated'),
+					A2($elm$html$Html$Attributes$style, 'line-height', '0')
+				]),
+			cells);
+	});
+var $author$project$Sharecrop$Sprites$pixel = F2(
+	function (slug, cell) {
+		var _v0 = $author$project$Sharecrop$Sprites$sprite(slug);
+		if (_v0.$ === 'Just') {
+			var _v1 = _v0.a;
+			var rows = _v1.a;
+			var palette = _v1.b;
+			return A3(
+				$author$project$Sharecrop$Sprites$spriteFrom,
+				cell,
+				rows,
+				$elm$core$Dict$fromList(palette));
+		} else {
+			return A3(
+				$author$project$Sharecrop$Sprites$spriteFrom,
+				cell,
+				$author$project$Sharecrop$Sprites$placeholderRows,
+				$elm$core$Dict$fromList($author$project$Sharecrop$Sprites$placeholderPalette));
+		}
+	});
 var $author$project$Sharecrop$View$collectibleDetailView = F2(
 	function (collectibleId, state) {
 		return $author$project$Sharecrop$Ui$card(
@@ -12624,6 +13609,7 @@ var $author$project$Sharecrop$View$collectibleDetailView = F2(
 								]),
 							_List_fromArray(
 								[
+									A2($author$project$Sharecrop$Sprites$pixel, collectible.art, 10),
 									A2(
 									$elm$html$Html$p,
 									_List_fromArray(
@@ -12668,6 +13654,35 @@ var $author$project$Sharecrop$View$collectibleDetailView = F2(
 										[
 											$elm$html$Html$text(
 											'Transfer policy: ' + $author$project$Sharecrop$Labels$collectiblePolicyLabel(collectible.transferPolicy))
+										])),
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('mt-3 space-y-2')
+										]),
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$label_('Trade to another user'),
+											$author$project$Sharecrop$Ui$textInput(
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$type_('text'),
+													$elm$html$Html$Attributes$placeholder('Recipient user id'),
+													$elm$html$Html$Attributes$value(state.transferRecipientId),
+													$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$TransferRecipientIdChanged),
+													$author$project$Sharecrop$Ui$testId('transfer-recipient-id')
+												])),
+											A2(
+											$author$project$Sharecrop$Ui$primaryButton,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$type_('button'),
+													$elm$html$Html$Events$onClick(
+													$author$project$Sharecrop$Types$TransferCollectibleClicked(collectible.id)),
+													$author$project$Sharecrop$Ui$testId('transfer-collectible')
+												]),
+											'Trade')
 										]))
 								]));
 					} else {
@@ -12680,10 +13695,11 @@ var $author$project$Sharecrop$View$collectibleDetailView = F2(
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text('This collectible is not in your holdings.')
+									$elm$html$Html$text('This collectible is no longer in your holdings.')
 								]));
 					}
-				}()
+				}(),
+					A2($author$project$Sharecrop$View$maybeNote, state.transferMessage, 'transfer-message')
 				]));
 	});
 var $author$project$Sharecrop$Types$AwardTaskIdChanged = function (a) {
@@ -12790,6 +13806,151 @@ var $author$project$Sharecrop$View$awardForm = function (state) {
 				A2($author$project$Sharecrop$View$maybeNote, state.awardMessage, 'award-message')
 			]));
 };
+var $author$project$Sharecrop$Types$AwardRecipientIdChanged = function (a) {
+	return {$: 'AwardRecipientIdChanged', a: a};
+};
+var $author$project$Sharecrop$Types$AwardRecipientKindChanged = function (a) {
+	return {$: 'AwardRecipientKindChanged', a: a};
+};
+var $author$project$Sharecrop$View$chooserButton = F4(
+	function (isSelected, msg, identifier, labelText) {
+		return isSelected ? A2(
+			$author$project$Sharecrop$Ui$primaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('button'),
+					$elm$html$Html$Events$onClick(msg),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			labelText) : A2(
+			$author$project$Sharecrop$Ui$secondaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('button'),
+					$elm$html$Html$Events$onClick(msg),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			labelText);
+	});
+var $author$project$Sharecrop$View$awardRecipientControl = function (state) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('mt-4 space-y-3')
+			]),
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$label_('Admin: award a default collectible'),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+					]),
+				_List_fromArray(
+					[
+						A4(
+						$author$project$Sharecrop$View$chooserButton,
+						state.awardRecipientKind === 'user',
+						$author$project$Sharecrop$Types$AwardRecipientKindChanged('user'),
+						'award-kind-user',
+						'User'),
+						A4(
+						$author$project$Sharecrop$View$chooserButton,
+						state.awardRecipientKind === 'team',
+						$author$project$Sharecrop$Types$AwardRecipientKindChanged('team'),
+						'award-kind-team',
+						'Team'),
+						A4(
+						$author$project$Sharecrop$View$chooserButton,
+						state.awardRecipientKind === 'organization',
+						$author$project$Sharecrop$Types$AwardRecipientKindChanged('organization'),
+						'award-kind-organization',
+						'Organization')
+					])),
+				$author$project$Sharecrop$Ui$textInput(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('text'),
+						$elm$html$Html$Attributes$placeholder('Recipient id'),
+						$elm$html$Html$Attributes$value(state.awardRecipientId),
+						$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AwardRecipientIdChanged),
+						$author$project$Sharecrop$Ui$testId('award-recipient-id')
+					])),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs text-slate-500')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Pick a recipient, then Award a collectible below.')
+					])),
+				A2($author$project$Sharecrop$View$maybeNote, state.awardMessage, 'award-default-message')
+			]));
+};
+var $author$project$Sharecrop$Types$AwardDefaultClicked = function (a) {
+	return {$: 'AwardDefaultClicked', a: a};
+};
+var $author$project$Sharecrop$Ui$badge = function (value) {
+	return A2(
+		$elm$html$Html$span,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(value)
+			]));
+};
+var $author$project$Sharecrop$View$catalogEntry = function (entry) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex flex-col items-center gap-1 rounded-md border border-slate-200 p-2 text-center'),
+				$author$project$Sharecrop$Ui$testId('catalog-entry')
+			]),
+		_List_fromArray(
+			[
+				A2($author$project$Sharecrop$Sprites$pixel, entry.art, 6),
+				A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs font-medium break-words')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(entry.name)
+					])),
+				$author$project$Sharecrop$Ui$badge(
+				$author$project$Sharecrop$Labels$collectibleKindLabel(entry.kind)),
+				A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Sharecrop$Types$AwardDefaultClicked(entry.slug)),
+						$author$project$Sharecrop$Ui$testId('catalog-award')
+					]),
+				'Award')
+			]));
+};
+var $author$project$Sharecrop$View$catalogGallery = function (state) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3'),
+				$author$project$Sharecrop$Ui$testId('catalog')
+			]),
+		A2($elm$core$List$map, $author$project$Sharecrop$View$catalogEntry, state.collectibleCatalog));
+};
 var $author$project$Sharecrop$Types$AwardClicked = function (a) {
 	return {$: 'AwardClicked', a: a};
 };
@@ -12810,18 +13971,6 @@ var $author$project$Sharecrop$View$awardCollectibleButton = function (collectibl
 		return $elm$html$Html$text('');
 	}
 };
-var $author$project$Sharecrop$Ui$badge = function (value) {
-	return A2(
-		$elm$html$Html$span,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700')
-			]),
-		_List_fromArray(
-			[
-				$elm$html$Html$text(value)
-			]));
-};
 var $author$project$Sharecrop$View$collectibleRow = function (collectible) {
 	return A2(
 		$elm$html$Html$div,
@@ -12840,6 +13989,7 @@ var $author$project$Sharecrop$View$collectibleRow = function (collectible) {
 					]),
 				_List_fromArray(
 					[
+						A2($author$project$Sharecrop$Sprites$pixel, collectible.art, 5),
 						A2(
 						$elm$html$Html$a,
 						_List_fromArray(
@@ -12900,26 +14050,6 @@ var $author$project$Sharecrop$View$allPolicies = _List_fromArray(
 var $author$project$Sharecrop$Types$CollectibleKindChosen = function (a) {
 	return {$: 'CollectibleKindChosen', a: a};
 };
-var $author$project$Sharecrop$View$chooserButton = F4(
-	function (isSelected, msg, identifier, labelText) {
-		return isSelected ? A2(
-			$author$project$Sharecrop$Ui$primaryButton,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$type_('button'),
-					$elm$html$Html$Events$onClick(msg),
-					$author$project$Sharecrop$Ui$testId(identifier)
-				]),
-			labelText) : A2(
-			$author$project$Sharecrop$Ui$secondaryButton,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$type_('button'),
-					$elm$html$Html$Events$onClick(msg),
-					$author$project$Sharecrop$Ui$testId(identifier)
-				]),
-			labelText);
-	});
 var $author$project$Sharecrop$Labels$collectibleKindTag = function (kind) {
 	switch (kind.$) {
 		case 'CollectibleKindUnique':
@@ -13028,10 +14158,12 @@ var $author$project$Sharecrop$View$collectiblesView = function (state) {
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text('Mint collectibles and award them to tasks.')
+						$elm$html$Html$text('Mint your own collectibles, award default collectibles to users, teams, or organizations, and trade collectibles to other users.')
 					])),
 				$author$project$Sharecrop$View$mintForm(state),
 				$author$project$Sharecrop$View$awardForm(state),
+				$author$project$Sharecrop$View$awardRecipientControl(state),
+				$author$project$Sharecrop$View$catalogGallery(state),
 				$author$project$Sharecrop$View$collectiblesList(state)
 			]));
 };

@@ -288,7 +288,7 @@ func (healthAgentService) List(context.Context, core.UserID, core.Page) agent.Li
 
 type healthAssetService struct{}
 
-func (healthAssetService) Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy) assets.MintResult {
+func (healthAssetService) Mint(context.Context, core.UserID, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult {
 	return assets.MintRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

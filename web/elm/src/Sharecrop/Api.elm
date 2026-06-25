@@ -283,7 +283,7 @@ routeLoadCmd token page =
             fetchCredentials token
 
         CollectiblesPage ->
-            Cmd.batch [ fetchCollectibles token, fetchTasks token "" ]
+            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token "" ]
 
         OrganizationsPage ->
             fetchOrganizations token
@@ -611,6 +611,36 @@ postReject token taskId submissionId reviewNote partialCredit tipAmount banImple
 fetchCollectibles : String -> Cmd Msg
 fetchCollectibles token =
     authorizedRequest "GET" token "/api/collectibles" Http.emptyBody (Http.expectJson CollectiblesReceived Collectible.collectiblesResponseDecoder)
+
+
+fetchCollectibleCatalog : String -> Cmd Msg
+fetchCollectibleCatalog token =
+    authorizedRequest "GET" token "/api/collectibles/catalog" Http.emptyBody (Http.expectJson CollectibleCatalogReceived Collectible.collectibleCatalogResponseDecoder)
+
+
+awardDefaultCollectible : String -> String -> String -> String -> Cmd Msg
+awardDefaultCollectible token slug recipientKind recipientId =
+    authorizedRequest "POST"
+        token
+        "/api/collectibles/award"
+        (Http.jsonBody
+            (Encode.object
+                [ ( "slug", Encode.string slug )
+                , ( "recipient_kind", Encode.string recipientKind )
+                , ( "recipient_id", Encode.string recipientId )
+                ]
+            )
+        )
+        (Http.expectJson AwardDefaultReceived Collectible.collectibleResponseDecoder)
+
+
+transferCollectible : String -> String -> String -> Cmd Msg
+transferCollectible token collectibleId recipientId =
+    authorizedRequest "POST"
+        token
+        ("/api/collectibles/" ++ collectibleId ++ "/transfer")
+        (Http.jsonBody (Encode.object [ ( "recipient_id", Encode.string recipientId ) ]))
+        (Http.expectJson TransferCollectibleReceived Collectible.collectibleResponseDecoder)
 
 
 fetchOrganizations : String -> Cmd Msg

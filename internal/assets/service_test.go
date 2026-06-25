@@ -50,7 +50,7 @@ func TestNewCollectibleNameRejectsBlank(t *testing.T) {
 func TestServiceMintCreatesMintedCollectible(t *testing.T) {
 	store := &memoryStore{}
 	service := NewService(store)
-	minted, matched := service.Mint(context.Background(), newUserID(t), name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout).(CollectibleMinted)
+	minted, matched := service.Mint(context.Background(), newUserID(t), name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout, "golden-sickle").(CollectibleMinted)
 	if !matched {
 		t.Fatalf("mint was rejected")
 	}

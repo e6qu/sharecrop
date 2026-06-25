@@ -19,9 +19,9 @@ func NewCollectibleStore(pool *pgxpool.Pool) CollectibleStore {
 
 func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible assets.Collectible) assets.CreateStoreResult {
 	_, err := store.pool.Exec(ctx, `
-		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id)
-		values ($1, $2, $3, $4, $5, $6)
-	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID.String())
+		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, art)
+		values ($1, $2, $3, $4, $5, $6, $7)
+	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID.String(), collectible.Art)
 	if err != nil {
 		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible failed")}
 	}
@@ -30,7 +30,7 @@ func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible
 
 func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) assets.ListStoreResult {
 	rows, err := store.pool.Query(ctx, `
-		select id::text, name, kind, state, transfer_policy, owner_user_id::text
+		select id::text, name, kind, state, transfer_policy, owner_user_id::text, art
 		from collectibles
 		where owner_user_id = $1
 		order by created_at desc, id
@@ -261,7 +261,7 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 }
 
 func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.CollectibleID) collectibleParseResult {
-	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text from collectibles where id = $1 for update", collectibleID.String())
+	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, art from collectibles where id = $1 for update", collectibleID.String())
 	if err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock collectible failed")}
 	}
@@ -273,7 +273,7 @@ func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.Collecti
 }
 
 func findCollectible(ctx context.Context, tx pgx.Tx, rawCollectibleID string) collectibleParseResult {
-	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text from collectibles where id = $1", rawCollectibleID)
+	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, art from collectibles where id = $1", rawCollectibleID)
 	if err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible failed")}
 	}
@@ -291,13 +291,14 @@ func scanCollectible(rows pgx.Rows) collectibleParseResult {
 	var rawState string
 	var rawPolicy string
 	var rawOwner string
-	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner); err != nil {
+	var rawArt string
+	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawArt); err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible failed")}
 	}
-	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner)
+	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawArt)
 }
 
-func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string) collectibleParseResult {
+func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string, rawArt string) collectibleParseResult {
 	idResult := core.ParseCollectibleID(rawID)
 	collectibleID, idMatched := idResult.(core.CollectibleIDCreated)
 	if !idMatched {
@@ -335,5 +336,6 @@ func parseCollectible(rawID string, rawName string, rawKind string, rawState str
 		State:   state.Value,
 		Policy:  policy.Value,
 		OwnerID: owner.Value,
+		Art:     rawArt,
 	}}
 }
