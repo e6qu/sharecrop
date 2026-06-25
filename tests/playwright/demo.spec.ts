@@ -12,7 +12,7 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
   await expect(page.getByText("1240 credits")).toBeVisible();
   // Ledger + My-tasks decode and populate (seed enum values must match the real
   // client's decoders, else Decode.list blanks the whole section).
-  await expect(page.getByText("signup_grant")).toBeVisible();
+  await expect(page.getByText("Signup grant")).toBeVisible();
   await page.getByRole("link", { name: "Tasks", exact: true }).click();
   await expect(page.getByText("Verify 10 ledger transfers for fraud signals"))
     .toBeVisible();
@@ -85,7 +85,7 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
   // The owner controls offer Refund; the fake backend implements /refund and
   // returns the escrow shape the client decodes, so the action succeeds.
   await page.getByTestId("refund-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
+  await expect(page.getByTestId("task-action-message")).toContainText(
     "Task refunded and cancelled.",
   );
 });

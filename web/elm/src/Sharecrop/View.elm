@@ -13,7 +13,7 @@ import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
-import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, escrowStateLabel, kindLabel, participationPolicyLabel, participationPolicyTag, reservationStateLabel, rewardLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
+import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, escrowStateLabel, kindLabel, participationPolicyLabel, participationPolicyTag, participationUsesReservation, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
 import Sharecrop.Types exposing (..)
 import Sharecrop.Ui as Ui exposing (testId)
 
@@ -681,17 +681,26 @@ createTaskView state =
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit CreateTaskClicked ]
         [ Ui.sectionTitle "Create a task"
         , Ui.fieldLabel "Title" [ Ui.textInput [ type_ "text", placeholder "Short, descriptive title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ] ]
-        , Ui.fieldLabel "Task type" [ taskTypeSelect state.createTaskType ]
-        , Ui.fieldLabel "Reference URL (e.g. the pull request)" [ Ui.textInput [ type_ "text", placeholder "https://github.com/org/repo/pull/123", value state.createReferenceURL, onInput CreateReferenceURLChanged, testId "create-reference-url" ] ]
+        , Ui.fieldLabel "Template" [ taskTypeSelect state.createTaskType ]
+        , Ui.fieldLabel "Reference URL (optional, e.g. a pull request)" [ Ui.textInput [ type_ "text", placeholder "https://github.com/org/repo/pull/123", value state.createReferenceURL, onInput CreateReferenceURLChanged, testId "create-reference-url" ] ]
         , Ui.fieldLabel "Description" [ Ui.textarea_ [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ] ]
-        , schemaDesignerView state
+        , if state.createTaskType == "general" then
+            schemaDesignerView state
+
+          else
+            p [ Html.Attributes.class "text-xs text-slate-600", testId "template-schema-note" ]
+                [ text ("The " ++ taskTypeLabel state.createTaskType ++ " template prefilled the description and response schema below — edit them if you need to.") ]
         , Ui.fieldLabel "Response schema (JSON, advanced)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
         , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
         , Ui.fieldLabel "Credit reward" [ Ui.textInput [ type_ "number", placeholder "Blank for no reward", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
         , ownerChooser state
         , Ui.label_ "Participation"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (participationButton state.createParticipationPolicy) allParticipationPolicies)
-        , Ui.fieldLabel "Reservation expiry (hours)" [ Ui.textInput [ type_ "number", placeholder "48", value state.createReservationHours, onInput CreateReservationHoursChanged, testId "create-reservation-hours" ] ]
+        , if participationUsesReservation state.createParticipationPolicy then
+            Ui.fieldLabel "Reservation expiry (hours)" [ Ui.textInput [ type_ "number", placeholder "48", value state.createReservationHours, onInput CreateReservationHoursChanged, testId "create-reservation-hours" ] ]
+
+          else
+            text ""
         , Ui.label_ "Visibility"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (visibilityButton state.createVisibility) allVisibilityTags)
         , visibilityScopeField state
@@ -909,7 +918,15 @@ taskTypeSelect selectedType =
 
 taskTypeOption : String -> String -> Html Msg
 taskTypeOption selectedType tag =
-    option [ value tag, selected (selectedType == tag) ] [ text (taskTypeLabel tag) ]
+    let
+        optionLabel =
+            if tag == "general" then
+                "Freeform (no template)"
+
+            else
+                taskTypeLabel tag
+    in
+    option [ value tag, selected (selectedType == tag) ] [ text optionLabel ]
 
 
 taskTemplate : String -> Maybe { description : String, schema : String }
@@ -1014,9 +1031,24 @@ ledgerView entries =
 
 ledgerRow : Ledger.LedgerEntryResponse -> Html Msg
 ledgerRow entry =
+    let
+        amountClass =
+            if entry.amount < 0 then
+                "py-2 text-right tabular-nums text-red-700"
+
+            else
+                "py-2 text-right tabular-nums text-green-700"
+
+        amountText =
+            if entry.amount > 0 then
+                "+" ++ String.fromInt entry.amount
+
+            else
+                String.fromInt entry.amount
+    in
     tr [ Html.Attributes.class "border-t border-slate-100", testId "ledger-entry" ]
         [ td [ Html.Attributes.class "py-2" ] [ text (kindLabel entry.kind) ]
-        , td [ Html.Attributes.class "py-2 text-right tabular-nums" ] [ text (String.fromInt entry.amount) ]
+        , td [ Html.Attributes.class amountClass ] [ text amountText ]
         ]
 
 
@@ -1130,15 +1162,16 @@ agentsView origin state =
 
 scopeCheckbox : List Agent.AgentScope -> Agent.AgentScope -> Html Msg
 scopeCheckbox selected scope =
-    label [ Html.Attributes.class "flex items-center gap-2 text-sm" ]
+    label [ Html.Attributes.class "flex min-h-[44px] items-center gap-2 text-sm" ]
         [ Html.input
             [ type_ "checkbox"
+            , Html.Attributes.class Ui.checkboxClass
             , checked (List.member scope selected)
-            , onClick (ToggleScope scope)
+            , onCheck (\_ -> ToggleScope scope)
             , testId ("scope-" ++ scopeTag scope)
             ]
             []
-        , span [] [ text (scopeTag scope) ]
+        , span [] [ text (scopeLabel scope ++ " (" ++ scopeTag scope ++ ")") ]
         ]
 
 
@@ -1171,7 +1204,7 @@ credentialRow credential =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "credential-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text credential.label ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (credentialStateLabel credential.state ++ " · " ++ String.join ", " (List.map scopeTag credential.scopes)) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (credentialStateLabel credential.state ++ " · " ++ String.join ", " (List.map scopeLabel credential.scopes)) ]
             ]
         , revokeButton credential
         ]
@@ -1423,7 +1456,7 @@ ownerControlsCard state =
                     [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
                     , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
                     ]
-                , maybeNote state.createMessage "create-message"
+                , maybeNote state.taskActionMessage "task-action-message"
                 ]
 
         Nothing ->

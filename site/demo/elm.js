@@ -7153,6 +7153,9 @@ var $author$project$Sharecrop$Api$createSeriesCommand = F2(
 					A2($author$project$Sharecrop$Api$seriesBody, state.createSeriesTitle, state.createSeriesDescription)),
 				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
 	});
+var $author$project$Sharecrop$Labels$participationUsesReservation = function (tag) {
+	return (tag === 'reservation_required') || (tag === 'approval_required');
+};
 var $author$project$Sharecrop$Types$CreateTaskReceived = function (a) {
 	return {$: 'CreateTaskReceived', a: a};
 };
@@ -7638,7 +7641,7 @@ var $author$project$Sharecrop$Api$createTaskCommand = F2(
 							createMessage: $elm$core$Maybe$Just('Title and description are required.')
 						});
 				}),
-			$elm$core$Platform$Cmd$none) : ((($author$project$Sharecrop$Api$reservationHoursValue(state.createReservationHours) < 1) || ($author$project$Sharecrop$Api$reservationHoursValue(state.createReservationHours) > 720)) ? _Utils_Tuple2(
+			$elm$core$Platform$Cmd$none) : (($author$project$Sharecrop$Labels$participationUsesReservation(state.createParticipationPolicy) && (($author$project$Sharecrop$Api$reservationHoursValue(state.createReservationHours) < 1) || ($author$project$Sharecrop$Api$reservationHoursValue(state.createReservationHours) > 720))) ? _Utils_Tuple2(
 			A2(
 				$author$project$Sharecrop$Api$updateLoggedIn,
 				model,
@@ -7700,6 +7703,10 @@ var $author$project$Main$enterPage = F2(
 				return _Utils_update(
 					state,
 					{page: page, teamDetail: $elm$core$Maybe$Nothing, teamMemberEmail: '', teamMemberMessage: $elm$core$Maybe$Nothing});
+			case 'TaskDetailPage':
+				return _Utils_update(
+					state,
+					{detail: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
 			default:
 				return _Utils_update(
 					state,
@@ -8198,6 +8205,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		submissions: _List_Nil,
 		submitInput: '',
 		submitMessage: $elm$core$Maybe$Nothing,
+		taskActionMessage: $elm$core$Maybe$Nothing,
 		taskAgentToken: $elm$core$Maybe$Nothing,
 		taskCommentBody: '',
 		taskComments: _List_Nil,
@@ -10299,8 +10307,8 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
-										createMessage: $elm$core$Maybe$Just('Task opened.'),
-										detail: $elm$core$Maybe$Just(detail)
+										detail: $elm$core$Maybe$Just(detail),
+										taskActionMessage: $elm$core$Maybe$Just('Task opened.')
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshTasksAndDiscovery(model));
@@ -10314,7 +10322,7 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
-										createMessage: $elm$core$Maybe$Just(
+										taskActionMessage: $elm$core$Maybe$Just(
 											$author$project$Sharecrop$Labels$httpErrorLabel(error))
 									});
 							}),
@@ -10340,7 +10348,7 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
-										createMessage: $elm$core$Maybe$Just('Task refunded and cancelled.')
+										taskActionMessage: $elm$core$Maybe$Just('Task refunded and cancelled.')
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshTasksAndLedger(model));
@@ -10354,7 +10362,7 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
-										createMessage: $elm$core$Maybe$Just(
+										taskActionMessage: $elm$core$Maybe$Just(
 											$author$project$Sharecrop$Labels$httpErrorLabel(error))
 									});
 							}),
@@ -11711,11 +11719,11 @@ var $author$project$Main$update = F2(
 								var template = _v3.a;
 								return _Utils_update(
 									state,
-									{createDescription: template.description, createResponseSchema: template.schema, createTaskType: value});
+									{createDescription: template.description, createResponseSchema: template.schema, createSchemaFields: _List_Nil, createTaskType: value});
 							} else {
 								return _Utils_update(
 									state,
-									{createTaskType: value});
+									{createResponseSchema: '{\"kind\":\"freeform\"}', createSchemaFields: _List_Nil, createTaskType: value});
 							}
 						}),
 					$elm$core$Platform$Cmd$none);
@@ -12259,18 +12267,18 @@ var $author$project$Sharecrop$View$revokeButton = function (credential) {
 				]));
 	}
 };
-var $author$project$Sharecrop$Labels$scopeTag = function (scope) {
+var $author$project$Sharecrop$Labels$scopeLabel = function (scope) {
 	switch (scope.$) {
 		case 'AgentScopeTasksRead':
-			return 'tasks_read';
+			return 'Read tasks';
 		case 'AgentScopeTasksWrite':
-			return 'tasks_write';
+			return 'Create tasks';
 		case 'AgentScopeSubmissionsWrite':
-			return 'submissions_write';
+			return 'Submit work';
 		case 'AgentScopeSubmissionsRead':
-			return 'submissions_read';
+			return 'Read submissions';
 		default:
-			return 'submissions_review';
+			return 'Review submissions';
 	}
 };
 var $author$project$Sharecrop$View$credentialRow = function (credential) {
@@ -12310,7 +12318,7 @@ var $author$project$Sharecrop$View$credentialRow = function (credential) {
 								$author$project$Sharecrop$Labels$credentialStateLabel(credential.state) + (' · ' + A2(
 									$elm$core$String$join,
 									', ',
-									A2($elm$core$List$map, $author$project$Sharecrop$Labels$scopeTag, credential.scopes))))
+									A2($elm$core$List$map, $author$project$Sharecrop$Labels$scopeLabel, credential.scopes))))
 							]))
 					])),
 				$author$project$Sharecrop$View$revokeButton(credential)
@@ -12416,6 +12424,7 @@ var $author$project$Sharecrop$View$newCredentialView = F2(
 var $author$project$Sharecrop$Types$ToggleScope = function (a) {
 	return {$: 'ToggleScope', a: a};
 };
+var $author$project$Sharecrop$Ui$checkboxClass = 'h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-2 focus:ring-slate-500';
 var $elm$html$Html$Attributes$boolProperty = F2(
 	function (key, bool) {
 		return A2(
@@ -12425,13 +12434,39 @@ var $elm$html$Html$Attributes$boolProperty = F2(
 	});
 var $elm$html$Html$Attributes$checked = $elm$html$Html$Attributes$boolProperty('checked');
 var $elm$html$Html$label = _VirtualDom_node('label');
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
+var $elm$html$Html$Events$targetChecked = A2(
+	$elm$json$Json$Decode$at,
+	_List_fromArray(
+		['target', 'checked']),
+	$elm$json$Json$Decode$bool);
+var $elm$html$Html$Events$onCheck = function (tagger) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'change',
+		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
+};
+var $author$project$Sharecrop$Labels$scopeTag = function (scope) {
+	switch (scope.$) {
+		case 'AgentScopeTasksRead':
+			return 'tasks_read';
+		case 'AgentScopeTasksWrite':
+			return 'tasks_write';
+		case 'AgentScopeSubmissionsWrite':
+			return 'submissions_write';
+		case 'AgentScopeSubmissionsRead':
+			return 'submissions_read';
+		default:
+			return 'submissions_review';
+	}
+};
 var $author$project$Sharecrop$View$scopeCheckbox = F2(
 	function (selected, scope) {
 		return A2(
 			$elm$html$Html$label,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm')
+					$elm$html$Html$Attributes$class('flex min-h-[44px] items-center gap-2 text-sm')
 				]),
 			_List_fromArray(
 				[
@@ -12440,10 +12475,13 @@ var $author$project$Sharecrop$View$scopeCheckbox = F2(
 					_List_fromArray(
 						[
 							$elm$html$Html$Attributes$type_('checkbox'),
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$checkboxClass),
 							$elm$html$Html$Attributes$checked(
 							A2($elm$core$List$member, scope, selected)),
-							$elm$html$Html$Events$onClick(
-							$author$project$Sharecrop$Types$ToggleScope(scope)),
+							$elm$html$Html$Events$onCheck(
+							function (_v0) {
+								return $author$project$Sharecrop$Types$ToggleScope(scope);
+							}),
 							$author$project$Sharecrop$Ui$testId(
 							'scope-' + $author$project$Sharecrop$Labels$scopeTag(scope))
 						]),
@@ -12454,7 +12492,7 @@ var $author$project$Sharecrop$View$scopeCheckbox = F2(
 					_List_fromArray(
 						[
 							$elm$html$Html$text(
-							$author$project$Sharecrop$Labels$scopeTag(scope))
+							$author$project$Sharecrop$Labels$scopeLabel(scope) + (' (' + ($author$project$Sharecrop$Labels$scopeTag(scope) + ')')))
 						]))
 				]));
 	});
@@ -12529,17 +12567,16 @@ var $author$project$Sharecrop$View$agentsView = F2(
 					$author$project$Sharecrop$View$credentialsList(state.credentials)
 				]));
 	});
-var $author$project$Sharecrop$Labels$collectibleKindTag = function (kind) {
+var $author$project$Sharecrop$Labels$collectibleKindLabel = function (kind) {
 	switch (kind.$) {
 		case 'CollectibleKindUnique':
-			return 'unique';
+			return 'Unique';
 		case 'CollectibleKindEdition':
-			return 'edition';
+			return 'Edition';
 		default:
-			return 'badge';
+			return 'Badge';
 	}
 };
-var $author$project$Sharecrop$Labels$collectibleKindLabel = $author$project$Sharecrop$Labels$collectibleKindTag;
 var $author$project$Sharecrop$Labels$collectiblePolicyLabel = function (policy) {
 	switch (policy.$) {
 		case 'CollectibleTransferPolicyNonTransferableExceptPayout':
@@ -12883,6 +12920,16 @@ var $author$project$Sharecrop$View$chooserButton = F4(
 				]),
 			labelText);
 	});
+var $author$project$Sharecrop$Labels$collectibleKindTag = function (kind) {
+	switch (kind.$) {
+		case 'CollectibleKindUnique':
+			return 'unique';
+		case 'CollectibleKindEdition':
+			return 'edition';
+		default:
+			return 'badge';
+	}
+};
 var $author$project$Sharecrop$View$kindButton = F2(
 	function (selected, kind) {
 		return A4(
@@ -13142,19 +13189,6 @@ var $author$project$Sharecrop$Types$SchemaFieldRequiredChanged = F2(
 	function (a, b) {
 		return {$: 'SchemaFieldRequiredChanged', a: a, b: b};
 	});
-var $author$project$Sharecrop$Ui$checkboxClass = 'h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-2 focus:ring-slate-500';
-var $elm$json$Json$Decode$bool = _Json_decodeBool;
-var $elm$html$Html$Events$targetChecked = A2(
-	$elm$json$Json$Decode$at,
-	_List_fromArray(
-		['target', 'checked']),
-	$elm$json$Json$Decode$bool);
-var $elm$html$Html$Events$onCheck = function (tagger) {
-	return A2(
-		$elm$html$Html$Events$on,
-		'change',
-		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
-};
 var $author$project$Sharecrop$Types$SchemaFieldEnumValuesChanged = F2(
 	function (a, b) {
 		return {$: 'SchemaFieldEnumValuesChanged', a: a, b: b};
@@ -13393,11 +13427,6 @@ var $author$project$Sharecrop$View$schemaDesignerView = function (state) {
 				'Add field')
 			]));
 };
-var $author$project$Sharecrop$Types$CreateTaskTypeChanged = function (a) {
-	return {$: 'CreateTaskTypeChanged', a: a};
-};
-var $author$project$Sharecrop$View$allTaskTypes = _List_fromArray(
-	['general', 'code_review', 'security_review', 'product_review', 'ui_ux_review', 'qa_testing']);
 var $author$project$Sharecrop$View$taskTypeLabel = function (tag) {
 	switch (tag) {
 		case 'code_review':
@@ -13414,8 +13443,14 @@ var $author$project$Sharecrop$View$taskTypeLabel = function (tag) {
 			return 'General';
 	}
 };
+var $author$project$Sharecrop$Types$CreateTaskTypeChanged = function (a) {
+	return {$: 'CreateTaskTypeChanged', a: a};
+};
+var $author$project$Sharecrop$View$allTaskTypes = _List_fromArray(
+	['general', 'code_review', 'security_review', 'product_review', 'ui_ux_review', 'qa_testing']);
 var $author$project$Sharecrop$View$taskTypeOption = F2(
 	function (selectedType, tag) {
+		var optionLabel = (tag === 'general') ? 'Freeform (no template)' : $author$project$Sharecrop$View$taskTypeLabel(tag);
 		return A2(
 			$elm$html$Html$option,
 			_List_fromArray(
@@ -13426,8 +13461,7 @@ var $author$project$Sharecrop$View$taskTypeOption = F2(
 				]),
 			_List_fromArray(
 				[
-					$elm$html$Html$text(
-					$author$project$Sharecrop$View$taskTypeLabel(tag))
+					$elm$html$Html$text(optionLabel)
 				]));
 	});
 var $author$project$Sharecrop$View$taskTypeSelect = function (selectedType) {
@@ -13553,14 +13587,14 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 					])),
 				A2(
 				$author$project$Sharecrop$Ui$fieldLabel,
-				'Task type',
+				'Template',
 				_List_fromArray(
 					[
 						$author$project$Sharecrop$View$taskTypeSelect(state.createTaskType)
 					])),
 				A2(
 				$author$project$Sharecrop$Ui$fieldLabel,
-				'Reference URL (e.g. the pull request)',
+				'Reference URL (optional, e.g. a pull request)',
 				_List_fromArray(
 					[
 						$author$project$Sharecrop$Ui$textInput(
@@ -13588,7 +13622,18 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 								$author$project$Sharecrop$Ui$testId('create-description')
 							]))
 					])),
-				$author$project$Sharecrop$View$schemaDesignerView(state),
+				(state.createTaskType === 'general') ? $author$project$Sharecrop$View$schemaDesignerView(state) : A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs text-slate-600'),
+						$author$project$Sharecrop$Ui$testId('template-schema-note')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						'The ' + ($author$project$Sharecrop$View$taskTypeLabel(state.createTaskType) + ' template prefilled the description and response schema below — edit them if you need to.'))
+					])),
 				A2(
 				$author$project$Sharecrop$Ui$fieldLabel,
 				'Response schema (JSON, advanced)',
@@ -13646,7 +13691,7 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 					$elm$core$List$map,
 					$author$project$Sharecrop$View$participationButton(state.createParticipationPolicy),
 					$author$project$Sharecrop$View$allParticipationPolicies)),
-				A2(
+				$author$project$Sharecrop$Labels$participationUsesReservation(state.createParticipationPolicy) ? A2(
 				$author$project$Sharecrop$Ui$fieldLabel,
 				'Reservation expiry (hours)',
 				_List_fromArray(
@@ -13660,7 +13705,7 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateReservationHoursChanged),
 								$author$project$Sharecrop$Ui$testId('create-reservation-hours')
 							]))
-					])),
+					])) : $elm$html$Html$text(''),
 				$author$project$Sharecrop$Ui$label_('Visibility'),
 				A2(
 				$elm$html$Html$div,
@@ -14314,22 +14359,24 @@ var $author$project$Sharecrop$View$balanceView = function (balance) {
 var $author$project$Sharecrop$Labels$kindLabel = function (kind) {
 	switch (kind.$) {
 		case 'LedgerEntryKindSignupGrant':
-			return 'signup_grant';
+			return 'Signup grant';
 		case 'LedgerEntryKindTaskEscrow':
-			return 'task_escrow';
+			return 'Task escrow';
 		case 'LedgerEntryKindTaskRefund':
-			return 'task_refund';
+			return 'Task refund';
 		case 'LedgerEntryKindTaskPayout':
-			return 'task_payout';
+			return 'Task payout';
 		case 'LedgerEntryKindTaskTip':
-			return 'task_tip';
+			return 'Task tip';
 		default:
-			return 'manual_adjustment';
+			return 'Manual adjustment';
 	}
 };
 var $elm$html$Html$td = _VirtualDom_node('td');
 var $elm$html$Html$tr = _VirtualDom_node('tr');
 var $author$project$Sharecrop$View$ledgerRow = function (entry) {
+	var amountText = (entry.amount > 0) ? ('+' + $elm$core$String$fromInt(entry.amount)) : $elm$core$String$fromInt(entry.amount);
+	var amountClass = (entry.amount < 0) ? 'py-2 text-right tabular-nums text-red-700' : 'py-2 text-right tabular-nums text-green-700';
 	return A2(
 		$elm$html$Html$tr,
 		_List_fromArray(
@@ -14354,12 +14401,11 @@ var $author$project$Sharecrop$View$ledgerRow = function (entry) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('py-2 text-right tabular-nums')
+						$elm$html$Html$Attributes$class(amountClass)
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text(
-						$elm$core$String$fromInt(entry.amount))
+						$elm$html$Html$text(amountText)
 					]))
 			]));
 };
@@ -15502,7 +15548,7 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 								]),
 							'Refund')
 						])),
-					A2($author$project$Sharecrop$View$maybeNote, state.createMessage, 'create-message')
+					A2($author$project$Sharecrop$View$maybeNote, state.taskActionMessage, 'task-action-message')
 				]));
 	} else {
 		return $elm$html$Html$text('');

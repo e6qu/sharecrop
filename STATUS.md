@@ -1,10 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 54 work, merged into `main`.
+The repository contains pull request 1 through pull request 55 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/round-fuzz-mobile-design` is a fuzz + mobile/UI-UX/contrast + demo-functionality review round (two specialized subagents) with a design-surface increase and boyscout fixes. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/create-template-menu` turns the create-task "Task type" field into an explicit Template/Freeform menu and applies a batch of usability fixes from a specialized UI/UX review. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/create-template-menu`:
+
+- Create-task form: the "Task type" field is now a "Template" selector — "Freeform (no template)" or one of the named templates (Code review, Security review, …). Freeform shows the structured schema designer; a template hides the designer, prefills the description + response schema, and shows a note. Choosing a template clears the designer fields so a later designer edit can't silently overwrite the prefilled schema (fixes the designer/raw-JSON conflict the review flagged).
+- Usability fixes (from the review): the owner-controls status line no longer leaks into the create-task form (separate `taskActionMessage`); the reservation-expiry field is shown and validated only for reservation/approval participation policies; the ledger shows human-readable kind labels with signed, colored amounts; agent scopes show human labels and a styled checkbox; navigating task→task clears the previous task's detail/comments/badges (stale-detail bug); the reference-URL helper text is generic.
+- A "Profile"/template Playwright test plus updated label/message assertions.
+
+Earlier branch `task/round-fuzz-mobile-design` (pull request 55, merged) added agent-parser fuzz, the enum/array schema designer, mobile/contrast fixes, a Profile nav link, and demo wallet-routing fixes.
 
 Implemented in `task/round-fuzz-mobile-design`:
 

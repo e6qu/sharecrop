@@ -12,7 +12,7 @@ import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
-import Sharecrop.Labels exposing (assigneeScopeTag)
+import Sharecrop.Labels exposing (assigneeScopeTag, participationUsesReservation)
 import Sharecrop.Types exposing (..)
 
 
@@ -128,7 +128,7 @@ createTaskCommand model state =
     if String.isEmpty (String.trim state.createTitle) || String.isEmpty (String.trim state.createDescription) then
         ( updateLoggedIn model (\current -> { current | createMessage = Just "Title and description are required." }), Cmd.none )
 
-    else if reservationHoursValue state.createReservationHours < 1 || reservationHoursValue state.createReservationHours > 720 then
+    else if participationUsesReservation state.createParticipationPolicy && (reservationHoursValue state.createReservationHours < 1 || reservationHoursValue state.createReservationHours > 720) then
         ( updateLoggedIn model (\current -> { current | createMessage = Just "Reservation expiry must be between 1 and 720 hours." }), Cmd.none )
 
     else

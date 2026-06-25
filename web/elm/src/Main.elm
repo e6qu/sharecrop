@@ -130,6 +130,7 @@ emptyLoggedIn response =
     , taskCommentBody = ""
     , taskAgentToken = Nothing
     , taskIntegrationOpen = False
+    , taskActionMessage = Nothing
     , userAgentToken = Nothing
     }
 
@@ -248,6 +249,11 @@ enterPage page state =
 
         TeamDetailPage _ ->
             { state | page = page, teamDetail = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
+
+        TaskDetailPage _ ->
+            -- Clear the previous task's detail substate so a task->task link does
+            -- not briefly show the prior task's badges, submissions, or comments.
+            { state | page = page, detail = Nothing, reservations = [], reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, taskComments = [], taskCommentBody = "", taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
 
         _ ->
             { state | page = page }
@@ -443,21 +449,21 @@ update msg model =
             Api.withSession model (\state -> ( model, Api.postOpenTask state.accessToken taskId ))
 
         OpenTaskReceived (Ok detail) ->
-            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, createMessage = Just "Task opened." })
+            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just "Task opened." })
             , Api.refreshTasksAndDiscovery model
             )
 
         OpenTaskReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         RefundTaskClicked taskId ->
             Api.withSession model (\state -> ( model, Api.postRefundTask state.accessToken taskId ))
 
         RefundTaskReceived (Ok _) ->
-            ( Api.updateLoggedIn model (\state -> { state | createMessage = Just "Task refunded and cancelled." }), Api.refreshTasksAndLedger model )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just "Task refunded and cancelled." }), Api.refreshTasksAndLedger model )
 
         RefundTaskReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         AgentLabelChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | agentLabel = value }), Cmd.none )
@@ -857,10 +863,14 @@ update msg model =
                 (\state ->
                     case View.taskTemplate value of
                         Just template ->
-                            { state | createTaskType = value, createDescription = template.description, createResponseSchema = template.schema }
+                            -- The template owns the schema; clear the designer
+                            -- fields so a later designer edit can't silently
+                            -- overwrite the prefilled schema.
+                            { state | createTaskType = value, createDescription = template.description, createResponseSchema = template.schema, createSchemaFields = [] }
 
                         Nothing ->
-                            { state | createTaskType = value }
+                            -- Freeform: hand the schema back to the designer.
+                            { state | createTaskType = value, createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [] }
                 )
             , Cmd.none
             )

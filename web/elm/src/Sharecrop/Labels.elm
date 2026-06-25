@@ -22,8 +22,16 @@ collectibleKindTag kind =
 
 
 collectibleKindLabel : Collectible.CollectibleKind -> String
-collectibleKindLabel =
-    collectibleKindTag
+collectibleKindLabel kind =
+    case kind of
+        Collectible.CollectibleKindUnique ->
+            "Unique"
+
+        Collectible.CollectibleKindEdition ->
+            "Edition"
+
+        Collectible.CollectibleKindBadge ->
+            "Badge"
 
 
 collectiblePolicyTag : Collectible.CollectibleTransferPolicy -> String
@@ -82,6 +90,11 @@ participationPolicyTag policy =
 
         Task.TaskParticipationPolicyApprovalRequired ->
             "approval_required"
+
+
+participationUsesReservation : String -> Bool
+participationUsesReservation tag =
+    tag == "reservation_required" || tag == "approval_required"
 
 
 participationPolicyLabel : Task.TaskParticipationPolicy -> String
@@ -206,6 +219,25 @@ scopeTag scope =
             "submissions_review"
 
 
+scopeLabel : Agent.AgentScope -> String
+scopeLabel scope =
+    case scope of
+        Agent.AgentScopeTasksRead ->
+            "Read tasks"
+
+        Agent.AgentScopeTasksWrite ->
+            "Create tasks"
+
+        Agent.AgentScopeSubmissionsWrite ->
+            "Submit work"
+
+        Agent.AgentScopeSubmissionsRead ->
+            "Read submissions"
+
+        Agent.AgentScopeSubmissionsReview ->
+            "Review submissions"
+
+
 credentialStateLabel : Agent.AgentCredentialState -> String
 credentialStateLabel state =
     case state of
@@ -277,22 +309,22 @@ kindLabel : Ledger.LedgerEntryKind -> String
 kindLabel kind =
     case kind of
         Ledger.LedgerEntryKindSignupGrant ->
-            "signup_grant"
+            "Signup grant"
 
         Ledger.LedgerEntryKindTaskEscrow ->
-            "task_escrow"
+            "Task escrow"
 
         Ledger.LedgerEntryKindTaskRefund ->
-            "task_refund"
+            "Task refund"
 
         Ledger.LedgerEntryKindTaskPayout ->
-            "task_payout"
+            "Task payout"
 
         Ledger.LedgerEntryKindTaskTip ->
-            "task_tip"
+            "Task tip"
 
         Ledger.LedgerEntryKindManualAdjustment ->
-            "manual_adjustment"
+            "Manual adjustment"
 
 
 escrowStateLabel : Ledger.EscrowState -> String

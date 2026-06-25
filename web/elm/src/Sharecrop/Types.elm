@@ -152,6 +152,7 @@ type alias LoggedInModel =
     , taskCommentBody : String
     , taskAgentToken : Maybe String
     , taskIntegrationOpen : Bool
+    , taskActionMessage : Maybe String
     , userAgentToken : Maybe String
     }
 
