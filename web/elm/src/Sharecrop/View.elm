@@ -1275,6 +1275,7 @@ awardRecipientControl : LoggedInModel -> Html Msg
 awardRecipientControl state =
     div [ Html.Attributes.class "mt-4 space-y-3" ]
         [ Ui.label_ "Admin: award a default collectible"
+        , p [ Html.Attributes.class "text-xs text-slate-600", testId "award-admin-note" ] [ text "Awarding default collectibles requires a platform administrator (enabled in the demo)." ]
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             [ chooserButton (state.awardRecipientKind == "user") (AwardRecipientKindChanged "user") "award-kind-user" "User"
             , chooserButton (state.awardRecipientKind == "team") (AwardRecipientKindChanged "team") "award-kind-team" "Team"
@@ -1282,23 +1283,23 @@ awardRecipientControl state =
             ]
         , Ui.textInput [ type_ "text", placeholder "Recipient id", value state.awardRecipientId, onInput AwardRecipientIdChanged, testId "award-recipient-id" ]
         , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text "Pick a recipient, then Award a collectible below." ]
-        , maybeNote state.awardMessage "award-default-message"
+        , maybeNote state.awardDefaultMessage "award-default-message"
         ]
 
 
 catalogGallery : LoggedInModel -> Html Msg
 catalogGallery state =
     div [ Html.Attributes.class "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3", testId "catalog" ]
-        (List.map catalogEntry state.collectibleCatalog)
+        (List.map (catalogEntry state.awardRecipientId) state.collectibleCatalog)
 
 
-catalogEntry : Collectible.CollectibleCatalogEntry -> Html Msg
-catalogEntry entry =
+catalogEntry : String -> Collectible.CollectibleCatalogEntry -> Html Msg
+catalogEntry recipientId entry =
     div [ Html.Attributes.class "flex flex-col items-center gap-1 rounded-md border border-slate-200 p-2 text-center", testId "catalog-entry" ]
         [ Sprites.pixel entry.art 6
         , span [ Html.Attributes.class "text-xs font-medium break-words" ] [ text entry.name ]
         , Ui.badge (collectibleKindLabel entry.kind)
-        , Ui.secondaryButton [ type_ "button", onClick (AwardDefaultClicked entry.slug), testId "catalog-award" ] "Award"
+        , Ui.secondaryButton [ type_ "button", onClick (AwardDefaultClicked entry.slug), disabled (String.trim recipientId == ""), testId "catalog-award" ] "Award"
         ]
 
 
@@ -1334,10 +1335,10 @@ policyButton selected policy =
 chooserButton : Bool -> Msg -> String -> String -> Html Msg
 chooserButton isSelected msg identifier labelText =
     if isSelected then
-        Ui.primaryButton [ type_ "button", onClick msg, testId identifier ] labelText
+        Ui.primaryButton [ type_ "button", onClick msg, Html.Attributes.attribute "aria-pressed" "true", testId identifier ] labelText
 
     else
-        Ui.secondaryButton [ type_ "button", onClick msg, testId identifier ] labelText
+        Ui.secondaryButton [ type_ "button", onClick msg, Html.Attributes.attribute "aria-pressed" "false", testId identifier ] labelText
 
 
 awardForm : LoggedInModel -> Html Msg
@@ -1356,11 +1357,11 @@ collectiblesList state =
         p [ Html.Attributes.class "mt-4 text-sm text-slate-500", testId "collectibles-empty" ] [ text "No collectibles yet." ]
 
     else
-        div [ Html.Attributes.class "mt-4 divide-y divide-slate-100", testId "collectibles" ] (List.map collectibleRow state.collectibles)
+        div [ Html.Attributes.class "mt-4 divide-y divide-slate-100", testId "collectibles" ] (List.map (collectibleRow state.awardTaskId) state.collectibles)
 
 
-collectibleRow : Collectible.CollectibleResponse -> Html Msg
-collectibleRow collectible =
+collectibleRow : String -> Collectible.CollectibleResponse -> Html Msg
+collectibleRow awardTaskId collectible =
     div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "collectible-row" ]
         [ div [ Html.Attributes.class "flex min-w-0 flex-wrap items-center gap-2" ]
             [ Sprites.pixel collectible.art 5
@@ -1368,15 +1369,15 @@ collectibleRow collectible =
             , Ui.badge (collectibleStateLabel collectible.state)
             , span [ Html.Attributes.class "text-xs text-slate-500" ] [ text (collectibleKindLabel collectible.kind) ]
             ]
-        , awardCollectibleButton collectible
+        , awardCollectibleButton awardTaskId collectible
         ]
 
 
-awardCollectibleButton : Collectible.CollectibleResponse -> Html Msg
-awardCollectibleButton collectible =
+awardCollectibleButton : String -> Collectible.CollectibleResponse -> Html Msg
+awardCollectibleButton awardTaskId collectible =
     case collectible.state of
         Collectible.CollectibleStateMinted ->
-            Ui.secondaryButton [ type_ "button", onClick (AwardClicked collectible.id), testId "award-collectible" ] "Award to selected task"
+            Ui.secondaryButton [ type_ "button", onClick (AwardClicked collectible.id), disabled (awardTaskId == ""), testId "award-collectible" ] "Award to selected task"
 
         _ ->
             text ""
@@ -1460,6 +1461,7 @@ taskCommentsCard state =
                 , form [ Html.Attributes.class "space-y-2", onSubmit (AddTaskCommentClicked detail.id) ]
                     [ Ui.textarea_ [ placeholder "Add a comment", value state.taskCommentBody, onInput TaskCommentBodyChanged, testId "task-comment-body" ]
                     , Ui.primaryButton [ type_ "submit", testId "add-task-comment" ] "Comment"
+                    , maybeNote state.taskCommentMessage "task-comment-message"
                     ]
                 ]
 

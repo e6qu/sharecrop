@@ -734,7 +734,7 @@
   });
   on("DELETE", "/api/task-series/:id/tasks/:taskId", (p) => {
     const s = findSeries(p.id); if (!s) return err(404, "series not found");
-    const t = findTask(p.taskId); if (t && t.series_id === s.id) { t.series_id = null; t.series_position = 0; }
+    const t = findTask(p.taskId); if (t && t.series_id === s.id) { t.series_id = ""; t.series_position = 0; }
     return ok(seriesDetail(s));
   });
   on("POST", "/api/task-series/:id/reorder", (p, _url, body) => {
