@@ -1,5 +1,11 @@
 # What We Did
 
+`task/user-page-token` put a personal agent token and MCP install commands on the user's own profile page:
+
+- On `/users/{id}` when the viewer is that user (`userId == subjectId`), a "Your agent access" card mints a full-capability agent credential inline (scopes tasks_read/tasks_write/submissions_read/submissions_write/submissions_review) and shows the real token in a copyable code block with a Rotate button. The section is omitted entirely when viewing someone else's page, so the token is owner-only.
+- Below the token, copyable MCP install/update commands with real values (no placeholders): `claude mcp add --transport http sharecrop <origin>/mcp --header "Authorization: Bearer <token>"` (Claude Code), an update form (`claude mcp remove sharecrop && claude mcp add ...`), and the `.mcp.json` config block (reusing `mcpConfig`, for Codex / Claude Desktop / generic clients). Copy buttons reuse the clipboard port from the previous PR. Reuses `mintTaskToken`'s pattern with a new `mintUserToken`/`UserTokenMinted`/`userAgentToken`.
+- Playwright covers minting on your own page (token + install commands present and placeholder-free) and that the section is absent on another user's page.
+
 `task/task-integration-panel` made the task's API/MCP instructions uniform, collapsible, and placeholder-free, with one token for both surfaces:
 
 - A single agent token now drives both REST and MCP. New `requireWorkerSubject(r, scope)` (in `internal/http/server.go`) accepts either a user access token or an agent credential that holds the required scope, resolving to the credential's owning user (the same way MCP already treats an agent credential). It is applied to the worker REST endpoints the task instructions demonstrate: `GET /api/tasks/{id}` (tasks_read), reserve and submit (submissions_write). An http_e2e test proves an agent token works on those endpoints and that a token missing the scope is rejected.

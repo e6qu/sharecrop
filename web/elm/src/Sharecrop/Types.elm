@@ -150,6 +150,7 @@ type alias LoggedInModel =
     , taskCommentBody : String
     , taskAgentToken : Maybe String
     , taskIntegrationOpen : Bool
+    , userAgentToken : Maybe String
     }
 
 
@@ -238,6 +239,8 @@ type Msg
     | ToggleTaskIntegration
     | MintTaskTokenClicked
     | TaskTokenMinted (Result Http.Error Agent.AgentCredentialCreatedResponse)
+    | MintUserTokenClicked
+    | UserTokenMinted (Result Http.Error Agent.AgentCredentialCreatedResponse)
     | CopyClicked String
     | RevokeClicked String
     | AgentRevoked (Result Http.Error Agent.AgentCredentialResponse)

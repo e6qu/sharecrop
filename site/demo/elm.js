@@ -8157,6 +8157,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		teamDetail: $elm$core$Maybe$Nothing,
 		teamMemberEmail: '',
 		teamMemberMessage: $elm$core$Maybe$Nothing,
+		userAgentToken: $elm$core$Maybe$Nothing,
 		userProfile: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
 		userWork: _List_Nil
@@ -8283,6 +8284,23 @@ var $author$project$Sharecrop$Api$mintTaskToken = function (token) {
 				_List_fromArray(
 					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead]))),
 		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TaskTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
+};
+var $author$project$Sharecrop$Types$UserTokenMinted = function (a) {
+	return {$: 'UserTokenMinted', a: a};
+};
+var $author$project$Sharecrop$Api$mintUserToken = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'POST',
+		token,
+		'/api/agent-credentials',
+		$elm$http$Http$jsonBody(
+			A2(
+				$author$project$Sharecrop$Api$agentRequestBody,
+				'Personal agent token',
+				_List_fromArray(
+					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview]))),
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
 };
 var $elm$core$Basics$not = _Basics_not;
 var $author$project$Sharecrop$Generated$Organization$OrganizationMembersResponse = function (members) {
@@ -10355,6 +10373,33 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										taskAgentToken: $elm$core$Maybe$Just(created.secret)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'MintUserTokenClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							$author$project$Sharecrop$Api$mintUserToken(state.accessToken));
+					});
+			case 'UserTokenMinted':
+				if (msg.a.$ === 'Ok') {
+					var created = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										userAgentToken: $elm$core$Maybe$Just(created.secret)
 									});
 							}),
 						$elm$core$Platform$Cmd$none);
@@ -16206,109 +16251,205 @@ var $author$project$Sharecrop$View$teamDetailView = F2(
 				}()
 				]));
 	});
-var $author$project$Sharecrop$View$userDetailView = F2(
-	function (userId, state) {
+var $author$project$Sharecrop$Types$MintUserTokenClicked = {$: 'MintUserTokenClicked'};
+var $author$project$Sharecrop$View$mcpClaudeInstall = F2(
+	function (origin, token) {
+		return 'claude mcp add --transport http sharecrop ' + (origin + ('/mcp --header \"Authorization: Bearer ' + (token + '\"')));
+	});
+var $author$project$Sharecrop$View$mcpClaudeUpdate = F2(
+	function (origin, token) {
+		return 'claude mcp remove sharecrop && ' + A2($author$project$Sharecrop$View$mcpClaudeInstall, origin, token);
+	});
+var $author$project$Sharecrop$View$userAgentAccessCard = F2(
+	function (origin, state) {
 		return $author$project$Sharecrop$Ui$card(
+			A2(
+				$elm$core$List$cons,
+				$author$project$Sharecrop$Ui$sectionTitle('Your agent access'),
+				A2(
+					$elm$core$List$cons,
+					A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-sm text-slate-700')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('A personal agent token lets you drive Sharecrop from an agent (over MCP) or the API. Only you can see it here. Treat it like a password.')
+							])),
+					function () {
+						var _v0 = state.userAgentToken;
+						if (_v0.$ === 'Nothing') {
+							return _List_fromArray(
+								[
+									A2(
+									$author$project$Sharecrop$Ui$primaryButton,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('button'),
+											$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$MintUserTokenClicked),
+											$author$project$Sharecrop$Ui$testId('mint-user-token')
+										]),
+									'Create agent token')
+								]);
+						} else {
+							var token = _v0.a;
+							return _List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$label_('Agent token'),
+									A2(
+									$author$project$Sharecrop$Ui$codeBlock,
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$testId('user-token')
+										]),
+									token),
+									$author$project$Sharecrop$View$copyButton(token),
+									A2(
+									$author$project$Sharecrop$Ui$secondaryButton,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('button'),
+											$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$MintUserTokenClicked),
+											$author$project$Sharecrop$Ui$testId('mint-user-token')
+										]),
+									'Rotate token'),
+									$author$project$Sharecrop$Ui$label_('Install the MCP'),
+									A3(
+									$author$project$Sharecrop$View$integrationEntry,
+									'Claude Code — add the Sharecrop MCP server:',
+									'user-mcp-install',
+									A2($author$project$Sharecrop$View$mcpClaudeInstall, origin, token)),
+									A3(
+									$author$project$Sharecrop$View$integrationEntry,
+									'Claude Code — update the server (e.g. after rotating the token):',
+									'user-mcp-update',
+									A2($author$project$Sharecrop$View$mcpClaudeUpdate, origin, token)),
+									A3(
+									$author$project$Sharecrop$View$integrationEntry,
+									'Or add it to your MCP client config (.mcp.json, Codex, Claude Desktop):',
+									'user-mcp-config',
+									A2($author$project$Sharecrop$View$mcpConfig, origin, token))
+								]);
+						}
+					}())));
+	});
+var $author$project$Sharecrop$View$userDetailView = F3(
+	function (origin, userId, state) {
+		return A2(
+			$elm$html$Html$div,
 			_List_fromArray(
 				[
-					$author$project$Sharecrop$Ui$sectionTitle('User'),
-					A2(
-					$elm$html$Html$p,
+					$elm$html$Html$Attributes$class('space-y-6')
+				]),
+			A2(
+				$elm$core$List$cons,
+				$author$project$Sharecrop$Ui$card(
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('text-sm font-medium'),
-							$author$project$Sharecrop$Ui$testId('user-id')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(userId)
-						])),
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
-						]),
-					_List_fromArray(
-						[
+							$author$project$Sharecrop$Ui$sectionTitle('User'),
 							A2(
-							$elm$html$Html$a,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$href('/users/' + (userId + '/work')),
-									$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
-									$author$project$Sharecrop$Ui$testId('user-work-link')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Public work')
-								])),
-							A2(
-							$elm$html$Html$a,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$href('/users/' + (userId + '/submissions')),
-									$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
-									$author$project$Sharecrop$Ui$testId('user-submissions-link')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Submissions')
-								]))
-						])),
-					$author$project$Sharecrop$Ui$sectionTitle('Public tasks'),
-					function () {
-					var _v0 = state.userProfile;
-					if (_v0.$ === 'Just') {
-						var profile = _v0.a;
-						return $elm$core$List$isEmpty(profile.tasks) ? A2(
 							$elm$html$Html$p,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('text-sm text-slate-500'),
-									$author$project$Sharecrop$Ui$testId('user-tasks-empty')
+									$elm$html$Html$Attributes$class('text-sm font-medium'),
+									$author$project$Sharecrop$Ui$testId('user-id')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text('No public tasks.')
-								])) : A2(
+									$elm$html$Html$text(userId)
+								])),
+							A2(
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
-									$author$project$Sharecrop$Ui$testId('user-tasks')
-								]),
-							A2(
-								$elm$core$List$map,
-								function (item) {
-									return A2(
-										$elm$html$Html$a,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$href('/tasks/' + item.id),
-												$elm$html$Html$Attributes$class('block py-2 text-sm underline'),
-												$author$project$Sharecrop$Ui$testId('user-task-row')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text(item.title)
-											]));
-								},
-								profile.tasks));
-					} else {
-						return A2(
-							$elm$html$Html$p,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('text-sm text-slate-500')
+									$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text('Loading…')
-								]));
-					}
-				}()
-				]));
+									A2(
+									$elm$html$Html$a,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$href('/users/' + (userId + '/work')),
+											$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+											$author$project$Sharecrop$Ui$testId('user-work-link')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Public work')
+										])),
+									A2(
+									$elm$html$Html$a,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$href('/users/' + (userId + '/submissions')),
+											$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+											$author$project$Sharecrop$Ui$testId('user-submissions-link')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Submissions')
+										]))
+								])),
+							$author$project$Sharecrop$Ui$sectionTitle('Public tasks'),
+							function () {
+							var _v0 = state.userProfile;
+							if (_v0.$ === 'Just') {
+								var profile = _v0.a;
+								return $elm$core$List$isEmpty(profile.tasks) ? A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+											$author$project$Sharecrop$Ui$testId('user-tasks-empty')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('No public tasks.')
+										])) : A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+											$author$project$Sharecrop$Ui$testId('user-tasks')
+										]),
+									A2(
+										$elm$core$List$map,
+										function (item) {
+											return A2(
+												$elm$html$Html$a,
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$href('/tasks/' + item.id),
+														$elm$html$Html$Attributes$class('block py-2 text-sm underline'),
+														$author$project$Sharecrop$Ui$testId('user-task-row')
+													]),
+												_List_fromArray(
+													[
+														$elm$html$Html$text(item.title)
+													]));
+										},
+										profile.tasks));
+							} else {
+								return A2(
+									$elm$html$Html$p,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-sm text-slate-500')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Loading…')
+										]));
+							}
+						}()
+						])),
+				_Utils_eq(userId, state.subjectId) ? _List_fromArray(
+					[
+						A2($author$project$Sharecrop$View$userAgentAccessCard, origin, state)
+					]) : _List_Nil));
 	});
 var $author$project$Sharecrop$View$userSubmissionsView = F2(
 	function (userId, submissions) {
@@ -16465,7 +16606,7 @@ var $author$project$Sharecrop$View$pageView = F2(
 				return $author$project$Sharecrop$View$organizationDetailView(state);
 			case 'UserDetailPage':
 				var userId = _v0.a;
-				return A2($author$project$Sharecrop$View$userDetailView, userId, state);
+				return A3($author$project$Sharecrop$View$userDetailView, origin, userId, state);
 			case 'UserWorkPage':
 				var userId = _v0.a;
 				return A4($author$project$Sharecrop$View$userTaskListView, 'Public work', 'user-work', userId, state.userWork);

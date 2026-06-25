@@ -1,10 +1,17 @@
 # Status
 
-The repository contains pull request 1 through pull request 52 work, merged into `main`.
+The repository contains pull request 1 through pull request 53 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/task-integration-panel` reworks the task detail's API/MCP instructions into a uniform, collapsible, placeholder-free panel and lets one agent token drive both REST and MCP. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/user-page-token` adds a personal agent token (mint/rotate, copyable, owner-only) and copyable MCP install/update commands to the user's own profile page. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/user-page-token`:
+
+- On the user's own profile page (`/users/{id}` when `userId == subjectId`), a "Your agent access" card mints a full-capability personal agent credential inline and shows the real token (copyable, owner-only) with a Rotate button. Below it, copyable MCP install commands: `claude mcp add ...` (Claude Code), an update command (`claude mcp remove && claude mcp add`), and the `.mcp.json` config block (Codex / Claude Desktop / generic). All values are real (no placeholders); copy buttons use the existing clipboard port. The section is not shown when viewing another user's page.
+- Playwright covers minting on your own page (token + install commands, placeholder-free) and its absence on another user's page.
+
+Earlier branch `task/task-integration-panel` (pull request 53, merged) reworked the task detail's API/MCP instructions into a uniform, collapsible, placeholder-free panel and made one agent token drive both REST and MCP.
 
 Implemented in `task/task-integration-panel`:
 

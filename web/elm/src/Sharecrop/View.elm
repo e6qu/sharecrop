@@ -128,7 +128,7 @@ pageView origin state =
             organizationDetailView state
 
         UserDetailPage userId ->
-            userDetailView userId state
+            userDetailView origin userId state
 
         UserWorkPage userId ->
             userTaskListView "Public work" "user-work" userId state.userWork
@@ -396,33 +396,74 @@ userSubmissionsView userId submissions =
         ]
 
 
-userDetailView : String -> LoggedInModel -> Html Msg
-userDetailView userId state =
-    Ui.card
-        [ Ui.sectionTitle "User"
-        , p [ Html.Attributes.class "text-sm font-medium", testId "user-id" ] [ text userId ]
-        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-            [ a [ href ("/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Public work" ]
-            , a [ href ("/users/" ++ userId ++ "/submissions"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-submissions-link" ] [ text "Submissions" ]
+userDetailView : String -> String -> LoggedInModel -> Html Msg
+userDetailView origin userId state =
+    div [ Html.Attributes.class "space-y-6" ]
+        (Ui.card
+            [ Ui.sectionTitle "User"
+            , p [ Html.Attributes.class "text-sm font-medium", testId "user-id" ] [ text userId ]
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ a [ href ("/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Public work" ]
+                , a [ href ("/users/" ++ userId ++ "/submissions"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-submissions-link" ] [ text "Submissions" ]
+                ]
+            , Ui.sectionTitle "Public tasks"
+            , case state.userProfile of
+                Just profile ->
+                    if List.isEmpty profile.tasks then
+                        p [ Html.Attributes.class "text-sm text-slate-500", testId "user-tasks-empty" ] [ text "No public tasks." ]
+
+                    else
+                        div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-tasks" ]
+                            (List.map
+                                (\item ->
+                                    a [ href ("/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId "user-task-row" ] [ text item.title ]
+                                )
+                                profile.tasks
+                            )
+
+                Nothing ->
+                    p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading…" ]
             ]
-        , Ui.sectionTitle "Public tasks"
-        , case state.userProfile of
-            Just profile ->
-                if List.isEmpty profile.tasks then
-                    p [ Html.Attributes.class "text-sm text-slate-500", testId "user-tasks-empty" ] [ text "No public tasks." ]
+            :: (if userId == state.subjectId then
+                    [ userAgentAccessCard origin state ]
 
                 else
-                    div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-tasks" ]
-                        (List.map
-                            (\item ->
-                                a [ href ("/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId "user-task-row" ] [ text item.title ]
-                            )
-                            profile.tasks
-                        )
+                    []
+               )
+        )
 
-            Nothing ->
-                p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading…" ]
-        ]
+
+userAgentAccessCard : String -> LoggedInModel -> Html Msg
+userAgentAccessCard origin state =
+    Ui.card
+        (Ui.sectionTitle "Your agent access"
+            :: p [ Html.Attributes.class "text-sm text-slate-700" ] [ text "A personal agent token lets you drive Sharecrop from an agent (over MCP) or the API. Only you can see it here. Treat it like a password." ]
+            :: (case state.userAgentToken of
+                    Nothing ->
+                        [ Ui.primaryButton [ type_ "button", onClick MintUserTokenClicked, testId "mint-user-token" ] "Create agent token" ]
+
+                    Just token ->
+                        [ Ui.label_ "Agent token"
+                        , Ui.codeBlock [ testId "user-token" ] token
+                        , copyButton token
+                        , Ui.secondaryButton [ type_ "button", onClick MintUserTokenClicked, testId "mint-user-token" ] "Rotate token"
+                        , Ui.label_ "Install the MCP"
+                        , integrationEntry "Claude Code — add the Sharecrop MCP server:" "user-mcp-install" (mcpClaudeInstall origin token)
+                        , integrationEntry "Claude Code — update the server (e.g. after rotating the token):" "user-mcp-update" (mcpClaudeUpdate origin token)
+                        , integrationEntry "Or add it to your MCP client config (.mcp.json, Codex, Claude Desktop):" "user-mcp-config" (mcpConfig origin token)
+                        ]
+               )
+        )
+
+
+mcpClaudeInstall : String -> String -> String
+mcpClaudeInstall origin token =
+    "claude mcp add --transport http sharecrop " ++ origin ++ "/mcp --header \"Authorization: Bearer " ++ token ++ "\""
+
+
+mcpClaudeUpdate : String -> String -> String
+mcpClaudeUpdate origin token =
+    "claude mcp remove sharecrop && " ++ mcpClaudeInstall origin token
 
 
 overviewView : LoggedInModel -> Html Msg
