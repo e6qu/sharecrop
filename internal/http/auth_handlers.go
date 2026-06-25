@@ -98,6 +98,13 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) logout(w http.ResponseWriter, r *http.Request) {
+	// Revoke the session family server-side (not just clear the cookie) so the
+	// refresh token cannot resume the session if it was captured.
+	if cookie, err := r.Cookie("sharecrop_refresh_token"); err == nil && cookie.Value != "" {
+		if parsed, matched := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted); matched {
+			server.authService.Logout(r.Context(), parsed.Value)
+		}
+	}
 	server.clearRefreshCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }

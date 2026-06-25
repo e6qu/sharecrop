@@ -113,3 +113,18 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
     "Transferred",
   );
 });
+
+test("the demo shows a Reset button and hash routing keeps a stable URL on refresh", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1240 credits")).toBeVisible();
+
+  // The demo-only Reset control is present.
+  await expect(page.getByTestId("reset-demo")).toBeVisible();
+
+  // Navigation updates the fragment, and a hard refresh stays on the page.
+  await page.getByRole("link", { name: "Collectibles", exact: true }).click();
+  await expect(page).toHaveURL(/#\/collectibles$/);
+  await page.reload();
+  await expect(page).toHaveURL(/#\/collectibles$/);
+  await expect(page.getByTestId("catalog")).toBeVisible();
+});

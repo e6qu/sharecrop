@@ -1,10 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 59 work, merged into `main`.
+The repository contains pull request 1 through pull request 60 work, merged into `main`.
 
 Active task:
 
-- Active branch `task/uiux-journey-review` is a thorough UI/UX + user-journey review round (two specialized subagents) with boyscout fixes, and it records the scheduling/recurrence descope decision. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/demo-pages-routing` switches the client to fragment (hash) routing so the GitHub Pages demo keeps a stable URL and hard-refresh works with no fallback, adds an explicit NotFoundPage and a demo-only Reset button, and makes real logout revoke the session server-side. It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/demo-pages-routing`:
+
+- Fragment (hash) routing: the route lives in `#/...`, so the path stays a real file (`/sharecrop/demo/`) — hard-refresh and deep-links work with NO 404.html, base-path config, or Go SPA catch-all. `pageFromUrl` reads `url.fragment`; all internal hrefs are `#/...`. Navigation updates the location/fragment.
+- The silent `_ -> OverviewPage` route catch-all is now an explicit `NotFoundPage` (unknown routes are visible, not masqueraded as Overview).
+- A demo-only Reset button (an explicit required `demo : Bool` flag — `web/static/index.html` sets `false`, `site/demo/index.html` sets `true`); a `reloadDemo` port reloads the page, which re-seeds the in-browser backend and auto-logs-in.
+- Real logout revokes the whole refresh-token family server-side (`auth.Service.Logout` → `RevokeRefreshFamily`) in addition to clearing the cookie; re-login is not blocked. http_e2e verifies a post-logout refresh is rejected and login still works.
+- Tests: deep-link Playwright navigations use `/#/...`; added hash hard-refresh, NotFound, and reset-presence/absence tests, plus the logout-revoke http_e2e test.
+- Deferred (the user's broader ask, next PR): a demo-fidelity QA pass to minimize the in-browser `backend.js` fakes so the demo matches a real deployment as closely as possible.
 
 Implemented in `task/uiux-journey-review`:
 

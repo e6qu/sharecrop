@@ -54,6 +54,44 @@ type Store interface {
 	CreateGuestSubject(context.Context, core.GuestID) StoreGuestResult
 	StoreRefreshToken(context.Context, RefreshTokenRecord) StoreRefreshTokenResult
 	ConsumeRefreshToken(context.Context, RefreshTokenHash, time.Time) ConsumeRefreshTokenResult
+	RevokeRefreshFamily(context.Context, RefreshTokenHash) RevokeRefreshFamilyResult
+}
+
+type RevokeRefreshFamilyResult interface {
+	revokeRefreshFamilyResult()
+}
+
+type RefreshFamilyRevoked struct{}
+
+type RevokeRefreshFamilyRejected struct {
+	Reason core.DomainError
+}
+
+func (RefreshFamilyRevoked) revokeRefreshFamilyResult()        {}
+func (RevokeRefreshFamilyRejected) revokeRefreshFamilyResult() {}
+
+type LogoutResult interface {
+	logoutResult()
+}
+
+type LogoutDone struct{}
+
+type LogoutRejected struct {
+	Reason core.DomainError
+}
+
+func (LogoutDone) logoutResult()     {}
+func (LogoutRejected) logoutResult() {}
+
+// Logout revokes the whole session family for the presented refresh token so the
+// session cannot be resumed even if the token is replayed later. Revoking an
+// unknown or already-revoked token is a no-op.
+func (service Service) Logout(ctx context.Context, refreshToken RefreshTokenPlain) LogoutResult {
+	result := service.store.RevokeRefreshFamily(ctx, HashRefreshToken(refreshToken))
+	if _, done := result.(RefreshFamilyRevoked); !done {
+		return LogoutRejected{Reason: result.(RevokeRefreshFamilyRejected).Reason}
+	}
+	return LogoutDone{}
 }
 
 type Service struct {

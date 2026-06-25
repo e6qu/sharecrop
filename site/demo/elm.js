@@ -5341,6 +5341,7 @@ var $elm$core$Task$perform = F2(
 				A2($elm$core$Task$map, toMessage, task)));
 	});
 var $elm$browser$Browser$application = _Browser_application;
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $elm$json$Json$Decode$field = _Json_decodeField;
 var $author$project$Sharecrop$Types$LoggedOut = {$: 'LoggedOut'};
 var $author$project$Sharecrop$Types$AgentsPage = {$: 'AgentsPage'};
@@ -5351,6 +5352,7 @@ var $author$project$Sharecrop$Types$CollectiblesPage = {$: 'CollectiblesPage'};
 var $author$project$Sharecrop$Types$CreateTaskPage = {$: 'CreateTaskPage'};
 var $author$project$Sharecrop$Types$DiscoveryPage = {$: 'DiscoveryPage'};
 var $author$project$Sharecrop$Types$FundingPage = {$: 'FundingPage'};
+var $author$project$Sharecrop$Types$NotFoundPage = {$: 'NotFoundPage'};
 var $author$project$Sharecrop$Types$OrganizationDetailPage = function (a) {
 	return {$: 'OrganizationDetailPage', a: a};
 };
@@ -5376,16 +5378,28 @@ var $author$project$Sharecrop$Types$UserSubmissionsPage = function (a) {
 var $author$project$Sharecrop$Types$UserWorkPage = function (a) {
 	return {$: 'UserWorkPage', a: a};
 };
+var $elm$core$Maybe$withDefault = F2(
+	function (_default, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return value;
+		} else {
+			return _default;
+		}
+	});
 var $author$project$Main$pageFromUrl = function (url) {
+	var fragment = A2($elm$core$Maybe$withDefault, '', url.fragment);
 	var _v0 = A2(
 		$elm$core$String$split,
 		'/',
-		A2($elm$core$String$dropLeft, 1, url.path));
-	_v0$16:
+		A2($elm$core$String$dropLeft, 1, fragment));
+	_v0$17:
 	while (true) {
 		if (_v0.b) {
 			if (!_v0.b.b) {
 				switch (_v0.a) {
+					case '':
+						return $author$project$Sharecrop$Types$OverviewPage;
 					case 'tasks':
 						return $author$project$Sharecrop$Types$TasksPage;
 					case 'discovery':
@@ -5401,7 +5415,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 					case 'organizations':
 						return $author$project$Sharecrop$Types$OrganizationsPage;
 					default:
-						break _v0$16;
+						break _v0$17;
 				}
 			} else {
 				if (!_v0.b.b.b) {
@@ -5436,7 +5450,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 							var userId = _v7.a;
 							return $author$project$Sharecrop$Types$UserDetailPage(userId);
 						default:
-							break _v0$16;
+							break _v0$17;
 					}
 				} else {
 					if ((_v0.a === 'users') && (!_v0.b.b.b.b)) {
@@ -5452,23 +5466,24 @@ var $author$project$Main$pageFromUrl = function (url) {
 								var _v11 = _v10.b;
 								return $author$project$Sharecrop$Types$UserSubmissionsPage(userId);
 							default:
-								break _v0$16;
+								break _v0$17;
 						}
 					} else {
-						break _v0$16;
+						break _v0$17;
 					}
 				}
 			}
 		} else {
-			break _v0$16;
+			break _v0$17;
 		}
 	}
-	return $author$project$Sharecrop$Types$OverviewPage;
+	return $author$project$Sharecrop$Types$NotFoundPage;
 };
 var $author$project$Main$initialModel = F3(
 	function (flags, key, url) {
 		return {
 			authError: $elm$core$Maybe$Nothing,
+			demo: flags.demo,
 			email: '',
 			key: key,
 			origin: flags.origin,
@@ -6317,15 +6332,6 @@ var $author$project$Sharecrop$Types$ReviewActionReceived = function (a) {
 };
 var $elm$json$Json$Encode$int = _Json_wrap;
 var $elm$core$String$trim = _String_trim;
-var $elm$core$Maybe$withDefault = F2(
-	function (_default, maybe) {
-		if (maybe.$ === 'Just') {
-			var value = maybe.a;
-			return value;
-		} else {
-			return _default;
-		}
-	});
 var $author$project$Sharecrop$Api$intInputOrZero = function (raw) {
 	return A2(
 		$elm$core$Maybe$withDefault,
@@ -9080,6 +9086,12 @@ var $author$project$Sharecrop$Api$rejectCommand = F3(
 			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
 	});
+var $elm$json$Json$Encode$null = _Json_encodeNull;
+var $author$project$Main$reloadDemo = _Platform_outgoingPort(
+	'reloadDemo',
+	function ($) {
+		return $elm$json$Json$Encode$null;
+	});
 var $author$project$Sharecrop$Api$removeSeriesTaskCommand = F3(
 	function (token, seriesId, taskId) {
 		return A5(
@@ -9461,7 +9473,7 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F2(
 			case 'SeriesDetailPage':
 				var seriesId = page.a;
 				return A2($author$project$Sharecrop$Api$fetchSeriesDetail, token, seriesId);
-			default:
+			case 'TeamDetailPage':
 				var teamId = page.a;
 				return $elm$core$Platform$Cmd$batch(
 					_List_fromArray(
@@ -9475,6 +9487,8 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F2(
 							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamDetailReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder)),
 							A2($author$project$Sharecrop$Api$fetchTeamCollectibles, token, teamId)
 						]));
+			default:
+				return $elm$core$Platform$Cmd$none;
 		}
 	});
 var $elm$core$Tuple$second = function (_v0) {
@@ -10725,7 +10739,7 @@ var $author$project$Main$update = F2(
 						_List_fromArray(
 							[
 								$author$project$Sharecrop$Api$postLogout,
-								A2($elm$browser$Browser$Navigation$pushUrl, model.key, '/')
+								A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/')
 							])));
 			case 'LogoutReceived':
 				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
@@ -10772,7 +10786,7 @@ var $author$project$Main$update = F2(
 								s,
 								{detail: $elm$core$Maybe$Nothing, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
 						}),
-					A2($elm$browser$Browser$Navigation$pushUrl, model.key, '/tasks/' + taskId));
+					A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/tasks/' + taskId));
 			case 'DetailReceived':
 				if (msg.a.$ === 'Ok') {
 					var detail = msg.a.a;
@@ -12380,7 +12394,7 @@ var $author$project$Main$update = F2(
 						model,
 						$elm$browser$Browser$Navigation$load(href));
 				}
-			default:
+			case 'UrlChanged':
 				var url = msg.a;
 				var page = $author$project$Main$pageFromUrl(url);
 				var _v6 = model.session;
@@ -12402,6 +12416,10 @@ var $author$project$Main$update = F2(
 							{route: page}),
 						$elm$core$Platform$Cmd$none);
 				}
+			default:
+				return _Utils_Tuple2(
+					model,
+					$author$project$Main$reloadDemo(_Utils_Tuple0));
 		}
 	});
 var $elm$html$Html$Attributes$stringProperty = F2(
@@ -12654,6 +12672,7 @@ var $author$project$Sharecrop$View$authView = function (model) {
 			]));
 };
 var $author$project$Sharecrop$Types$LogoutClicked = {$: 'LogoutClicked'};
+var $author$project$Sharecrop$Types$ResetDemoClicked = {$: 'ResetDemoClicked'};
 var $elm$html$Html$a = _VirtualDom_node('a');
 var $elm$html$Html$Attributes$href = function (url) {
 	return A2(
@@ -12702,9 +12721,11 @@ var $author$project$Sharecrop$Types$pageToPath = function (page) {
 		case 'SeriesDetailPage':
 			var seriesId = page.a;
 			return '/series/' + seriesId;
-		default:
+		case 'TeamDetailPage':
 			var teamId = page.a;
 			return '/teams/' + teamId;
+		default:
+			return '/not-found';
 	}
 };
 var $author$project$Sharecrop$View$navLink = F4(
@@ -12717,7 +12738,7 @@ var $author$project$Sharecrop$View$navLink = F4(
 			_List_fromArray(
 				[
 					$elm$html$Html$Attributes$href(
-					$author$project$Sharecrop$Types$pageToPath(target)),
+					'#' + $author$project$Sharecrop$Types$pageToPath(target)),
 					$elm$html$Html$Attributes$class(styleClass),
 					$author$project$Sharecrop$Ui$testId('nav-' + identifier)
 				]),
@@ -12726,8 +12747,8 @@ var $author$project$Sharecrop$View$navLink = F4(
 					$elm$html$Html$text(labelText)
 				]));
 	});
-var $author$project$Sharecrop$View$navBar = F2(
-	function (current, subjectId) {
+var $author$project$Sharecrop$View$navBar = F3(
+	function (demo, current, subjectId) {
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
@@ -12749,7 +12770,7 @@ var $author$project$Sharecrop$View$navBar = F2(
 					$elm$html$Html$a,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$href('/users/' + subjectId),
+							$elm$html$Html$Attributes$href('#/users/' + subjectId),
 							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 							$author$project$Sharecrop$Ui$testId('nav-profile')
 						]),
@@ -12765,7 +12786,16 @@ var $author$project$Sharecrop$View$navBar = F2(
 							$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$LogoutClicked),
 							$author$project$Sharecrop$Ui$testId('logout')
 						]),
-					'Log out')
+					'Log out'),
+					demo ? A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$ResetDemoClicked),
+							$author$project$Sharecrop$Ui$testId('reset-demo')
+						]),
+					'Reset demo') : $elm$html$Html$text('')
 				]));
 	});
 var $author$project$Sharecrop$Types$AgentLabelChanged = function (a) {
@@ -12986,7 +13016,6 @@ var $elm$html$Html$Attributes$boolProperty = F2(
 	});
 var $elm$html$Html$Attributes$checked = $elm$html$Html$Attributes$boolProperty('checked');
 var $elm$html$Html$label = _VirtualDom_node('label');
-var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $elm$html$Html$Events$targetChecked = A2(
 	$elm$json$Json$Decode$at,
 	_List_fromArray(
@@ -13892,7 +13921,7 @@ var $author$project$Sharecrop$View$collectibleDetailView = F2(
 					$elm$html$Html$a,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$href('/collectibles'),
+							$elm$html$Html$Attributes$href('#/collectibles'),
 							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 							$author$project$Sharecrop$Ui$testId('back-collectibles')
 						]),
@@ -14326,7 +14355,7 @@ var $author$project$Sharecrop$View$collectibleRow = F2(
 							$elm$html$Html$a,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$href('/collectibles/' + collectible.id),
+									$elm$html$Html$Attributes$href('#/collectibles/' + collectible.id),
 									$elm$html$Html$Attributes$class('font-medium underline break-words'),
 									$author$project$Sharecrop$Ui$testId('collectible-link')
 								]),
@@ -15501,7 +15530,7 @@ var $author$project$Sharecrop$View$orgMemberRow = function (member) {
 				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$href('/users/' + member.userID),
+						$elm$html$Html$Attributes$href('#/users/' + member.userID),
 						$elm$html$Html$Attributes$class('text-sm font-medium underline'),
 						$author$project$Sharecrop$Ui$testId('org-member-link')
 					]),
@@ -15567,7 +15596,7 @@ var $author$project$Sharecrop$View$orgTeamsList = function (teams) {
 					$elm$html$Html$a,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$href('/teams/' + team.id),
+							$elm$html$Html$Attributes$href('#/teams/' + team.id),
 							$elm$html$Html$Attributes$class('block py-1 text-sm underline'),
 							$author$project$Sharecrop$Ui$testId('org-team-row')
 						]),
@@ -15729,7 +15758,7 @@ var $author$project$Sharecrop$View$organizationDetailView = function (state) {
 				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$href('/organizations'),
+						$elm$html$Html$Attributes$href('#/organizations'),
 						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 						$author$project$Sharecrop$Ui$testId('back-organizations')
 					]),
@@ -15769,7 +15798,7 @@ var $author$project$Sharecrop$View$organizationRow = function (organization) {
 				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$href('/organizations/' + organization.id),
+						$elm$html$Html$Attributes$href('#/organizations/' + organization.id),
 						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 						$author$project$Sharecrop$Ui$testId('select-organization')
 					]),
@@ -16020,7 +16049,7 @@ var $author$project$Sharecrop$View$seriesCommentRow = function (comment) {
 				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$href('/users/' + comment.authorUserID),
+						$elm$html$Html$Attributes$href('#/users/' + comment.authorUserID),
 						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-600 underline')
 					]),
 				_List_fromArray(
@@ -16303,7 +16332,7 @@ var $author$project$Sharecrop$View$seriesTaskRow = F3(
 					$elm$html$Html$a,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$href('/tasks/' + entry.id),
+							$elm$html$Html$Attributes$href('#/tasks/' + entry.id),
 							$elm$html$Html$Attributes$class('w-full text-sm underline break-words sm:w-auto'),
 							$author$project$Sharecrop$Ui$testId('series-task-link')
 						]),
@@ -16406,7 +16435,7 @@ var $author$project$Sharecrop$View$seriesDetailView = F2(
 					$elm$html$Html$a,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$href('/series'),
+							$elm$html$Html$Attributes$href('#/series'),
 							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 							$author$project$Sharecrop$Ui$testId('back-series')
 						]),
@@ -16524,7 +16553,7 @@ var $author$project$Sharecrop$View$seriesRow = function (series) {
 				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$href('/series/' + series.id),
+						$elm$html$Html$Attributes$href('#/series/' + series.id),
 						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 						$author$project$Sharecrop$Ui$testId('open-series')
 					]),
@@ -16659,7 +16688,7 @@ var $author$project$Sharecrop$View$seriesLinkBlock = function (detail) {
 			$elm$html$Html$a,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$href('/series/' + detail.seriesID),
+					$elm$html$Html$Attributes$href('#/series/' + detail.seriesID),
 					$elm$html$Html$Attributes$class('text-sm underline'),
 					$author$project$Sharecrop$Ui$testId('task-series-link')
 				]),
@@ -17489,7 +17518,7 @@ var $author$project$Sharecrop$View$submissionCommentRow = function (comment) {
 				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$href('/users/' + comment.authorUserID),
+						$elm$html$Html$Attributes$href('#/users/' + comment.authorUserID),
 						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-600 underline')
 					]),
 				_List_fromArray(
@@ -17734,7 +17763,7 @@ var $author$project$Sharecrop$View$taskCommentRow = function (comment) {
 				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$href('/users/' + comment.authorUserID),
+						$elm$html$Html$Attributes$href('#/users/' + comment.authorUserID),
 						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-600 underline')
 					]),
 				_List_fromArray(
@@ -17927,7 +17956,7 @@ var $author$project$Sharecrop$View$taskRow = function (item) {
 				$elm$html$Html$a,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$href('/tasks/' + item.id),
+						$elm$html$Html$Attributes$href('#/tasks/' + item.id),
 						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass + ' shrink-0'),
 						$author$project$Sharecrop$Ui$testId('view-task')
 					]),
@@ -18049,7 +18078,7 @@ var $author$project$Sharecrop$View$teamDetailView = F2(
 												$elm$html$Html$a,
 												_List_fromArray(
 													[
-														$elm$html$Html$Attributes$href('/users/' + memberId),
+														$elm$html$Html$Attributes$href('#/users/' + memberId),
 														$elm$html$Html$Attributes$class('block py-2 text-sm underline'),
 														$author$project$Sharecrop$Ui$testId('team-member-row')
 													]),
@@ -18234,7 +18263,7 @@ var $author$project$Sharecrop$View$userDetailView = F3(
 									$elm$html$Html$a,
 									_List_fromArray(
 										[
-											$elm$html$Html$Attributes$href('/users/' + (userId + '/work')),
+											$elm$html$Html$Attributes$href('#/users/' + (userId + '/work')),
 											$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 											$author$project$Sharecrop$Ui$testId('user-work-link')
 										]),
@@ -18246,7 +18275,7 @@ var $author$project$Sharecrop$View$userDetailView = F3(
 									$elm$html$Html$a,
 									_List_fromArray(
 										[
-											$elm$html$Html$Attributes$href('/users/' + (userId + '/submissions')),
+											$elm$html$Html$Attributes$href('#/users/' + (userId + '/submissions')),
 											$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 											$author$project$Sharecrop$Ui$testId('user-submissions-link')
 										]),
@@ -18284,7 +18313,7 @@ var $author$project$Sharecrop$View$userDetailView = F3(
 												$elm$html$Html$a,
 												_List_fromArray(
 													[
-														$elm$html$Html$Attributes$href('/tasks/' + item.id),
+														$elm$html$Html$Attributes$href('#/tasks/' + item.id),
 														$elm$html$Html$Attributes$class('block py-2 text-sm underline'),
 														$author$project$Sharecrop$Ui$testId('user-task-row')
 													]),
@@ -18322,7 +18351,7 @@ var $author$project$Sharecrop$View$userSubmissionsView = F2(
 					$elm$html$Html$a,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$href('/users/' + userId),
+							$elm$html$Html$Attributes$href('#/users/' + userId),
 							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 							$author$project$Sharecrop$Ui$testId('back-user')
 						]),
@@ -18364,7 +18393,7 @@ var $author$project$Sharecrop$View$userSubmissionsView = F2(
 										$elm$html$Html$a,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$href('/tasks/' + item.taskID),
+												$elm$html$Html$Attributes$href('#/tasks/' + item.taskID),
 												$elm$html$Html$Attributes$class('text-sm underline')
 											]),
 										_List_fromArray(
@@ -18396,7 +18425,7 @@ var $author$project$Sharecrop$View$userTaskListView = F4(
 					$elm$html$Html$a,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$href('/users/' + userId),
+							$elm$html$Html$Attributes$href('#/users/' + userId),
 							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
 							$author$project$Sharecrop$Ui$testId('back-user')
 						]),
@@ -18429,7 +18458,7 @@ var $author$project$Sharecrop$View$userTaskListView = F4(
 								$elm$html$Html$a,
 								_List_fromArray(
 									[
-										$elm$html$Html$Attributes$href('/tasks/' + item.id),
+										$elm$html$Html$Attributes$href('#/tasks/' + item.id),
 										$elm$html$Html$Attributes$class('block py-2 text-sm underline'),
 										$author$project$Sharecrop$Ui$testId(identifier + '-row')
 									]),
@@ -18483,13 +18512,41 @@ var $author$project$Sharecrop$View$pageView = F2(
 			case 'SeriesDetailPage':
 				var seriesId = _v0.a;
 				return A2($author$project$Sharecrop$View$seriesDetailView, seriesId, state);
-			default:
+			case 'TeamDetailPage':
 				var teamId = _v0.a;
 				return A2($author$project$Sharecrop$View$teamDetailView, teamId, state);
+			default:
+				return $author$project$Sharecrop$Ui$card(
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$sectionTitle('Page not found'),
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-slate-600')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('That page does not exist.')
+								])),
+							A2(
+							$elm$html$Html$a,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$href('#/'),
+									$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+									$author$project$Sharecrop$Ui$testId('not-found-home')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Go to overview')
+								]))
+						]));
 		}
 	});
 var $author$project$Sharecrop$View$loggedInView = F2(
-	function (origin, state) {
+	function (model, state) {
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
@@ -18498,8 +18555,8 @@ var $author$project$Sharecrop$View$loggedInView = F2(
 				]),
 			_List_fromArray(
 				[
-					A2($author$project$Sharecrop$View$navBar, state.page, state.subjectId),
-					A2($author$project$Sharecrop$View$pageView, origin, state)
+					A3($author$project$Sharecrop$View$navBar, model.demo, state.page, state.subjectId),
+					A2($author$project$Sharecrop$View$pageView, model.origin, state)
 				]));
 	});
 var $author$project$Sharecrop$View$sessionView = function (model) {
@@ -18508,7 +18565,7 @@ var $author$project$Sharecrop$View$sessionView = function (model) {
 		return $author$project$Sharecrop$View$authView(model);
 	} else {
 		var state = _v0.a;
-		return A2($author$project$Sharecrop$View$loggedInView, model.origin, state);
+		return A2($author$project$Sharecrop$View$loggedInView, model, state);
 	}
 };
 var $author$project$Sharecrop$View$view = function (model) {
@@ -18559,7 +18616,12 @@ _Platform_export({'Main':{'init':$author$project$Main$main(
 	A2(
 		$elm$json$Json$Decode$andThen,
 		function (origin) {
-			return $elm$json$Json$Decode$succeed(
-				{origin: origin});
+			return A2(
+				$elm$json$Json$Decode$andThen,
+				function (demo) {
+					return $elm$json$Json$Decode$succeed(
+						{demo: demo, origin: origin});
+				},
+				A2($elm$json$Json$Decode$field, 'demo', $elm$json$Json$Decode$bool));
 		},
 		A2($elm$json$Json$Decode$field, 'origin', $elm$json$Json$Decode$string)))(0)}});}(this));

@@ -112,6 +112,20 @@ func (store AuthStore) CreateGuestSubject(ctx context.Context, id core.GuestID) 
 	return auth.StoreGuestAccepted{}
 }
 
+// RevokeRefreshFamily revokes every active token in the family of the presented
+// token (logout). An unknown token matches no family and revokes nothing.
+func (store AuthStore) RevokeRefreshFamily(ctx context.Context, hash auth.RefreshTokenHash) auth.RevokeRefreshFamilyResult {
+	_, err := store.pool.Exec(ctx, `
+		update refresh_tokens set status = 'revoked'
+		where status = 'active'
+		and family_id = (select family_id from refresh_tokens where token_hash = $1)
+	`, hash.String())
+	if err != nil {
+		return auth.RevokeRefreshFamilyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke refresh family failed")}
+	}
+	return auth.RefreshFamilyRevoked{}
+}
+
 func (store AuthStore) StoreRefreshToken(ctx context.Context, record auth.RefreshTokenRecord) auth.StoreRefreshTokenResult {
 	subjectKind := ""
 	userID := ""

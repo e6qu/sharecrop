@@ -62,6 +62,10 @@ func (healthAuthService) Refresh(context.Context, auth.RefreshTokenPlain) auth.R
 	return auth.RefreshRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthAuthService) Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult {
+	return auth.LogoutDone{}
+}
+
 func (healthAuthService) CreateGuest(context.Context) auth.GuestResult {
 	return auth.GuestRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

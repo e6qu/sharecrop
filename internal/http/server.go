@@ -29,6 +29,7 @@ type AuthService interface {
 	Register(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.RegisterResult
 	Login(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.LoginResult
 	Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult
+	Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult
 	CreateGuest(context.Context) auth.GuestResult
 }
 

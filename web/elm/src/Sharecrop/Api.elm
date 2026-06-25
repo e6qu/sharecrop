@@ -315,6 +315,9 @@ routeLoadCmd token page =
                 , fetchTeamCollectibles token teamId
                 ]
 
+        NotFoundPage ->
+            Cmd.none
+
 
 fetchOrganizationCollectibles : String -> String -> Cmd Msg
 fetchOrganizationCollectibles token orgId =

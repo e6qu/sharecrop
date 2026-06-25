@@ -1,5 +1,14 @@
 # What We Did
 
+`task/demo-pages-routing` fixed the GitHub Pages demo URL/refresh problem cleanly (no fallback), and hardened logout:
+
+- **Fragment (hash) routing.** The demo runs at `/sharecrop/demo/` but the client built root-absolute paths, so click-navigation left the base and hard-refresh/deep-links 404'd (Pages bounced to the site root). Rather than add a 404.html SPA fallback + base-path threading (a "needless fallback" that hides bugs), the router now keeps the whole route in the URL **fragment** (`#/...`). The path stays a real file, so hard-refresh and deep-links work with **no 404.html, no base-path config, and no Go SPA catch-all**. `pageFromUrl` reads `url.fragment`; every internal href is `#/...`; the two path-building `Nav.pushUrl` calls became `#/...`.
+- **Explicit NotFoundPage.** The router's `_ -> OverviewPage` catch-all silently turned bad links into Overview. It's now an explicit `NotFoundPage` (root `""` → Overview; unknown → NotFound), so dead links are visible instead of masquerading.
+- **Demo-only Reset button.** A new **required** `demo : Bool` flag (no implicit default) — `web/static/index.html` passes `false`, `site/demo/index.html` passes `true`. When true, the nav shows a "Reset demo" button; a `reloadDemo` port reloads the page, which re-seeds the in-browser backend and auto-logs-in. Shown only in the demo.
+- **Real logout revokes the session.** Logout previously only cleared the cookie; the refresh token stayed valid server-side. Now `auth.Service.Logout` → store `RevokeRefreshFamily` revokes the whole token family (mirroring the reuse-detection revoke), and the handler reads the cookie + revokes before clearing it. Re-login is not blocked. http_e2e confirms a post-logout refresh is rejected and a subsequent login succeeds.
+- **Tests.** Deep-link Playwright navigations switched to `/#/...`; added hash hard-refresh + NotFound + reset presence/absence tests and the logout-revoke http_e2e test.
+- **Deferred to the next PR (your broader ask):** a demo-fidelity QA pass to minimize the `site/demo/backend.js` fakes so the in-browser demo behaves as close to a real deployment as possible.
+
 `task/uiux-journey-review` was a thorough UI/UX + user-journey review round (two specialized subagents) with boyscout fixes, and it recorded a product decision:
 
 - **Scheduling/recurrence descoped server-side** (decision 2026-06-25): recurring/scheduled task posting is a local-agent responsibility (a client cron/work-loop calling the existing MCP/API `create_task`/`open_task`/`fund_task`). No server scheduler/`task_schedules`/recurrence model. Recorded in `DO_NEXT.md` and the parity-roadmap memory so it isn't re-proposed.
