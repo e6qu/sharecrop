@@ -6592,6 +6592,38 @@ var $author$project$Sharecrop$Api$addSeriesTaskCommand = F3(
 							]))),
 				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
 	});
+var $author$project$Sharecrop$Types$SubmissionCommentAdded = function (a) {
+	return {$: 'SubmissionCommentAdded', a: a};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionCommentResponse = F5(
+	function (id, submissionID, authorUserID, body, createdAt) {
+		return {authorUserID: authorUserID, body: body, createdAt: createdAt, id: id, submissionID: submissionID};
+	});
+var $author$project$Sharecrop$Generated$Submission$submissionCommentResponseDecoder = A6(
+	$elm$json$Json$Decode$map5,
+	$author$project$Sharecrop$Generated$Submission$SubmissionCommentResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'submission_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'author_user_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'body', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Api$addSubmissionComment = F3(
+	function (token, submissionId, body) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/submissions/' + (submissionId + '/comments'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'body',
+							$elm$json$Json$Encode$string(body))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SubmissionCommentAdded, $author$project$Sharecrop$Generated$Submission$submissionCommentResponseDecoder));
+	});
 var $elm$core$List$filter = F2(
 	function (isGood, list) {
 		return A3(
@@ -7734,7 +7766,7 @@ var $author$project$Main$enterPage = F2(
 			case 'TaskDetailPage':
 				return _Utils_update(
 					state,
-					{detail: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
+					{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissionCommentBody: '', submissionCommentMessage: $elm$core$Maybe$Nothing, submissionComments: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
 			default:
 				return _Utils_update(
 					state,
@@ -7878,6 +7910,29 @@ var $author$project$Sharecrop$Api$fetchOrgTeams = F2(
 			'/api/organizations/' + (organizationId + '/teams'),
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
+	});
+var $author$project$Sharecrop$Types$SubmissionCommentsReceived = function (a) {
+	return {$: 'SubmissionCommentsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionCommentsResponse = function (comments) {
+	return {comments: comments};
+};
+var $author$project$Sharecrop$Generated$Submission$submissionCommentsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Submission$SubmissionCommentsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'comments',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionCommentResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchSubmissionComments = F2(
+	function (token, submissionId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/submissions/' + (submissionId + '/comments'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SubmissionCommentsReceived, $author$project$Sharecrop$Generated$Submission$submissionCommentsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$TasksReceived = function (a) {
 	return {$: 'TasksReceived', a: a};
@@ -8162,6 +8217,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 	return {
 		accessToken: response.accessToken,
 		activeOrgId: '',
+		activeSubmissionCommentsID: $elm$core$Maybe$Nothing,
 		addSeriesTaskId: '',
 		agentLabel: '',
 		agentMessage: $elm$core$Maybe$Nothing,
@@ -8234,6 +8290,9 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		seriesRenameDescription: '',
 		seriesRenameTitle: '',
 		subjectId: response.subjectID,
+		submissionCommentBody: '',
+		submissionCommentMessage: $elm$core$Maybe$Nothing,
+		submissionComments: _List_Nil,
 		submissions: _List_Nil,
 		submitInput: '',
 		submitMessage: $elm$core$Maybe$Nothing,
@@ -12122,6 +12181,141 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'OpenSubmissionComments':
+				var submissionId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{
+											activeSubmissionCommentsID: $elm$core$Maybe$Just(submissionId),
+											submissionCommentMessage: $elm$core$Maybe$Nothing,
+											submissionComments: _List_Nil
+										});
+								}),
+							A2($author$project$Sharecrop$Api$fetchSubmissionComments, state.accessToken, submissionId));
+					});
+			case 'SubmissionCommentsReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{submissionComments: response.comments});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										submissionCommentMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'SubmissionCommentBodyChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{submissionCommentBody: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'AddSubmissionCommentClicked':
+				var submissionId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return ($elm$core$String$trim(state.submissionCommentBody) === '') ? _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{
+											submissionCommentMessage: $elm$core$Maybe$Just('Write a comment first.')
+										});
+								}),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{submissionCommentMessage: $elm$core$Maybe$Nothing});
+								}),
+							A3(
+								$author$project$Sharecrop$Api$addSubmissionComment,
+								state.accessToken,
+								submissionId,
+								$elm$core$String$trim(state.submissionCommentBody)));
+					});
+			case 'SubmissionCommentAdded':
+				if (msg.a.$ === 'Ok') {
+					return A2(
+						$author$project$Sharecrop$Api$withSession,
+						model,
+						function (state) {
+							return _Utils_Tuple2(
+								A2(
+									$author$project$Sharecrop$Api$updateLoggedIn,
+									model,
+									function (current) {
+										return _Utils_update(
+											current,
+											{submissionCommentBody: ''});
+									}),
+								function () {
+									var _v4 = state.activeSubmissionCommentsID;
+									if (_v4.$ === 'Just') {
+										var submissionId = _v4.a;
+										return A2($author$project$Sharecrop$Api$fetchSubmissionComments, state.accessToken, submissionId);
+									} else {
+										return $elm$core$Platform$Cmd$none;
+									}
+								}());
+						});
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										submissionCommentMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'LinkClicked':
 				var request = msg.a;
 				if (request.$ === 'Internal') {
@@ -12141,9 +12335,9 @@ var $author$project$Main$update = F2(
 			default:
 				var url = msg.a;
 				var page = $author$project$Main$pageFromUrl(url);
-				var _v5 = model.session;
-				if (_v5.$ === 'LoggedIn') {
-					var state = _v5.a;
+				var _v6 = model.session;
+				if (_v6.$ === 'LoggedIn') {
+					var state = _v6.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -17128,6 +17322,9 @@ var $author$project$Sharecrop$View$reviewControls = function (state) {
 				A2($author$project$Sharecrop$View$maybeNote, state.reviewMessage, 'review-message')
 			]));
 };
+var $author$project$Sharecrop$Types$OpenSubmissionComments = function (a) {
+	return {$: 'OpenSubmissionComments', a: a};
+};
 var $author$project$Sharecrop$Types$AcceptClicked = function (a) {
 	return {$: 'AcceptClicked', a: a};
 };
@@ -17199,6 +17396,108 @@ var $author$project$Sharecrop$View$reviewNoteView = function (note) {
 				$elm$html$Html$text(note)
 			]));
 };
+var $author$project$Sharecrop$Types$AddSubmissionCommentClicked = function (a) {
+	return {$: 'AddSubmissionCommentClicked', a: a};
+};
+var $author$project$Sharecrop$Types$SubmissionCommentBodyChanged = function (a) {
+	return {$: 'SubmissionCommentBodyChanged', a: a};
+};
+var $author$project$Sharecrop$View$submissionCommentRow = function (comment) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('rounded-md border border-slate-200 bg-white p-3'),
+				$author$project$Sharecrop$Ui$testId('submission-comment')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$a,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$href('/users/' + comment.authorUserID),
+						$elm$html$Html$Attributes$class('text-xs font-medium text-slate-600 underline')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(comment.authorUserID)
+					])),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-700 break-words')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(comment.body)
+					]))
+			]));
+};
+var $author$project$Sharecrop$View$submissionCommentsThread = F2(
+	function (state, submission) {
+		return _Utils_eq(
+			state.activeSubmissionCommentsID,
+			$elm$core$Maybe$Just(submission.id)) ? A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2 rounded-md bg-slate-50 p-3'),
+					$author$project$Sharecrop$Ui$testId('submission-comments-thread')
+				]),
+			_List_fromArray(
+				[
+					$elm$core$List$isEmpty(state.submissionComments) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+							$author$project$Sharecrop$Ui$testId('submission-comments-empty')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No comments yet.')
+						])) : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('space-y-2'),
+							$author$project$Sharecrop$Ui$testId('submission-comments')
+						]),
+					A2($elm$core$List$map, $author$project$Sharecrop$View$submissionCommentRow, state.submissionComments)),
+					A2(
+					$elm$html$Html$form,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('space-y-2'),
+							$elm$html$Html$Events$onSubmit(
+							$author$project$Sharecrop$Types$AddSubmissionCommentClicked(submission.id))
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$textarea_(
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$placeholder('Add a comment'),
+									$elm$html$Html$Attributes$value(state.submissionCommentBody),
+									$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$SubmissionCommentBodyChanged),
+									$author$project$Sharecrop$Ui$testId('submission-comment-body')
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$primaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									$author$project$Sharecrop$Types$AddSubmissionCommentClicked(submission.id)),
+									$author$project$Sharecrop$Ui$testId('add-submission-comment')
+								]),
+							'Comment'),
+							A2($author$project$Sharecrop$View$maybeNote, state.submissionCommentMessage, 'submission-comment-message')
+						]))
+				])) : $elm$html$Html$text('');
+	});
 var $author$project$Sharecrop$View$validationErrorView = function (item) {
 	return A2(
 		$elm$html$Html$p,
@@ -17261,7 +17560,18 @@ var $author$project$Sharecrop$View$submissionRow = F2(
 							$author$project$Sharecrop$Ui$testId('submission-response')
 						]),
 					submission.responseJSON),
-					$author$project$Sharecrop$View$validationErrorsView(submission.validationErrors)
+					$author$project$Sharecrop$View$validationErrorsView(submission.validationErrors),
+					A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick(
+							$author$project$Sharecrop$Types$OpenSubmissionComments(submission.id)),
+							$author$project$Sharecrop$Ui$testId('submission-comments-toggle')
+						]),
+					'Comments'),
+					A2($author$project$Sharecrop$View$submissionCommentsThread, state, submission)
 				]));
 	});
 var $author$project$Sharecrop$View$submissionsList = function (state) {

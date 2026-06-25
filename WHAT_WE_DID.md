@@ -1,5 +1,14 @@
 # What We Did
 
+`task/submission-comments` added a private comment thread on each submission (PR 2 of the backlog sequence), mirroring the existing task-comment vertical end to end:
+
+- **Domain/store/HTTP:** migration `000022_submission_comments`; `core.SubmissionCommentID`; `submission.AddSubmissionComment`/`ListSubmissionComments` with a visibility rule that permits only the submission's author (worker) or the owner of its task (requester); `GET`/`POST /api/submissions/{id}/comments`.
+- **MCP:** `sharecrop.add_submission_comment` (submissions:write) and `sharecrop.list_submission_comments` (submissions:read).
+- **Contracts:** `SubmissionCommentResponse` (id, submission_id, author_user_id, body, created_at) + `SubmissionCommentsResponse`.
+- **Client/demo:** each submission row on the task detail has a "Comments" toggle opening its thread (list + add box); the demo backend serves the routes and seeds a comment.
+- **Tests:** submission domain unit, http_e2e (owner + submitter post/list; unrelated user → 403), Playwright (owner comments on a worker's submission).
+- **Deferred:** a dedicated worker-side submission view in the client — the backend + MCP already let the worker participate; only the owner-side UI shipped here.
+
 `task/admin-collectible-ownership` finished the two collectible follow-ups — a real admin gate on awarding, and real org/team ownership (PR 1 of a sequence burning down the follow-up + roadmap backlog):
 
 - **Platform-admin role:** the server reads `SHARECROP_ADMIN_USER_IDS` (comma-separated user ids) into an admin set (`parseAdminUserIDs`) and a `requireAdmin` helper. `POST /api/collectibles/award` now returns 401 (unauthenticated) / 403 (authenticated non-admin); only an admin can mint catalog copies. The demo award panel is unchanged (the demo has no real auth, so it stays the showcase).

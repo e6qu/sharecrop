@@ -99,6 +99,8 @@ type SubmissionService interface {
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
 	ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult
+	AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult
+	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult
 }
 
 type LedgerService interface {
@@ -198,6 +200,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/tasks/{task_id}/reservations/{reservation_id}/decline", server.declineTaskReservation)
 	mux.HandleFunc("POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel", server.cancelTaskReservation)
 	mux.HandleFunc("GET /api/submission-receipts/{receipt_token}", server.findSubmissionReceipt)
+	mux.HandleFunc("GET /api/submissions/{submission_id}/comments", server.listSubmissionComments)
+	mux.HandleFunc("POST /api/submissions/{submission_id}/comments", server.addSubmissionComment)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/credits/balance", server.organizationCreditsBalance)
 	mux.HandleFunc("GET /api/credits/balance", server.creditsBalance)
 	mux.HandleFunc("GET /api/credits/ledger", server.creditsLedger)

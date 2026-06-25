@@ -1703,6 +1703,36 @@ submissionRow state submission =
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "submission-response" ] submission.responseJSON
         , validationErrorsView submission.validationErrors
+        , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "submission-comments-toggle" ] "Comments"
+        , submissionCommentsThread state submission
+        ]
+
+
+submissionCommentsThread : LoggedInModel -> Submission.SubmissionResponse -> Html Msg
+submissionCommentsThread state submission =
+    if state.activeSubmissionCommentsID == Just submission.id then
+        div [ Html.Attributes.class "space-y-2 rounded-md bg-slate-50 p-3", testId "submission-comments-thread" ]
+            [ if List.isEmpty state.submissionComments then
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "submission-comments-empty" ] [ text "No comments yet." ]
+
+              else
+                div [ Html.Attributes.class "space-y-2", testId "submission-comments" ] (List.map submissionCommentRow state.submissionComments)
+            , form [ Html.Attributes.class "space-y-2", onSubmit (AddSubmissionCommentClicked submission.id) ]
+                [ Ui.textarea_ [ placeholder "Add a comment", value state.submissionCommentBody, onInput SubmissionCommentBodyChanged, testId "submission-comment-body" ]
+                , Ui.primaryButton [ type_ "button", onClick (AddSubmissionCommentClicked submission.id), testId "add-submission-comment" ] "Comment"
+                , maybeNote state.submissionCommentMessage "submission-comment-message"
+                ]
+            ]
+
+    else
+        text ""
+
+
+submissionCommentRow : Submission.SubmissionCommentResponse -> Html Msg
+submissionCommentRow comment =
+    div [ Html.Attributes.class "rounded-md border border-slate-200 bg-white p-3", testId "submission-comment" ]
+        [ a [ href ("/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
+        , p [ Html.Attributes.class "text-sm text-slate-700 break-words" ] [ text comment.body ]
         ]
 
 

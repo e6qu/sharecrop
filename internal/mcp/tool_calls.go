@@ -633,6 +633,18 @@ type seriesCommentsPayload struct {
 	Comments []seriesCommentSummary `json:"comments"`
 }
 
+type submissionCommentSummary struct {
+	ID           string `json:"id"`
+	SubmissionID string `json:"submission_id"`
+	AuthorID     string `json:"author_user_id"`
+	Body         string `json:"body"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type submissionCommentsPayload struct {
+	Comments []submissionCommentSummary `json:"comments"`
+}
+
 type seriesListPayload struct {
 	Series []seriesSummary `json:"series"`
 }
@@ -831,6 +843,10 @@ func (seriesCommentsPayload) payloadValue() {}
 
 func (seriesCommentSummary) payloadValue() {}
 
+func (submissionCommentsPayload) payloadValue() {}
+
+func (submissionCommentSummary) payloadValue() {}
+
 func (server Server) callCreateSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
 		Title       string `json:"title"`
@@ -970,6 +986,66 @@ func (server Server) callListTaskComments(ctx context.Context, subject auth.User
 		})
 	}
 	return marshalPayload(seriesCommentsPayload{Comments: comments})
+}
+
+func (server Server) callAddSubmissionComment(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		SubmissionID string `json:"submission_id"`
+		Body         string `json:"body"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	submissionResult := core.ParseSubmissionID(args.SubmissionID)
+	submissionID, submissionMatched := submissionResult.(core.SubmissionIDCreated)
+	if !submissionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: submissionResult.(core.SubmissionIDRejected).Reason.Description()}
+	}
+	bodyResult := task.NewCommentBody(args.Body)
+	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
+	if !bodyMatched {
+		return toolProtocolError{code: codeInvalidParams, message: bodyResult.(task.CommentBodyRejected).Reason.Description()}
+	}
+	result := server.services.AddSubmissionComment(ctx, subject, submissionID.Value, body.Value)
+	added, matched := result.(submission.SubmissionCommentAdded)
+	if !matched {
+		return toolFailed{message: result.(submission.SubmissionCommentRejected).Reason.Description()}
+	}
+	return marshalPayload(submissionCommentToSummary(added.Value))
+}
+
+func (server Server) callListSubmissionComments(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		SubmissionID string `json:"submission_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	submissionResult := core.ParseSubmissionID(args.SubmissionID)
+	submissionID, submissionMatched := submissionResult.(core.SubmissionIDCreated)
+	if !submissionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: submissionResult.(core.SubmissionIDRejected).Reason.Description()}
+	}
+	result := server.services.ListSubmissionComments(ctx, subject, submissionID.Value)
+	listed, matched := result.(submission.SubmissionCommentsListed)
+	if !matched {
+		return toolFailed{message: result.(submission.SubmissionCommentsListRejected).Reason.Description()}
+	}
+	comments := make([]submissionCommentSummary, 0, len(listed.Values))
+	for index := range listed.Values {
+		comments = append(comments, submissionCommentToSummary(listed.Values[index]))
+	}
+	return marshalPayload(submissionCommentsPayload{Comments: comments})
+}
+
+func submissionCommentToSummary(value submission.SubmissionComment) submissionCommentSummary {
+	return submissionCommentSummary{
+		ID:           value.ID.String(),
+		SubmissionID: value.SubmissionID.String(),
+		AuthorID:     value.AuthorID.String(),
+		Body:         value.Body.String(),
+		CreatedAt:    value.CreatedAt.UTC().Format(time.RFC3339),
+	}
 }
 
 func (server Server) callUnpublishTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {

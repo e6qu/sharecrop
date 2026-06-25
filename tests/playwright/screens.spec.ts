@@ -622,3 +622,50 @@ test("the create-task template menu prefills the schema, and Freeform shows the 
     /freeform/,
   );
 });
+
+test("owner and worker exchange comments on a submission", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "subcomment-owner");
+  const title = `Comment thread ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 20),
+  });
+  const task = (await taskResponse.json()) as TaskBody;
+  await request.post(`/api/tasks/${task.id}/funding`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { amount: 20, idempotency_key: `fund-${task.id}` },
+  });
+  await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+
+  // Worker submits.
+  const worker = await registerViaApi(request, "subcomment-worker");
+  await loginViaUi(page, worker.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("discovery-task-row").filter({ hasText: title })
+    .getByTestId("discovery-view").click();
+  await page.getByTestId("detail-submit-input").fill('{"answer":"done"}');
+  await page.getByTestId("detail-submit").click();
+  await expect(page.getByTestId("detail-submit-message")).toBeVisible();
+
+  // Owner opens the submission and starts a comment thread on it.
+  await page.getByTestId("logout").click();
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("discovery-task-row").filter({ hasText: title })
+    .getByTestId("discovery-view").click();
+  await expect(page.getByTestId("submission-row")).toHaveCount(1);
+  await page.getByTestId("submission-comments-toggle").click();
+  await expect(page.getByTestId("submission-comments-empty")).toBeVisible();
+  await page.getByTestId("submission-comment-body").fill(
+    "Could you clarify step 2?",
+  );
+  await page.getByTestId("add-submission-comment").click();
+  await expect(page.getByTestId("submission-comment")).toContainText(
+    "Could you clarify step 2?",
+  );
+});

@@ -13,8 +13,11 @@ import (
 type Store interface {
 	CreateSubmission(context.Context, core.SubmissionID, core.SubmissionReceiptTokenID, ReceiptTokenHash, SubmitCommand, State, ValidationOutcome, []SensitiveField) CreateSubmissionStoreResult
 	FindByReceiptToken(context.Context, ReceiptTokenHash) FindReceiptStoreResult
+	FindSubmission(context.Context, core.SubmissionID) FindSubmissionStoreResult
 	ListForTask(context.Context, core.TaskID, core.Page) ListSubmissionsStoreResult
 	ListForSubmitter(context.Context, core.UserID) ListSubmissionsStoreResult
+	CreateSubmissionComment(context.Context, SubmissionComment) CreateSubmissionCommentStoreResult
+	ListSubmissionComments(context.Context, core.SubmissionID) ListSubmissionCommentsStoreResult
 }
 
 type TaskFinder interface {

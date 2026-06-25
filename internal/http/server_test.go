@@ -623,6 +623,15 @@ func (testSubmissionService) ListForSubmitter(context.Context, auth.UserSubject,
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
+func (testSubmissionService) AddSubmissionComment(_ context.Context, actor auth.UserSubject, submissionID core.SubmissionID, body task.CommentBody) submission.SubmissionCommentResult {
+	commentID := core.NewSubmissionCommentID().(core.SubmissionCommentIDCreated)
+	return submission.SubmissionCommentAdded{Value: submission.SubmissionComment{ID: commentID.Value, SubmissionID: submissionID, AuthorID: actor.ID, Body: body}}
+}
+
+func (testSubmissionService) ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult {
+	return submission.SubmissionCommentsListed{Values: []submission.SubmissionComment{}}
+}
+
 func (testLedgerService) FundTask(_ context.Context, _ core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
 	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
 }

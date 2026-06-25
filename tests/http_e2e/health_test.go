@@ -230,6 +230,14 @@ func (healthSubmissionService) ListForSubmitter(context.Context, auth.UserSubjec
 	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthSubmissionService) AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult {
+	return submission.SubmissionCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthSubmissionService) ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult {
+	return submission.SubmissionCommentsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 type healthLedgerService struct{}
 
 func (healthLedgerService) FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult {

@@ -263,6 +263,15 @@ func (services fakeServices) ListTaskComments(_ context.Context, _ auth.UserSubj
 	return task.TaskCommentsListed{Values: nil}
 }
 
+func (services fakeServices) AddSubmissionComment(_ context.Context, subject auth.UserSubject, submissionID core.SubmissionID, body task.CommentBody) submission.SubmissionCommentResult {
+	commentID := core.NewSubmissionCommentID().(core.SubmissionCommentIDCreated)
+	return submission.SubmissionCommentAdded{Value: submission.SubmissionComment{ID: commentID.Value, SubmissionID: submissionID, AuthorID: subject.ID, Body: body}}
+}
+
+func (services fakeServices) ListSubmissionComments(_ context.Context, _ auth.UserSubject, _ core.SubmissionID) submission.SubmissionCommentsResult {
+	return submission.SubmissionCommentsListed{Values: nil}
+}
+
 func (services fakeServices) UnpublishTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
 	return task.TaskStateChanged{Value: task.Task{ID: taskID, Owner: task.UserOwner{UserID: subject.ID}, State: task.StateDraft, CreatedBy: subject.ID}}
 }

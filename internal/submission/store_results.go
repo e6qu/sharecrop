@@ -34,6 +34,22 @@ func (ReceiptFound) findReceiptStoreResult() {}
 
 func (ReceiptMissing) findReceiptStoreResult() {}
 
+type FindSubmissionStoreResult interface {
+	findSubmissionStoreResult()
+}
+
+type FindSubmissionStoreAccepted struct {
+	Value Submission
+}
+
+type FindSubmissionStoreRejected struct {
+	Reason core.DomainError
+}
+
+func (FindSubmissionStoreAccepted) findSubmissionStoreResult() {}
+
+func (FindSubmissionStoreRejected) findSubmissionStoreResult() {}
+
 type ListSubmissionsStoreResult interface {
 	listSubmissionsStoreResult()
 }
