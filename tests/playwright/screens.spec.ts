@@ -40,9 +40,10 @@ async function openTaskFromDiscovery(
   title: string,
 ): Promise<void> {
   await loginViaUi(page, email);
-  // Wait for the post-login data load to finish before navigating, otherwise the
-  // nav can race and the discovery click times out.
-  await expect(page.getByTestId("balance")).toBeVisible();
+  // Wait for the post-login data load to settle before navigating; under load the
+  // balance/nav can otherwise race and the discovery click times out.
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("balance")).toBeVisible({ timeout: 15000 });
   await page.getByTestId("nav-discovery").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
     .getByTestId("discovery-view").click();
@@ -773,4 +774,86 @@ test("an owner tips a collectible on accept through the review form", async ({ p
   });
   const owned = (await holdings.json()) as { collectibles: { id: string }[] };
   expect(owned.collectibles.find((c) => c.id === tip.id)).toBeUndefined();
+});
+
+test("a bundle task refunds credits and collectible in one shot via the UI", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "bundle-refund-owner");
+  const title = `Bundle-refund ${crypto.randomUUID()}`;
+
+  // A collectible to escrow as the collectible portion of the bundle reward.
+  const mintResponse = await request.post("/api/collectibles", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {
+      name: "Bundle medal",
+      kind: "badge",
+      transfer_policy: "non_transferable_except_payout",
+    },
+  });
+  expect(mintResponse.ok()).toBeTruthy();
+  const medal = (await mintResponse.json()) as { id: string };
+
+  // Create a bundle task (credits + collectible), fund the credits, escrow the collectible, open.
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {
+      owner: {
+        kind: "user",
+        user_id: owner.body.subject_id,
+        team_id: "",
+        organization_id: "",
+      },
+      title,
+      description: "A bundle reward task.",
+      reward: { kind: "bundle", credit_amount: 20 },
+      visibility: {
+        kind: "public",
+        user_id: "",
+        team_id: "",
+        organization_id: "",
+      },
+      placement: {
+        kind: "standalone",
+        series_id: "",
+        series_title: "",
+        series_position: 0,
+      },
+      response_schema_json: '{"kind":"freeform"}',
+      payload: { kind: "none", json: "" },
+    },
+  });
+  const task = (await taskResponse.json()) as TaskBody;
+  await request.post(`/api/tasks/${task.id}/funding`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { amount: 20, idempotency_key: `fund:${task.id}` },
+  });
+  await request.post(`/api/tasks/${task.id}/collectible-reward`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { collectible_id: medal.id },
+  });
+  await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+
+  await openTaskFromDiscovery(page, owner.email, title);
+
+  // A bundle task shows the unified "Refund reward" button (which calls /refund
+  // and returns credits + collectible together) and NOT a separate collectible refund.
+  await expect(page.getByTestId("refund-task")).toHaveText("Refund reward");
+  await expect(page.getByTestId("refund-collectible")).toHaveCount(0);
+  await page.getByTestId("refund-task").click();
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "refunded",
+  );
+
+  // Both escrow portions returned: balance restored and the collectible back in holdings.
+  const balance = await request.get("/api/credits/balance", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+  });
+  expect(((await balance.json()) as { amount: number }).amount).toBe(100);
+  const holdings = await request.get("/api/collectibles", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+  });
+  const owned = (await holdings.json()) as { collectibles: { id: string }[] };
+  expect(owned.collectibles.find((c) => c.id === medal.id)).toBeTruthy();
 });

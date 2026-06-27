@@ -2,7 +2,16 @@
 
 The repository contains pull request 1 through pull request 66 work, merged into `main`.
 
-No active task. The most recent work was `task/fix-cancel-escrow-guard` (PR #66), which closed the orphan-escrow-on-cancel bug (cancel now rejects while escrow is held). See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
+Active task:
+
+- Active branch `task/bundle-refund-ui-parity` corrects the bundle-refund UX: the owner controls now offer exactly one refund action per reward kind (credit → `/refund`, collectible → `/collectible-refund`, bundle → `/refund` labelled "Refund reward"), removing a dead 409 "Refund collectible" button on bundle tasks. The `/refund` endpoint already returned credits AND collectibles in one shot, so the prior "no one-shot bundle refund" BUGS note was stale and is removed. Demo `/refund` now also returns escrowed collectibles (parity). Tests green. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/bundle-refund-ui-parity`:
+
+- **Owner refund controls corrected.** Bundle tasks now show a single "Refund reward" button (calls `/refund`, which returns credits + collectible together); the separate "Refund collectible" button no longer renders for bundle (it 409'd). Credit-only tasks show "Refund credits"; collectible-only show "Refund collectible".
+- **Demo parity.** `site/demo/backend.js` `/refund` now releases escrowed collectibles too (mirroring the real backend's `refundHeldCollectibleReward`), so a demo bundle refund returns everything in one call.
+- **Tests.** A real-backend Playwright flow drives a bundle task end to end: escrow credits + collectible, open, refund via the "Refund reward" UI button, and assert both the balance is restored and the collectible returns to holdings. The backend one-shot bundle refund was already covered by `TestBundleRefundReturnsCreditsAndCollectible` (http_e2e). Also stabilized `openTaskFromDiscovery` (network-idle + 15s balance wait) against shared-server load flakiness.
+- Removed the stale BUGS entry claiming bundle had no one-shot refund.
 
 Implemented in `task/fix-cancel-escrow-guard` (merged, PR #66):
 
