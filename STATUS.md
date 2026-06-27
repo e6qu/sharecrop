@@ -1,12 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 66 work, merged into `main`.
+The repository contains pull request 1 through pull request 67 work, merged into `main`.
 
-Active task:
+No active task. The most recent work was `task/bundle-refund-ui-parity` (PR #67), which corrected the bundle-refund UX (one refund action per reward kind) and removed a stale BUGS claim. See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
 
-- Active branch `task/bundle-refund-ui-parity` corrects the bundle-refund UX: the owner controls now offer exactly one refund action per reward kind (credit → `/refund`, collectible → `/collectible-refund`, bundle → `/refund` labelled "Refund reward"), removing a dead 409 "Refund collectible" button on bundle tasks. The `/refund` endpoint already returned credits AND collectibles in one shot, so the prior "no one-shot bundle refund" BUGS note was stale and is removed. Demo `/refund` now also returns escrowed collectibles (parity). Tests green. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
-
-Implemented in `task/bundle-refund-ui-parity`:
+Implemented in `task/bundle-refund-ui-parity` (merged, PR #67):
 
 - **Owner refund controls corrected.** Bundle tasks now show a single "Refund reward" button (calls `/refund`, which returns credits + collectible together); the separate "Refund collectible" button no longer renders for bundle (it 409'd). Credit-only tasks show "Refund credits"; collectible-only show "Refund collectible".
 - **Demo parity.** `site/demo/backend.js` `/refund` now releases escrowed collectibles too (mirroring the real backend's `refundHeldCollectibleReward`), so a demo bundle refund returns everything in one call.
