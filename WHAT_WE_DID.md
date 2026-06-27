@@ -1,5 +1,13 @@
 # What We Did
 
+`task/bundle-refund-ui-parity` corrected the bundle-refund UX and a stale BUGS claim:
+
+- Investigation found the "no one-shot bundle refund" risk recorded in BUGS was wrong: the credit `/refund` endpoint already calls `refundHeldCollectibleReward` inside its transaction, so it returns held credits AND collectibles together (covered by `TestBundleRefundReturnsCreditsAndCollectible`). The actual gap was UI-only — a bundle task rendered both "Refund credits" and "Refund collectible", and the collectible one 409'd on bundle.
+- **Owner refund controls** now offer exactly one refund action per reward kind: credit → `/refund` ("Refund credits"), collectible → `/collectible-refund` ("Refund collectible"), bundle → `/refund` ("Refund reward", returns credits + collectible together). The dead bundle "Refund collectible" button is gone.
+- **Demo parity.** `site/demo/backend.js` `/refund` now releases escrowed collectibles too (mirroring `refundHeldCollectibleReward`), so a demo bundle refund returns everything in one call; the cancel guard and collectible-refund routes already matched.
+- **Tests.** A real-backend Playwright flow escrows credits + collectible on a bundle task, opens it, refunds via the "Refund reward" UI button, and asserts both balance restoration and the collectible returning to holdings. Stabilized `openTaskFromDiscovery` (network-idle + 15s balance wait) against intermittent shared-server load flakiness that had been timing out post-login navigation.
+- Removed the stale BUGS entry.
+
 `task/fix-cancel-escrow-guard` closed the active orphan-escrow-on-cancel bug surfaced in the previous PR:
 
 - **Cancel now rejects while escrow is held.** The task store's `ChangeTaskState` gained a `requireNoHeldEscrow` guard on the cancellation path: it counts held credits (`task_escrows.state = 'held'`) and held collectibles (`task_collectible_rewards.state = 'held'`) and returns a 409 "refund the task's held escrow before cancelling" when either exists. Previously the `Cancel` state transition left held escrow stranded against a cancelled task with no return path. This is the documented "reject Cancel while escrow is held" option. http_e2e covers a funded task returning 409 on cancel and a subsequent successful refund. The browser already routes funded tasks to Refund, so the only behavioural change users see is the rare funded-draft Cancel now surfacing that 409 (with the Refund action alongside) instead of silently orphaning.

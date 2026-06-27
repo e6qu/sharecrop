@@ -1558,11 +1558,23 @@ ownerControlsCard state =
                 draftOrOpen =
                     detail.state == Task.TaskStateDraft || detail.state == Task.TaskStateOpen
 
-                hasCreditReward =
-                    detail.rewardKind == "credit" || detail.rewardKind == "bundle"
+                -- The credit refund endpoint (/refund) is the unified refund: it
+                -- returns held credits AND held collectibles together (so it
+                -- handles bundle rewards in one shot). The collectible-refund
+                -- endpoint only handles collectible-only tasks (it 409s on bundle).
+                -- So: credit and bundle -> /refund; collectible-only -> /collectible-refund.
+                refundButton =
+                    if draftOrOpen && detail.rewardKind == "credit" then
+                        Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund credits")
 
-                hasCollectibleReward =
-                    detail.rewardKind == "collectible" || detail.rewardKind == "bundle"
+                    else if draftOrOpen && detail.rewardKind == "bundle" then
+                        Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund reward")
+
+                    else if draftOrOpen && detail.rewardKind == "collectible" then
+                        Just (Ui.secondaryButton [ type_ "button", onClick (RefundCollectibleRewardClicked detail.id), testId "refund-collectible" ] "Refund collectible")
+
+                    else
+                        Nothing
 
                 buttons =
                     List.filterMap identity
@@ -1580,16 +1592,7 @@ ownerControlsCard state =
 
                           else
                             Nothing
-                        , if draftOrOpen && hasCreditReward then
-                            Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund credits")
-
-                          else
-                            Nothing
-                        , if draftOrOpen && hasCollectibleReward then
-                            Just (Ui.secondaryButton [ type_ "button", onClick (RefundCollectibleRewardClicked detail.id), testId "refund-collectible" ] "Refund collectible")
-
-                          else
-                            Nothing
+                        , refundButton
                         ]
             in
             Ui.card

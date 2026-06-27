@@ -505,14 +505,17 @@
     return ok(comment, 201);
   });
   on("POST", "/api/tasks/:id/refund", (p) => {
-    // Release any escrow back to the owner and cancel the task. Mirrors the
-    // real backend's refund: returns the escrow shape the client decodes.
+    // Unified refund: release held credits AND any escrowed collectibles (so a
+    // bundle reward refunds in one shot), then cancel. Mirrors the real backend's
+    // /refund, which calls refundHeldCollectibleReward inside the same tx.
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     if (t.state !== "draft" && t.state !== "open") return err(409, "only draft or open tasks can be refunded");
     const released = t.escrow || 0;
     if (released === 0) return err(409, "task has no escrow to refund");
     funderAdjust(t, released);
     db.ledger.push({ id: nextId("entry"), kind: "task_refund", amount: released, task_id: t.id });
+    db.collectibles.filter((c) => c.state === "escrowed" && c.owner_id === t.created_by).forEach((c) => { c.state = "minted"; });
+    if (t.reward_collectible_count > 0) { t.reward_collectible_count = 0; t.reward_kind = "none"; }
     t.escrow = 0; t.state = "cancelled"; t.availability_kind = "closed";
     return ok({ task_id: t.id, amount: released, state: "refunded" });
   });

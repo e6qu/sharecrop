@@ -17344,9 +17344,38 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 	var _v0 = state.detail;
 	if (_v0.$ === 'Just') {
 		var detail = _v0.a;
-		var hasCreditReward = (detail.rewardKind === 'credit') || (detail.rewardKind === 'bundle');
-		var hasCollectibleReward = (detail.rewardKind === 'collectible') || (detail.rewardKind === 'bundle');
 		var draftOrOpen = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen);
+		var refundButton = (draftOrOpen && (detail.rewardKind === 'credit')) ? $elm$core$Maybe$Just(
+			A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
+						$author$project$Sharecrop$Ui$testId('refund-task')
+					]),
+				'Refund credits')) : ((draftOrOpen && (detail.rewardKind === 'bundle')) ? $elm$core$Maybe$Just(
+			A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
+						$author$project$Sharecrop$Ui$testId('refund-task')
+					]),
+				'Refund reward')) : ((draftOrOpen && (detail.rewardKind === 'collectible')) ? $elm$core$Maybe$Just(
+			A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Sharecrop$Types$RefundCollectibleRewardClicked(detail.id)),
+						$author$project$Sharecrop$Ui$testId('refund-collectible')
+					]),
+				'Refund collectible')) : $elm$core$Maybe$Nothing));
 		var buttons = A2(
 			$elm$core$List$filterMap,
 			$elm$core$Basics$identity,
@@ -17374,28 +17403,7 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 								$author$project$Sharecrop$Ui$testId('cancel-task')
 							]),
 						'Cancel')) : $elm$core$Maybe$Nothing,
-					(draftOrOpen && hasCreditReward) ? $elm$core$Maybe$Just(
-					A2(
-						$author$project$Sharecrop$Ui$secondaryButton,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$type_('button'),
-								$elm$html$Html$Events$onClick(
-								$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
-								$author$project$Sharecrop$Ui$testId('refund-task')
-							]),
-						'Refund credits')) : $elm$core$Maybe$Nothing,
-					(draftOrOpen && hasCollectibleReward) ? $elm$core$Maybe$Just(
-					A2(
-						$author$project$Sharecrop$Ui$secondaryButton,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$type_('button'),
-								$elm$html$Html$Events$onClick(
-								$author$project$Sharecrop$Types$RefundCollectibleRewardClicked(detail.id)),
-								$author$project$Sharecrop$Ui$testId('refund-collectible')
-							]),
-						'Refund collectible')) : $elm$core$Maybe$Nothing
+					refundButton
 				]));
 		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
