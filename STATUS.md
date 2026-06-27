@@ -2,7 +2,17 @@
 
 The repository contains pull request 1 through pull request 64 work, merged into `main`.
 
-No active task. The most recent work was `task/polish-bugfix-uiux-review` (PR #64), a combined bug-sweep + UI/UX review pass driven by three parallel review agents (Go backend, demo drift, Elm client). See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
+Active task:
+
+- Active branch `task/ui-cancel-collectible-tip` exposes the task-lifecycle and review actions the API already supported but the browser lacked: cancelling a task, tipping a collectible on accept, and refunding a collectible reward. Tests green. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/ui-cancel-collectible-tip`:
+
+- **Cancel a task.** Owner controls now offer a Cancel button for draft tasks (any reward) and for open no-reward tasks. Reward-bearing open tasks are ended via Refund instead, because the backend's Cancel does not return held escrow (Cancel of a funded task would orphan it); Refund is the escrow-returning path. Recorded as a known risk in BUGS.
+- **Collectible tip on accept.** The review form gained a "Tip a collectible" select populated from the requester's holdings; the chosen collectible is sent as `tip_collectible_id` on accept (the backend's `GiftCollectible` transfers it to the worker). The tip selection resets with the rest of the review form after each action.
+- **Refund a collectible reward.** Owner controls offer "Refund collectible" for draft/open collectible- or bundle-reward tasks, calling `POST /api/tasks/{id}/collectible-refund`.
+- **Demo parity.** `site/demo/backend.js` now implements `POST /api/tasks/:id/collectible-refund` (returns escrowed collectibles to the requester) and honors `tip_collectible_id` on accept (gifts the collectible to the worker, sets `payout_kind`/`collectible_ids`/`worker_user_id` accordingly).
+- **Tests.** Two Playwright flows against the real backend: an owner cancels a no-reward task (Cancel visible, Refund hidden); an owner tips a transferable collectible on accept (the collectible leaves their holdings). Backend collectible-tip and collectible-refund behavior was already covered by http_e2e.
 
 Implemented in `task/polish-bugfix-uiux-review` (merged, PR #64):
 

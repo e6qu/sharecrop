@@ -16,6 +16,8 @@ Test gaps:
 
 Known risks:
 
+- Cancelling a task that holds escrow orphanes that escrow: the backend's task `Cancel` (state transition) does not return held credits/collectibles, while `RefundTask`/`RefundReward` do. The browser's owner controls avoid this for funded OPEN tasks by routing them to Refund, but a funded DRAFT task still shows Cancel (funding-then-cancelling-without-refund is an unusual path, but it would leave escrow held against a cancelled task with no return path). A backend fix would return escrow on Cancel, or reject Cancel while escrow is held.
+
 - The demo runs the real Elm client (path-routed `Browser.application`) under the `/sharecrop/demo/` GitHub Pages base, but the client builds root-absolute URLs (`/tasks/{id}`). In-app click navigation works (pushState, no reload), but a hard-refresh or deep-link on a demo sub-route 404s on Pages, and the URL bar leaves the `/demo/` base. Fixing it cleanly needs base-path awareness in the Elm router (a base from flags prefixing `pageToPath`/`pageFromUrl`) plus a Pages SPA fallback; deferred (see DO_NEXT).
 - `site/demo/backend.js` is a demo-only in-browser fake backend; it re-implements API behavior in JS and can drift from the Go backend's actual semantics. It is not used by the shipped app and is not contract-tested against the Go DTOs (only the demo smoke test exercises it).
 

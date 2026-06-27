@@ -516,6 +516,18 @@
     t.escrow = 0; t.state = "cancelled"; t.availability_kind = "closed";
     return ok({ task_id: t.id, amount: released, state: "refunded" });
   });
+  // Refund escrowed collectible rewards back to the requester's holdings
+  // (mirrors the real backend's POST /collectible-refund -> RefundReward).
+  on("POST", "/api/tasks/:id/collectible-refund", (p) => {
+    const t = findTask(p.id); if (!t) return err(404, "task not found");
+    if (t.created_by !== ME) return err(403, "only the task requester can refund rewards");
+    if (t.state !== "draft" && t.state !== "open") return err(409, "only draft or open tasks can be refunded");
+    const escrowed = db.collectibles.filter((c) => c.state === "escrowed" && c.owner_id === ME);
+    if (escrowed.length === 0) return err(409, "task has no escrowed collectibles to refund");
+    escrowed.forEach((c) => { c.state = "minted"; });
+    t.reward_collectible_count = 0; t.reward_kind = t.reward_credit_amount > 0 ? "credit" : "none";
+    return ok({ collectibles: escrowed });
+  });
   on("POST", "/api/tasks/:id/funding", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     const amount = (body && body.amount) || 0;
@@ -662,8 +674,19 @@
     if (payout > 0) { pushLedger("task_payout", -payout, t.id); payoutKind = "credit"; }
     if (refund > 0) { funderAdjust(t, refund); pushLedger("task_refund", refund, t.id); }
     if (tip > 0) { funderAdjust(t, -tip); pushLedger("task_tip", -tip, t.id); }
+    // Optional collectible tip: transfer a held collectible from the requester's
+    // inventory to the worker (mirrors the real backend's GiftCollectible on accept).
+    const tippedIds = [];
+    const tipCollectibleId = (body && body.tip_collectible_id) || "";
+    if (tipCollectibleId) {
+      const c = db.collectibles.find((x) => x.id === tipCollectibleId && x.owner_id === ME);
+      if (!c) return err(409, "collectible tip is not available");
+      c.owner_id = s.submitter_id;
+      tippedIds.push(c.id);
+      if (payoutKind === "none") payoutKind = "collectible"; else if (payoutKind === "credit") payoutKind = "bundle";
+    }
     s.state = "accepted"; t.escrow = 0; t.availability_kind = "closed"; t.state = "closed";
-    return ok({ task_id: t.id, submission_id: s.id, payout_kind: payoutKind, payout_amount: payout, worker_user_id: payout > 0 ? s.submitter_id : "", collectible_ids: [], tip_amount: tip });
+    return ok({ task_id: t.id, submission_id: s.id, payout_kind: payoutKind, payout_amount: payout, worker_user_id: (payout > 0 || tippedIds.length > 0) ? s.submitter_id : "", collectible_ids: tippedIds, tip_amount: tip });
   });
   on("POST", "/api/tasks/:id/submissions/:sid/reject", decide("rejected", "available"));
   on("POST", "/api/tasks/:id/submissions/:sid/request-changes", decide("changes_requested", "reserved"));

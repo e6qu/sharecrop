@@ -113,6 +113,7 @@ type alias LoggedInModel =
     , reviewNote : String
     , reviewPartialCredit : String
     , reviewTip : String
+    , reviewTipCollectibleId : String
     , reviewBan : Bool
     , reviewMessage : Maybe String
     , collectibles : List Collectible.CollectibleResponse
@@ -258,6 +259,10 @@ type Msg
     | OpenTaskReceived (Result Http.Error TaskDetail)
     | RefundTaskClicked String
     | RefundTaskReceived (Result Http.Error Ledger.TaskEscrowResponse)
+    | CancelTaskClicked String
+    | CancelTaskReceived (Result Http.Error TaskDetail)
+    | RefundCollectibleRewardClicked String
+    | RefundCollectibleRewardReceived (Result Http.Error Collectible.CollectiblesResponse)
     | AgentLabelChanged String
     | ToggleScope Agent.AgentScope
     | CreateAgentClicked
@@ -290,6 +295,7 @@ type Msg
     | ReviewNoteChanged String
     | ReviewPartialCreditChanged String
     | ReviewTipChanged String
+    | ReviewTipCollectibleChanged String
     | ReviewBanChanged Bool
     | AcceptClicked String
     | RequestChangesClicked String

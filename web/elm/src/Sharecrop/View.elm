@@ -1555,26 +1555,47 @@ ownerControlsCard state =
     case state.detail of
         Just detail ->
             let
-                canOpen =
-                    detail.state == Task.TaskStateDraft
-
-                canRefund =
+                draftOrOpen =
                     detail.state == Task.TaskStateDraft || detail.state == Task.TaskStateOpen
 
+                hasCreditReward =
+                    detail.rewardKind == "credit" || detail.rewardKind == "bundle"
+
+                hasCollectibleReward =
+                    detail.rewardKind == "collectible" || detail.rewardKind == "bundle"
+
                 buttons =
-                    if canOpen then
-                        [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open" ]
+                    List.filterMap identity
+                        [ if detail.state == Task.TaskStateDraft then
+                            Just (Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open")
 
-                    else if canRefund then
-                        [ Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund" ]
+                          else
+                            Nothing
+                        , -- Cancel ends the task. Offered for drafts (any reward) and for
+                          -- open tasks with no reward. Reward-bearing OPEN tasks are ended
+                          -- via Refund instead, since Cancel of a funded task would orphan
+                          -- the held escrow (the backend's Refund returns escrow; Cancel does not).
+                          if detail.state == Task.TaskStateDraft || (detail.state == Task.TaskStateOpen && detail.rewardKind == "none") then
+                            Just (Ui.secondaryButton [ type_ "button", onClick (CancelTaskClicked detail.id), testId "cancel-task" ] "Cancel")
 
-                    else
-                        []
+                          else
+                            Nothing
+                        , if draftOrOpen && hasCreditReward then
+                            Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund credits")
+
+                          else
+                            Nothing
+                        , if draftOrOpen && hasCollectibleReward then
+                            Just (Ui.secondaryButton [ type_ "button", onClick (RefundCollectibleRewardClicked detail.id), testId "refund-collectible" ] "Refund collectible")
+
+                          else
+                            Nothing
+                        ]
             in
             Ui.card
                 [ Ui.sectionTitle "Owner controls"
                 , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
-                , div [ Html.Attributes.class "flex gap-2" ] buttons
+                , div [ Html.Attributes.class "flex flex-wrap gap-2" ] buttons
                 , maybeNote state.taskActionMessage "task-action-message"
                 ]
 
@@ -1756,6 +1777,22 @@ reviewControls state =
                 ]
             , div [ Html.Attributes.class "pt-6" ]
                 [ Ui.checkbox [ checked state.reviewBan, onCheck ReviewBanChanged, testId "review-ban" ] "Ban implementor" ]
+            ]
+        , label [ Html.Attributes.class "grid gap-1" ]
+            [ span [ Html.Attributes.class "text-xs font-semibold text-slate-600" ] [ text "Tip a collectible (optional)" ]
+            , select
+                [ Html.Attributes.class Ui.fieldClass
+                , value state.reviewTipCollectibleId
+                , onInput ReviewTipCollectibleChanged
+                , testId "review-tip-collectible"
+                ]
+                (option [ value "" ] [ text "No collectible tip" ]
+                    :: List.map
+                        (\c -> option [ value c.id, selected (state.reviewTipCollectibleId == c.id) ]
+                            [ text (c.name ++ " · " ++ collectibleKindLabel c.kind) ]
+                        )
+                        state.collectibles
+                )
             ]
         , maybeNote state.reviewMessage "review-message"
         ]
