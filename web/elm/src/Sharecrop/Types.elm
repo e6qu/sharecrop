@@ -104,6 +104,7 @@ type alias LoggedInModel =
     , discoveryTasks : List Task.TaskListItemResponse
     , discoveryIncludeReserved : Bool
     , detail : Maybe PublicTaskDetail
+    , detailError : Maybe String
     , reservations : List Task.TaskReservationResponse
     , reservationMessage : Maybe String
     , submissions : List Submission.SubmissionResponse

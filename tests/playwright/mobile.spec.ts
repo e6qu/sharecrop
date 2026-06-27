@@ -9,7 +9,7 @@ test.use({ viewport: { width: 375, height: 667 } });
 
 test("the demo renders without horizontal overflow across pages on a phone", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1240 credits")).toBeVisible();
+  await expect(page.getByText("1250 credits")).toBeVisible();
 
   async function expectNoHorizontalOverflow(where: string) {
     // Wait for the pixel-art web fonts to load before measuring; font reflow

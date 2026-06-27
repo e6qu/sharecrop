@@ -1539,13 +1539,27 @@ ownerControlsCard : LoggedInModel -> Html Msg
 ownerControlsCard state =
     case state.detail of
         Just detail ->
+            let
+                canOpen =
+                    detail.state == Task.TaskStateDraft
+
+                canRefund =
+                    detail.state == Task.TaskStateDraft || detail.state == Task.TaskStateOpen
+
+                buttons =
+                    if canOpen then
+                        [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open" ]
+
+                    else if canRefund then
+                        [ Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund" ]
+
+                    else
+                        []
+            in
             Ui.card
                 [ Ui.sectionTitle "Owner controls"
                 , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
-                , div [ Html.Attributes.class "flex gap-2" ]
-                    [ Ui.secondaryButton [ type_ "button", onClick (OpenTaskClicked detail.id), testId "open-task" ] "Open"
-                    , Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund"
-                    ]
+                , div [ Html.Attributes.class "flex gap-2" ] buttons
                 , maybeNote state.taskActionMessage "task-action-message"
                 ]
 
@@ -1579,7 +1593,12 @@ detailCard origin state =
                 )
 
         Nothing ->
-            Ui.card [ p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading task…" ] ]
+            case state.detailError of
+                Just message ->
+                    Ui.card [ p [ Html.Attributes.class "text-sm text-slate-700", testId "detail-error" ] [ text ("Could not load this task: " ++ message) ] ]
+
+                Nothing ->
+                    Ui.card [ p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading task…" ] ]
 
 
 reservationCard : LoggedInModel -> Html Msg
@@ -1655,8 +1674,17 @@ submitCard state =
         Nothing ->
             text ""
 
-        Just _ ->
-            submitCardForm state
+        Just detail ->
+            -- Only render the submit form when the task can actually accept a
+            -- submission: it must be open. Eligibility (reservation/approval) is
+            -- enforced by the server; viewerAction is viewer-independent so it is
+            -- not a reliable "can this viewer submit" signal. Hiding on non-open
+            -- states removes the dead form on closed/cancelled/refunded tasks.
+            if detail.state == Task.TaskStateOpen then
+                submitCardForm state
+
+            else
+                text ""
 
 
 submitCardForm : LoggedInModel -> Html Msg

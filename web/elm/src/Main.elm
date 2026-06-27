@@ -85,6 +85,7 @@ emptyLoggedIn response =
     , discoveryTasks = []
     , discoveryIncludeReserved = False
     , detail = Nothing
+    , detailError = Nothing
     , reservations = []
     , reservationMessage = Nothing
     , submissions = []
@@ -282,7 +283,21 @@ enterPage page state =
         TaskDetailPage _ ->
             -- Clear the previous task's detail substate so a task->task link does
             -- not briefly show the prior task's badges, submissions, or comments.
-            { state | page = page, detail = Nothing, reservations = [], reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, taskComments = [], taskCommentBody = "", submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
+            -- Review form fields are reset here too so the prior submission's
+            -- note / partial credit / tip / ban does not carry over to the next.
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
+
+        CollectiblesPage ->
+            -- Reset the award / mint / transfer messages and drafts so a stale
+            -- "Awarded" note or prefilled recipient does not reappear on return.
+            { state | page = page, awardMessage = Nothing, awardDefaultMessage = Nothing, collectibleMessage = Nothing, transferMessage = Nothing, collectibleName = "", awardRecipientId = "", awardTaskId = "" }
+
+        CreateTaskPage ->
+            -- Clear a half-finished draft and any stale create message on entry.
+            { state | page = page, createTitle = "", createDescription = "", createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardAmount = "", createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
+
+        FundingPage ->
+            { state | page = page, fundMessage = Nothing }
 
         _ ->
             { state | page = page }
@@ -493,7 +508,9 @@ update msg model =
             Api.withSession model (\state -> ( model, Api.postRefundTask state.accessToken taskId ))
 
         RefundTaskReceived (Ok _) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just "Task refunded and cancelled." }), Api.refreshTasksAndLedger model )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just "Task refunded and cancelled." })
+            , Cmd.batch [ Api.refreshTasksAndLedger model, Api.refreshAfterAccept model ]
+            )
 
         RefundTaskReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -522,8 +539,8 @@ update msg model =
         TaskTokenMinted (Ok created) ->
             ( Api.updateLoggedIn model (\state -> { state | taskAgentToken = Just created.secret }), Cmd.none )
 
-        TaskTokenMinted (Err _) ->
-            ( model, Cmd.none )
+        TaskTokenMinted (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just ("Could not create agent token: " ++ httpErrorLabel error) }), Cmd.none )
 
         MintUserTokenClicked ->
             Api.withSession model (\state -> ( model, Api.mintUserToken state.accessToken ))
@@ -531,8 +548,8 @@ update msg model =
         UserTokenMinted (Ok created) ->
             ( Api.updateLoggedIn model (\state -> { state | userAgentToken = Just created.secret }), Cmd.none )
 
-        UserTokenMinted (Err _) ->
-            ( model, Cmd.none )
+        UserTokenMinted (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just ("Could not create agent token: " ++ httpErrorLabel error) }), Cmd.none )
 
         CopyClicked clipboardText ->
             ( model, copyToClipboard clipboardText )
@@ -569,13 +586,22 @@ update msg model =
                 (\s ->
                     { s
                         | detail = Nothing
+                        , detailError = Nothing
                         , reservations = []
                         , reservationMessage = Nothing
                         , submissions = []
                         , submitInput = ""
                         , submitMessage = Nothing
+                        , reviewNote = ""
+                        , reviewPartialCredit = ""
+                        , reviewTip = ""
+                        , reviewBan = False
+                        , reviewMessage = Nothing
+                        , taskActionMessage = Nothing
                         , taskComments = []
                         , taskCommentBody = ""
+                        , submissionCommentBody = ""
+                        , activeSubmissionCommentsID = Nothing
                         , taskAgentToken = Nothing
                         , taskIntegrationOpen = False
                     }
@@ -584,10 +610,10 @@ update msg model =
             )
 
         DetailReceived (Ok detail) ->
-            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, detailError = Nothing }), Cmd.none )
 
         DetailReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | detailError = Just (httpErrorLabel error) }), Cmd.none )
 
         ReserveClicked taskId ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | reservationMessage = Nothing }), Api.postReservation state.accessToken taskId ))
@@ -665,7 +691,9 @@ update msg model =
             Api.withSession model (\state -> Api.rejectCommand model state submissionId)
 
         ReviewActionReceived (Ok _) ->
-            ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just "Review saved." }), Api.refreshAfterAccept model )
+            -- Clear the review form so the next submission in the list does not
+            -- inherit the previous one's note / partial credit / tip / ban.
+            ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just "Review saved.", reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewBan = False }), Api.refreshAfterAccept model )
 
         ReviewActionReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just (httpErrorLabel error) }), Cmd.none )

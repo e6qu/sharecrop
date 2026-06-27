@@ -9,7 +9,7 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
   await page.goto(`${demoOrigin}/index.html`);
 
   // Boots straight into the seeded account (refresh auto-succeeds in the shim).
-  await expect(page.getByText("1240 credits")).toBeVisible();
+  await expect(page.getByText("1250 credits")).toBeVisible();
   // Ledger + My-tasks decode and populate (seed enum values must match the real
   // client's decoders, else Decode.list blanks the whole section).
   await expect(page.getByText("Signup grant")).toBeVisible();
@@ -60,7 +60,7 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
 
 test("demo organization page shows a funded balance, not a stuck spinner", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1240 credits")).toBeVisible();
+  await expect(page.getByText("1250 credits")).toBeVisible();
 
   await page.getByRole("link", { name: "Organizations" }).click();
   await page.getByTestId("select-organization").first().click();
@@ -73,7 +73,7 @@ test("demo organization page shows a funded balance, not a stuck spinner", async
 
 test("demo owner can refund a funded task they own", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1240 credits")).toBeVisible();
+  await expect(page.getByText("1250 credits")).toBeVisible();
 
   await page.getByRole("link", { name: "Tasks", exact: true }).click();
   await page
@@ -92,7 +92,7 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
 
 test("the collectibles catalog renders sprites, awards a default, and trades it", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1240 credits")).toBeVisible();
+  await expect(page.getByText("1250 credits")).toBeVisible();
   await page.getByRole("link", { name: "Collectibles", exact: true }).click();
 
   // The 25 default collectibles render as a gallery of pixel sprites.
@@ -116,7 +116,7 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
 
 test("the demo shows a Reset button and hash routing keeps a stable URL on refresh", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1240 credits")).toBeVisible();
+  await expect(page.getByText("1250 credits")).toBeVisible();
 
   // The demo-only Reset control is present.
   await expect(page.getByTestId("reset-demo")).toBeVisible();

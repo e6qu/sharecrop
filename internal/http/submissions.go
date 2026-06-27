@@ -67,7 +67,7 @@ func (server Server) findSubmissionReceipt(w http.ResponseWriter, r *http.Reques
 	found, matched := result.(submission.ReceiptStatusFound)
 	if !matched {
 		rejected := result.(submission.ReceiptStatusRejected)
-		writeError(w, http.StatusNotFound, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 

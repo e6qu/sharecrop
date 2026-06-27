@@ -353,6 +353,10 @@ func (server Server) writeSeriesDetailStatus(w http.ResponseWriter, r *http.Requ
 		response.Tasks = append(response.Tasks, taskToResponse(detail.Tasks[index]))
 	}
 	commentsResult := server.taskService.ListSeriesComments(r.Context(), actor, detail.Series.ID)
+	if rejected, matches := commentsResult.(task.SeriesCommentsListRejected); matches {
+		writeDomainError(w, rejected.Reason)
+		return
+	}
 	if listed, matched := commentsResult.(task.SeriesCommentsListed); matched {
 		response.Comments = commentsToResponse(listed.Values)
 	}

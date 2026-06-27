@@ -4,9 +4,21 @@ The repository contains pull request 1 through pull request 62 work, merged into
 
 Active task:
 
-- Active branch `task/backlog-cleanup` clears bounded backlog deferrals (admin-panel gating, Go status-code consistency, demo user-submissions) and applies a UI/UX+QA boyscout review (Back-button regression, no-op review controls, broken submit form). It is ready for review. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+- Active branch `task/polish-bugfix-uiux-review` is a combined bug-sweep + UI/UX review pass (three parallel review agents: Go backend, demo drift, Elm client). Fixes are in; tests green. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
 
-Implemented in `task/backlog-cleanup`:
+Implemented in `task/polish-bugfix-uiux-review`:
+
+- **Elm UI state-leak family (HIGH):** the review form (note / partial credit / tip / ban) no longer carries across task→task navigation, across discovery→detail, or from one submission to the next within a task — it is reset in `enterPage` (TaskDetailPage), `DiscoveryViewClicked`, and the `ReviewActionReceived` Ok branch. Added missing `enterPage` resets for `CollectiblesPage`, `CreateTaskPage`, and `FundingPage` (award/mint/create/fund messages and drafts no longer reappear on return).
+- **Stale detail after refund (HIGH):** `RefundTaskReceived` now refetches the task detail (was leaving the badge on open/funded after refund).
+- **Perpetual "Loading…" on bad deep-links (MED):** added a `detailError` field; a failed/forbidden task detail now renders an error message instead of an infinite "Loading task…".
+- **Token-mint errors surfaced (MED):** `TaskTokenMinted`/`UserTokenMinted` failures now show a message instead of being silently dropped.
+- **Dead/no-op controls gated (MED):** owner Open/Refund buttons render only for the states they can act on (Open: draft; Refund: draft/open); the submit form renders only when the task is open (was a live form on closed/cancelled/refunded tasks).
+- **Go backend:** deleted dead `requireAdmin` (the admin gate is inline in `collectibles.go`); `writeSeriesDetailStatus` now propagates a `ListSeriesComments` rejection via `writeDomainError` instead of swallowing it and returning empty; the receipt-status handler routes through `writeDomainError` (was a hardcoded 404); the MCP `/mcp` body read uses `http.MaxBytesReader` so an oversized body returns 413 instead of being silently truncated into a "not valid JSON-RPC" 400.
+- **Demo fidelity (`site/demo/backend.js`):** reject no longer closes the task (matches prod's `closeTask: false`) and now releases the rejected worker's reservation to `cancelled_by_requester`; reject/request-changes now require an open task; `payout_kind` reflects the actual payout (not the reward kind) and `worker_user_id` is populated only when a payout matched; refund returns the released `amount` (was 0); the ledger seed reconciles with the balance (1250, was off by 10); PATCH task-series no longer wipes the description when the field is omitted; awarded collectibles use `state: "awarded"` (was "minted").
+- A visual screenshot review was generated to `/tmp/sharecrop-review-screens` but could not be inspected by the agent (no image input); the user should review those captures.
+- Deferred (noted in BUGS/DO_NEXT): the Team/Series/User detail pages still lack a load-vs-error distinction (only TaskDetail was upgraded); demo `reservationChange`/reserve still skip the ownership + assignee-scope guards; assorted `type_ "button"` and free-text-id → picker follow-ups.
+
+Implemented in `task/backlog-cleanup` (merged, PR #63):
 
 - The auth response carries a `role` (admin/member from `SHARECROP_ADMIN_USER_IDS`); the client hides the admin award panel + catalog Award buttons for non-admins (demo role is admin, so the showcase keeps them).
 - UI/UX + QA review fixes: the task-detail Back button used a non-fragment href (regression) and dumped users on Overview — now `#/tasks`/`#/discovery`; `getTask` returns the real 404 for a missing task (was 403); a sweep replaced hardcoded `writeError` status codes with `writeDomainError` across org/series/collectible/org-credit handlers (contradictory 403-vs-500 siblings, wrong 400s) so each rejection maps to its correct status; the Submit-a-response form no longer renders when the task failed to load; review controls only render when there are submissions; the demo user-submissions endpoint now returns the user's real submissions.
