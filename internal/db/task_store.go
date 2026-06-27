@@ -98,6 +98,15 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 			return task.ChangeTaskStateStoreRejected{Reason: rejected.reason}
 		}
 	}
+	if state == task.StateCancelled {
+		// Cancelling a task that still holds escrow would orphan it: the task
+		// state transition does not return held credits or collectibles (only
+		// the refund endpoints do). Reject so the caller refunds first.
+		escrowResult := store.requireNoHeldEscrow(ctx, taskID)
+		if rejected, matched := escrowResult.(heldEscrowRejected); matched {
+			return task.ChangeTaskStateStoreRejected{Reason: rejected.reason}
+		}
+	}
 	commandTag, err := store.pool.Exec(ctx, `
 		update tasks
 		set state = $2, state_recorded_at = now()
@@ -161,6 +170,39 @@ func (store TaskStore) requireOpenableReward(ctx context.Context, taskID core.Ta
 		}
 	}
 	return openableRewardAccepted{}
+}
+
+type heldEscrowResult interface {
+	heldEscrowResult()
+}
+
+type heldEscrowNone struct{}
+
+type heldEscrowRejected struct {
+	reason core.DomainError
+}
+
+func (heldEscrowNone) heldEscrowResult() {}
+
+func (heldEscrowRejected) heldEscrowResult() {}
+
+// requireNoHeldEscrow rejects when a task still holds funded credits or
+// collectible rewards. Cancelling such a task would orphan the escrow because
+// the state transition does not return it; the caller must refund first.
+func (store TaskStore) requireNoHeldEscrow(ctx context.Context, taskID core.TaskID) heldEscrowResult {
+	var heldCredits, heldCollectibles int
+	err := store.pool.QueryRow(ctx, `
+		select
+			(select count(*) from task_escrows where task_id = $1 and state = 'held'),
+			(select count(*) from task_collectible_rewards where task_id = $1 and state = 'held')
+	`, taskID.String()).Scan(&heldCredits, &heldCollectibles)
+	if err != nil {
+		return heldEscrowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "check held escrow failed")}
+	}
+	if heldCredits > 0 || heldCollectibles > 0 {
+		return heldEscrowRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "refund the task's held escrow before cancelling")}
+	}
+	return heldEscrowNone{}
 }
 
 func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filters task.ListFilters, page core.Page) task.ListTasksStoreResult {

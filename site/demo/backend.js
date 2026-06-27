@@ -495,7 +495,7 @@
   // Lifecycle transitions are state-machine guarded exactly like the real backend
   // (open: draft only; cancel: draft/open; unpublish: open only).
   on("POST", "/api/tasks/:id/open", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); if (t.state !== "draft") return err(409, "only draft tasks can be opened"); t.state = "open"; return ok(detail(t)); });
-  on("POST", "/api/tasks/:id/cancel", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); if (t.state !== "draft" && t.state !== "open") return err(409, "only draft or open tasks can be cancelled"); t.state = "cancelled"; t.availability_kind = "closed"; return ok(detail(t)); });
+  on("POST", "/api/tasks/:id/cancel", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); if (t.state !== "draft" && t.state !== "open") return err(409, "only draft or open tasks can be cancelled"); if ((t.escrow || 0) > 0 || db.collectibles.some((c) => c.state === "escrowed" && c.owner_id === t.created_by)) return err(409, "refund the task's held escrow before cancelling"); t.state = "cancelled"; t.availability_kind = "closed"; return ok(detail(t)); });
   on("POST", "/api/tasks/:id/unpublish", (p) => { const t = findTask(p.id); if (!t) return err(404, "task not found"); if (t.state !== "open") return err(409, "only open tasks can be unpublished"); t.state = "draft"; return ok(detail(t)); });
   on("GET", "/api/tasks/:id/comments", (p) => ok({ comments: db.taskComments[p.id] || [] }));
   on("POST", "/api/tasks/:id/comments", (p, _url, body) => {

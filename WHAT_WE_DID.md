@@ -1,5 +1,12 @@
 # What We Did
 
+`task/fix-cancel-escrow-guard` closed the active orphan-escrow-on-cancel bug surfaced in the previous PR:
+
+- **Cancel now rejects while escrow is held.** The task store's `ChangeTaskState` gained a `requireNoHeldEscrow` guard on the cancellation path: it counts held credits (`task_escrows.state = 'held'`) and held collectibles (`task_collectible_rewards.state = 'held'`) and returns a 409 "refund the task's held escrow before cancelling" when either exists. Previously the `Cancel` state transition left held escrow stranded against a cancelled task with no return path. This is the documented "reject Cancel while escrow is held" option. http_e2e covers a funded task returning 409 on cancel and a subsequent successful refund. The browser already routes funded tasks to Refund, so the only behavioural change users see is the rare funded-draft Cancel now surfacing that 409 (with the Refund action alongside) instead of silently orphaning.
+- **Demo parity.** The `site/demo/backend.js` cancel route now rejects when the task holds escrow (`escrow > 0` or any escrowed collectible), matching the real backend's precondition.
+- **Playwright helper race fix.** `openTaskFromDiscovery` in `screens.spec.ts` intermittently timed out clicking `nav-discovery` because it ran before the post-login data load finished. It now waits for the balance to render before navigating; the helper and `loginViaUi` were retyped from ad-hoc structural types to the real Playwright `Page`.
+- **Stale-doc cleanup.** Removed a BUGS entry claiming the demo deep-link 404s on GitHub Pages — that was already fixed by fragment (hash) routing in PR #61. Documented the residual bundle-refund gap (no one-shot refund for bundle rewards) as a known risk.
+
 `task/ui-cancel-collectible-tip` exposed the task-lifecycle and review actions the HTTP API already supported but the browser lacked:
 
 - **Cancel a task.** The owner controls gained a Cancel button. It is offered for draft tasks (any reward) and for open no-reward tasks. Reward-bearing OPEN tasks are ended via Refund instead: the backend's `Cancel` (task state transition) does not return held escrow, while `RefundTask` does — so gating Cancel away from funded tasks avoids orphaning escrow. (That Cancel-of-a-funded-task gap is recorded in BUGS as a backend-level risk.)
