@@ -1,12 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 64 work, merged into `main`.
+The repository contains pull request 1 through pull request 65 work, merged into `main`.
 
-Active task:
+No active task. The most recent work was `task/ui-cancel-collectible-tip` (PR #65), which exposed the task-lifecycle and review actions the HTTP API already supported but the browser lacked (cancel task, collectible tip on accept, refund collectible reward). See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
 
-- Active branch `task/ui-cancel-collectible-tip` exposes the task-lifecycle and review actions the API already supported but the browser lacked: cancelling a task, tipping a collectible on accept, and refunding a collectible reward. Tests green. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
-
-Implemented in `task/ui-cancel-collectible-tip`:
+Implemented in `task/ui-cancel-collectible-tip` (merged, PR #65):
 
 - **Cancel a task.** Owner controls now offer a Cancel button for draft tasks (any reward) and for open no-reward tasks. Reward-bearing open tasks are ended via Refund instead, because the backend's Cancel does not return held escrow (Cancel of a funded task would orphan it); Refund is the escrow-returning path. Recorded as a known risk in BUGS.
 - **Collectible tip on accept.** The review form gained a "Tip a collectible" select populated from the requester's holdings; the chosen collectible is sent as `tip_collectible_id` on accept (the backend's `GiftCollectible` transfers it to the worker). The tip selection resets with the rest of the review form after each action.
