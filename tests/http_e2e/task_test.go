@@ -59,6 +59,30 @@ func TestTaskHTTPFlow(t *testing.T) {
 	assertStatus(t, cancelResponse, http.StatusOK)
 }
 
+// TestCancelRejectsWhenEscrowHeld guards against orphaning escrow: a funded
+// task cannot be cancelled directly because the state transition does not
+// return held credits/collectibles. The caller must refund first.
+func TestCancelRejectsWhenEscrowHeld(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "cancel-funded")
+	task := createCreditUserTask(t, server, owner, 30)
+	fundTask(t, server, owner.AccessToken, task.ID, 30, "fund-"+task.ID)
+
+	cancelResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/cancel", []byte(`{}`), owner.AccessToken)
+	defer cancelResponse.Body.Close()
+	assertStatus(t, cancelResponse, http.StatusConflict)
+
+	// The escrow is still held and the balance untouched; refunding then works.
+	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 70 {
+		t.Fatalf("owner balance after rejected cancel = %d, want 70", balance.Amount)
+	}
+	refund := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/refund", []byte(`{"idempotency_key":"refund-`+task.ID+`"}`), owner.AccessToken)
+	defer refund.Body.Close()
+	assertStatus(t, refund, http.StatusOK)
+}
+
 func TestOrganizationPublicTaskRequiresPublisherRole(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
   type AuthBody,
   password,
@@ -27,15 +27,7 @@ async function registerViaApi(
   return { email, body: (await response.json()) as AuthBody };
 }
 
-async function loginViaUi(
-  page: {
-    goto: (u: string) => Promise<unknown>;
-    getByTestId: (
-      id: string,
-    ) => { fill: (v: string) => Promise<void>; click: () => Promise<void> };
-  },
-  email: string,
-): Promise<void> {
+async function loginViaUi(page: Page, email: string): Promise<void> {
   await page.goto("/");
   await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
@@ -43,22 +35,14 @@ async function loginViaUi(
 }
 
 async function openTaskFromDiscovery(
-  page: {
-    goto: (u: string) => Promise<unknown>;
-    getByTestId: (
-      id: string,
-    ) => {
-      fill: (v: string) => Promise<void>;
-      click: () => Promise<void>;
-      filter: (opts: { hasText: string }) => {
-        getByTestId: (id: string) => { click: () => Promise<void> };
-      };
-    };
-  },
+  page: Page,
   email: string,
   title: string,
 ): Promise<void> {
   await loginViaUi(page, email);
+  // Wait for the post-login data load to finish before navigating, otherwise the
+  // nav can race and the discovery click times out.
+  await expect(page.getByTestId("balance")).toBeVisible();
   await page.getByTestId("nav-discovery").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
     .getByTestId("discovery-view").click();

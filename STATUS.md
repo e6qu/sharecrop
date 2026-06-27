@@ -2,7 +2,18 @@
 
 The repository contains pull request 1 through pull request 65 work, merged into `main`.
 
-No active task. The most recent work was `task/ui-cancel-collectible-tip` (PR #65), which exposed the task-lifecycle and review actions the HTTP API already supported but the browser lacked (cancel task, collectible tip on accept, refund collectible reward). See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
+Active task:
+
+- Active branch `task/fix-cancel-escrow-guard` closes the active orphan-escrow-on-cancel bug: `ChangeTaskState` to `cancelled` now rejects (409) when a task still holds credits or collectibles, so cancel can never strand escrow. Plus a stale BUGS entry cleanup and a Playwright-helper race fix. Tests green. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
+
+Implemented in `task/fix-cancel-escrow-guard`:
+
+- **Cancel rejects while escrow is held.** The task store's `ChangeTaskState` gains a `requireNoHeldEscrow` guard on cancellation: if held credits (`task_escrows.state = 'held'`) or held collectibles (`task_collectible_rewards.state = 'held'`) exist, it returns 409 "refund the task's held escrow before cancelling". This closes the orphan-escrow risk where Cancel stranded funded escrow against a cancelled task. http_e2e covers a funded-task cancel returning 409 followed by a successful refund.
+- **Demo parity.** `site/demo/backend.js` cancel route now rejects when the task holds escrow, matching the real backend.
+- **Test-helper race fix.** `openTaskFromDiscovery` (screens.spec.ts) now waits for the post-login balance to render before navigating, fixing an intermittent `nav-discovery` timeout; the helper and `loginViaUi` were retyped to the real Playwright `Page`.
+- Removed a stale BUGS entry (the demo deep-link 404 — already fixed by fragment routing in PR #61).
+
+No active task prior. Most recent merged work: `task/ui-cancel-collectible-tip` (PR #65). See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
 
 Implemented in `task/ui-cancel-collectible-tip` (merged, PR #65):
 
