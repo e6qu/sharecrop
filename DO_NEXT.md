@@ -11,6 +11,10 @@ Agreed multi-PR roadmap (humans + agents get full lifecycle/feature parity). PR1
 
 Smaller parity follow-ups noticed during the review (fold into the PR they fit, or a cleanup PR): the human accept flow cannot send a collectible tip though the API supports it; no UI to cancel a task, create/list standalone teams, deactivate an org member, or refund a collectible reward; no file/image attachment anywhere (only inline JSON payload + free-text).
 
+Polish follow-ups from `task/polish-bugfix-uiux-review`:
+
+- UI minors: add `type_ "button"` to the remaining secondary buttons (latent today since none sit in a `<form>`); replace free-text org/team/scope id inputs with picker dropdowns.
+
 Other queued work:
 
 1. Make the real-Elm demo base-path aware for GitHub Pages: pass a base (the demo's path prefix) via flags and have `pageToPath`/`pageFromUrl` honor it, plus add a Pages SPA fallback (e.g. a `404.html`), so hard-refresh and deep-links on demo sub-routes work and the URL stays under `/demo/`. Today only in-app click navigation works (see BUGS.md).

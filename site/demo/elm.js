@@ -7738,6 +7738,16 @@ var $author$project$Sharecrop$Api$credentialsFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Sharecrop$Labels$participationPolicyTag = function (policy) {
+	switch (policy.$) {
+		case 'TaskParticipationPolicyOpen':
+			return 'open';
+		case 'TaskParticipationPolicyReservationRequired':
+			return 'reservation_required';
+		default:
+			return 'approval_required';
+	}
+};
 var $author$project$Main$enterPage = F2(
 	function (page, state) {
 		switch (page.$) {
@@ -7749,7 +7759,7 @@ var $author$project$Main$enterPage = F2(
 			case 'UserDetailPage':
 				return _Utils_update(
 					state,
-					{page: page, userProfile: $elm$core$Maybe$Nothing});
+					{page: page, userProfile: $elm$core$Maybe$Nothing, userProfileError: $elm$core$Maybe$Nothing});
 			case 'UserWorkPage':
 				return _Utils_update(
 					state,
@@ -7765,11 +7775,11 @@ var $author$project$Main$enterPage = F2(
 			case 'SeriesDetailPage':
 				return _Utils_update(
 					state,
-					{addSeriesTaskId: '', page: page, seriesCommentBody: '', seriesDetail: $elm$core$Maybe$Nothing, seriesMessage: $elm$core$Maybe$Nothing, seriesRenameDescription: '', seriesRenameTitle: ''});
+					{addSeriesTaskId: '', page: page, seriesCommentBody: '', seriesDetail: $elm$core$Maybe$Nothing, seriesDetailError: $elm$core$Maybe$Nothing, seriesMessage: $elm$core$Maybe$Nothing, seriesRenameDescription: '', seriesRenameTitle: ''});
 			case 'TeamDetailPage':
 				return _Utils_update(
 					state,
-					{page: page, teamCollectibles: _List_Nil, teamDetail: $elm$core$Maybe$Nothing, teamMemberEmail: '', teamMemberMessage: $elm$core$Maybe$Nothing});
+					{page: page, teamCollectibles: _List_Nil, teamDetail: $elm$core$Maybe$Nothing, teamDetailError: $elm$core$Maybe$Nothing, teamMemberEmail: '', teamMemberMessage: $elm$core$Maybe$Nothing});
 			case 'CollectibleDetailPage':
 				return _Utils_update(
 					state,
@@ -7777,7 +7787,32 @@ var $author$project$Main$enterPage = F2(
 			case 'TaskDetailPage':
 				return _Utils_update(
 					state,
-					{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissionCommentBody: '', submissionCommentMessage: $elm$core$Maybe$Nothing, submissionComments: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
+					{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, detailError: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, reviewBan: false, reviewMessage: $elm$core$Maybe$Nothing, reviewNote: '', reviewPartialCredit: '', reviewTip: '', submissionCommentBody: '', submissionCommentMessage: $elm$core$Maybe$Nothing, submissionComments: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskCommentMessage: $elm$core$Maybe$Nothing, taskComments: _List_Nil, taskIntegrationOpen: false});
+			case 'CollectiblesPage':
+				return _Utils_update(
+					state,
+					{awardDefaultMessage: $elm$core$Maybe$Nothing, awardMessage: $elm$core$Maybe$Nothing, awardRecipientId: '', awardTaskId: '', collectibleMessage: $elm$core$Maybe$Nothing, collectibleName: '', page: page, transferMessage: $elm$core$Maybe$Nothing});
+			case 'CreateTaskPage':
+				return _Utils_update(
+					state,
+					{
+						createDescription: '',
+						createMessage: $elm$core$Maybe$Nothing,
+						createParticipationPolicy: $author$project$Sharecrop$Labels$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
+						createPayloadJson: '',
+						createReferenceURL: '',
+						createReservationHours: '48',
+						createResponseSchema: '{\"kind\":\"freeform\"}',
+						createRewardAmount: '',
+						createSchemaFields: _List_Nil,
+						createTaskType: 'general',
+						createTitle: '',
+						page: page
+					});
+			case 'FundingPage':
+				return _Utils_update(
+					state,
+					{fundMessage: $elm$core$Maybe$Nothing, page: page});
 			default:
 				return _Utils_update(
 					state,
@@ -8036,7 +8071,18 @@ var $author$project$Sharecrop$Api$fundTaskCommand = F2(
 		var _v0 = $elm$core$String$toInt(state.fundAmount);
 		if (_v0.$ === 'Just') {
 			var amount = _v0.a;
-			return _Utils_Tuple2(
+			return (amount <= 0) ? _Utils_Tuple2(
+				A2(
+					$author$project$Sharecrop$Api$updateLoggedIn,
+					model,
+					function (current) {
+						return _Utils_update(
+							current,
+							{
+								fundMessage: $elm$core$Maybe$Just('Amount must be a positive number of credits.')
+							});
+					}),
+				$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 				A2(
 					$author$project$Sharecrop$Api$updateLoggedIn,
 					model,
@@ -8214,16 +8260,6 @@ var $author$project$Sharecrop$Api$loadAfterAuth = function (token) {
 				$author$project$Sharecrop$Api$fetchOrganizations(token)
 			]));
 };
-var $author$project$Sharecrop$Labels$participationPolicyTag = function (policy) {
-	switch (policy.$) {
-		case 'TaskParticipationPolicyOpen':
-			return 'open';
-		case 'TaskParticipationPolicyReservationRequired':
-			return 'reservation_required';
-		default:
-			return 'approval_required';
-	}
-};
 var $author$project$Sharecrop$Types$visibilityDefaultTag = 'default';
 var $author$project$Main$emptyLoggedIn = function (response) {
 	return {
@@ -8270,6 +8306,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		createVisibility: $author$project$Sharecrop$Types$visibilityDefaultTag,
 		credentials: _List_Nil,
 		detail: $elm$core$Maybe$Nothing,
+		detailError: $elm$core$Maybe$Nothing,
 		discoveryIncludeReserved: false,
 		discoveryTasks: _List_Nil,
 		entries: _List_Nil,
@@ -8300,6 +8337,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		reviewTip: '',
 		seriesCommentBody: '',
 		seriesDetail: $elm$core$Maybe$Nothing,
+		seriesDetailError: $elm$core$Maybe$Nothing,
 		seriesList: _List_Nil,
 		seriesMessage: $elm$core$Maybe$Nothing,
 		seriesRenameDescription: '',
@@ -8321,12 +8359,14 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		tasks: _List_Nil,
 		teamCollectibles: _List_Nil,
 		teamDetail: $elm$core$Maybe$Nothing,
+		teamDetailError: $elm$core$Maybe$Nothing,
 		teamMemberEmail: '',
 		teamMemberMessage: $elm$core$Maybe$Nothing,
 		transferMessage: $elm$core$Maybe$Nothing,
 		transferRecipientId: '',
 		userAgentToken: $elm$core$Maybe$Nothing,
 		userProfile: $elm$core$Maybe$Nothing,
+		userProfileError: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
 		userWork: _List_Nil
 	};
@@ -9514,24 +9554,6 @@ var $author$project$Main$seriesListRefresh = function (model) {
 		return $elm$core$Platform$Cmd$none;
 	}
 };
-var $author$project$Main$seriesRenameDescriptionFor = F2(
-	function (result, fallback) {
-		if (result.$ === 'Ok') {
-			var data = result.a;
-			return data.series.description;
-		} else {
-			return fallback;
-		}
-	});
-var $author$project$Main$seriesRenameTitleFor = F2(
-	function (result, fallback) {
-		if (result.$ === 'Ok') {
-			var data = result.a;
-			return data.series.title;
-		} else {
-			return fallback;
-		}
-	});
 var $elm$core$Basics$ge = _Utils_ge;
 var $elm$core$List$head = function (list) {
 	if (list.b) {
@@ -9724,21 +9746,54 @@ var $author$project$Sharecrop$Api$postSubmission = F3(
 				$author$project$Sharecrop$Api$submissionRequestBody(responseJson)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SubmitReceived, $author$project$Sharecrop$Generated$Submission$submissionCreatedResponseDecoder));
 	});
+var $elm$json$Json$Decode$value = _Json_decodeValue;
 var $author$project$Sharecrop$Api$submitCommand = F2(
 	function (model, state) {
 		var _v0 = state.page;
 		if (_v0.$ === 'TaskDetailPage') {
 			var taskId = _v0.a;
-			return _Utils_Tuple2(
-				A2(
-					$author$project$Sharecrop$Api$updateLoggedIn,
-					model,
-					function (current) {
-						return _Utils_update(
-							current,
-							{submitMessage: $elm$core$Maybe$Nothing});
-					}),
-				A3($author$project$Sharecrop$Api$postSubmission, state.accessToken, taskId, state.submitInput));
+			var trimmed = $elm$core$String$trim(state.submitInput);
+			if (trimmed === '') {
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (current) {
+							return _Utils_update(
+								current,
+								{
+									submitMessage: $elm$core$Maybe$Just('Enter a response first.')
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			} else {
+				var _v1 = A2($elm$json$Json$Decode$decodeString, $elm$json$Json$Decode$value, trimmed);
+				if (_v1.$ === 'Ok') {
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (current) {
+								return _Utils_update(
+									current,
+									{submitMessage: $elm$core$Maybe$Nothing});
+							}),
+						A3($author$project$Sharecrop$Api$postSubmission, state.accessToken, taskId, trimmed));
+				} else {
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (current) {
+								return _Utils_update(
+									current,
+									{
+										submitMessage: $elm$core$Maybe$Just('Response must be valid JSON.')
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			}
 		} else {
 			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
@@ -9804,14 +9859,6 @@ var $author$project$Sharecrop$Api$teamsFromResult = function (result) {
 		return response.teams;
 	} else {
 		return _List_Nil;
-	}
-};
-var $elm$core$Result$toMaybe = function (result) {
-	if (result.$ === 'Ok') {
-		var v = result.a;
-		return $elm$core$Maybe$Just(v);
-	} else {
-		return $elm$core$Maybe$Nothing;
 	}
 };
 var $elm$url$Url$addPort = F2(
@@ -10566,7 +10613,12 @@ var $author$project$Main$update = F2(
 										taskActionMessage: $elm$core$Maybe$Just('Task refunded and cancelled.')
 									});
 							}),
-						$author$project$Sharecrop$Api$refreshTasksAndLedger(model));
+						$elm$core$Platform$Cmd$batch(
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Api$refreshTasksAndLedger(model),
+									$author$project$Sharecrop$Api$refreshAfterAccept(model)
+								])));
 				} else {
 					var error = msg.a.a;
 					return _Utils_Tuple2(
@@ -10684,7 +10736,20 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										taskActionMessage: $elm$core$Maybe$Just(
+											'Could not create agent token: ' + $author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
 				}
 			case 'MintUserTokenClicked':
 				return A2(
@@ -10711,7 +10776,20 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										taskActionMessage: $elm$core$Maybe$Just(
+											'Could not create agent token: ' + $author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
 				}
 			case 'CopyClicked':
 				var clipboardText = msg.a;
@@ -10786,7 +10864,7 @@ var $author$project$Main$update = F2(
 						function (s) {
 							return _Utils_update(
 								s,
-								{detail: $elm$core$Maybe$Nothing, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
+								{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, detailError: $elm$core$Maybe$Nothing, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, reviewBan: false, reviewMessage: $elm$core$Maybe$Nothing, reviewNote: '', reviewPartialCredit: '', reviewTip: '', submissionCommentBody: '', submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
 						}),
 					A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/tasks/' + taskId));
 			case 'DetailReceived':
@@ -10800,7 +10878,8 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
-										detail: $elm$core$Maybe$Just(detail)
+										detail: $elm$core$Maybe$Just(detail),
+										detailError: $elm$core$Maybe$Nothing
 									});
 							}),
 						$elm$core$Platform$Cmd$none);
@@ -10814,7 +10893,7 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
-										submitMessage: $elm$core$Maybe$Just(
+										detailError: $elm$core$Maybe$Just(
 											$author$project$Sharecrop$Labels$httpErrorLabel(error))
 									});
 							}),
@@ -11113,7 +11192,11 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
-										reviewMessage: $elm$core$Maybe$Just('Review saved.')
+										reviewBan: false,
+										reviewMessage: $elm$core$Maybe$Just('Review saved.'),
+										reviewNote: '',
+										reviewPartialCredit: '',
+										reviewTip: ''
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshAfterAccept(model));
@@ -11554,11 +11637,24 @@ var $author$project$Main$update = F2(
 						$author$project$Sharecrop$Api$updateLoggedIn,
 						model,
 						function (state) {
-							return _Utils_update(
-								state,
-								{
-									userProfile: $elm$core$Result$toMaybe(result)
-								});
+							if (result.$ === 'Ok') {
+								var profile = result.a;
+								return _Utils_update(
+									state,
+									{
+										userProfile: $elm$core$Maybe$Just(profile),
+										userProfileError: $elm$core$Maybe$Nothing
+									});
+							} else {
+								var error = result.a;
+								return _Utils_update(
+									state,
+									{
+										userProfile: $elm$core$Maybe$Nothing,
+										userProfileError: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'UserWorkReceived':
@@ -11641,13 +11737,26 @@ var $author$project$Main$update = F2(
 						$author$project$Sharecrop$Api$updateLoggedIn,
 						model,
 						function (state) {
-							return _Utils_update(
-								state,
-								{
-									seriesDetail: $elm$core$Result$toMaybe(result),
-									seriesRenameDescription: A2($author$project$Main$seriesRenameDescriptionFor, result, state.seriesRenameDescription),
-									seriesRenameTitle: A2($author$project$Main$seriesRenameTitleFor, result, state.seriesRenameTitle)
-								});
+							if (result.$ === 'Ok') {
+								var data = result.a;
+								return _Utils_update(
+									state,
+									{
+										seriesDetail: $elm$core$Maybe$Just(data),
+										seriesDetailError: $elm$core$Maybe$Nothing,
+										seriesRenameDescription: data.series.description,
+										seriesRenameTitle: data.series.title
+									});
+							} else {
+								var error = result.a;
+								return _Utils_update(
+									state,
+									{
+										seriesDetail: $elm$core$Maybe$Nothing,
+										seriesDetailError: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'SeriesMutationReceived':
@@ -11869,11 +11978,24 @@ var $author$project$Main$update = F2(
 						$author$project$Sharecrop$Api$updateLoggedIn,
 						model,
 						function (state) {
-							return _Utils_update(
-								state,
-								{
-									teamDetail: $elm$core$Result$toMaybe(result)
-								});
+							if (result.$ === 'Ok') {
+								var detail = result.a;
+								return _Utils_update(
+									state,
+									{
+										teamDetail: $elm$core$Maybe$Just(detail),
+										teamDetailError: $elm$core$Maybe$Nothing
+									});
+							} else {
+								var error = result.a;
+								return _Utils_update(
+									state,
+									{
+										teamDetail: $elm$core$Maybe$Nothing,
+										teamDetailError: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'TeamMemberEmailChanged':
@@ -12115,9 +12237,9 @@ var $author$project$Main$update = F2(
 						$author$project$Sharecrop$Api$updateLoggedIn,
 						model,
 						function (state) {
-							var _v3 = $author$project$Sharecrop$View$taskTemplate(value);
-							if (_v3.$ === 'Just') {
-								var template = _v3.a;
+							var _v6 = $author$project$Sharecrop$View$taskTemplate(value);
+							if (_v6.$ === 'Just') {
+								var template = _v6.a;
 								return _Utils_update(
 									state,
 									{createDescription: template.description, createResponseSchema: template.schema, createSchemaFields: _List_Nil, createTaskType: value});
@@ -12355,9 +12477,9 @@ var $author$project$Main$update = F2(
 											{submissionCommentBody: ''});
 									}),
 								function () {
-									var _v4 = state.activeSubmissionCommentsID;
-									if (_v4.$ === 'Just') {
-										var submissionId = _v4.a;
+									var _v7 = state.activeSubmissionCommentsID;
+									if (_v7.$ === 'Just') {
+										var submissionId = _v7.a;
 										return A2($author$project$Sharecrop$Api$fetchSubmissionComments, state.accessToken, submissionId);
 									} else {
 										return $elm$core$Platform$Cmd$none;
@@ -12399,9 +12521,9 @@ var $author$project$Main$update = F2(
 			case 'UrlChanged':
 				var url = msg.a;
 				var page = $author$project$Main$pageFromUrl(url);
-				var _v6 = model.session;
-				if (_v6.$ === 'LoggedIn') {
-					var state = _v6.a;
+				var _v9 = model.session;
+				if (_v9.$ === 'LoggedIn') {
+					var state = _v9.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -16499,17 +16621,33 @@ var $author$project$Sharecrop$View$seriesDetailView = F2(
 									A2($author$project$Sharecrop$View$maybeNote, state.seriesMessage, 'series-message')
 								]));
 					} else {
-						return A2(
-							$elm$html$Html$p,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('mt-3 text-sm text-slate-500'),
-									$author$project$Sharecrop$Ui$testId('series-detail-missing')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Loading series ' + (seriesId + '…'))
-								]));
+						var _v1 = state.seriesDetailError;
+						if (_v1.$ === 'Just') {
+							var message = _v1.a;
+							return A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('mt-3 text-sm text-slate-700'),
+										$author$project$Sharecrop$Ui$testId('series-detail-missing')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Could not load this series: ' + message)
+									]));
+						} else {
+							return A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('mt-3 text-sm text-slate-500'),
+										$author$project$Sharecrop$Ui$testId('series-detail-missing')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Loading series ' + (seriesId + '…'))
+									]));
+						}
 					}
 				}()
 				]));
@@ -17008,20 +17146,40 @@ var $author$project$Sharecrop$View$detailCard = F2(
 										A3($author$project$Sharecrop$View$taskIntegration, origin, detail.id, state)
 									]))))));
 		} else {
-			return $author$project$Sharecrop$Ui$card(
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$p,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('text-sm text-slate-500')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Loading task…')
-							]))
-					]));
+			var _v1 = state.detailError;
+			if (_v1.$ === 'Just') {
+				var message = _v1.a;
+				return $author$project$Sharecrop$Ui$card(
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-slate-700'),
+									$author$project$Sharecrop$Ui$testId('detail-error')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Could not load this task: ' + message)
+								]))
+						]));
+			} else {
+				return $author$project$Sharecrop$Ui$card(
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-slate-500')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Loading task…')
+								]))
+						]));
+			}
 		}
 	});
 var $author$project$Sharecrop$Types$OpenTaskClicked = function (a) {
@@ -17048,6 +17206,33 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 	var _v0 = state.detail;
 	if (_v0.$ === 'Just') {
 		var detail = _v0.a;
+		var canRefund = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen);
+		var canOpen = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft);
+		var buttons = canOpen ? _List_fromArray(
+			[
+				A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Sharecrop$Types$OpenTaskClicked(detail.id)),
+						$author$project$Sharecrop$Ui$testId('open-task')
+					]),
+				'Open')
+			]) : (canRefund ? _List_fromArray(
+			[
+				A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
+						$author$project$Sharecrop$Ui$testId('refund-task')
+					]),
+				'Refund')
+			]) : _List_Nil);
 		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
 				[
@@ -17070,29 +17255,7 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 						[
 							$elm$html$Html$Attributes$class('flex gap-2')
 						]),
-					_List_fromArray(
-						[
-							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Events$onClick(
-									$author$project$Sharecrop$Types$OpenTaskClicked(detail.id)),
-									$author$project$Sharecrop$Ui$testId('open-task')
-								]),
-							'Open'),
-							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Events$onClick(
-									$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
-									$author$project$Sharecrop$Ui$testId('refund-task')
-								]),
-							'Refund')
-						])),
+					buttons),
 					A2($author$project$Sharecrop$View$maybeNote, state.taskActionMessage, 'task-action-message')
 				]));
 	} else {
@@ -17750,7 +17913,8 @@ var $author$project$Sharecrop$View$submitCard = function (state) {
 	if (_v0.$ === 'Nothing') {
 		return $elm$html$Html$text('');
 	} else {
-		return $author$project$Sharecrop$View$submitCardForm(state);
+		var detail = _v0.a;
+		return _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen) ? $author$project$Sharecrop$View$submitCardForm(state) : $elm$html$Html$text('');
 	}
 };
 var $author$project$Sharecrop$Types$AddTaskCommentClicked = function (a) {
@@ -18137,17 +18301,33 @@ var $author$project$Sharecrop$View$teamDetailView = F2(
 									A2($author$project$Sharecrop$View$collectiblesHoldingsList, 'team-collectibles', state.teamCollectibles)
 								]));
 					} else {
-						return A2(
-							$elm$html$Html$p,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('text-sm text-slate-500'),
-									$author$project$Sharecrop$Ui$testId('team-detail-missing')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Loading team ' + (teamId + '…'))
-								]));
+						var _v1 = state.teamDetailError;
+						if (_v1.$ === 'Just') {
+							var message = _v1.a;
+							return A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-sm text-slate-700'),
+										$author$project$Sharecrop$Ui$testId('team-detail-missing')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Could not load this team: ' + message)
+									]));
+						} else {
+							return A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+										$author$project$Sharecrop$Ui$testId('team-detail-missing')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Loading team ' + (teamId + '…'))
+									]));
+						}
 					}
 				}()
 				]));
@@ -18334,16 +18514,32 @@ var $author$project$Sharecrop$View$userDetailView = F3(
 										},
 										profile.tasks));
 							} else {
-								return A2(
-									$elm$html$Html$p,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$class('text-sm text-slate-500')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('Loading…')
-										]));
+								var _v1 = state.userProfileError;
+								if (_v1.$ === 'Just') {
+									var message = _v1.a;
+									return A2(
+										$elm$html$Html$p,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-sm text-slate-700'),
+												$author$project$Sharecrop$Ui$testId('user-profile-error')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Could not load this user: ' + message)
+											]));
+								} else {
+									return A2(
+										$elm$html$Html$p,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-sm text-slate-500')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Loading…')
+											]));
+								}
 							}
 						}()
 						])),

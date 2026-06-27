@@ -155,7 +155,7 @@
   }
 
   const db = {
-    balance: 1240,
+    balance: 1250,
     ledger: [
       { id: "entry-1", kind: "signup_grant", amount: 1500, task_id: "" },
       { id: "entry-2", kind: "task_escrow", amount: -260, task_id: "task-5" },
@@ -514,7 +514,7 @@
     funderAdjust(t, released);
     db.ledger.push({ id: nextId("entry"), kind: "task_refund", amount: released, task_id: t.id });
     t.escrow = 0; t.state = "cancelled"; t.availability_kind = "closed";
-    return ok({ task_id: t.id, amount: 0, state: "refunded" });
+    return ok({ task_id: t.id, amount: released, state: "refunded" });
   });
   on("POST", "/api/tasks/:id/funding", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
@@ -546,6 +546,8 @@
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     if (t.state !== "open") return err(409, "only open tasks can be reserved");
     if (t.participation_policy === "open") return err(409, "task does not require reservation");
+    // Mirrors the real backend: only user-scoped tasks accept user reservations.
+    if ((t.assignee_scope || "user") !== "user") return err(409, "this task does not accept user reservations");
     if (t.created_by === ME) return err(409, "task requester cannot reserve their own task");
     const state = t.participation_policy === "approval_required" ? "requested" : "active";
     const r = { id: nextId("res"), task_id: t.id, assignee_kind: "user", assignee_id: ME, state, requested_by: ME };
@@ -556,8 +558,12 @@
   on("GET", "/api/tasks/:id/reservations", (p) => { const t = findTask(p.id); return t ? ok({ reservations: t.reservations }) : err(404, "task not found"); });
   const reservationChange = (state, availability) => (p) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
+    // Mirrors the real backend: approve/decline/cancel are requester-only.
+    if (t.created_by !== ME) return err(403, "only the task requester can change reservations");
     const r = t.reservations.find((x) => x.id === p.rid);
     if (!r) return err(404, "reservation not found");
+    // Only pending/active reservations can transition (matches the store guard).
+    if (r.state !== "requested" && r.state !== "active") return err(409, "reservation is not pending or active");
     r.state = state; if (availability) t.availability_kind = availability;
     return ok(r);
   };
@@ -608,29 +614,35 @@
     const s = t.submissions.find((x) => x.id === p.sid);
     if (!s) return err(404, "submission not found");
     if (s.state !== "submitted") return err(409, "only submitted work can be reviewed");
+    // Mirrors the real backend: review actions require an open task.
+    if (t.state !== "open") return err(409, "only open tasks can be reviewed");
     s.state = state; s.review_note = (body && body.review_note) || "";
-    t.availability_kind = availability;
     const reservation = t.reservations.find((r) => r.assignee_id === s.submitter_id);
     let payout = 0;
     let tip = 0;
+    let payoutKind = "none";
     if (state === "changes_requested") {
       // Return the worker to an active reservation so they can resubmit; escrow
-      // stays held and no credits move.
+      // stays held and no credits move. The task stays open and reserved.
       if (reservation) reservation.state = "active";
+      t.availability_kind = availability;
     } else {
       // Rejected: optional partial credit to the worker, the rest refunded, and
-      // an optional tip charged from the requester balance.
+      // an optional tip charged from the requester balance. Unlike accept, a
+      // rejected task stays OPEN (mirrors the real backend's closeTask: false)
+      // and the rejected worker's reservation is released.
       const escrow = t.escrow || 0;
       payout = Math.min((body && body.partial_credit_amount) || 0, escrow);
       const refund = Math.max(0, escrow - payout);
       tip = (body && body.tip_amount) || 0;
-      if (payout > 0) pushLedger("task_payout", -payout, t.id);
+      if (payout > 0) { pushLedger("task_payout", -payout, t.id); payoutKind = "credit"; }
       if (refund > 0) { funderAdjust(t, refund); pushLedger("task_refund", refund, t.id); }
       if (tip > 0) { funderAdjust(t, -tip); pushLedger("task_tip", -tip, t.id); }
       t.escrow = 0;
-      t.state = "closed";
+      if (reservation) reservation.state = "cancelled_by_requester";
+      t.availability_kind = availability;
     }
-    return ok({ task_id: t.id, submission_id: s.id, state, review_note: s.review_note, payout_kind: t.reward_kind, payout_amount: payout, worker_user_id: s.submitter_id, tip_amount: tip });
+    return ok({ task_id: t.id, submission_id: s.id, state, review_note: s.review_note, payout_kind: payoutKind, payout_amount: payout, worker_user_id: payout > 0 ? s.submitter_id : "", tip_amount: tip });
   };
   on("POST", "/api/tasks/:id/submissions/:sid/accept", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
@@ -642,17 +654,18 @@
     const payout = Math.min((body && body.payout_amount) || t.reward_credit_amount || 0, escrow);
     const refund = Math.max(0, escrow - payout);
     const tip = (body && body.tip_amount) || 0;
+    let payoutKind = "none";
     // The escrow was deducted from the requester wallet at funding time, so a
     // payout leaves the held escrow (no balance change), an unpaid remainder is
     // refunded, and a tip is charged from the current balance. Ledger entries
     // make all of this visible.
-    if (payout > 0) pushLedger("task_payout", -payout, t.id);
+    if (payout > 0) { pushLedger("task_payout", -payout, t.id); payoutKind = "credit"; }
     if (refund > 0) { funderAdjust(t, refund); pushLedger("task_refund", refund, t.id); }
     if (tip > 0) { funderAdjust(t, -tip); pushLedger("task_tip", -tip, t.id); }
     s.state = "accepted"; t.escrow = 0; t.availability_kind = "closed"; t.state = "closed";
-    return ok({ task_id: t.id, submission_id: s.id, payout_kind: t.reward_kind, payout_amount: payout, worker_user_id: s.submitter_id, collectible_ids: [], tip_amount: tip });
+    return ok({ task_id: t.id, submission_id: s.id, payout_kind: payoutKind, payout_amount: payout, worker_user_id: payout > 0 ? s.submitter_id : "", collectible_ids: [], tip_amount: tip });
   });
-  on("POST", "/api/tasks/:id/submissions/:sid/reject", decide("rejected", "closed"));
+  on("POST", "/api/tasks/:id/submissions/:sid/reject", decide("rejected", "available"));
   on("POST", "/api/tasks/:id/submissions/:sid/request-changes", decide("changes_requested", "reserved"));
   on("POST", "/api/tasks/:id/capability-tokens", (p) => ok({ id: nextId("cap"), task_id: p.id, state: "active", token: "demo-capability-" + nextId("tok") }, 201));
 
@@ -688,7 +701,7 @@
     const recipientKind = (body && body.recipient_kind) || "user";
     const recipientId = (body && body.recipient_id) || "";
     if (recipientId === "") return err(400, "recipient is required");
-    const c = { id: nextId("col"), name: entry.name, kind: entry.kind, state: "minted", transfer_policy: entry.transfer_policy, owner_id: recipientId, owner_kind: recipientKind, art: entry.art };
+    const c = { id: nextId("col"), name: entry.name, kind: entry.kind, state: "awarded", transfer_policy: entry.transfer_policy, owner_id: recipientId, owner_kind: recipientKind, art: entry.art };
     db.collectibles.push(c);
     return ok(c, 201);
   });
@@ -751,7 +764,7 @@
     return ok(seriesDetail(s), 201);
   });
   on("GET", "/api/task-series/:id", (p) => { const s = findSeries(p.id); return s ? ok(seriesDetail(s)) : err(404, "series not found"); });
-  on("PATCH", "/api/task-series/:id", (p, _url, body) => { const s = findSeries(p.id); if (!s) return err(404, "series not found"); s.title = (body && body.title) || s.title; s.description = (body && body.description) || ""; return ok(seriesDetail(s)); });
+  on("PATCH", "/api/task-series/:id", (p, _url, body) => { const s = findSeries(p.id); if (!s) return err(404, "series not found"); s.title = (body && body.title) || s.title; s.description = body && Object.prototype.hasOwnProperty.call(body, "description") ? body.description : s.description; return ok(seriesDetail(s)); });
   const setSeriesState = (state) => (p) => { const s = findSeries(p.id); if (!s) return err(404, "series not found"); s.state = state; return ok(seriesDetail(s)); };
   on("POST", "/api/task-series/:id/publish", setSeriesState("published"));
   on("POST", "/api/task-series/:id/unpublish", setSeriesState("draft"));

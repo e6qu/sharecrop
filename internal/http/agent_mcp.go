@@ -299,9 +299,9 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxMCPBodyBytes))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMCPBodyBytes))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "request body could not be read")
+		writeError(w, http.StatusRequestEntityTooLarge, "request body exceeds the MCP size limit")
 		return
 	}
 	requestInfo := classifyMCPBody(body)

@@ -435,19 +435,6 @@ func parseAdminUserIDs(raw string) map[string]bool {
 	return admins
 }
 
-// requireAdmin resolves a request to a platform-admin user subject, rejecting
-// authenticated-but-non-admin users with a forbidden result.
-func (server Server) requireAdmin(r *http.Request) userSubjectResult {
-	accepted, matched := server.requireUserSubject(r).(userSubjectAccepted)
-	if !matched {
-		return userSubjectRejected{reason: "a user access token is required"}
-	}
-	if !server.adminUserIDs[accepted.subject.ID.String()] {
-		return userSubjectRejected{reason: "this action requires a platform administrator"}
-	}
-	return accepted
-}
-
 // requireWorkerSubject resolves a request to an acting user subject from either
 // a user access token or an agent credential that holds the required scope. This
 // lets a single agent token drive the worker REST endpoints as well as MCP (an
