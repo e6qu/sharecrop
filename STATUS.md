@@ -1,12 +1,10 @@
 # Status
 
-The repository contains pull request 1 through pull request 62 work, merged into `main`.
+The repository contains pull request 1 through pull request 64 work, merged into `main`.
 
-Active task:
+No active task. The most recent work was `task/polish-bugfix-uiux-review` (PR #64), a combined bug-sweep + UI/UX review pass driven by three parallel review agents (Go backend, demo drift, Elm client). See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
 
-- Active branch `task/polish-bugfix-uiux-review` is a combined bug-sweep + UI/UX review pass (three parallel review agents: Go backend, demo drift, Elm client). Fixes are in; tests green. See [WHAT_WE_DID.md](./WHAT_WE_DID.md).
-
-Implemented in `task/polish-bugfix-uiux-review`:
+Implemented in `task/polish-bugfix-uiux-review` (merged, PR #64):
 
 - **Elm UI state-leak family (HIGH):** the review form (note / partial credit / tip / ban) no longer carries across task→task navigation, across discovery→detail, or from one submission to the next within a task — it is reset in `enterPage` (TaskDetailPage), `DiscoveryViewClicked`, and the `ReviewActionReceived` Ok branch. Added missing `enterPage` resets for `CollectiblesPage`, `CreateTaskPage`, and `FundingPage` (award/mint/create/fund messages and drafts no longer reappear on return).
 - **Stale detail after refund (HIGH):** `RefundTaskReceived` now refetches the task detail (was leaving the badge on open/funded after refund).
@@ -16,8 +14,7 @@ Implemented in `task/polish-bugfix-uiux-review`:
 - **Go backend:** deleted dead `requireAdmin` (the admin gate is inline in `collectibles.go`); `writeSeriesDetailStatus` now propagates a `ListSeriesComments` rejection via `writeDomainError` instead of swallowing it and returning empty; the receipt-status handler routes through `writeDomainError` (was a hardcoded 404); the MCP `/mcp` body read uses `http.MaxBytesReader` so an oversized body returns 413 instead of being silently truncated into a "not valid JSON-RPC" 400.
 - **Demo fidelity (`site/demo/backend.js`):** reject no longer closes the task (matches prod's `closeTask: false`) and now releases the rejected worker's reservation to `cancelled_by_requester`; reject/request-changes now require an open task; `payout_kind` reflects the actual payout (not the reward kind) and `worker_user_id` is populated only when a payout matched; refund returns the released `amount` (was 0); the ledger seed reconciles with the balance (1250, was off by 10); PATCH task-series no longer wipes the description when the field is omitted; awarded collectibles use `state: "awarded"` (was "minted").
 - **Load-vs-error + validation follow-ups:** the load-vs-error distinction now covers TeamDetail, SeriesDetail, and UserProfile (each renders its error instead of a perpetual "Loading…"). The demo `reserve`/`reservationChange` handlers now enforce the assignee-scope and requester-only-ownership guards plus the pending/active transition window, matching prod. The submit form rejects empty/non-JSON input client-side; the fund form rejects non-positive amounts.
-- A visual screenshot review was generated to `/tmp/sharecrop-review-screens` but could not be inspected by the agent (no image input); the user should review those captures.
-- Deferred (noted in BUGS/DO_NEXT): assorted `type_ "button"` and free-text-id → picker follow-ups.
+- Deferred (noted in DO_NEXT): assorted `type_ "button"` and free-text-id → picker follow-ups.
 
 Implemented in `task/backlog-cleanup` (merged, PR #63):
 
