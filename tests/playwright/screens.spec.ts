@@ -42,6 +42,28 @@ async function loginViaUi(
   await page.getByTestId("login").click();
 }
 
+async function openTaskFromDiscovery(
+  page: {
+    goto: (u: string) => Promise<unknown>;
+    getByTestId: (
+      id: string,
+    ) => {
+      fill: (v: string) => Promise<void>;
+      click: () => Promise<void>;
+      filter: (opts: { hasText: string }) => {
+        getByTestId: (id: string) => { click: () => Promise<void> };
+      };
+    };
+  },
+  email: string,
+  title: string,
+): Promise<void> {
+  await loginViaUi(page, email);
+  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("discovery-task-row").filter({ hasText: title })
+    .getByTestId("discovery-view").click();
+}
+
 test("agents discover, submit to, and have a task accepted through the browser", async ({ page, request }) => {
   const owner = await registerViaApi(request, "screens-owner");
   const title = `Discoverable ${crypto.randomUUID()}`;
@@ -685,4 +707,86 @@ test("owner and worker exchange comments on a submission", async ({ page, reques
   await expect(page.getByTestId("submission-comment")).toContainText(
     "Could you clarify step 2?",
   );
+});
+
+test("an owner cancels a no-reward task through the owner controls", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "cancel-owner");
+  const title = `Cancellable ${crypto.randomUUID()}`;
+
+  // A no-reward public task can be opened without funding.
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 0),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+  await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+
+  await openTaskFromDiscovery(page, owner.email, title);
+
+  // A no-reward open task exposes Cancel (Refund is hidden because there is no escrow).
+  await expect(page.getByTestId("cancel-task")).toBeVisible();
+  await expect(page.getByTestId("refund-task")).toHaveCount(0);
+  await page.getByTestId("cancel-task").click();
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "cancelled",
+  );
+});
+
+test("an owner tips a collectible on accept through the review form", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "ctip-owner");
+  const worker = await registerViaApi(request, "ctip-worker");
+  const title = `Tip-collectible ${crypto.randomUUID()}`;
+
+  // A transferable collectible the owner will tip (non-transferable is refused).
+  const mintResponse = await request.post("/api/collectibles", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {
+      name: "Gratitude token",
+      kind: "badge",
+      transfer_policy: "transferable_between_users",
+    },
+  });
+  expect(mintResponse.ok()).toBeTruthy();
+  const tip = (await mintResponse.json()) as { id: string };
+
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 20),
+  });
+  const task = (await taskResponse.json()) as TaskBody;
+  await request.post(`/api/tasks/${task.id}/funding`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { amount: 20, idempotency_key: `fund:${task.id}` },
+  });
+  await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+
+  // Worker submits.
+  await openTaskFromDiscovery(page, worker.email, title);
+  await page.getByTestId("detail-submit-input").fill('{"answer":"done"}');
+  await page.getByTestId("detail-submit").click();
+  await expect(page.getByTestId("detail-submit-message")).toBeVisible();
+
+  // Owner accepts with the collectible selected as a tip.
+  await page.getByTestId("logout").click();
+  await openTaskFromDiscovery(page, owner.email, title);
+  await expect(page.getByTestId("submission-row")).toHaveCount(1);
+  await page.getByTestId("review-tip-collectible").selectOption(tip.id);
+  await page.getByTestId("accept-submission").click();
+  await expect(page.getByTestId("review-message")).toContainText(
+    "Review saved.",
+  );
+
+  // The tipped collectible left the owner's holdings.
+  const holdings = await request.get("/api/collectibles", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+  });
+  const owned = (await holdings.json()) as { collectibles: { id: string }[] };
+  expect(owned.collectibles.find((c) => c.id === tip.id)).toBeUndefined();
 });

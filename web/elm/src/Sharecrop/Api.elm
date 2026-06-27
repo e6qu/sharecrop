@@ -172,7 +172,7 @@ acceptCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
 acceptCommand model state submissionId =
     case state.page of
         TaskDetailPage taskId ->
-            ( updateLoggedIn model (\current -> { current | reviewMessage = Nothing }), postAccept state.accessToken taskId submissionId state.reviewPartialCredit state.reviewTip )
+            ( updateLoggedIn model (\current -> { current | reviewMessage = Nothing }), postAccept state.accessToken taskId submissionId state.reviewPartialCredit state.reviewTip state.reviewTipCollectibleId )
 
         _ ->
             ( model, Cmd.none )
@@ -582,6 +582,24 @@ postRefundTask token taskId =
         (Http.expectJson RefundTaskReceived Ledger.taskEscrowResponseDecoder)
 
 
+postCancelTask : String -> String -> Cmd Msg
+postCancelTask token taskId =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/cancel")
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson CancelTaskReceived taskDetailDecoder)
+
+
+postRefundCollectibleReward : String -> String -> Cmd Msg
+postRefundCollectibleReward token taskId =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/collectible-refund")
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson RefundCollectibleRewardReceived Collectible.collectiblesResponseDecoder)
+
+
 postReservation : String -> String -> Cmd Msg
 postReservation token taskId =
     authorizedRequest "POST"
@@ -636,12 +654,12 @@ postSubmission token taskId responseJson =
         (Http.expectJson SubmitReceived Submission.submissionCreatedResponseDecoder)
 
 
-postAccept : String -> String -> String -> String -> String -> Cmd Msg
-postAccept token taskId submissionId payoutAmount tipAmount =
+postAccept : String -> String -> String -> String -> String -> String -> Cmd Msg
+postAccept token taskId submissionId payoutAmount tipAmount tipCollectibleId =
     authorizedRequest "POST"
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/accept")
-        (Http.jsonBody (acceptRequestBody submissionId payoutAmount tipAmount))
+        (Http.jsonBody (acceptRequestBody submissionId payoutAmount tipAmount tipCollectibleId))
         (Http.expectWhatever ReviewActionReceived)
 
 
@@ -979,12 +997,13 @@ submissionRequestBody responseJson =
         ]
 
 
-acceptRequestBody : String -> String -> String -> Encode.Value
-acceptRequestBody submissionId payoutAmount tipAmount =
+acceptRequestBody : String -> String -> String -> String -> Encode.Value
+acceptRequestBody submissionId payoutAmount tipAmount tipCollectibleId =
     Encode.object
         [ ( "idempotency_key", Encode.string ("ui-accept:" ++ submissionId) )
         , ( "payout_amount", Encode.int (intInputOrZero payoutAmount) )
         , ( "tip_amount", Encode.int (intInputOrZero tipAmount) )
+        , ( "tip_collectible_id", Encode.string tipCollectibleId )
         ]
 
 

@@ -6354,8 +6354,8 @@ var $elm$json$Json$Encode$object = function (pairs) {
 			pairs));
 };
 var $elm$json$Json$Encode$string = _Json_wrap;
-var $author$project$Sharecrop$Api$acceptRequestBody = F3(
-	function (submissionId, payoutAmount, tipAmount) {
+var $author$project$Sharecrop$Api$acceptRequestBody = F4(
+	function (submissionId, payoutAmount, tipAmount, tipCollectibleId) {
 		return $elm$json$Json$Encode$object(
 			_List_fromArray(
 				[
@@ -6369,7 +6369,10 @@ var $author$project$Sharecrop$Api$acceptRequestBody = F3(
 					_Utils_Tuple2(
 					'tip_amount',
 					$elm$json$Json$Encode$int(
-						$author$project$Sharecrop$Api$intInputOrZero(tipAmount)))
+						$author$project$Sharecrop$Api$intInputOrZero(tipAmount))),
+					_Utils_Tuple2(
+					'tip_collectible_id',
+					$elm$json$Json$Encode$string(tipCollectibleId))
 				]));
 	});
 var $elm$http$Http$Header = F2(
@@ -6416,15 +6419,15 @@ var $elm$http$Http$jsonBody = function (value) {
 		'application/json',
 		A2($elm$json$Json$Encode$encode, 0, value));
 };
-var $author$project$Sharecrop$Api$postAccept = F5(
-	function (token, taskId, submissionId, payoutAmount, tipAmount) {
+var $author$project$Sharecrop$Api$postAccept = F6(
+	function (token, taskId, submissionId, payoutAmount, tipAmount, tipCollectibleId) {
 		return A5(
 			$author$project$Sharecrop$Api$authorizedRequest,
 			'POST',
 			token,
 			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/accept'))),
 			$elm$http$Http$jsonBody(
-				A3($author$project$Sharecrop$Api$acceptRequestBody, submissionId, payoutAmount, tipAmount)),
+				A4($author$project$Sharecrop$Api$acceptRequestBody, submissionId, payoutAmount, tipAmount, tipCollectibleId)),
 			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$ReviewActionReceived));
 	});
 var $author$project$Sharecrop$Api$updateLoggedIn = F2(
@@ -6456,7 +6459,7 @@ var $author$project$Sharecrop$Api$acceptCommand = F3(
 							current,
 							{reviewMessage: $elm$core$Maybe$Nothing});
 					}),
-				A5($author$project$Sharecrop$Api$postAccept, state.accessToken, taskId, submissionId, state.reviewPartialCredit, state.reviewTip));
+				A6($author$project$Sharecrop$Api$postAccept, state.accessToken, taskId, submissionId, state.reviewPartialCredit, state.reviewTip, state.reviewTipCollectibleId));
 		} else {
 			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
@@ -7787,7 +7790,7 @@ var $author$project$Main$enterPage = F2(
 			case 'TaskDetailPage':
 				return _Utils_update(
 					state,
-					{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, detailError: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, reviewBan: false, reviewMessage: $elm$core$Maybe$Nothing, reviewNote: '', reviewPartialCredit: '', reviewTip: '', submissionCommentBody: '', submissionCommentMessage: $elm$core$Maybe$Nothing, submissionComments: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskCommentMessage: $elm$core$Maybe$Nothing, taskComments: _List_Nil, taskIntegrationOpen: false});
+					{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, detailError: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, reviewBan: false, reviewMessage: $elm$core$Maybe$Nothing, reviewNote: '', reviewPartialCredit: '', reviewTip: '', reviewTipCollectibleId: '', submissionCommentBody: '', submissionCommentMessage: $elm$core$Maybe$Nothing, submissionComments: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskCommentMessage: $elm$core$Maybe$Nothing, taskComments: _List_Nil, taskIntegrationOpen: false});
 			case 'CollectiblesPage':
 				return _Utils_update(
 					state,
@@ -8335,6 +8338,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		reviewNote: '',
 		reviewPartialCredit: '',
 		reviewTip: '',
+		reviewTipCollectibleId: '',
 		seriesCommentBody: '',
 		seriesDetail: $elm$core$Maybe$Nothing,
 		seriesDetailError: $elm$core$Maybe$Nothing,
@@ -8650,6 +8654,20 @@ var $author$project$Sharecrop$Api$postAuth = F2(
 				url: url
 			});
 	});
+var $author$project$Sharecrop$Types$CancelTaskReceived = function (a) {
+	return {$: 'CancelTaskReceived', a: a};
+};
+var $author$project$Sharecrop$Api$postCancelTask = F2(
+	function (token, taskId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/tasks/' + (taskId + '/cancel'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(_List_Nil)),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CancelTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+	});
 var $author$project$Sharecrop$Types$LogoutReceived = function (a) {
 	return {$: 'LogoutReceived', a: a};
 };
@@ -8672,6 +8690,20 @@ var $author$project$Sharecrop$Api$postOpenTask = F2(
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OpenTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+	});
+var $author$project$Sharecrop$Types$RefundCollectibleRewardReceived = function (a) {
+	return {$: 'RefundCollectibleRewardReceived', a: a};
+};
+var $author$project$Sharecrop$Api$postRefundCollectibleReward = F2(
+	function (token, taskId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/tasks/' + (taskId + '/collectible-refund'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(_List_Nil)),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$RefundCollectibleRewardReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$RefundTaskReceived = function (a) {
 	return {$: 'RefundTaskReceived', a: a};
@@ -10635,6 +10667,93 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'CancelTaskClicked':
+				var taskId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A2($author$project$Sharecrop$Api$postCancelTask, state.accessToken, taskId));
+					});
+			case 'CancelTaskReceived':
+				if (msg.a.$ === 'Ok') {
+					var detail = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										detail: $elm$core$Maybe$Just(detail),
+										taskActionMessage: $elm$core$Maybe$Just('Task cancelled.')
+									});
+							}),
+						$author$project$Sharecrop$Api$refreshTasksAndDiscovery(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										taskActionMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'RefundCollectibleRewardClicked':
+				var taskId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A2($author$project$Sharecrop$Api$postRefundCollectibleReward, state.accessToken, taskId));
+					});
+			case 'RefundCollectibleRewardReceived':
+				if (msg.a.$ === 'Ok') {
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										taskActionMessage: $elm$core$Maybe$Just('Collectible reward refunded.')
+									});
+							}),
+						$elm$core$Platform$Cmd$batch(
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Api$refreshAfterAccept(model),
+									$author$project$Sharecrop$Api$refreshCollectibles(model)
+								])));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										taskActionMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'AgentLabelChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -10864,7 +10983,7 @@ var $author$project$Main$update = F2(
 						function (s) {
 							return _Utils_update(
 								s,
-								{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, detailError: $elm$core$Maybe$Nothing, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, reviewBan: false, reviewMessage: $elm$core$Maybe$Nothing, reviewNote: '', reviewPartialCredit: '', reviewTip: '', submissionCommentBody: '', submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
+								{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, detailError: $elm$core$Maybe$Nothing, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, reviewBan: false, reviewMessage: $elm$core$Maybe$Nothing, reviewNote: '', reviewPartialCredit: '', reviewTip: '', reviewTipCollectibleId: '', submissionCommentBody: '', submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskComments: _List_Nil, taskIntegrationOpen: false});
 						}),
 					A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/tasks/' + taskId));
 			case 'DetailReceived':
@@ -11146,6 +11265,18 @@ var $author$project$Main$update = F2(
 								{reviewTip: value});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'ReviewTipCollectibleChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{reviewTipCollectibleId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'ReviewBanChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -11196,7 +11327,8 @@ var $author$project$Main$update = F2(
 										reviewMessage: $elm$core$Maybe$Just('Review saved.'),
 										reviewNote: '',
 										reviewPartialCredit: '',
-										reviewTip: ''
+										reviewTip: '',
+										reviewTipCollectibleId: ''
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshAfterAccept(model));
@@ -17182,8 +17314,14 @@ var $author$project$Sharecrop$View$detailCard = F2(
 			}
 		}
 	});
+var $author$project$Sharecrop$Types$CancelTaskClicked = function (a) {
+	return {$: 'CancelTaskClicked', a: a};
+};
 var $author$project$Sharecrop$Types$OpenTaskClicked = function (a) {
 	return {$: 'OpenTaskClicked', a: a};
+};
+var $author$project$Sharecrop$Types$RefundCollectibleRewardClicked = function (a) {
+	return {$: 'RefundCollectibleRewardClicked', a: a};
 };
 var $author$project$Sharecrop$Types$RefundTaskClicked = function (a) {
 	return {$: 'RefundTaskClicked', a: a};
@@ -17206,33 +17344,59 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 	var _v0 = state.detail;
 	if (_v0.$ === 'Just') {
 		var detail = _v0.a;
-		var canRefund = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen);
-		var canOpen = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft);
-		var buttons = canOpen ? _List_fromArray(
-			[
-				A2(
-				$author$project$Sharecrop$Ui$secondaryButton,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('button'),
-						$elm$html$Html$Events$onClick(
-						$author$project$Sharecrop$Types$OpenTaskClicked(detail.id)),
-						$author$project$Sharecrop$Ui$testId('open-task')
-					]),
-				'Open')
-			]) : (canRefund ? _List_fromArray(
-			[
-				A2(
-				$author$project$Sharecrop$Ui$secondaryButton,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('button'),
-						$elm$html$Html$Events$onClick(
-						$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
-						$author$project$Sharecrop$Ui$testId('refund-task')
-					]),
-				'Refund')
-			]) : _List_Nil);
+		var hasCreditReward = (detail.rewardKind === 'credit') || (detail.rewardKind === 'bundle');
+		var hasCollectibleReward = (detail.rewardKind === 'collectible') || (detail.rewardKind === 'bundle');
+		var draftOrOpen = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen);
+		var buttons = A2(
+			$elm$core$List$filterMap,
+			$elm$core$Basics$identity,
+			_List_fromArray(
+				[
+					_Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) ? $elm$core$Maybe$Just(
+					A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Sharecrop$Types$OpenTaskClicked(detail.id)),
+								$author$project$Sharecrop$Ui$testId('open-task')
+							]),
+						'Open')) : $elm$core$Maybe$Nothing,
+					(_Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || (_Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen) && (detail.rewardKind === 'none'))) ? $elm$core$Maybe$Just(
+					A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Sharecrop$Types$CancelTaskClicked(detail.id)),
+								$author$project$Sharecrop$Ui$testId('cancel-task')
+							]),
+						'Cancel')) : $elm$core$Maybe$Nothing,
+					(draftOrOpen && hasCreditReward) ? $elm$core$Maybe$Just(
+					A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
+								$author$project$Sharecrop$Ui$testId('refund-task')
+							]),
+						'Refund credits')) : $elm$core$Maybe$Nothing,
+					(draftOrOpen && hasCollectibleReward) ? $elm$core$Maybe$Just(
+					A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Sharecrop$Types$RefundCollectibleRewardClicked(detail.id)),
+								$author$project$Sharecrop$Ui$testId('refund-collectible')
+							]),
+						'Refund collectible')) : $elm$core$Maybe$Nothing
+				]));
 		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
 				[
@@ -17253,7 +17417,7 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('flex gap-2')
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
 						]),
 					buttons),
 					A2($author$project$Sharecrop$View$maybeNote, state.taskActionMessage, 'task-action-message')
@@ -17460,6 +17624,9 @@ var $author$project$Sharecrop$Types$ReviewPartialCreditChanged = function (a) {
 var $author$project$Sharecrop$Types$ReviewTipChanged = function (a) {
 	return {$: 'ReviewTipChanged', a: a};
 };
+var $author$project$Sharecrop$Types$ReviewTipCollectibleChanged = function (a) {
+	return {$: 'ReviewTipCollectibleChanged', a: a};
+};
 var $author$project$Sharecrop$View$reviewControls = function (state) {
 	return A2(
 		$elm$html$Html$div,
@@ -17585,6 +17752,64 @@ var $author$project$Sharecrop$View$reviewControls = function (state) {
 									]),
 								'Ban implementor')
 							]))
+					])),
+				A2(
+				$elm$html$Html$label,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('grid gap-1')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-xs font-semibold text-slate-600')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Tip a collectible (optional)')
+							])),
+						A2(
+						$elm$html$Html$select,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+								$elm$html$Html$Attributes$value(state.reviewTipCollectibleId),
+								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$ReviewTipCollectibleChanged),
+								$author$project$Sharecrop$Ui$testId('review-tip-collectible')
+							]),
+						A2(
+							$elm$core$List$cons,
+							A2(
+								$elm$html$Html$option,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$value('')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('No collectible tip')
+									])),
+							A2(
+								$elm$core$List$map,
+								function (c) {
+									return A2(
+										$elm$html$Html$option,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$value(c.id),
+												$elm$html$Html$Attributes$selected(
+												_Utils_eq(state.reviewTipCollectibleId, c.id))
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text(
+												c.name + (' · ' + $author$project$Sharecrop$Labels$collectibleKindLabel(c.kind)))
+											]));
+								},
+								state.collectibles)))
 					])),
 				A2($author$project$Sharecrop$View$maybeNote, state.reviewMessage, 'review-message')
 			]));

@@ -94,6 +94,7 @@ emptyLoggedIn response =
     , reviewNote = ""
     , reviewPartialCredit = ""
     , reviewTip = ""
+    , reviewTipCollectibleId = ""
     , reviewBan = False
     , reviewMessage = Nothing
     , collectibles = []
@@ -288,7 +289,7 @@ enterPage page state =
             -- not briefly show the prior task's badges, submissions, or comments.
             -- Review form fields are reset here too so the prior submission's
             -- note / partial credit / tip / ban does not carry over to the next.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -518,6 +519,28 @@ update msg model =
         RefundTaskReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
 
+        CancelTaskClicked taskId ->
+            Api.withSession model (\state -> ( model, Api.postCancelTask state.accessToken taskId ))
+
+        CancelTaskReceived (Ok detail) ->
+            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just "Task cancelled." })
+            , Api.refreshTasksAndDiscovery model
+            )
+
+        CancelTaskReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        RefundCollectibleRewardClicked taskId ->
+            Api.withSession model (\state -> ( model, Api.postRefundCollectibleReward state.accessToken taskId ))
+
+        RefundCollectibleRewardReceived (Ok _) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just "Collectible reward refunded." })
+            , Cmd.batch [ Api.refreshAfterAccept model, Api.refreshCollectibles model ]
+            )
+
+        RefundCollectibleRewardReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
+
         AgentLabelChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | agentLabel = value }), Cmd.none )
 
@@ -598,6 +621,7 @@ update msg model =
                         , reviewNote = ""
                         , reviewPartialCredit = ""
                         , reviewTip = ""
+                        , reviewTipCollectibleId = ""
                         , reviewBan = False
                         , reviewMessage = Nothing
                         , taskActionMessage = Nothing
@@ -681,6 +705,9 @@ update msg model =
         ReviewTipChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | reviewTip = value }), Cmd.none )
 
+        ReviewTipCollectibleChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | reviewTipCollectibleId = value }), Cmd.none )
+
         ReviewBanChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | reviewBan = value }), Cmd.none )
 
@@ -695,8 +722,8 @@ update msg model =
 
         ReviewActionReceived (Ok _) ->
             -- Clear the review form so the next submission in the list does not
-            -- inherit the previous one's note / partial credit / tip / ban.
-            ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just "Review saved.", reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewBan = False }), Api.refreshAfterAccept model )
+            -- inherit the previous one's note / partial credit / tip / collectible tip / ban.
+            ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just "Review saved.", reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False }), Api.refreshAfterAccept model )
 
         ReviewActionReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just (httpErrorLabel error) }), Cmd.none )

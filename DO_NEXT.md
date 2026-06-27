@@ -9,7 +9,7 @@ Agreed multi-PR roadmap (humans + agents get full lifecycle/feature parity). PR1
 - PR3 (mostly done): comments now exist on SERIES and TASKS. Remaining: a comment thread on a SUBMISSION so requester and worker can discuss a specific submission (two-way, not just the one-way `review_note`). Reuse the `task_comments` shape.
 - PR4 (descoped — do NOT propose a server-side scheduler): scheduling / recurrence is intentionally NOT a server feature. Decision (2026-06-25): recurring/scheduled task posting is the responsibility of a **local agent** (a client running a cron/work-loop that calls the existing MCP/API `create_task` + `open_task` + `fund_task` on its own cadence). The Sharecrop server stays request/response with no background job runner, `task_schedules` table, or recurrence model. If scheduling resurfaces, the answer is an agent-side recipe/example (e.g. a cron + MCP snippet in the docs), not a server scheduler.
 
-Smaller parity follow-ups noticed during the review (fold into the PR they fit, or a cleanup PR): the human accept flow cannot send a collectible tip though the API supports it; no UI to cancel a task, create/list standalone teams, deactivate an org member, or refund a collectible reward; no file/image attachment anywhere (only inline JSON payload + free-text).
+Smaller parity follow-ups noticed during the review (fold into the PR they fit, or a cleanup PR): the human accept flow cannot send a collectible tip though the API supports it [DONE in task/ui-cancel-collectible-tip]; no UI to cancel a task [DONE], create/list standalone teams, deactivate an org member, or refund a collectible reward [DONE]; no file/image attachment anywhere (only inline JSON payload + free-text).
 
 Polish follow-ups from `task/polish-bugfix-uiux-review`:
 
