@@ -12,6 +12,12 @@
 - **Reviews done.** Go backend lens (authz/IDOR, ledger, input bounds, dead code — clean apart from the items fixed), demo drift lens (state machine, economy, enum/shape, seeds), Elm client lens (state leak, stale data, dead controls, decoder/error, a11y). A visual screenshot set was generated to `/tmp/sharecrop-review-screens` but the agent could not inspect images; the user should review those captures.
 - **Deferred (recorded in BUGS/DO_NEXT):** Team/Series/User detail load-vs-error distinction (only TaskDetail was upgraded); demo `reservationChange`/reserve still skip the ownership + assignee-scope guards; `type_ "button"` on assorted secondary buttons and free-text-id → picker follow-ups.
 
+Follow-up commit on the same branch tackled the deferred load-vs-error and demo-guard items:
+
+- **Detail load-vs-error extended.** TeamDetail, SeriesDetail, and UserProfile now carry their own `*Error : Maybe String` field and render the error message on a failed/forbidden fetch instead of hanging on "Loading…". The `SeriesDetailReceived` handler was rewritten to a case (the `seriesRenameTitleFor`/`seriesRenameDescriptionFor` helpers became dead and were removed).
+- **Demo reservation guards.** `site/demo/backend.js` `reserve` now rejects non-user-scoped tasks ("this task does not accept user reservations"), and `reservationChange` requires the task requester (`created_by === ME`, else 403) and only transitions reservations in `requested`/`active` states (else 409) — matching the real backend's `changeReservationByRequester` + store guard.
+- **Client-side validation.** The submit form rejects empty or non-JSON input before posting; the fund form rejects non-positive amounts.
+
 `task/backlog-cleanup` cleared bounded backlog deferrals and applied a UI/UX + QA boyscout review (one background review agent):
 
 - **Admin-panel gating.** The auth response now carries a `role` ("admin"/"member", stamped from `SHARECROP_ADMIN_USER_IDS` in `writeAuthResponse`; contract field added as a string since the codebase bans `Bool` in contracts). The client stores `isAdmin` and **hides the "Admin: award" panel and the catalog Award buttons for non-admins** (the catalog stays browsable). The demo's auth role is `admin`, so the showcase keeps them.

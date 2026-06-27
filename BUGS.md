@@ -13,8 +13,6 @@ Test gaps:
 - Review tips are credit-only. Collectible or inventory-based tips remain deferred.
 - The asset economy is platform-only: user-issued tokens, organization-issued tokens, crypto rewards, and external wallets are not implemented. Current implemented rewards are Sharecrop credits and platform collectibles, including multiple collectibles per task.
 - Request/command contracts and HTTP contract fixture tests still need to expand as the API grows.
-- Detail-page load-vs-error distinction: the TaskDetail page now renders an error on a failed/forbidden fetch, but TeamDetail, SeriesDetail, and UserProfile still use `Result.toMaybe`, so an HTTP/decode error leaves them on a perpetual "Loading…" with no error shown.
-- The demo (`site/demo/backend.js`) `reservationChange` and `reserve` handlers skip the ownership and `assignee_scope == user` guards the real backend enforces, so the demo will approve an already-declined reservation, approve a reservation on someone else's task, or let a user reserve an `organization_team`-scoped task. Low impact (showcase-only) but a fidelity gap.
 
 Known risks:
 

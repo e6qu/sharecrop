@@ -108,7 +108,11 @@ fundTaskCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 fundTaskCommand model state =
     case String.toInt state.fundAmount of
         Just amount ->
-            ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount state.fundOrganizationId state.fundNonce )
+            if amount <= 0 then
+                ( updateLoggedIn model (\current -> { current | fundMessage = Just "Amount must be a positive number of credits." }), Cmd.none )
+
+            else
+                ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount state.fundOrganizationId state.fundNonce )
 
         Nothing ->
             ( updateLoggedIn model (\current -> { current | fundMessage = Just "Amount must be a whole number of credits." }), Cmd.none )
@@ -141,9 +145,24 @@ submitCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 submitCommand model state =
     case state.page of
         TaskDetailPage taskId ->
-            ( updateLoggedIn model (\current -> { current | submitMessage = Nothing })
-            , postSubmission state.accessToken taskId state.submitInput
-            )
+            let
+                trimmed =
+                    String.trim state.submitInput
+            in
+            -- Guard obviously-invalid input before hitting the server: the
+            -- response payload must be non-empty and parse as JSON.
+            if trimmed == "" then
+                ( updateLoggedIn model (\current -> { current | submitMessage = Just "Enter a response first." }), Cmd.none )
+
+            else
+                case Decode.decodeString Decode.value trimmed of
+                    Ok _ ->
+                        ( updateLoggedIn model (\current -> { current | submitMessage = Nothing })
+                        , postSubmission state.accessToken taskId trimmed
+                        )
+
+                    Err _ ->
+                        ( updateLoggedIn model (\current -> { current | submitMessage = Just "Response must be valid JSON." }), Cmd.none )
 
         _ ->
             ( model, Cmd.none )

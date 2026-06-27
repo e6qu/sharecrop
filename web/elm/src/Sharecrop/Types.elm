@@ -139,9 +139,11 @@ type alias LoggedInModel =
     , orgCollectibles : List Collectible.CollectibleResponse
     , teamCollectibles : List Collectible.CollectibleResponse
     , userProfile : Maybe Task.UserProfileResponse
+    , userProfileError : Maybe String
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
     , seriesDetail : Maybe SeriesDetailData
+    , seriesDetailError : Maybe String
     , seriesList : List TaskSeries.TaskSeriesResponse
     , createSeriesTitle : String
     , createSeriesDescription : String
@@ -151,6 +153,7 @@ type alias LoggedInModel =
     , seriesRenameTitle : String
     , seriesRenameDescription : String
     , teamDetail : Maybe Team.TeamDetailResponse
+    , teamDetailError : Maybe String
     , teamMemberEmail : String
     , teamMemberMessage : Maybe String
     , createOrgTeamName : String

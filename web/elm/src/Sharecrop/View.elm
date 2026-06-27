@@ -194,7 +194,12 @@ teamDetailView teamId state =
                     ]
 
             Nothing ->
-                p [ Html.Attributes.class "text-sm text-slate-500", testId "team-detail-missing" ] [ text ("Loading team " ++ teamId ++ "…") ]
+                case state.teamDetailError of
+                    Just message ->
+                        p [ Html.Attributes.class "text-sm text-slate-700", testId "team-detail-missing" ] [ text ("Could not load this team: " ++ message) ]
+
+                    Nothing ->
+                        p [ Html.Attributes.class "text-sm text-slate-500", testId "team-detail-missing" ] [ text ("Loading team " ++ teamId ++ "…") ]
         ]
 
 
@@ -306,7 +311,12 @@ seriesDetailView seriesId state =
                     ]
 
             Nothing ->
-                p [ Html.Attributes.class "mt-3 text-sm text-slate-500", testId "series-detail-missing" ] [ text ("Loading series " ++ seriesId ++ "…") ]
+                case state.seriesDetailError of
+                    Just message ->
+                        p [ Html.Attributes.class "mt-3 text-sm text-slate-700", testId "series-detail-missing" ] [ text ("Could not load this series: " ++ message) ]
+
+                    Nothing ->
+                        p [ Html.Attributes.class "mt-3 text-sm text-slate-500", testId "series-detail-missing" ] [ text ("Loading series " ++ seriesId ++ "…") ]
         ]
 
 
@@ -467,7 +477,12 @@ userDetailView origin userId state =
                             )
 
                 Nothing ->
-                    p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading…" ]
+                    case state.userProfileError of
+                        Just message ->
+                            p [ Html.Attributes.class "text-sm text-slate-700", testId "user-profile-error" ] [ text ("Could not load this user: " ++ message) ]
+
+                        Nothing ->
+                            p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading…" ]
             ]
             :: (if userId == state.subjectId then
                     [ userAgentAccessCard origin state ]

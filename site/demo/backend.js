@@ -546,6 +546,8 @@
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     if (t.state !== "open") return err(409, "only open tasks can be reserved");
     if (t.participation_policy === "open") return err(409, "task does not require reservation");
+    // Mirrors the real backend: only user-scoped tasks accept user reservations.
+    if ((t.assignee_scope || "user") !== "user") return err(409, "this task does not accept user reservations");
     if (t.created_by === ME) return err(409, "task requester cannot reserve their own task");
     const state = t.participation_policy === "approval_required" ? "requested" : "active";
     const r = { id: nextId("res"), task_id: t.id, assignee_kind: "user", assignee_id: ME, state, requested_by: ME };
@@ -556,8 +558,12 @@
   on("GET", "/api/tasks/:id/reservations", (p) => { const t = findTask(p.id); return t ? ok({ reservations: t.reservations }) : err(404, "task not found"); });
   const reservationChange = (state, availability) => (p) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
+    // Mirrors the real backend: approve/decline/cancel are requester-only.
+    if (t.created_by !== ME) return err(403, "only the task requester can change reservations");
     const r = t.reservations.find((x) => x.id === p.rid);
     if (!r) return err(404, "reservation not found");
+    // Only pending/active reservations can transition (matches the store guard).
+    if (r.state !== "requested" && r.state !== "active") return err(409, "reservation is not pending or active");
     r.state = state; if (availability) t.availability_kind = availability;
     return ok(r);
   };

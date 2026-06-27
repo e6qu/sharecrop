@@ -13,9 +13,7 @@ Smaller parity follow-ups noticed during the review (fold into the PR they fit, 
 
 Polish follow-ups from `task/polish-bugfix-uiux-review`:
 
-- Extend the detail load-vs-error distinction (now on TaskDetail only) to TeamDetail, SeriesDetail, and UserProfile — model `Nothing` / `Just (Err e)` / `Just (Ok x)` or add a `*Error : Maybe String` field.
-- Demo fidelity: add the ownership + `assignee_scope == user` guards to `site/demo/backend.js` `reservationChange` and `reserve` so the demo matches the real backend's preconditions.
-- UI minors: add `type_ "button"` to the remaining secondary buttons (latent today since none sit in a `<form>`); replace free-text org/team/scope id inputs with picker dropdowns; add client-side JSON validation to the submit form and a positive-amount guard to the fund form.
+- UI minors: add `type_ "button"` to the remaining secondary buttons (latent today since none sit in a `<form>`); replace free-text org/team/scope id inputs with picker dropdowns.
 
 Other queued work:
 

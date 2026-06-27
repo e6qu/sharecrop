@@ -120,9 +120,11 @@ emptyLoggedIn response =
     , orgCollectibles = []
     , teamCollectibles = []
     , userProfile = Nothing
+    , userProfileError = Nothing
     , userWork = []
     , userSubmissions = []
     , seriesDetail = Nothing
+    , seriesDetailError = Nothing
     , seriesList = []
     , createSeriesTitle = ""
     , createSeriesDescription = ""
@@ -132,6 +134,7 @@ emptyLoggedIn response =
     , seriesRenameTitle = ""
     , seriesRenameDescription = ""
     , teamDetail = Nothing
+    , teamDetailError = Nothing
     , teamMemberEmail = ""
     , teamMemberMessage = Nothing
     , createOrgTeamName = ""
@@ -260,7 +263,7 @@ enterPage page state =
             { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgCollectibles = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
-            { state | page = page, userProfile = Nothing }
+            { state | page = page, userProfile = Nothing, userProfileError = Nothing }
 
         UserWorkPage _ ->
             { state | page = page, userWork = [] }
@@ -272,10 +275,10 @@ enterPage page state =
             { state | page = page, seriesMessage = Nothing }
 
         SeriesDetailPage _ ->
-            { state | page = page, seriesDetail = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
+            { state | page = page, seriesDetail = Nothing, seriesDetailError = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
 
         TeamDetailPage _ ->
-            { state | page = page, teamDetail = Nothing, teamCollectibles = [], teamMemberEmail = "", teamMemberMessage = Nothing }
+            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamCollectibles = [], teamMemberEmail = "", teamMemberMessage = Nothing }
 
         CollectibleDetailPage _ ->
             { state | page = page, transferMessage = Nothing, transferRecipientId = "" }
@@ -823,7 +826,17 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgMembers = Api.membersFromResult result }), Cmd.none )
 
         UserProfileReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | userProfile = Result.toMaybe result }), Cmd.none )
+            ( Api.updateLoggedIn model
+                (\state ->
+                    case result of
+                        Ok profile ->
+                            { state | userProfile = Just profile, userProfileError = Nothing }
+
+                        Err error ->
+                            { state | userProfile = Nothing, userProfileError = Just (httpErrorLabel error) }
+                )
+            , Cmd.none
+            )
 
         UserWorkReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | userWork = Api.tasksFromResult result }), Cmd.none )
@@ -844,7 +857,17 @@ update msg model =
             Api.withSession model (\state -> Api.createSeriesCommand model state)
 
         SeriesDetailReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | seriesDetail = Result.toMaybe result, seriesRenameTitle = seriesRenameTitleFor result state.seriesRenameTitle, seriesRenameDescription = seriesRenameDescriptionFor result state.seriesRenameDescription }), Cmd.none )
+            ( Api.updateLoggedIn model
+                (\state ->
+                    case result of
+                        Ok data ->
+                            { state | seriesDetail = Just data, seriesDetailError = Nothing, seriesRenameTitle = data.series.title, seriesRenameDescription = data.series.description }
+
+                        Err error ->
+                            { state | seriesDetail = Nothing, seriesDetailError = Just (httpErrorLabel error) }
+                )
+            , Cmd.none
+            )
 
         SeriesMutationReceived (Ok data) ->
             ( Api.updateLoggedIn model
@@ -922,7 +945,17 @@ update msg model =
             Api.withSession model (\state -> Api.updateSeriesCommand model state seriesId)
 
         TeamDetailReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | teamDetail = Result.toMaybe result }), Cmd.none )
+            ( Api.updateLoggedIn model
+                (\state ->
+                    case result of
+                        Ok detail ->
+                            { state | teamDetail = Just detail, teamDetailError = Nothing }
+
+                        Err error ->
+                            { state | teamDetail = Nothing, teamDetailError = Just (httpErrorLabel error) }
+                )
+            , Cmd.none
+            )
 
         TeamMemberEmailChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | teamMemberEmail = value }), Cmd.none )
@@ -1129,23 +1162,3 @@ seriesReorder model seriesId taskId up =
                 Nothing ->
                     ( model, Cmd.none )
         )
-
-
-seriesRenameTitleFor : Result Http.Error SeriesDetailData -> String -> String
-seriesRenameTitleFor result fallback =
-    case result of
-        Ok data ->
-            data.series.title
-
-        Err _ ->
-            fallback
-
-
-seriesRenameDescriptionFor : Result Http.Error SeriesDetailData -> String -> String
-seriesRenameDescriptionFor result fallback =
-    case result of
-        Ok data ->
-            data.series.description
-
-        Err _ ->
-            fallback
