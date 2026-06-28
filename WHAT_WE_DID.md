@@ -1204,3 +1204,26 @@ The `task/demo-list-detail-navigation` branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make check-contracts check-dead-code lint vet` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm make build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_HOME=/Users/zardoz/projects/sharecrop/.elm ELM_BIN=/opt/homebrew/bin/elm DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 make e2e-ui` passed.
+
+The `task/demo-real-parity-fixtures` branch tightened backendless-demo parity with the real app:
+
+- The demo backend exposed a test hook with its route table and resolver.
+- Deno route coverage compared demo `/api` routes with the real HTTP router and allowed only health, MCP, and root/static serving as real-only routes.
+- Deno response-shape coverage exercised demo account lifecycle, user directory, task list/detail, collectible minting, create-time collectible reward escrow, and unknown-route behavior.
+- The demo backend implemented account lifecycle routes, `/api/users`, email-backed organization/team member provisioning, profile/password/account responses, and clear 404 errors for unimplemented API routes.
+- Demo task creation now honors `reward.collectible_ids` by escrowing selected collectibles and returning the held collectible count, matching the real create-time reward flow.
+- Shared Playwright scenario constants were added for account lifecycle and selector-backed reward creation specs.
+
+The `task/demo-real-parity-fixtures` branch verification was performed:
+
+- `deno task check:ts` passed.
+- `deno task lint` passed.
+- `deno task test` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./internal/http ./internal/auth ./internal/task ./internal/ledger ./internal/db` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts tests/playwright/demo.spec.ts tests/playwright/account.spec.ts tests/playwright/create-task-selectors.spec.ts` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts lint vet test-deno frontend build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode -test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_BIN=/opt/homebrew/bin/elm make build` passed.

@@ -12,14 +12,14 @@ Test gaps:
 - Account verification and password reset return tokens through the API/UI. This is suitable for local/test flows but not an email-delivery flow.
 - Account lifecycle deactivation is implemented; hard deletion is not. Deletion needs an erasure/reference policy because existing foreign keys block deleting referenced users.
 - The asset economy is platform-only: user-issued tokens, organization-issued tokens, crypto rewards, and external wallets are not implemented. Current implemented rewards are Sharecrop credits and platform collectibles, including multiple collectibles per task.
-- Request/command contracts and HTTP contract fixture tests still need to expand as the API grows.
+- Request/command contracts and HTTP contract fixture tests still need to expand as the API grows. The backendless demo now has route-surface and representative response-shape tests, but those are not a full generated fixture suite.
 - User directory browser selectors currently load the first page rather than a typeahead query result; large installations need paginated/typeahead UI.
 
 Known risks:
 
 - Cancelling a task that holds escrow is now rejected: the store's `ChangeTaskState` to `cancelled` refuses with 409 "refund the task's held escrow before cancelling" when held credits or collectibles exist, so the state transition can never orphan escrow (previously Cancel left held escrow stranded against a cancelled task). The browser routes funded tasks to Refund; a rare funded-draft Cancel attempt now surfaces that 409 with the Refund action alongside.
 
-- `site/demo/backend.js` is a demo-only in-browser fake backend; it re-implements API behavior in JS and can drift from the Go backend's actual semantics. It is not used by the shipped app and is not contract-tested against the Go DTOs (only the demo smoke test exercises it).
+- `site/demo/backend.js` is a demo-only in-browser fake backend; it re-implements API behavior in JS and can drift from the Go backend's actual semantics. Deno tests now compare its route surface with the real HTTP router and validate representative client response shapes, but they do not prove every handler has identical domain semantics.
 
 - A collectible review tip and the credit settle are separate per-store transactions sequenced in one accept request (credit settle first, then `GiftCollectible`). The settle is idempotent and the gift is replay-safe (already-owned-by-worker is a no-op), so a retried accept recovers; the only residual is a small window where the credit accept commits but the gift fails (e.g. the collectible changed owner concurrently), returning an error after a committed accept. Folding the tip into the ledger transaction would remove the window.
 - `transferable_within_organization` collectibles cannot be tipped yet: collectibles carry no organization, so the within-org bound is unenforceable and `AllowsTip` denies it rather than allow a cross-org gift. Re-enable once collectibles carry an org and the gift checks shared membership.

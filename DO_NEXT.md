@@ -2,12 +2,13 @@
 
 Current priority from [docs/application_readiness_review.md](./docs/application_readiness_review.md):
 
-Combined PR completed by explicit user request:
+Recently finished:
 
-1. Account lifecycle now includes browser guest entry, email-verification token issue/confirm, password reset/change, profile email update, and account deactivation.
-2. Authenticated user directory and selector-backed user/team controls are available in task creation where directory data is loaded.
-3. Collectible and bundle task creation can escrow selected collectibles immediately; task responses show held collectible counts and existing open preconditions enforce missing credit or collectible escrow.
-4. Real-app Playwright coverage includes account lifecycle, selector-backed task creation with create-time collectible escrow, organization role management, worker task-local submissions, organization-team reservation, and reward flows.
+1. The backendless demo route surface is checked against the real HTTP router. Intentional real-only skips are health, MCP, and root/static serving routes.
+2. The backendless demo has Deno contract coverage for account lifecycle, user directory, task list/detail, and create-time collectible reward response shapes.
+3. The demo now implements account lifecycle routes, `/api/users`, profile/password/account responses, clearer 404s for unknown demo API routes, email-backed org/team member provisioning, and create-time collectible reward escrow.
+4. Shared Playwright scenario constants cover account lifecycle and selector-backed reward creation flows.
+5. Real backend coverage for the carried-over behaviors is confirmed by existing HTTP E2E and targeted Playwright account/selector specs.
 
 Remaining after the combined PR:
 
@@ -15,6 +16,7 @@ Remaining after the combined PR:
 2. Decide account hard-delete semantics. The current lifecycle deactivates accounts and revokes sessions/tokens; hard deletion is deferred because referenced rows currently block deletion and no erasure model exists.
 3. Replace development-style account tokens with an email delivery flow. Email verification and password reset currently return tokens through the API/UI so tests and local flows can complete without mail infrastructure.
 4. Add typeahead/paginated directory search in the browser. The API supports a user query parameter, but the create-task UI currently uses the loaded first page of users and standalone teams.
+5. Expand generated/fixture-level HTTP contract coverage beyond the representative demo route tests as the API surface grows.
 
 Recently finished:
 
