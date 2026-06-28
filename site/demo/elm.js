@@ -7790,7 +7790,7 @@ var $author$project$Main$enterPage = F2(
 			case 'TaskDetailPage':
 				return _Utils_update(
 					state,
-					{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, detailError: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservations: _List_Nil, reviewBan: false, reviewMessage: $elm$core$Maybe$Nothing, reviewNote: '', reviewPartialCredit: '', reviewTip: '', reviewTipCollectibleId: '', submissionCommentBody: '', submissionCommentMessage: $elm$core$Maybe$Nothing, submissionComments: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskCommentMessage: $elm$core$Maybe$Nothing, taskComments: _List_Nil, taskIntegrationOpen: false});
+					{activeSubmissionCommentsID: $elm$core$Maybe$Nothing, detail: $elm$core$Maybe$Nothing, detailError: $elm$core$Maybe$Nothing, page: page, reservationMessage: $elm$core$Maybe$Nothing, reservationOrganizationId: '', reservationTeamId: '', reservations: _List_Nil, reviewBan: false, reviewMessage: $elm$core$Maybe$Nothing, reviewNote: '', reviewPartialCredit: '', reviewTip: '', reviewTipCollectibleId: '', submissionCommentBody: '', submissionCommentMessage: $elm$core$Maybe$Nothing, submissionComments: _List_Nil, submissions: _List_Nil, submitInput: '', submitMessage: $elm$core$Maybe$Nothing, taskActionMessage: $elm$core$Maybe$Nothing, taskAgentToken: $elm$core$Maybe$Nothing, taskCommentBody: '', taskCommentMessage: $elm$core$Maybe$Nothing, taskComments: _List_Nil, taskIntegrationOpen: false});
 			case 'CollectiblesPage':
 				return _Utils_update(
 					state,
@@ -8332,6 +8332,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		provisionMemberEmail: '',
 		provisionMemberMessage: $elm$core$Maybe$Nothing,
 		reservationMessage: $elm$core$Maybe$Nothing,
+		reservationOrganizationId: '',
+		reservationTeamId: '',
 		reservations: _List_Nil,
 		reviewBan: false,
 		reviewMessage: $elm$core$Maybe$Nothing,
@@ -8728,6 +8730,32 @@ var $author$project$Sharecrop$Api$postRefundTask = F2(
 var $author$project$Sharecrop$Types$ReservationReceived = function (a) {
 	return {$: 'ReservationReceived', a: a};
 };
+var $author$project$Sharecrop$Api$reservationRequestBody = function (state) {
+	var _v0 = state.detail;
+	if (_v0.$ === 'Just') {
+		var detail = _v0.a;
+		var _v1 = detail.assigneeScope;
+		if (_v1.$ === 'TaskAssigneeScopeOrganizationTeam') {
+			return $elm$json$Json$Encode$object(
+				_List_fromArray(
+					[
+						_Utils_Tuple2(
+						'assignee_kind',
+						$elm$json$Json$Encode$string('organization_team')),
+						_Utils_Tuple2(
+						'organization_id',
+						$elm$json$Json$Encode$string(state.reservationOrganizationId)),
+						_Utils_Tuple2(
+						'team_id',
+						$elm$json$Json$Encode$string(state.reservationTeamId))
+					]));
+		} else {
+			return $elm$json$Json$Encode$object(_List_Nil);
+		}
+	} else {
+		return $elm$json$Json$Encode$object(_List_Nil);
+	}
+};
 var $author$project$Sharecrop$Generated$Task$TaskReservationResponse = F6(
 	function (id, taskID, assigneeKind, assigneeID, state, requestedBy) {
 		return {assigneeID: assigneeID, assigneeKind: assigneeKind, id: id, requestedBy: requestedBy, state: state, taskID: taskID};
@@ -8772,14 +8800,14 @@ var $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder = A7
 	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskReservationStateDecoder),
 	A2($elm$json$Json$Decode$field, 'requested_by', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$postReservation = F2(
-	function (token, taskId) {
+	function (state, taskId) {
 		return A5(
 			$author$project$Sharecrop$Api$authorizedRequest,
 			'POST',
-			token,
+			state.accessToken,
 			'/api/tasks/' + (taskId + '/reservations'),
 			$elm$http$Http$jsonBody(
-				$elm$json$Json$Encode$object(_List_Nil)),
+				$author$project$Sharecrop$Api$reservationRequestBody(state)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$ReservationReceived, $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$TaskCommentReceived = function (a) {
@@ -11033,8 +11061,32 @@ var $author$project$Main$update = F2(
 										current,
 										{reservationMessage: $elm$core$Maybe$Nothing});
 								}),
-							A2($author$project$Sharecrop$Api$postReservation, state.accessToken, taskId));
+							A2($author$project$Sharecrop$Api$postReservation, state, taskId));
 					});
+			case 'ReservationOrganizationIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{reservationOrganizationId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ReservationTeamIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{reservationTeamId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'ReservationReceived':
 				if (msg.a.$ === 'Ok') {
 					var reservation = msg.a.a;
@@ -17437,35 +17489,90 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 var $author$project$Sharecrop$Types$ReserveClicked = function (a) {
 	return {$: 'ReserveClicked', a: a};
 };
-var $author$project$Sharecrop$View$reservationAction = function (detail) {
-	var _v0 = detail.viewerAction;
-	switch (_v0.$) {
-		case 'TaskViewerActionReserve':
-			return A2(
-				$author$project$Sharecrop$Ui$primaryButton,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('button'),
-						$elm$html$Html$Events$onClick(
-						$author$project$Sharecrop$Types$ReserveClicked(detail.id)),
-						$author$project$Sharecrop$Ui$testId('reserve-task')
-					]),
-				'Reserve');
-		case 'TaskViewerActionRequestApproval':
-			return A2(
-				$author$project$Sharecrop$Ui$primaryButton,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('button'),
-						$elm$html$Html$Events$onClick(
-						$author$project$Sharecrop$Types$ReserveClicked(detail.id)),
-						$author$project$Sharecrop$Ui$testId('request-approval')
-					]),
-				'Request approval');
-		default:
-			return $elm$html$Html$text('');
-	}
+var $author$project$Sharecrop$Types$ReservationOrganizationIdChanged = function (a) {
+	return {$: 'ReservationOrganizationIdChanged', a: a};
 };
+var $author$project$Sharecrop$Types$ReservationTeamIdChanged = function (a) {
+	return {$: 'ReservationTeamIdChanged', a: a};
+};
+var $author$project$Sharecrop$View$organizationTeamReservationFields = F2(
+	function (state, detail) {
+		var _v0 = detail.assigneeScope;
+		if (_v0.$ === 'TaskAssigneeScopeOrganizationTeam') {
+			return A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('grid gap-3 md:grid-cols-2')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'Organization ID',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$value(state.reservationOrganizationId),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$ReservationOrganizationIdChanged),
+										$author$project$Sharecrop$Ui$testId('reservation-organization-id')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'Team ID',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$value(state.reservationTeamId),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$ReservationTeamIdChanged),
+										$author$project$Sharecrop$Ui$testId('reservation-team-id')
+									]))
+							]))
+					]));
+		} else {
+			return $elm$html$Html$text('');
+		}
+	});
+var $author$project$Sharecrop$View$reservationActionForm = F4(
+	function (state, detail, label, id) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-3')
+				]),
+			_List_fromArray(
+				[
+					A2($author$project$Sharecrop$View$organizationTeamReservationFields, state, detail),
+					A2(
+					$author$project$Sharecrop$Ui$primaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick(
+							$author$project$Sharecrop$Types$ReserveClicked(detail.id)),
+							$author$project$Sharecrop$Ui$testId(id)
+						]),
+					label)
+				]));
+	});
+var $author$project$Sharecrop$View$reservationAction = F2(
+	function (state, detail) {
+		var _v0 = detail.viewerAction;
+		switch (_v0.$) {
+			case 'TaskViewerActionReserve':
+				return A4($author$project$Sharecrop$View$reservationActionForm, state, detail, 'Reserve', 'reserve-task');
+			case 'TaskViewerActionRequestApproval':
+				return A4($author$project$Sharecrop$View$reservationActionForm, state, detail, 'Request approval', 'request-approval');
+			default:
+				return $elm$html$Html$text('');
+		}
+	});
 var $author$project$Sharecrop$Types$ApproveReservationClicked = function (a) {
 	return {$: 'ApproveReservationClicked', a: a};
 };
@@ -17612,7 +17719,7 @@ var $author$project$Sharecrop$View$reservationCard = function (state) {
 							$author$project$Sharecrop$Ui$badge(
 							$author$project$Sharecrop$Labels$assigneeScopeLabel(detail.assigneeScope))
 						])),
-					$author$project$Sharecrop$View$reservationAction(detail),
+					A2($author$project$Sharecrop$View$reservationAction, state, detail),
 					$author$project$Sharecrop$View$reservationsList(state.reservations),
 					A2($author$project$Sharecrop$View$maybeNote, state.reservationMessage, 'reservation-message')
 				]));

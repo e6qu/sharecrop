@@ -1,7 +1,10 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/agent"
@@ -100,7 +103,13 @@ func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 	}
 	taskIDAccepted := taskIDResult.(taskIDAccepted)
 
-	result := server.taskService.Reserve(r.Context(), actor.subject, taskIDAccepted.value)
+	requestResult := decodeReservationRequest(r)
+	if rejected, matched := requestResult.(reservationRequestRejected); matched {
+		writeError(w, http.StatusBadRequest, rejected.reason)
+		return
+	}
+	requestAccepted := requestResult.(reservationRequestAccepted)
+	result := server.reserveTaskForRequest(r.Context(), actor.subject, taskIDAccepted.value, requestAccepted.value)
 	created, matched := result.(task.ReservationCreated)
 	if !matched {
 		writeDomainError(w, result.(task.ReservationRejected).Reason)
@@ -108,6 +117,53 @@ func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, reservationToResponse(created.Value))
 }
+
+type reservationRequestResult interface {
+	reservationRequestResult()
+}
+
+type reservationRequestAccepted struct {
+	value reservationRequest
+}
+
+type reservationRequestRejected struct {
+	reason string
+}
+
+func (reservationRequestAccepted) reservationRequestResult() {}
+
+func (reservationRequestRejected) reservationRequestResult() {}
+
+func decodeReservationRequest(r *http.Request) reservationRequestResult {
+	var request reservationRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return reservationRequestRejected{reason: "request body is invalid"}
+	}
+	return reservationRequestAccepted{value: request}
+}
+
+func (server Server) reserveTaskForRequest(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, request reservationRequest) task.ReservationResult {
+	switch request.AssigneeKind {
+	case "", task.AssigneeScopeUser.String():
+		return server.taskService.Reserve(ctx, actor, taskID)
+	case task.AssigneeScopeOrganizationTeam.String():
+		organizationIDResult := core.ParseOrganizationID(request.OrganizationID)
+		organizationID, organizationIDMatched := organizationIDResult.(core.OrganizationIDCreated)
+		if !organizationIDMatched {
+			return task.ReservationRejected{Reason: organizationIDResult.(core.OrganizationIDRejected).Reason}
+		}
+		teamIDResult := core.ParseTeamID(request.TeamID)
+		teamID, teamIDMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamIDMatched {
+			return task.ReservationRejected{Reason: teamIDResult.(core.TeamIDRejected).Reason}
+		}
+		return server.taskService.ReserveForOrganizationTeam(ctx, actor, taskID, organizationID.Value, teamID.Value)
+	default:
+		return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "reservation assignee kind is invalid")}
+	}
+}
+
 func (server Server) listTaskReservations(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)

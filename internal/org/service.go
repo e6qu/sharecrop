@@ -437,3 +437,27 @@ func (service Service) requirePermission(ctx context.Context, organizationID cor
 func (service Service) CheckOrganizationPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, permission Permission) PermissionCheck {
 	return service.requirePermission(ctx, organizationID, userID, permission)
 }
+
+func (service Service) CheckOrganizationTeamMembership(ctx context.Context, organizationID core.OrganizationID, teamID core.TeamID, userID core.UserID) PermissionCheck {
+	findResult := service.store.FindTeam(ctx, teamID)
+	found, matched := findResult.(TeamFound)
+	if !matched {
+		return PermissionDenied{Reason: findResult.(TeamMissing).Reason}
+	}
+	owner, ownerMatched := found.Value.Owner.(OrganizationOwnedTeam)
+	if !ownerMatched || owner.OrganizationID != organizationID {
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization team access denied")}
+	}
+
+	membersResult := service.store.ListTeamMembers(ctx, teamID)
+	membersListed, membersMatched := membersResult.(TeamMembersListed)
+	if !membersMatched {
+		return PermissionDenied{Reason: membersResult.(TeamMembersRejected).Reason}
+	}
+	for _, memberID := range membersListed.Values {
+		if memberID == userID {
+			return PermissionGranted{}
+		}
+	}
+	return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization team membership denied")}
+}

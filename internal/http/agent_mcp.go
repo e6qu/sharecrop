@@ -129,6 +129,10 @@ func (services mcpServices) ReserveTask(ctx context.Context, subject auth.UserSu
 	return services.taskService.Reserve(ctx, subject, taskID)
 }
 
+func (services mcpServices) ReserveTaskForOrganizationTeam(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
+	return services.taskService.ReserveForOrganizationTeam(ctx, subject, taskID, organizationID, teamID)
+}
+
 func (services mcpServices) ListReservations(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationsListResult {
 	return services.taskService.ListReservations(ctx, subject, taskID)
 }

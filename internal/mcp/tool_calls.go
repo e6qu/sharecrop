@@ -692,16 +692,66 @@ func (server Server) callGetTaskSeries(ctx context.Context, subject auth.UserSub
 }
 
 func (server Server) callReserveTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
-	taskID, problem := parseTaskID(arguments)
-	if problem != nil {
-		return problem
+	parsed := parseReserveTaskArguments(arguments)
+	if parsed.problem != nil {
+		return parsed.problem
 	}
-	result := server.services.ReserveTask(ctx, subject, taskID)
+	var result task.ReservationResult
+	if parsed.assigneeKind == task.AssigneeScopeOrganizationTeam.String() {
+		result = server.services.ReserveTaskForOrganizationTeam(ctx, subject, parsed.taskID, parsed.organizationID, parsed.teamID)
+	} else {
+		result = server.services.ReserveTask(ctx, subject, parsed.taskID)
+	}
 	created, matched := result.(task.ReservationCreated)
 	if !matched {
 		return toolFailed{message: result.(task.ReservationRejected).Reason.Description()}
 	}
 	return marshalPayload(reservationPayload{Reservation: reservationToSummary(created.Value)})
+}
+
+type parsedReserveTaskArguments struct {
+	taskID         core.TaskID
+	assigneeKind   string
+	organizationID core.OrganizationID
+	teamID         core.TeamID
+	problem        toolResult
+}
+
+func parseReserveTaskArguments(arguments json.RawMessage) parsedReserveTaskArguments {
+	var args struct {
+		TaskID         string `json:"task_id"`
+		AssigneeKind   string `json:"assignee_kind"`
+		OrganizationID string `json:"organization_id"`
+		TeamID         string `json:"team_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return parsedReserveTaskArguments{problem: invalidArguments()}
+	}
+
+	taskIDResult := core.ParseTaskID(args.TaskID)
+	taskID, taskIDMatched := taskIDResult.(core.TaskIDCreated)
+	if !taskIDMatched {
+		return parsedReserveTaskArguments{problem: toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}}
+	}
+
+	switch args.AssigneeKind {
+	case "", task.AssigneeScopeUser.String():
+		return parsedReserveTaskArguments{taskID: taskID.Value, assigneeKind: task.AssigneeScopeUser.String()}
+	case task.AssigneeScopeOrganizationTeam.String():
+		organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
+		organizationID, organizationIDMatched := organizationIDResult.(core.OrganizationIDCreated)
+		if !organizationIDMatched {
+			return parsedReserveTaskArguments{problem: toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}}
+		}
+		teamIDResult := core.ParseTeamID(args.TeamID)
+		teamID, teamIDMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamIDMatched {
+			return parsedReserveTaskArguments{problem: toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}}
+		}
+		return parsedReserveTaskArguments{taskID: taskID.Value, assigneeKind: args.AssigneeKind, organizationID: organizationID.Value, teamID: teamID.Value}
+	default:
+		return parsedReserveTaskArguments{problem: toolProtocolError{code: codeInvalidParams, message: "reservation assignee kind is invalid"}}
+	}
 }
 
 func (server Server) callListReservations(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {

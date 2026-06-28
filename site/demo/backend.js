@@ -557,15 +557,25 @@
     if (key) db.appliedFunding[key] = true;
     return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
   });
-  on("POST", "/api/tasks/:id/reservations", (p) => {
+  on("POST", "/api/tasks/:id/reservations", (p, _url, body) => {
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     if (t.state !== "open") return err(409, "only open tasks can be reserved");
     if (t.participation_policy === "open") return err(409, "task does not require reservation");
-    // Mirrors the real backend: only user-scoped tasks accept user reservations.
-    if ((t.assignee_scope || "user") !== "user") return err(409, "this task does not accept user reservations");
+    const assigneeKind = (body && body.assignee_kind) || "user";
+    if ((t.assignee_scope || "user") !== assigneeKind) {
+      return err(409, assigneeKind === "organization_team" ? "this task does not accept organization team reservations" : "this task does not accept user reservations");
+    }
     if (t.created_by === ME) return err(409, "task requester cannot reserve their own task");
+    let assigneeId = ME;
+    if (assigneeKind === "organization_team") {
+      const orgId = (body && body.organization_id) || "";
+      const teamId = (body && body.team_id) || "";
+      const team = (db.orgTeams[orgId] || []).find((value) => value.id === teamId);
+      if (!team || !(db.teamMembers[teamId] || []).includes(ME)) return err(403, "organization team membership denied");
+      assigneeId = teamId;
+    }
     const state = t.participation_policy === "approval_required" ? "requested" : "active";
-    const r = { id: nextId("res"), task_id: t.id, assignee_kind: "user", assignee_id: ME, state, requested_by: ME };
+    const r = { id: nextId("res"), task_id: t.id, assignee_kind: assigneeKind, assignee_id: assigneeId, state, requested_by: ME };
     t.reservations.push(r);
     if (state === "active") t.availability_kind = "reserved";
     return ok(r, 201);
@@ -596,7 +606,7 @@
     const t = findTask(p.id); if (!t) return err(404, "task not found");
     // Reservation eligibility: non-open tasks require an active reservation first
     // (mirrors CheckSubmissionEligibility in the real backend).
-    const mineActive = t.reservations.find((r) => r.assignee_id === ME && r.state === "active");
+    const mineActive = t.reservations.find((r) => r.state === "active" && (r.assignee_id === ME || (r.assignee_kind === "organization_team" && (db.teamMembers[r.assignee_id] || []).includes(ME))));
     if (t.participation_policy !== "open" && !mineActive) return err(409, "reserve the task before submitting");
     // Validate the response against the task's response schema; an invalid
     // submission is recorded with state "invalid" + validation_errors (the

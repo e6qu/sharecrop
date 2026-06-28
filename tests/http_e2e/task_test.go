@@ -192,6 +192,63 @@ func TestReservationRequiredTaskDiscoveryAndSubmission(t *testing.T) {
 	submitAuthenticated(t, server, worker.AccessToken, taskBody.ID)
 }
 
+func TestOrganizationTeamReservationAndSubmission(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "org-team-reservation-owner")
+	organizationID := createOrganization(t, server, owner, "Org Team Reservation Labs")
+
+	createTeamResponse := postJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/teams", []byte(`{"name":"Field crew"}`), owner.AccessToken)
+	defer createTeamResponse.Body.Close()
+	assertStatus(t, createTeamResponse, http.StatusCreated)
+	var team teamHTTPResponse
+	if err := json.NewDecoder(createTeamResponse.Body).Decode(&team); err != nil {
+		t.Fatalf("decode organization team: %v", err)
+	}
+
+	workerEmail := "org-team-reservation-worker-" + uniqueTestSuffix(t) + "@example.com"
+	worker := registerUserWithEmail(t, server, workerEmail)
+	addWorkerResponse := postJSONWithBearer(t, server.URL+"/api/teams/"+team.ID+"/members", []byte(`{"email":"`+workerEmail+`"}`), owner.AccessToken)
+	defer addWorkerResponse.Body.Close()
+	assertStatus(t, addWorkerResponse, http.StatusCreated)
+
+	outsider := registerUser(t, server, "org-team-reservation-outsider")
+
+	createTaskResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicOrganizationTeamReservationTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
+	defer createTaskResponse.Body.Close()
+	assertStatus(t, createTaskResponse, http.StatusCreated)
+	taskBody := decodeTaskHTTPResponse(t, createTaskResponse)
+	openTask(t, server, owner.AccessToken, taskBody.ID)
+
+	outsiderReserve := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/reservations", []byte(`{"assignee_kind":"organization_team","organization_id":"`+organizationID+`","team_id":"`+team.ID+`"}`), outsider.AccessToken)
+	defer outsiderReserve.Body.Close()
+	assertStatus(t, outsiderReserve, http.StatusForbidden)
+
+	reserveResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/reservations", []byte(`{"assignee_kind":"organization_team","organization_id":"`+organizationID+`","team_id":"`+team.ID+`"}`), worker.AccessToken)
+	defer reserveResponse.Body.Close()
+	assertStatus(t, reserveResponse, http.StatusCreated)
+	reservationBody := decodeReservationHTTPResponse(t, reserveResponse)
+	if reservationBody.AssigneeKind != "organization_team" {
+		t.Fatalf("reservation assignee kind = %q, want organization_team", reservationBody.AssigneeKind)
+	}
+	if reservationBody.AssigneeID != team.ID {
+		t.Fatalf("reservation assignee id = %q, want %q", reservationBody.AssigneeID, team.ID)
+	}
+	if reservationBody.State != "active" {
+		t.Fatalf("reservation state = %q, want active", reservationBody.State)
+	}
+
+	outsiderSubmit := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"answer\":\"done\"}"}`), outsider.AccessToken)
+	defer outsiderSubmit.Body.Close()
+	assertStatus(t, outsiderSubmit, http.StatusForbidden)
+
+	submission := submitAuthenticated(t, server, worker.AccessToken, taskBody.ID)
+	if submission.Submission.State != "submitted" {
+		t.Fatalf("submission state = %q, want submitted", submission.Submission.State)
+	}
+}
+
 func TestReservationApprovalIsBoundToOwningTask(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
@@ -537,6 +594,20 @@ func publicReservationTaskRequestJSON(userID string) string {
 		"description":"Reserve before submitting a response.",
 		"reward":{"kind":"none","credit_amount":0},
 		"participation":{"policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48},
+		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+}
+
+func publicOrganizationTeamReservationTaskRequestJSON(userID string) string {
+	return `{
+		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
+		"title":"Organization team reservation task",
+		"description":"Reserve as an organization team before submitting a response.",
+		"reward":{"kind":"none","credit_amount":0},
+		"participation":{"policy":"reservation_required","assignee_scope":"organization_team","reservation_expiry_hours":48},
 		"visibility":{"kind":"public","user_id":"","team_id":"","organization_id":""},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"freeform\"}",

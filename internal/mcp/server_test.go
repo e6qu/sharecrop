@@ -89,6 +89,20 @@ func TestToolsCallReserveTask(t *testing.T) {
 	}
 }
 
+func TestToolsCallReserveTaskForOrganizationTeam(t *testing.T) {
+	server := NewServer(fakeServices{})
+	organizationID := testOrganizationID(t)
+	teamID := testTeamID(t)
+	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`","assignee_kind":"organization_team","organization_id":"`+organizationID+`","team_id":"`+teamID+`"}}`))
+	content := decodeToolText(t, response)
+	if !strings.Contains(content, "\"assignee_kind\":\"organization_team\"") {
+		t.Fatalf("reserve content missing organization team assignee: %s", content)
+	}
+	if !strings.Contains(content, "\"assignee_id\":\""+teamID+"\"") {
+		t.Fatalf("reserve content missing team assignee id: %s", content)
+	}
+}
+
 func TestToolsCallSubmitResponseReturnsReceipt(t *testing.T) {
 	server := NewServer(fakeServices{})
 	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.submit_response","arguments":{"task_id":"`+testTaskID(t)+`","response_json":"{\"answer\":\"done\"}"}}`))
@@ -287,6 +301,17 @@ func (services fakeServices) ReserveTask(_ context.Context, subject auth.UserSub
 	}}
 }
 
+func (services fakeServices) ReserveTaskForOrganizationTeam(_ context.Context, subject auth.UserSubject, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
+	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
+	return task.ReservationCreated{Value: task.Reservation{
+		ID:          reservationID.Value,
+		TaskID:      taskID,
+		Assignee:    task.OrganizationTeamAssignee{OrganizationID: organizationID, TeamID: teamID},
+		State:       task.ReservationStateActive,
+		RequestedBy: subject.ID,
+	}}
+}
+
 func (services fakeServices) ListReservations(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationsListResult {
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationsListed{Values: []task.Reservation{{
@@ -368,6 +393,24 @@ func testTaskID(t *testing.T) string {
 	created, matched := core.NewTaskID().(core.TaskIDCreated)
 	if !matched {
 		t.Fatalf("task id rejected")
+	}
+	return created.Value.String()
+}
+
+func testOrganizationID(t *testing.T) string {
+	t.Helper()
+	created, matched := core.NewOrganizationID().(core.OrganizationIDCreated)
+	if !matched {
+		t.Fatalf("organization id rejected")
+	}
+	return created.Value.String()
+}
+
+func testTeamID(t *testing.T) string {
+	t.Helper()
+	created, matched := core.NewTeamID().(core.TeamIDCreated)
+	if !matched {
+		t.Fatalf("team id rejected")
 	}
 	return created.Value.String()
 }

@@ -1650,7 +1650,7 @@ reservationCard state =
                     [ Ui.badge (viewerActionLabel detail.viewerAction)
                     , Ui.badge (assigneeScopeLabel detail.assigneeScope)
                     ]
-                , reservationAction detail
+                , reservationAction state detail
                 , reservationsList state.reservations
                 , maybeNote state.reservationMessage "reservation-message"
                 ]
@@ -1659,14 +1659,35 @@ reservationCard state =
             text ""
 
 
-reservationAction : PublicTaskDetail -> Html Msg
-reservationAction detail =
+reservationAction : LoggedInModel -> PublicTaskDetail -> Html Msg
+reservationAction state detail =
     case detail.viewerAction of
         Task.TaskViewerActionReserve ->
-            Ui.primaryButton [ type_ "button", onClick (ReserveClicked detail.id), testId "reserve-task" ] "Reserve"
+            reservationActionForm state detail "Reserve" "reserve-task"
 
         Task.TaskViewerActionRequestApproval ->
-            Ui.primaryButton [ type_ "button", onClick (ReserveClicked detail.id), testId "request-approval" ] "Request approval"
+            reservationActionForm state detail "Request approval" "request-approval"
+
+        _ ->
+            text ""
+
+
+reservationActionForm : LoggedInModel -> PublicTaskDetail -> String -> String -> Html Msg
+reservationActionForm state detail label id =
+    div [ Html.Attributes.class "space-y-3" ]
+        [ organizationTeamReservationFields state detail
+        , Ui.primaryButton [ type_ "button", onClick (ReserveClicked detail.id), testId id ] label
+        ]
+
+
+organizationTeamReservationFields : LoggedInModel -> PublicTaskDetail -> Html Msg
+organizationTeamReservationFields state detail =
+    case detail.assigneeScope of
+        Task.TaskAssigneeScopeOrganizationTeam ->
+            div [ Html.Attributes.class "grid gap-3 md:grid-cols-2" ]
+                [ Ui.fieldLabel "Organization ID" [ Ui.textInput [ value state.reservationOrganizationId, onInput ReservationOrganizationIdChanged, testId "reservation-organization-id" ] ]
+                , Ui.fieldLabel "Team ID" [ Ui.textInput [ value state.reservationTeamId, onInput ReservationTeamIdChanged, testId "reservation-team-id" ] ]
+                ]
 
         _ ->
             text ""

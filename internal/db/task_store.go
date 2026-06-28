@@ -411,19 +411,27 @@ func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID co
 		return task.SubmissionEligible{}
 	}
 
-	var activeForUser bool
+	var activeForSubmitter bool
 	if err := store.pool.QueryRow(ctx, `
 		select exists(
-			select 1 from task_reservations
-			where task_id = $1
-			and state = 'active'
-			and assignee_kind = 'user'
-			and user_id = $2
+			select 1
+			from task_reservations
+			left join team_members
+				on task_reservations.assignee_kind = 'organization_team'
+				and task_reservations.team_id = team_members.team_id
+				and team_members.user_id = $2
+			where task_reservations.task_id = $1
+			and task_reservations.state = 'active'
+			and (
+				(task_reservations.assignee_kind = 'user' and task_reservations.user_id = $2)
+				or
+				(task_reservations.assignee_kind = 'organization_team' and team_members.user_id = $2)
+			)
 		)
-	`, taskID.String(), submitterID.String()).Scan(&activeForUser); err != nil {
+	`, taskID.String(), submitterID.String()).Scan(&activeForSubmitter); err != nil {
 		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check active reservation failed")}
 	}
-	if activeForUser {
+	if activeForSubmitter {
 		return task.SubmissionEligible{}
 	}
 	return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task requires an active reservation for the submitter")}

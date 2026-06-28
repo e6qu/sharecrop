@@ -106,6 +106,8 @@ type alias LoggedInModel =
     , detail : Maybe PublicTaskDetail
     , detailError : Maybe String
     , reservations : List Task.TaskReservationResponse
+    , reservationOrganizationId : String
+    , reservationTeamId : String
     , reservationMessage : Maybe String
     , submissions : List Submission.SubmissionResponse
     , submitInput : String
@@ -282,6 +284,8 @@ type Msg
     | DiscoveryViewClicked String
     | DetailReceived (Result Http.Error PublicTaskDetail)
     | ReserveClicked String
+    | ReservationOrganizationIdChanged String
+    | ReservationTeamIdChanged String
     | ReservationReceived (Result Http.Error Task.TaskReservationResponse)
     | ReservationsReceived (Result Http.Error Task.TaskReservationsResponse)
     | ApproveReservationClicked String

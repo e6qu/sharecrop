@@ -84,6 +84,12 @@ type submissionRequest struct {
 	ResponseJSON string `json:"response_json"`
 }
 
+type reservationRequest struct {
+	AssigneeKind   string `json:"assignee_kind"`
+	OrganizationID string `json:"organization_id"`
+	TeamID         string `json:"team_id"`
+}
+
 type organizationResponse struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
