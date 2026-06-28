@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -12,6 +13,30 @@ import (
 type userProfileResponse struct {
 	ID    string                 `json:"id"`
 	Tasks []taskListItemResponse `json:"tasks"`
+}
+
+func (usersResponse) writableResponse() {}
+
+func (server Server) listUsers(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	if _, actorMatched := actorResult.(userSubjectAccepted); !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return
+	}
+
+	result := server.authService.ListUsers(r.Context(), r.URL.Query().Get("query"), parsePage(r))
+	listed, matched := result.(auth.UsersListed)
+	if !matched {
+		writeDomainError(w, result.(auth.UserDirectoryRejected).Reason)
+		return
+	}
+
+	response := usersResponse{Users: make([]userDirectoryEntryResponse, 0, len(listed.Values))}
+	for _, value := range listed.Values {
+		response.Users = append(response.Users, userDirectoryEntryResponse{ID: value.ID.String(), Email: value.Email.String(), Status: value.Status})
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (server Server) getUserProfile(w http.ResponseWriter, r *http.Request) {

@@ -68,6 +68,13 @@ type alias SeriesDetailData =
     }
 
 
+type alias UserDirectoryEntry =
+    { id : String
+    , email : String
+    , status : String
+    }
+
+
 type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
@@ -82,6 +89,7 @@ type alias LoggedInModel =
     , createPayloadJson : String
     , createRewardKind : String
     , createRewardAmount : String
+    , createRewardCollectibleIds : List String
     , createVisibility : String
     , createScopeUserId : String
     , createScopeTeamId : String
@@ -138,6 +146,7 @@ type alias LoggedInModel =
     , activeOrgId : String
     , orgBalance : Maybe Int
     , orgTeams : List Team.TeamResponse
+    , standaloneTeams : List Team.TeamResponse
     , orgMembers : List Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
     , orgCollectibles : List Collectible.CollectibleResponse
@@ -179,6 +188,13 @@ type alias LoggedInModel =
     , taskIntegrationOpen : Bool
     , taskActionMessage : Maybe String
     , userAgentToken : Maybe String
+    , accountEmail : String
+    , currentPassword : String
+    , newPassword : String
+    , emailVerificationToken : String
+    , emailVerificationInput : String
+    , accountMessage : Maybe String
+    , userDirectory : List UserDirectoryEntry
     }
 
 
@@ -217,6 +233,9 @@ type alias Model =
     , route : Page
     , email : String
     , password : String
+    , resetEmail : String
+    , resetToken : String
+    , resetPassword : String
     , authError : Maybe String
     , session : Session
     }
@@ -227,8 +246,16 @@ type Msg
     | PasswordChanged String
     | RegisterClicked
     | LoginClicked
+    | GuestClicked
     | AuthReceived (Result Http.Error Auth.AuthResponse)
     | RefreshReceived (Result Http.Error Auth.AuthResponse)
+    | PasswordResetEmailChanged String
+    | PasswordResetTokenChanged String
+    | PasswordResetPasswordChanged String
+    | RequestPasswordResetClicked
+    | ConfirmPasswordResetClicked
+    | PasswordResetRequested (Result Http.Error String)
+    | PasswordResetConfirmed (Result Http.Error ())
     | BalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | LedgerReceived (Result Http.Error Ledger.LedgerResponse)
     | TasksReceived (Result Http.Error Task.TasksResponse)
@@ -246,6 +273,7 @@ type Msg
     | CreatePayloadChanged String
     | CreateRewardKindChanged String
     | CreateRewardAmountChanged String
+    | ToggleCreateRewardCollectible String
     | CreateVisibilityChanged String
     | CreateScopeUserIdChanged String
     | CreateScopeTeamIdChanged String
@@ -332,6 +360,8 @@ type Msg
     | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
     | OrgBalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
+    | StandaloneTeamsReceived (Result Http.Error Team.TeamsResponse)
+    | UserDirectoryReceived (Result Http.Error (List UserDirectoryEntry))
     | OrgMembersReceived (Result Http.Error Organization.OrganizationMembersResponse)
     | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
     | UserWorkReceived (Result Http.Error Task.TasksResponse)
@@ -390,6 +420,18 @@ type Msg
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
     | ResetDemoClicked
+    | AccountEmailChanged String
+    | CurrentPasswordChanged String
+    | NewPasswordChanged String
+    | EmailVerificationInputChanged String
+    | RequestEmailVerificationClicked
+    | ConfirmEmailVerificationClicked
+    | UpdateProfileClicked
+    | ChangePasswordClicked
+    | DeactivateAccountClicked
+    | EmailVerificationRequested (Result Http.Error String)
+    | AccountActionReceived (Result Http.Error ())
+    | DeactivateAccountReceived (Result Http.Error ())
 
 
 pageToPath : Page -> String

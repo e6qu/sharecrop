@@ -21,6 +21,7 @@ type CredentialRecord struct {
 	UserID       core.UserID
 	Email        EmailAddress
 	PasswordHash PasswordHash
+	Status       string
 }
 
 type RefreshTokenRecord struct {
@@ -51,10 +52,17 @@ func (continueRefreshFamily) refreshFamilySelection() {}
 type Store interface {
 	CreateUserCredential(context.Context, core.UserID, EmailAddress, PasswordHash) StoreUserResult
 	FindCredentialByEmail(context.Context, EmailAddress) CredentialLookupResult
+	FindCredentialByUserID(context.Context, core.UserID) CredentialLookupResult
+	ListUsers(context.Context, string, core.Page) UserDirectoryResult
+	UpdateUserEmail(context.Context, core.UserID, EmailAddress) AccountMutationResult
+	UpdatePassword(context.Context, core.UserID, PasswordHash) AccountMutationResult
+	DeactivateUser(context.Context, core.UserID) AccountMutationResult
 	CreateGuestSubject(context.Context, core.GuestID) StoreGuestResult
 	StoreRefreshToken(context.Context, RefreshTokenRecord) StoreRefreshTokenResult
 	ConsumeRefreshToken(context.Context, RefreshTokenHash, time.Time) ConsumeRefreshTokenResult
 	RevokeRefreshFamily(context.Context, RefreshTokenHash) RevokeRefreshFamilyResult
+	StoreAccountToken(context.Context, core.UserID, AccountTokenKind, AccountToken) AccountTokenStoreResult
+	ConsumeAccountToken(context.Context, AccountTokenKind, AccountTokenHash, time.Time) AccountTokenConsumeResult
 }
 
 type RevokeRefreshFamilyResult interface {
@@ -202,6 +210,9 @@ func (service Service) Login(ctx context.Context, email EmailAddress, password P
 	if !foundMatched {
 		return LoginRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credentials are invalid")}
 	}
+	if found.Record.Status != "active" {
+		return LoginRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "account is deactivated")}
+	}
 
 	verification := VerifyPassword(password, found.Record.PasswordHash)
 	if _, matched := verification.(PasswordAccepted); !matched {
@@ -220,6 +231,142 @@ func (service Service) Login(ctx context.Context, email EmailAddress, password P
 		AccessToken:  sessionAccepted.AccessToken,
 		RefreshToken: sessionAccepted.RefreshToken,
 	}
+}
+
+func (service Service) ListUsers(ctx context.Context, query string, page core.Page) UserDirectoryResult {
+	return service.store.ListUsers(ctx, query, page)
+}
+
+type AccountTokenIssueResult interface {
+	accountTokenIssueResult()
+}
+
+type AccountTokenIssued struct {
+	Token AccountTokenPlain
+}
+
+type AccountTokenIssueRejected struct {
+	Reason core.DomainError
+}
+
+func (AccountTokenIssued) accountTokenIssueResult() {}
+
+func (AccountTokenIssueRejected) accountTokenIssueResult() {}
+
+func (service Service) RequestEmailVerification(ctx context.Context, userID core.UserID) AccountTokenIssueResult {
+	return service.issueAccountToken(ctx, userID, AccountTokenKindEmailVerification)
+}
+
+func (service Service) RequestPasswordReset(ctx context.Context, email EmailAddress) AccountTokenIssueResult {
+	lookup := service.store.FindCredentialByEmail(ctx, email)
+	found, matched := lookup.(CredentialFound)
+	if rejected, rejectedMatched := lookup.(CredentialLookupRejected); rejectedMatched {
+		return AccountTokenIssueRejected{Reason: rejected.Reason}
+	}
+	if !matched {
+		return AccountTokenIssueRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account was not found")}
+	}
+	return service.issueAccountToken(ctx, found.Record.UserID, AccountTokenKindPasswordReset)
+}
+
+func (service Service) issueAccountToken(ctx context.Context, userID core.UserID, kind AccountTokenKind) AccountTokenIssueResult {
+	tokenResult := NewAccountToken(service.clock.Now(), kind)
+	tokenCreated, matched := tokenResult.(AccountTokenCreated)
+	if !matched {
+		return AccountTokenIssueRejected{Reason: tokenResult.(AccountTokenRejected).Reason}
+	}
+	storeResult := service.store.StoreAccountToken(ctx, userID, kind, tokenCreated.Value)
+	if _, ok := storeResult.(AccountTokenStored); !ok {
+		return AccountTokenIssueRejected{Reason: storeResult.(AccountTokenStoreRejected).Reason}
+	}
+	return AccountTokenIssued{Token: tokenCreated.Value.Plain}
+}
+
+type AccountActionResult interface {
+	accountActionResult()
+}
+
+type AccountActionAccepted struct{}
+
+type AccountActionRejected struct {
+	Reason core.DomainError
+}
+
+func (AccountActionAccepted) accountActionResult() {}
+
+func (AccountActionRejected) accountActionResult() {}
+
+func (service Service) VerifyEmail(ctx context.Context, token AccountTokenPlain) AccountActionResult {
+	consumed := service.store.ConsumeAccountToken(ctx, AccountTokenKindEmailVerification, HashAccountToken(token), service.clock.Now())
+	if _, matched := consumed.(AccountTokenConsumed); !matched {
+		return accountActionRejection(consumed)
+	}
+	return AccountActionAccepted{}
+}
+
+func (service Service) ResetPassword(ctx context.Context, token AccountTokenPlain, password PasswordSecret) AccountActionResult {
+	consumed := service.store.ConsumeAccountToken(ctx, AccountTokenKindPasswordReset, HashAccountToken(token), service.clock.Now())
+	tokenConsumed, matched := consumed.(AccountTokenConsumed)
+	if !matched {
+		return accountActionRejection(consumed)
+	}
+	hashResult := HashPassword(password)
+	hashCreated, hashMatched := hashResult.(PasswordHashCreated)
+	if !hashMatched {
+		return AccountActionRejected{Reason: hashResult.(PasswordHashRejected).Reason}
+	}
+	update := service.store.UpdatePassword(ctx, tokenConsumed.UserID, hashCreated.Value)
+	if _, accepted := update.(AccountMutationAccepted); !accepted {
+		return AccountActionRejected{Reason: update.(AccountMutationRejected).Reason}
+	}
+	return AccountActionAccepted{}
+}
+
+func (service Service) ChangePassword(ctx context.Context, userID core.UserID, current PasswordSecret, next PasswordSecret) AccountActionResult {
+	lookup := service.store.FindCredentialByUserID(ctx, userID)
+	found, matched := lookup.(CredentialFound)
+	if rejected, rejectedMatched := lookup.(CredentialLookupRejected); rejectedMatched {
+		return AccountActionRejected{Reason: rejected.Reason}
+	}
+	if !matched {
+		return AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account was not found")}
+	}
+	if _, ok := VerifyPassword(current, found.Record.PasswordHash).(PasswordAccepted); !ok {
+		return AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "current password is invalid")}
+	}
+	hashResult := HashPassword(next)
+	hashCreated, hashMatched := hashResult.(PasswordHashCreated)
+	if !hashMatched {
+		return AccountActionRejected{Reason: hashResult.(PasswordHashRejected).Reason}
+	}
+	update := service.store.UpdatePassword(ctx, userID, hashCreated.Value)
+	if _, accepted := update.(AccountMutationAccepted); !accepted {
+		return AccountActionRejected{Reason: update.(AccountMutationRejected).Reason}
+	}
+	return AccountActionAccepted{}
+}
+
+func (service Service) UpdateProfile(ctx context.Context, userID core.UserID, email EmailAddress) AccountActionResult {
+	update := service.store.UpdateUserEmail(ctx, userID, email)
+	if _, accepted := update.(AccountMutationAccepted); !accepted {
+		return AccountActionRejected{Reason: update.(AccountMutationRejected).Reason}
+	}
+	return AccountActionAccepted{}
+}
+
+func (service Service) DeactivateAccount(ctx context.Context, userID core.UserID) AccountActionResult {
+	update := service.store.DeactivateUser(ctx, userID)
+	if _, accepted := update.(AccountMutationAccepted); !accepted {
+		return AccountActionRejected{Reason: update.(AccountMutationRejected).Reason}
+	}
+	return AccountActionAccepted{}
+}
+
+func accountActionRejection(consumed AccountTokenConsumeResult) AccountActionRejected {
+	if rejected, matched := consumed.(AccountTokenConsumeRejected); matched {
+		return AccountActionRejected{Reason: rejected.Reason}
+	}
+	return AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account token is invalid")}
 }
 
 type GuestResult interface {

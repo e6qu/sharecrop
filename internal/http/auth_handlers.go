@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -124,4 +125,161 @@ func (server Server) guest(w http.ResponseWriter, r *http.Request) {
 		SubjectID:   accepted.Subject.ID.String(),
 		AccessToken: accepted.AccessToken.String(),
 	})
+}
+
+func (server Server) requestEmailVerification(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	result := server.authService.RequestEmailVerification(r.Context(), actor.subject.ID)
+	issued, ok := result.(auth.AccountTokenIssued)
+	if !ok {
+		writeDomainError(w, result.(auth.AccountTokenIssueRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusCreated, accountTokenResponse{Token: issued.Token.String()})
+}
+
+func (server Server) confirmEmailVerification(w http.ResponseWriter, r *http.Request) {
+	var request accountTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	tokenResult := auth.ParseAccountTokenPlain(request.Token)
+	token, matched := tokenResult.(auth.AccountTokenPlainAccepted)
+	if !matched {
+		writeDomainError(w, tokenResult.(auth.AccountTokenPlainRejected).Reason)
+		return
+	}
+	result := server.authService.VerifyEmail(r.Context(), token.Value)
+	if _, ok := result.(auth.AccountActionAccepted); !ok {
+		writeDomainError(w, result.(auth.AccountActionRejected).Reason)
+		return
+	}
+	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "verified"})
+}
+
+func (server Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var request passwordResetRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	emailResult := auth.NewEmailAddress(request.Email)
+	email, matched := emailResult.(auth.EmailAddressAccepted)
+	if !matched {
+		writeDomainError(w, emailResult.(auth.EmailAddressRejected).Reason)
+		return
+	}
+	result := server.authService.RequestPasswordReset(r.Context(), email.Value)
+	issued, ok := result.(auth.AccountTokenIssued)
+	if !ok {
+		writeDomainError(w, result.(auth.AccountTokenIssueRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusCreated, accountTokenResponse{Token: issued.Token.String()})
+}
+
+func (server Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var request passwordResetConfirmRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	tokenResult := auth.ParseAccountTokenPlain(request.Token)
+	token, tokenMatched := tokenResult.(auth.AccountTokenPlainAccepted)
+	if !tokenMatched {
+		writeDomainError(w, tokenResult.(auth.AccountTokenPlainRejected).Reason)
+		return
+	}
+	passwordResult := auth.NewPasswordSecret(request.Password)
+	password, passwordMatched := passwordResult.(auth.PasswordSecretAccepted)
+	if !passwordMatched {
+		writeDomainError(w, passwordResult.(auth.PasswordSecretRejected).Reason)
+		return
+	}
+	result := server.authService.ResetPassword(r.Context(), token.Value, password.Value)
+	if _, ok := result.(auth.AccountActionAccepted); !ok {
+		writeDomainError(w, result.(auth.AccountActionRejected).Reason)
+		return
+	}
+	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "password_reset"})
+}
+
+func (server Server) changePassword(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	var request passwordChangeRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	current := auth.NewPasswordSecret(request.CurrentPassword)
+	currentAccepted, currentMatched := current.(auth.PasswordSecretAccepted)
+	if !currentMatched {
+		writeDomainError(w, current.(auth.PasswordSecretRejected).Reason)
+		return
+	}
+	next := auth.NewPasswordSecret(request.NewPassword)
+	nextAccepted, nextMatched := next.(auth.PasswordSecretAccepted)
+	if !nextMatched {
+		writeDomainError(w, next.(auth.PasswordSecretRejected).Reason)
+		return
+	}
+	result := server.authService.ChangePassword(r.Context(), actor.subject.ID, currentAccepted.Value, nextAccepted.Value)
+	if _, ok := result.(auth.AccountActionAccepted); !ok {
+		writeDomainError(w, result.(auth.AccountActionRejected).Reason)
+		return
+	}
+	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "password_changed"})
+}
+
+func (server Server) updateAccountProfile(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	var request accountProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	emailResult := auth.NewEmailAddress(request.Email)
+	email, emailMatched := emailResult.(auth.EmailAddressAccepted)
+	if !emailMatched {
+		writeDomainError(w, emailResult.(auth.EmailAddressRejected).Reason)
+		return
+	}
+	result := server.authService.UpdateProfile(r.Context(), actor.subject.ID, email.Value)
+	if _, ok := result.(auth.AccountActionAccepted); !ok {
+		writeDomainError(w, result.(auth.AccountActionRejected).Reason)
+		return
+	}
+	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "profile_updated"})
+}
+
+func (server Server) deactivateAccount(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	result := server.authService.DeactivateAccount(r.Context(), actor.subject.ID)
+	if _, ok := result.(auth.AccountActionAccepted); !ok {
+		writeDomainError(w, result.(auth.AccountActionRejected).Reason)
+		return
+	}
+	server.clearRefreshCookie(w)
+	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "deactivated"})
 }

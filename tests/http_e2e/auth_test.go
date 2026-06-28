@@ -146,6 +146,109 @@ func TestLogoutRevokesSession(t *testing.T) {
 	assertStatus(t, loginResponse, http.StatusOK)
 }
 
+func TestAccountLifecycleHTTP(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	email := "account-" + uniqueTestSuffix(t) + "@example.com"
+	user := registerUserWithEmail(t, server, email)
+
+	directoryResponse := getWithBearer(t, server.URL+"/api/users?query="+email, user.AccessToken)
+	defer directoryResponse.Body.Close()
+	assertStatus(t, directoryResponse, http.StatusOK)
+	var directory usersHTTPResponse
+	if err := json.NewDecoder(directoryResponse.Body).Decode(&directory); err != nil {
+		t.Fatalf("decode user directory: %v", err)
+	}
+	if len(directory.Users) != 1 || directory.Users[0].ID != user.SubjectID {
+		t.Fatalf("directory users = %+v, want registered user %q", directory.Users, user.SubjectID)
+	}
+
+	verifyResponse := postJSONWithBearer(t, server.URL+"/api/account/email-verification", []byte(`{}`), user.AccessToken)
+	defer verifyResponse.Body.Close()
+	assertStatus(t, verifyResponse, http.StatusCreated)
+	verifyToken := decodeAccountTokenHTTPResponse(t, verifyResponse).Token
+
+	confirmVerify := postEncodedJSON(t, server.URL+"/api/auth/email-verification/confirm", []byte(`{"token":"`+verifyToken+`"}`), nil)
+	defer confirmVerify.Body.Close()
+	assertStatus(t, confirmVerify, http.StatusOK)
+
+	resetResponse := postEncodedJSON(t, server.URL+"/api/auth/password-reset/request", []byte(`{"email":"`+email+`"}`), nil)
+	defer resetResponse.Body.Close()
+	assertStatus(t, resetResponse, http.StatusCreated)
+	resetToken := decodeAccountTokenHTTPResponse(t, resetResponse).Token
+
+	confirmReset := postEncodedJSON(t, server.URL+"/api/auth/password-reset/confirm", []byte(`{"token":"`+resetToken+`","password":"changed horse battery staple"}`), nil)
+	defer confirmReset.Body.Close()
+	assertStatus(t, confirmReset, http.StatusOK)
+
+	oldLogin := postAuthJSON(t, server.URL+"/api/auth/login", authHTTPRequest{Email: email, Password: "correct horse battery staple"}, nil)
+	defer oldLogin.Body.Close()
+	if oldLogin.StatusCode == http.StatusOK {
+		t.Fatalf("old password still logged in after reset")
+	}
+	newLogin := postAuthJSON(t, server.URL+"/api/auth/login", authHTTPRequest{Email: email, Password: "changed horse battery staple"}, nil)
+	defer newLogin.Body.Close()
+	assertStatus(t, newLogin, http.StatusOK)
+	loggedIn := decodeAuthHTTPResponse(t, newLogin)
+
+	changePassword := patchJSONWithBearer(t, server.URL+"/api/account/password", []byte(`{"current_password":"changed horse battery staple","new_password":"final horse battery staple"}`), loggedIn.AccessToken)
+	defer changePassword.Body.Close()
+	assertStatus(t, changePassword, http.StatusOK)
+
+	newEmail := "account-updated-" + uniqueTestSuffix(t) + "@example.com"
+	updateProfile := patchJSONWithBearer(t, server.URL+"/api/account/profile", []byte(`{"email":"`+newEmail+`"}`), loggedIn.AccessToken)
+	defer updateProfile.Body.Close()
+	assertStatus(t, updateProfile, http.StatusOK)
+
+	loginUpdated := postAuthJSON(t, server.URL+"/api/auth/login", authHTTPRequest{Email: newEmail, Password: "final horse battery staple"}, nil)
+	defer loginUpdated.Body.Close()
+	assertStatus(t, loginUpdated, http.StatusOK)
+	updated := decodeAuthHTTPResponse(t, loginUpdated)
+
+	deactivateRequest, err := http.NewRequest(http.MethodDelete, server.URL+"/api/account", http.NoBody)
+	if err != nil {
+		t.Fatalf("create deactivate request: %v", err)
+	}
+	deactivateRequest.Header.Set("Authorization", "Bearer "+updated.AccessToken)
+	deactivateResponse, err := http.DefaultClient.Do(deactivateRequest)
+	if err != nil {
+		t.Fatalf("delete account: %v", err)
+	}
+	defer deactivateResponse.Body.Close()
+	assertStatus(t, deactivateResponse, http.StatusOK)
+
+	afterDeactivate := postAuthJSON(t, server.URL+"/api/auth/login", authHTTPRequest{Email: newEmail, Password: "final horse battery staple"}, nil)
+	defer afterDeactivate.Body.Close()
+	if afterDeactivate.StatusCode == http.StatusOK {
+		t.Fatalf("deactivated account still logged in")
+	}
+}
+
+type accountTokenHTTPResponse struct {
+	Token string `json:"token"`
+}
+
+type usersHTTPResponse struct {
+	Users []struct {
+		ID     string `json:"id"`
+		Email  string `json:"email"`
+		Status string `json:"status"`
+	} `json:"users"`
+}
+
+func decodeAccountTokenHTTPResponse(t *testing.T, response *http.Response) accountTokenHTTPResponse {
+	t.Helper()
+	var body accountTokenHTTPResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode account token response: %v", err)
+	}
+	if body.Token == "" {
+		t.Fatalf("account token is empty")
+	}
+	return body
+}
+
 func postRefresh(t *testing.T, server *httptest.Server, cookie *http.Cookie) *http.Response {
 	t.Helper()
 	request, err := http.NewRequest(http.MethodPost, server.URL+"/api/auth/refresh", http.NoBody)

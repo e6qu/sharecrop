@@ -31,6 +31,14 @@ type AuthService interface {
 	Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult
 	Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult
 	CreateGuest(context.Context) auth.GuestResult
+	ListUsers(context.Context, string, core.Page) auth.UserDirectoryResult
+	RequestEmailVerification(context.Context, core.UserID) auth.AccountTokenIssueResult
+	VerifyEmail(context.Context, auth.AccountTokenPlain) auth.AccountActionResult
+	RequestPasswordReset(context.Context, auth.EmailAddress) auth.AccountTokenIssueResult
+	ResetPassword(context.Context, auth.AccountTokenPlain, auth.PasswordSecret) auth.AccountActionResult
+	ChangePassword(context.Context, core.UserID, auth.PasswordSecret, auth.PasswordSecret) auth.AccountActionResult
+	UpdateProfile(context.Context, core.UserID, auth.EmailAddress) auth.AccountActionResult
+	DeactivateAccount(context.Context, core.UserID) auth.AccountActionResult
 }
 
 type SubjectVerifier interface {
@@ -176,6 +184,13 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/auth/refresh", server.refresh)
 	mux.HandleFunc("POST /api/auth/logout", server.logout)
 	mux.HandleFunc("POST /api/auth/guest", server.guest)
+	mux.HandleFunc("POST /api/auth/email-verification/confirm", server.confirmEmailVerification)
+	mux.HandleFunc("POST /api/auth/password-reset/request", server.requestPasswordReset)
+	mux.HandleFunc("POST /api/auth/password-reset/confirm", server.confirmPasswordReset)
+	mux.HandleFunc("POST /api/account/email-verification", server.requestEmailVerification)
+	mux.HandleFunc("PATCH /api/account/password", server.changePassword)
+	mux.HandleFunc("PATCH /api/account/profile", server.updateAccountProfile)
+	mux.HandleFunc("DELETE /api/account", server.deactivateAccount)
 	mux.HandleFunc("GET /api/organizations", server.listOrganizations)
 	mux.HandleFunc("POST /api/organizations", server.createOrganization)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/members", server.listOrganizationMembers)
@@ -188,6 +203,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/teams", server.createStandaloneTeam)
 	mux.HandleFunc("GET /api/teams/{team_id}", server.getTeam)
 	mux.HandleFunc("POST /api/teams/{team_id}/members", server.addTeamMember)
+	mux.HandleFunc("GET /api/users", server.listUsers)
 	mux.HandleFunc("GET /api/users/{user_id}", server.getUserProfile)
 	mux.HandleFunc("GET /api/users/{user_id}/work", server.getUserWork)
 	mux.HandleFunc("GET /api/users/{user_id}/submissions", server.getUserSubmissions)
@@ -591,7 +607,8 @@ type taskRequestResult interface {
 }
 
 type taskRequestAccepted struct {
-	command task.CreateCommand
+	command        task.CreateCommand
+	collectibleIDs []core.CollectibleID
 }
 
 type taskRequestRejected struct {
@@ -625,7 +642,8 @@ type taskRewardResult interface {
 }
 
 type taskRewardAccepted struct {
-	value task.RewardSpec
+	value          task.RewardSpec
+	collectibleIDs []core.CollectibleID
 }
 
 type taskRewardRejected struct {

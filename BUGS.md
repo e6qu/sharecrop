@@ -8,12 +8,12 @@ Test gaps:
 
 - GitHub Pages deployment cannot be observed from pull request CI because the Pages workflow publishes after pushes to `main` or manual dispatch.
 - Anonymous workers were removed. The anonymous worker identity and payout model is deferred; submissions are registered-users-only.
-- Some recipient fields still require raw IDs because the API does not expose searchable user/team directory endpoints.
-- Browser reward creation is still partial after reward-kind selection: collectible and bundle tasks can be created, but the collectible count is fixed to one and actual collectible escrow is still attached after creation from the Collectibles page.
+- Some recipient fields still require raw IDs where the browser has no loaded directory data or no typeahead/paginated selector. Task creation now uses user/team selectors for the covered visibility fields.
+- Account verification and password reset return tokens through the API/UI. This is suitable for local/test flows but not an email-delivery flow.
+- Account lifecycle deactivation is implemented; hard deletion is not. Deletion needs an erasure/reference policy because existing foreign keys block deleting referenced users.
 - The asset economy is platform-only: user-issued tokens, organization-issued tokens, crypto rewards, and external wallets are not implemented. Current implemented rewards are Sharecrop credits and platform collectibles, including multiple collectibles per task.
 - Request/command contracts and HTTP contract fixture tests still need to expand as the API grows.
-- Database-backed HTTP E2E tests, including organization role update/deactivation coverage, could not run in the current local environment because `DATABASE_URL` is not set. A sandboxed attempt also blocked `httptest` local port binding.
-- Full real-app Playwright was not run locally because the configured app server requires local Postgres. A focused static-demo Playwright smoke was run against the compiled Elm bundle and fake backend.
+- User directory browser selectors currently load the first page rather than a typeahead query result; large installations need paginated/typeahead UI.
 
 Known risks:
 
@@ -26,5 +26,5 @@ Known risks:
 - The in-memory rate limiter evicts full buckets only on request arrival (at most once per refill window), so a burst of many distinct keys can transiently grow the map until the next sweep. Key sources are bounded (client IPs / verified agent subjects) and entries are tiny, so memory pressure is low; a background sweep would remove the transient growth.
 
 - MCP HTTP sessions, SSE replay buffers, and the rate-limiter buckets are in-memory. Idle entries are evicted (and MCP sessions are capped per subject and globally), but this state is not shared across server restarts or multiple app processes, so the rate limits are per-process rather than a global quota.
-- Standalone (user-owned) teams can be created and listed but are not yet selectable as a task assignee or visibility scope. See [DO_NEXT.md](./DO_NEXT.md).
+- Standalone (user-owned) teams can be created, listed, and selected for task visibility. They are not yet selectable as organization-team assignees because task assignment currently models user and organization-team scopes only.
 - Foreign keys use the PostgreSQL default `NO ACTION`, which blocks deletion of referenced rows. The application has no deletion paths, so orphan rows cannot occur. Explicit `ON DELETE` behavior is not defined and should be designed alongside any future deletion feature.

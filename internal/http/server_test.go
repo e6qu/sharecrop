@@ -400,6 +400,38 @@ func (testAuth) CreateGuest(context.Context) auth.GuestResult {
 	}
 }
 
+func (testAuth) ListUsers(context.Context, string, core.Page) auth.UserDirectoryResult {
+	return auth.UsersListed{Values: []auth.UserDirectoryEntry{}}
+}
+
+func (testAuth) RequestEmailVerification(context.Context, core.UserID) auth.AccountTokenIssueResult {
+	return auth.AccountTokenIssueRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testAuth) VerifyEmail(context.Context, auth.AccountTokenPlain) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testAuth) RequestPasswordReset(context.Context, auth.EmailAddress) auth.AccountTokenIssueResult {
+	return auth.AccountTokenIssueRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testAuth) ResetPassword(context.Context, auth.AccountTokenPlain, auth.PasswordSecret) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testAuth) ChangePassword(context.Context, core.UserID, auth.PasswordSecret, auth.PasswordSecret) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testAuth) UpdateProfile(context.Context, core.UserID, auth.EmailAddress) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testAuth) DeactivateAccount(context.Context, core.UserID) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (testVerifier) Verify(auth.AccessToken) auth.SubjectVerifyResult {
 	idResult := core.NewUserID()
 	idCreated := idResult.(core.UserIDCreated)

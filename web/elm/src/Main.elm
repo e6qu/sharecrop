@@ -43,6 +43,9 @@ initialModel flags key url =
     , route = pageFromUrl url
     , email = ""
     , password = ""
+    , resetEmail = ""
+    , resetToken = ""
+    , resetPassword = ""
     , authError = Nothing
     , session = LoggedOut
     }
@@ -63,6 +66,7 @@ emptyLoggedIn response =
     , createPayloadJson = ""
     , createRewardKind = "none"
     , createRewardAmount = ""
+    , createRewardCollectibleIds = []
     , createVisibility = visibilityDefaultTag
     , createScopeUserId = ""
     , createScopeTeamId = ""
@@ -119,6 +123,7 @@ emptyLoggedIn response =
     , activeOrgId = ""
     , orgBalance = Nothing
     , orgTeams = []
+    , standaloneTeams = []
     , orgMembers = []
     , orgTasks = []
     , orgCollectibles = []
@@ -160,6 +165,13 @@ emptyLoggedIn response =
     , taskIntegrationOpen = False
     , taskActionMessage = Nothing
     , userAgentToken = Nothing
+    , accountEmail = ""
+    , currentPassword = ""
+    , newPassword = ""
+    , emailVerificationToken = ""
+    , emailVerificationInput = ""
+    , accountMessage = Nothing
+    , userDirectory = []
     }
 
 
@@ -302,7 +314,7 @@ enterPage page state =
 
         CreateTaskPage ->
             -- Clear a half-finished draft and any stale create message on entry.
-            { state | page = page, createTitle = "", createDescription = "", createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
+            { state | page = page, createTitle = "", createDescription = "", createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardCollectibleIds = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
 
         FundingPage ->
             { state | page = page, fundMessage = Nothing }
@@ -326,8 +338,15 @@ update msg model =
         LoginClicked ->
             ( { model | authError = Nothing }, Api.postAuth "/api/auth/login" model )
 
+        GuestClicked ->
+            ( { model | authError = Nothing }, Api.postGuest )
+
         AuthReceived (Ok response) ->
-            ( { model | password = "", authError = Nothing, session = LoggedIn (loggedInForPage response model.route) }
+            let
+                state =
+                    loggedInForPage response model.route
+            in
+            ( { model | password = "", authError = Nothing, session = LoggedIn { state | accountEmail = model.email } }
             , Api.loadAfterAuth response.accessToken
             )
 
@@ -341,6 +360,33 @@ update msg model =
 
         RefreshReceived (Err _) ->
             ( model, Cmd.none )
+
+        PasswordResetEmailChanged value ->
+            ( { model | resetEmail = value }, Cmd.none )
+
+        PasswordResetTokenChanged value ->
+            ( { model | resetToken = value }, Cmd.none )
+
+        PasswordResetPasswordChanged value ->
+            ( { model | resetPassword = value }, Cmd.none )
+
+        RequestPasswordResetClicked ->
+            ( { model | authError = Nothing }, Api.requestPasswordReset model )
+
+        ConfirmPasswordResetClicked ->
+            ( { model | authError = Nothing }, Api.confirmPasswordReset model )
+
+        PasswordResetRequested (Ok token) ->
+            ( { model | resetToken = token, authError = Just "Password reset token created." }, Cmd.none )
+
+        PasswordResetRequested (Err error) ->
+            ( { model | authError = Just (httpErrorLabel error) }, Cmd.none )
+
+        PasswordResetConfirmed (Ok ()) ->
+            ( { model | resetPassword = "", resetToken = "", authError = Just "Password reset. Log in with the new password." }, Cmd.none )
+
+        PasswordResetConfirmed (Err error) ->
+            ( { model | authError = Just (httpErrorLabel error) }, Cmd.none )
 
         BalanceReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | balance = Api.balanceFromResult result }), Cmd.none )
@@ -421,10 +467,13 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | createPayloadJson = value }), Cmd.none )
 
         CreateRewardKindChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | createRewardKind = value }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | createRewardKind = value, createRewardCollectibleIds = [] }), Cmd.none )
 
         CreateRewardAmountChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createRewardAmount = value }), Cmd.none )
+
+        ToggleCreateRewardCollectible collectibleId ->
+            ( Api.updateLoggedIn model (\state -> { state | createRewardCollectibleIds = toggleString collectibleId state.createRewardCollectibleIds }), Cmd.none )
 
         CreateVisibilityChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createVisibility = value, createScopeUserId = "", createScopeTeamId = "", createScopeOrganizationId = "" }), Cmd.none )
@@ -461,6 +510,7 @@ update msg model =
                         , createPayloadJson = ""
                         , createTaskType = "general"
                         , createReferenceURL = ""
+                        , createRewardCollectibleIds = []
                         , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
                         , createReservationHours = "48"
                         , createMessage = Just ("Created task " ++ created.id)
@@ -871,6 +921,22 @@ update msg model =
         OrgTeamsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgTeams = Api.teamsFromResult result }), Cmd.none )
 
+        StandaloneTeamsReceived result ->
+            ( Api.updateLoggedIn model (\state -> { state | standaloneTeams = Api.teamsFromResult result }), Cmd.none )
+
+        UserDirectoryReceived result ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    case result of
+                        Ok users ->
+                            { state | userDirectory = users }
+
+                        Err _ ->
+                            { state | userDirectory = [] }
+                )
+            , Cmd.none
+            )
+
         OrgMembersReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgMembers = Api.membersFromResult result }), Cmd.none )
 
@@ -1188,6 +1254,53 @@ update msg model =
 
         SubmissionCommentAdded (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | submissionCommentMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AccountEmailChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | accountEmail = value }), Cmd.none )
+
+        CurrentPasswordChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | currentPassword = value }), Cmd.none )
+
+        NewPasswordChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | newPassword = value }), Cmd.none )
+
+        EmailVerificationInputChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | emailVerificationInput = value }), Cmd.none )
+
+        RequestEmailVerificationClicked ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.requestEmailVerification state.accessToken ))
+
+        ConfirmEmailVerificationClicked ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.confirmEmailVerification state.accessToken state.emailVerificationInput ))
+
+        UpdateProfileClicked ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.updateProfile state.accessToken state.accountEmail ))
+
+        ChangePasswordClicked ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.changePassword state.accessToken state.currentPassword state.newPassword ))
+
+        DeactivateAccountClicked ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.deactivateAccount state.accessToken ))
+
+        EmailVerificationRequested (Ok token) ->
+            ( Api.updateLoggedIn model (\state -> { state | emailVerificationToken = token, emailVerificationInput = token, accountMessage = Just "Verification token created." }), Cmd.none )
+
+        EmailVerificationRequested (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AccountActionReceived (Ok ()) ->
+            ( Api.updateLoggedIn model (\state -> { state | currentPassword = "", newPassword = "", emailVerificationInput = "", accountMessage = Just "Account updated." }), Cmd.none )
+
+        AccountActionReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        DeactivateAccountReceived (Ok ()) ->
+            ( { model | session = LoggedOut, email = "", password = "" }
+            , Nav.pushUrl model.key "#/"
+            )
+
+        DeactivateAccountReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         LinkClicked request ->
             case request of
