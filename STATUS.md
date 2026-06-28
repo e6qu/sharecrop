@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 70 work, merged into `main`, plus the combined account/directories/rewards/Playwright branch.
+The repository contains pull request 1 through pull request 71 work, merged into `main`.
 
-Active task: final verification and PR prep for the combined account lifecycle, directory selectors, reward setup, and Playwright coverage branch.
+Active task: demo/real parity branch is ready for review. The branch contract-tests the backendless demo route surface and representative response shapes against the real API/client expectations, adds shared browser scenario fixtures, and fixes demo parity gaps for account lifecycle, user directory, and create-time collectible rewards.
 
 Current implemented surface:
 
@@ -15,14 +15,13 @@ Current implemented surface:
 - Account lifecycle exists for guest entry, email-verification token issue/confirm, password reset/change, profile email update, and account deactivation.
 - Authenticated user directory and selector-backed user/team controls are available in task creation where the app has loaded directory data.
 - Collectible and bundle task creation can escrow selected collectibles immediately and task responses show the held collectible count.
+- Backendless demo routes now cover current real API routes except the documented real-only health/MCP/root routes.
+- Backendless demo account lifecycle, user directory, organization/team member provisioning, and create-time collectible rewards mirror the current real-app flows closely enough for browser demo coverage.
 
 Current verification:
 
-- `go test ./...` passed.
-- `go test -tags http_e2e ./tests/http_e2e` passed with local Postgres.
-- `make check-contracts`, `make check-format`, `make check-policy`, `make check-ts`, `make lint`, `make test-deno`, `make check-dead-code`, and `make vet` passed.
-- `make build` passed with `GOCACHE=/Users/zardoz/projects/sharecrop/.gocache ELM_BIN=/opt/homebrew/bin/elm`.
-- `deno task e2e:ui` passed: 36 Playwright tests.
+- PR #71 verification passed before merge: `go test ./...`, HTTP E2E with local Postgres, static checks, build, and 36 Playwright tests.
+- Current branch verification passed: `make check-format check-contracts check-policy check-ts lint vet test-deno frontend build`, `go tool deadcode -test ./...`, `go test ./...`, HTTP E2E with local Postgres, and targeted Playwright specs for demo, account lifecycle, and selector-backed task creation.
 
 Blocking issues:
 

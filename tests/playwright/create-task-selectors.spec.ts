@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { type AuthBody, password, uniqueEmail } from "./helpers.ts";
+import { selectorRewardScenario } from "./scenarios.ts";
 
 interface CollectibleBody {
   id: string;
@@ -27,12 +28,15 @@ test("task creation uses directory selectors and funds selected collectible rewa
 
   const teamResponse = await request.post("/api/teams", {
     headers: { Authorization: `Bearer ${owner.access_token}` },
-    data: { name: `Selectors ${crypto.randomUUID()}` },
+    data: {
+      name: `${selectorRewardScenario.teamNamePrefix} ${crypto.randomUUID()}`,
+    },
   });
   expect(teamResponse.ok()).toBeTruthy();
   const team = (await teamResponse.json()) as TeamBody;
 
-  const collectibleName = `Selector medal ${crypto.randomUUID()}`;
+  const collectibleName =
+    `${selectorRewardScenario.collectibleNamePrefix} ${crypto.randomUUID()}`;
   const collectibleResponse = await request.post("/api/collectibles", {
     headers: { Authorization: `Bearer ${owner.access_token}` },
     data: {
@@ -51,10 +55,11 @@ test("task creation uses directory selectors and funds selected collectible rewa
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-create-task").click();
-  const title = `Selector reward task ${crypto.randomUUID()}`;
+  const title =
+    `${selectorRewardScenario.taskTitlePrefix} ${crypto.randomUUID()}`;
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill(
-    "Created through selector controls.",
+    selectorRewardScenario.description,
   );
 
   await page.getByTestId("create-reward-kind-collectible").click();

@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { password, uniqueEmail } from "./helpers.ts";
+import { accountLifecycleScenario } from "./scenarios.ts";
 
 test("guest entry and account lifecycle controls work in the browser", async ({ page }) => {
   const email = uniqueEmail("ui-account");
-  const changedPassword = "changed horse battery staple";
-  const resetPassword = "reset horse battery staple";
+  const { changedPassword, resetPassword } = accountLifecycleScenario;
 
   await page.goto("/");
   await page.getByTestId("guest-login").click();
