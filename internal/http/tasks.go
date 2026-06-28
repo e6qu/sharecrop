@@ -10,6 +10,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/schema"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -700,6 +701,7 @@ func taskListItemToResponse(item task.ListItem) taskListItemResponse {
 		VisibilityKind:         visibility.kind,
 		AvailabilityKind:       taskAvailabilityKind(value).String(),
 		ViewerAction:           taskViewerAction(value).String(),
+		ReviewerAction:         task.ReviewerActionNone.String(),
 		CreatedBy:              value.CreatedBy.String(),
 		ActiveAssigneeKind:     active.kind,
 		ActiveAssigneeID:       active.id,
@@ -747,8 +749,57 @@ func taskToResponse(value task.Task) taskResponse {
 		CreatedBy:              value.CreatedBy.String(),
 		AvailabilityKind:       taskAvailabilityKind(value).String(),
 		ViewerAction:           taskViewerAction(value).String(),
+		ReviewerAction:         task.ReviewerActionNone.String(),
 	}
 }
+
+func (server Server) taskToResponseForActor(ctx context.Context, actor auth.UserSubject, value task.Task) taskResponse {
+	response := taskToResponse(value)
+	response.ReviewerAction = server.taskReviewerAction(ctx, actor, value).String()
+	return response
+}
+
+func (server Server) taskReviewerAction(ctx context.Context, actor auth.UserSubject, value task.Task) task.ReviewerAction {
+	if value.CreatedBy == actor.ID {
+		return task.ReviewerActionReview
+	}
+	organizationIDResult := taskOrganizationID(value)
+	organizationID, matched := organizationIDResult.(taskOrganizationIDFound)
+	if !matched {
+		return task.ReviewerActionNone
+	}
+	check := server.organizationService.CheckOrganizationPermission(ctx, organizationID.value, actor.ID, org.PermissionReviewSubmissions)
+	if _, granted := check.(org.PermissionGranted); granted {
+		return task.ReviewerActionReview
+	}
+	return task.ReviewerActionNone
+}
+
+type taskOrganizationIDResult interface {
+	taskOrganizationIDResult()
+}
+
+type taskOrganizationIDFound struct {
+	value core.OrganizationID
+}
+
+type taskOrganizationIDMissing struct{}
+
+func (taskOrganizationIDFound) taskOrganizationIDResult() {}
+
+func (taskOrganizationIDMissing) taskOrganizationIDResult() {}
+
+func taskOrganizationID(value task.Task) taskOrganizationIDResult {
+	switch typed := value.Owner.(type) {
+	case task.OrganizationOwner:
+		return taskOrganizationIDFound{value: typed.OrganizationID}
+	case task.OrganizationTeamOwner:
+		return taskOrganizationIDFound{value: typed.OrganizationID}
+	default:
+		return taskOrganizationIDMissing{}
+	}
+}
+
 func taskAvailabilityKind(value task.Task) task.AvailabilityKind {
 	if value.State != task.StateOpen {
 		return task.AvailabilityClosed

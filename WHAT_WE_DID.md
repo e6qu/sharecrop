@@ -1,5 +1,15 @@
 # What We Did
 
+`task/org-worker-selectors-rewards-docs` combined five follow-up tracks into one branch by explicit request:
+
+- **Organization role management and reviewer parity.** Organization member provisioning gained a role picker. Members can have roles updated or be deactivated through new API/store/service paths and browser controls. Organization reviewers can review organization-owned task submissions even when they did not create the task; task responses now carry `reviewer_action`.
+- **Worker submission UX.** Task detail loads the viewer's own submissions and renders a task-local "My submissions" panel with state, review notes, validation errors, response body, and submission comments. Reviewer-only submission-list failures no longer appear as worker submit errors.
+- **Selectors.** Organization-team reservation uses organization/team selectors and loads teams after selecting an organization. Organization funding, organization visibility, and organization award-recipient flows use organization selectors. Raw user/team recipient fields remain where no searchable directory endpoint exists.
+- **Reward creation.** The create-task form has an explicit reward-kind chooser for no reward, credits, collectible, and bundle rewards. Credit and bundle rewards collect a credit amount; collectible and bundle creation use the current HTTP parser's fixed one-collectible count.
+- **Docs and demo parity.** The static demo backend includes `reviewer_action`, organization role/deactivate routes, and regenerated demo bundles. The landing page links to real docs, and readiness/user-story docs no longer call `/docs/` a placeholder.
+- **Tests and checks.** Passed: `go test ./...`, `deno test --allow-read tests/deno`, `deno check tools/*.ts tests/**/*.ts`, `deno lint tools tests`, `deno run --allow-read tools/check_policy.ts`, format checks, and `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build ELM_BIN=/opt/homebrew/bin/elm make frontend`. A focused Playwright demo smoke captured screenshots for reward selectors, funding selector, organization member controls, and worker "My submissions".
+- **Skipped locally.** Database-backed HTTP E2E and full real-app Playwright were not run because `DATABASE_URL` is not set and local server binding is restricted in the sandbox. The new HTTP E2E test coverage is present for organization role update/deactivation.
+
 `task/org-team-assignment` made organization-team assignment workable across the main interfaces:
 
 - **Domain and permissions.** Task reservation now has an organization-team path in addition to the existing user path. The organization service exposes a team-membership check that verifies the team is organization-owned, belongs to the requested organization, and includes the acting user.

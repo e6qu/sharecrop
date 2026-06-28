@@ -8,7 +8,7 @@ This document maps the current product surface to user-facing flows for the brow
 - As a visitor, I can choose a demo user from a visible user selector so I can switch between requester, implementor, reviewer, and agent-operator perspectives.
 - As a visitor, I can choose light mode, dark mode, and visual themes so I can evaluate the product tone.
 - As a visitor, I can clear demo-local state from a visible widget so I can reset local choices and seeded workflow edits.
-- As a visitor, I can open `/docs/` and see documentation placeholders without confusing them with implemented product docs.
+- As a visitor, I can open `/docs/` and read a task lifecycle, REST, and MCP quickstart.
 - As a visitor, I can open the GitHub Pages root and see the main project landing page, with `/demo/` reserved for the interactive demo.
 
 ## Requester
@@ -38,14 +38,15 @@ This document maps the current product surface to user-facing flows for the brow
 - As an implementor, I can request approval when the policy requires requester approval.
 - As an implementor, I can submit a response when I am eligible.
 - As an implementor, I can revise work after changes are requested when the requester keeps my reservation active.
+- As an implementor, I can see my task-local submission status, review notes, validation errors, response body, and submission comments.
 - As an implementor, I can see whether a task pays credits, collectibles, both, or no reward.
 
 ## Organization Operator
 
 - As an organization operator, I can create organizations and teams.
-- As an organization operator, I can provision and deactivate members.
+- As an organization operator, I can provision members with selected roles, update member roles, and deactivate members.
 - As an organization operator with publisher permission, I can publish organization-owned tasks publicly.
-- As an organization operator with reviewer permission, I can review organization task submissions through the API. Browser review controls currently require the task creator.
+- As an organization operator with reviewer permission, I can review organization task submissions through the browser and API.
 - As an organization operator with billing permission, I can fund organization-owned task rewards from the organization credit account.
 
 ## Agent Operator
@@ -65,8 +66,7 @@ This document maps the current product surface to user-facing flows for the brow
 ## Deferred Or Partial Stories
 
 - Anonymous worker identity and payout are deferred; submissions currently require registered users.
-- Browser task creation can select organization-team assignee scope, but organization-team reservation and submission are not implemented.
-- Browser organization member provisioning creates `member` roles only; role selection, role update, and member deactivation controls are not implemented.
-- Workers can list their own submissions, but the browser does not yet provide a task-local submission status/comment/revision workflow for the worker side.
+- Organization-team reservation now has browser selectors, but full team submission and team-scoped worker dashboards still need more coverage.
+- Some recipient flows still require raw IDs where the API does not expose a searchable user or team directory.
 - User-issued tokens, organization-issued tokens, crypto rewards, external wallets, and automated crypto payout are not implemented.
 - MCP HTTP sessions and SSE replay buffers are in-memory and not shared across restarts or multiple app processes.

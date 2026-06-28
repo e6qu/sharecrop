@@ -2,17 +2,16 @@
 
 Current priority from [docs/application_readiness_review.md](./docs/application_readiness_review.md):
 
-1. Add organization role management and browser reviewer parity: role picker on member provisioning, role update, deactivate-member button, permission-aware organization UI, and organization-reviewer review controls for tasks they did not personally create.
-2. Add worker submission status/discussion UX: task-local "my submissions" panel, review notes, validation errors, response body, submission comments for workers, and a clear resubmit path after request-changes.
-3. Replace raw id fields with selectors: organization-team reservation, organization funding, visibility scopes, team scopes, admin award recipients, collectible transfer recipients, and series task add.
-4. Make reward creation coherent: reward-kind selector in task create, collectible/bundle reward setup in the same workflow, count handling, and clear funding/open preconditions.
-5. Build account lifecycle: email verification, password reset/change, settings/profile edit, account deactivation/deletion, and browser guest entry if guest sessions remain part of the product.
-6. Replace placeholder docs with user/API/MCP/operator docs, including the agent-side scheduling recipe.
-7. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
+1. Build account lifecycle: email verification, password reset/change, settings/profile edit, account deactivation/deletion, and browser guest entry if guest sessions remain part of the product.
+2. Add searchable user/team directories so remaining recipient fields can use selectors instead of raw IDs.
+3. Finish reward setup: collectible escrow during task creation, count handling, and clearer funding/open preconditions.
+4. Add Playwright coverage for organization role management, worker task-local submissions, organization-team reservation, reward-kind creation, and selector flows against the real app.
+5. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
 
 Recently finished:
 
-- Organization-team assignment now has reservation/request-approval and submission eligibility through HTTP, MCP, browser controls, and demo behavior. A follow-up remains to replace the browser's raw organization/team ID fields with selectors.
+- The combined follow-up branch added organization role management, organization reviewer browser parity, task-local worker submissions, selector-backed organization flows, reward-kind creation, demo parity, and documentation updates.
+- Organization-team assignment now has reservation/request-approval and submission eligibility through HTTP, MCP, selector-backed browser controls, and demo behavior.
 
 Previously agreed multi-PR roadmap (humans + agents get full lifecycle/feature parity):
 
@@ -27,7 +26,7 @@ Smaller parity follow-ups noticed during the review (fold into the PR they fit, 
 
 Polish follow-ups from `task/polish-bugfix-uiux-review`:
 
-- UI minors: add `type_ "button"` to the remaining secondary buttons (latent today since none sit in a `<form>`); replace free-text org/team/scope id inputs with picker dropdowns.
+- UI minors: add `type_ "button"` to the remaining secondary buttons (latent today since none sit in a `<form>`); replace remaining free-text user/team recipient fields after directory endpoints exist.
 
 Other queued work:
 

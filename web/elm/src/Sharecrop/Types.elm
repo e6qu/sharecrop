@@ -80,6 +80,7 @@ type alias LoggedInModel =
     , createResponseSchema : String
     , createSchemaFields : List SchemaFieldDraft
     , createPayloadJson : String
+    , createRewardKind : String
     , createRewardAmount : String
     , createVisibility : String
     , createScopeUserId : String
@@ -162,6 +163,7 @@ type alias LoggedInModel =
     , createOrgTeamName : String
     , orgTeamMessage : Maybe String
     , provisionMemberEmail : String
+    , provisionMemberRoles : List String
     , provisionMemberMessage : Maybe String
     , createTaskOwner : String
     , createTaskType : String
@@ -193,6 +195,7 @@ type alias TaskDetail =
     , reservationExpiryHours : Int
     , availabilityKind : Task.TaskAvailabilityKind
     , viewerAction : Task.TaskViewerAction
+    , reviewerAction : String
     , responseSchemaJson : String
     , payloadKind : String
     , payloadJson : String
@@ -241,6 +244,7 @@ type Msg
     | SchemaFieldItemKindChanged Int String
     | SchemaFieldEnumValuesChanged Int String
     | CreatePayloadChanged String
+    | CreateRewardKindChanged String
     | CreateRewardAmountChanged String
     | CreateVisibilityChanged String
     | CreateScopeUserIdChanged String
@@ -364,8 +368,13 @@ type Msg
     | CreateOrgTeamClicked
     | CreateOrgTeamReceived (Result Http.Error Team.TeamResponse)
     | ProvisionMemberEmailChanged String
+    | ToggleProvisionMemberRole String
     | ProvisionMemberClicked
     | ProvisionMemberReceived (Result Http.Error ())
+    | UpdateMemberRolesClicked String (List String)
+    | UpdateMemberRolesReceived (Result Http.Error Organization.OrganizationMemberResponse)
+    | DeactivateMemberClicked String
+    | DeactivateMemberReceived (Result Http.Error ())
     | CreateTaskOwnerChanged String
     | CreateTaskTypeChanged String
     | CreateReferenceURLChanged String

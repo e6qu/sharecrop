@@ -277,8 +277,8 @@ refreshTasksAndDiscovery model =
             Cmd.none
 
 
-routeLoadCmd : String -> Page -> Cmd Msg
-routeLoadCmd token page =
+routeLoadCmd : String -> String -> Page -> Cmd Msg
+routeLoadCmd token subjectId page =
     case page of
         OverviewPage ->
             Cmd.batch [ fetchBalance token, fetchLedger token ]
@@ -290,19 +290,19 @@ routeLoadCmd token page =
             fetchOrganizations token
 
         TaskDetailPage taskId ->
-            fetchDetailCommands token taskId
+            fetchDetailCommands token subjectId taskId
 
         DiscoveryPage ->
             fetchDiscovery token False
 
         FundingPage ->
-            fetchTasks token ""
+            Cmd.batch [ fetchTasks token "", fetchOrganizations token ]
 
         AgentsPage ->
             fetchCredentials token
 
         CollectiblesPage ->
-            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token "" ]
+            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token "", fetchOrganizations token ]
 
         OrganizationsPage ->
             fetchOrganizations token
@@ -317,7 +317,7 @@ routeLoadCmd token page =
             authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/work") Http.emptyBody (Http.expectJson UserWorkReceived Task.tasksResponseDecoder)
 
         UserSubmissionsPage userId ->
-            authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions") Http.emptyBody (Http.expectJson UserSubmissionsReceived Submission.submissionsResponseDecoder)
+            fetchUserSubmissions token userId
 
         CollectibleDetailPage _ ->
             fetchCollectibles token
@@ -378,7 +378,7 @@ refreshDetailSubmissions model =
         LoggedIn state ->
             case state.page of
                 TaskDetailPage taskId ->
-                    fetchSubmissions state.accessToken taskId
+                    Cmd.batch [ fetchSubmissions state.accessToken taskId, fetchUserSubmissions state.accessToken state.subjectId ]
 
                 _ ->
                     Cmd.none
@@ -402,9 +402,14 @@ refreshDetailReservations model =
             Cmd.none
 
 
-fetchDetailCommands : String -> String -> Cmd Msg
-fetchDetailCommands token taskId =
-    Cmd.batch [ fetchPublicTaskDetail token taskId, fetchSubmissions token taskId, fetchReservations token taskId, fetchTaskComments token taskId ]
+fetchDetailCommands : String -> String -> String -> Cmd Msg
+fetchDetailCommands token subjectId taskId =
+    Cmd.batch [ fetchPublicTaskDetail token taskId, fetchSubmissions token taskId, fetchReservations token taskId, fetchTaskComments token taskId, fetchUserSubmissions token subjectId, fetchOrganizations token ]
+
+
+fetchUserSubmissions : String -> String -> Cmd Msg
+fetchUserSubmissions token userId =
+    authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions") Http.emptyBody (Http.expectJson UserSubmissionsReceived Submission.submissionsResponseDecoder)
 
 
 fetchTaskComments : String -> String -> Cmd Msg
@@ -789,13 +794,46 @@ provisionMemberCommand model state =
     if String.isEmpty (String.trim state.provisionMemberEmail) || state.activeOrgId == "" then
         ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "A member email is required." }), Cmd.none )
 
+    else if List.isEmpty state.provisionMemberRoles then
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "Select at least one role." }), Cmd.none )
+
     else
         ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Nothing })
         , authorizedRequest "POST"
             state.accessToken
             ("/api/organizations/" ++ state.activeOrgId ++ "/members")
-            (Http.jsonBody (Encode.object [ ( "email", Encode.string (String.trim state.provisionMemberEmail) ), ( "roles", Encode.list Encode.string [ "member" ] ) ]))
+            (Http.jsonBody (Encode.object [ ( "email", Encode.string (String.trim state.provisionMemberEmail) ), ( "roles", Encode.list Encode.string state.provisionMemberRoles ) ]))
             (Http.expectWhatever ProvisionMemberReceived)
+        )
+
+
+updateMemberRolesCommand : Model -> LoggedInModel -> String -> List String -> ( Model, Cmd Msg )
+updateMemberRolesCommand model state userId roles =
+    if state.activeOrgId == "" || List.isEmpty roles then
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "Select at least one role." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Nothing })
+        , authorizedRequest "PATCH"
+            state.accessToken
+            ("/api/organizations/" ++ state.activeOrgId ++ "/members/" ++ userId ++ "/roles")
+            (Http.jsonBody (Encode.object [ ( "roles", Encode.list Encode.string roles ) ]))
+            (Http.expectJson UpdateMemberRolesReceived Organization.organizationMemberResponseDecoder)
+        )
+
+
+deactivateMemberCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+deactivateMemberCommand model state userId =
+    if state.activeOrgId == "" then
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "Open an organization first." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Nothing })
+        , authorizedRequest "PATCH"
+            state.accessToken
+            ("/api/organizations/" ++ state.activeOrgId ++ "/members/" ++ userId ++ "/deactivate")
+            (Http.jsonBody (Encode.object []))
+            (Http.expectWhatever DeactivateMemberReceived)
         )
 
 
@@ -896,7 +934,7 @@ createTaskRequestBody state =
         [ ( "owner", createOwnerBody state )
         , ( "title", Encode.string state.createTitle )
         , ( "description", Encode.string state.createDescription )
-        , ( "reward", createRewardBody state.createRewardAmount )
+        , ( "reward", createRewardBody state.createRewardKind state.createRewardAmount )
         , ( "participation", createParticipationBody state )
         , ( "visibility", createVisibilityBody state )
         , ( "placement", Encode.object [ ( "kind", Encode.string "standalone" ), ( "series_id", Encode.string "" ), ( "series_title", Encode.string "" ), ( "series_position", Encode.int 0 ) ] )
@@ -925,18 +963,28 @@ createPayloadBody state =
         Encode.object [ ( "kind", Encode.string "json" ), ( "json", Encode.string state.createPayloadJson ) ]
 
 
-createRewardBody : String -> Encode.Value
-createRewardBody rawAmount =
+createRewardBody : String -> String -> Encode.Value
+createRewardBody kind rawAmount =
     case String.toInt rawAmount of
         Just amount ->
-            if amount > 0 then
+            if kind == "credit" && amount > 0 then
                 Encode.object [ ( "kind", Encode.string "credit" ), ( "credit_amount", Encode.int amount ) ]
+
+            else if kind == "collectible" then
+                Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ) ]
+
+            else if kind == "bundle" && amount > 0 then
+                Encode.object [ ( "kind", Encode.string "bundle" ), ( "credit_amount", Encode.int amount ) ]
 
             else
                 Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ) ]
 
         Nothing ->
-            Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ) ]
+            if kind == "collectible" then
+                Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ) ]
+
+            else
+                Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ) ]
 
 
 createParticipationBody : LoggedInModel -> Encode.Value
@@ -1092,6 +1140,7 @@ taskDetailFromResponse response =
     , reservationExpiryHours = response.reservationExpiryHours
     , availabilityKind = response.availabilityKind
     , viewerAction = response.viewerAction
+    , reviewerAction = response.reviewerAction
     , responseSchemaJson = response.responseSchemaJSON
     , payloadKind = response.payloadKind
     , payloadJson = response.payloadJSON

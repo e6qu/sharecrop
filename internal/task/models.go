@@ -370,6 +370,19 @@ func (action ViewerAction) String() string {
 	return action.value
 }
 
+type ReviewerAction struct {
+	value string
+}
+
+var (
+	ReviewerActionReview = ReviewerAction{value: "review"}
+	ReviewerActionNone   = ReviewerAction{value: "none"}
+)
+
+func (action ReviewerAction) String() string {
+	return action.value
+}
+
 type OwnerKind struct {
 	value string
 }

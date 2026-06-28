@@ -323,7 +323,7 @@
       reward_credit_amount: t.reward_credit_amount, reward_collectible_count: t.reward_collectible_count,
       participation_policy: t.participation_policy, assignee_scope: t.assignee_scope,
       reservation_expiry_hours: t.reservation_expiry_hours, state: t.state, visibility_kind: t.visibility_kind,
-      availability_kind: t.availability_kind, viewer_action: viewerAction(t), created_by: t.created_by,
+      availability_kind: t.availability_kind, viewer_action: viewerAction(t), reviewer_action: reviewerAction(t), created_by: t.created_by,
       active_assignee_kind: activeAssignee(t) ? "user" : "", active_assignee_id: activeAssignee(t),
     };
   }
@@ -336,7 +336,7 @@
       state: t.state, visibility_kind: t.visibility_kind, visibility_id: t.visibility_id, series_kind: t.series_kind,
       series_id: t.series_id, series_position: t.series_position, response_schema_json: t.response_schema_json,
       payload_kind: t.payload_kind, payload_json: t.payload_json, created_by: t.created_by,
-      availability_kind: t.availability_kind, viewer_action: viewerAction(t),
+      availability_kind: t.availability_kind, viewer_action: viewerAction(t), reviewer_action: reviewerAction(t),
     };
   }
   function activeAssignee(t) {
@@ -351,6 +351,13 @@
     if (t.participation_policy === "reservation_required") return "reserve";
     if (t.participation_policy === "approval_required") return "request_approval";
     return "none";
+  }
+  function reviewerAction(t) {
+    if (t.created_by === ME) return "review";
+    if (t.owner_kind !== "organization") return "none";
+    const membership = (db.members[t.owner_id] || []).find((m) => m.user_id === ME && m.status === "active");
+    if (!membership) return "none";
+    return membership.roles.some((role) => ["owner", "admin", "reviewer"].includes(role)) ? "review" : "none";
   }
 
   // Minimal validator matching the response-schema format the designer emits
@@ -767,6 +774,18 @@
   on("GET", "/api/organizations/:id/credits/balance", (p) => ok({ amount: db.orgBalances[p.id] || 0 }));
   on("GET", "/api/organizations/:id/members", (p) => ok({ members: db.members[p.id] || [] }));
   on("POST", "/api/organizations/:id/members", (p, _url, body) => { const m = { id: nextId("mem"), organization_id: p.id, user_id: nextId("user"), status: "active", roles: (body && body.roles) || ["member"] }; (db.members[p.id] = db.members[p.id] || []).push(m); return ok(m, 201); });
+  on("PATCH", "/api/organizations/:id/members/:userId/roles", (p, _url, body) => {
+    const member = (db.members[p.id] || []).find((m) => m.user_id === p.userId && m.status === "active");
+    if (!member) return err(404, "member not found");
+    member.roles = (body && body.roles && body.roles.length > 0) ? body.roles : ["member"];
+    return ok(member);
+  });
+  on("PATCH", "/api/organizations/:id/members/:userId/deactivate", (p) => {
+    const member = (db.members[p.id] || []).find((m) => m.user_id === p.userId && m.status === "active");
+    if (!member) return err(404, "member not found");
+    member.status = "inactive";
+    return empty();
+  });
   on("GET", "/api/organizations/:id/teams", (p) => ok({ teams: db.orgTeams[p.id] || [] }));
   on("POST", "/api/organizations/:id/teams", (p, _url, body) => { const team = { id: nextId("team"), owner_kind: "organization", organization_id: p.id, owner_user_id: "", name: (body && body.name) || "Team", created_by: ME }; (db.orgTeams[p.id] = db.orgTeams[p.id] || []).push(team); return ok(team, 201); });
 

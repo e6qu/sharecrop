@@ -65,9 +65,9 @@ That loop is well covered by HTTP and Playwright tests. The application is still
 
 7. **Docs are not product-ready.**
    - `README.md` is local-command oriented.
-   - `site/docs/index.html` is still a placeholder.
-   - There is no generated API reference, MCP reference page, onboarding guide, or operator runbook.
-   - Result: a new user or integrator cannot self-serve from docs.
+   - `site/docs/index.html` has a task lifecycle and MCP quickstart.
+   - There is no generated API reference, complete MCP reference page, onboarding guide, or operator runbook.
+   - Result: a new user or integrator still needs source-level context for many workflows.
 
 ## Flow Review
 
@@ -82,7 +82,7 @@ Implemented:
 Missing or partial:
 
 - `docs/user_stories.md` still mentions mock social sign-in options, but the current Elm auth view only offers email/password login and registration.
-- The docs page is a placeholder, so the visitor cannot learn the real API/MCP workflows from hosted docs.
+- The docs page covers the core lifecycle and MCP quickstart, but not a complete API reference or operator runbook.
 - Demo semantics can still drift from Go because `site/demo/backend.js` re-implements the backend in JavaScript.
 
 ### Authentication And User Account
@@ -106,17 +106,16 @@ Missing or partial:
 
 Implemented:
 
-- Create tasks with title, description, template, reference URL, response schema, payload, credit reward amount, owner, participation policy, visibility, and assignee scope.
+- Create tasks with title, description, template, reference URL, response schema, payload, reward kind, credit reward amount, owner, participation policy, visibility, and assignee scope.
 - Fund/open/cancel/refund from browser.
 - Attach collectibles from the Collectibles page.
 - Review submissions with accept, reject, request changes, partial credit, credit tips, collectible tips, and ban.
 
 Missing or partial:
 
-- Creating a collectible-only or bundle-reward task is not a single coherent create flow. The create form only captures credit amount; collectible rewards are attached later from another page.
-- The HTTP task-create DTO can express collectible/bundle reward kinds, but collectible count is fixed to one in parsing and the browser does not expose reward kind selection.
-- Organization-owned funding requires typing an organization id into the funding page instead of selecting from accessible organizations.
-- Visibility and assignee scope use raw id inputs instead of pickers for users, teams, organizations, and organization teams.
+- Collectible-only and bundle tasks can be created from the task form, but the collectible count is still fixed to one by the HTTP parser and actual collectible escrow is still attached from the Collectibles page.
+- Organization-owned funding can select an accessible organization.
+- Organization visibility and organization-team reservation use selectors. User/team recipient fields still use raw IDs where no searchable directory endpoint exists.
 - Series membership during task creation is not exposed; series add uses a raw task id.
 
 ### Implementor
@@ -128,11 +127,11 @@ Implemented:
 - View task detail, schema, payload, reward, participation, and availability.
 - Reserve/request approval for user-assignee tasks.
 - Submit JSON responses.
+- View task-local own submissions with state, review notes, validation errors, response body, and submission comments.
 
 Missing or partial:
 
-- Organization-team assignee tasks cannot be reserved by a team.
-- Workers do not get a durable task-local "my submission" panel with review notes, validation errors, response body, submission comments, and resubmit guidance.
+- Organization-team assignee tasks can be reserved through browser selectors, but team-scoped submission dashboards and broader browser tests are still partial.
 - There are no notifications for approval, request-changes, accept/reject, or comment events.
 - There is no queue or inbox for tasks assigned to a user/team/organization beyond list/discovery/profile pages.
 
@@ -218,15 +217,12 @@ Missing or partial:
 - `BUGS.md` still says the browser cannot list organization members, but the organization detail page now lists members from `GET /api/organizations/{id}/members`.
 - `docs/user_stories.md` still says mock social sign-in options exist, but the current real Elm auth view only has email/password login/register.
 - `docs/user_stories.md` says collectible or inventory tips are deferred, but collectible tips are implemented.
-- `docs/user_stories.md` says organization-team assignee selection needs a browser control; selection exists, but team reservation/submission is the actual missing piece.
+- `docs/user_stories.md` has been updated for organization role management, worker task-local submissions, reward-kind creation, and selector coverage.
 
 ## Suggested Delivery Sequence
 
-1. Make organization-team assignment workable end to end: team reservation/request-approval commands, eligibility checks, HTTP/MCP tools, browser controls, and tests.
-2. Add organization role management in the browser: role picker on provision, role update, deactivate control, permission-aware UI, and org reviewer review controls.
-3. Add worker submission status/discussion UX: task-local "my submissions" panel, review-note display, validation errors, submission comments for workers, and resubmit flow after changes requested.
-4. Replace raw id fields with selectors: organization funding, visibility scopes, team scopes, admin award recipients, collectible transfer recipients, and series task add.
-5. Make reward creation coherent: reward-kind selector in task create, collectible/bundle reward setup in the same workflow, count handling, and clear funding/open preconditions.
-6. Build account lifecycle: verification, reset/change password, settings, account deactivation/deletion, and browser guest entry if guests remain part of the product.
-7. Write real docs: user guide, HTTP reference, MCP reference, agent-side scheduling recipe, deployment/runbook, and demo limitations.
-8. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
+1. Finish account lifecycle: verification, reset/change password, settings, account deactivation/deletion, and browser guest entry if guests remain part of the product.
+2. Add searchable user/team directories so remaining recipient fields can use selectors instead of raw IDs.
+3. Finish reward setup: collectible escrow during task creation, count handling, and clearer funding/open preconditions.
+4. Add Playwright coverage for organization role management, worker task-local submissions, organization-team reservation, reward-kind creation, and selector flows.
+5. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.

@@ -8,13 +8,12 @@ Test gaps:
 
 - GitHub Pages deployment cannot be observed from pull request CI because the Pages workflow publishes after pushes to `main` or manual dispatch.
 - Anonymous workers were removed. The anonymous worker identity and payout model is deferred; submissions are registered-users-only.
-- Browser organization operations are partial: member provisioning hardcodes the `member` role, there is no role update or deactivate-member control, and organization reviewers do not get browser review controls unless they created the task.
-- Workers can submit and can list their own submissions from the profile page, but the browser lacks a task-local worker submission status/comment/revision panel.
-- Browser reward creation is partial: the create-task form only captures credit amount; collectible and bundle rewards require separate collectible funding actions rather than one coherent create flow.
+- Some recipient fields still require raw IDs because the API does not expose searchable user/team directory endpoints.
+- Browser reward creation is still partial after reward-kind selection: collectible and bundle tasks can be created, but the collectible count is fixed to one and actual collectible escrow is still attached after creation from the Collectibles page.
 - The asset economy is platform-only: user-issued tokens, organization-issued tokens, crypto rewards, and external wallets are not implemented. Current implemented rewards are Sharecrop credits and platform collectibles, including multiple collectibles per task.
 - Request/command contracts and HTTP contract fixture tests still need to expand as the API grows.
-- `TestOrganizationTeamReservationAndSubmission` covers the organization-team reservation flow, but it could not run in the current local environment because `DATABASE_URL` is not set.
-- Manual screenshot review for the organization-team reservation browser controls was skipped because no local app server/database was available for the new flow. The Elm bundle was compiled successfully.
+- Database-backed HTTP E2E tests, including organization role update/deactivation coverage, could not run in the current local environment because `DATABASE_URL` is not set. A sandboxed attempt also blocked `httptest` local port binding.
+- Full real-app Playwright was not run locally because the configured app server requires local Postgres. A focused static-demo Playwright smoke was run against the compiled Elm bundle and fake backend.
 
 Known risks:
 

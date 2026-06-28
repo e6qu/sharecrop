@@ -25,6 +25,10 @@ type provisionMemberRequest struct {
 	Roles []string `json:"roles"`
 }
 
+type updateMemberRolesRequest struct {
+	Roles []string `json:"roles"`
+}
+
 type teamRequest struct {
 	Name string `json:"name"`
 }
@@ -151,6 +155,7 @@ type taskResponse struct {
 	CreatedBy              string `json:"created_by"`
 	AvailabilityKind       string `json:"availability_kind"`
 	ViewerAction           string `json:"viewer_action"`
+	ReviewerAction         string `json:"reviewer_action"`
 }
 
 type taskListItemResponse struct {
@@ -167,6 +172,7 @@ type taskListItemResponse struct {
 	VisibilityKind         string `json:"visibility_kind"`
 	AvailabilityKind       string `json:"availability_kind"`
 	ViewerAction           string `json:"viewer_action"`
+	ReviewerAction         string `json:"reviewer_action"`
 	CreatedBy              string `json:"created_by"`
 	ActiveAssigneeKind     string `json:"active_assignee_kind"`
 	ActiveAssigneeID       string `json:"active_assignee_id"`
