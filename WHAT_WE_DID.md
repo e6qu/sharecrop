@@ -1,5 +1,13 @@
 # What We Did
 
+`task/application-completeness-review` documented a project readiness review:
+
+- Added [docs/application_readiness_review.md](./docs/application_readiness_review.md), comparing the implemented backend, Elm UI, HTTP API, MCP surface, tests, and user stories against the product thesis.
+- The review found that the registered requester/worker task loop is implemented and tested, but the application is not yet ready for ordinary production use. The highest-priority gaps are organization-team assignment, organization reviewer browser parity, worker submission status/discussion, coherent reward creation, account lifecycle, operations, and product/API/MCP docs.
+- Updated [DO_NEXT.md](./DO_NEXT.md) with the review-driven priority queue.
+- Corrected stale user-story and bug/test-gap notes: collectible review tips and browser organization-member listing exist; organization-team assignee selection exists but is not workable end to end; browser organization roles and worker submission UX remain partial.
+- Verification: `make check-policy` and `make test-deno` passed. A docs-only `deno fmt --check` probe was not treated as required because Markdown is outside the repository's `make check-format` target and would reflow old continuity text unrelated to this branch.
+
 `task/bundle-refund-ui-parity` corrected the bundle-refund UX and a stale BUGS claim:
 
 - Investigation found the "no one-shot bundle refund" risk recorded in BUGS was wrong: the credit `/refund` endpoint already calls `refundHeldCollectibleReward` inside its transaction, so it returns held credits AND collectibles together (covered by `TestBundleRefundReturnsCreditsAndCollectible`). The actual gap was UI-only — a bundle task rendered both "Refund credits" and "Refund collectible", and the collectible one 409'd on bundle.

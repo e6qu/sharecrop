@@ -2,7 +2,17 @@
 
 The repository contains pull request 1 through pull request 67 work, merged into `main`.
 
-No active task. The most recent work was `task/bundle-refund-ui-parity` (PR #67), which corrected the bundle-refund UX (one refund action per reward kind) and removed a stale BUGS claim. See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
+Active task: `task/application-completeness-review`.
+
+The project readiness review has been documented in [docs/application_readiness_review.md](./docs/application_readiness_review.md). The review found that the registered requester/worker task loop works, but organization-team assignment, organization reviewer UI parity, worker submission status/discussion, reward creation, account lifecycle, production operations, and product docs remain the main readiness gaps.
+
+Current verification for this branch:
+
+- `make check-policy` passed.
+- `make test-deno` passed.
+- A docs-only `deno fmt --check` probe was not used as a required check because the repository's `make check-format` target does not format Markdown and the probe would reflow existing continuity files outside this task.
+
+The most recent merged work was `task/bundle-refund-ui-parity` (PR #67), which corrected the bundle-refund UX (one refund action per reward kind) and removed a stale BUGS claim. See [WHAT_WE_DID.md](./WHAT_WE_DID.md) and [DO_NEXT.md](./DO_NEXT.md) for queued work.
 
 Implemented in `task/bundle-refund-ui-parity` (merged, PR #67):
 

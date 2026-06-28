@@ -1,6 +1,17 @@
 # Do Next
 
-Agreed multi-PR roadmap (humans + agents get full lifecycle/feature parity). PR1 is merged; do the rest in order, one PR each:
+Current priority from [docs/application_readiness_review.md](./docs/application_readiness_review.md):
+
+1. Make organization-team assignment workable end to end: team reservation/request-approval commands, submission eligibility, HTTP/MCP tools, browser controls, and tests. Today the UI can mark a task as `organization_team`, but `Reserve` rejects non-user assignee tasks.
+2. Add organization role management and browser reviewer parity: role picker on member provisioning, role update, deactivate-member button, permission-aware organization UI, and organization-reviewer review controls for tasks they did not personally create.
+3. Add worker submission status/discussion UX: task-local "my submissions" panel, review notes, validation errors, response body, submission comments for workers, and a clear resubmit path after request-changes.
+4. Replace raw id fields with selectors: organization funding, visibility scopes, team scopes, admin award recipients, collectible transfer recipients, and series task add.
+5. Make reward creation coherent: reward-kind selector in task create, collectible/bundle reward setup in the same workflow, count handling, and clear funding/open preconditions.
+6. Build account lifecycle: email verification, password reset/change, settings/profile edit, account deactivation/deletion, and browser guest entry if guest sessions remain part of the product.
+7. Replace placeholder docs with user/API/MCP/operator docs, including the agent-side scheduling recipe.
+8. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
+
+Previously agreed multi-PR roadmap (humans + agents get full lifecycle/feature parity):
 
 - PR1 (done): lifecycle/parity basics — MCP `open_task`/`fund_task` + participation in `create_task` + `list_tasks` state filter + `review_note` in `get_submission_status`; human UI authors a response schema + payload; docs scope names fixed.
 - Series (done, `task/series-first-class`): task series promoted to a first-class domain — description + draft/published/closed lifecycle, creator-only add/remove/reorder of member tasks, a series comment thread, a stable URL, and draft-gating of member-task execution. This delivered series-level commenting; task-level and submission-level comments (the original PR3 scope) are still open below.
