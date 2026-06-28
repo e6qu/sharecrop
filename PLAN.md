@@ -23,13 +23,12 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Task series are ordered lists of tasks.
 - Tasks can be public or scoped to specific users, teams, organizations, organization users, or organization teams.
 - Tasks posted inside an organization are organization-scoped by default and hidden from the public marketplace unless an authorized organization role publishes them.
-- Users and organizations can hold wallets and Sharecrop credit accounts.
+- Users and organizations can hold Sharecrop credit accounts.
 - Each new registered user receives 100 Sharecrop credits.
 - Sharecrop credits are represented through an append-only ledger, not as a mutable balance field alone.
 - Task rewards are bundles that may contain Sharecrop credits, collectibles, both, or neither.
-- Users and organizations may later mint individualized reward tokens.
 - Sharecrop may sell platform-issued collectibles such as special emojis, graphics, badges, or other reward items.
-- User/org tokens and collectibles may be held, traded, hoarded, or attached as task rewards when the relevant asset model supports escrow and payout.
+- Sharecrop collectibles are minted by platform admins only. User/org/per-project tokens, external wallets, and crypto integrations are out of scope.
 
 ## Software Stack
 
@@ -175,7 +174,7 @@ Schema parser rules:
 - No object storage or file attachments in the MVP.
 - No external search service; use Postgres full-text search first.
 - No hosted auth library.
-- No automated crypto payout in the MVP.
+- External wallets and crypto payouts are out of scope.
 - No Kubernetes requirement.
 
 ### Primary Dependencies
@@ -322,8 +321,8 @@ Examples of intended variants:
 - `OwnerRef`: user, team, organization, organization team.
 - `SubmitterRef`: registered user, agent credential.
 - `VisibilityScope`: public, scoped users, scoped teams, scoped organizations, scoped organization users, scoped organization teams.
-- `RewardBundle`: empty reward, Sharecrop credits, collectibles, Sharecrop credits plus collectibles, later token and crypto metadata items.
-- `RewardAsset`: Sharecrop credits, user token, organization token, platform collectible, crypto metadata.
+- `RewardBundle`: empty reward, Sharecrop credits, Sharecrop collectibles, or Sharecrop credits plus collectibles.
+- `RewardAsset`: Sharecrop credits and admin-minted Sharecrop collectibles.
 - `ParticipationPolicy`: open submissions, reservation required, requester approval required.
 - `AssigneeScope`: one user, one public Sharecrop team, one organization team in the same organization.
 - `ReservationState`: requested, active, declined, cancelled by requester, cancelled by worker, expired, submitted.
@@ -513,17 +512,12 @@ Credit amounts must be integer base units. No floats.
 
 ### User And Organization Tokens
 
-Users and organizations may eventually mint individualized reward tokens.
+User/org/per-project reward tokens are out of scope. Sharecrop collectibles are minted by platform admins only.
 
-Token issuers:
+Collectible ownership:
 
-- User issuer.
-- Organization issuer.
-
-Token ownership:
-
-- Users can hold user-issued tokens, organization-issued tokens, and Sharecrop platform collectibles.
-- Organizations can hold organization-issued tokens, user-issued tokens where allowed, and Sharecrop platform collectibles.
+- Users can hold Sharecrop platform collectibles.
+- Organizations and teams can hold Sharecrop platform collectibles awarded by platform admins.
 
 Token rules:
 
@@ -654,9 +648,6 @@ Reward bundles:
 - Sharecrop credit amount.
 - One or more platform collectibles.
 - Sharecrop credits plus platform collectibles.
-- Later: user-issued token reward items.
-- Later: organization-issued token reward items.
-- Later: crypto reward metadata items.
 
 Participation policies:
 
@@ -858,15 +849,11 @@ Crypto rewards are in product scope but should not be automated in the MVP.
 
 MVP-compatible behavior:
 
-- Store crypto asset, network, amount, funding reference, and payout wallet metadata.
-- Track manual payout status.
-- Add automatic chain payout later only after security, compliance, and ledger behavior are stable.
+- External wallet and crypto payout metadata is out of scope.
 
-### User Tokens, Organization Tokens, And Collectibles As Rewards
+### Sharecrop Collectibles As Rewards
 
-User-issued tokens, organization-issued tokens, and Sharecrop platform collectibles are product-scope reward assets.
-
-They should be introduced after the Sharecrop credit ledger and escrow model is reliable.
+Sharecrop platform collectibles and Sharecrop credits are the product-scope reward assets. Collectibles are minted by platform admins only.
 
 Reward flow should mirror credits:
 
@@ -982,10 +969,6 @@ Deferred anonymous:
 - `GET /api/credit-accounts/{account_id}/ledger`
 - `POST /api/tasks/{task_id}/fund`
 - `POST /api/tasks/{task_id}/refund`
-- `GET /api/wallets`
-- `POST /api/wallets`
-- `GET /api/tokens`
-- `POST /api/tokens`
 - `GET /api/collectibles`
 - `POST /api/collectibles`
 - `POST /api/collectibles/{collectible_id}/trade`
@@ -1188,7 +1171,6 @@ internal/
   submissions/
   tasks/
   validation/
-  wallets/
 
 migrations/
 

@@ -140,7 +140,7 @@ func (server Server) requestEmailVerification(w http.ResponseWriter, r *http.Req
 		writeDomainError(w, result.(auth.AccountTokenIssueRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusCreated, accountTokenResponse{Token: issued.Token.String()})
+	server.accountTokens.write(w, auth.AccountTokenKindEmailVerification, actor.subject.ID.String(), issued)
 }
 
 func (server Server) confirmEmailVerification(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +181,7 @@ func (server Server) requestPasswordReset(w http.ResponseWriter, r *http.Request
 		writeDomainError(w, result.(auth.AccountTokenIssueRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusCreated, accountTokenResponse{Token: issued.Token.String()})
+	server.accountTokens.write(w, auth.AccountTokenKindPasswordReset, email.Value.String(), issued)
 }
 
 func (server Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {

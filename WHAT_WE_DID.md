@@ -1227,3 +1227,30 @@ The `task/demo-real-parity-fixtures` branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode -test ./...` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./...` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+
+The `task/product-readiness-foundation` branch added a combined readiness foundation:
+
+- Operations docs now include a runbook with required configuration, migration procedure, backup/restore guidance, log-token delivery mode, admin operations status, and current multi-process limits.
+- A systemd service template was added for one-process deployments.
+- The database has operations-state foundation tables for audit events, rate-limit buckets, and MCP HTTP sessions.
+- Platform admins can read `/api/admin/operations` for account-token delivery mode, secure-cookie mode, active MCP session count, active rate-limit buckets, and current runtime storage mode.
+- Account verification and password reset token issue support `SHARECROP_ACCOUNT_TOKEN_DELIVERY=log`; local/test API-token mode remains the default.
+- Account deactivation removes password credentials, revokes active refresh/account tokens, anonymizes the stored email, and keeps referenced user rows for task/submission/ledger history.
+- The create-task user selector can query `/api/users?query=...`; Playwright coverage exercises the search path before selecting a recipient.
+- HTTP contract fixtures were expanded for account-token sent responses, user directory responses, submission comments, and operations status.
+- Submission comment posting now uses a real submit button.
+- Product docs were updated to keep rewards scoped to Sharecrop credits and admin-minted Sharecrop collectibles only.
+
+The `task/product-readiness-foundation` branch verification was performed:
+
+- `deno task check:ts` passed.
+- `deno task lint` passed.
+- `deno task test` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./internal/http ./internal/auth ./internal/app` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e` passed with local Postgres access.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts tests/playwright/account.spec.ts tests/playwright/create-task-selectors.spec.ts` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build ELM_BIN=/opt/homebrew/bin/elm make check-format check-contracts check-policy check-ts lint vet test-deno frontend build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode -test ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_BIN=/opt/homebrew/bin/elm make build` passed.

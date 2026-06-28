@@ -66,6 +66,8 @@ test("task creation uses directory selectors and funds selected collectible rewa
   await page.getByTestId(`create-reward-collectible-${collectible.id}`).check();
 
   await page.getByTestId("create-visibility-user").click();
+  await page.getByTestId("create-scope-user-query").fill(targetEmail);
+  await page.getByTestId("create-scope-user-search").click();
   await page.getByTestId("create-scope-user").selectOption({
     label: targetEmail,
   });

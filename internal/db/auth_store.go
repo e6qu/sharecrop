@@ -192,7 +192,8 @@ func (store AuthStore) DeactivateUser(ctx context.Context, userID core.UserID) a
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin deactivate account failed")}
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	tag, err := tx.Exec(ctx, "update users set status = 'deactivated' where id = $1 and status = 'active'", userID.String())
+	tombstoneEmail := "deactivated+" + userID.String() + "@sharecrop.invalid"
+	tag, err := tx.Exec(ctx, "update users set status = 'deactivated', email = $2, email_verified_at = null where id = $1 and status = 'active'", userID.String(), tombstoneEmail)
 	if err != nil {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "deactivate account failed")}
 	}
@@ -204,6 +205,9 @@ func (store AuthStore) DeactivateUser(ctx context.Context, userID core.UserID) a
 	}
 	if _, err := tx.Exec(ctx, "update account_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String()); err != nil {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke account tokens failed")}
+	}
+	if _, err := tx.Exec(ctx, "delete from password_credentials where user_id = $1", userID.String()); err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "delete account password credential failed")}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit deactivate account failed")}

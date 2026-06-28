@@ -4,19 +4,26 @@ Current priority from [docs/application_readiness_review.md](./docs/application_
 
 Recently finished:
 
-1. The backendless demo route surface is checked against the real HTTP router. Intentional real-only skips are health, MCP, and root/static serving routes.
-2. The backendless demo has Deno contract coverage for account lifecycle, user directory, task list/detail, and create-time collectible reward response shapes.
-3. The demo now implements account lifecycle routes, `/api/users`, profile/password/account responses, clearer 404s for unknown demo API routes, email-backed org/team member provisioning, and create-time collectible reward escrow.
-4. Shared Playwright scenario constants cover account lifecycle and selector-backed reward creation flows.
-5. Real backend coverage for the carried-over behaviors is confirmed by existing HTTP E2E and targeted Playwright account/selector specs.
+1. The combined product-readiness branch added an operations runbook, systemd service template, operations-state schema foundation, and admin operations status endpoint.
+2. The browser user selector can query `/api/users?query=...`; selector Playwright coverage now exercises the search path.
+3. Account verification/reset token issue supports `SHARECROP_ACCOUNT_TOKEN_DELIVERY=log`, while local/test API-token mode remains available.
+4. HTTP contract fixture coverage now includes account-token sent responses, user directory responses, submission comments, and operations status.
+5. Account deletion semantics are deactivation plus password credential removal, refresh/account-token revocation, and email anonymization.
+6. Submission comment posting uses a real form submit button, so click and Enter behavior match.
+7. Reward docs now state the current product boundary: Sharecrop credits and admin-minted Sharecrop collectibles only.
+- The backendless demo route surface is checked against the real HTTP router. Intentional real-only skips are health, MCP, and root/static serving routes.
+- The backendless demo has Deno contract coverage for account lifecycle, user directory, task list/detail, and create-time collectible reward response shapes.
+- The demo implements account lifecycle routes, `/api/users`, profile/password/account responses, clearer 404s for unknown demo API routes, email-backed org/team member provisioning, and create-time collectible reward escrow.
+- Shared Playwright scenario constants cover account lifecycle and selector-backed reward creation flows.
+- Real backend coverage for the carried-over behaviors is confirmed by existing HTTP E2E and targeted Playwright account/selector specs.
 
 Remaining after the combined PR:
 
-1. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
-2. Decide account hard-delete semantics. The current lifecycle deactivates accounts and revokes sessions/tokens; hard deletion is deferred because referenced rows currently block deletion and no erasure model exists.
-3. Replace development-style account tokens with an email delivery flow. Email verification and password reset currently return tokens through the API/UI so tests and local flows can complete without mail infrastructure.
-4. Add typeahead/paginated directory search in the browser. The API supports a user query parameter, but the create-task UI currently uses the loaded first page of users and standalone teams.
-5. Expand generated/fixture-level HTTP contract coverage beyond the representative demo route tests as the API surface grows.
+1. Wire runtime adapters for Postgres-backed rate-limit buckets and MCP HTTP sessions. The tables exist, but the process still reports `process_memory` storage.
+2. Add an SMTP/provider email adapter for account verification and password reset. Log delivery exists; provider delivery does not.
+3. Add an admin audit-event writer and audit viewer for admin collectible awards, account lifecycle actions, ledger settlement, refunds, and moderation events.
+4. Add team-scoped submission dashboards and notification/inbox flows for approval, request-changes, accept/reject, and comments.
+5. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
 
 Recently finished:
 
@@ -42,11 +49,6 @@ Polish follow-ups from `task/polish-bugfix-uiux-review`:
 Other queued work:
 
 1. Make the real-Elm demo base-path aware for GitHub Pages: pass a base (the demo's path prefix) via flags and have `pageToPath`/`pageFromUrl` honor it, plus add a Pages SPA fallback (e.g. a `404.html`), so hard-refresh and deep-links on demo sub-routes work and the URL stays under `/demo/`. Today only in-app click navigation works (see BUGS.md).
-2. Out-of-process session/rate-limiter store (Postgres). Put the MCP session store and the rate limiter behind interfaces (the in-memory implementations stay the default) and add Postgres-backed implementations: a `rate_limit_buckets` table (atomic token-bucket via a row-locked upsert) and an `mcp_sessions` table for session existence/eviction. The hard part is cross-process SSE replay fan-out, which needs `LISTEN/NOTIFY` (or a polling relay) — design that explicitly. This was scoped out of the collectible-tips/arcade PR to avoid shipping fragile pubsub.
-5. Redesign anonymous worker identity and payout.
-6. Add user-issued or organization-issued tokens.
-7. Add crypto reward metadata.
-8. Move MCP HTTP sessions and SSE replay buffers out of process if multi-process deployment becomes a requirement. The in-memory store evicts idle sessions after a TTL but is still per-process.
-9. Expand request and command contracts and HTTP contract fixture coverage.
+2. Redesign anonymous worker identity only if guests return to the product; registered-user submissions are the current model.
 
 Before starting, reread [AGENTS.md](./AGENTS.md) and update the continuity files if task scope changes.

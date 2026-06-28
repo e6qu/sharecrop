@@ -14,6 +14,7 @@ import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.Labels exposing (assigneeScopeTag, participationUsesReservation)
 import Sharecrop.Types exposing (..)
+import Url
 
 
 withSession : Model -> (LoggedInModel -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
@@ -506,7 +507,10 @@ confirmPasswordReset model =
 
 tokenDecoder : Decode.Decoder String
 tokenDecoder =
-    Decode.field "token" Decode.string
+    Decode.oneOf
+        [ Decode.field "token" Decode.string
+        , Decode.field "status" Decode.string |> Decode.map (\_ -> "")
+        ]
 
 
 postRefresh : Cmd Msg
@@ -787,7 +791,23 @@ userDirectoryEntryDecoder =
 
 fetchUserDirectory : String -> Cmd Msg
 fetchUserDirectory token =
-    authorizedRequest "GET" token "/api/users" Http.emptyBody (Http.expectJson UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))
+    fetchUserDirectoryQuery token ""
+
+
+fetchUserDirectoryQuery : String -> String -> Cmd Msg
+fetchUserDirectoryQuery token queryText =
+    let
+        clean =
+            String.trim queryText
+
+        query =
+            if clean == "" then
+                "/api/users"
+
+            else
+                "/api/users?query=" ++ Url.percentEncode clean
+    in
+    authorizedRequest "GET" token query Http.emptyBody (Http.expectJson UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))
 
 
 fetchStandaloneTeams : String -> Cmd Msg

@@ -34,36 +34,30 @@ That loop is well covered by HTTP and Playwright tests. The application is still
    - There is no HTTP, MCP, or browser command to reserve/request approval as a team.
    - Result: a requester can create a task that displays as organization-team assigned, but the intended team cannot claim it through the current product.
 
-2. **Organization reviewer and publisher flows are not usable in the browser.**
-   - The backend has organization roles and review permissions.
-   - The browser decides task ownership by `detail.createdBy == subjectId`, so an organization reviewer who did not create the task does not get review controls.
-   - Member provisioning in the browser hardcodes the `member` role. There is no role picker, role update, deactivate button, or permission-aware UI.
-   - Result: organization workflows depend on API calls and are not self-service in the UI.
-
-3. **Worker revision and submission-discussion flows are underexposed.**
+2. **Worker revision and submission-discussion flows still need polish.**
    - Workers can submit and can list their own submissions from the profile page.
    - The task detail fetches task submissions, but the backend only allows task owners/reviewers to list all task submissions.
-   - The worker submissions page shows only task id and state, with no review note, response body, validation errors, submission comments, or direct revision workflow.
-   - Result: "request changes" is implemented, but the worker has no strong browser workflow for seeing requested changes, discussing a specific submission, and resubmitting from that context.
+   - The worker submissions page shows review notes, response body, validation errors, and submission comments.
+   - Result: "request changes" is implemented, but notifications and a dedicated revision inbox are still absent.
 
-4. **The reward economy is internal only.**
+3. **The reward economy is internal only by product decision.**
    - Credits are signup grants and internal ledger entries.
-   - There is no purchase/top-up flow, withdrawal/payout method, invoice/billing system, wallet reconciliation dashboard, or accounting export.
-   - Collectibles are platform/internal assets; user-issued tokens, organization-issued tokens, crypto metadata, external wallets, and automated crypto payout are deferred.
-   - Result: rewards work for product mechanics, but not for a real paid marketplace.
+   - Collectibles are Sharecrop platform assets minted by platform admins from the catalog.
+   - User/org/per-project tokens, external wallets, and crypto integrations are out of scope.
+   - Result: rewards work for internal Sharecrop incentives, not for external payout rails.
 
-5. **Account lifecycle is minimal.**
-   - There is no email verification, password reset, password change, account deletion/deactivation, user settings page, OAuth provider integration, or invite acceptance flow.
-   - The API has guest subjects, but the browser has no guest entry point.
-   - Result: ordinary account recovery and administrative user lifecycle are missing.
+4. **Account lifecycle needs real delivery infrastructure.**
+   - Email verification, password reset/change, profile email update, deactivation, and browser guest entry exist.
+   - Verification/reset can be delivered through a configured log sink, while local/test mode can still return tokens through the API.
+   - Result: product flows exist, but production email delivery needs an SMTP/provider adapter before public operation.
 
-6. **Operations are local-first.**
-   - Runtime config is limited to address, database URL, migrations dir, and access-token secret.
-   - There is Docker Compose for local Postgres, but no deployment manifest, backup/restore process, release procedure, migration rollback plan, metrics, tracing, structured audit log, or production admin console.
+5. **Operations are single-process.**
+   - Runtime config includes address, database URL, migrations dir, access-token secret, admin ids, cookie mode, and account-token delivery mode.
+   - There is Docker Compose for local Postgres, a systemd service template, and an operator runbook.
    - MCP sessions, SSE replay buffers, and rate-limit buckets are in memory.
-   - Result: one process can run locally, but multi-process and production operations remain design work.
+   - Result: one process can be operated, but multi-process state remains design work.
 
-7. **Docs are not product-ready.**
+6. **Docs are not product-ready.**
    - `README.md` is local-command oriented.
    - `site/docs/index.html` has a task lifecycle and MCP quickstart.
    - There is no generated API reference, complete MCP reference page, onboarding guide, or operator runbook.
@@ -89,17 +83,15 @@ Missing or partial:
 
 Implemented:
 
-- Register, login, refresh, logout, and API guest session creation.
+- Register, login, refresh, logout, browser guest entry, and API guest session creation.
 - Refresh-token family reuse protection and logout revocation.
 - Basic password-length validation and password hashing.
+- Email verification, password reset/change, profile email update, and account deactivation.
 
 Missing or partial:
 
-- No email verification or deliverability infrastructure.
-- No password reset/change.
-- No user settings/profile edit.
-- No account deletion/deactivation.
-- No browser guest flow.
+- No SMTP/provider adapter for production email delivery.
+- Account deletion is deactivation plus credential/session/token revocation and email anonymization, not hard row deletion.
 - No OAuth/social login despite earlier story text referencing mock providers.
 
 ### Requester
@@ -145,15 +137,13 @@ Implemented:
 - Provision and list members.
 - Add team members by email.
 - Show organization/team collectible holdings.
-- Fund organization-owned tasks from organization credits through API and raw-id browser field.
+- Fund organization-owned tasks from organization credits.
+- Choose provisioned roles, update roles, deactivate members, and review organization-owned task submissions when authorized.
 
 Missing or partial:
 
-- Browser cannot choose provisioned roles; it sends `member` only.
-- Browser has no deactivate-member control despite an API endpoint.
-- Browser does not show permission-aware affordances for billing, reviewer, public publisher, or admin roles.
-- Organization reviewers cannot review organization submissions in the browser unless they are also the task creator.
-- Organization-team task assignee flow has no working reservation/submission path.
+- Browser does not expose a full organization operations dashboard for billing-style views or audit history.
+- Team-scoped submission dashboards are still partial.
 
 ### Agent Operator
 

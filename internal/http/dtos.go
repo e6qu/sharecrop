@@ -18,6 +18,12 @@ type accountTokenResponse struct {
 
 func (accountTokenResponse) writableResponse() {}
 
+type accountTokenSentResponse struct {
+	Status string `json:"status"`
+}
+
+func (accountTokenSentResponse) writableResponse() {}
+
 type accountTokenRequest struct {
 	Token string `json:"token"`
 }
