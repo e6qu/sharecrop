@@ -14,6 +14,7 @@ type Store interface {
 	ListMembers(context.Context, core.OrganizationID, core.Page) ListMembersResult
 	ProvisionMember(context.Context, core.OrganizationMembershipID, core.OrganizationID, auth.EmailAddress, []Role) ProvisionMemberStoreResult
 	DeactivateMember(context.Context, core.OrganizationID, core.UserID) DeactivateMemberStoreResult
+	UpdateMemberRoles(context.Context, core.OrganizationID, core.UserID, []Role) UpdateMemberRolesStoreResult
 	CreateOrganizationTeam(context.Context, core.TeamID, core.OrganizationID, TeamName, core.UserID) CreateTeamStoreResult
 	CreateStandaloneTeam(context.Context, core.TeamID, core.UserID, TeamName) CreateTeamStoreResult
 	AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult
@@ -423,6 +424,39 @@ func (service Service) DeactivateMember(ctx context.Context, actor auth.UserSubj
 	}
 
 	return MemberDeactivationAccepted{}
+}
+
+type UpdateMemberRolesResult interface {
+	updateMemberRolesResult()
+}
+
+type MemberRolesUpdatedResult struct {
+	Value OrganizationMember
+}
+
+type UpdateMemberRolesRejected struct {
+	Reason core.DomainError
+}
+
+func (MemberRolesUpdatedResult) updateMemberRolesResult() {}
+
+func (UpdateMemberRolesRejected) updateMemberRolesResult() {}
+
+func (service Service) UpdateMemberRoles(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID, userID core.UserID, roles []Role) UpdateMemberRolesResult {
+	permissionResult := service.requirePermission(ctx, organizationID, actor.ID, PermissionManageMembers)
+	if rejected, matched := permissionResult.(PermissionDenied); matched {
+		return UpdateMemberRolesRejected{Reason: rejected.Reason}
+	}
+	if len(roles) == 0 {
+		return UpdateMemberRolesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization member roles are required")}
+	}
+
+	storeResult := service.store.UpdateMemberRoles(ctx, organizationID, userID, roles)
+	updated, matched := storeResult.(MemberRolesUpdated)
+	if !matched {
+		return UpdateMemberRolesRejected{Reason: storeResult.(UpdateMemberRolesStoreRejected).Reason}
+	}
+	return MemberRolesUpdatedResult{Value: updated.Value}
 }
 
 func (service Service) requirePermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, permission Permission) PermissionCheck {

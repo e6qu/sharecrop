@@ -43,6 +43,7 @@ type OrganizationService interface {
 	ListMembers(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListMembersResult
 	ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
 	DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
+	UpdateMemberRoles(context.Context, auth.UserSubject, core.OrganizationID, core.UserID, []org.Role) org.UpdateMemberRolesResult
 	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
 	CreateStandaloneTeam(context.Context, auth.UserSubject, org.TeamName) org.CreateTeamResult
 	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult
@@ -179,6 +180,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/organizations", server.createOrganization)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/members", server.listOrganizationMembers)
 	mux.HandleFunc("POST /api/organizations/{organization_id}/members", server.provisionOrganizationMember)
+	mux.HandleFunc("PATCH /api/organizations/{organization_id}/members/{user_id}/roles", server.updateOrganizationMemberRoles)
 	mux.HandleFunc("PATCH /api/organizations/{organization_id}/members/{user_id}/deactivate", server.deactivateOrganizationMember)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/teams", server.listOrganizationTeams)
 	mux.HandleFunc("POST /api/organizations/{organization_id}/teams", server.createOrganizationTeam)
@@ -540,22 +542,48 @@ func decodeProvisionMemberRequest(r *http.Request) provisionMemberResult {
 		return provisionMemberRejected{reason: rejected.Reason.Description()}
 	}
 
-	roles := make([]org.Role, 0, len(request.Roles))
-	for _, rawRole := range request.Roles {
+	rolesResult := parseOrganizationRoles(request.Roles)
+	roles, rolesMatched := rolesResult.(organizationRolesAccepted)
+	if !rolesMatched {
+		return provisionMemberRejected{reason: rolesResult.(organizationRolesRejected).reason}
+	}
+
+	return provisionMemberAccepted{email: emailAccepted.Value, roles: roles.values}
+}
+
+type organizationRolesResult interface {
+	organizationRolesResult()
+}
+
+type organizationRolesAccepted struct {
+	values []org.Role
+}
+
+type organizationRolesRejected struct {
+	reason string
+}
+
+func (organizationRolesAccepted) organizationRolesResult() {}
+
+func (organizationRolesRejected) organizationRolesResult() {}
+
+func parseOrganizationRoles(rawRoles []string) organizationRolesResult {
+	roles := make([]org.Role, 0, len(rawRoles))
+	for _, rawRole := range rawRoles {
 		roleResult := org.ParseRole(rawRole)
 		roleAccepted, roleMatched := roleResult.(org.RoleAccepted)
 		if !roleMatched {
 			rejected := roleResult.(org.RoleRejected)
-			return provisionMemberRejected{reason: rejected.Reason.Description()}
+			return organizationRolesRejected{reason: rejected.Reason.Description()}
 		}
 		roles = append(roles, roleAccepted.Value)
 	}
 
 	if len(roles) == 0 {
-		return provisionMemberRejected{reason: "at least one organization role is required"}
+		return organizationRolesRejected{reason: "at least one organization role is required"}
 	}
 
-	return provisionMemberAccepted{email: emailAccepted.Value, roles: roles}
+	return organizationRolesAccepted{values: roles}
 }
 
 type taskRequestResult interface {

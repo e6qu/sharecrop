@@ -61,6 +61,7 @@ emptyLoggedIn response =
     , createResponseSchema = "{\"kind\":\"freeform\"}"
     , createSchemaFields = []
     , createPayloadJson = ""
+    , createRewardKind = "none"
     , createRewardAmount = ""
     , createVisibility = visibilityDefaultTag
     , createScopeUserId = ""
@@ -143,6 +144,7 @@ emptyLoggedIn response =
     , createOrgTeamName = ""
     , orgTeamMessage = Nothing
     , provisionMemberEmail = ""
+    , provisionMemberRoles = [ "member" ]
     , provisionMemberMessage = Nothing
     , createTaskOwner = ""
     , createTaskType = "general"
@@ -263,7 +265,7 @@ enterPage : Page -> LoggedInModel -> LoggedInModel
 enterPage page state =
     case page of
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgCollectibles = [], orgTeamMessage = Nothing, provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgCollectibles = [], orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing }
@@ -300,7 +302,7 @@ enterPage page state =
 
         CreateTaskPage ->
             -- Clear a half-finished draft and any stale create message on entry.
-            { state | page = page, createTitle = "", createDescription = "", createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardAmount = "", createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
+            { state | page = page, createTitle = "", createDescription = "", createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
 
         FundingPage ->
             { state | page = page, fundMessage = Nothing }
@@ -334,7 +336,7 @@ update msg model =
 
         RefreshReceived (Ok response) ->
             ( { model | session = LoggedIn (loggedInForPage response model.route) }
-            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken model.route ]
+            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID model.route ]
             )
 
         RefreshReceived (Err _) ->
@@ -418,11 +420,14 @@ update msg model =
         CreatePayloadChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createPayloadJson = value }), Cmd.none )
 
+        CreateRewardKindChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | createRewardKind = value }), Cmd.none )
+
         CreateRewardAmountChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createRewardAmount = value }), Cmd.none )
 
         CreateVisibilityChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | createVisibility = value }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | createVisibility = value, createScopeUserId = "", createScopeTeamId = "", createScopeOrganizationId = "" }), Cmd.none )
 
         CreateScopeUserIdChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createScopeUserId = value }), Cmd.none )
@@ -648,7 +653,16 @@ update msg model =
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | reservationMessage = Nothing }), Api.postReservation state taskId ))
 
         ReservationOrganizationIdChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | reservationOrganizationId = value }), Cmd.none )
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | reservationOrganizationId = value, reservationTeamId = "", orgTeams = [] })
+                    , if value == "" then
+                        Cmd.none
+
+                      else
+                        Api.fetchOrgTeams state.accessToken value
+                    )
+                )
 
         ReservationTeamIdChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | reservationTeamId = value }), Cmd.none )
@@ -688,7 +702,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | submissions = response.submissions }), Cmd.none )
 
         SubmissionsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | submissions = [], submitMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | submissions = [], reviewMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         SubmitInputChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | submitInput = value }), Cmd.none )
@@ -788,7 +802,7 @@ update msg model =
             ( model, Cmd.none )
 
         AwardRecipientKindChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | awardRecipientKind = value }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | awardRecipientKind = value, awardRecipientId = "" }), Cmd.none )
 
         AwardRecipientIdChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | awardRecipientId = value }), Cmd.none )
@@ -1038,6 +1052,9 @@ update msg model =
         ProvisionMemberEmailChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | provisionMemberEmail = value }), Cmd.none )
 
+        ToggleProvisionMemberRole role ->
+            ( Api.updateLoggedIn model (\state -> { state | provisionMemberRoles = toggleString role state.provisionMemberRoles }), Cmd.none )
+
         ProvisionMemberClicked ->
             Api.withSession model (\state -> Api.provisionMemberCommand model state)
 
@@ -1049,6 +1066,32 @@ update msg model =
             Api.withSession updated (\state -> ( updated, Api.authorizedRequest "GET" state.accessToken ("/api/organizations/" ++ state.activeOrgId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder) ))
 
         ProvisionMemberReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        UpdateMemberRolesClicked userId roles ->
+            Api.withSession model (\state -> Api.updateMemberRolesCommand model state userId roles)
+
+        UpdateMemberRolesReceived (Ok _) ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just "Member roles updated." })
+            in
+            Api.withSession updated (\state -> ( updated, Api.authorizedRequest "GET" state.accessToken ("/api/organizations/" ++ state.activeOrgId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder) ))
+
+        UpdateMemberRolesReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        DeactivateMemberClicked userId ->
+            Api.withSession model (\state -> Api.deactivateMemberCommand model state userId)
+
+        DeactivateMemberReceived (Ok _) ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just "Member deactivated." })
+            in
+            Api.withSession updated (\state -> ( updated, Api.authorizedRequest "GET" state.accessToken ("/api/organizations/" ++ state.activeOrgId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder) ))
+
+        DeactivateMemberReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         CreateTaskOwnerChanged value ->
@@ -1162,7 +1205,7 @@ update msg model =
             case model.session of
                 LoggedIn state ->
                     ( { model | route = page, session = LoggedIn (enterPage page state) }
-                    , Api.routeLoadCmd state.accessToken page
+                    , Api.routeLoadCmd state.accessToken state.subjectId page
                     )
 
                 LoggedOut ->
@@ -1197,3 +1240,12 @@ seriesReorder model seriesId taskId up =
                 Nothing ->
                     ( model, Cmd.none )
         )
+
+
+toggleString : String -> List String -> List String
+toggleString value values =
+    if List.member value values then
+        List.filter (\existing -> existing /= value) values
+
+    else
+        value :: values

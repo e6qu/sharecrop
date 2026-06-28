@@ -198,7 +198,7 @@ func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeTaskResponse(w, http.StatusOK, taskToResponse(got.Value))
+	writeTaskResponse(w, http.StatusOK, server.taskToResponseForActor(r.Context(), actor.subject, got.Value))
 }
 
 func (server Server) createAgentCredential(w http.ResponseWriter, r *http.Request) {

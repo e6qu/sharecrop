@@ -422,6 +422,7 @@ type alias TaskListItemResponse =
     , visibilityKind : TaskVisibilityKind
     , availabilityKind : TaskAvailabilityKind
     , viewerAction : TaskViewerAction
+    , reviewerAction : String
     , createdBy : String
     , activeAssigneeKind : String
     , activeAssigneeID : String
@@ -446,8 +447,13 @@ taskListItemResponseDecoder =
                     (Decode.field "visibility_kind" taskVisibilityKindDecoder)
                     (Decode.field "availability_kind" taskAvailabilityKindDecoder)
                     (Decode.field "viewer_action" taskViewerActionDecoder)
+                    (Decode.field "reviewer_action" Decode.string)
                     (Decode.field "created_by" Decode.string)
                     (Decode.field "active_assignee_kind" Decode.string)
+            )
+        |> Decode.andThen
+            (\finish ->
+                Decode.map finish
                     (Decode.field "active_assignee_id" Decode.string)
             )
 
@@ -467,6 +473,7 @@ taskListItemResponseEncoder taskListItemResponse =
         , ( "visibility_kind", taskVisibilityKindEncoder taskListItemResponse.visibilityKind )
         , ( "availability_kind", taskAvailabilityKindEncoder taskListItemResponse.availabilityKind )
         , ( "viewer_action", taskViewerActionEncoder taskListItemResponse.viewerAction )
+        , ( "reviewer_action", Encode.string taskListItemResponse.reviewerAction )
         , ( "created_by", Encode.string taskListItemResponse.createdBy )
         , ( "active_assignee_kind", Encode.string taskListItemResponse.activeAssigneeKind )
         , ( "active_assignee_id", Encode.string taskListItemResponse.activeAssigneeID )
@@ -491,6 +498,7 @@ type alias TaskResponse =
     , visibilityID : String
     , availabilityKind : TaskAvailabilityKind
     , viewerAction : TaskViewerAction
+    , reviewerAction : String
     , seriesKind : String
     , seriesID : String
     , seriesPosition : Int
@@ -528,16 +536,17 @@ taskResponseDecoder =
                 Decode.map8 finish
                     (Decode.field "availability_kind" taskAvailabilityKindDecoder)
                     (Decode.field "viewer_action" taskViewerActionDecoder)
+                    (Decode.field "reviewer_action" Decode.string)
                     (Decode.field "series_kind" Decode.string)
                     (Decode.field "series_id" Decode.string)
                     (Decode.field "series_position" Decode.int)
                     (Decode.field "response_schema_json" Decode.string)
                     (Decode.field "payload_kind" Decode.string)
-                    (Decode.field "payload_json" Decode.string)
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map finish
+                Decode.map2 finish
+                    (Decode.field "payload_json" Decode.string)
                     (Decode.field "created_by" Decode.string)
             )
 
@@ -562,6 +571,7 @@ taskResponseEncoder taskResponse =
         , ( "visibility_id", Encode.string taskResponse.visibilityID )
         , ( "availability_kind", taskAvailabilityKindEncoder taskResponse.availabilityKind )
         , ( "viewer_action", taskViewerActionEncoder taskResponse.viewerAction )
+        , ( "reviewer_action", Encode.string taskResponse.reviewerAction )
         , ( "series_kind", Encode.string taskResponse.seriesKind )
         , ( "series_id", Encode.string taskResponse.seriesID )
         , ( "series_position", Encode.int taskResponse.seriesPosition )

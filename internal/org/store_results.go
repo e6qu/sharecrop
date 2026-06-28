@@ -62,6 +62,22 @@ func (MemberDeactivated) deactivateMemberStoreResult() {}
 
 func (DeactivateMemberStoreRejected) deactivateMemberStoreResult() {}
 
+type UpdateMemberRolesStoreResult interface {
+	updateMemberRolesStoreResult()
+}
+
+type MemberRolesUpdated struct {
+	Value OrganizationMember
+}
+
+type UpdateMemberRolesStoreRejected struct {
+	Reason core.DomainError
+}
+
+func (MemberRolesUpdated) updateMemberRolesStoreResult() {}
+
+func (UpdateMemberRolesStoreRejected) updateMemberRolesStoreResult() {}
+
 type CreateTeamStoreResult interface {
 	createTeamStoreResult()
 }

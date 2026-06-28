@@ -280,6 +280,44 @@ func TestOrganizationMemberListing(t *testing.T) {
 	assertStatus(t, outsiderResp, http.StatusForbidden)
 }
 
+func TestOrganizationMemberRolesCanBeUpdatedAndDeactivated(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "member-roles-owner")
+	organizationID := createOrganization(t, server, owner, "Member Roles Labs")
+
+	memberEmail := "member-roles-member-" + uniqueTestSuffix(t) + "@example.com"
+	member := registerUserWithEmail(t, server, memberEmail)
+	provisionOrganizationMember(t, server, owner.AccessToken, organizationID, memberEmail, `["member"]`)
+
+	updateResp := patchJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/members/"+member.SubjectID+"/roles", []byte(`{"roles":["member","reviewer"]}`), owner.AccessToken)
+	defer updateResp.Body.Close()
+	assertStatus(t, updateResp, http.StatusOK)
+	var updated struct {
+		UserID string   `json:"user_id"`
+		Status string   `json:"status"`
+		Roles  []string `json:"roles"`
+	}
+	if err := json.NewDecoder(updateResp.Body).Decode(&updated); err != nil {
+		t.Fatalf("decode updated member: %v", err)
+	}
+	if updated.UserID != member.SubjectID {
+		t.Fatalf("updated user id = %q, want %q", updated.UserID, member.SubjectID)
+	}
+	if updated.Status != "active" || !containsString(updated.Roles, "member") || !containsString(updated.Roles, "reviewer") {
+		t.Fatalf("updated member = %+v, want active member reviewer", updated)
+	}
+
+	deactivateResp := patchJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/members/"+member.SubjectID+"/deactivate", []byte(`{}`), owner.AccessToken)
+	defer deactivateResp.Body.Close()
+	assertStatus(t, deactivateResp, http.StatusOK)
+
+	memberListResp := getWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/members", member.AccessToken)
+	defer memberListResp.Body.Close()
+	assertStatus(t, memberListResp, http.StatusForbidden)
+}
+
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
@@ -343,6 +381,22 @@ func postJSONWithBearer(t *testing.T, url string, encoded []byte, accessToken st
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("post json with bearer: %v", err)
+	}
+	return response
+}
+
+func patchJSONWithBearer(t *testing.T, url string, encoded []byte, accessToken string) *http.Response {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("patch json with bearer: %v", err)
 	}
 	return response
 }

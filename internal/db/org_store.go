@@ -280,6 +280,72 @@ func (store OrgStore) DeactivateMember(ctx context.Context, organizationID core.
 	return org.MemberDeactivated{}
 }
 
+func (store OrgStore) UpdateMemberRoles(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, roles []org.Role) org.UpdateMemberRolesStoreResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin update member roles transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var membershipID string
+	err = tx.QueryRow(ctx, `
+		select id::text
+		from organization_memberships
+		where organization_id = $1 and user_id = $2 and status = $3
+		for update
+	`, organizationID.String(), userID.String(), org.MembershipStatusActive.String()).Scan(&membershipID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "active organization member was not found")}
+		}
+		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find organization member failed")}
+	}
+
+	if _, err := tx.Exec(ctx, "delete from organization_membership_roles where membership_id = $1", membershipID); err != nil {
+		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "delete organization member roles failed")}
+	}
+	for _, role := range roles {
+		if _, err := tx.Exec(ctx, "insert into organization_membership_roles (membership_id, role) values ($1, $2)", membershipID, role.String()); err != nil {
+			return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization member role failed")}
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit update member roles transaction failed")}
+	}
+
+	return store.findActiveMember(ctx, organizationID, userID)
+}
+
+func (store OrgStore) findActiveMember(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) org.UpdateMemberRolesStoreResult {
+	var rawID string
+	var rawUserID string
+	var rawStatus string
+	var rawRoles []string
+	err := store.pool.QueryRow(ctx, `
+		select organization_memberships.id::text, organization_memberships.user_id::text, organization_memberships.status,
+			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')
+		from organization_memberships
+		left join organization_membership_roles on organization_membership_roles.membership_id = organization_memberships.id
+		where organization_memberships.organization_id = $1
+			and organization_memberships.user_id = $2
+			and organization_memberships.status = $3
+		group by organization_memberships.id, organization_memberships.user_id, organization_memberships.status
+	`, organizationID.String(), userID.String(), org.MembershipStatusActive.String()).Scan(&rawID, &rawUserID, &rawStatus, &rawRoles)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "active organization member was not found")}
+		}
+		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find updated organization member failed")}
+	}
+	memberResult := parseMemberRow(rawID, organizationID, rawUserID, rawStatus, rawRoles)
+	member, matched := memberResult.(memberRowAccepted)
+	if !matched {
+		return org.UpdateMemberRolesStoreRejected{Reason: memberResult.(memberRowRejected).reason}
+	}
+	return org.MemberRolesUpdated{Value: member.value}
+}
+
 func (store OrgStore) CreateOrganizationTeam(ctx context.Context, teamID core.TeamID, organizationID core.OrganizationID, name org.TeamName, createdBy core.UserID) org.CreateTeamStoreResult {
 	_, err := store.pool.Exec(ctx, "insert into teams (id, name, owner_kind, organization_id, created_by_user_id) values ($1, $2, 'organization', $3, $4)", teamID.String(), name.String(), organizationID.String(), createdBy.String())
 	if err != nil {

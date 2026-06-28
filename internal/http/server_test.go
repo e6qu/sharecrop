@@ -430,6 +430,12 @@ func (testOrganizationService) DeactivateMember(context.Context, auth.UserSubjec
 	return org.MemberDeactivationAccepted{}
 }
 
+func (testOrganizationService) UpdateMemberRoles(_ context.Context, _ auth.UserSubject, organizationID core.OrganizationID, userID core.UserID, roles []org.Role) org.UpdateMemberRolesResult {
+	membershipIDResult := core.NewOrganizationMembershipID()
+	membershipIDCreated := membershipIDResult.(core.OrganizationMembershipIDCreated)
+	return org.MemberRolesUpdatedResult{Value: org.OrganizationMember{ID: membershipIDCreated.Value, OrganizationID: organizationID, UserID: userID, Status: org.MembershipStatusActive, Roles: roles}}
+}
+
 func (testOrganizationService) CreateOrganizationTeam(_ context.Context, actor auth.UserSubject, organizationID core.OrganizationID, name org.TeamName) org.CreateTeamResult {
 	teamIDResult := core.NewTeamID()
 	teamIDCreated := teamIDResult.(core.TeamIDCreated)

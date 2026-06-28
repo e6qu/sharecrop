@@ -103,6 +103,16 @@ func (store *memoryStore) DeactivateMember(_ context.Context, organizationID cor
 	return MemberDeactivated{}
 }
 
+func (store *memoryStore) UpdateMemberRoles(_ context.Context, organizationID core.OrganizationID, userID core.UserID, roles []Role) UpdateMemberRolesStoreResult {
+	member, matched := store.members[organizationID.String()+":"+userID.String()]
+	if !matched {
+		return UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "member missing")}
+	}
+	member.Roles = roles
+	store.members[organizationID.String()+":"+userID.String()] = member
+	return MemberRolesUpdated{Value: member}
+}
+
 func (store *memoryStore) CreateOrganizationTeam(context.Context, core.TeamID, core.OrganizationID, TeamName, core.UserID) CreateTeamStoreResult {
 	return CreateTeamStoreAccepted{}
 }

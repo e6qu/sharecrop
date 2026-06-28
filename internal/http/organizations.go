@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
 )
@@ -134,31 +135,12 @@ func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.
 }
 
 func (server Server) deactivateOrganizationMember(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
-	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+	target, ok := server.organizationMemberTarget(w, r)
+	if !ok {
 		return
 	}
 
-	organizationIDResult := parseOrganizationPathValue(r)
-	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
-	if !organizationIDMatched {
-		rejected := organizationIDResult.(organizationIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
-		return
-	}
-
-	userIDResult := core.ParseUserID(r.PathValue("user_id"))
-	userIDAccepted, userIDMatched := userIDResult.(core.UserIDCreated)
-	if !userIDMatched {
-		rejected := userIDResult.(core.UserIDRejected)
-		writeDomainError(w, rejected.Reason)
-		return
-	}
-
-	result := server.organizationService.DeactivateMember(r.Context(), actor.subject, organizationIDAccepted.value, userIDAccepted.Value)
+	result := server.organizationService.DeactivateMember(r.Context(), target.actor, target.organizationID, target.userID)
 	if _, matched := result.(org.MemberDeactivationAccepted); !matched {
 		rejected := result.(org.DeactivateMemberRejected)
 		writeDomainError(w, rejected.Reason)
@@ -166,6 +148,68 @@ func (server Server) deactivateOrganizationMember(w http.ResponseWriter, r *http
 	}
 
 	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "deactivated"})
+}
+
+func (server Server) updateOrganizationMemberRoles(w http.ResponseWriter, r *http.Request) {
+	target, ok := server.organizationMemberTarget(w, r)
+	if !ok {
+		return
+	}
+
+	var request updateMemberRolesRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	rolesResult := parseOrganizationRoles(request.Roles)
+	rolesAccepted, rolesMatched := rolesResult.(organizationRolesAccepted)
+	if !rolesMatched {
+		writeError(w, http.StatusBadRequest, rolesResult.(organizationRolesRejected).reason)
+		return
+	}
+
+	result := server.organizationService.UpdateMemberRoles(r.Context(), target.actor, target.organizationID, target.userID, rolesAccepted.values)
+	updated, matched := result.(org.MemberRolesUpdatedResult)
+	if !matched {
+		writeDomainError(w, result.(org.UpdateMemberRolesRejected).Reason)
+		return
+	}
+
+	writeOrganizationMemberResponse(w, http.StatusOK, memberToResponse(updated.Value))
+}
+
+type organizationMemberTarget struct {
+	actor          auth.UserSubject
+	organizationID core.OrganizationID
+	userID         core.UserID
+}
+
+func (server Server) organizationMemberTarget(w http.ResponseWriter, r *http.Request) (organizationMemberTarget, bool) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
+		return organizationMemberTarget{}, false
+	}
+
+	organizationIDResult := parseOrganizationPathValue(r)
+	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
+	if !organizationIDMatched {
+		rejected := organizationIDResult.(organizationIDRejected)
+		writeError(w, http.StatusBadRequest, rejected.reason)
+		return organizationMemberTarget{}, false
+	}
+
+	userIDResult := core.ParseUserID(r.PathValue("user_id"))
+	userIDAccepted, userIDMatched := userIDResult.(core.UserIDCreated)
+	if !userIDMatched {
+		rejected := userIDResult.(core.UserIDRejected)
+		writeDomainError(w, rejected.Reason)
+		return organizationMemberTarget{}, false
+	}
+
+	return organizationMemberTarget{actor: actor.subject, organizationID: organizationIDAccepted.value, userID: userIDAccepted.Value}, true
 }
 
 func (server Server) createOrganizationTeam(w http.ResponseWriter, r *http.Request) {

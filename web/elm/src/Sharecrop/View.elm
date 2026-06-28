@@ -623,6 +623,7 @@ activeOrganizationView state =
             , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit ProvisionMemberClicked ]
                 [ Ui.fieldLabel "Member email"
                     [ Ui.textInput [ type_ "email", placeholder "person@example.com", value state.provisionMemberEmail, onInput ProvisionMemberEmailChanged, testId "provision-member-email" ] ]
+                , provisionRolePicker state.provisionMemberRoles
                 , Ui.primaryButton [ type_ "submit", testId "provision-member" ] "Provision member"
                 ]
             , maybeNote state.provisionMemberMessage "provision-member-message"
@@ -639,6 +640,32 @@ orgTeamsList teams =
     else
         div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-teams" ]
             (List.map (\team -> a [ href ("#/teams/" ++ team.id), Html.Attributes.class "block py-1 text-sm underline", testId "org-team-row" ] [ text team.name ]) teams)
+
+
+provisionRolePicker : List String -> Html Msg
+provisionRolePicker selected =
+    div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+        (List.map (roleCheckbox selected) provisionableRoles)
+
+
+provisionableRoles : List String
+provisionableRoles =
+    [ "member", "reviewer", "public_publisher", "billing", "admin" ]
+
+
+roleCheckbox : List String -> String -> Html Msg
+roleCheckbox selected role =
+    Ui.checkbox [ checked (List.member role selected), onCheck (\_ -> ToggleProvisionMemberRole role), testId ("provision-role-" ++ role) ] (roleLabel role)
+
+
+roleLabel : String -> String
+roleLabel role =
+    case role of
+        "public_publisher" ->
+            "public publisher"
+
+        _ ->
+            role
 
 
 orgMembersList : List Organization.OrganizationMemberResponse -> Html Msg
@@ -660,9 +687,17 @@ orgMemberRow member =
             else
                 String.join ", " (List.map organizationRoleText member.roles)
     in
-    div [ Html.Attributes.class "flex items-center justify-between gap-2 py-2", testId "org-member-row" ]
-        [ a [ href ("#/users/" ++ member.userID), Html.Attributes.class "text-sm font-medium underline", testId "org-member-link" ] [ text member.userID ]
-        , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (roles ++ " · " ++ membershipStatusText member.status) ]
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "org-member-row" ]
+        [ div []
+            [ a [ href ("#/users/" ++ member.userID), Html.Attributes.class "text-sm font-medium underline", testId "org-member-link" ] [ text member.userID ]
+            , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (roles ++ " · " ++ membershipStatusText member.status) ]
+            ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "member" ]), testId "member-role-member" ] "Member"
+            , Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "member", "reviewer" ]), testId "member-role-reviewer" ] "Reviewer"
+            , Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "admin" ]), testId "member-role-admin" ] "Admin"
+            , Ui.secondaryButton [ type_ "button", onClick (DeactivateMemberClicked member.userID), testId "deactivate-member" ] "Deactivate"
+            ]
         ]
 
 
@@ -753,7 +788,9 @@ createTaskView state =
                 [ text ("The " ++ taskTypeLabel state.createTaskType ++ " template prefilled the description and response schema below — edit them if you need to.") ]
         , Ui.fieldLabel "Response schema (JSON, advanced)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
         , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
-        , Ui.fieldLabel "Credit reward" [ Ui.textInput [ type_ "number", placeholder "Blank for no reward", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
+        , Ui.label_ "Reward"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (rewardKindButton state.createRewardKind) allRewardKinds)
+        , rewardAmountField state
         , ownerChooser state
         , Ui.label_ "Participation"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (participationButton state.createParticipationPolicy) allParticipationPolicies)
@@ -770,6 +807,44 @@ createTaskView state =
         , Ui.primaryButton [ type_ "submit", testId "create-task" ] "Create task"
         , maybeNote state.createMessage "create-message"
         ]
+
+
+allRewardKinds : List String
+allRewardKinds =
+    [ "none", "credit", "collectible", "bundle" ]
+
+
+rewardKindButton : String -> String -> Html Msg
+rewardKindButton selected kind =
+    chooserButton (selected == kind)
+        (CreateRewardKindChanged kind)
+        ("create-reward-kind-" ++ kind)
+        (rewardKindLabel kind)
+
+
+rewardKindLabel : String -> String
+rewardKindLabel kind =
+    case kind of
+        "credit" ->
+            "Credits"
+
+        "collectible" ->
+            "Collectible"
+
+        "bundle" ->
+            "Bundle"
+
+        _ ->
+            "No reward"
+
+
+rewardAmountField : LoggedInModel -> Html Msg
+rewardAmountField state =
+    if state.createRewardKind == "credit" || state.createRewardKind == "bundle" then
+        Ui.fieldLabel "Credit amount" [ Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
+
+    else
+        text ""
 
 
 schemaFromFields : List SchemaFieldDraft -> String
@@ -1059,8 +1134,8 @@ visibilityScopeField state =
             [ Ui.textInput [ type_ "text", placeholder "Team ID (standalone or organization team)", value state.createScopeTeamId, onInput CreateScopeTeamIdChanged, testId "create-scope-team" ] ]
 
     else if state.createVisibility == visibilityOrganizationTag then
-        Ui.fieldLabel "Share with organization ID"
-            [ Ui.textInput [ type_ "text", placeholder "Organization ID", value state.createScopeOrganizationId, onInput CreateScopeOrganizationIdChanged, testId "create-scope-organization" ] ]
+        Ui.fieldLabel "Share with organization"
+            [ organizationPicker "create-scope-organization" state.createScopeOrganizationId CreateScopeOrganizationIdChanged "Choose organization" state.organizations ]
 
     else
         text ""
@@ -1119,7 +1194,7 @@ fundingView state =
         [ Ui.sectionTitle "Fund a task"
         , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged state.tasks
         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
-        , Ui.textInput [ type_ "text", placeholder "Organization ID (optional — fund from org credits)", value state.fundOrganizationId, onInput FundOrganizationIdChanged, testId "fund-organization" ]
+        , organizationPicker "fund-organization" state.fundOrganizationId FundOrganizationIdChanged "Personal balance" state.organizations
         , Ui.primaryButton [ type_ "submit", disabled (state.fundTaskId == ""), testId "fund" ] "Fund task"
         , maybeNote state.fundMessage "fund-message"
         ]
@@ -1174,6 +1249,40 @@ taskFilterButton selected ( tag, labelText ) =
                )
         )
         labelText
+
+
+organizationPicker : String -> String -> (String -> Msg) -> String -> List Organization.OrganizationResponse -> Html Msg
+organizationPicker identifier selectedOrganizationId change blankLabel organizations =
+    select
+        [ Html.Attributes.class Ui.fieldClass
+        , value selectedOrganizationId
+        , onInput change
+        , testId identifier
+        ]
+        (option [ value "" ] [ text blankLabel ]
+            :: List.map
+                (\organization ->
+                    option [ value organization.id, selected (selectedOrganizationId == organization.id) ] [ text organization.name ]
+                )
+                organizations
+        )
+
+
+teamPicker : String -> String -> (String -> Msg) -> String -> List Team.TeamResponse -> Html Msg
+teamPicker identifier selectedTeamId change blankLabel teams =
+    select
+        [ Html.Attributes.class Ui.fieldClass
+        , value selectedTeamId
+        , onInput change
+        , testId identifier
+        ]
+        (option [ value "" ] [ text blankLabel ]
+            :: List.map
+                (\team ->
+                    option [ value team.id, selected (selectedTeamId == team.id) ] [ text team.name ]
+                )
+                teams
+        )
 
 
 activeAssigneeSuffix : Task.TaskListItemResponse -> String
@@ -1312,10 +1421,18 @@ awardRecipientControl state =
             , chooserButton (state.awardRecipientKind == "team") (AwardRecipientKindChanged "team") "award-kind-team" "Team"
             , chooserButton (state.awardRecipientKind == "organization") (AwardRecipientKindChanged "organization") "award-kind-organization" "Organization"
             ]
-        , Ui.textInput [ type_ "text", placeholder "Recipient id", value state.awardRecipientId, onInput AwardRecipientIdChanged, testId "award-recipient-id" ]
-        , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text "Pick a recipient, then Award a collectible below." ]
+        , awardRecipientPicker state
         , maybeNote state.awardDefaultMessage "award-default-message"
         ]
+
+
+awardRecipientPicker : LoggedInModel -> Html Msg
+awardRecipientPicker state =
+    if state.awardRecipientKind == "organization" then
+        organizationPicker "award-recipient-id" state.awardRecipientId AwardRecipientIdChanged "Choose organization" state.organizations
+
+    else
+        Ui.textInput [ type_ "text", placeholder "Recipient id", value state.awardRecipientId, onInput AwardRecipientIdChanged, testId "award-recipient-id" ]
 
 
 catalogGallery : LoggedInModel -> Html Msg
@@ -1461,6 +1578,9 @@ taskDetailPageView origin state =
         isOwner =
             state.detail |> Maybe.map (\detail -> detail.createdBy == state.subjectId) |> Maybe.withDefault False
 
+        canReview =
+            state.detail |> Maybe.map (\detail -> detail.reviewerAction == "review") |> Maybe.withDefault False
+
         backHref =
             if isOwner then
                 "#/tasks"
@@ -1475,8 +1595,11 @@ taskDetailPageView origin state =
             ++ (if isOwner then
                     [ ownerControlsCard state, submissionsCard state ]
 
+                else if canReview then
+                    [ submissionsCard state ]
+
                 else
-                    [ reservationCard state, submitCard state ]
+                    [ reservationCard state, submitCard state, mySubmissionsCard state ]
                )
             ++ [ taskCommentsCard state ]
         )
@@ -1685,8 +1808,8 @@ organizationTeamReservationFields state detail =
     case detail.assigneeScope of
         Task.TaskAssigneeScopeOrganizationTeam ->
             div [ Html.Attributes.class "grid gap-3 md:grid-cols-2" ]
-                [ Ui.fieldLabel "Organization ID" [ Ui.textInput [ value state.reservationOrganizationId, onInput ReservationOrganizationIdChanged, testId "reservation-organization-id" ] ]
-                , Ui.fieldLabel "Team ID" [ Ui.textInput [ value state.reservationTeamId, onInput ReservationTeamIdChanged, testId "reservation-team-id" ] ]
+                [ Ui.fieldLabel "Organization" [ organizationPicker "reservation-organization-id" state.reservationOrganizationId ReservationOrganizationIdChanged "Choose organization" state.organizations ]
+                , Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId ReservationTeamIdChanged "Choose team" state.orgTeams ]
                 ]
 
         _ ->
@@ -1763,6 +1886,42 @@ submitCardForm state =
         ]
 
 
+mySubmissionsCard : LoggedInModel -> Html Msg
+mySubmissionsCard state =
+    case state.detail of
+        Nothing ->
+            text ""
+
+        Just detail ->
+            let
+                mine =
+                    List.filter (\submission -> submission.taskID == detail.id) state.userSubmissions
+            in
+            if List.isEmpty mine then
+                text ""
+
+            else
+                Ui.card
+                    [ Ui.sectionTitle "My submissions"
+                    , div [ Html.Attributes.class "divide-y divide-slate-100", testId "my-submissions" ]
+                        (List.map (mySubmissionRow state) mine)
+                    ]
+
+
+mySubmissionRow : LoggedInModel -> Submission.SubmissionResponse -> Html Msg
+mySubmissionRow state submission =
+    div [ Html.Attributes.class "space-y-2 py-3", testId "my-submission-row" ]
+        [ div [ Html.Attributes.class "flex items-center justify-between gap-2" ]
+            [ Ui.badge (submissionStateLabel submission.state)
+            , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "my-submission-comments-toggle" ] "Comments"
+            ]
+        , reviewNoteView submission.reviewNote
+        , Ui.codeBlock [ testId "my-submission-response" ] submission.responseJSON
+        , validationErrorsView submission.validationErrors
+        , submissionCommentsThread state submission
+        ]
+
+
 submissionsCard : LoggedInModel -> Html Msg
 submissionsCard state =
     Ui.card
@@ -1773,6 +1932,7 @@ submissionsCard state =
           else
             reviewControls state
         , submissionsList state
+        , maybeNote state.reviewMessage "review-message"
         ]
 
 
@@ -1818,7 +1978,6 @@ reviewControls state =
                         state.collectibles
                 )
             ]
-        , maybeNote state.reviewMessage "review-message"
         ]
 
 
