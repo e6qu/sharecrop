@@ -172,6 +172,7 @@ emptyLoggedIn response =
     , emailVerificationInput = ""
     , accountMessage = Nothing
     , userDirectory = []
+    , userDirectoryQuery = ""
     }
 
 
@@ -377,7 +378,11 @@ update msg model =
             ( { model | authError = Nothing }, Api.confirmPasswordReset model )
 
         PasswordResetRequested (Ok token) ->
-            ( { model | resetToken = token, authError = Just "Password reset token created." }, Cmd.none )
+            if token == "" then
+                ( { model | authError = Just "Password reset instructions sent." }, Cmd.none )
+
+            else
+                ( { model | resetToken = token, authError = Just "Password reset token created." }, Cmd.none )
 
         PasswordResetRequested (Err error) ->
             ( { model | authError = Just (httpErrorLabel error) }, Cmd.none )
@@ -937,6 +942,15 @@ update msg model =
             , Cmd.none
             )
 
+        UserDirectoryQueryChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | userDirectoryQuery = value }), Cmd.none )
+
+        SearchUserDirectoryClicked ->
+            Api.withSession model
+                (\state ->
+                    ( model, Api.fetchUserDirectoryQuery state.accessToken state.userDirectoryQuery )
+                )
+
         OrgMembersReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgMembers = Api.membersFromResult result }), Cmd.none )
 
@@ -1283,7 +1297,11 @@ update msg model =
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.deactivateAccount state.accessToken ))
 
         EmailVerificationRequested (Ok token) ->
-            ( Api.updateLoggedIn model (\state -> { state | emailVerificationToken = token, emailVerificationInput = token, accountMessage = Just "Verification token created." }), Cmd.none )
+            if token == "" then
+                ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just "Verification instructions sent." }), Cmd.none )
+
+            else
+                ( Api.updateLoggedIn model (\state -> { state | emailVerificationToken = token, emailVerificationInput = token, accountMessage = Just "Verification token created." }), Cmd.none )
 
         EmailVerificationRequested (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )

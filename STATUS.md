@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 71 work, merged into `main`.
+The repository contains pull request 1 through pull request 72 work, merged into `main`.
 
-Active task: demo/real parity branch is ready for review. The branch contract-tests the backendless demo route surface and representative response shapes against the real API/client expectations, adds shared browser scenario fixtures, and fixes demo parity gaps for account lifecycle, user directory, and create-time collectible rewards.
+Active task: combined product-readiness foundation branch is ready for review. It adds operations runbook/deployment schema basics, searchable user directory UI, account-token log delivery mode, broader HTTP contract fixtures, concrete account deactivation/erasure semantics, submission comment form polish, and internal-only reward scope cleanup.
 
 Current implemented surface:
 
@@ -17,11 +17,16 @@ Current implemented surface:
 - Collectible and bundle task creation can escrow selected collectibles immediately and task responses show the held collectible count.
 - Backendless demo routes now cover current real API routes except the documented real-only health/MCP/root routes.
 - Backendless demo account lifecycle, user directory, organization/team member provisioning, and create-time collectible rewards mirror the current real-app flows closely enough for browser demo coverage.
+- Admin operations status is available to platform admins at `/api/admin/operations`.
+- Account verification/reset token issue supports API-visible local/test mode and log-delivery mode.
+- Account deactivation anonymizes email, removes password credentials, and revokes active refresh/account tokens.
+- User directory selectors can query `/api/users?query=...` from the browser.
+- Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles only; user/org/per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current verification:
 
-- PR #71 verification passed before merge: `go test ./...`, HTTP E2E with local Postgres, static checks, build, and 36 Playwright tests.
-- Current branch verification passed: `make check-format check-contracts check-policy check-ts lint vet test-deno frontend build`, `go tool deadcode -test ./...`, `go test ./...`, HTTP E2E with local Postgres, and targeted Playwright specs for demo, account lifecycle, and selector-backed task creation.
+- PR #72 verification passed before merge: `make check-format check-contracts check-policy check-ts lint vet test-deno frontend build`, `go tool deadcode -test ./...`, `go test ./...`, HTTP E2E with local Postgres, and targeted Playwright specs for demo, account lifecycle, and selector-backed task creation.
+- Current branch verification passed: `make check-format check-contracts check-policy check-ts lint vet test-deno frontend build`, `go test ./...`, `go tool deadcode -test ./...`, HTTP E2E with local Postgres, targeted Playwright account/selector specs, and clean `make build` with workspace-local Go caches.
 
 Blocking issues:
 

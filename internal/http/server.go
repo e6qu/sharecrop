@@ -143,6 +143,7 @@ type Server struct {
 	ipRateLimiter       *rateLimiter
 	subjectRateLimiter  *rateLimiter
 	adminUserIDs        map[string]bool
+	accountTokens       accountTokenDelivery
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
@@ -173,6 +174,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		secureCookies:      os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
 		ipRateLimiter:      newRateLimiter(ipRateCapacity, ipRateRefillPerSec),
 		subjectRateLimiter: newRateLimiter(mcpRateCapacity, mcpRateRefillPerSec),
+		accountTokens:      newAccountTokenDeliveryFromEnv(),
 		// Platform admins (e.g. for awarding default collectibles) are bootstrapped
 		// from a comma-separated env list of user ids.
 		adminUserIDs: parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS")),
@@ -252,6 +254,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("GET /api/collectibles/catalog", server.collectibleCatalog)
 	mux.HandleFunc("POST /api/collectibles/award", server.awardCollectible)
 	mux.HandleFunc("POST /api/collectibles/{id}/transfer", server.transferCollectible)
+	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
 	mux.HandleFunc("GET /api/organizations/{id}/collectibles", server.listOrganizationCollectibles)
 	mux.HandleFunc("GET /api/teams/{id}/collectibles", server.listTeamCollectibles)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)

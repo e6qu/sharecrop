@@ -1195,7 +1195,7 @@ visibilityScopeField : LoggedInModel -> Html Msg
 visibilityScopeField state =
     if state.createVisibility == visibilityUserTag then
         Ui.fieldLabel "Share with user ID"
-            [ userPicker "create-scope-user" state.createScopeUserId CreateScopeUserIdChanged "Choose user" state.userDirectory ]
+            [ userPicker "create-scope-user" state.createScopeUserId state.userDirectoryQuery CreateScopeUserIdChanged "Choose user" state.userDirectory ]
 
     else if state.createVisibility == visibilityTeamTag then
         Ui.fieldLabel "Share with team ID"
@@ -1336,21 +1336,27 @@ organizationPicker identifier selectedOrganizationId change blankLabel organizat
         )
 
 
-userPicker : String -> String -> (String -> Msg) -> String -> List UserDirectoryEntry -> Html Msg
-userPicker identifier selectedUserId change blankLabel users =
-    select
-        [ Html.Attributes.class Ui.fieldClass
-        , value selectedUserId
-        , onInput change
-        , testId identifier
+userPicker : String -> String -> String -> (String -> Msg) -> String -> List UserDirectoryEntry -> Html Msg
+userPicker identifier selectedUserId query change blankLabel users =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ div [ Html.Attributes.class "flex gap-2" ]
+            [ Ui.textInput [ type_ "search", placeholder "Search users", value query, onInput UserDirectoryQueryChanged, testId (identifier ++ "-query") ]
+            , Ui.secondaryButton [ type_ "button", onClick SearchUserDirectoryClicked, testId (identifier ++ "-search") ] "Search"
+            ]
+        , select
+            [ Html.Attributes.class Ui.fieldClass
+            , value selectedUserId
+            , onInput change
+            , testId identifier
+            ]
+            (option [ value "" ] [ text blankLabel ]
+                :: List.map
+                    (\user ->
+                        option [ value user.id, selected (selectedUserId == user.id) ] [ text user.email ]
+                    )
+                    users
+            )
         ]
-        (option [ value "" ] [ text blankLabel ]
-            :: List.map
-                (\user ->
-                    option [ value user.id, selected (selectedUserId == user.id) ] [ text user.email ]
-                )
-                users
-        )
 
 
 teamPicker : String -> String -> (String -> Msg) -> String -> List Team.TeamResponse -> Html Msg
@@ -2103,7 +2109,7 @@ submissionCommentsThread state submission =
                 div [ Html.Attributes.class "space-y-2", testId "submission-comments" ] (List.map submissionCommentRow state.submissionComments)
             , form [ Html.Attributes.class "space-y-2", onSubmit (AddSubmissionCommentClicked submission.id) ]
                 [ Ui.textarea_ [ placeholder "Add a comment", value state.submissionCommentBody, onInput SubmissionCommentBodyChanged, testId "submission-comment-body" ]
-                , Ui.primaryButton [ type_ "button", onClick (AddSubmissionCommentClicked submission.id), testId "add-submission-comment" ] "Comment"
+                , Ui.primaryButton [ type_ "submit", testId "add-submission-comment" ] "Comment"
                 , maybeNote state.submissionCommentMessage "submission-comment-message"
                 ]
             ]

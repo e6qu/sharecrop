@@ -9,6 +9,7 @@ See:
 - [STATUS.md](./STATUS.md)
 - [DO_NEXT.md](./DO_NEXT.md)
 - [BUGS.md](./BUGS.md)
+- [docs/operations_runbook.md](./docs/operations_runbook.md)
 
 ## Local Commands
 

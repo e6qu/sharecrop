@@ -14,6 +14,16 @@ func TestAuthResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"subject_kind":"user","subject_id":"subject-1","access_token":"token-1","role":"member"}`)
 }
 
+func TestAccountTokenSentResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(accountTokenSentResponse{Status: "sent"})
+	assertWireShape(t, encoded, err, `{"status":"sent"}`)
+}
+
+func TestUsersResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(usersResponse{Users: []userDirectoryEntryResponse{{ID: "user-1", Email: "person@example.com", Status: "active"}}})
+	assertWireShape(t, encoded, err, `{"users":[{"id":"user-1","email":"person@example.com","status":"active"}]}`)
+}
+
 func TestBalanceResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(balanceResponse{Amount: 100})
 	assertWireShape(t, encoded, err, `{"amount":100}`)
@@ -79,9 +89,19 @@ func TestSubmissionResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","validation_errors":[]}`)
 }
 
+func TestSubmissionCommentsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(submissionCommentsResponse{Comments: []submissionCommentResponse{{ID: "comment-1", SubmissionID: "submission-1", AuthorUserID: "user-1", Body: "Please revise.", CreatedAt: "2026-06-29T00:00:00Z"}}})
+	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","submission_id":"submission-1","author_user_id":"user-1","body":"Please revise.","created_at":"2026-06-29T00:00:00Z"}]}`)
+}
+
 func TestAgentCredentialResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(agentCredentialResponse{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read", "submissions_write"}, State: "active"})
 	assertWireShape(t, encoded, err, `{"id":"cred-1","label":"Local agent","scopes":["tasks_read","submissions_write"],"state":"active"}`)
+}
+
+func TestOperationsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(operationsResponse{Status: "ok", AccountTokenDelivery: "log", MCPStorage: "process_memory", RateLimitStorage: "process_memory", ActiveMCPSessions: 2, ActiveIPRateBuckets: 3, ActiveSubjectRateBuckets: 4, SecureCookies: "enabled"})
+	assertWireShape(t, encoded, err, `{"status":"ok","account_token_delivery":"log","mcp_storage":"process_memory","rate_limit_storage":"process_memory","active_mcp_sessions":2,"active_ip_rate_buckets":3,"active_subject_rate_buckets":4,"secure_cookies":"enabled"}`)
 }
 
 func TestTaskListItemResponseWireShape(t *testing.T) {

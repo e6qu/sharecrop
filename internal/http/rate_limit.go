@@ -74,6 +74,13 @@ func (limiter *rateLimiter) evictFullLocked(now time.Time) {
 	}
 }
 
+func (limiter *rateLimiter) activeBuckets() int {
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	limiter.evictFullLocked(limiter.now())
+	return len(limiter.buckets)
+}
+
 // clientIP returns the direct peer address (host without port). It intentionally
 // does not trust X-Forwarded-For, which a client can forge to evade the limit.
 func clientIP(r *http.Request) string {

@@ -182,6 +182,13 @@ func (store *mcpHTTPSessionStore) replayAndSubscribe(sessionID string, lastEvent
 	return events, subscriber, cancel, true
 }
 
+func (store *mcpHTTPSessionStore) activeSessionCount() int {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.evictExpiredLocked()
+	return len(store.sessions)
+}
+
 func newMCPHTTPSessionID() string {
 	value := make([]byte, 16)
 	if _, err := rand.Read(value); err != nil {

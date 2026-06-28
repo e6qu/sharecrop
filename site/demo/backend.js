@@ -1503,6 +1503,17 @@
     c.owner_kind = "user";
     return ok(c);
   });
+  on("GET", "/api/admin/operations", () =>
+    ok({
+      status: "ok",
+      account_token_delivery: "api",
+      mcp_storage: "process_memory",
+      rate_limit_storage: "process_memory",
+      active_mcp_sessions: 0,
+      active_ip_rate_buckets: 0,
+      active_subject_rate_buckets: 0,
+      secure_cookies: "disabled",
+    }));
   on("POST", "/api/tasks/:id/collectible-reward", (p, _url, body) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");

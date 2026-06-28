@@ -4545,6 +4545,23 @@ function _Http_track(router, xhr, tracker)
 			size: event.lengthComputable ? $elm$core$Maybe$Just(event.total) : $elm$core$Maybe$Nothing
 		}))));
 	});
+}
+
+function _Url_percentEncode(string)
+{
+	return encodeURIComponent(string);
+}
+
+function _Url_percentDecode(string)
+{
+	try
+	{
+		return $elm$core$Maybe$Just(decodeURIComponent(string));
+	}
+	catch (e)
+	{
+		return $elm$core$Maybe$Nothing;
+	}
 }var $elm$core$Basics$EQ = {$: 'EQ'};
 var $elm$core$Basics$LT = {$: 'LT'};
 var $elm$core$List$cons = _List_cons;
@@ -8180,6 +8197,38 @@ var $author$project$Sharecrop$Api$fetchTasks = F2(
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
+var $author$project$Sharecrop$Types$UserDirectoryReceived = function (a) {
+	return {$: 'UserDirectoryReceived', a: a};
+};
+var $elm$url$Url$percentEncode = _Url_percentEncode;
+var $author$project$Sharecrop$Types$UserDirectoryEntry = F3(
+	function (id, email, status) {
+		return {email: email, id: id, status: status};
+	});
+var $author$project$Sharecrop$Api$userDirectoryEntryDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Types$UserDirectoryEntry,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'email', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Api$fetchUserDirectoryQuery = F2(
+	function (token, queryText) {
+		var clean = $elm$core$String$trim(queryText);
+		var query = (clean === '') ? '/api/users' : ('/api/users?query=' + $elm$url$Url$percentEncode(clean));
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			query,
+			$elm$http$Http$emptyBody,
+			A2(
+				$elm$http$Http$expectJson,
+				$author$project$Sharecrop$Types$UserDirectoryReceived,
+				A2(
+					$elm$json$Json$Decode$field,
+					'users',
+					$elm$json$Json$Decode$list($author$project$Sharecrop$Api$userDirectoryEntryDecoder))));
+	});
 var $author$project$Sharecrop$Labels$escrowStateLabel = function (state) {
 	switch (state.$) {
 		case 'EscrowStateHeld':
@@ -8446,33 +8495,8 @@ var $author$project$Sharecrop$Api$fetchStandaloneTeams = function (token) {
 		$elm$http$Http$emptyBody,
 		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$StandaloneTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
 };
-var $author$project$Sharecrop$Types$UserDirectoryReceived = function (a) {
-	return {$: 'UserDirectoryReceived', a: a};
-};
-var $author$project$Sharecrop$Types$UserDirectoryEntry = F3(
-	function (id, email, status) {
-		return {email: email, id: id, status: status};
-	});
-var $author$project$Sharecrop$Api$userDirectoryEntryDecoder = A4(
-	$elm$json$Json$Decode$map3,
-	$author$project$Sharecrop$Types$UserDirectoryEntry,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'email', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$fetchUserDirectory = function (token) {
-	return A5(
-		$author$project$Sharecrop$Api$authorizedRequest,
-		'GET',
-		token,
-		'/api/users',
-		$elm$http$Http$emptyBody,
-		A2(
-			$elm$http$Http$expectJson,
-			$author$project$Sharecrop$Types$UserDirectoryReceived,
-			A2(
-				$elm$json$Json$Decode$field,
-				'users',
-				$elm$json$Json$Decode$list($author$project$Sharecrop$Api$userDirectoryEntryDecoder))));
+	return A2($author$project$Sharecrop$Api$fetchUserDirectoryQuery, token, '');
 };
 var $author$project$Sharecrop$Api$loadAfterAuth = function (token) {
 	return $elm$core$Platform$Cmd$batch(
@@ -8608,6 +8632,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		transferRecipientId: '',
 		userAgentToken: $elm$core$Maybe$Nothing,
 		userDirectory: _List_Nil,
+		userDirectoryQuery: '',
 		userProfile: $elm$core$Maybe$Nothing,
 		userProfileError: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
@@ -9514,7 +9539,18 @@ var $author$project$Sharecrop$Api$requestChangesCommand = F3(
 var $author$project$Sharecrop$Types$EmailVerificationRequested = function (a) {
 	return {$: 'EmailVerificationRequested', a: a};
 };
-var $author$project$Sharecrop$Api$tokenDecoder = A2($elm$json$Json$Decode$field, 'token', $elm$json$Json$Decode$string);
+var $elm$json$Json$Decode$oneOf = _Json_oneOf;
+var $author$project$Sharecrop$Api$tokenDecoder = $elm$json$Json$Decode$oneOf(
+	_List_fromArray(
+		[
+			A2($elm$json$Json$Decode$field, 'token', $elm$json$Json$Decode$string),
+			A2(
+			$elm$json$Json$Decode$map,
+			function (_v0) {
+				return '';
+			},
+			A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string))
+		]));
 var $author$project$Sharecrop$Api$requestEmailVerification = function (token) {
 	return A5(
 		$author$project$Sharecrop$Api$authorizedRequest,
@@ -10555,7 +10591,13 @@ var $author$project$Main$update = F2(
 			case 'PasswordResetRequested':
 				if (msg.a.$ === 'Ok') {
 					var token = msg.a.a;
-					return _Utils_Tuple2(
+					return (token === '') ? _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								authError: $elm$core$Maybe$Just('Password reset instructions sent.')
+							}),
+						$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
@@ -12323,6 +12365,27 @@ var $author$project$Main$update = F2(
 							}
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'UserDirectoryQueryChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{userDirectoryQuery: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SearchUserDirectoryClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A2($author$project$Sharecrop$Api$fetchUserDirectoryQuery, state.accessToken, state.userDirectoryQuery));
+					});
 			case 'OrgMembersReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -13455,7 +13518,18 @@ var $author$project$Main$update = F2(
 			case 'EmailVerificationRequested':
 				if (msg.a.$ === 'Ok') {
 					var token = msg.a.a;
-					return _Utils_Tuple2(
+					return (token === '') ? _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										accountMessage: $elm$core$Maybe$Just('Verification instructions sent.')
+									});
+							}),
+						$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 						A2(
 							$author$project$Sharecrop$Api$updateLoggedIn,
 							model,
@@ -16464,46 +16538,86 @@ var $author$project$Sharecrop$View$teamPicker = F5(
 					},
 					teams)));
 	});
-var $author$project$Sharecrop$View$userPicker = F5(
-	function (identifier, selectedUserId, change, blankLabel, users) {
+var $author$project$Sharecrop$Types$SearchUserDirectoryClicked = {$: 'SearchUserDirectoryClicked'};
+var $author$project$Sharecrop$Types$UserDirectoryQueryChanged = function (a) {
+	return {$: 'UserDirectoryQueryChanged', a: a};
+};
+var $author$project$Sharecrop$View$userPicker = F6(
+	function (identifier, selectedUserId, query, change, blankLabel, users) {
 		return A2(
-			$elm$html$Html$select,
+			$elm$html$Html$div,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
-					$elm$html$Html$Attributes$value(selectedUserId),
-					$elm$html$Html$Events$onInput(change),
-					$author$project$Sharecrop$Ui$testId(identifier)
+					$elm$html$Html$Attributes$class('space-y-2')
 				]),
-			A2(
-				$elm$core$List$cons,
-				A2(
-					$elm$html$Html$option,
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$value('')
+							$elm$html$Html$Attributes$class('flex gap-2')
 						]),
 					_List_fromArray(
 						[
-							$elm$html$Html$text(blankLabel)
+							$author$project$Sharecrop$Ui$textInput(
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('search'),
+									$elm$html$Html$Attributes$placeholder('Search users'),
+									$elm$html$Html$Attributes$value(query),
+									$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$UserDirectoryQueryChanged),
+									$author$project$Sharecrop$Ui$testId(identifier + '-query')
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$SearchUserDirectoryClicked),
+									$author$project$Sharecrop$Ui$testId(identifier + '-search')
+								]),
+							'Search')
 						])),
-				A2(
-					$elm$core$List$map,
-					function (user) {
-						return A2(
+					A2(
+					$elm$html$Html$select,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+							$elm$html$Html$Attributes$value(selectedUserId),
+							$elm$html$Html$Events$onInput(change),
+							$author$project$Sharecrop$Ui$testId(identifier)
+						]),
+					A2(
+						$elm$core$List$cons,
+						A2(
 							$elm$html$Html$option,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$value(user.id),
-									$elm$html$Html$Attributes$selected(
-									_Utils_eq(selectedUserId, user.id))
+									$elm$html$Html$Attributes$value('')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text(user.email)
-								]));
-					},
-					users)));
+									$elm$html$Html$text(blankLabel)
+								])),
+						A2(
+							$elm$core$List$map,
+							function (user) {
+								return A2(
+									$elm$html$Html$option,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$value(user.id),
+											$elm$html$Html$Attributes$selected(
+											_Utils_eq(selectedUserId, user.id))
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(user.email)
+										]));
+							},
+							users)))
+				]));
 	});
 var $author$project$Sharecrop$View$visibilityScopeField = function (state) {
 	return _Utils_eq(state.createVisibility, $author$project$Sharecrop$Types$visibilityUserTag) ? A2(
@@ -16511,7 +16625,7 @@ var $author$project$Sharecrop$View$visibilityScopeField = function (state) {
 		'Share with user ID',
 		_List_fromArray(
 			[
-				A5($author$project$Sharecrop$View$userPicker, 'create-scope-user', state.createScopeUserId, $author$project$Sharecrop$Types$CreateScopeUserIdChanged, 'Choose user', state.userDirectory)
+				A6($author$project$Sharecrop$View$userPicker, 'create-scope-user', state.createScopeUserId, state.userDirectoryQuery, $author$project$Sharecrop$Types$CreateScopeUserIdChanged, 'Choose user', state.userDirectory)
 			])) : (_Utils_eq(state.createVisibility, $author$project$Sharecrop$Types$visibilityTeamTag) ? A2(
 		$author$project$Sharecrop$Ui$fieldLabel,
 		'Share with team ID',
@@ -18714,9 +18828,7 @@ var $author$project$Sharecrop$View$submissionCommentsThread = F2(
 							$author$project$Sharecrop$Ui$primaryButton,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Events$onClick(
-									$author$project$Sharecrop$Types$AddSubmissionCommentClicked(submission.id)),
+									$elm$html$Html$Attributes$type_('submit'),
 									$author$project$Sharecrop$Ui$testId('add-submission-comment')
 								]),
 							'Comment'),

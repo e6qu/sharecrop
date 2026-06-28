@@ -195,6 +195,7 @@ type alias LoggedInModel =
     , emailVerificationInput : String
     , accountMessage : Maybe String
     , userDirectory : List UserDirectoryEntry
+    , userDirectoryQuery : String
     }
 
 
@@ -362,6 +363,8 @@ type Msg
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
     | StandaloneTeamsReceived (Result Http.Error Team.TeamsResponse)
     | UserDirectoryReceived (Result Http.Error (List UserDirectoryEntry))
+    | UserDirectoryQueryChanged String
+    | SearchUserDirectoryClicked
     | OrgMembersReceived (Result Http.Error Organization.OrganizationMembersResponse)
     | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
     | UserWorkReceived (Result Http.Error Task.TasksResponse)

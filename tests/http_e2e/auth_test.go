@@ -223,10 +223,69 @@ func TestAccountLifecycleHTTP(t *testing.T) {
 	if afterDeactivate.StatusCode == http.StatusOK {
 		t.Fatalf("deactivated account still logged in")
 	}
+
+	afterDirectoryResponse := getWithBearer(t, server.URL+"/api/users?query="+newEmail, updated.AccessToken)
+	defer afterDirectoryResponse.Body.Close()
+	assertStatus(t, afterDirectoryResponse, http.StatusOK)
+	var afterDirectory usersHTTPResponse
+	if err := json.NewDecoder(afterDirectoryResponse.Body).Decode(&afterDirectory); err != nil {
+		t.Fatalf("decode user directory after deactivate: %v", err)
+	}
+	if len(afterDirectory.Users) != 0 {
+		t.Fatalf("directory after deactivate = %+v, want no users for original email", afterDirectory.Users)
+	}
+}
+
+func TestAccountTokenLogDeliveryAndOperationsStatusHTTP(t *testing.T) {
+	t.Setenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY", "log")
+	bootstrap := newAuthHTTPServer(t, t.Context())
+	admin := registerUser(t, bootstrap, "operations-admin")
+	regular := registerUser(t, bootstrap, "operations-regular")
+	bootstrap.Close()
+
+	t.Setenv("SHARECROP_ADMIN_USER_IDS", admin.SubjectID)
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	verifyResponse := postJSONWithBearer(t, server.URL+"/api/account/email-verification", []byte(`{}`), admin.AccessToken)
+	defer verifyResponse.Body.Close()
+	assertStatus(t, verifyResponse, http.StatusCreated)
+	var sent emptyHTTPResponse
+	if err := json.NewDecoder(verifyResponse.Body).Decode(&sent); err != nil {
+		t.Fatalf("decode sent response: %v", err)
+	}
+	if sent.Status != "sent" {
+		t.Fatalf("sent status = %q, want sent", sent.Status)
+	}
+
+	denied := getWithBearer(t, server.URL+"/api/admin/operations", regular.AccessToken)
+	defer denied.Body.Close()
+	assertStatus(t, denied, http.StatusForbidden)
+
+	operations := getWithBearer(t, server.URL+"/api/admin/operations", admin.AccessToken)
+	defer operations.Body.Close()
+	assertStatus(t, operations, http.StatusOK)
+	var body operationsHTTPResponse
+	if err := json.NewDecoder(operations.Body).Decode(&body); err != nil {
+		t.Fatalf("decode operations: %v", err)
+	}
+	if body.Status != "ok" || body.AccountTokenDelivery != "log" || body.MCPStorage != "process_memory" {
+		t.Fatalf("operations body = %+v, want ok/log/process_memory", body)
+	}
 }
 
 type accountTokenHTTPResponse struct {
 	Token string `json:"token"`
+}
+
+type emptyHTTPResponse struct {
+	Status string `json:"status"`
+}
+
+type operationsHTTPResponse struct {
+	Status               string `json:"status"`
+	AccountTokenDelivery string `json:"account_token_delivery"`
+	MCPStorage           string `json:"mcp_storage"`
 }
 
 type usersHTTPResponse struct {
