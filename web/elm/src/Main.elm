@@ -87,6 +87,8 @@ emptyLoggedIn response =
     , detail = Nothing
     , detailError = Nothing
     , reservations = []
+    , reservationOrganizationId = ""
+    , reservationTeamId = ""
     , reservationMessage = Nothing
     , submissions = []
     , submitInput = ""
@@ -289,7 +291,7 @@ enterPage page state =
             -- not briefly show the prior task's badges, submissions, or comments.
             -- Review form fields are reset here too so the prior submission's
             -- note / partial credit / tip / ban does not carry over to the next.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -643,7 +645,13 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | detailError = Just (httpErrorLabel error) }), Cmd.none )
 
         ReserveClicked taskId ->
-            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | reservationMessage = Nothing }), Api.postReservation state.accessToken taskId ))
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | reservationMessage = Nothing }), Api.postReservation state taskId ))
+
+        ReservationOrganizationIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | reservationOrganizationId = value }), Cmd.none )
+
+        ReservationTeamIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | reservationTeamId = value }), Cmd.none )
 
         ReservationReceived (Ok reservation) ->
             ( Api.updateLoggedIn model (\state -> { state | reservationMessage = Just (View.reservationSuccessLabel reservation) })

@@ -202,6 +202,10 @@ func (healthTaskService) Reserve(context.Context, auth.UserSubject, core.TaskID)
 	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthTaskService) ReserveForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult {
+	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthTaskService) ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

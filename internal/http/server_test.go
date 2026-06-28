@@ -573,6 +573,17 @@ func (testTaskService) Reserve(_ context.Context, actor auth.UserSubject, taskID
 	}}
 }
 
+func (testTaskService) ReserveForOrganizationTeam(_ context.Context, actor auth.UserSubject, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
+	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
+	return task.ReservationCreated{Value: task.Reservation{
+		ID:          reservationID.Value,
+		TaskID:      taskID,
+		Assignee:    task.OrganizationTeamAssignee{OrganizationID: organizationID, TeamID: teamID},
+		State:       task.ReservationStateActive,
+		RequestedBy: actor.ID,
+	}}
+}
+
 func (testTaskService) ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }

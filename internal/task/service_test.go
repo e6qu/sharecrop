@@ -123,7 +123,35 @@ func TestServiceReserveRejectsRequester(t *testing.T) {
 	}
 }
 
-func TestServiceReserveRejectsOrganizationTeamAssigneeScope(t *testing.T) {
+func TestServiceReserveCreatesOrganizationTeamReservation(t *testing.T) {
+	store := newTaskMemoryStore()
+	permissions := newTaskPermissionStore()
+	service := NewService(store, permissions)
+	requester := testUserSubject(t)
+	worker := testUserSubject(t)
+	organizationID := testOrganizationID(t)
+	teamID := testTeamID(t)
+	permissions.addTeamMember(organizationID, teamID, worker.ID)
+	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
+	command.AssigneeScope = AssigneeScopeOrganizationTeam
+	created := service.Create(context.Background(), command).(TaskCreated)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+
+	result := service.ReserveForOrganizationTeam(context.Background(), worker, created.Value.ID, organizationID, teamID)
+	reserved, matched := result.(ReservationCreated)
+	if !matched {
+		t.Fatalf("result = %T, want ReservationCreated", result)
+	}
+	assignee, matched := reserved.Value.Assignee.(OrganizationTeamAssignee)
+	if !matched {
+		t.Fatalf("assignee = %T, want OrganizationTeamAssignee", reserved.Value.Assignee)
+	}
+	if assignee.OrganizationID != organizationID || assignee.TeamID != teamID {
+		t.Fatalf("assignee = (%s, %s), want (%s, %s)", assignee.OrganizationID.String(), assignee.TeamID.String(), organizationID.String(), teamID.String())
+	}
+}
+
+func TestServiceReserveRejectsUserReservationForOrganizationTeamAssigneeScope(t *testing.T) {
 	store := newTaskMemoryStore()
 	service := NewService(store, newTaskPermissionStore())
 	requester := testUserSubject(t)
@@ -134,6 +162,22 @@ func TestServiceReserveRejectsOrganizationTeamAssigneeScope(t *testing.T) {
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
 
 	result := service.Reserve(context.Background(), worker, created.Value.ID)
+	if _, matched := result.(ReservationRejected); !matched {
+		t.Fatalf("result = %T, want ReservationRejected", result)
+	}
+}
+
+func TestServiceReserveRejectsOrganizationTeamNonMember(t *testing.T) {
+	store := newTaskMemoryStore()
+	service := NewService(store, newTaskPermissionStore())
+	requester := testUserSubject(t)
+	worker := testUserSubject(t)
+	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
+	command.AssigneeScope = AssigneeScopeOrganizationTeam
+	created := service.Create(context.Background(), command).(TaskCreated)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+
+	result := service.ReserveForOrganizationTeam(context.Background(), worker, created.Value.ID, testOrganizationID(t), testTeamID(t))
 	if _, matched := result.(ReservationRejected); !matched {
 		t.Fatalf("result = %T, want ReservationRejected", result)
 	}
@@ -234,13 +278,20 @@ func (store *taskMemoryStore) CheckSubmissionEligibility(context.Context, core.T
 }
 
 type taskPermissionStore struct {
-	grants []taskPermissionGrant
+	grants     []taskPermissionGrant
+	teamGrants []taskTeamGrant
 }
 
 type taskPermissionGrant struct {
 	organizationID core.OrganizationID
 	userID         core.UserID
 	roles          []org.Role
+}
+
+type taskTeamGrant struct {
+	organizationID core.OrganizationID
+	teamID         core.TeamID
+	userID         core.UserID
 }
 
 var taskPermissionSeed = []taskPermissionGrant{}
@@ -332,6 +383,10 @@ func (store *taskPermissionStore) grant(organizationID core.OrganizationID, user
 	store.grants = append(store.grants, taskPermissionGrant{organizationID: organizationID, userID: userID, roles: roles})
 }
 
+func (store *taskPermissionStore) addTeamMember(organizationID core.OrganizationID, teamID core.TeamID, userID core.UserID) {
+	store.teamGrants = append(store.teamGrants, taskTeamGrant{organizationID: organizationID, teamID: teamID, userID: userID})
+}
+
 func (store *taskPermissionStore) CheckOrganizationPermission(_ context.Context, organizationID core.OrganizationID, userID core.UserID, permission org.Permission) org.PermissionCheck {
 	for grantIndex := range store.grants {
 		grant := store.grants[grantIndex]
@@ -340,6 +395,16 @@ func (store *taskPermissionStore) CheckOrganizationPermission(_ context.Context,
 		}
 	}
 	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "roles missing")}
+}
+
+func (store *taskPermissionStore) CheckOrganizationTeamMembership(_ context.Context, organizationID core.OrganizationID, teamID core.TeamID, userID core.UserID) org.PermissionCheck {
+	for grantIndex := range store.teamGrants {
+		grant := store.teamGrants[grantIndex]
+		if grant.organizationID == organizationID && grant.teamID == teamID && grant.userID == userID {
+			return org.PermissionGranted{}
+		}
+	}
+	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization team membership denied")}
 }
 
 func testCreateCommand(t *testing.T, actor auth.UserSubject, owner Owner, visibility Visibility) CreateCommand {
@@ -469,6 +534,16 @@ func testOrganizationID(t *testing.T) core.OrganizationID {
 	created, matched := result.(core.OrganizationIDCreated)
 	if !matched {
 		t.Fatalf("organization id = %T, want OrganizationIDCreated", result)
+	}
+	return created.Value
+}
+
+func testTeamID(t *testing.T) core.TeamID {
+	t.Helper()
+	result := core.NewTeamID()
+	created, matched := result.(core.TeamIDCreated)
+	if !matched {
+		t.Fatalf("team id = %T, want TeamIDCreated", result)
 	}
 	return created.Value
 }

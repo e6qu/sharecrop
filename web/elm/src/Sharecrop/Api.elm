@@ -600,13 +600,32 @@ postRefundCollectibleReward token taskId =
         (Http.expectJson RefundCollectibleRewardReceived Collectible.collectiblesResponseDecoder)
 
 
-postReservation : String -> String -> Cmd Msg
-postReservation token taskId =
+postReservation : LoggedInModel -> String -> Cmd Msg
+postReservation state taskId =
     authorizedRequest "POST"
-        token
+        state.accessToken
         ("/api/tasks/" ++ taskId ++ "/reservations")
-        (Http.jsonBody (Encode.object []))
+        (Http.jsonBody (reservationRequestBody state))
         (Http.expectJson ReservationReceived Task.taskReservationResponseDecoder)
+
+
+reservationRequestBody : LoggedInModel -> Encode.Value
+reservationRequestBody state =
+    case state.detail of
+        Just detail ->
+            case detail.assigneeScope of
+                Task.TaskAssigneeScopeOrganizationTeam ->
+                    Encode.object
+                        [ ( "assignee_kind", Encode.string "organization_team" )
+                        , ( "organization_id", Encode.string state.reservationOrganizationId )
+                        , ( "team_id", Encode.string state.reservationTeamId )
+                        ]
+
+                _ ->
+                    Encode.object []
+
+        Nothing ->
+            Encode.object []
 
 
 postReservationChange : String -> String -> String -> String -> Cmd Msg

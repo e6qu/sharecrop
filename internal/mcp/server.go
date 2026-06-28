@@ -40,6 +40,7 @@ type Services interface {
 	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult
 	UnpublishTask(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	ReserveTask(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
+	ReserveTaskForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
 	ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult
 	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult

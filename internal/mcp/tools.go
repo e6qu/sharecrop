@@ -222,9 +222,9 @@ func toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolReserveTask,
-			Description: "Reserve a task or request requester approval, depending on the task participation policy.",
+			Description: "Reserve a task or request requester approval, depending on the task participation policy. Omit assignee_kind to reserve as the agent's user, or pass organization_team with organization_id and team_id to reserve for an organization team the user belongs to.",
 			Scope:       agent.ScopeSubmissionsWrite,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"assignee_kind":{"type":"string","enum":["user","organization_team"]},"organization_id":{"type":"string"},"team_id":{"type":"string"}},"required":["task_id"]}`),
 		},
 		{
 			Name:        toolListReservations,

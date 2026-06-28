@@ -1,5 +1,13 @@
 # What We Did
 
+`task/org-team-assignment` made organization-team assignment workable across the main interfaces:
+
+- **Domain and permissions.** Task reservation now has an organization-team path in addition to the existing user path. The organization service exposes a team-membership check that verifies the team is organization-owned, belongs to the requested organization, and includes the acting user.
+- **Submission eligibility.** Non-open tasks now treat an active organization-team reservation as satisfying eligibility for users who belong to the reserved team.
+- **HTTP and MCP.** `POST /api/tasks/{task_id}/reservations` still accepts an empty body for user reservations, and now accepts `{"assignee_kind":"organization_team","organization_id":"...","team_id":"..."}` for organization-team reservations. `sharecrop.reserve_task` accepts the same optional assignee fields.
+- **Browser and demo.** The task detail reservation card shows organization/team ID inputs for `organization_team` tasks and posts those IDs when reserving or requesting approval. The demo backend accepts team reservations and checks seeded team membership; generated browser bundles were refreshed.
+- **Tests.** Unit tests cover organization-team reservation success and non-member rejection. A new HTTP e2e test covers organization team creation, member reservation, outsider rejection, and member submission. Local verification passed for `go test ./...` and `make frontend`; the new database-backed HTTP e2e test could not run in this environment because `DATABASE_URL` is not set.
+
 `task/application-completeness-review` documented a project readiness review:
 
 - Added [docs/application_readiness_review.md](./docs/application_readiness_review.md), comparing the implemented backend, Elm UI, HTTP API, MCP surface, tests, and user stories against the product thesis.

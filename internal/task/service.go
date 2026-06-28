@@ -34,6 +34,7 @@ type Store interface {
 
 type OrganizationPermissions interface {
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
+	CheckOrganizationTeamMembership(context.Context, core.OrganizationID, core.TeamID, core.UserID) org.PermissionCheck
 }
 
 type Service struct {
@@ -388,6 +389,18 @@ func (ReservationCreated) reservationResult() {}
 func (ReservationRejected) reservationResult() {}
 
 func (service Service) Reserve(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ReservationResult {
+	return service.reserve(ctx, actor, taskID, UserAssignee{UserID: actor.ID}, AssigneeScopeUser, "this task does not accept user reservations")
+}
+
+func (service Service) ReserveForOrganizationTeam(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) ReservationResult {
+	check := service.organizationPermissions.CheckOrganizationTeamMembership(ctx, organizationID, teamID, actor.ID)
+	if rejected, matched := check.(org.PermissionDenied); matched {
+		return ReservationRejected{Reason: rejected.Reason}
+	}
+	return service.reserve(ctx, actor, taskID, OrganizationTeamAssignee{OrganizationID: organizationID, TeamID: teamID}, AssigneeScopeOrganizationTeam, "this task does not accept organization team reservations")
+}
+
+func (service Service) reserve(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, assignee Assignee, requiredScope AssigneeScope, wrongScopeMessage string) ReservationResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
@@ -397,8 +410,8 @@ func (service Service) Reserve(ctx context.Context, actor auth.UserSubject, task
 	if taskFound.Value.State != StateOpen {
 		return ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can be reserved")}
 	}
-	if taskFound.Value.AssigneeScope != AssigneeScopeUser {
-		return ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "this task does not accept user reservations")}
+	if taskFound.Value.AssigneeScope != requiredScope {
+		return ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, wrongScopeMessage)}
 	}
 	if rejected, matched := service.requireViewPermission(ctx, actor, taskFound.Value).(viewPermissionRejected); matched {
 		return ReservationRejected{Reason: rejected.reason}
@@ -416,7 +429,7 @@ func (service Service) Reserve(ctx context.Context, actor auth.UserSubject, task
 
 	storeResult := service.store.CreateReservation(ctx, reservationIDCreated.Value, ReservationCommand{
 		TaskID:      taskID,
-		Assignee:    UserAssignee{UserID: actor.ID},
+		Assignee:    assignee,
 		RequestedBy: actor.ID,
 	})
 	created, matched := storeResult.(CreateReservationStoreAccepted)

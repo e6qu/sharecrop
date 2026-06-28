@@ -2,14 +2,17 @@
 
 Current priority from [docs/application_readiness_review.md](./docs/application_readiness_review.md):
 
-1. Make organization-team assignment workable end to end: team reservation/request-approval commands, submission eligibility, HTTP/MCP tools, browser controls, and tests. Today the UI can mark a task as `organization_team`, but `Reserve` rejects non-user assignee tasks.
-2. Add organization role management and browser reviewer parity: role picker on member provisioning, role update, deactivate-member button, permission-aware organization UI, and organization-reviewer review controls for tasks they did not personally create.
-3. Add worker submission status/discussion UX: task-local "my submissions" panel, review notes, validation errors, response body, submission comments for workers, and a clear resubmit path after request-changes.
-4. Replace raw id fields with selectors: organization funding, visibility scopes, team scopes, admin award recipients, collectible transfer recipients, and series task add.
-5. Make reward creation coherent: reward-kind selector in task create, collectible/bundle reward setup in the same workflow, count handling, and clear funding/open preconditions.
-6. Build account lifecycle: email verification, password reset/change, settings/profile edit, account deactivation/deletion, and browser guest entry if guest sessions remain part of the product.
-7. Replace placeholder docs with user/API/MCP/operator docs, including the agent-side scheduling recipe.
-8. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
+1. Add organization role management and browser reviewer parity: role picker on member provisioning, role update, deactivate-member button, permission-aware organization UI, and organization-reviewer review controls for tasks they did not personally create.
+2. Add worker submission status/discussion UX: task-local "my submissions" panel, review notes, validation errors, response body, submission comments for workers, and a clear resubmit path after request-changes.
+3. Replace raw id fields with selectors: organization-team reservation, organization funding, visibility scopes, team scopes, admin award recipients, collectible transfer recipients, and series task add.
+4. Make reward creation coherent: reward-kind selector in task create, collectible/bundle reward setup in the same workflow, count handling, and clear funding/open preconditions.
+5. Build account lifecycle: email verification, password reset/change, settings/profile edit, account deactivation/deletion, and browser guest entry if guest sessions remain part of the product.
+6. Replace placeholder docs with user/API/MCP/operator docs, including the agent-side scheduling recipe.
+7. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
+
+Recently finished:
+
+- Organization-team assignment now has reservation/request-approval and submission eligibility through HTTP, MCP, browser controls, and demo behavior. A follow-up remains to replace the browser's raw organization/team ID fields with selectors.
 
 Previously agreed multi-PR roadmap (humans + agents get full lifecycle/feature parity):
 
