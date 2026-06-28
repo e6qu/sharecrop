@@ -8,9 +8,10 @@ Test gaps:
 
 - GitHub Pages deployment cannot be observed from pull request CI because the Pages workflow publishes after pushes to `main` or manual dispatch.
 - Anonymous workers were removed. The anonymous worker identity and payout model is deferred; submissions are registered-users-only.
-- Browser task creation exposes public, private, and specific-user visibility, and can own a task by an organization. Organization and organization-team visibility, team assignee selection, and funding an organization-owned task from the organization credit account are not yet exposed in the browser.
-- The browser provisions organization members but cannot list them; there is no `GET` members endpoint.
-- Review tips are credit-only. Collectible or inventory-based tips remain deferred.
+- Organization-team assignee scope is visible in the browser, but there is no team reservation/request-approval command. `Reserve` rejects non-user assignee tasks, so organization-team-assigned tasks are not workable end to end.
+- Browser organization operations are partial: member provisioning hardcodes the `member` role, there is no role update or deactivate-member control, and organization reviewers do not get browser review controls unless they created the task.
+- Workers can submit and can list their own submissions from the profile page, but the browser lacks a task-local worker submission status/comment/revision panel.
+- Browser reward creation is partial: the create-task form only captures credit amount; collectible and bundle rewards require separate collectible funding actions rather than one coherent create flow.
 - The asset economy is platform-only: user-issued tokens, organization-issued tokens, crypto rewards, and external wallets are not implemented. Current implemented rewards are Sharecrop credits and platform collectibles, including multiple collectibles per task.
 - Request/command contracts and HTTP contract fixture tests still need to expand as the API grows.
 
