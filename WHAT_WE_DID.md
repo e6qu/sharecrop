@@ -1,5 +1,15 @@
 # What We Did
 
+`task/account-directories-rewards-playwright` combined four follow-up tracks into one branch by explicit request:
+
+- **Account lifecycle.** Added account status and account-token storage migrations; login rejects deactivated accounts. The auth service, DB store, and HTTP API now support browser guest entry, email-verification token issue/confirm, password-reset token issue/confirm, password change, profile email update, and account deactivation with session/token revocation. The browser exposes reset controls on the signed-out page and settings controls on the user's profile page.
+- **Directories and selectors.** Added an authenticated user directory endpoint (`GET /api/users`) backed by the auth store. The Elm client loads users and standalone teams after auth / task-create entry and uses selectors for task visibility user/team scopes instead of raw inputs where data is loaded.
+- **Reward setup.** Task creation accepts selected collectible IDs for collectible and bundle rewards. The create handler escrows those collectibles immediately after creating the task, refetches the task so the response reflects the held collectible count, and preserves the existing post-create funding flow for bundle tasks with no selected IDs. The task store continues to derive collectible counts from held/released reward rows.
+- **Browser coverage.** Added real-app Playwright coverage for guest/account lifecycle controls and selector-backed task creation with create-time collectible escrow. Updated the existing standalone-team visibility test to select from the new team picker.
+- **HTTP coverage.** Added account lifecycle HTTP e2e coverage for directory lookup, email verification, password reset, password change, profile email update, deactivation, and post-deactivation login rejection. Added HTTP e2e coverage for create-time collectible escrow and multi-collectible counts.
+- **Verification.** Passed: `go test ./...`; `go test -tags http_e2e ./tests/http_e2e` with local Postgres; `make check-contracts`; `make check-format`; `make check-policy`; `make check-ts`; `make lint`; `make test-deno`; `make check-dead-code`; `make vet`; `make build`; and `deno task e2e:ui` (36 Playwright tests).
+- **Deferred.** Hard account deletion, real email delivery for account tokens, and paginated/typeahead browser directory search remain queued.
+
 `task/org-worker-selectors-rewards-docs` combined five follow-up tracks into one branch by explicit request:
 
 - **Organization role management and reviewer parity.** Organization member provisioning gained a role picker. Members can have roles updated or be deactivated through new API/store/service paths and browser controls. Organization reviewers can review organization-owned task submissions even when they did not create the task; task responses now carry `reviewer_action`.

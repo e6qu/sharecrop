@@ -12,6 +12,34 @@ type authResponse struct {
 	Role        string `json:"role"`
 }
 
+type accountTokenResponse struct {
+	Token string `json:"token"`
+}
+
+func (accountTokenResponse) writableResponse() {}
+
+type accountTokenRequest struct {
+	Token string `json:"token"`
+}
+
+type passwordResetRequest struct {
+	Email string `json:"email"`
+}
+
+type passwordResetConfirmRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+type passwordChangeRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+type accountProfileRequest struct {
+	Email string `json:"email"`
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }
@@ -74,8 +102,9 @@ type taskRequest struct {
 }
 
 type taskRewardRequest struct {
-	Kind         string `json:"kind"`
-	CreditAmount int64  `json:"credit_amount"`
+	Kind           string   `json:"kind"`
+	CreditAmount   int64    `json:"credit_amount"`
+	CollectibleIDs []string `json:"collectible_ids"`
 }
 
 type taskParticipationRequest struct {
@@ -127,6 +156,16 @@ type teamResponse struct {
 
 type teamsResponse struct {
 	Teams []teamResponse `json:"teams"`
+}
+
+type userDirectoryEntryResponse struct {
+	ID     string `json:"id"`
+	Email  string `json:"email"`
+	Status string `json:"status"`
+}
+
+type usersResponse struct {
+	Users []userDirectoryEntryResponse `json:"users"`
 }
 
 type taskResponse struct {

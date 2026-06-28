@@ -216,6 +216,15 @@ type memoryStore struct {
 	refreshByHash      map[string]RefreshTokenRecord
 	consumedByHash     map[string]RefreshTokenRecord
 	guestsByID         map[string]core.GuestID
+	accountTokens      map[string]storedAccountToken
+}
+
+type storedAccountToken struct {
+	userID     core.UserID
+	kind       AccountTokenKind
+	token      AccountToken
+	consumed   bool
+	consumedAt time.Time
 }
 
 func newMemoryStore() *memoryStore {
@@ -224,6 +233,7 @@ func newMemoryStore() *memoryStore {
 		refreshByHash:      make(map[string]RefreshTokenRecord),
 		consumedByHash:     make(map[string]RefreshTokenRecord),
 		guestsByID:         make(map[string]core.GuestID),
+		accountTokens:      make(map[string]storedAccountToken),
 	}
 }
 
@@ -236,6 +246,7 @@ func (store *memoryStore) CreateUserCredential(_ context.Context, id core.UserID
 		UserID:       id,
 		Email:        email,
 		PasswordHash: passwordHash,
+		Status:       "active",
 	}
 	return StoreUserAccepted{}
 }
@@ -249,6 +260,72 @@ func (store *memoryStore) FindCredentialByEmail(_ context.Context, email EmailAd
 	return CredentialFound{Record: record}
 }
 
+func (store *memoryStore) FindCredentialByUserID(_ context.Context, id core.UserID) CredentialLookupResult {
+	for _, record := range store.credentialsByEmail {
+		if record.UserID.String() == id.String() {
+			return CredentialFound{Record: record}
+		}
+	}
+	return CredentialMissing{}
+}
+
+func (store *memoryStore) ListUsers(_ context.Context, _ string, _ core.Page) UserDirectoryResult {
+	values := make([]UserDirectoryEntry, 0, len(store.credentialsByEmail))
+	for _, record := range store.credentialsByEmail {
+		if record.Status == "active" {
+			values = append(values, UserDirectoryEntry{ID: record.UserID, Email: record.Email, Status: record.Status})
+		}
+	}
+	return UsersListed{Values: values}
+}
+
+func (store *memoryStore) UpdateUserEmail(_ context.Context, id core.UserID, email EmailAddress) AccountMutationResult {
+	for existingEmail, record := range store.credentialsByEmail {
+		if record.UserID.String() == id.String() {
+			if existing, exists := store.credentialsByEmail[email.String()]; exists && existing.UserID.String() != id.String() {
+				return AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "email address is already registered")}
+			}
+			delete(store.credentialsByEmail, existingEmail)
+			record.Email = email
+			store.credentialsByEmail[email.String()] = record
+			return AccountMutationAccepted{}
+		}
+	}
+	return AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account was not found")}
+}
+
+func (store *memoryStore) UpdatePassword(_ context.Context, id core.UserID, passwordHash PasswordHash) AccountMutationResult {
+	for email, record := range store.credentialsByEmail {
+		if record.UserID.String() == id.String() {
+			record.PasswordHash = passwordHash
+			store.credentialsByEmail[email] = record
+			for hash, refresh := range store.refreshByHash {
+				if subject, matched := refresh.Subject.(UserSubject); matched && subject.ID.String() == id.String() {
+					delete(store.refreshByHash, hash)
+				}
+			}
+			return AccountMutationAccepted{}
+		}
+	}
+	return AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account was not found")}
+}
+
+func (store *memoryStore) DeactivateUser(_ context.Context, id core.UserID) AccountMutationResult {
+	for email, record := range store.credentialsByEmail {
+		if record.UserID.String() == id.String() {
+			record.Status = "deactivated"
+			store.credentialsByEmail[email] = record
+			for hash, refresh := range store.refreshByHash {
+				if subject, matched := refresh.Subject.(UserSubject); matched && subject.ID.String() == id.String() {
+					delete(store.refreshByHash, hash)
+				}
+			}
+			return AccountMutationAccepted{}
+		}
+	}
+	return AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account was not found")}
+}
+
 func (store *memoryStore) CreateGuestSubject(_ context.Context, id core.GuestID) StoreGuestResult {
 	store.guestsByID[id.String()] = id
 	return StoreGuestAccepted{}
@@ -257,6 +334,27 @@ func (store *memoryStore) CreateGuestSubject(_ context.Context, id core.GuestID)
 func (store *memoryStore) StoreRefreshToken(_ context.Context, record RefreshTokenRecord) StoreRefreshTokenResult {
 	store.refreshByHash[record.Hash.String()] = record
 	return StoreRefreshTokenAccepted{}
+}
+
+func (store *memoryStore) StoreAccountToken(_ context.Context, id core.UserID, kind AccountTokenKind, token AccountToken) AccountTokenStoreResult {
+	for hash, stored := range store.accountTokens {
+		if stored.userID.String() == id.String() && stored.kind.String() == kind.String() && !stored.consumed {
+			delete(store.accountTokens, hash)
+		}
+	}
+	store.accountTokens[token.Hash.String()] = storedAccountToken{userID: id, kind: kind, token: token}
+	return AccountTokenStored{}
+}
+
+func (store *memoryStore) ConsumeAccountToken(_ context.Context, kind AccountTokenKind, hash AccountTokenHash, consumedAt time.Time) AccountTokenConsumeResult {
+	stored, exists := store.accountTokens[hash.String()]
+	if !exists || stored.consumed || stored.kind.String() != kind.String() || !stored.token.ExpiresAt.After(consumedAt) {
+		return AccountTokenNotConsumed{}
+	}
+	stored.consumed = true
+	stored.consumedAt = consumedAt
+	store.accountTokens[hash.String()] = stored
+	return AccountTokenConsumed{UserID: stored.userID}
 }
 
 func (store *memoryStore) RevokeRefreshFamily(_ context.Context, hash RefreshTokenHash) RevokeRefreshFamilyResult {

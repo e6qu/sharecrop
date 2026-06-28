@@ -53,6 +53,16 @@ authView model =
         , div [ Html.Attributes.class "flex gap-3" ]
             [ Ui.primaryButton [ type_ "submit", testId "login" ] "Log in"
             , Ui.secondaryButton [ type_ "button", onClick RegisterClicked, testId "register" ] "Register"
+            , Ui.secondaryButton [ type_ "button", onClick GuestClicked, testId "guest-login" ] "Continue as guest"
+            ]
+        , div [ Html.Attributes.class "space-y-2 border-t border-slate-100 pt-4" ]
+            [ Ui.label_ "Password reset"
+            , Ui.textInput [ type_ "email", placeholder "Account email", value model.resetEmail, onInput PasswordResetEmailChanged, testId "reset-email" ]
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ Ui.secondaryButton [ type_ "button", onClick RequestPasswordResetClicked, testId "request-password-reset" ] "Create reset token" ]
+            , Ui.textInput [ type_ "text", placeholder "Reset token", value model.resetToken, onInput PasswordResetTokenChanged, testId "reset-token" ]
+            , Ui.textInput [ type_ "password", placeholder "New password", value model.resetPassword, onInput PasswordResetPasswordChanged, testId "reset-password" ]
+            , Ui.secondaryButton [ type_ "button", onClick ConfirmPasswordResetClicked, testId "confirm-password-reset" ] "Reset password"
             ]
         , maybeError model.authError "auth-error"
         ]
@@ -485,12 +495,38 @@ userDetailView origin userId state =
                             p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "Loading…" ]
             ]
             :: (if userId == state.subjectId then
-                    [ userAgentAccessCard origin state ]
+                    [ accountSettingsCard state
+                    , userAgentAccessCard origin state
+                    ]
 
                 else
                     []
                )
         )
+
+
+accountSettingsCard : LoggedInModel -> Html Msg
+accountSettingsCard state =
+    Ui.card
+        [ Ui.sectionTitle "Account settings"
+        , form [ Html.Attributes.class "space-y-2", onSubmit UpdateProfileClicked ]
+            [ Ui.fieldLabel "Email" [ Ui.textInput [ type_ "email", placeholder "person@example.com", value state.accountEmail, onInput AccountEmailChanged, testId "account-email" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "update-profile" ] "Save profile"
+            ]
+        , div [ Html.Attributes.class "space-y-2" ]
+            [ Ui.label_ "Email verification"
+            , Ui.secondaryButton [ type_ "button", onClick RequestEmailVerificationClicked, testId "request-email-verification" ] "Create verification token"
+            , Ui.textInput [ type_ "text", placeholder "Verification token", value state.emailVerificationInput, onInput EmailVerificationInputChanged, testId "email-verification-token" ]
+            , Ui.secondaryButton [ type_ "button", onClick ConfirmEmailVerificationClicked, testId "confirm-email-verification" ] "Verify email"
+            ]
+        , form [ Html.Attributes.class "space-y-2", onSubmit ChangePasswordClicked ]
+            [ Ui.fieldLabel "Current password" [ Ui.textInput [ type_ "password", value state.currentPassword, onInput CurrentPasswordChanged, testId "current-password" ] ]
+            , Ui.fieldLabel "New password" [ Ui.textInput [ type_ "password", value state.newPassword, onInput NewPasswordChanged, testId "new-password" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "change-password" ] "Change password"
+            ]
+        , Ui.dangerButton [ type_ "button", onClick DeactivateAccountClicked, testId "deactivate-account" ] "Deactivate account"
+        , maybeNote state.accountMessage "account-message"
+        ]
 
 
 userAgentAccessCard : String -> LoggedInModel -> Html Msg
@@ -791,6 +827,7 @@ createTaskView state =
         , Ui.label_ "Reward"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (rewardKindButton state.createRewardKind) allRewardKinds)
         , rewardAmountField state
+        , rewardCollectibleField state
         , ownerChooser state
         , Ui.label_ "Participation"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (participationButton state.createParticipationPolicy) allParticipationPolicies)
@@ -842,6 +879,37 @@ rewardAmountField : LoggedInModel -> Html Msg
 rewardAmountField state =
     if state.createRewardKind == "credit" || state.createRewardKind == "bundle" then
         Ui.fieldLabel "Credit amount" [ Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
+
+    else
+        text ""
+
+
+rewardCollectibleField : LoggedInModel -> Html Msg
+rewardCollectibleField state =
+    if state.createRewardKind == "collectible" || state.createRewardKind == "bundle" then
+        let
+            available =
+                List.filter (\collectible -> collectible.state == Collectible.CollectibleStateMinted) state.collectibles
+        in
+        div [ Html.Attributes.class "space-y-2", testId "create-reward-collectibles" ]
+            [ Ui.label_ "Collectibles"
+            , if List.isEmpty available then
+                p [ Html.Attributes.class "text-sm text-slate-500" ] [ text "No minted collectibles available." ]
+
+              else
+                div [ Html.Attributes.class "space-y-1" ]
+                    (List.map
+                        (\collectible ->
+                            Ui.checkbox
+                                [ checked (List.member collectible.id state.createRewardCollectibleIds)
+                                , onCheck (\_ -> ToggleCreateRewardCollectible collectible.id)
+                                , testId ("create-reward-collectible-" ++ collectible.id)
+                                ]
+                                (collectible.name ++ " · " ++ collectibleKindLabel collectible.kind)
+                        )
+                        available
+                    )
+            ]
 
     else
         text ""
@@ -1127,11 +1195,11 @@ visibilityScopeField : LoggedInModel -> Html Msg
 visibilityScopeField state =
     if state.createVisibility == visibilityUserTag then
         Ui.fieldLabel "Share with user ID"
-            [ Ui.textInput [ type_ "text", placeholder "User ID to grant access", value state.createScopeUserId, onInput CreateScopeUserIdChanged, testId "create-scope-user" ] ]
+            [ userPicker "create-scope-user" state.createScopeUserId CreateScopeUserIdChanged "Choose user" state.userDirectory ]
 
     else if state.createVisibility == visibilityTeamTag then
         Ui.fieldLabel "Share with team ID"
-            [ Ui.textInput [ type_ "text", placeholder "Team ID (standalone or organization team)", value state.createScopeTeamId, onInput CreateScopeTeamIdChanged, testId "create-scope-team" ] ]
+            [ teamPicker "create-scope-team" state.createScopeTeamId CreateScopeTeamIdChanged "Choose team" state.standaloneTeams ]
 
     else if state.createVisibility == visibilityOrganizationTag then
         Ui.fieldLabel "Share with organization"
@@ -1265,6 +1333,23 @@ organizationPicker identifier selectedOrganizationId change blankLabel organizat
                     option [ value organization.id, selected (selectedOrganizationId == organization.id) ] [ text organization.name ]
                 )
                 organizations
+        )
+
+
+userPicker : String -> String -> (String -> Msg) -> String -> List UserDirectoryEntry -> Html Msg
+userPicker identifier selectedUserId change blankLabel users =
+    select
+        [ Html.Attributes.class Ui.fieldClass
+        , value selectedUserId
+        , onInput change
+        , testId identifier
+        ]
+        (option [ value "" ] [ text blankLabel ]
+            :: List.map
+                (\user ->
+                    option [ value user.id, selected (selectedUserId == user.id) ] [ text user.email ]
+                )
+                users
         )
 
 

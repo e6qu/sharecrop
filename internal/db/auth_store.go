@@ -57,16 +57,72 @@ func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID,
 
 func (store AuthStore) FindCredentialByEmail(ctx context.Context, email auth.EmailAddress) auth.CredentialLookupResult {
 	row := store.pool.QueryRow(ctx, `
-		select users.id::text, users.email, password_credentials.password_hash
+		select users.id::text, users.email, password_credentials.password_hash, users.status
 		from users
 		join password_credentials on password_credentials.user_id = users.id
 		where users.email = $1
 	`, email.String())
+	return scanCredential(row)
+}
 
+func (store AuthStore) FindCredentialByUserID(ctx context.Context, userID core.UserID) auth.CredentialLookupResult {
+	row := store.pool.QueryRow(ctx, `
+		select users.id::text, users.email, password_credentials.password_hash, users.status
+		from users
+		join password_credentials on password_credentials.user_id = users.id
+		where users.id = $1
+	`, userID.String())
+	return scanCredential(row)
+}
+
+func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Page) auth.UserDirectoryResult {
+	limit := page.Limit()
+	offset := page.Offset()
+	rows, err := store.pool.Query(ctx, `
+		select id::text, email, status
+		from users
+		where status = 'active'
+		and ($1 = '' or email ilike '%' || $1 || '%' or id::text = $1)
+		order by email asc
+		limit $2 offset $3
+	`, query, limit, offset)
+	if err != nil {
+		return auth.UserDirectoryRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list users failed")}
+	}
+	defer rows.Close()
+
+	values := make([]auth.UserDirectoryEntry, 0)
+	for rows.Next() {
+		var rawID string
+		var rawEmail string
+		var status string
+		if err := rows.Scan(&rawID, &rawEmail, &status); err != nil {
+			return auth.UserDirectoryRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan user directory failed")}
+		}
+		idResult := core.ParseUserID(rawID)
+		id, idMatched := idResult.(core.UserIDCreated)
+		if !idMatched {
+			return auth.UserDirectoryRejected{Reason: idResult.(core.UserIDRejected).Reason}
+		}
+		emailResult := auth.NewEmailAddress(rawEmail)
+		email, emailMatched := emailResult.(auth.EmailAddressAccepted)
+		if !emailMatched {
+			return auth.UserDirectoryRejected{Reason: emailResult.(auth.EmailAddressRejected).Reason}
+		}
+		values = append(values, auth.UserDirectoryEntry{ID: id.Value, Email: email.Value, Status: status})
+	}
+	if rows.Err() != nil {
+		return auth.UserDirectoryRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read user directory failed")}
+	}
+	return auth.UsersListed{Values: values}
+}
+
+func scanCredential(row pgx.Row) auth.CredentialLookupResult {
 	var rawUserID string
 	var rawEmail string
 	var rawPasswordHash string
-	if err := row.Scan(&rawUserID, &rawEmail, &rawPasswordHash); err != nil {
+	var rawStatus string
+	if err := row.Scan(&rawUserID, &rawEmail, &rawPasswordHash, &rawStatus); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return auth.CredentialMissing{}
 		}
@@ -99,8 +155,60 @@ func (store AuthStore) FindCredentialByEmail(ctx context.Context, email auth.Ema
 			UserID:       userCreated.Value,
 			Email:        emailAccepted.Value,
 			PasswordHash: hashCreated.Value,
+			Status:       rawStatus,
 		},
 	}
+}
+
+func (store AuthStore) UpdateUserEmail(ctx context.Context, userID core.UserID, email auth.EmailAddress) auth.AccountMutationResult {
+	tag, err := store.pool.Exec(ctx, "update users set email = $2, email_verified_at = null where id = $1 and status = 'active'", userID.String(), email.String())
+	if err != nil {
+		if isUniqueViolation(err) {
+			return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "email address is already registered")}
+		}
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update user email failed")}
+	}
+	if tag.RowsAffected() == 0 {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
+	return auth.AccountMutationAccepted{}
+}
+
+func (store AuthStore) UpdatePassword(ctx context.Context, userID core.UserID, passwordHash auth.PasswordHash) auth.AccountMutationResult {
+	tag, err := store.pool.Exec(ctx, "update password_credentials set password_hash = $2 where user_id = $1", userID.String(), passwordHash.String())
+	if err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update password failed")}
+	}
+	if tag.RowsAffected() == 0 {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
+	_, _ = store.pool.Exec(ctx, "update refresh_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String())
+	return auth.AccountMutationAccepted{}
+}
+
+func (store AuthStore) DeactivateUser(ctx context.Context, userID core.UserID) auth.AccountMutationResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin deactivate account failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, "update users set status = 'deactivated' where id = $1 and status = 'active'", userID.String())
+	if err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "deactivate account failed")}
+	}
+	if tag.RowsAffected() == 0 {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
+	if _, err := tx.Exec(ctx, "update refresh_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String()); err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke account sessions failed")}
+	}
+	if _, err := tx.Exec(ctx, "update account_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String()); err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke account tokens failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit deactivate account failed")}
+	}
+	return auth.AccountMutationAccepted{}
 }
 
 func (store AuthStore) CreateGuestSubject(ctx context.Context, id core.GuestID) auth.StoreGuestResult {
@@ -150,6 +258,70 @@ func (store AuthStore) StoreRefreshToken(ctx context.Context, record auth.Refres
 	}
 
 	return auth.StoreRefreshTokenAccepted{}
+}
+
+func (store AuthStore) StoreAccountToken(ctx context.Context, userID core.UserID, kind auth.AccountTokenKind, token auth.AccountToken) auth.AccountTokenStoreResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return auth.AccountTokenStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin account token transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "update account_tokens set status = 'revoked' where user_id = $1 and kind = $2 and status = 'active'", userID.String(), kind.String()); err != nil {
+		return auth.AccountTokenStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke previous account tokens failed")}
+	}
+	_, err = tx.Exec(ctx, `
+		insert into account_tokens (id, user_id, token_hash, kind, status, expires_at)
+		values ($1, $2, $3, $4, 'active', $5)
+	`, token.ID.String(), userID.String(), token.Hash.String(), kind.String(), token.ExpiresAt)
+	if err != nil {
+		return auth.AccountTokenStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "store account token failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return auth.AccountTokenStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit account token transaction failed")}
+	}
+	return auth.AccountTokenStored{}
+}
+
+func (store AuthStore) ConsumeAccountToken(ctx context.Context, kind auth.AccountTokenKind, hash auth.AccountTokenHash, now time.Time) auth.AccountTokenConsumeResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return auth.AccountTokenConsumeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin account token consume failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var rawUserID string
+	var expiresAt time.Time
+	scanErr := tx.QueryRow(ctx, `
+		select user_id::text, expires_at
+		from account_tokens
+		where token_hash = $1 and kind = $2 and status = 'active'
+		for update
+	`, hash.String(), kind.String()).Scan(&rawUserID, &expiresAt)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return auth.AccountTokenNotConsumed{}
+	}
+	if scanErr != nil {
+		return auth.AccountTokenConsumeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "account token lookup failed")}
+	}
+	if !expiresAt.After(now) {
+		return auth.AccountTokenNotConsumed{}
+	}
+	if _, err := tx.Exec(ctx, "update account_tokens set status = 'consumed', consumed_at = $3 where token_hash = $1 and kind = $2", hash.String(), kind.String(), now); err != nil {
+		return auth.AccountTokenConsumeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "consume account token failed")}
+	}
+	if kind == auth.AccountTokenKindEmailVerification {
+		if _, err := tx.Exec(ctx, "update users set email_verified_at = $2 where id = $1", rawUserID, now); err != nil {
+			return auth.AccountTokenConsumeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "mark email verified failed")}
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return auth.AccountTokenConsumeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit account token consume failed")}
+	}
+	userResult := core.ParseUserID(rawUserID)
+	userCreated, userMatched := userResult.(core.UserIDCreated)
+	if !userMatched {
+		return auth.AccountTokenConsumeRejected{Reason: userResult.(core.UserIDRejected).Reason}
+	}
+	return auth.AccountTokenConsumed{UserID: userCreated.Value}
 }
 
 func (store AuthStore) ConsumeRefreshToken(ctx context.Context, hash auth.RefreshTokenHash, consumedAt time.Time) auth.ConsumeRefreshTokenResult {

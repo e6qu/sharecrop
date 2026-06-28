@@ -42,6 +42,48 @@ func TestMultipleCollectiblesAwardedOnAcceptHTTP(t *testing.T) {
 	}
 }
 
+func TestCreateTaskFundsCollectibleRewardsHTTP(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "create-funded-collectible-owner")
+	firstID := mintCollectible(t, server, owner.AccessToken, "Create funded medal")
+	secondID := mintCollectible(t, server, owner.AccessToken, "Create funded badge")
+
+	body := `{
+		"owner":{"kind":"user","user_id":"` + owner.SubjectID + `"},
+		"title":"Create funded collectible task",
+		"description":"Created with collectibles already escrowed.",
+		"reward":{"kind":"bundle","credit_amount":15,"collectible_ids":["` + firstID + `","` + secondID + `"]},
+		"participation":{"policy":"open","assignee_scope":"user"},
+		"visibility":{"kind":"public"},
+		"placement":{"kind":"standalone"},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none"}
+	}`
+	response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(body), owner.AccessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
+	created := decodeTaskHTTPResponse(t, response)
+	if created.RewardCollectibleCount != 2 {
+		t.Fatalf("collectible reward count = %d, want 2", created.RewardCollectibleCount)
+	}
+
+	held := listCollectibles(t, server, owner.AccessToken)
+	if len(held) != 2 {
+		t.Fatalf("owner visible collectible count after create = %d, want 2 escrowed records", len(held))
+	}
+	for _, collectible := range held {
+		if collectible.State != "escrowed" {
+			t.Fatalf("collectible %s state = %q, want escrowed", collectible.ID, collectible.State)
+		}
+	}
+
+	openBeforeCredits := postJSONWithBearer(t, server.URL+"/api/tasks/"+created.ID+"/open", []byte(`{}`), owner.AccessToken)
+	defer openBeforeCredits.Body.Close()
+	assertStatus(t, openBeforeCredits, http.StatusConflict)
+}
+
 func TestCollectibleRewardAwardedOnAccept(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()

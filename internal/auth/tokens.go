@@ -14,8 +14,11 @@ import (
 )
 
 const refreshTokenBytes = 32
+const accountTokenBytes = 32
 const accessTokenTTL = 15 * time.Minute
 const refreshTokenTTL = 30 * 24 * time.Hour
+const emailVerificationTTL = 7 * 24 * time.Hour
+const passwordResetTTL = time.Hour
 
 type AccessTokenSecret struct {
 	value string
@@ -180,6 +183,105 @@ func (plain RefreshTokenPlain) String() string {
 }
 
 func (hash RefreshTokenHash) String() string {
+	return hash.value
+}
+
+type AccountTokenKind struct {
+	value string
+}
+
+var (
+	AccountTokenKindEmailVerification = AccountTokenKind{value: "email_verification"}
+	AccountTokenKindPasswordReset     = AccountTokenKind{value: "password_reset"}
+)
+
+func (kind AccountTokenKind) String() string {
+	return kind.value
+}
+
+type AccountTokenPlain struct {
+	value string
+}
+
+type AccountTokenHash struct {
+	value string
+}
+
+type AccountToken struct {
+	ID        core.RefreshTokenID
+	Plain     AccountTokenPlain
+	Hash      AccountTokenHash
+	ExpiresAt time.Time
+}
+
+type AccountTokenResult interface {
+	accountTokenResult()
+}
+
+type AccountTokenCreated struct {
+	Value AccountToken
+}
+
+type AccountTokenRejected struct {
+	Reason core.DomainError
+}
+
+func (AccountTokenCreated) accountTokenResult() {}
+
+func (AccountTokenRejected) accountTokenResult() {}
+
+func NewAccountToken(now time.Time, kind AccountTokenKind) AccountTokenResult {
+	idResult := core.NewRefreshTokenID()
+	idCreated, idMatched := idResult.(core.RefreshTokenIDCreated)
+	if !idMatched {
+		rejected := idResult.(core.RefreshTokenIDRejected)
+		return AccountTokenRejected{Reason: rejected.Reason}
+	}
+	raw := make([]byte, accountTokenBytes)
+	if _, err := rand.Read(raw); err != nil {
+		return AccountTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account token generation failed")}
+	}
+	plain := AccountTokenPlain{value: base64.RawURLEncoding.EncodeToString(raw)}
+	ttl := emailVerificationTTL
+	if kind == AccountTokenKindPasswordReset {
+		ttl = passwordResetTTL
+	}
+	return AccountTokenCreated{Value: AccountToken{ID: idCreated.Value, Plain: plain, Hash: HashAccountToken(plain), ExpiresAt: now.Add(ttl)}}
+}
+
+type AccountTokenPlainResult interface {
+	accountTokenPlainResult()
+}
+
+type AccountTokenPlainAccepted struct {
+	Value AccountTokenPlain
+}
+
+type AccountTokenPlainRejected struct {
+	Reason core.DomainError
+}
+
+func (AccountTokenPlainAccepted) accountTokenPlainResult() {}
+
+func (AccountTokenPlainRejected) accountTokenPlainResult() {}
+
+func ParseAccountTokenPlain(raw string) AccountTokenPlainResult {
+	if strings.TrimSpace(raw) == "" {
+		return AccountTokenPlainRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account token is required")}
+	}
+	return AccountTokenPlainAccepted{Value: AccountTokenPlain{value: strings.TrimSpace(raw)}}
+}
+
+func HashAccountToken(plain AccountTokenPlain) AccountTokenHash {
+	sum := sha256.Sum256([]byte(plain.value))
+	return AccountTokenHash{value: hex.EncodeToString(sum[:])}
+}
+
+func (plain AccountTokenPlain) String() string {
+	return plain.value
+}
+
+func (hash AccountTokenHash) String() string {
 	return hash.value
 }
 

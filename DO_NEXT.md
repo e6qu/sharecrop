@@ -2,15 +2,24 @@
 
 Current priority from [docs/application_readiness_review.md](./docs/application_readiness_review.md):
 
-1. Build account lifecycle: email verification, password reset/change, settings/profile edit, account deactivation/deletion, and browser guest entry if guest sessions remain part of the product.
-2. Add searchable user/team directories so remaining recipient fields can use selectors instead of raw IDs.
-3. Finish reward setup: collectible escrow during task creation, count handling, and clearer funding/open preconditions.
-4. Add Playwright coverage for organization role management, worker task-local submissions, organization-team reservation, reward-kind creation, and selector flows against the real app.
-5. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
+Combined PR completed by explicit user request:
+
+1. Account lifecycle now includes browser guest entry, email-verification token issue/confirm, password reset/change, profile email update, and account deactivation.
+2. Authenticated user directory and selector-backed user/team controls are available in task creation where directory data is loaded.
+3. Collectible and bundle task creation can escrow selected collectibles immediately; task responses show held collectible counts and existing open preconditions enforce missing credit or collectible escrow.
+4. Real-app Playwright coverage includes account lifecycle, selector-backed task creation with create-time collectible escrow, organization role management, worker task-local submissions, organization-team reservation, and reward flows.
+
+Remaining after the combined PR:
+
+1. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
+2. Decide account hard-delete semantics. The current lifecycle deactivates accounts and revokes sessions/tokens; hard deletion is deferred because referenced rows currently block deletion and no erasure model exists.
+3. Replace development-style account tokens with an email delivery flow. Email verification and password reset currently return tokens through the API/UI so tests and local flows can complete without mail infrastructure.
+4. Add typeahead/paginated directory search in the browser. The API supports a user query parameter, but the create-task UI currently uses the loaded first page of users and standalone teams.
 
 Recently finished:
 
-- The combined follow-up branch added organization role management, organization reviewer browser parity, task-local worker submissions, selector-backed organization flows, reward-kind creation, demo parity, and documentation updates.
+- The combined follow-up branch added account lifecycle endpoints/UI, authenticated user directory, selector-backed user/team task creation controls, create-time collectible escrow for collectible/bundle rewards, and real-app Playwright coverage.
+- The earlier combined follow-up branch added organization role management, organization reviewer browser parity, task-local worker submissions, selector-backed organization flows, reward-kind creation, demo parity, and documentation updates.
 - Organization-team assignment now has reservation/request-approval and submission eligibility through HTTP, MCP, selector-backed browser controls, and demo behavior.
 
 Previously agreed multi-PR roadmap (humans + agents get full lifecycle/feature parity):
@@ -26,7 +35,7 @@ Smaller parity follow-ups noticed during the review (fold into the PR they fit, 
 
 Polish follow-ups from `task/polish-bugfix-uiux-review`:
 
-- UI minors: add `type_ "button"` to the remaining secondary buttons (latent today since none sit in a `<form>`); replace remaining free-text user/team recipient fields after directory endpoints exist.
+- UI minors: add `type_ "button"` to any remaining secondary buttons that move into forms; continue replacing raw-id fields as directory-backed selectors become available on more pages.
 
 Other queued work:
 

@@ -70,6 +70,38 @@ func (healthAuthService) CreateGuest(context.Context) auth.GuestResult {
 	return auth.GuestRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthAuthService) ListUsers(context.Context, string, core.Page) auth.UserDirectoryResult {
+	return auth.UserDirectoryRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAuthService) RequestEmailVerification(context.Context, core.UserID) auth.AccountTokenIssueResult {
+	return auth.AccountTokenIssueRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAuthService) VerifyEmail(context.Context, auth.AccountTokenPlain) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAuthService) RequestPasswordReset(context.Context, auth.EmailAddress) auth.AccountTokenIssueResult {
+	return auth.AccountTokenIssueRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAuthService) ResetPassword(context.Context, auth.AccountTokenPlain, auth.PasswordSecret) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAuthService) ChangePassword(context.Context, core.UserID, auth.PasswordSecret, auth.PasswordSecret) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAuthService) UpdateProfile(context.Context, core.UserID, auth.EmailAddress) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAuthService) DeactivateAccount(context.Context, core.UserID) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthVerifier) Verify(auth.AccessToken) auth.SubjectVerifyResult {
 	return auth.SubjectVerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

@@ -287,7 +287,7 @@ test("requesters scope a task to a standalone team", async ({ page, request }) =
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Scoped to a team.");
   await page.getByTestId("create-visibility-team").click();
-  await page.getByTestId("create-scope-team").fill(team.id);
+  await page.getByTestId("create-scope-team").selectOption(team.id);
   await page.getByTestId("create-task").click();
   await expect(page.getByTestId("create-message")).toContainText(
     "Created task",

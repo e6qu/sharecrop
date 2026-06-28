@@ -5488,6 +5488,9 @@ var $author$project$Main$initialModel = F3(
 			key: key,
 			origin: flags.origin,
 			password: '',
+			resetEmail: '',
+			resetPassword: '',
+			resetToken: '',
 			route: $author$project$Main$pageFromUrl(url),
 			session: $author$project$Sharecrop$Types$LoggedOut
 		};
@@ -6935,6 +6938,29 @@ var $author$project$Sharecrop$Api$balanceFromResult = function (result) {
 		return $elm$core$Maybe$Nothing;
 	}
 };
+var $author$project$Sharecrop$Types$AccountActionReceived = function (a) {
+	return {$: 'AccountActionReceived', a: a};
+};
+var $author$project$Sharecrop$Api$changePassword = F3(
+	function (token, current, next) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'PATCH',
+			token,
+			'/api/account/password',
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'current_password',
+							$elm$json$Json$Encode$string(current)),
+							_Utils_Tuple2(
+							'new_password',
+							$elm$json$Json$Encode$string(next))
+						]))),
+			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$AccountActionReceived));
+	});
 var $author$project$Sharecrop$Api$collectiblesFromResult = function (result) {
 	if (result.$ === 'Ok') {
 		var response = result.a;
@@ -6942,6 +6968,44 @@ var $author$project$Sharecrop$Api$collectiblesFromResult = function (result) {
 	} else {
 		return _List_Nil;
 	}
+};
+var $author$project$Sharecrop$Api$confirmEmailVerification = F2(
+	function (token, accountToken) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/auth/email-verification/confirm',
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'token',
+							$elm$json$Json$Encode$string(accountToken))
+						]))),
+			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$AccountActionReceived));
+	});
+var $author$project$Sharecrop$Types$PasswordResetConfirmed = function (a) {
+	return {$: 'PasswordResetConfirmed', a: a};
+};
+var $author$project$Sharecrop$Api$confirmPasswordReset = function (model) {
+	return $elm$http$Http$post(
+		{
+			body: $elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'token',
+							$elm$json$Json$Encode$string(model.resetToken)),
+							_Utils_Tuple2(
+							'password',
+							$elm$json$Json$Encode$string(model.resetPassword))
+						]))),
+			expect: $elm$http$Http$expectWhatever($author$project$Sharecrop$Types$PasswordResetConfirmed),
+			url: '/api/auth/password-reset/confirm'
+		});
 };
 var $author$project$Main$copyToClipboard = _Platform_outgoingPort('copyToClipboard', $elm$json$Json$Encode$string);
 var $author$project$Sharecrop$Types$AgentCreated = function (a) {
@@ -7317,8 +7381,8 @@ var $author$project$Sharecrop$Api$createPayloadBody = function (state) {
 				$elm$json$Json$Encode$string(state.createPayloadJson))
 			]));
 };
-var $author$project$Sharecrop$Api$createRewardBody = F2(
-	function (kind, rawAmount) {
+var $author$project$Sharecrop$Api$createRewardBody = F3(
+	function (kind, rawAmount, collectibleIds) {
 		var _v0 = $elm$core$String$toInt(rawAmount);
 		if (_v0.$ === 'Just') {
 			var amount = _v0.a;
@@ -7330,7 +7394,10 @@ var $author$project$Sharecrop$Api$createRewardBody = F2(
 						$elm$json$Json$Encode$string('credit')),
 						_Utils_Tuple2(
 						'credit_amount',
-						$elm$json$Json$Encode$int(amount))
+						$elm$json$Json$Encode$int(amount)),
+						_Utils_Tuple2(
+						'collectible_ids',
+						A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, _List_Nil))
 					])) : ((kind === 'collectible') ? $elm$json$Json$Encode$object(
 				_List_fromArray(
 					[
@@ -7339,7 +7406,10 @@ var $author$project$Sharecrop$Api$createRewardBody = F2(
 						$elm$json$Json$Encode$string('collectible')),
 						_Utils_Tuple2(
 						'credit_amount',
-						$elm$json$Json$Encode$int(0))
+						$elm$json$Json$Encode$int(0)),
+						_Utils_Tuple2(
+						'collectible_ids',
+						A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, collectibleIds))
 					])) : (((kind === 'bundle') && (amount > 0)) ? $elm$json$Json$Encode$object(
 				_List_fromArray(
 					[
@@ -7348,7 +7418,10 @@ var $author$project$Sharecrop$Api$createRewardBody = F2(
 						$elm$json$Json$Encode$string('bundle')),
 						_Utils_Tuple2(
 						'credit_amount',
-						$elm$json$Json$Encode$int(amount))
+						$elm$json$Json$Encode$int(amount)),
+						_Utils_Tuple2(
+						'collectible_ids',
+						A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, collectibleIds))
 					])) : $elm$json$Json$Encode$object(
 				_List_fromArray(
 					[
@@ -7357,7 +7430,10 @@ var $author$project$Sharecrop$Api$createRewardBody = F2(
 						$elm$json$Json$Encode$string('none')),
 						_Utils_Tuple2(
 						'credit_amount',
-						$elm$json$Json$Encode$int(0))
+						$elm$json$Json$Encode$int(0)),
+						_Utils_Tuple2(
+						'collectible_ids',
+						A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, _List_Nil))
 					]))));
 		} else {
 			return (kind === 'collectible') ? $elm$json$Json$Encode$object(
@@ -7368,7 +7444,10 @@ var $author$project$Sharecrop$Api$createRewardBody = F2(
 						$elm$json$Json$Encode$string('collectible')),
 						_Utils_Tuple2(
 						'credit_amount',
-						$elm$json$Json$Encode$int(0))
+						$elm$json$Json$Encode$int(0)),
+						_Utils_Tuple2(
+						'collectible_ids',
+						A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, collectibleIds))
 					])) : $elm$json$Json$Encode$object(
 				_List_fromArray(
 					[
@@ -7377,7 +7456,10 @@ var $author$project$Sharecrop$Api$createRewardBody = F2(
 						$elm$json$Json$Encode$string('none')),
 						_Utils_Tuple2(
 						'credit_amount',
-						$elm$json$Json$Encode$int(0))
+						$elm$json$Json$Encode$int(0)),
+						_Utils_Tuple2(
+						'collectible_ids',
+						A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, _List_Nil))
 					]));
 		}
 	});
@@ -7423,7 +7505,7 @@ var $author$project$Sharecrop$Api$createTaskRequestBody = function (state) {
 				$elm$json$Json$Encode$string(state.createDescription)),
 				_Utils_Tuple2(
 				'reward',
-				A2($author$project$Sharecrop$Api$createRewardBody, state.createRewardKind, state.createRewardAmount)),
+				A3($author$project$Sharecrop$Api$createRewardBody, state.createRewardKind, state.createRewardAmount, state.createRewardCollectibleIds)),
 				_Utils_Tuple2(
 				'participation',
 				$author$project$Sharecrop$Api$createParticipationBody(state)),
@@ -7772,6 +7854,18 @@ var $author$project$Sharecrop$Api$credentialsFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Sharecrop$Types$DeactivateAccountReceived = function (a) {
+	return {$: 'DeactivateAccountReceived', a: a};
+};
+var $author$project$Sharecrop$Api$deactivateAccount = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'DELETE',
+		token,
+		'/api/account',
+		$elm$http$Http$emptyBody,
+		$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$DeactivateAccountReceived));
+};
 var $author$project$Sharecrop$Types$DeactivateMemberReceived = function (a) {
 	return {$: 'DeactivateMemberReceived', a: a};
 };
@@ -7884,6 +7978,7 @@ var $author$project$Main$enterPage = F2(
 						createReservationHours: '48',
 						createResponseSchema: '{\"kind\":\"freeform\"}',
 						createRewardAmount: '',
+						createRewardCollectibleIds: _List_Nil,
 						createRewardKind: 'none',
 						createSchemaFields: _List_Nil,
 						createTaskType: 'general',
@@ -8339,6 +8434,46 @@ var $author$project$Sharecrop$Api$fetchOrganizations = function (token) {
 		$elm$http$Http$emptyBody,
 		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrganizationsReceived, $author$project$Sharecrop$Generated$Organization$organizationsResponseDecoder));
 };
+var $author$project$Sharecrop$Types$StandaloneTeamsReceived = function (a) {
+	return {$: 'StandaloneTeamsReceived', a: a};
+};
+var $author$project$Sharecrop$Api$fetchStandaloneTeams = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'GET',
+		token,
+		'/api/teams',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$StandaloneTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
+};
+var $author$project$Sharecrop$Types$UserDirectoryReceived = function (a) {
+	return {$: 'UserDirectoryReceived', a: a};
+};
+var $author$project$Sharecrop$Types$UserDirectoryEntry = F3(
+	function (id, email, status) {
+		return {email: email, id: id, status: status};
+	});
+var $author$project$Sharecrop$Api$userDirectoryEntryDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Types$UserDirectoryEntry,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'email', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Api$fetchUserDirectory = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'GET',
+		token,
+		'/api/users',
+		$elm$http$Http$emptyBody,
+		A2(
+			$elm$http$Http$expectJson,
+			$author$project$Sharecrop$Types$UserDirectoryReceived,
+			A2(
+				$elm$json$Json$Decode$field,
+				'users',
+				$elm$json$Json$Decode$list($author$project$Sharecrop$Api$userDirectoryEntryDecoder))));
+};
 var $author$project$Sharecrop$Api$loadAfterAuth = function (token) {
 	return $elm$core$Platform$Cmd$batch(
 		_List_fromArray(
@@ -8348,13 +8483,17 @@ var $author$project$Sharecrop$Api$loadAfterAuth = function (token) {
 				A2($author$project$Sharecrop$Api$fetchTasks, token, ''),
 				$author$project$Sharecrop$Api$fetchCredentials(token),
 				$author$project$Sharecrop$Api$fetchCollectibles(token),
-				$author$project$Sharecrop$Api$fetchOrganizations(token)
+				$author$project$Sharecrop$Api$fetchOrganizations(token),
+				$author$project$Sharecrop$Api$fetchUserDirectory(token),
+				$author$project$Sharecrop$Api$fetchStandaloneTeams(token)
 			]));
 };
 var $author$project$Sharecrop$Types$visibilityDefaultTag = 'default';
 var $author$project$Main$emptyLoggedIn = function (response) {
 	return {
 		accessToken: response.accessToken,
+		accountEmail: '',
+		accountMessage: $elm$core$Maybe$Nothing,
 		activeOrgId: '',
 		activeSubmissionCommentsID: $elm$core$Maybe$Nothing,
 		addSeriesTaskId: '',
@@ -8385,6 +8524,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		createReservationHours: '48',
 		createResponseSchema: '{\"kind\":\"freeform\"}',
 		createRewardAmount: '',
+		createRewardCollectibleIds: _List_Nil,
 		createRewardKind: 'none',
 		createSchemaFields: _List_Nil,
 		createScopeOrganizationId: '',
@@ -8397,10 +8537,13 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		createTitle: '',
 		createVisibility: $author$project$Sharecrop$Types$visibilityDefaultTag,
 		credentials: _List_Nil,
+		currentPassword: '',
 		detail: $elm$core$Maybe$Nothing,
 		detailError: $elm$core$Maybe$Nothing,
 		discoveryIncludeReserved: false,
 		discoveryTasks: _List_Nil,
+		emailVerificationInput: '',
+		emailVerificationToken: '',
 		entries: _List_Nil,
 		fundAmount: '',
 		fundMessage: $elm$core$Maybe$Nothing,
@@ -8409,6 +8552,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundTaskId: '',
 		isAdmin: response.role === 'admin',
 		newCredential: $elm$core$Maybe$Nothing,
+		newPassword: '',
 		orgBalance: $elm$core$Maybe$Nothing,
 		orgCollectibles: _List_Nil,
 		orgMembers: _List_Nil,
@@ -8439,6 +8583,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		seriesMessage: $elm$core$Maybe$Nothing,
 		seriesRenameDescription: '',
 		seriesRenameTitle: '',
+		standaloneTeams: _List_Nil,
 		subjectId: response.subjectID,
 		submissionCommentBody: '',
 		submissionCommentMessage: $elm$core$Maybe$Nothing,
@@ -8462,6 +8607,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		transferMessage: $elm$core$Maybe$Nothing,
 		transferRecipientId: '',
 		userAgentToken: $elm$core$Maybe$Nothing,
+		userDirectory: _List_Nil,
 		userProfile: $elm$core$Maybe$Nothing,
 		userProfileError: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
@@ -8760,6 +8906,12 @@ var $author$project$Sharecrop$Api$postCancelTask = F2(
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CancelTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+	});
+var $author$project$Sharecrop$Api$postGuest = $elm$http$Http$post(
+	{
+		body: $elm$http$Http$emptyBody,
+		expect: A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AuthReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
+		url: '/api/auth/guest'
 	});
 var $author$project$Sharecrop$Types$LogoutReceived = function (a) {
 	return {$: 'LogoutReceived', a: a};
@@ -9359,6 +9511,38 @@ var $author$project$Sharecrop$Api$requestChangesCommand = F3(
 			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
 	});
+var $author$project$Sharecrop$Types$EmailVerificationRequested = function (a) {
+	return {$: 'EmailVerificationRequested', a: a};
+};
+var $author$project$Sharecrop$Api$tokenDecoder = A2($elm$json$Json$Decode$field, 'token', $elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Api$requestEmailVerification = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'POST',
+		token,
+		'/api/account/email-verification',
+		$elm$http$Http$jsonBody(
+			$elm$json$Json$Encode$object(_List_Nil)),
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$EmailVerificationRequested, $author$project$Sharecrop$Api$tokenDecoder));
+};
+var $author$project$Sharecrop$Types$PasswordResetRequested = function (a) {
+	return {$: 'PasswordResetRequested', a: a};
+};
+var $author$project$Sharecrop$Api$requestPasswordReset = function (model) {
+	return $elm$http$Http$post(
+		{
+			body: $elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'email',
+							$elm$json$Json$Encode$string(model.resetEmail))
+						]))),
+			expect: A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PasswordResetRequested, $author$project$Sharecrop$Api$tokenDecoder),
+			url: '/api/auth/password-reset/request'
+		});
+};
 var $author$project$Sharecrop$Types$ReservationChangeReceived = function (a) {
 	return {$: 'ReservationChangeReceived', a: a};
 };
@@ -9633,7 +9817,14 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 			case 'TasksPage':
 				return A2($author$project$Sharecrop$Api$fetchTasks, token, '');
 			case 'CreateTaskPage':
-				return $author$project$Sharecrop$Api$fetchOrganizations(token);
+				return $elm$core$Platform$Cmd$batch(
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Api$fetchOrganizations(token),
+							$author$project$Sharecrop$Api$fetchCollectibles(token),
+							$author$project$Sharecrop$Api$fetchUserDirectory(token),
+							$author$project$Sharecrop$Api$fetchStandaloneTeams(token)
+						]));
 			case 'TaskDetailPage':
 				var taskId = page.a;
 				return A3($author$project$Sharecrop$Api$fetchDetailCommands, token, subjectId, taskId);
@@ -10198,6 +10389,23 @@ var $author$project$Sharecrop$Api$updateMemberRolesCommand = F4(
 							]))),
 				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UpdateMemberRolesReceived, $author$project$Sharecrop$Generated$Organization$organizationMemberResponseDecoder)));
 	});
+var $author$project$Sharecrop$Api$updateProfile = F2(
+	function (token, email) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'PATCH',
+			token,
+			'/api/account/profile',
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'email',
+							$elm$json$Json$Encode$string(email))
+						]))),
+			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$AccountActionReceived));
+	});
 var $author$project$Sharecrop$Api$updateSeriesCommand = F3(
 	function (model, state, seriesId) {
 		return $elm$core$String$isEmpty(
@@ -10259,9 +10467,16 @@ var $author$project$Main$update = F2(
 						model,
 						{authError: $elm$core$Maybe$Nothing}),
 					A2($author$project$Sharecrop$Api$postAuth, '/api/auth/login', model));
+			case 'GuestClicked':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{authError: $elm$core$Maybe$Nothing}),
+					$author$project$Sharecrop$Api$postGuest);
 			case 'AuthReceived':
 				if (msg.a.$ === 'Ok') {
 					var response = msg.a.a;
+					var state = A2($author$project$Main$loggedInForPage, response, model.route);
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -10269,7 +10484,9 @@ var $author$project$Main$update = F2(
 								authError: $elm$core$Maybe$Nothing,
 								password: '',
 								session: $author$project$Sharecrop$Types$LoggedIn(
-									A2($author$project$Main$loggedInForPage, response, model.route))
+									_Utils_update(
+										state,
+										{accountEmail: model.email}))
 							}),
 						$author$project$Sharecrop$Api$loadAfterAuth(response.accessToken));
 				} else {
@@ -10301,6 +10518,83 @@ var $author$project$Main$update = F2(
 								])));
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'PasswordResetEmailChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{resetEmail: value}),
+					$elm$core$Platform$Cmd$none);
+			case 'PasswordResetTokenChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{resetToken: value}),
+					$elm$core$Platform$Cmd$none);
+			case 'PasswordResetPasswordChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{resetPassword: value}),
+					$elm$core$Platform$Cmd$none);
+			case 'RequestPasswordResetClicked':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{authError: $elm$core$Maybe$Nothing}),
+					$author$project$Sharecrop$Api$requestPasswordReset(model));
+			case 'ConfirmPasswordResetClicked':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{authError: $elm$core$Maybe$Nothing}),
+					$author$project$Sharecrop$Api$confirmPasswordReset(model));
+			case 'PasswordResetRequested':
+				if (msg.a.$ === 'Ok') {
+					var token = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								authError: $elm$core$Maybe$Just('Password reset token created.'),
+								resetToken: token
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								authError: $elm$core$Maybe$Just(
+									$author$project$Sharecrop$Labels$httpErrorLabel(error))
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'PasswordResetConfirmed':
+				if (msg.a.$ === 'Ok') {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								authError: $elm$core$Maybe$Just('Password reset. Log in with the new password.'),
+								resetPassword: '',
+								resetToken: ''
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								authError: $elm$core$Maybe$Just(
+									$author$project$Sharecrop$Labels$httpErrorLabel(error))
+							}),
+						$elm$core$Platform$Cmd$none);
 				}
 			case 'BalanceReceived':
 				var result = msg.a;
@@ -10539,7 +10833,7 @@ var $author$project$Main$update = F2(
 						function (state) {
 							return _Utils_update(
 								state,
-								{createRewardKind: value});
+								{createRewardCollectibleIds: _List_Nil, createRewardKind: value});
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'CreateRewardAmountChanged':
@@ -10552,6 +10846,20 @@ var $author$project$Main$update = F2(
 							return _Utils_update(
 								state,
 								{createRewardAmount: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ToggleCreateRewardCollectible':
+				var collectibleId = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									createRewardCollectibleIds: A2($author$project$Main$toggleString, collectibleId, state.createRewardCollectibleIds)
+								});
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'CreateVisibilityChanged':
@@ -10663,6 +10971,7 @@ var $author$project$Main$update = F2(
 										createReferenceURL: '',
 										createReservationHours: '48',
 										createResponseSchema: '{\"kind\":\"freeform\"}',
+										createRewardCollectibleIds: _List_Nil,
 										createSchemaFields: _List_Nil,
 										createTaskType: 'general',
 										createTitle: '',
@@ -11981,6 +12290,39 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'StandaloneTeamsReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									standaloneTeams: $author$project$Sharecrop$Api$teamsFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'UserDirectoryReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							if (result.$ === 'Ok') {
+								var users = result.a;
+								return _Utils_update(
+									state,
+									{userDirectory: users});
+							} else {
+								return _Utils_update(
+									state,
+									{userDirectory: _List_Nil});
+							}
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'OrgMembersReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -12717,9 +13059,9 @@ var $author$project$Main$update = F2(
 						$author$project$Sharecrop$Api$updateLoggedIn,
 						model,
 						function (state) {
-							var _v6 = $author$project$Sharecrop$View$taskTemplate(value);
-							if (_v6.$ === 'Just') {
-								var template = _v6.a;
+							var _v7 = $author$project$Sharecrop$View$taskTemplate(value);
+							if (_v7.$ === 'Just') {
+								var template = _v7.a;
 								return _Utils_update(
 									state,
 									{createDescription: template.description, createResponseSchema: template.schema, createSchemaFields: _List_Nil, createTaskType: value});
@@ -12957,9 +13299,9 @@ var $author$project$Main$update = F2(
 											{submissionCommentBody: ''});
 									}),
 								function () {
-									var _v7 = state.activeSubmissionCommentsID;
-									if (_v7.$ === 'Just') {
-										var submissionId = _v7.a;
+									var _v8 = state.activeSubmissionCommentsID;
+									if (_v8.$ === 'Just') {
+										var submissionId = _v8.a;
 										return A2($author$project$Sharecrop$Api$fetchSubmissionComments, state.accessToken, submissionId);
 									} else {
 										return $elm$core$Platform$Cmd$none;
@@ -12977,6 +13319,223 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										submissionCommentMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AccountEmailChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{accountEmail: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CurrentPasswordChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{currentPassword: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'NewPasswordChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{newPassword: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'EmailVerificationInputChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{emailVerificationInput: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'RequestEmailVerificationClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{accountMessage: $elm$core$Maybe$Nothing});
+								}),
+							$author$project$Sharecrop$Api$requestEmailVerification(state.accessToken));
+					});
+			case 'ConfirmEmailVerificationClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{accountMessage: $elm$core$Maybe$Nothing});
+								}),
+							A2($author$project$Sharecrop$Api$confirmEmailVerification, state.accessToken, state.emailVerificationInput));
+					});
+			case 'UpdateProfileClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{accountMessage: $elm$core$Maybe$Nothing});
+								}),
+							A2($author$project$Sharecrop$Api$updateProfile, state.accessToken, state.accountEmail));
+					});
+			case 'ChangePasswordClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{accountMessage: $elm$core$Maybe$Nothing});
+								}),
+							A3($author$project$Sharecrop$Api$changePassword, state.accessToken, state.currentPassword, state.newPassword));
+					});
+			case 'DeactivateAccountClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{accountMessage: $elm$core$Maybe$Nothing});
+								}),
+							$author$project$Sharecrop$Api$deactivateAccount(state.accessToken));
+					});
+			case 'EmailVerificationRequested':
+				if (msg.a.$ === 'Ok') {
+					var token = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										accountMessage: $elm$core$Maybe$Just('Verification token created.'),
+										emailVerificationInput: token,
+										emailVerificationToken: token
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										accountMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AccountActionReceived':
+				if (msg.a.$ === 'Ok') {
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										accountMessage: $elm$core$Maybe$Just('Account updated.'),
+										currentPassword: '',
+										emailVerificationInput: '',
+										newPassword: ''
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										accountMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'DeactivateAccountReceived':
+				if (msg.a.$ === 'Ok') {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{email: '', password: '', session: $author$project$Sharecrop$Types$LoggedOut}),
+						A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/'));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										accountMessage: $elm$core$Maybe$Just(
 											$author$project$Sharecrop$Labels$httpErrorLabel(error))
 									});
 							}),
@@ -13001,9 +13560,9 @@ var $author$project$Main$update = F2(
 			case 'UrlChanged':
 				var url = msg.a;
 				var page = $author$project$Main$pageFromUrl(url);
-				var _v9 = model.session;
-				if (_v9.$ === 'LoggedIn') {
-					var state = _v9.a;
+				var _v10 = model.session;
+				if (_v10.$ === 'LoggedIn') {
+					var state = _v10.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -13051,16 +13610,40 @@ var $author$project$Sharecrop$Ui$pageTitle = function (title) {
 				$elm$html$Html$text(title)
 			]));
 };
+var $author$project$Sharecrop$Types$ConfirmPasswordResetClicked = {$: 'ConfirmPasswordResetClicked'};
 var $author$project$Sharecrop$Types$EmailChanged = function (a) {
 	return {$: 'EmailChanged', a: a};
 };
+var $author$project$Sharecrop$Types$GuestClicked = {$: 'GuestClicked'};
 var $author$project$Sharecrop$Types$LoginClicked = {$: 'LoginClicked'};
 var $author$project$Sharecrop$Types$PasswordChanged = function (a) {
 	return {$: 'PasswordChanged', a: a};
 };
+var $author$project$Sharecrop$Types$PasswordResetEmailChanged = function (a) {
+	return {$: 'PasswordResetEmailChanged', a: a};
+};
+var $author$project$Sharecrop$Types$PasswordResetPasswordChanged = function (a) {
+	return {$: 'PasswordResetPasswordChanged', a: a};
+};
+var $author$project$Sharecrop$Types$PasswordResetTokenChanged = function (a) {
+	return {$: 'PasswordResetTokenChanged', a: a};
+};
 var $author$project$Sharecrop$Types$RegisterClicked = {$: 'RegisterClicked'};
+var $author$project$Sharecrop$Types$RequestPasswordResetClicked = {$: 'RequestPasswordResetClicked'};
 var $elm$html$Html$form = _VirtualDom_node('form');
 var $elm$html$Html$p = _VirtualDom_node('p');
+var $author$project$Sharecrop$Ui$label_ = function (value) {
+	return A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-sm uppercase tracking-wide text-slate-600')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(value)
+			]));
+};
 var $elm$virtual_dom$VirtualDom$attribute = F2(
 	function (key, value) {
 		return A2(
@@ -13270,7 +13853,80 @@ var $author$project$Sharecrop$View$authView = function (model) {
 								$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$RegisterClicked),
 								$author$project$Sharecrop$Ui$testId('register')
 							]),
-						'Register')
+						'Register'),
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$GuestClicked),
+								$author$project$Sharecrop$Ui$testId('guest-login')
+							]),
+						'Continue as guest')
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-2 border-t border-slate-100 pt-4')
+					]),
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$Ui$label_('Password reset'),
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('email'),
+								$elm$html$Html$Attributes$placeholder('Account email'),
+								$elm$html$Html$Attributes$value(model.resetEmail),
+								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$PasswordResetEmailChanged),
+								$author$project$Sharecrop$Ui$testId('reset-email')
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$author$project$Sharecrop$Ui$secondaryButton,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('button'),
+										$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$RequestPasswordResetClicked),
+										$author$project$Sharecrop$Ui$testId('request-password-reset')
+									]),
+								'Create reset token')
+							])),
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('text'),
+								$elm$html$Html$Attributes$placeholder('Reset token'),
+								$elm$html$Html$Attributes$value(model.resetToken),
+								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$PasswordResetTokenChanged),
+								$author$project$Sharecrop$Ui$testId('reset-token')
+							])),
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('password'),
+								$elm$html$Html$Attributes$placeholder('New password'),
+								$elm$html$Html$Attributes$value(model.resetPassword),
+								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$PasswordResetPasswordChanged),
+								$author$project$Sharecrop$Ui$testId('reset-password')
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$ConfirmPasswordResetClicked),
+								$author$project$Sharecrop$Ui$testId('confirm-password-reset')
+							]),
+						'Reset password')
 					])),
 				A2($author$project$Sharecrop$View$maybeError, model.authError, 'auth-error')
 			]));
@@ -13558,18 +14214,6 @@ var $author$project$Sharecrop$Ui$codeBlock = F2(
 					$elm$html$Html$text(value)
 				]));
 	});
-var $author$project$Sharecrop$Ui$label_ = function (value) {
-	return A2(
-		$elm$html$Html$p,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('text-sm uppercase tracking-wide text-slate-600')
-			]),
-		_List_fromArray(
-			[
-				$elm$html$Html$text(value)
-			]));
-};
 var $author$project$Sharecrop$View$mcpConfig = F2(
 	function (origin, secret) {
 		return '{\n  \"mcpServers\": {\n    \"sharecrop\": {\n      \"url\": \"' + (origin + ('/mcp\",\n      \"headers\": { \"Authorization\": \"Bearer ' + (secret + '\" }\n    }\n  }\n}')));
@@ -15320,6 +15964,94 @@ var $author$project$Sharecrop$View$rewardAmountField = function (state) {
 					]))
 			])) : $elm$html$Html$text('');
 };
+var $author$project$Sharecrop$Types$ToggleCreateRewardCollectible = function (a) {
+	return {$: 'ToggleCreateRewardCollectible', a: a};
+};
+var $author$project$Sharecrop$Ui$checkbox = F2(
+	function (attrs, labelText) {
+		return A2(
+			$elm$html$Html$label,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm text-slate-700')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$input,
+					A2(
+						$elm$core$List$cons,
+						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$checkboxClass),
+						A2(
+							$elm$core$List$cons,
+							$elm$html$Html$Attributes$type_('checkbox'),
+							attrs)),
+					_List_Nil),
+					A2(
+					$elm$html$Html$span,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text(labelText)
+						]))
+				]));
+	});
+var $author$project$Sharecrop$View$rewardCollectibleField = function (state) {
+	if ((state.createRewardKind === 'collectible') || (state.createRewardKind === 'bundle')) {
+		var available = A2(
+			$elm$core$List$filter,
+			function (collectible) {
+				return _Utils_eq(collectible.state, $author$project$Sharecrop$Generated$Collectible$CollectibleStateMinted);
+			},
+			state.collectibles);
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2'),
+					$author$project$Sharecrop$Ui$testId('create-reward-collectibles')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$label_('Collectibles'),
+					$elm$core$List$isEmpty(available) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No minted collectibles available.')
+						])) : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('space-y-1')
+						]),
+					A2(
+						$elm$core$List$map,
+						function (collectible) {
+							return A2(
+								$author$project$Sharecrop$Ui$checkbox,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$checked(
+										A2($elm$core$List$member, collectible.id, state.createRewardCollectibleIds)),
+										$elm$html$Html$Events$onCheck(
+										function (_v0) {
+											return $author$project$Sharecrop$Types$ToggleCreateRewardCollectible(collectible.id);
+										}),
+										$author$project$Sharecrop$Ui$testId('create-reward-collectible-' + collectible.id)
+									]),
+								collectible.name + (' · ' + $author$project$Sharecrop$Labels$collectibleKindLabel(collectible.kind)));
+						},
+						available))
+				]));
+	} else {
+		return $elm$html$Html$text('');
+	}
+};
 var $author$project$Sharecrop$Types$CreateRewardKindChanged = function (a) {
 	return {$: 'CreateRewardKindChanged', a: a};
 };
@@ -15691,35 +16423,101 @@ var $author$project$Sharecrop$Types$CreateScopeTeamIdChanged = function (a) {
 var $author$project$Sharecrop$Types$CreateScopeUserIdChanged = function (a) {
 	return {$: 'CreateScopeUserIdChanged', a: a};
 };
+var $author$project$Sharecrop$View$teamPicker = F5(
+	function (identifier, selectedTeamId, change, blankLabel, teams) {
+		return A2(
+			$elm$html$Html$select,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+					$elm$html$Html$Attributes$value(selectedTeamId),
+					$elm$html$Html$Events$onInput(change),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			A2(
+				$elm$core$List$cons,
+				A2(
+					$elm$html$Html$option,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$value('')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(blankLabel)
+						])),
+				A2(
+					$elm$core$List$map,
+					function (team) {
+						return A2(
+							$elm$html$Html$option,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$value(team.id),
+									$elm$html$Html$Attributes$selected(
+									_Utils_eq(selectedTeamId, team.id))
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(team.name)
+								]));
+					},
+					teams)));
+	});
+var $author$project$Sharecrop$View$userPicker = F5(
+	function (identifier, selectedUserId, change, blankLabel, users) {
+		return A2(
+			$elm$html$Html$select,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+					$elm$html$Html$Attributes$value(selectedUserId),
+					$elm$html$Html$Events$onInput(change),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			A2(
+				$elm$core$List$cons,
+				A2(
+					$elm$html$Html$option,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$value('')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(blankLabel)
+						])),
+				A2(
+					$elm$core$List$map,
+					function (user) {
+						return A2(
+							$elm$html$Html$option,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$value(user.id),
+									$elm$html$Html$Attributes$selected(
+									_Utils_eq(selectedUserId, user.id))
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(user.email)
+								]));
+					},
+					users)));
+	});
 var $author$project$Sharecrop$View$visibilityScopeField = function (state) {
 	return _Utils_eq(state.createVisibility, $author$project$Sharecrop$Types$visibilityUserTag) ? A2(
 		$author$project$Sharecrop$Ui$fieldLabel,
 		'Share with user ID',
 		_List_fromArray(
 			[
-				$author$project$Sharecrop$Ui$textInput(
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('text'),
-						$elm$html$Html$Attributes$placeholder('User ID to grant access'),
-						$elm$html$Html$Attributes$value(state.createScopeUserId),
-						$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateScopeUserIdChanged),
-						$author$project$Sharecrop$Ui$testId('create-scope-user')
-					]))
+				A5($author$project$Sharecrop$View$userPicker, 'create-scope-user', state.createScopeUserId, $author$project$Sharecrop$Types$CreateScopeUserIdChanged, 'Choose user', state.userDirectory)
 			])) : (_Utils_eq(state.createVisibility, $author$project$Sharecrop$Types$visibilityTeamTag) ? A2(
 		$author$project$Sharecrop$Ui$fieldLabel,
 		'Share with team ID',
 		_List_fromArray(
 			[
-				$author$project$Sharecrop$Ui$textInput(
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('text'),
-						$elm$html$Html$Attributes$placeholder('Team ID (standalone or organization team)'),
-						$elm$html$Html$Attributes$value(state.createScopeTeamId),
-						$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateScopeTeamIdChanged),
-						$author$project$Sharecrop$Ui$testId('create-scope-team')
-					]))
+				A5($author$project$Sharecrop$View$teamPicker, 'create-scope-team', state.createScopeTeamId, $author$project$Sharecrop$Types$CreateScopeTeamIdChanged, 'Choose team', state.standaloneTeams)
 			])) : (_Utils_eq(state.createVisibility, $author$project$Sharecrop$Types$visibilityOrganizationTag) ? A2(
 		$author$project$Sharecrop$Ui$fieldLabel,
 		'Share with organization',
@@ -15845,6 +16643,7 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 					$author$project$Sharecrop$View$rewardKindButton(state.createRewardKind),
 					$author$project$Sharecrop$View$allRewardKinds)),
 				$author$project$Sharecrop$View$rewardAmountField(state),
+				$author$project$Sharecrop$View$rewardCollectibleField(state),
 				$author$project$Sharecrop$View$ownerChooser(state),
 				$author$project$Sharecrop$Ui$label_('Participation'),
 				A2(
@@ -15909,35 +16708,6 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 var $author$project$Sharecrop$Types$DiscoveryIncludeReservedChanged = function (a) {
 	return {$: 'DiscoveryIncludeReservedChanged', a: a};
 };
-var $author$project$Sharecrop$Ui$checkbox = F2(
-	function (attrs, labelText) {
-		return A2(
-			$elm$html$Html$label,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('flex items-center gap-2 text-sm text-slate-700')
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$input,
-					A2(
-						$elm$core$List$cons,
-						$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$checkboxClass),
-						A2(
-							$elm$core$List$cons,
-							$elm$html$Html$Attributes$type_('checkbox'),
-							attrs)),
-					_List_Nil),
-					A2(
-					$elm$html$Html$span,
-					_List_Nil,
-					_List_fromArray(
-						[
-							$elm$html$Html$text(labelText)
-						]))
-				]));
-	});
 var $author$project$Sharecrop$Types$DiscoveryViewClicked = function (a) {
 	return {$: 'DiscoveryViewClicked', a: a};
 };
@@ -18178,47 +18948,6 @@ var $author$project$Sharecrop$Types$ReservationOrganizationIdChanged = function 
 var $author$project$Sharecrop$Types$ReservationTeamIdChanged = function (a) {
 	return {$: 'ReservationTeamIdChanged', a: a};
 };
-var $author$project$Sharecrop$View$teamPicker = F5(
-	function (identifier, selectedTeamId, change, blankLabel, teams) {
-		return A2(
-			$elm$html$Html$select,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
-					$elm$html$Html$Attributes$value(selectedTeamId),
-					$elm$html$Html$Events$onInput(change),
-					$author$project$Sharecrop$Ui$testId(identifier)
-				]),
-			A2(
-				$elm$core$List$cons,
-				A2(
-					$elm$html$Html$option,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$value('')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(blankLabel)
-						])),
-				A2(
-					$elm$core$List$map,
-					function (team) {
-						return A2(
-							$elm$html$Html$option,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$value(team.id),
-									$elm$html$Html$Attributes$selected(
-									_Utils_eq(selectedTeamId, team.id))
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(team.name)
-								]));
-					},
-					teams)));
-	});
 var $author$project$Sharecrop$View$organizationTeamReservationFields = F2(
 	function (state, detail) {
 		var _v0 = detail.assigneeScope;
@@ -19257,6 +19986,170 @@ var $author$project$Sharecrop$View$teamDetailView = F2(
 				}()
 				]));
 	});
+var $author$project$Sharecrop$Types$AccountEmailChanged = function (a) {
+	return {$: 'AccountEmailChanged', a: a};
+};
+var $author$project$Sharecrop$Types$ChangePasswordClicked = {$: 'ChangePasswordClicked'};
+var $author$project$Sharecrop$Types$ConfirmEmailVerificationClicked = {$: 'ConfirmEmailVerificationClicked'};
+var $author$project$Sharecrop$Types$CurrentPasswordChanged = function (a) {
+	return {$: 'CurrentPasswordChanged', a: a};
+};
+var $author$project$Sharecrop$Types$DeactivateAccountClicked = {$: 'DeactivateAccountClicked'};
+var $author$project$Sharecrop$Types$EmailVerificationInputChanged = function (a) {
+	return {$: 'EmailVerificationInputChanged', a: a};
+};
+var $author$project$Sharecrop$Types$NewPasswordChanged = function (a) {
+	return {$: 'NewPasswordChanged', a: a};
+};
+var $author$project$Sharecrop$Types$RequestEmailVerificationClicked = {$: 'RequestEmailVerificationClicked'};
+var $author$project$Sharecrop$Types$UpdateProfileClicked = {$: 'UpdateProfileClicked'};
+var $author$project$Sharecrop$Ui$dangerButtonClass = 'rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50';
+var $author$project$Sharecrop$Ui$dangerButton = F2(
+	function (attrs, labelText) {
+		return A2(
+			$elm$html$Html$button,
+			A2(
+				$elm$core$List$cons,
+				$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$dangerButtonClass),
+				attrs),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(labelText)
+				]));
+	});
+var $author$project$Sharecrop$View$accountSettingsCard = function (state) {
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Account settings'),
+				A2(
+				$elm$html$Html$form,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-2'),
+						$elm$html$Html$Events$onSubmit($author$project$Sharecrop$Types$UpdateProfileClicked)
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'Email',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('email'),
+										$elm$html$Html$Attributes$placeholder('person@example.com'),
+										$elm$html$Html$Attributes$value(state.accountEmail),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AccountEmailChanged),
+										$author$project$Sharecrop$Ui$testId('account-email')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('submit'),
+								$author$project$Sharecrop$Ui$testId('update-profile')
+							]),
+						'Save profile')
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-2')
+					]),
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$Ui$label_('Email verification'),
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$RequestEmailVerificationClicked),
+								$author$project$Sharecrop$Ui$testId('request-email-verification')
+							]),
+						'Create verification token'),
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('text'),
+								$elm$html$Html$Attributes$placeholder('Verification token'),
+								$elm$html$Html$Attributes$value(state.emailVerificationInput),
+								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$EmailVerificationInputChanged),
+								$author$project$Sharecrop$Ui$testId('email-verification-token')
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$ConfirmEmailVerificationClicked),
+								$author$project$Sharecrop$Ui$testId('confirm-email-verification')
+							]),
+						'Verify email')
+					])),
+				A2(
+				$elm$html$Html$form,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-2'),
+						$elm$html$Html$Events$onSubmit($author$project$Sharecrop$Types$ChangePasswordClicked)
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'Current password',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('password'),
+										$elm$html$Html$Attributes$value(state.currentPassword),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CurrentPasswordChanged),
+										$author$project$Sharecrop$Ui$testId('current-password')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'New password',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('password'),
+										$elm$html$Html$Attributes$value(state.newPassword),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$NewPasswordChanged),
+										$author$project$Sharecrop$Ui$testId('new-password')
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$primaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('submit'),
+								$author$project$Sharecrop$Ui$testId('change-password')
+							]),
+						'Change password')
+					])),
+				A2(
+				$author$project$Sharecrop$Ui$dangerButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$DeactivateAccountClicked),
+						$author$project$Sharecrop$Ui$testId('deactivate-account')
+					]),
+				'Deactivate account'),
+				A2($author$project$Sharecrop$View$maybeNote, state.accountMessage, 'account-message')
+			]));
+};
 var $author$project$Sharecrop$Types$MintUserTokenClicked = {$: 'MintUserTokenClicked'};
 var $author$project$Sharecrop$View$mcpClaudeInstall = F2(
 	function (origin, token) {
@@ -19470,6 +20363,7 @@ var $author$project$Sharecrop$View$userDetailView = F3(
 						])),
 				_Utils_eq(userId, state.subjectId) ? _List_fromArray(
 					[
+						$author$project$Sharecrop$View$accountSettingsCard(state),
 						A2($author$project$Sharecrop$View$userAgentAccessCard, origin, state)
 					]) : _List_Nil));
 	});

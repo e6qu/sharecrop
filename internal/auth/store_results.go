@@ -36,6 +36,28 @@ func (CredentialMissing) credentialLookupResult() {}
 
 func (CredentialLookupRejected) credentialLookupResult() {}
 
+type UserDirectoryEntry struct {
+	ID     core.UserID
+	Email  EmailAddress
+	Status string
+}
+
+type UserDirectoryResult interface {
+	userDirectoryResult()
+}
+
+type UsersListed struct {
+	Values []UserDirectoryEntry
+}
+
+type UserDirectoryRejected struct {
+	Reason core.DomainError
+}
+
+func (UsersListed) userDirectoryResult() {}
+
+func (UserDirectoryRejected) userDirectoryResult() {}
+
 type StoreGuestResult interface {
 	storeGuestResult()
 }
@@ -91,3 +113,51 @@ func (RefreshTokenNotConsumed) consumeRefreshTokenResult() {}
 func (RefreshTokenReuseDetected) consumeRefreshTokenResult() {}
 
 func (ConsumeRefreshTokenRejected) consumeRefreshTokenResult() {}
+
+type AccountTokenStoreResult interface {
+	accountTokenStoreResult()
+}
+
+type AccountTokenStored struct{}
+
+type AccountTokenStoreRejected struct {
+	Reason core.DomainError
+}
+
+func (AccountTokenStored) accountTokenStoreResult() {}
+
+func (AccountTokenStoreRejected) accountTokenStoreResult() {}
+
+type AccountTokenConsumeResult interface {
+	accountTokenConsumeResult()
+}
+
+type AccountTokenConsumed struct {
+	UserID core.UserID
+}
+
+type AccountTokenNotConsumed struct{}
+
+type AccountTokenConsumeRejected struct {
+	Reason core.DomainError
+}
+
+func (AccountTokenConsumed) accountTokenConsumeResult() {}
+
+func (AccountTokenNotConsumed) accountTokenConsumeResult() {}
+
+func (AccountTokenConsumeRejected) accountTokenConsumeResult() {}
+
+type AccountMutationResult interface {
+	accountMutationResult()
+}
+
+type AccountMutationAccepted struct{}
+
+type AccountMutationRejected struct {
+	Reason core.DomainError
+}
+
+func (AccountMutationAccepted) accountMutationResult() {}
+
+func (AccountMutationRejected) accountMutationResult() {}

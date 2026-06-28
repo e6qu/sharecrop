@@ -234,7 +234,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "", fetchCredentials token, fetchCollectibles token, fetchOrganizations token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "", fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -287,7 +287,7 @@ routeLoadCmd token subjectId page =
             fetchTasks token ""
 
         CreateTaskPage ->
-            fetchOrganizations token
+            Cmd.batch [ fetchOrganizations token, fetchCollectibles token, fetchUserDirectory token, fetchStandaloneTeams token ]
 
         TaskDetailPage taskId ->
             fetchDetailCommands token subjectId taskId
@@ -475,6 +475,38 @@ postAuth url model =
         , body = Http.jsonBody (authRequestBody model)
         , expect = Http.expectJson AuthReceived Auth.authResponseDecoder
         }
+
+
+postGuest : Cmd Msg
+postGuest =
+    Http.post
+        { url = "/api/auth/guest"
+        , body = Http.emptyBody
+        , expect = Http.expectJson AuthReceived Auth.authResponseDecoder
+        }
+
+
+requestPasswordReset : Model -> Cmd Msg
+requestPasswordReset model =
+    Http.post
+        { url = "/api/auth/password-reset/request"
+        , body = Http.jsonBody (Encode.object [ ( "email", Encode.string model.resetEmail ) ])
+        , expect = Http.expectJson PasswordResetRequested tokenDecoder
+        }
+
+
+confirmPasswordReset : Model -> Cmd Msg
+confirmPasswordReset model =
+    Http.post
+        { url = "/api/auth/password-reset/confirm"
+        , body = Http.jsonBody (Encode.object [ ( "token", Encode.string model.resetToken ), ( "password", Encode.string model.resetPassword ) ])
+        , expect = Http.expectWhatever PasswordResetConfirmed
+        }
+
+
+tokenDecoder : Decode.Decoder String
+tokenDecoder =
+    Decode.field "token" Decode.string
 
 
 postRefresh : Cmd Msg
@@ -745,6 +777,24 @@ fetchOrganizations token =
     authorizedRequest "GET" token "/api/organizations" Http.emptyBody (Http.expectJson OrganizationsReceived Organization.organizationsResponseDecoder)
 
 
+userDirectoryEntryDecoder : Decode.Decoder UserDirectoryEntry
+userDirectoryEntryDecoder =
+    Decode.map3 UserDirectoryEntry
+        (Decode.field "id" Decode.string)
+        (Decode.field "email" Decode.string)
+        (Decode.field "status" Decode.string)
+
+
+fetchUserDirectory : String -> Cmd Msg
+fetchUserDirectory token =
+    authorizedRequest "GET" token "/api/users" Http.emptyBody (Http.expectJson UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))
+
+
+fetchStandaloneTeams : String -> Cmd Msg
+fetchStandaloneTeams token =
+    authorizedRequest "GET" token "/api/teams" Http.emptyBody (Http.expectJson StandaloneTeamsReceived Team.teamsResponseDecoder)
+
+
 refreshOrganizations : Model -> Cmd Msg
 refreshOrganizations model =
     case model.session of
@@ -772,6 +822,51 @@ loadOrganization token organizationId =
 fetchOrgTeams : String -> String -> Cmd Msg
 fetchOrgTeams token organizationId =
     authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/teams") Http.emptyBody (Http.expectJson OrgTeamsReceived Team.teamsResponseDecoder)
+
+
+requestEmailVerification : String -> Cmd Msg
+requestEmailVerification token =
+    authorizedRequest "POST"
+        token
+        "/api/account/email-verification"
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson EmailVerificationRequested tokenDecoder)
+
+
+confirmEmailVerification : String -> String -> Cmd Msg
+confirmEmailVerification token accountToken =
+    authorizedRequest "POST"
+        token
+        "/api/auth/email-verification/confirm"
+        (Http.jsonBody (Encode.object [ ( "token", Encode.string accountToken ) ]))
+        (Http.expectWhatever AccountActionReceived)
+
+
+updateProfile : String -> String -> Cmd Msg
+updateProfile token email =
+    authorizedRequest "PATCH"
+        token
+        "/api/account/profile"
+        (Http.jsonBody (Encode.object [ ( "email", Encode.string email ) ]))
+        (Http.expectWhatever AccountActionReceived)
+
+
+changePassword : String -> String -> String -> Cmd Msg
+changePassword token current next =
+    authorizedRequest "PATCH"
+        token
+        "/api/account/password"
+        (Http.jsonBody (Encode.object [ ( "current_password", Encode.string current ), ( "new_password", Encode.string next ) ]))
+        (Http.expectWhatever AccountActionReceived)
+
+
+deactivateAccount : String -> Cmd Msg
+deactivateAccount token =
+    authorizedRequest "DELETE"
+        token
+        "/api/account"
+        Http.emptyBody
+        (Http.expectWhatever DeactivateAccountReceived)
 
 
 createOrgTeamCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
@@ -934,7 +1029,7 @@ createTaskRequestBody state =
         [ ( "owner", createOwnerBody state )
         , ( "title", Encode.string state.createTitle )
         , ( "description", Encode.string state.createDescription )
-        , ( "reward", createRewardBody state.createRewardKind state.createRewardAmount )
+        , ( "reward", createRewardBody state.createRewardKind state.createRewardAmount state.createRewardCollectibleIds )
         , ( "participation", createParticipationBody state )
         , ( "visibility", createVisibilityBody state )
         , ( "placement", Encode.object [ ( "kind", Encode.string "standalone" ), ( "series_id", Encode.string "" ), ( "series_title", Encode.string "" ), ( "series_position", Encode.int 0 ) ] )
@@ -963,28 +1058,28 @@ createPayloadBody state =
         Encode.object [ ( "kind", Encode.string "json" ), ( "json", Encode.string state.createPayloadJson ) ]
 
 
-createRewardBody : String -> String -> Encode.Value
-createRewardBody kind rawAmount =
+createRewardBody : String -> String -> List String -> Encode.Value
+createRewardBody kind rawAmount collectibleIds =
     case String.toInt rawAmount of
         Just amount ->
             if kind == "credit" && amount > 0 then
-                Encode.object [ ( "kind", Encode.string "credit" ), ( "credit_amount", Encode.int amount ) ]
+                Encode.object [ ( "kind", Encode.string "credit" ), ( "credit_amount", Encode.int amount ), ( "collectible_ids", Encode.list Encode.string [] ) ]
 
             else if kind == "collectible" then
-                Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ) ]
+                Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string collectibleIds ) ]
 
             else if kind == "bundle" && amount > 0 then
-                Encode.object [ ( "kind", Encode.string "bundle" ), ( "credit_amount", Encode.int amount ) ]
+                Encode.object [ ( "kind", Encode.string "bundle" ), ( "credit_amount", Encode.int amount ), ( "collectible_ids", Encode.list Encode.string collectibleIds ) ]
 
             else
-                Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ) ]
+                Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string [] ) ]
 
         Nothing ->
             if kind == "collectible" then
-                Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ) ]
+                Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string collectibleIds ) ]
 
             else
-                Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ) ]
+                Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string [] ) ]
 
 
 createParticipationBody : LoggedInModel -> Encode.Value

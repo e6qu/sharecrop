@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -37,6 +38,24 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 	if !matched {
 		rejected := result.(task.CreateRejected)
 		writeDomainError(w, rejected.Reason)
+		return
+	}
+
+	for _, collectibleID := range requestAccepted.collectibleIDs {
+		fundResult := server.assetService.FundReward(r.Context(), actor.subject.ID, created.Value.ID, collectibleID)
+		if _, funded := fundResult.(assets.RewardFunded); !funded {
+			writeDomainError(w, fundResult.(assets.FundRewardRejected).Reason)
+			return
+		}
+	}
+	if len(requestAccepted.collectibleIDs) > 0 {
+		refreshed := server.taskService.Get(r.Context(), actor.subject, created.Value.ID)
+		got, gotMatched := refreshed.(task.TaskGot)
+		if !gotMatched {
+			writeDomainError(w, refreshed.(task.GetRejected).Reason)
+			return
+		}
+		writeTaskResponse(w, http.StatusCreated, taskToResponse(got.Value))
 		return
 	}
 
@@ -389,7 +408,7 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		Placement:      placementAccepted.value,
 		ResponseSchema: schemaSourceAccepted.Value,
 		Payload:        payloadAccepted.value,
-	}}
+	}, collectibleIDs: rewardAccepted.collectibleIDs}
 }
 func parseTaskParticipationRequest(request taskParticipationRequest) taskParticipationResult {
 	rawPolicy := request.Policy
@@ -440,9 +459,17 @@ func parseTaskRewardRequest(request taskRewardRequest) taskRewardResult {
 		}
 		return taskRewardAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
 	case task.RewardKindCollectible.String():
-		countResult := task.NewCollectibleRewardCount(1)
-		count := countResult.(task.CollectibleRewardCountAccepted)
-		return taskRewardAccepted{value: task.CollectibleRewardSpec{Count: count.Value}}
+		idsResult := parseRewardCollectibleIDs(request.CollectibleIDs)
+		collectibleIDs, idsMatched := idsResult.(rewardCollectibleIDsAccepted)
+		if !idsMatched {
+			return taskRewardRejected{reason: idsResult.(rewardCollectibleIDsRejected).reason}
+		}
+		countResult := task.NewCollectibleRewardCount(len(collectibleIDs.values))
+		count, countMatched := countResult.(task.CollectibleRewardCountAccepted)
+		if !countMatched {
+			return taskRewardRejected{reason: countResult.(task.CollectibleRewardCountRejected).Reason.Description()}
+		}
+		return taskRewardAccepted{value: task.CollectibleRewardSpec{Count: count.Value}, collectibleIDs: collectibleIDs.values}
 	case task.RewardKindBundle.String():
 		amountResult := task.NewCreditRewardAmount(request.CreditAmount)
 		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
@@ -450,12 +477,63 @@ func parseTaskRewardRequest(request taskRewardRequest) taskRewardResult {
 			rejected := amountResult.(task.CreditRewardAmountRejected)
 			return taskRewardRejected{reason: rejected.Reason.Description()}
 		}
-		countResult := task.NewCollectibleRewardCount(1)
-		count := countResult.(task.CollectibleRewardCountAccepted)
-		return taskRewardAccepted{value: task.BundleRewardSpec{Credit: amount.Value, Collectible: count.Value}}
+		collectibleIDs := rewardCollectibleIDsAccepted{values: []core.CollectibleID{}}
+		countValue := 1
+		if len(request.CollectibleIDs) > 0 {
+			idsResult := parseRewardCollectibleIDs(request.CollectibleIDs)
+			ids, idsMatched := idsResult.(rewardCollectibleIDsAccepted)
+			if !idsMatched {
+				return taskRewardRejected{reason: idsResult.(rewardCollectibleIDsRejected).reason}
+			}
+			collectibleIDs = ids
+			countValue = len(ids.values)
+		}
+		countResult := task.NewCollectibleRewardCount(countValue)
+		count, countMatched := countResult.(task.CollectibleRewardCountAccepted)
+		if !countMatched {
+			return taskRewardRejected{reason: countResult.(task.CollectibleRewardCountRejected).Reason.Description()}
+		}
+		return taskRewardAccepted{value: task.BundleRewardSpec{Credit: amount.Value, Collectible: count.Value}, collectibleIDs: collectibleIDs.values}
 	default:
 		return taskRewardRejected{reason: "task reward kind is invalid"}
 	}
+}
+
+type rewardCollectibleIDsResult interface {
+	rewardCollectibleIDsResult()
+}
+
+type rewardCollectibleIDsAccepted struct {
+	values []core.CollectibleID
+}
+
+type rewardCollectibleIDsRejected struct {
+	reason string
+}
+
+func (rewardCollectibleIDsAccepted) rewardCollectibleIDsResult() {}
+
+func (rewardCollectibleIDsRejected) rewardCollectibleIDsResult() {}
+
+func parseRewardCollectibleIDs(rawIDs []string) rewardCollectibleIDsResult {
+	if len(rawIDs) == 0 {
+		return rewardCollectibleIDsRejected{reason: "at least one collectible is required for this reward"}
+	}
+	values := make([]core.CollectibleID, 0, len(rawIDs))
+	seen := make(map[string]bool, len(rawIDs))
+	for _, rawID := range rawIDs {
+		if seen[rawID] {
+			return rewardCollectibleIDsRejected{reason: "collectible reward ids must be unique"}
+		}
+		idResult := core.ParseCollectibleID(rawID)
+		id, matched := idResult.(core.CollectibleIDCreated)
+		if !matched {
+			return rewardCollectibleIDsRejected{reason: idResult.(core.CollectibleIDRejected).Reason.Description()}
+		}
+		seen[rawID] = true
+		values = append(values, id.Value)
+	}
+	return rewardCollectibleIDsAccepted{values: values}
 }
 func parseTaskOwnerRequest(request taskOwnerRequest) taskOwnerResult {
 	switch request.Kind {
