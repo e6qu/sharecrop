@@ -4,26 +4,29 @@ Current priority from [docs/application_readiness_review.md](./docs/application_
 
 Next recommended work:
 
-1. Expand shared scenario parity coverage beyond the first scenario suite.
+1. Add a true multi-actor shared scenario parity suite for reservation approval, worker submission, owner review, payouts/tips, and notifications. This needs scenario clients that can carry more than one actor token.
 2. Use the WASM spike result to decide whether a narrow browser-storage-backed WASM demo slice is worth building; do not replace `site/demo/backend.js` until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
-3. Run `deno task check:pages-routing -- --origin <pages-origin>` after GitHub Pages deployment from `main`.
-4. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
-5. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
+3. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
+4. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
 
 Recently finished:
 
-1. The scenario-parity/selectors/contracts branch added a shared scenario runner used by Deno demo tests and by `tools/run_scenario_parity.ts` for real API checks with an explicit origin/token.
-2. The branch added paginated/typeahead selectors for users, organizations, standalone teams, and organization teams, with matching Go API query support and backendless demo query/pagination behavior.
-3. The branch expanded HTTP wire-shape fixtures for request/command contracts and newer response surfaces including series, task comments, team detail, collectible catalog, and account-token responses.
-4. The branch added `tools/check_pages_routing.ts` plus a Deno task for post-deploy GitHub Pages root/docs/demo/asset checks.
-5. The branch documented the WASM demo backend spike in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md), requiring explicit browser storage adapters and no fallback behavior before adoption.
-6. The runtime-notifications branch added a persisted notification inbox, generated notification contracts, browser Inbox page, demo notification routes, HTTP contract fixtures, and domain/store tests.
-7. The runtime-notifications branch added direct integration tests for audit event listing, notification lifecycle, Postgres rate-limit buckets, MCP HTTP session counts, and persisted MCP replay events. These tests require `DATABASE_URL`.
-8. The runtime-notifications branch persisted MCP HTTP replay events in Postgres. Live SSE subscriber channels remain process-local.
-9. The runtime-notifications branch added [docs/demo_semantic_parity.md](./docs/demo_semantic_parity.md), recommending shared scenario parity tests before any Go/WASM demo backend spike.
-10. The combined runtime/audit/team-dashboard branch wired Postgres-backed rate-limit buckets, persisted MCP HTTP session identity for production `serve`, admin audit writes/viewing, team work dashboards, generated Admin Elm contracts, and demo base-path/bundle parity.
-11. The branch kept email provider delivery and anonymous worker identity out of scope. Account and organization setup remains admin/org-admin driven.
-12. The branch removed a response-encoding fallback in MCP raw response handling; response encoding failures now fail loudly.
+1. The expanded-parity branch added admin operations, account-token issue shape, collectible catalog/mint/transfer, submission creation/comments, and notification read shape to the shared scenario parity suite.
+2. The branch ran `deno task check:pages-routing -- --origin https://e6qu.github.io/sharecrop` successfully against the deployed GitHub Pages site.
+3. The branch added selector-backed user/team/organization controls for admin default-collectible award recipients and collectible transfer recipients.
+4. The branch expanded HTTP wire-shape fixtures for health/error/empty responses, ledger list, teams/tasks/reservations/submissions wrappers, full task response, agent credential request/created/list responses, and user profile response.
+5. The scenario-parity/selectors/contracts branch added a shared scenario runner used by Deno demo tests and by `tools/run_scenario_parity.ts` for real API checks with an explicit origin/token.
+6. The branch added paginated/typeahead selectors for users, organizations, standalone teams, and organization teams, with matching Go API query support and backendless demo query/pagination behavior.
+7. The branch expanded HTTP wire-shape fixtures for request/command contracts and newer response surfaces including series, task comments, team detail, collectible catalog, and account-token responses.
+8. The branch added `tools/check_pages_routing.ts` plus a Deno task for post-deploy GitHub Pages root/docs/demo/asset checks.
+9. The branch documented the WASM demo backend spike in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md), requiring explicit browser storage adapters and no fallback behavior before adoption.
+10. The runtime-notifications branch added a persisted notification inbox, generated notification contracts, browser Inbox page, demo notification routes, HTTP contract fixtures, and domain/store tests.
+11. The runtime-notifications branch added direct integration tests for audit event listing, notification lifecycle, Postgres rate-limit buckets, MCP HTTP session counts, and persisted MCP replay events. These tests require `DATABASE_URL`.
+12. The runtime-notifications branch persisted MCP HTTP replay events in Postgres. Live SSE subscriber channels remain process-local.
+13. The runtime-notifications branch added [docs/demo_semantic_parity.md](./docs/demo_semantic_parity.md), recommending shared scenario parity tests before any Go/WASM demo backend spike.
+14. The combined runtime/audit/team-dashboard branch wired Postgres-backed rate-limit buckets, persisted MCP HTTP session identity for production `serve`, admin audit writes/viewing, team work dashboards, generated Admin Elm contracts, and demo base-path/bundle parity.
+15. The branch kept email provider delivery and anonymous worker identity out of scope. Account and organization setup remains admin/org-admin driven.
+16. The branch removed a response-encoding fallback in MCP raw response handling; response encoding failures now fail loudly.
 
 Earlier finished:
 

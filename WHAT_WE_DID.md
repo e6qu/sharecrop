@@ -1,5 +1,13 @@
 # What We Did
 
+`task/expand-parity-routing-fixtures-selectors` expanded the parity and selector work after PR #76:
+
+- **Shared scenario parity.** The shared scenario now covers admin operations, account-token issue shape, collectible catalog/mint/transfer, selector pagination/query, organization/team/task/task-comment creation, submission creation/listing/comments, and notification read shape. The real-API runner documentation now states that an explicit platform-admin token is required for the full scenario.
+- **Selector replacements.** Admin default-collectible award recipients now use user/team/organization selectors instead of raw recipient IDs where directory data exists. Collectible transfer uses the user selector instead of a raw user-ID field. Demo Playwright coverage was updated to exercise the selector path.
+- **Contract fixtures.** Added wire-shape fixtures for health/error/empty responses, ledger lists, teams/tasks/reservations/submissions wrappers, full task response, agent credential request/created/list responses, and user profile response.
+- **Deployed Pages verification.** Ran `deno task check:pages-routing -- --origin https://e6qu.github.io/sharecrop`; the deployed root/docs/demo entry paths and demo assets passed.
+- **Verification.** Passed: `go test ./...`; `go test ./internal/http`; `deno check tools/*.ts tests/**/*.ts`; `deno lint tools tests`; `deno run --allow-read tools/check_policy.ts`; `deno test --allow-read tests/deno`; `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`. Manual screenshot review passed for the default-collectible award selectors and collectible transfer selectors on desktop/mobile demo viewports.
+
 `task/scenario-parity-selectors-contracts` combined scenario parity, selector pagination/typeahead, fixture expansion, deployed routing checks, and a WASM demo-backend spike:
 
 - **Shared scenario parity.** Added `tests/scenario_parity/scenario.ts`, a Deno test that runs the shared scenario against `site/demo/backend.js`, and `tools/run_scenario_parity.ts` for running the same scenario against a real API with explicit `--origin` and `--token`. The first scenario covers auth refresh, user/org/team selector pagination/query behavior, organization/team creation, task creation, task detail, and task comments.

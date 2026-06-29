@@ -93,6 +93,33 @@ function assertTaskSummaryShape(task: JsonRecord): void {
   requireNumber(task, "reservation_expiry_hours");
 }
 
+function assertCollectibleShape(collectible: JsonRecord): void {
+  [
+    "id",
+    "name",
+    "kind",
+    "state",
+    "transfer_policy",
+    "owner_id",
+    "owner_kind",
+    "art",
+  ].forEach((key) => requireString(collectible, key));
+}
+
+function assertNotificationShape(notification: JsonRecord): void {
+  [
+    "id",
+    "recipient_user_id",
+    "actor_user_id",
+    "kind",
+    "subject_kind",
+    "subject_id",
+    "state",
+    "metadata_json",
+    "created_at",
+  ].forEach((key) => requireString(notification, key));
+}
+
 export async function runSharedScenarioParity(
   client: ScenarioClient,
 ): Promise<void> {
@@ -103,6 +130,33 @@ export async function runSharedScenarioParity(
   );
   assertStatus(auth, 200, "refresh");
   const subjectID = requireString(auth.json, "subject_id");
+
+  const operations = await client.request(
+    "GET",
+    "/api/admin/operations",
+    noScenarioBody,
+  );
+  assertStatus(operations, 200, "admin operations");
+  requireString(operations.json, "status");
+  requireString(operations.json, "account_token_delivery");
+  requireString(operations.json, "mcp_storage");
+  requireString(operations.json, "rate_limit_storage");
+  requireString(operations.json, "secure_cookies");
+  requireNumber(operations.json, "active_mcp_sessions");
+
+  const verification = await client.request(
+    "POST",
+    "/api/account/email-verification",
+    {},
+  );
+  assertStatus(verification, 201, "email verification token issue");
+  const verificationToken = verification.json["token"];
+  const verificationStatus = verification.json["status"];
+  assertScenario(
+    typeof verificationToken === "string" ||
+      verificationStatus === "sent",
+    "email verification response must include a token or sent status",
+  );
 
   const users = await client.request(
     "GET",
@@ -121,6 +175,63 @@ export async function runSharedScenarioParity(
     requireString(user, "email");
     requireString(user, "status");
   }
+
+  const registeredRecipient = await client.request(
+    "POST",
+    "/api/auth/register",
+    {
+      email: `scenario-${Date.now()}@example.com`,
+      password: "correct horse battery staple",
+    },
+  );
+  assertStatus(registeredRecipient, 201, "register transfer recipient");
+  const recipientID = requireString(registeredRecipient.json, "subject_id");
+
+  const catalog = await client.request(
+    "GET",
+    "/api/collectibles/catalog",
+    noScenarioBody,
+  );
+  assertStatus(catalog, 200, "collectible catalog");
+  const catalogEntries = requireArray(catalog.json, "entries");
+  assertScenario(catalogEntries.length > 0, "catalog must include entries");
+  const catalogEntry = requireRecord(catalogEntries[0], "entries[0]");
+  requireString(catalogEntry, "slug");
+  requireString(catalogEntry, "name");
+  requireString(catalogEntry, "kind");
+  requireString(catalogEntry, "transfer_policy");
+  requireString(catalogEntry, "art");
+
+  const collectibleName = uniqueName("Scenario parity collectible");
+  const mintedCollectible = await client.request(
+    "POST",
+    "/api/collectibles",
+    {
+      name: collectibleName,
+      kind: "badge",
+      transfer_policy: "transferable_between_users",
+      art: "harvest-star",
+    },
+  );
+  assertStatus(mintedCollectible, 201, "mint collectible");
+  assertCollectibleShape(mintedCollectible.json);
+  const collectibleID = requireString(mintedCollectible.json, "id");
+  assertScenario(
+    requireString(mintedCollectible.json, "name") === collectibleName,
+    "minted collectible name must round trip",
+  );
+
+  const transferredCollectible = await client.request(
+    "POST",
+    `/api/collectibles/${collectibleID}/transfer`,
+    { recipient_id: recipientID },
+  );
+  assertStatus(transferredCollectible, 200, "transfer collectible");
+  assertCollectibleShape(transferredCollectible.json);
+  assertScenario(
+    requireString(transferredCollectible.json, "owner_id") === recipientID,
+    "transferred collectible owner must be the recipient",
+  );
 
   const organizationName = uniqueName("Scenario parity org");
   const createdOrganization = await client.request(
@@ -267,4 +378,116 @@ export async function runSharedScenarioParity(
     ),
     "task comments must include created comment",
   );
+
+  const submissionTaskTitle = uniqueName("Scenario parity submission task");
+  const submissionTask = await client.request("POST", "/api/tasks", {
+    owner: { kind: "user", user_id: subjectID },
+    title: submissionTaskTitle,
+    description: "Created for the shared submission scenario.",
+    visibility: { kind: "public" },
+    participation: {
+      policy: "open",
+      assignee_scope: "user",
+      reservation_expiry_hours: 48,
+    },
+    reward: {
+      kind: "none",
+      credit_amount: 0,
+      collectible_ids: [],
+    },
+    response_schema_json: '{"kind":"freeform"}',
+    payload: { kind: "none", json: "" },
+  });
+  assertStatus(submissionTask, 201, "create submission task");
+  const submissionTaskID = requireString(submissionTask.json, "id");
+
+  const createdSubmission = await client.request(
+    "POST",
+    `/api/tasks/${submissionTaskID}/submissions`,
+    { response_json: '{"result":"done"}' },
+  );
+  assertStatus(createdSubmission, 201, "create submission");
+  const submission = requireRecord(
+    createdSubmission.json["submission"],
+    "submission",
+  );
+  const submissionID = requireString(submission, "id");
+  requireString(createdSubmission.json, "receipt_token");
+  assertScenario(
+    requireString(submission, "state") === "submitted",
+    "submission must be accepted by schema validation",
+  );
+
+  const listedSubmissions = await client.request(
+    "GET",
+    `/api/tasks/${submissionTaskID}/submissions`,
+    noScenarioBody,
+  );
+  assertStatus(listedSubmissions, 200, "list submissions");
+  const submissionList = requireArray(listedSubmissions.json, "submissions");
+  assertScenario(
+    submissionList.some((item) =>
+      requireString(requireRecord(item, "submissions[]"), "id") ===
+        submissionID
+    ),
+    "listed submissions must include created submission",
+  );
+
+  const submissionCommentBody = uniqueName(
+    "Scenario parity submission comment",
+  );
+  const submissionComment = await client.request(
+    "POST",
+    `/api/submissions/${submissionID}/comments`,
+    { body: submissionCommentBody },
+  );
+  assertStatus(submissionComment, 201, "create submission comment");
+  assertScenario(
+    requireString(submissionComment.json, "body") === submissionCommentBody,
+    "submission comment body must round trip",
+  );
+
+  const submissionComments = await client.request(
+    "GET",
+    `/api/submissions/${submissionID}/comments`,
+    noScenarioBody,
+  );
+  assertStatus(submissionComments, 200, "list submission comments");
+  const submissionCommentList = requireArray(
+    submissionComments.json,
+    "comments",
+  );
+  assertScenario(
+    submissionCommentList.some((item) =>
+      requireString(requireRecord(item, "submissionComments[]"), "body") ===
+        submissionCommentBody
+    ),
+    "listed submission comments must include created comment",
+  );
+
+  const notifications = await client.request(
+    "GET",
+    "/api/notifications",
+    noScenarioBody,
+  );
+  assertStatus(notifications, 200, "list notifications");
+  const notificationList = requireArray(notifications.json, "notifications");
+  if (notificationList.length > 0) {
+    const firstNotification = requireRecord(
+      notificationList[0],
+      "notifications[0]",
+    );
+    assertNotificationShape(firstNotification);
+    const readNotification = await client.request(
+      "POST",
+      `/api/notifications/${requireString(firstNotification, "id")}/read`,
+      noScenarioBody,
+    );
+    assertStatus(readNotification, 200, "mark notification read");
+    assertNotificationShape(readNotification.json);
+    assertScenario(
+      requireString(readNotification.json, "state") === "read",
+      "notification state must change to read",
+    );
+  }
 }

@@ -5,7 +5,7 @@
 ## Current Checks
 
 - `deno test --allow-read tests/deno` runs demo route/shape checks and the shared scenario parity suite against `site/demo/backend.js`.
-- `deno task check:scenario-parity -- --origin <api-origin> --token <access-token>` runs the same shared scenario against a real API. The supplied token must be able to refresh auth, create organizations, teams, tasks, and task comments.
+- `deno task check:scenario-parity -- --origin <api-origin> --token <access-token>` runs the same shared scenario against a real API. The supplied token must be a platform admin token that can refresh auth, read operations status, issue account tokens, mint/transfer collectibles, create organizations, create teams, create tasks, create submissions, and create task/submission comments.
 - `deno task check:pages-routing -- --origin <pages-origin>` checks deployed GitHub Pages root, docs, demo entry paths, and demo assets after deployment.
 
 ## Options
@@ -32,6 +32,6 @@
 
 ## Recommendation
 
-Keep expanding shared scenario parity before replacing the fake backend. The first suite covers selector pagination/query behavior plus org/team/task/comment creation. Add reservation, submission review, notification, collectible, account-token, and admin-operation flows as follow-up scenarios.
+Keep expanding shared scenario parity before replacing the fake backend. The suite covers selector pagination/query behavior, org/team/task/comment creation, admin operations, account-token issue shape, collectible catalog/mint/transfer, submission creation/comments, and notification read shape. Add multi-actor reservation and submission-review flows as follow-up scenarios.
 
 Use [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md) for the current WASM finding. Adopt WASM only if it can use explicit browser storage adapters without fallbacks or dead paths.

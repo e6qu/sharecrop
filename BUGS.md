@@ -6,9 +6,9 @@ Confirmed defects:
 
 Test gaps:
 
-- GitHub Pages deployment cannot be observed from pull request CI because the Pages workflow publishes after pushes to `main` or manual dispatch. Run `deno task check:pages-routing -- --origin <pages-origin>` after deployment.
+- GitHub Pages deployment cannot be observed from pull request CI because the Pages workflow publishes after pushes to `main` or manual dispatch. Run `deno task check:pages-routing -- --origin <pages-origin>` after each deployment.
 - Anonymous workers are not supported. Submissions are registered-users-only.
-- Some recipient fields still require raw IDs where the browser has no loaded directory data or no selector-backed flow.
+- Some fields still require raw IDs where the browser has no loaded directory data or no selector-backed flow. Known example: adding an existing task to a series still requires a task ID.
 - Account verification and password reset support `SHARECROP_ACCOUNT_TOKEN_DELIVERY=log`, which logs tokens and returns a sent status. Provider email delivery is intentionally deferred; admins are expected to set up accounts and organizations directly for now.
 - Account lifecycle deletion semantics are deactivation plus credential/session/token revocation and email anonymization. Hard row deletion is intentionally not used because tasks, submissions, comments, ledger entries, and ownership rows reference users.
 - The asset economy is intentionally internal-only: rewards are Sharecrop credits and admin-minted Sharecrop collectibles. User-issued tokens, organization-issued tokens, per-project tokens, crypto rewards, and external wallets are out of scope.
@@ -19,7 +19,7 @@ Known risks:
 
 - Cancelling a task that holds escrow is now rejected: the store's `ChangeTaskState` to `cancelled` refuses with 409 "refund the task's held escrow before cancelling" when held credits or collectibles exist, so the state transition can never orphan escrow (previously Cancel left held escrow stranded against a cancelled task). The browser routes funded tasks to Refund; a rare funded-draft Cancel attempt now surfaces that 409 with the Refund action alongside.
 
-- `site/demo/backend.js` is a demo-only in-browser fake backend; it re-implements API behavior in JS and can drift from the Go backend's actual semantics. Deno tests compare its route surface with the real HTTP router, validate representative response shapes, and run the first shared scenario parity suite, but they do not prove every handler has identical domain semantics.
+- `site/demo/backend.js` is a demo-only in-browser fake backend; it re-implements API behavior in JS and can drift from the Go backend's actual semantics. Deno tests compare its route surface with the real HTTP router, validate representative response shapes, and run shared scenario parity flows for selectors, admin operations, collectibles, tasks, comments, submissions, and notifications, but they do not prove every handler has identical domain semantics.
 
 - A collectible review tip and the credit settle are separate per-store transactions sequenced in one accept request (credit settle first, then `GiftCollectible`). The settle is idempotent and the gift is replay-safe (already-owned-by-worker is a no-op), so a retried accept recovers; the only residual is a small window where the credit accept commits but the gift fails (e.g. the collectible changed owner concurrently), returning an error after a committed accept. Folding the tip into the ledger transaction would remove the window.
 - `transferable_within_organization` collectibles cannot be tipped yet: collectibles carry no organization, so the within-org bound is unenforceable and `AllowsTip` denies it rather than allow a cross-org gift. Re-enable once collectibles carry an org and the gift checks shared membership.
