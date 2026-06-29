@@ -7,12 +7,17 @@ Next recommended work:
 1. Keep expanding shared scenario parity as new user-visible API surfaces are added. The current suite covers selectors, collectible mint/transfer/create-time refund, comments, notifications, organization reviewer acceptance, and multi-actor reservation/submission acceptance.
 2. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
 3. Audit remaining raw-ID browser flows and replace high-traffic fields with selectors where directory data exists.
-4. Keep improving backendless demo semantic parity through shared scenarios before any WASM replacement.
-5. Keep polishing submission discussion discoverability and end-to-end ergonomics as review workflows grow.
-6. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
-7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
+4. Continue moving first-page-only browser lists to explicit pagination where high-volume use is expected.
+5. Keep improving backendless demo semantic parity through shared scenarios before any WASM replacement.
+6. Keep polishing submission discussion discoverability and end-to-end ergonomics as review workflows grow.
+7. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
+8. Do not replace `site/demo/backend.js` with WASM until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The readiness-dashboard-docs-parity branch updated post-PR80 continuity, confirmed PR 80 CI passed with `db-checks` and Playwright, repaired stale readiness-review gaps, added team work dashboard sections, submission-comment notifications, inbox task links, task/discovery pagination controls, API/MCP/scheduling docs, and backendless demo thread-access parity.
+
+1. PR 80 CI passed, including `db-checks` and Playwright.
 
 1. The parity-contract-discussion-polish branch confirmed PR 79 CI passed with `db-checks`, cleaned stale readiness/user-story notes, and recorded that current raw-ID browser exposure is limited to protocol surfaces/links/audit/API examples unless a new high-traffic flow is found.
 2. The branch expanded shared scenario parity with organization reviewer acceptance of an organization-owned task funded from the organization balance.

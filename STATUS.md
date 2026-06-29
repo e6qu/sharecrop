@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 79 work, merged into `main`.
+The repository contains pull request 1 through pull request 80 work, merged into `main`.
 
-Active task: continuity cleanup, database-backed check confirmation, expanded scenario parity, fixture coverage, raw-ID audit, backendless demo semantic parity, and submission-discussion polish are implemented on `task/parity-contract-discussion-polish`. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
+Active task: post-PR80 continuity cleanup, PR80 verification follow-up, team/org work dashboard improvements, submission revision/discussion polish, navigation/docs improvements, and backendless demo parity hardening are implemented on `task/readiness-dashboard-docs-parity`. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -22,27 +22,32 @@ Current implemented surface:
 - Production `serve` wires Postgres-backed rate-limit buckets, audit events, notification inbox rows, persisted MCP HTTP session identity, and persisted MCP HTTP replay events. MCP live SSE subscribers remain process-local.
 - Platform admins can view audit events at `#/admin`; audit writes cover admin default collectible awards, account deactivation, organization member provisioning/role/deactivation actions, submission review outcomes, and task refunds.
 - Team detail pages load a team review queue and team work list from `/api/teams/{team_id}/work`.
+- Team detail pages split team work into review, ready-for-team, and assigned-to-team sections.
 - The backendless demo serves the current compiled Elm bundle, includes the admin operations/audit route, and handles `/demo/` base paths explicitly.
 - Account verification/reset token issue supports API-visible local/test mode and log-delivery mode.
 - Account deactivation anonymizes email, removes password credentials, and revokes active refresh/account tokens.
 - Selector APIs support `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams where those lists are exposed.
 - A shared scenario parity runner covers selector pagination/query, admin operations, account-token issue shape, collectible catalog/mint/transfer, organization/team/task/task-comment creation, submission creation/comments, notification read shape, and a multi-actor reservation approval/submission acceptance/payout/notification flow against the backendless demo. It can be run against a real API with an explicit admin origin/token.
 - The shared scenario parity runner also covers organization reviewer acceptance of an organization-owned task funded from the organization balance.
+- The shared scenario parity runner covers submission-comment notifications.
 - A GitHub Pages routing check script verifies deployed root/docs/demo entry paths and demo assets after deployment.
 - The Pages workflow runs the deployed routing check after GitHub Pages deployment.
 - `make db-checks` runs migrations plus database-backed integration and HTTP E2E tests when `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR` are set.
 - Admin default-collectible award and collectible transfer flows use user/team/organization selectors where selector data exists.
+- Browser task and discovery lists have explicit pagination controls.
+- Inbox notification rows link to the task when notification metadata includes `task_id`.
+- Submission comments notify the other side of the private submission discussion thread. The backendless demo enforces the same submitter/reviewer thread visibility check.
 - Collectibles carry an optional organization scope. `transferable_within_organization` tips require both users to be active members of the scoped organization.
 - Submission acceptance settles credit payout, credit tip, collectible payout, and collectible tip in one ledger transaction.
 - Series add-task management uses the loaded task selector instead of a raw task-ID text field.
 - Deletion semantics are documented in [docs/deletion_semantics.md](./docs/deletion_semantics.md); core rows are not hard-deleted without an explicit lifecycle design.
 - The WASM demo backend spike is documented with explicit storage-adapter gates and no fallback path.
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles only; user/org/per-project tokens, external wallets, and crypto integrations are out of scope.
+- README and hosted docs link to the repository HTTP API reference, MCP reference, operator runbook, and agent-side scheduling recipe.
 
 Current verification:
 
 - `go test ./...` passed.
-- `go test ./internal/http ./internal/db ./internal/assets ./internal/ledger` passed.
 - `deno check tools/*.ts tests/**/*.ts` passed.
 - `deno lint tools tests` passed.
 - `deno run --allow-read tools/check_policy.ts` passed.
@@ -52,9 +57,8 @@ Current verification:
 - `go tool deadcode -test ./...` passed.
 - `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
-- PR 79 CI passed, including `db-checks`.
-- `make check-contracts` passed after PR 79 was merged.
-- A focused Playwright submission-discussion check was attempted locally. The sandbox blocked local server binding, and escalation was unavailable because the environment usage limit was reached. The updated Playwright assertions should run in PR CI.
+- PR 80 CI passed, including `db-checks` and Playwright.
+- Focused local Playwright reached the app server, but every registration failed because the configured local PostgreSQL endpoint `localhost:15432` was not reachable.
 
 Blocking issues:
 

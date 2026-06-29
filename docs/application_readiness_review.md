@@ -11,7 +11,7 @@ This review compares the implemented application with the product thesis in [PLA
 - Platform collectibles, catalog awards, user/team/organization ownership, task collectible rewards, refunds, transfers, and collectible review tips.
 - Organizations, organization teams, standalone teams, member provisioning/listing/deactivation at the API layer, team detail, and team member addition.
 - MCP tools for task discovery/work/review, series, comments, reservations, and Streamable HTTP sessions with SSE replay.
-- CI covers format, generated contracts, policy checks, Deno/TypeScript checks, lint, vet, unit tests, integration tests, HTTP end-to-end tests, and Playwright browser tests.
+- CI covers format, generated contracts, policy checks, Deno/TypeScript checks, lint, vet, unit tests, integration tests, HTTP end-to-end tests, shared scenario parity, and Playwright browser tests.
 
 ## Readiness Assessment
 
@@ -28,17 +28,17 @@ That loop is well covered by HTTP and Playwright tests. The application is still
 
 ## Highest Priority Gaps
 
-1. **Organization-team task assignment is not workable.**
-   - The task model and UI expose `organization_team` assignee scope.
-   - `task.Service.Reserve` rejects every non-user assignee task with "this task does not accept user reservations".
-   - There is no HTTP, MCP, or browser command to reserve/request approval as a team.
-   - Result: a requester can create a task that displays as organization-team assigned, but the intended team cannot claim it through the current product.
+1. **Team and organization work dashboards still need polish.**
+   - Organization-team assignment, reservation/request-approval, and team-member submission eligibility exist through HTTP, MCP, browser controls, and the backendless demo.
+   - Team detail pages split team work into review, ready-for-team, and assigned-to-team sections.
+   - Result: the core organization-team task path works, but broader team filters and high-volume queue tooling still need product polish.
 
 2. **Worker revision and submission-discussion flows still need polish.**
    - Workers can submit and can list their own submissions from the profile page.
    - The task detail fetches task submissions, but the backend only allows task owners/reviewers to list all task submissions.
    - The worker submissions page shows review notes, response body, validation errors, and submission comments.
-   - Result: "request changes" is implemented, but notifications and a dedicated revision inbox are still absent.
+   - Submission-created, review, and submission-comment notifications exist.
+   - Result: "request changes" is implemented, but a dedicated revision inbox is still absent.
 
 3. **The reward economy is internal only by product decision.**
    - Credits are signup grants and internal ledger entries.
@@ -57,11 +57,11 @@ That loop is well covered by HTTP and Playwright tests. The application is still
    - MCP sessions, SSE replay buffers, and rate-limit buckets are in memory.
    - Result: one process can be operated, but multi-process state remains design work.
 
-6. **Docs are not product-ready.**
+6. **Docs are still partial.**
    - `README.md` is local-command oriented.
-   - `site/docs/index.html` has a task lifecycle and MCP quickstart.
-   - There is no generated API reference, complete MCP reference page, onboarding guide, or operator runbook.
-   - Result: a new user or integrator still needs source-level context for many workflows.
+   - `site/docs/index.html` has a task lifecycle and MCP quickstart, and links to API, MCP, operator, and agent-scheduling references in the repository.
+   - There is no generated OpenAPI reference or guided onboarding guide.
+   - Result: a new user or integrator still needs some source-level context for edge workflows.
 
 ## Flow Review
 
@@ -75,8 +75,8 @@ Implemented:
 
 Missing or partial:
 
-- `docs/user_stories.md` still mentions mock social sign-in options, but the current Elm auth view only offers email/password login and registration.
-- The docs page covers the core lifecycle and MCP quickstart, but not a complete API reference or operator runbook.
+- The browser uses email/password login/register plus guest entry. Provider email delivery and social sign-in are not implemented.
+- The docs page covers the core lifecycle and MCP quickstart, and links to the repository API reference, MCP reference, operator runbook, and agent-side scheduling recipe.
 - Demo semantics can still drift from Go because `site/demo/backend.js` re-implements the backend in JavaScript.
 
 ### Authentication And User Account
@@ -123,9 +123,9 @@ Implemented:
 
 Missing or partial:
 
-- Organization-team assignee tasks can be reserved through browser selectors, but team-scoped submission dashboards and broader browser tests are still partial.
-- There are no notifications for approval, request-changes, accept/reject, or comment events.
-- There is no queue or inbox for tasks assigned to a user/team/organization beyond list/discovery/profile pages.
+- Organization-team assignee tasks can be reserved through browser selectors, but broader browser tests are still partial.
+- Notifications exist for submission-created, review outcomes, and submission comments.
+- Team detail pages expose team work sections. User and organization queueing still relies on list/discovery/profile pages and organization task lists.
 
 ### Organization Operator
 
@@ -143,7 +143,7 @@ Implemented:
 Missing or partial:
 
 - Browser does not expose a full organization operations dashboard for billing-style views or audit history.
-- Team-scoped submission dashboards are still partial.
+- Team-scoped work dashboards exist, but high-volume filters and sorting are still partial.
 
 ### Agent Operator
 
@@ -197,7 +197,7 @@ Implemented:
 
 Missing or partial:
 
-- Browser list pages do not expose pagination controls.
+- Browser task and discovery pages expose pagination controls. Some other list pages still rely on their first page or selector-local paging.
 - No search, sort, full-text filtering, or saved views.
 - Several flows require copying raw UUIDs between pages.
 
@@ -212,5 +212,6 @@ Missing or partial:
 1. Keep expanding shared scenario parity for user-visible API surfaces and backendless demo behavior.
 2. Keep expanding fixture-level HTTP contract coverage as request and response surfaces change.
 3. Add Playwright coverage when browser workflows change materially.
-4. Add provider email delivery only if account setup stops being admin-driven.
-5. Do not replace the JavaScript backendless demo with WASM until the documented storage-adapter gates are met without fallbacks.
+4. Continue moving first-page-only lists to explicit pagination where high-volume use is expected.
+5. Add provider email delivery only if account setup stops being admin-driven.
+6. Do not replace the JavaScript backendless demo with WASM until the documented storage-adapter gates are met without fallbacks.

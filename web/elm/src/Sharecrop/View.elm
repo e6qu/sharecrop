@@ -4,6 +4,7 @@ import Browser
 import Html exposing (Html, a, div, form, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
 import Html.Attributes exposing (checked, disabled, href, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
+import Json.Decode as Decode
 import Json.Encode as Encode
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Collectible as Collectible
@@ -191,6 +192,7 @@ notificationRow notification =
             , span [ Html.Attributes.class (notificationStateClass notification.state), testId "notification-state" ] [ text notification.state ]
             ]
         , p [ Html.Attributes.class "break-words text-xs text-slate-500" ] [ text ("Subject " ++ notification.subjectID ++ " · actor " ++ notification.actorUserID ++ " · " ++ notification.createdAt) ]
+        , notificationTaskLink notification
         , if notification.metadataJSON == "{}" then
             text ""
 
@@ -202,6 +204,16 @@ notificationRow notification =
           else
             text ""
         ]
+
+
+notificationTaskLink : Notification.NotificationResponse -> Html Msg
+notificationTaskLink notification =
+    case Decode.decodeString (Decode.field "task_id" Decode.string) notification.metadataJSON of
+        Ok taskId ->
+            a [ href ("#/tasks/" ++ taskId), Html.Attributes.class Ui.secondaryButtonClass, testId "notification-task-link" ] [ text "Open task" ]
+
+        Err _ ->
+            text ""
 
 
 notificationStateClass : String -> String
@@ -307,10 +319,7 @@ teamDetailView teamId state =
 
                       else
                         text ""
-                    , Ui.sectionTitle "Review queue"
-                    , teamReviewQueue state.teamWork
-                    , Ui.sectionTitle "Team work"
-                    , tasksList state.teamWork
+                    , teamWorkDashboard detail.team.id state.teamWork
                     , Ui.sectionTitle "Collectibles"
                     , collectiblesHoldingsList "team-collectibles" state.teamCollectibles
                     ]
@@ -325,17 +334,51 @@ teamDetailView teamId state =
         ]
 
 
-teamReviewQueue : List Task.TaskListItemResponse -> Html Msg
-teamReviewQueue tasks =
+teamWorkDashboard : String -> List Task.TaskListItemResponse -> Html Msg
+teamWorkDashboard teamId tasks =
     let
         reviewTasks =
             List.filter (\item -> item.reviewerAction /= "none") tasks
-    in
-    if List.isEmpty reviewTasks then
-        p [ Html.Attributes.class "text-sm text-slate-500", testId "team-review-empty" ] [ text "No submissions waiting for team review." ]
 
-    else
-        div [ Html.Attributes.class "divide-y divide-slate-100", testId "team-review-queue" ] (List.map taskRow reviewTasks)
+        readyForTeam =
+            List.filter teamCanActOnTask tasks
+
+        assignedToTeam =
+            List.filter (\item -> item.activeAssigneeID == teamId) tasks
+    in
+    div [ Html.Attributes.class "space-y-4", testId "team-work-dashboard" ]
+        [ teamWorkSection "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
+        , teamWorkSection "Ready for team" "team-ready-work" "No team-visible tasks are ready for action." readyForTeam
+        , teamWorkSection "Assigned to team" "team-assigned-work" "No tasks are currently assigned to this team." assignedToTeam
+        ]
+
+
+teamCanActOnTask : Task.TaskListItemResponse -> Bool
+teamCanActOnTask item =
+    case item.viewerAction of
+        Task.TaskViewerActionSubmit ->
+            True
+
+        Task.TaskViewerActionReserve ->
+            True
+
+        Task.TaskViewerActionRequestApproval ->
+            True
+
+        _ ->
+            False
+
+
+teamWorkSection : String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
+teamWorkSection title identifier emptyMessage tasks =
+    div [ Html.Attributes.class "space-y-2", testId identifier ]
+        [ Ui.sectionTitle title
+        , if List.isEmpty tasks then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId (identifier ++ "-empty") ] [ text emptyMessage ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100" ] (List.map taskRow tasks)
+        ]
 
 
 collectiblesHoldingsList : String -> List Collectible.CollectibleResponse -> Html Msg
@@ -1416,6 +1459,7 @@ tasksView origin state =
         [ Ui.sectionTitle "My tasks"
         , Ui.label_ "Filter by state"
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
+        , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset
         , tasksList state.tasks
         ]
 
@@ -1757,6 +1801,7 @@ discoveryView state =
     Ui.card
         [ Ui.sectionTitle "Discover public tasks"
         , Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
+        , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset
         , discoveryList state.discoveryTasks
         ]
 
@@ -1778,6 +1823,15 @@ discoveryRow item =
             , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item) ]
             ]
         , div [ Html.Attributes.class "shrink-0" ] [ Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View" ]
+        ]
+
+
+paginationControls : String -> Msg -> Msg -> Int -> Html Msg
+paginationControls identifier previous next offset =
+    div [ Html.Attributes.class "flex flex-wrap items-center gap-2 text-xs text-slate-600", testId identifier ]
+        [ Ui.secondaryButton [ type_ "button", disabled (offset == 0), onClick previous, testId (identifier ++ "-previous") ] "Previous"
+        , span [ testId (identifier ++ "-offset") ] [ text ("Offset " ++ String.fromInt offset) ]
+        , Ui.secondaryButton [ type_ "button", onClick next, testId (identifier ++ "-next") ] "Next"
         ]
 
 

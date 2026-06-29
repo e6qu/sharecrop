@@ -109,6 +109,7 @@ type alias LoggedInModel =
     , fundNonce : Int
     , tasks : List Task.TaskListItemResponse
     , taskStateFilter : String
+    , taskListOffset : Int
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
     , credentials : List Agent.AgentCredentialResponse
@@ -116,6 +117,7 @@ type alias LoggedInModel =
     , agentMessage : Maybe String
     , discoveryTasks : List Task.TaskListItemResponse
     , discoveryIncludeReserved : Bool
+    , discoveryOffset : Int
     , detail : Maybe PublicTaskDetail
     , detailError : Maybe String
     , reservations : List Task.TaskReservationResponse
@@ -278,6 +280,8 @@ type Msg
     | LedgerReceived (Result Http.Error Ledger.LedgerResponse)
     | TasksReceived (Result Http.Error Task.TasksResponse)
     | TaskStateFilterChanged String
+    | PreviousTasksPageClicked
+    | NextTasksPageClicked
     | CreateTitleChanged String
     | CreateDescriptionChanged String
     | CreateResponseSchemaChanged String
@@ -330,6 +334,8 @@ type Msg
     | LogoutClicked
     | LogoutReceived (Result Http.Error ())
     | DiscoveryIncludeReservedChanged Bool
+    | PreviousDiscoveryPageClicked
+    | NextDiscoveryPageClicked
     | DiscoveryReceived (Result Http.Error Task.TasksResponse)
     | DiscoveryViewClicked String
     | DetailReceived (Result Http.Error PublicTaskDetail)

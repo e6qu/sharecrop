@@ -692,7 +692,13 @@ func (testSubmissionService) ListForSubmitter(context.Context, auth.UserSubject,
 
 func (testSubmissionService) AddSubmissionComment(_ context.Context, actor auth.UserSubject, submissionID core.SubmissionID, body task.CommentBody) submission.SubmissionCommentResult {
 	commentID := core.NewSubmissionCommentID().(core.SubmissionCommentIDCreated)
-	return submission.SubmissionCommentAdded{Value: submission.SubmissionComment{ID: commentID.Value, SubmissionID: submissionID, AuthorID: actor.ID, Body: body}}
+	taskID := core.NewTaskID().(core.TaskIDCreated)
+	return submission.SubmissionCommentAdded{
+		Value:         submission.SubmissionComment{ID: commentID.Value, SubmissionID: submissionID, AuthorID: actor.ID, Body: body},
+		TaskID:        taskID.Value,
+		SubmitterID:   actor.ID,
+		TaskCreatorID: actor.ID,
+	}
 }
 
 func (testSubmissionService) ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult {

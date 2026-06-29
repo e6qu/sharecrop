@@ -27,6 +27,7 @@ var (
 	KindSubmissionAccepted         = Kind{value: "submission_accepted"}
 	KindSubmissionChangesRequested = Kind{value: "submission_changes_requested"}
 	KindSubmissionRejected         = Kind{value: "submission_rejected"}
+	KindSubmissionCommented        = Kind{value: "submission_commented"}
 )
 
 func KindFromString(raw string) Kind {

@@ -1,5 +1,15 @@
 # What We Did
 
+`task/readiness-dashboard-docs-parity` combined post-PR80 cleanup, dashboard/navigation polish, discussion notifications, docs, and demo parity:
+
+- **Continuity and readiness cleanup.** Updated status/bugs/next/readiness/user-story docs after PR 80 and confirmed PR 80 CI passed with `db-checks` and Playwright.
+- **Team work dashboard.** Team detail pages now split loaded team work into review queue, ready-for-team work, and assigned-to-team work sections.
+- **Submission discussion notifications.** Submission comments now notify the other side of the private thread. Inbox rows link to the task when notification metadata includes `task_id`.
+- **Demo parity.** The backendless demo enforces submitter/reviewer access for submission comment threads and emits `submission_commented` notifications. Shared scenario parity now checks that notification path.
+- **List/navigation polish.** Browser task and discovery lists have explicit previous/next pagination controls backed by the existing `limit`/`offset` API.
+- **Docs.** Added repository HTTP API and MCP references plus an agent-side scheduling recipe, and linked them from README and hosted docs.
+- **Verification.** Passed: `go test ./...`; `deno test --allow-read tests/deno`; `deno check tools/*.ts tests/**/*.ts`; `deno lint tools tests`; `make check-contracts`; `make check-format`; `deno run --allow-read tools/check_policy.ts`; `go vet ./...`; `go tool deadcode -test ./...`; `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests`; `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`. Focused local Playwright reached the app server but could not complete because PostgreSQL on `localhost:15432` was not reachable.
+
 `task/parity-contract-discussion-polish` combined post-merge continuity cleanup, parity growth, contract coverage, demo semantics, and submission discussion polish:
 
 - **Continuity and verification.** Updated status/readiness/user-story docs after PR 79, removed stale raw-ID and collectible notes, and confirmed PR 79 CI passed with `db-checks`.

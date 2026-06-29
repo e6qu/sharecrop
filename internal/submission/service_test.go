@@ -145,8 +145,12 @@ func TestSubmissionCommentVisibility(t *testing.T) {
 	body := acceptedCommentBody(t, "Could you clarify the scope?")
 
 	// The submission's author may comment.
-	if _, matched := service.AddSubmissionComment(context.Background(), testAuthSubject(t, submitterID), created.Value.ID, body).(SubmissionCommentAdded); !matched {
+	submitterComment, matched := service.AddSubmissionComment(context.Background(), testAuthSubject(t, submitterID), created.Value.ID, body).(SubmissionCommentAdded)
+	if !matched {
 		t.Fatalf("submitter comment was not added")
+	}
+	if submitterComment.TaskID != taskStore.value.ID || submitterComment.SubmitterID != submitterID || submitterComment.TaskCreatorID != taskStore.value.CreatedBy {
+		t.Fatalf("comment notification context = task %s submitter %s creator %s", submitterComment.TaskID.String(), submitterComment.SubmitterID.String(), submitterComment.TaskCreatorID.String())
 	}
 
 	// The owner of the submission's task (the task creator) may comment.

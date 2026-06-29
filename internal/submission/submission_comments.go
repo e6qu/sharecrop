@@ -57,7 +57,10 @@ type SubmissionCommentResult interface {
 }
 
 type SubmissionCommentAdded struct {
-	Value SubmissionComment
+	Value         SubmissionComment
+	TaskID        core.TaskID
+	SubmitterID   core.UserID
+	TaskCreatorID core.UserID
 }
 
 type SubmissionCommentRejected struct {
@@ -85,7 +88,7 @@ func (SubmissionCommentsListed) submissionCommentsResult() {}
 func (SubmissionCommentsListRejected) submissionCommentsResult() {}
 
 func (service Service) AddSubmissionComment(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID, body task.CommentBody) SubmissionCommentResult {
-	value, problem := service.loadCommentableSubmission(ctx, actor, submissionID)
+	value, taskValue, problem := service.loadCommentableSubmissionWithTask(ctx, actor, submissionID)
 	if problem != nil {
 		return SubmissionCommentRejected{Reason: *problem}
 	}
@@ -100,7 +103,7 @@ func (service Service) AddSubmissionComment(ctx context.Context, actor auth.User
 	if !storedMatched {
 		return SubmissionCommentRejected{Reason: storeResult.(CreateSubmissionCommentStoreRejected).Reason}
 	}
-	return SubmissionCommentAdded{Value: accepted.Value}
+	return SubmissionCommentAdded{Value: accepted.Value, TaskID: value.TaskID, SubmitterID: value.SubmitterID, TaskCreatorID: taskValue.CreatedBy}
 }
 
 func (service Service) ListSubmissionComments(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID) SubmissionCommentsResult {
@@ -120,23 +123,28 @@ func (service Service) ListSubmissionComments(ctx context.Context, actor auth.Us
 // the submission's author or the owner of the submission's task. Other actors
 // are denied so the thread stays private to those two parties.
 func (service Service) loadCommentableSubmission(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID) (Submission, *core.DomainError) {
+	value, _, problem := service.loadCommentableSubmissionWithTask(ctx, actor, submissionID)
+	return value, problem
+}
+
+func (service Service) loadCommentableSubmissionWithTask(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID) (Submission, task.Task, *core.DomainError) {
 	submissionResult := service.store.FindSubmission(ctx, submissionID)
 	found, matched := submissionResult.(FindSubmissionStoreAccepted)
 	if !matched {
 		reason := submissionResult.(FindSubmissionStoreRejected).Reason
-		return Submission{}, &reason
-	}
-	if found.Value.SubmitterID == actor.ID {
-		return found.Value, nil
+		return Submission{}, task.Task{}, &reason
 	}
 	taskResult := service.taskStore.FindTask(ctx, found.Value.TaskID)
 	taskFound, taskMatched := taskResult.(task.FindTaskStoreAccepted)
 	if !taskMatched {
 		reason := taskResult.(task.FindTaskStoreRejected).Reason
-		return Submission{}, &reason
+		return Submission{}, task.Task{}, &reason
+	}
+	if found.Value.SubmitterID == actor.ID {
+		return found.Value, taskFound.Value, nil
 	}
 	if rejected, denied := service.requireReviewPermission(ctx, actor.ID, taskFound.Value).(reviewPermissionRejected); denied {
-		return Submission{}, &rejected.reason
+		return Submission{}, task.Task{}, &rejected.reason
 	}
-	return found.Value, nil
+	return found.Value, taskFound.Value, nil
 }
