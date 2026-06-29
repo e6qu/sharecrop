@@ -51,12 +51,15 @@ type privacyRequest struct {
 }
 
 type privacyRequestResponse struct {
-	ID             string `json:"id"`
-	Kind           string `json:"kind"`
-	Status         string `json:"status"`
-	RequestedBy    string `json:"requested_by"`
-	ExportJSON     string `json:"export_json"`
-	ResolutionNote string `json:"resolution_note"`
+	ID                 string `json:"id"`
+	Kind               string `json:"kind"`
+	Status             string `json:"status"`
+	RequestedBy        string `json:"requested_by"`
+	ExportJSON         string `json:"export_json"`
+	ResolutionNote     string `json:"resolution_note"`
+	CreatedAt          string `json:"created_at"`
+	ResolvedAt         string `json:"resolved_at"`
+	RedactedFieldCount int    `json:"redacted_field_count"`
 }
 
 func (privacyRequestResponse) writableResponse() {}
@@ -305,10 +308,12 @@ type submissionValidationErrorResponse struct {
 }
 
 type submissionSensitiveFieldResponse struct {
-	Path      string `json:"path"`
-	Category  string `json:"category"`
-	Retention string `json:"retention"`
-	Redaction string `json:"redaction"`
+	Path       string `json:"path"`
+	Category   string `json:"category"`
+	Retention  string `json:"retention"`
+	Redaction  string `json:"redaction"`
+	State      string `json:"state"`
+	RedactedAt string `json:"redacted_at"`
 }
 
 type submissionResponse struct {

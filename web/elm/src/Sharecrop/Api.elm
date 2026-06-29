@@ -365,6 +365,7 @@ routeLoadCmd token subjectId page =
             Cmd.batch
                 [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (Http.expectJson OperationsReceived Admin.operationsResponseDecoder)
                 , fetchAuditEvents token "" "" ""
+                , fetchAdminPrivacyRequests token
                 ]
 
         InboxPage ->
@@ -992,6 +993,20 @@ fetchAuditEvents token actionFilter subjectKindFilter subjectIDFilter =
                 "&subject_id=" ++ Url.percentEncode (String.trim subjectIDFilter)
     in
     authorizedRequest "GET" token ("/api/admin/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0" ++ actionQuery ++ subjectKindQuery ++ subjectIDQuery) Http.emptyBody (Http.expectJson AuditEventsReceived Admin.auditEventsResponseDecoder)
+
+
+fetchAdminPrivacyRequests : String -> Cmd Msg
+fetchAdminPrivacyRequests token =
+    authorizedRequest "GET" token "/api/admin/privacy-requests?limit=25&offset=0" Http.emptyBody (Http.expectJson AdminPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
+
+
+resolveAdminPrivacyRequest : String -> String -> String -> Cmd Msg
+resolveAdminPrivacyRequest token requestId resolutionNote =
+    authorizedRequest "POST"
+        token
+        ("/api/admin/privacy-requests/" ++ requestId ++ "/resolve")
+        (Http.jsonBody (Encode.object [ ( "resolution_note", Encode.string resolutionNote ) ]))
+        (Http.expectJson AdminPrivacyRequestResolved Privacy.privacyRequestResponseDecoder)
 
 
 fetchOrgTeams : String -> String -> Cmd Msg

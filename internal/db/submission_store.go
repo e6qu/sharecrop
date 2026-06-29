@@ -222,7 +222,9 @@ func submissionSelectSQL() string {
 						'path', submission_sensitive_fields.path,
 						'category', submission_sensitive_fields.category,
 						'retention', submission_sensitive_fields.retention,
-						'redaction', submission_sensitive_fields.redaction
+						'redaction', submission_sensitive_fields.redaction,
+						'state', submission_sensitive_fields.state,
+						'redacted_at', coalesce(to_char(submission_sensitive_fields.redacted_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
 					)
 					order by submission_sensitive_fields.field_index
 				)

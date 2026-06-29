@@ -211,14 +211,14 @@ Implemented:
 - Choose provisioned roles, update roles, deactivate members, and review
   organization-owned task submissions when authorized.
 - Organization detail exposes an operations dashboard with loaded balance,
-  member, team, collectible, and task-state counts.
+  ledger rows, org-scoped audit rows, member, team, collectible, and task-state
+  counts.
+- Team and organization task queues have persisted saved views.
 
 Missing or partial:
 
-- Organization operations dashboard metrics are limited to data already loaded
-  by the organization detail page; organization ledger history and org-scoped
-  audit history are not separate dashboard panels.
-- Saved queue views are in-session only.
+- Organization operations dashboard rollups are still oriented around loaded
+  dashboard data rather than reporting queries for long time windows.
 
 ### Agent Operator
 
@@ -250,11 +250,16 @@ Implemented:
 
 - Platform admins are configured through `SHARECROP_ADMIN_USER_IDS`.
 - Admins can award catalog collectibles.
+- Admins can inspect operations status, audit events, and privacy requests from
+  the browser admin page.
+- Admins can resolve queued privacy requests from the browser. Data-export
+  resolution stores export JSON; sensitive-field deletion resolution marks
+  delete-on-request sensitive-field metadata as redacted and records affected
+  counts.
 
 Missing or partial:
 
 - No browser/admin page for configuring admins.
-- No audit view for admin awards, ledger settlement, refunds, or disputes.
 - No moderation workflow for abusive tasks/submissions/comments.
 - No platform fee, billing, payout, or external wallet model.
 
@@ -268,12 +273,17 @@ Implemented:
   users can see which response paths are governed by retention/redaction policy.
 - Users can create audited privacy requests for data export or
   sensitive-field deletion.
+- Platform admins can list and resolve privacy requests.
+- Resolution stores data-export JSON or marks delete-on-request sensitive-field
+  metadata as redacted without removing core rows.
+- Sensitive-field redaction records affected counts and per-field redaction
+  events.
 
 Missing or partial:
 
-- No retention job or deletion workflow for fields marked `delete_on_request`.
-- No audit events for sensitive-field access/deletion.
-- No export generator or privacy request operator resolution workflow.
+- Retention automation remains a product job surface rather than a background
+  scheduler.
+- Sensitive-field access events are not recorded.
 - No attachment/object-storage model.
 
 ### Lists, Search, And Navigation
@@ -289,8 +299,10 @@ Missing or partial:
 
 - Browser task and discovery pages expose pagination controls. Some other list
   pages still rely on their first page or selector-local paging.
-- Full-text search and persisted saved views are not implemented.
-- Several flows require copying raw UUIDs between pages.
+- Full-text search is not implemented.
+- Raw UUIDs remain visible in links, protocol surfaces, metadata, audit rows,
+  and API/MCP examples. No confirmed high-traffic user-entered raw-ID flow is
+  currently listed.
 
 ## Documentation Drift Found
 

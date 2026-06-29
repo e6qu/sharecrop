@@ -94,10 +94,12 @@ func StateForValidation(outcome ValidationOutcome) State {
 }
 
 type SensitiveField struct {
-	Path      string
-	Category  string
-	Retention string
-	Redaction string
+	Path       string
+	Category   string
+	Retention  string
+	Redaction  string
+	State      string
+	RedactedAt string
 }
 
 type ReviewNote struct {

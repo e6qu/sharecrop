@@ -71,6 +71,28 @@ test("demo organization page shows a funded balance, not a stuck spinner", async
   await expect(page.getByText("Balance: Loading…")).toHaveCount(0);
 });
 
+test("demo admin resolves privacy requests from the browser", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1250 credits")).toBeVisible();
+
+  await page.getByTestId("nav-profile").click();
+  await page.getByTestId("request-data-export").click();
+  await expect(page.getByTestId("account-message")).toContainText(
+    "Privacy request queued",
+  );
+
+  await page.getByTestId("nav-admin").click();
+  await expect(page.getByTestId("admin-privacy-request")).toHaveCount(1);
+  await page.getByTestId("admin-privacy-note").fill("Export generated");
+  await page.getByTestId("admin-resolve-privacy").click();
+  await expect(page.getByTestId("admin-message")).toContainText(
+    "Privacy request resolved.",
+  );
+  await expect(page.getByTestId("admin-privacy-export")).toContainText(
+    "user-mara",
+  );
+});
+
 test("demo owner can refund a funded task they own", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();

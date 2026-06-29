@@ -23,14 +23,15 @@ const (
 )
 
 type PrivacyRequestRecord struct {
-	ID             string
-	RequestedBy    core.UserID
-	Kind           string
-	State          string
-	ExportJSON     string
-	ResolutionNote string
-	CreatedAt      time.Time
-	ResolvedAt     time.Time
+	ID                 string
+	RequestedBy        core.UserID
+	Kind               string
+	State              string
+	ExportJSON         string
+	ResolutionNote     string
+	CreatedAt          time.Time
+	ResolvedAt         time.Time
+	RedactedFieldCount int
 }
 
 type PrivacyMutationResult interface {
@@ -122,7 +123,7 @@ func (service *memoryPrivacyService) Resolve(_ context.Context, requestID string
 		record.ResolutionNote = strings.TrimSpace(note)
 		record.ResolvedAt = time.Now().UTC()
 		if record.Kind == privacyKindDataExport {
-			exportBytes, err := json.Marshal(map[string]string{"user_id": record.RequestedBy.String()})
+			exportBytes, err := json.Marshal(map[string]string{"user_id": record.RequestedBy.String(), "export_scope": "memory"})
 			if err != nil {
 				return PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "privacy export encoding failed")}
 			}
@@ -266,13 +267,20 @@ func (server Server) recordPrivacyAuditWithSubjectID(w http.ResponseWriter, r *h
 }
 
 func privacyRequestToResponse(record PrivacyRequestRecord) privacyRequestResponse {
+	resolvedAt := ""
+	if !record.ResolvedAt.IsZero() {
+		resolvedAt = record.ResolvedAt.Format(time.RFC3339)
+	}
 	return privacyRequestResponse{
-		ID:             record.ID,
-		Kind:           record.Kind,
-		Status:         record.State,
-		RequestedBy:    record.RequestedBy.String(),
-		ExportJSON:     record.ExportJSON,
-		ResolutionNote: record.ResolutionNote,
+		ID:                 record.ID,
+		Kind:               record.Kind,
+		Status:             record.State,
+		RequestedBy:        record.RequestedBy.String(),
+		ExportJSON:         record.ExportJSON,
+		ResolutionNote:     record.ResolutionNote,
+		CreatedAt:          record.CreatedAt.Format(time.RFC3339),
+		ResolvedAt:         resolvedAt,
+		RedactedFieldCount: record.RedactedFieldCount,
 	}
 }
 

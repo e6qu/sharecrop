@@ -9,6 +9,7 @@ import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
+import Sharecrop.Generated.Privacy as Privacy
 import Sharecrop.Generated.SavedQueueViews as SavedQueueViews
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Labels exposing (httpErrorLabel, participationPolicyTag)
@@ -213,6 +214,8 @@ emptyLoggedIn response =
     , orgTeamOffset = 0
     , operations = Nothing
     , auditEvents = []
+    , adminPrivacyRequests = []
+    , adminPrivacyResolutionNote = ""
     , auditActionFilter = ""
     , auditSubjectKindFilter = ""
     , auditSubjectIDFilter = ""
@@ -258,6 +261,19 @@ replaceNotification replacement notifications =
                 notification
         )
         notifications
+
+
+replacePrivacyRequest : Privacy.PrivacyRequestResponse -> List Privacy.PrivacyRequestResponse -> List Privacy.PrivacyRequestResponse
+replacePrivacyRequest replacement requests =
+    List.map
+        (\request ->
+            if request.id == replacement.id then
+                replacement
+
+            else
+                request
+        )
+        requests
 
 
 teamWorkSavedViewScope : String
@@ -411,7 +427,7 @@ enterPage page state =
             { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkTypeFilter = "", teamWorkSort = "newest", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
-            { state | page = page, operations = Nothing, auditEvents = [], auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
+            { state | page = page, operations = Nothing, auditEvents = [], adminPrivacyRequests = [], adminPrivacyResolutionNote = "", auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         InboxPage ->
             { state | page = page, notifications = [], inboxMessage = Nothing }
@@ -1969,6 +1985,24 @@ update msg model =
 
         AuditEventsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AdminPrivacyRequestsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = response.requests, adminMessage = Nothing }), Cmd.none )
+
+        AdminPrivacyRequestsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AdminPrivacyResolutionNoteChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyResolutionNote = value }), Cmd.none )
+
+        ResolveAdminPrivacyRequestClicked requestId ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.resolveAdminPrivacyRequest state.accessToken requestId state.adminPrivacyResolutionNote ))
+
+        AdminPrivacyRequestResolved (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = replacePrivacyRequest response state.adminPrivacyRequests, adminPrivacyResolutionNote = "", adminMessage = Just "Privacy request resolved." }), Cmd.none )
+
+        AdminPrivacyRequestResolved (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         AuditActionFilterChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | auditActionFilter = value }), Cmd.none )

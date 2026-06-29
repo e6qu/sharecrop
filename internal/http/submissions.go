@@ -168,10 +168,12 @@ func submissionSensitiveFieldsToResponse(fields []submission.SensitiveField) []s
 	for fieldIndex := range fields {
 		field := fields[fieldIndex]
 		values = append(values, submissionSensitiveFieldResponse{
-			Path:      field.Path,
-			Category:  field.Category,
-			Retention: field.Retention,
-			Redaction: field.Redaction,
+			Path:       field.Path,
+			Category:   field.Category,
+			Retention:  field.Retention,
+			Redaction:  field.Redaction,
+			State:      field.State,
+			RedactedAt: field.RedactedAt,
 		})
 	}
 	return values

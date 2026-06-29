@@ -6,7 +6,26 @@ The backendless demo currently uses `site/demo/backend.js`, an in-browser fake b
 
 A Go/WASM demo backend is viable only after the application services can run against explicit browser storage adapters. The current production server wires domain services through Postgres-backed stores, auth/session stores, rate-limit buckets, audit stores, notification stores, and MCP stores. A browser build cannot reuse pgx, migrations, process-local server wiring, or `net/http` handlers directly.
 
-Current decision: keep `site/demo/backend.js` as the backendless demo backend. The shared scenario suite now covers multi-actor reservation approval, worker submission, owner acceptance, payouts/tips, and notifications. That coverage is a better next guardrail than starting a WASM replacement before browser storage adapters exist.
+Current decision: keep `site/demo/backend.js` as the backendless demo backend. The shared scenario suite now covers multi-actor reservation approval, worker submission, owner acceptance, payouts/tips, notifications, privacy request resolution, and sensitive-field redaction state. That coverage is a better next guardrail than starting a WASM replacement before browser storage adapters exist.
+
+## Compile Check
+
+The current Go codebase compiles to `js/wasm` for representative packages and
+the main command:
+
+- `GOOS=js GOARCH=wasm go test -c -o /private/tmp/sharecrop-core-schema-submission.test.wasm ./internal/submission`
+- `GOOS=js GOARCH=wasm go test -c -o /private/tmp/sharecrop-http.test.wasm ./internal/http`
+- `GOOS=js GOARCH=wasm go build -o /private/tmp/sharecrop-cmd.wasm ./cmd/sharecrop`
+
+Observed artifact sizes on the local build were about 6.1 MB for the submission
+test package, 12 MB for the HTTP test package, and 24 MB for the command build.
+Plain `go test` produced WASM test binaries but could not execute them natively;
+running those tests requires a JS/WASM test runner.
+
+The compile check means basic Go/WASM compatibility is not the blocker. The
+blockers are request adaptation, browser storage adapters, deterministic seed
+and reset, startup size, and running the shared scenario parity suite against a
+WASM request handler.
 
 ## Required Shape
 
@@ -28,4 +47,4 @@ Do not replace `site/demo/backend.js` until the WASM path can satisfy these gate
 
 ## Next Spike Step
 
-Create a narrow WASM request adapter around one vertical slice only after explicit browser storage adapters exist for that slice. If the slice requires broad store rewrites or hidden substitute behavior, keep the JavaScript demo backend and expand shared parity tests instead.
+Create a narrow WASM request adapter around one vertical slice only after explicit browser storage adapters exist for that slice. The first suitable slice is privacy requests because it has a compact route surface, clear persistence needs, and shared scenario coverage. If the slice requires broad store rewrites or hidden substitute behavior, keep the JavaScript demo backend and expand shared parity tests instead.

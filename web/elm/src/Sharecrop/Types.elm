@@ -249,6 +249,8 @@ type alias LoggedInModel =
     , orgTeamOffset : Int
     , operations : Maybe Admin.OperationsResponse
     , auditEvents : List Admin.AuditEventResponse
+    , adminPrivacyRequests : List Privacy.PrivacyRequestResponse
+    , adminPrivacyResolutionNote : String
     , auditActionFilter : String
     , auditSubjectKindFilter : String
     , auditSubjectIDFilter : String
@@ -546,6 +548,10 @@ type Msg
     | PrivacyRequestReceived (Result Http.Error Privacy.PrivacyRequestResponse)
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
+    | AdminPrivacyRequestsReceived (Result Http.Error Privacy.PrivacyRequestsResponse)
+    | AdminPrivacyResolutionNoteChanged String
+    | ResolveAdminPrivacyRequestClicked String
+    | AdminPrivacyRequestResolved (Result Http.Error Privacy.PrivacyRequestResponse)
     | AuditActionFilterChanged String
     | AuditSubjectKindFilterChanged String
     | AuditSubjectIDFilterChanged String

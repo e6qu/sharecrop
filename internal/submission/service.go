@@ -362,10 +362,12 @@ func sensitiveFieldsFor(schemaValue schema.Schema, value schema.Value) []Sensiti
 	for fieldIndex := range built.Fields {
 		field := built.Fields[fieldIndex]
 		fields = append(fields, SensitiveField{
-			Path:      field.Path.String(),
-			Category:  field.Sensitivity.Category.String(),
-			Retention: field.Sensitivity.Retention.String(),
-			Redaction: field.Sensitivity.Redaction.String(),
+			Path:       field.Path.String(),
+			Category:   field.Sensitivity.Category.String(),
+			Retention:  field.Sensitivity.Retention.String(),
+			Redaction:  field.Sensitivity.Redaction.String(),
+			State:      "active",
+			RedactedAt: "",
 		})
 	}
 	return fields

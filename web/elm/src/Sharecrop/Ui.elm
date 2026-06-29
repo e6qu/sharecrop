@@ -124,4 +124,4 @@ textareaClass =
 
 codeBlockClass : String
 codeBlockClass =
-    "overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100"
+    "whitespace-pre-wrap break-words rounded-md bg-slate-900 p-3 text-xs text-slate-100"

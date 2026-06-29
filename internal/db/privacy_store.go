@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -40,7 +41,7 @@ func (store PrivacyStore) Create(ctx context.Context, requester core.UserID, kin
 
 func (store PrivacyStore) ListForRequester(ctx context.Context, requester core.UserID, page core.Page) httpserver.PrivacyListResult {
 	rows, err := store.pool.Query(ctx, `
-		select id::text, requested_by_user_id::text, kind, state, export_json, resolution_note, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz)
+		select id::text, requested_by_user_id::text, kind, state, export_json, resolution_note, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz), redacted_field_count
 		from privacy_requests
 		where requested_by_user_id = $1
 		order by created_at desc, id desc
@@ -54,7 +55,7 @@ func (store PrivacyStore) ListForRequester(ctx context.Context, requester core.U
 
 func (store PrivacyStore) ListAll(ctx context.Context, page core.Page) httpserver.PrivacyListResult {
 	rows, err := store.pool.Query(ctx, `
-		select id::text, requested_by_user_id::text, kind, state, export_json, resolution_note, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz)
+		select id::text, requested_by_user_id::text, kind, state, export_json, resolution_note, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz), redacted_field_count
 		from privacy_requests
 		order by created_at desc, id desc
 		limit $1 offset $2
@@ -73,7 +74,7 @@ func (store PrivacyStore) Resolve(ctx context.Context, requestID string, note st
 	defer tx.Rollback(ctx)
 
 	row := tx.QueryRow(ctx, `
-		select id::text, requested_by_user_id::text, kind, state, export_json, resolution_note, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz)
+		select id::text, requested_by_user_id::text, kind, state, export_json, resolution_note, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz), redacted_field_count
 		from privacy_requests
 		where id = $1
 		for update
@@ -86,10 +87,14 @@ func (store PrivacyStore) Resolve(ctx context.Context, requestID string, note st
 	var existingNote string
 	var createdAt time.Time
 	var resolvedAt time.Time
-	if err := row.Scan(&rawID, &rawRequesterID, &kind, &state, &exportJSON, &existingNote, &createdAt, &resolvedAt); err != nil {
+	var redactedFieldCount int
+	if err := row.Scan(&rawID, &rawRequesterID, &kind, &state, &exportJSON, &existingNote, &createdAt, &resolvedAt, &redactedFieldCount); err != nil {
+		if err == pgx.ErrNoRows {
+			return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "privacy request was not found")}
+		}
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan privacy request failed")}
 	}
-	recordResult := parsePrivacyRequestRecord(rawID, rawRequesterID, kind, state, exportJSON, existingNote, createdAt, resolvedAt)
+	recordResult := parsePrivacyRequestRecord(rawID, rawRequesterID, kind, state, exportJSON, existingNote, createdAt, resolvedAt, redactedFieldCount)
 	record, matched := recordResult.(privacyRequestRowAccepted)
 	if !matched {
 		return httpserver.PrivacyRequestMutationRejected{Reason: recordResult.(privacyRequestRowRejected).reason}
@@ -103,34 +108,180 @@ func (store PrivacyStore) Resolve(ctx context.Context, requestID string, note st
 	resolved.ResolutionNote = strings.TrimSpace(note)
 	resolved.ResolvedAt = time.Now().UTC()
 	if resolved.Kind == "data_export" {
-		exportBytes, err := json.Marshal(map[string]string{"user_id": resolved.RequestedBy.String()})
+		exportJSON, err := store.exportPrivacyData(ctx, tx, resolved.RequestedBy)
 		if err != nil {
-			return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "privacy export encoding failed")}
+			return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 		}
-		resolved.ExportJSON = string(exportBytes)
+		resolved.ExportJSON = exportJSON
 	}
 	if resolved.Kind == "sensitive_field_deletion" {
-		if _, err := tx.Exec(ctx, `
+		rows, err := tx.Query(ctx, `
 			update submission_sensitive_fields
 			set state = 'redacted', redacted_at = now()
 			where state = 'active'
 			and retention = 'delete_on_request'
 			and submission_id in (select id from submissions where user_id = $1)
-		`, resolved.RequestedBy.String()); err != nil {
+			returning submission_id::text, path
+		`, resolved.RequestedBy.String())
+		if err != nil {
 			return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "redact sensitive fields failed")}
 		}
+		redactedRows, readErr := scanRedactedSensitiveFieldRows(rows)
+		if readErr != nil {
+			return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, readErr.Error())}
+		}
+		for rowIndex := range redactedRows {
+			eventIDResult := id.New()
+			eventID, eventIDMatched := eventIDResult.(id.IDCreated)
+			if !eventIDMatched {
+				return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, eventIDResult.(id.IDRejected).Description)}
+			}
+			if _, err := tx.Exec(ctx, `
+				insert into submission_sensitive_field_events (id, submission_id, actor_user_id, action, field_path)
+				values ($1, $2, $3, 'sensitive_field_redacted', $4)
+			`, eventID.Value.String(), redactedRows[rowIndex].submissionID, resolved.RequestedBy.String(), redactedRows[rowIndex].path); err != nil {
+				return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record sensitive field redaction event failed")}
+			}
+		}
+		resolved.RedactedFieldCount = len(redactedRows)
 	}
 	if _, err := tx.Exec(ctx, `
 		update privacy_requests
-		set state = 'resolved', export_json = $2, resolution_note = $3, resolved_at = $4
+		set state = 'resolved', export_json = $2, resolution_note = $3, resolved_at = $4, redacted_field_count = $5
 		where id = $1
-	`, resolved.ID, resolved.ExportJSON, resolved.ResolutionNote, resolved.ResolvedAt); err != nil {
+	`, resolved.ID, resolved.ExportJSON, resolved.ResolutionNote, resolved.ResolvedAt, resolved.RedactedFieldCount); err != nil {
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "resolve privacy request failed")}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit privacy request resolution failed")}
 	}
 	return httpserver.PrivacyRequestSaved{Value: resolved}
+}
+
+type privacyExportDocument struct {
+	UserID          string                      `json:"user_id"`
+	Email           string                      `json:"email"`
+	GeneratedAt     string                      `json:"generated_at"`
+	Submissions     []privacyExportSubmission   `json:"submissions"`
+	SensitiveFields []privacyExportSensitive    `json:"sensitive_fields"`
+	Notifications   []privacyExportNotification `json:"notifications"`
+	LedgerEntries   []privacyExportLedgerEntry  `json:"ledger_entries"`
+	PrivacyRequests []privacyExportRequest      `json:"privacy_requests"`
+}
+
+type privacyExportSubmission struct {
+	ID           string `json:"id"`
+	TaskID       string `json:"task_id"`
+	State        string `json:"state"`
+	ResponseJSON string `json:"response_json"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type privacyExportSensitive struct {
+	SubmissionID string `json:"submission_id"`
+	Path         string `json:"path"`
+	Category     string `json:"category"`
+	Retention    string `json:"retention"`
+	Redaction    string `json:"redaction"`
+	State        string `json:"state"`
+	RedactedAt   string `json:"redacted_at"`
+}
+
+type privacyExportNotification struct {
+	ID           string `json:"id"`
+	Kind         string `json:"kind"`
+	SubjectKind  string `json:"subject_kind"`
+	SubjectID    string `json:"subject_id"`
+	State        string `json:"state"`
+	MetadataJSON string `json:"metadata_json"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type privacyExportLedgerEntry struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Amount    int64  `json:"amount"`
+	TaskID    string `json:"task_id"`
+	CreatedAt string `json:"created_at"`
+}
+
+type privacyExportRequest struct {
+	ID                 string `json:"id"`
+	Kind               string `json:"kind"`
+	State              string `json:"state"`
+	CreatedAt          string `json:"created_at"`
+	ResolvedAt         string `json:"resolved_at"`
+	RedactedFieldCount int    `json:"redacted_field_count"`
+}
+
+func (store PrivacyStore) exportPrivacyData(ctx context.Context, tx pgx.Tx, requester core.UserID) (string, error) {
+	document := privacyExportDocument{UserID: requester.String(), GeneratedAt: time.Now().UTC().Format(time.RFC3339)}
+	if err := tx.QueryRow(ctx, `
+		select email
+		from users
+		where id = $1
+	`, requester.String()).Scan(&document.Email); err != nil {
+		if err == pgx.ErrNoRows {
+			return "", errors.New("privacy export user was not found")
+		}
+		return "", errors.New("privacy export user query failed")
+	}
+	submissions, err := scanPrivacyExportSubmissions(tx.Query(ctx, `
+		select id::text, task_id::text, state, response_json::text, created_at
+		from submissions
+		where user_id = $1
+		order by created_at desc, id desc
+	`, requester.String()))
+	if err != nil {
+		return "", err
+	}
+	document.Submissions = submissions
+	sensitiveFields, err := scanPrivacyExportSensitiveFields(tx.Query(ctx, `
+		select submission_id::text, path, category, retention, redaction, state, coalesce(to_char(redacted_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
+		from submission_sensitive_fields
+		where submission_id in (select id from submissions where user_id = $1)
+		order by submission_id, field_index
+	`, requester.String()))
+	if err != nil {
+		return "", err
+	}
+	document.SensitiveFields = sensitiveFields
+	notifications, err := scanPrivacyExportNotifications(tx.Query(ctx, `
+		select id::text, kind, subject_kind, subject_id, state, metadata_json::text, created_at
+		from notifications
+		where recipient_user_id = $1
+		order by created_at desc, id desc
+	`, requester.String()))
+	if err != nil {
+		return "", err
+	}
+	document.Notifications = notifications
+	ledgerEntries, err := scanPrivacyExportLedgerEntries(tx.Query(ctx, `
+		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, ''), ledger_entries.created_at
+		from ledger_entries
+		join credit_accounts on credit_accounts.id = ledger_entries.account_id
+		where credit_accounts.owner_kind = 'user' and credit_accounts.user_id = $1
+		order by ledger_entries.created_at desc, ledger_entries.id desc
+	`, requester.String()))
+	if err != nil {
+		return "", err
+	}
+	document.LedgerEntries = ledgerEntries
+	requests, err := scanPrivacyExportRequests(tx.Query(ctx, `
+		select id::text, kind, state, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz), redacted_field_count
+		from privacy_requests
+		where requested_by_user_id = $1
+		order by created_at desc, id desc
+	`, requester.String()))
+	if err != nil {
+		return "", err
+	}
+	document.PrivacyRequests = requests
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		return "", errors.New("privacy export encoding failed")
+	}
+	return string(encoded), nil
 }
 
 type privacyRequestRowResult interface {
@@ -161,10 +312,11 @@ func scanPrivacyRequests(rows pgx.Rows) httpserver.PrivacyListResult {
 		var note string
 		var createdAt time.Time
 		var resolvedAt time.Time
-		if err := rows.Scan(&rawID, &rawRequesterID, &kind, &state, &exportJSON, &note, &createdAt, &resolvedAt); err != nil {
+		var redactedFieldCount int
+		if err := rows.Scan(&rawID, &rawRequesterID, &kind, &state, &exportJSON, &note, &createdAt, &resolvedAt, &redactedFieldCount); err != nil {
 			return httpserver.PrivacyRequestListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan privacy request failed")}
 		}
-		result := parsePrivacyRequestRecord(rawID, rawRequesterID, kind, state, exportJSON, note, createdAt, resolvedAt)
+		result := parsePrivacyRequestRecord(rawID, rawRequesterID, kind, state, exportJSON, note, createdAt, resolvedAt, redactedFieldCount)
 		accepted, matched := result.(privacyRequestRowAccepted)
 		if !matched {
 			return httpserver.PrivacyRequestListRejected{Reason: result.(privacyRequestRowRejected).reason}
@@ -177,20 +329,149 @@ func scanPrivacyRequests(rows pgx.Rows) httpserver.PrivacyListResult {
 	return httpserver.PrivacyRequestsListed{Values: requests}
 }
 
-func parsePrivacyRequestRecord(rawID string, rawRequesterID string, kind string, state string, exportJSON string, note string, createdAt time.Time, resolvedAt time.Time) privacyRequestRowResult {
+func parsePrivacyRequestRecord(rawID string, rawRequesterID string, kind string, state string, exportJSON string, note string, createdAt time.Time, resolvedAt time.Time, redactedFieldCount int) privacyRequestRowResult {
 	requesterResult := core.ParseUserID(rawRequesterID)
 	requester, matched := requesterResult.(core.UserIDCreated)
 	if !matched {
 		return privacyRequestRowRejected{reason: requesterResult.(core.UserIDRejected).Reason}
 	}
 	return privacyRequestRowAccepted{value: httpserver.PrivacyRequestRecord{
-		ID:             rawID,
-		RequestedBy:    requester.Value,
-		Kind:           kind,
-		State:          state,
-		ExportJSON:     exportJSON,
-		ResolutionNote: note,
-		CreatedAt:      createdAt,
-		ResolvedAt:     resolvedAt,
+		ID:                 rawID,
+		RequestedBy:        requester.Value,
+		Kind:               kind,
+		State:              state,
+		ExportJSON:         exportJSON,
+		ResolutionNote:     note,
+		CreatedAt:          createdAt,
+		ResolvedAt:         resolvedAt,
+		RedactedFieldCount: redactedFieldCount,
 	}}
+}
+
+type redactedSensitiveFieldRow struct {
+	submissionID string
+	path         string
+}
+
+func scanRedactedSensitiveFieldRows(rows pgx.Rows) ([]redactedSensitiveFieldRow, error) {
+	defer rows.Close()
+	values := make([]redactedSensitiveFieldRow, 0)
+	for rows.Next() {
+		var value redactedSensitiveFieldRow
+		if err := rows.Scan(&value.submissionID, &value.path); err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+func scanPrivacyExportSubmissions(rows pgx.Rows, queryErr error) ([]privacyExportSubmission, error) {
+	if queryErr != nil {
+		return nil, errors.New("privacy export submissions query failed: " + queryErr.Error())
+	}
+	defer rows.Close()
+	values := make([]privacyExportSubmission, 0)
+	for rows.Next() {
+		var value privacyExportSubmission
+		var createdAt time.Time
+		if err := rows.Scan(&value.ID, &value.TaskID, &value.State, &value.ResponseJSON, &createdAt); err != nil {
+			return nil, errors.New("privacy export submissions scan failed")
+		}
+		value.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.New("privacy export submissions read failed")
+	}
+	return values, nil
+}
+
+func scanPrivacyExportSensitiveFields(rows pgx.Rows, queryErr error) ([]privacyExportSensitive, error) {
+	if queryErr != nil {
+		return nil, errors.New("privacy export sensitive fields query failed: " + queryErr.Error())
+	}
+	defer rows.Close()
+	values := make([]privacyExportSensitive, 0)
+	for rows.Next() {
+		var value privacyExportSensitive
+		if err := rows.Scan(&value.SubmissionID, &value.Path, &value.Category, &value.Retention, &value.Redaction, &value.State, &value.RedactedAt); err != nil {
+			return nil, errors.New("privacy export sensitive fields scan failed")
+		}
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.New("privacy export sensitive fields read failed")
+	}
+	return values, nil
+}
+
+func scanPrivacyExportNotifications(rows pgx.Rows, queryErr error) ([]privacyExportNotification, error) {
+	if queryErr != nil {
+		return nil, errors.New("privacy export notifications query failed: " + queryErr.Error())
+	}
+	defer rows.Close()
+	values := make([]privacyExportNotification, 0)
+	for rows.Next() {
+		var value privacyExportNotification
+		var createdAt time.Time
+		if err := rows.Scan(&value.ID, &value.Kind, &value.SubjectKind, &value.SubjectID, &value.State, &value.MetadataJSON, &createdAt); err != nil {
+			return nil, errors.New("privacy export notifications scan failed")
+		}
+		value.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.New("privacy export notifications read failed")
+	}
+	return values, nil
+}
+
+func scanPrivacyExportLedgerEntries(rows pgx.Rows, queryErr error) ([]privacyExportLedgerEntry, error) {
+	if queryErr != nil {
+		return nil, errors.New("privacy export ledger query failed: " + queryErr.Error())
+	}
+	defer rows.Close()
+	values := make([]privacyExportLedgerEntry, 0)
+	for rows.Next() {
+		var value privacyExportLedgerEntry
+		var createdAt time.Time
+		if err := rows.Scan(&value.ID, &value.Kind, &value.Amount, &value.TaskID, &createdAt); err != nil {
+			return nil, errors.New("privacy export ledger scan failed")
+		}
+		value.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.New("privacy export ledger read failed")
+	}
+	return values, nil
+}
+
+func scanPrivacyExportRequests(rows pgx.Rows, queryErr error) ([]privacyExportRequest, error) {
+	if queryErr != nil {
+		return nil, errors.New("privacy export requests query failed: " + queryErr.Error())
+	}
+	defer rows.Close()
+	values := make([]privacyExportRequest, 0)
+	for rows.Next() {
+		var value privacyExportRequest
+		var createdAt time.Time
+		var resolvedAt time.Time
+		if err := rows.Scan(&value.ID, &value.Kind, &value.State, &createdAt, &resolvedAt, &value.RedactedFieldCount); err != nil {
+			return nil, errors.New("privacy export requests scan failed")
+		}
+		value.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		if !resolvedAt.IsZero() {
+			value.ResolvedAt = resolvedAt.UTC().Format(time.RFC3339)
+		}
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.New("privacy export requests read failed")
+	}
+	return values, nil
 }
