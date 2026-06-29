@@ -25,6 +25,7 @@ type collectibleResponse struct {
 	TransferPolicy string `json:"transfer_policy"`
 	OwnerID        string `json:"owner_id"`
 	OwnerKind      string `json:"owner_kind"`
+	OrganizationID string `json:"organization_id"`
 	Art            string `json:"art"`
 }
 
@@ -49,9 +50,10 @@ type collectibleRewardRequest struct {
 }
 
 type awardCollectibleRequest struct {
-	Slug          string `json:"slug"`
-	RecipientKind string `json:"recipient_kind"`
-	RecipientID   string `json:"recipient_id"`
+	Slug           string `json:"slug"`
+	RecipientKind  string `json:"recipient_kind"`
+	RecipientID    string `json:"recipient_id"`
+	OrganizationID string `json:"organization_id"`
 }
 
 type transferCollectibleRequest struct {
@@ -97,7 +99,7 @@ func (server Server) mintCollectible(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.assetService.Mint(r.Context(), assets.CollectibleOwnerKindUser, actor.subject.ID.String(), name.Value, kind.Value, policy.Value, request.Art)
+	result := server.assetService.Mint(r.Context(), assets.CollectibleOwnerKindUser, actor.subject.ID.String(), "", name.Value, kind.Value, policy.Value, request.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
 		writeDomainError(w, result.(assets.MintRejected).Reason)
@@ -173,7 +175,7 @@ func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.assetService.Mint(r.Context(), recipientKind, strings.TrimSpace(request.RecipientID), name.Value, entry.Kind, entry.Policy, entry.Art)
+	result := server.assetService.Mint(r.Context(), recipientKind, strings.TrimSpace(request.RecipientID), strings.TrimSpace(request.OrganizationID), name.Value, entry.Kind, entry.Policy, entry.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
 		writeDomainError(w, result.(assets.MintRejected).Reason)
@@ -353,6 +355,7 @@ func collectibleToResponse(value assets.Collectible) collectibleResponse {
 		TransferPolicy: value.Policy.String(),
 		OwnerID:        value.OwnerID,
 		OwnerKind:      value.OwnerKind,
+		OrganizationID: value.OrganizationID,
 		Art:            value.Art,
 	}
 }

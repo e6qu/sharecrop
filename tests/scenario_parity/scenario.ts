@@ -103,6 +103,7 @@ function assertCollectibleShape(collectible: JsonRecord): void {
     "transfer_policy",
     "owner_id",
     "owner_kind",
+    "organization_id",
     "art",
   ].forEach((key) => requireString(collectible, key));
 }
@@ -250,6 +251,69 @@ export async function runSharedScenarioParity(
     requireString(transferredCollectible.json, "owner_id") ===
       transferRecipient.subjectID,
     "transferred collectible owner must be the recipient",
+  );
+
+  const rewardCollectible = await client.request(
+    "POST",
+    "/api/collectibles",
+    {
+      name: uniqueName("Scenario parity reward collectible"),
+      kind: "badge",
+      transfer_policy: "non_transferable_except_payout",
+      art: "seedling",
+    },
+  );
+  assertStatus(rewardCollectible, 201, "mint reward collectible");
+  assertCollectibleShape(rewardCollectible.json);
+  const rewardCollectibleID = requireString(rewardCollectible.json, "id");
+
+  const collectibleRewardTask = await client.request("POST", "/api/tasks", {
+    owner: { kind: "user", user_id: subjectID },
+    title: uniqueName("Scenario parity collectible reward task"),
+    description: "Created to verify create-time collectible escrow and refund.",
+    visibility: { kind: "public" },
+    participation: {
+      policy: "open",
+      assignee_scope: "user",
+      reservation_expiry_hours: 48,
+    },
+    reward: {
+      kind: "collectible",
+      credit_amount: 0,
+      collectible_ids: [rewardCollectibleID],
+    },
+    response_schema_json: '{"kind":"freeform"}',
+    payload: { kind: "none", json: "" },
+  });
+  assertStatus(collectibleRewardTask, 201, "create collectible reward task");
+  assertScenario(
+    requireNumber(collectibleRewardTask.json, "reward_collectible_count") === 1,
+    "collectible reward task must report held collectible count",
+  );
+  const collectibleRewardTaskID = requireString(
+    collectibleRewardTask.json,
+    "id",
+  );
+
+  const refundedCollectibleReward = await client.request(
+    "POST",
+    `/api/tasks/${collectibleRewardTaskID}/collectible-refund`,
+    {},
+  );
+  assertStatus(refundedCollectibleReward, 200, "refund collectible reward");
+  const refundedCollectibles = requireArray(
+    refundedCollectibleReward.json,
+    "collectibles",
+  );
+  assertScenario(
+    refundedCollectibles.some((item) =>
+      requireString(requireRecord(item, "refundedCollectibles[]"), "id") ===
+        rewardCollectibleID
+    ),
+    "collectible refund must return the escrowed collectible",
+  );
+  refundedCollectibles.forEach((item) =>
+    assertCollectibleShape(requireRecord(item, "refundedCollectibles[]"))
   );
 
   const organizationName = uniqueName("Scenario parity org");

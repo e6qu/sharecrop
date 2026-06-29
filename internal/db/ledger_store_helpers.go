@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -460,6 +461,47 @@ func payCreditTip(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester 
 	}
 
 	return tipResolved{outcome: ledger.CreditTip{WorkerUserID: worker.Value, Amount: tip.Amount}}
+}
+
+func payCollectibleTip(ctx context.Context, tx pgx.Tx, requester core.UserID, rawWorkerID string, selection ledger.CollectibleTipSelection) tipResult {
+	selected, matched := selection.(ledger.CollectibleTipSelected)
+	if !matched {
+		return tipResolved{outcome: ledger.NoTip{}}
+	}
+
+	workerResult := core.ParseUserID(rawWorkerID)
+	worker, workerMatched := workerResult.(core.UserIDCreated)
+	if !workerMatched {
+		return tipRejected{reason: workerResult.(core.UserIDRejected).Reason}
+	}
+
+	collectibleResult := lockCollectible(ctx, tx, selected.ID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
+	}
+	if collectible.value.OwnerKind == assets.CollectibleOwnerKindUser && collectible.value.OwnerID == worker.Value.String() {
+		return tipResolved{outcome: ledger.CollectibleTip{WorkerUserID: worker.Value, CollectibleID: selected.ID}}
+	}
+	if collectible.value.OwnerKind != assets.CollectibleOwnerKindUser || collectible.value.OwnerID != requester.String() {
+		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to tip")}
+	}
+	if denied, matched := assets.AllowsTip(collectible.value.Policy).(assets.RewardDenied); matched {
+		return tipRejected{reason: denied.Reason}
+	}
+	if collectible.value.Policy == assets.TransferPolicyTransferableWithinOrg {
+		if reason, rejected := requireSharedCollectibleOrganization(ctx, tx, collectible.value, requester, worker.Value); rejected {
+			return tipRejected{reason: reason}
+		}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, owner_kind = 'user', state_recorded_at = now() where id = $1", selected.ID.String(), worker.Value.String()); err != nil {
+		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer collectible tip failed")}
+	}
+	return tipResolved{outcome: ledger.CollectibleTip{WorkerUserID: worker.Value, CollectibleID: selected.ID}}
 }
 
 type tipResult interface {

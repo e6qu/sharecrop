@@ -233,6 +233,7 @@
         transfer_policy: "transferable_between_users",
         owner_id: ME,
         owner_kind: "user",
+        organization_id: "",
         art: "harvest-star",
       },
       {
@@ -243,6 +244,7 @@
         transfer_policy: "transferable_between_users",
         owner_id: ME,
         owner_kind: "user",
+        organization_id: "",
         art: "golden-sickle",
       },
     ],
@@ -1385,6 +1387,11 @@
       db.orgBalances[t.fundedOrg] = (db.orgBalances[t.fundedOrg] || 0) + amount;
     } else adjustUserBalance(actorId || t.created_by, amount);
   }
+  function activeOrgMember(orgId, userId) {
+    return (db.members[orgId] || []).some((member) =>
+      member.user_id === userId && member.status === "active"
+    );
+  }
   const decide = (state, availability) => (p, _url, body, actorId) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
@@ -1508,10 +1515,34 @@
       const tipCollectibleId = (body && body.tip_collectible_id) || "";
       if (tipCollectibleId) {
         const c = db.collectibles.find((x) =>
-          x.id === tipCollectibleId && x.owner_id === actorId
+          x.id === tipCollectibleId && x.owner_kind === "user" &&
+          x.owner_id === actorId
         );
-        if (!c) return err(409, "collectible tip is not available");
+        if (!c || c.state !== "minted") {
+          return err(409, "collectible is not available to tip");
+        }
+        if (
+          c.transfer_policy !== "transferable_between_users" &&
+          c.transfer_policy !== "transferable_within_organization"
+        ) {
+          return err(409, "collectible cannot be tipped");
+        }
+        if (c.transfer_policy === "transferable_within_organization") {
+          if (!c.organization_id) {
+            return err(409, "within-organization collectible has no organization");
+          }
+          if (
+            !activeOrgMember(c.organization_id, actorId) ||
+            !activeOrgMember(c.organization_id, s.submitter_id)
+          ) {
+            return err(
+              403,
+              "within-organization collectible can only be tipped between organization members",
+            );
+          }
+        }
         c.owner_id = s.submitter_id;
+        c.owner_kind = "user";
         tippedIds.push(c.id);
         if (payoutKind === "none") payoutKind = "collectible";
         else if (payoutKind === "credit") payoutKind = "bundle";
@@ -1605,6 +1636,7 @@
         "transferable_between_users",
       owner_id: actorId,
       owner_kind: "user",
+      organization_id: "",
       art: (body && body.art) || "",
     };
     db.collectibles.push(c);
@@ -1635,6 +1667,8 @@
       transfer_policy: entry.transfer_policy,
       owner_id: recipientId,
       owner_kind: recipientKind,
+      organization_id: (body && body.organization_id) ||
+        (recipientKind === "organization" ? recipientId : ""),
       art: entry.art,
     };
     db.collectibles.push(c);

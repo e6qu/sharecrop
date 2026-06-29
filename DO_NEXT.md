@@ -4,12 +4,18 @@ Current priority from [docs/application_readiness_review.md](./docs/application_
 
 Next recommended work:
 
-1. Keep expanding shared scenario parity as new user-visible API surfaces are added. The current suite covers multi-actor reservation approval, worker submission, owner acceptance, payouts/tips, and notifications.
-2. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
-3. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
-4. Do not replace `site/demo/backend.js` with WASM until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
+1. Run `make db-checks` in CI or a local database environment for the runtime-parity/reward-hardening branch.
+2. Keep expanding shared scenario parity as new user-visible API surfaces are added. The current suite covers selectors, collectible mint/transfer/create-time refund, comments, notifications, and multi-actor reservation/submission acceptance.
+3. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
+4. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
+5. Do not replace `site/demo/backend.js` with WASM until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The runtime-parity/reward-hardening branch added `make db-checks`, a PR CI database-backed runtime job, deployed Pages routing verification, organization-scoped collectibles, in-transaction collectible tips, deletion-semantics documentation, collectible contract fixture expansion, and shared scenario parity for create-time collectible refund.
+2. The branch removed the separate accept-then-gift collectible tip window by settling collectible tips inside `LedgerStore.AcceptSubmission`.
+3. The branch re-enabled `transferable_within_organization` tips with an explicit collectible organization scope and active-membership checks.
+4. The branch kept rewards limited to Sharecrop credits and admin-minted Sharecrop collectibles.
 
 1. The multi-actor parity branch added scenario clients that carry distinct actor tokens and a shared scenario for approval-required reservation, owner approval, worker submission, owner acceptance with payout/tip, worker balance, and owner/worker notifications.
 2. The branch made the backendless demo token-aware for local demo bearer tokens, so protected demo routes fail on missing/unknown tokens instead of silently acting as the seeded user.

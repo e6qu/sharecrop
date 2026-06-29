@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 77 work, merged into `main`.
+The repository contains pull request 1 through pull request 78 work, merged into `main`.
 
-Active task: multi-actor shared scenario parity, backendless demo actor semantics, continued HTTP contract fixture coverage, and the series add-task selector are implemented locally. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
+Active task: runtime-store verification ergonomics, expanded scenario parity, collectible-tip transaction hardening, organization-bound collectible semantics, deletion-policy documentation, contract fixture growth, and Pages routing checks are implemented on `task/runtime-parity-reward-hardening`. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -28,22 +28,31 @@ Current implemented surface:
 - Selector APIs support `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams where those lists are exposed.
 - A shared scenario parity runner covers selector pagination/query, admin operations, account-token issue shape, collectible catalog/mint/transfer, organization/team/task/task-comment creation, submission creation/comments, notification read shape, and a multi-actor reservation approval/submission acceptance/payout/notification flow against the backendless demo. It can be run against a real API with an explicit admin origin/token.
 - A GitHub Pages routing check script verifies deployed root/docs/demo entry paths and demo assets after deployment.
+- The Pages workflow runs the deployed routing check after GitHub Pages deployment.
+- `make db-checks` runs migrations plus database-backed integration and HTTP E2E tests when `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR` are set.
 - Admin default-collectible award and collectible transfer flows use user/team/organization selectors where selector data exists.
+- Collectibles carry an optional organization scope. `transferable_within_organization` tips require both users to be active members of the scoped organization.
+- Submission acceptance settles credit payout, credit tip, collectible payout, and collectible tip in one ledger transaction.
 - Series add-task management uses the loaded task selector instead of a raw task-ID text field.
+- Deletion semantics are documented in [docs/deletion_semantics.md](./docs/deletion_semantics.md); core rows are not hard-deleted without an explicit lifecycle design.
 - The WASM demo backend spike is documented with explicit storage-adapter gates and no fallback path.
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles only; user/org/per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current verification:
 
 - `go test ./...` passed.
-- `go test ./internal/http` passed.
+- `go test ./internal/http ./internal/db ./internal/assets ./internal/ledger` passed.
 - `deno check tools/*.ts tests/**/*.ts` passed.
 - `deno lint tools tests` passed.
 - `deno run --allow-read tools/check_policy.ts` passed.
 - `deno test --allow-read tests/deno` passed.
+- `make check-format` passed.
+- `go vet ./...` passed.
+- `go tool deadcode -test ./...` passed.
+- `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
-- Focused Playwright coverage passed for the first-class task-series management flow.
-- Manual screenshot review passed for the series add-task selector on the backendless demo series detail page.
+- `make db-checks` was not run locally because `DATABASE_URL` is not set.
+- `make check-contracts` regenerated the expected collectible contract diff; it should pass after the branch commit contains the generated file.
 
 Blocking issues:
 

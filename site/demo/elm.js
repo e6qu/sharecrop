@@ -6796,9 +6796,9 @@ var $author$project$Main$applySchemaFields = F2(
 var $author$project$Sharecrop$Types$AwardReceived = function (a) {
 	return {$: 'AwardReceived', a: a};
 };
-var $author$project$Sharecrop$Generated$Collectible$CollectibleResponse = F8(
-	function (id, name, kind, state, transferPolicy, ownerID, ownerKind, art) {
-		return {art: art, id: id, kind: kind, name: name, ownerID: ownerID, ownerKind: ownerKind, state: state, transferPolicy: transferPolicy};
+var $author$project$Sharecrop$Generated$Collectible$CollectibleResponse = F9(
+	function (id, name, kind, state, transferPolicy, ownerID, ownerKind, organizationID, art) {
+		return {art: art, id: id, kind: kind, name: name, organizationID: organizationID, ownerID: ownerID, ownerKind: ownerKind, state: state, transferPolicy: transferPolicy};
 	});
 var $author$project$Sharecrop$Generated$Collectible$CollectibleKindBadge = {$: 'CollectibleKindBadge'};
 var $author$project$Sharecrop$Generated$Collectible$CollectibleKindEdition = {$: 'CollectibleKindEdition'};
@@ -6858,17 +6858,25 @@ var $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDec
 	},
 	$elm$json$Json$Decode$string);
 var $elm$json$Json$Decode$map8 = _Json_map8;
-var $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder = A9(
-	$elm$json$Json$Decode$map8,
-	$author$project$Sharecrop$Generated$Collectible$CollectibleResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'kind', $author$project$Sharecrop$Generated$Collectible$collectibleKindDecoder),
-	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Collectible$collectibleStateDecoder),
-	A2($elm$json$Json$Decode$field, 'transfer_policy', $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDecoder),
-	A2($elm$json$Json$Decode$field, 'owner_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'art', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (finish) {
+		return A2(
+			$elm$json$Json$Decode$map,
+			finish,
+			A2($elm$json$Json$Decode$field, 'art', $elm$json$Json$Decode$string));
+	},
+	A9(
+		$elm$json$Json$Decode$map8,
+		$author$project$Sharecrop$Generated$Collectible$CollectibleResponse,
+		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'kind', $author$project$Sharecrop$Generated$Collectible$collectibleKindDecoder),
+		A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Collectible$collectibleStateDecoder),
+		A2($elm$json$Json$Decode$field, 'transfer_policy', $author$project$Sharecrop$Generated$Collectible$collectibleTransferPolicyDecoder),
+		A2($elm$json$Json$Decode$field, 'owner_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'owner_kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'organization_id', $elm$json$Json$Decode$string)));
 var $author$project$Sharecrop$Api$collectibleRewardRequestBody = function (collectibleId) {
 	return $elm$json$Json$Encode$object(
 		_List_fromArray(

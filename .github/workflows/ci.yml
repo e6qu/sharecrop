@@ -81,7 +81,7 @@ jobs:
       - name: Build frontend and binary
         run: make build
 
-  integration:
+  db-checks:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -107,41 +107,8 @@ jobs:
       - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
-      - name: Run migrations
-        run: make migrate-up
-      - name: Integration tests
-        run: make test-integration
-
-  http-e2e:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18.4
-        env:
-          POSTGRES_DB: sharecrop
-          POSTGRES_USER: sharecrop
-          POSTGRES_PASSWORD: sharecrop
-        ports:
-          - 15432:5432
-        options: >-
-          --health-cmd "pg_isready -U sharecrop -d sharecrop"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      DATABASE_URL: postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
-      SHARECROP_HTTP_ADDR: :18080
-      SHARECROP_ACCESS_TOKEN_SECRET: "01234567890123456789012345678901"
-      SHARECROP_MIGRATIONS_DIR: ${{ github.workspace }}/migrations
-    steps:
-      - uses: actions/checkout@v7.0.0
-      - uses: actions/setup-go@v6.4.0
-        with:
-          go-version-file: go.mod
-      - name: Run migrations
-        run: make migrate-up
-      - name: HTTP end-to-end tests
-        run: make test-http
+      - name: Database-backed runtime checks
+        run: make db-checks
 
   playwright:
     runs-on: ubuntu-latest

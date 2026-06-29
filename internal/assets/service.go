@@ -2,6 +2,7 @@ package assets
 
 import (
 	"context"
+	"strings"
 
 	"github.com/e6qu/sharecrop/internal/core"
 )
@@ -60,22 +61,27 @@ func (CollectibleMinted) mintResult() {}
 
 func (MintRejected) mintResult() {}
 
-func (service Service) Mint(ctx context.Context, ownerKind string, ownerID string, name CollectibleName, kind CollectibleKind, policy TransferPolicy, art string) MintResult {
+func (service Service) Mint(ctx context.Context, ownerKind string, ownerID string, organizationID string, name CollectibleName, kind CollectibleKind, policy TransferPolicy, art string) MintResult {
 	idResult := core.NewCollectibleID()
 	idCreated, matched := idResult.(core.CollectibleIDCreated)
 	if !matched {
 		return MintRejected{Reason: idResult.(core.CollectibleIDRejected).Reason}
 	}
+	scopeID := strings.TrimSpace(organizationID)
+	if ownerKind == CollectibleOwnerKindOrganization && scopeID == "" {
+		scopeID = ownerID
+	}
 
 	collectible := Collectible{
-		ID:        idCreated.Value,
-		Name:      name,
-		Kind:      kind,
-		State:     CollectibleStateMinted,
-		Policy:    policy,
-		OwnerKind: ownerKind,
-		OwnerID:   ownerID,
-		Art:       art,
+		ID:             idCreated.Value,
+		Name:           name,
+		Kind:           kind,
+		State:          CollectibleStateMinted,
+		Policy:         policy,
+		OwnerKind:      ownerKind,
+		OwnerID:        ownerID,
+		OrganizationID: scopeID,
+		Art:            art,
 	}
 	storeResult := service.store.CreateCollectible(ctx, collectible)
 	if rejected, rejectedMatched := storeResult.(CreateStoreRejected); rejectedMatched {

@@ -485,7 +485,7 @@ func (server Server) callAcceptSubmission(ctx context.Context, subject auth.User
 		return toolProtocolError{code: codeInvalidParams, message: tipSelectionResult.(mcpTipSelectionRejected).message}
 	}
 
-	result := server.services.ReviewAcceptSubmission(ctx, subject.ID, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value)
+	result := server.services.ReviewAcceptSubmission(ctx, subject.ID, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value, ledger.NoCollectibleTipSelection{})
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		return toolFailed{message: result.(ledger.AcceptRejected).Reason.Description()}
