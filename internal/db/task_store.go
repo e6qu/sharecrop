@@ -763,6 +763,15 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task participation policy filter is invalid")}
 	}
 
+	switch searchFilter := filters.Search.(type) {
+	case task.SearchContains:
+		arguments["filter_query"] = "%" + searchFilter.Value.String() + "%"
+		where += " and (tasks.title ilike @filter_query or tasks.id::text ilike @filter_query)"
+	case task.NoSearchFilter:
+	default:
+		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task search filter is invalid")}
+	}
+
 	return listQueryAccepted{
 		sql:       taskListSelectSQL() + where + " order by tasks.created_at desc limit @limit offset @offset",
 		arguments: arguments,

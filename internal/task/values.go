@@ -41,6 +41,41 @@ func (title Title) String() string {
 	return title.value
 }
 
+type SearchText struct {
+	value string
+}
+
+type SearchTextResult interface {
+	searchTextResult()
+}
+
+type SearchTextAccepted struct {
+	Value SearchText
+}
+
+type SearchTextRejected struct {
+	Reason core.DomainError
+}
+
+func (SearchTextAccepted) searchTextResult() {}
+
+func (SearchTextRejected) searchTextResult() {}
+
+func NewSearchText(raw string) SearchTextResult {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return SearchTextRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task search query is required")}
+	}
+	if len(trimmed) > 160 {
+		return SearchTextRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task search query is too long")}
+	}
+	return SearchTextAccepted{Value: SearchText{value: trimmed}}
+}
+
+func (text SearchText) String() string {
+	return text.value
+}
+
 type Description struct {
 	value string
 }

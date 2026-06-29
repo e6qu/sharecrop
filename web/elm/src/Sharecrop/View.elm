@@ -265,7 +265,7 @@ pageView origin state =
             userTaskListView "Public work" "user-work" userId state.userWork
 
         UserSubmissionsPage userId ->
-            userSubmissionsView userId state.userSubmissions
+            userSubmissionsView userId state
 
         CollectibleDetailPage collectibleId ->
             collectibleDetailView collectibleId state
@@ -340,7 +340,6 @@ teamWorkDashboard teamId state =
     let
         filteredTasks =
             state.teamWork
-                |> filterTasksByQuery state.teamWorkQuery
                 |> filterTeamWork teamId state.teamWorkFilter
 
         reviewTasks =
@@ -355,6 +354,10 @@ teamWorkDashboard teamId state =
     div [ Html.Attributes.class "space-y-4", testId "team-work-dashboard" ]
         [ Ui.fieldLabel "Search team work"
             [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.teamWorkQuery, onInput TeamWorkQueryChanged, testId "team-work-query" ] ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.secondaryButton [ type_ "button", onClick SearchTeamWorkClicked, testId "team-work-search" ] "Search"
+            ]
+        , paginationControls "team-work-page" PreviousTeamWorkPageClicked NextTeamWorkPageClicked state.teamWorkOffset
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "team-work-filter" ]
             (List.map (teamWorkFilterButton state.teamWorkFilter) teamWorkFilterOptions)
         , teamWorkSection "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
@@ -661,9 +664,12 @@ userTaskListView heading identifier userId tasks =
         ]
 
 
-userSubmissionsView : String -> List Submission.SubmissionResponse -> Html Msg
-userSubmissionsView userId submissions =
+userSubmissionsView : String -> LoggedInModel -> Html Msg
+userSubmissionsView userId state =
     let
+        submissions =
+            state.userSubmissions
+
         revisionItems =
             List.filter isRevisionSubmission submissions
     in
@@ -676,13 +682,21 @@ userSubmissionsView userId submissions =
 
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "revision-inbox" ]
-                (List.map userSubmissionRow revisionItems)
+                (List.map revisionSubmissionRow revisionItems)
         , if List.isEmpty submissions then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "user-submissions-empty" ] [ text "No submissions." ]
 
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
                 (List.map userSubmissionRow submissions)
+        ]
+
+
+revisionSubmissionRow : Submission.SubmissionResponse -> Html Msg
+revisionSubmissionRow item =
+    div [ Html.Attributes.class "space-y-2 py-2", testId "revision-submission-row" ]
+        [ userSubmissionRow item
+        , Ui.primaryButton [ type_ "button", onClick (StartRevisionClicked item.taskID item.responseJSON), testId "revision-resubmit" ] "Revise"
         ]
 
 
@@ -884,7 +898,7 @@ activeOrganizationView state =
             [ Ui.label_ ("Balance: " ++ balanceLabel state.orgBalance)
             , Ui.sectionTitle "Organization tasks"
             , orgTaskControls state
-            , tasksListSimple "org-tasks" (filteredOrgTasks state)
+            , tasksListSimple "org-tasks" state.orgTasks
             , maybeNote state.orgTaskMessage "org-task-message"
             , Ui.sectionTitle "Teams"
             , orgTeamsList state.orgTeams
@@ -915,6 +929,10 @@ orgTaskControls state =
     div [ Html.Attributes.class "space-y-2" ]
         [ Ui.fieldLabel "Search organization tasks"
             [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.orgTaskQuery, onInput OrgTaskQueryChanged, testId "org-task-query" ] ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.secondaryButton [ type_ "button", onClick SearchOrgTasksClicked, testId "org-task-search" ] "Search"
+            ]
+        , paginationControls "org-tasks-page" PreviousOrgTasksPageClicked NextOrgTasksPageClicked state.orgTaskOffset
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "org-task-filter" ]
             (List.map (orgTaskFilterButton state.orgTaskFilter) orgTaskFilterOptions)
         ]
@@ -942,13 +960,6 @@ orgTaskFilterButton selected ( tag, labelText ) =
                )
         )
         labelText
-
-
-filteredOrgTasks : LoggedInModel -> List Task.TaskListItemResponse
-filteredOrgTasks state =
-    state.orgTasks
-        |> filterTasksByQuery state.orgTaskQuery
-        |> filterTasksByStateTag state.orgTaskFilter
 
 
 orgTeamsList : List Team.TeamResponse -> Html Msg
@@ -1685,25 +1696,6 @@ filterTasksByQuery query tasks =
                     || String.contains normalized (String.toLower item.id)
             )
             tasks
-
-
-filterTasksByStateTag : String -> List Task.TaskListItemResponse -> List Task.TaskListItemResponse
-filterTasksByStateTag tag tasks =
-    case tag of
-        "open" ->
-            List.filter (\item -> item.state == Task.TaskStateOpen) tasks
-
-        "draft" ->
-            List.filter (\item -> item.state == Task.TaskStateDraft) tasks
-
-        "closed" ->
-            List.filter (\item -> item.state == Task.TaskStateClosed) tasks
-
-        "" ->
-            tasks
-
-        _ ->
-            []
 
 
 tasksList : List Task.TaskListItemResponse -> Html Msg

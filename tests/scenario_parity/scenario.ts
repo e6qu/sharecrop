@@ -509,6 +509,81 @@ export async function runSharedScenarioParity(
   const taskID = requireString(createdTask.json, "id");
   assertTaskSummaryShape(createdTask.json);
 
+  const organizationTaskSearch = await client.request(
+    "GET",
+    `/api/tasks?scope=organization&organization_id=${organizationID}&query=${
+      encodeURIComponent(taskTitle)
+    }&limit=1&offset=0`,
+    noScenarioBody,
+  );
+  assertStatus(organizationTaskSearch, 200, "organization task queue search");
+  const organizationTaskPage = requireArray(
+    organizationTaskSearch.json,
+    "tasks",
+  );
+  assertScenario(
+    organizationTaskPage.length === 1 &&
+      requireString(
+          requireRecord(organizationTaskPage[0], "organizationTaskPage[0]"),
+          "id",
+        ) === taskID,
+    "organization task queue search must return the created task",
+  );
+
+  const organizationTeamTaskTitle = uniqueName(
+    "Scenario parity organization-team queue task",
+  );
+  const createdOrganizationTeamTask = await client.request(
+    "POST",
+    "/api/tasks",
+    {
+      owner: { kind: "user", user_id: subjectID },
+      title: organizationTeamTaskTitle,
+      description: "Created to verify team queue search.",
+      visibility: {
+        kind: "organization_team",
+        organization_id: organizationID,
+        team_id: orgTeamID,
+      },
+      participation: {
+        policy: "open",
+        assignee_scope: "organization_team",
+        reservation_expiry_hours: 48,
+      },
+      reward: {
+        kind: "none",
+        credit_amount: 0,
+        collectible_ids: [],
+      },
+      response_schema_json: '{"kind":"freeform"}',
+      payload: { kind: "none", json: "" },
+    },
+  );
+  assertStatus(
+    createdOrganizationTeamTask,
+    201,
+    "create organization-team queue task",
+  );
+  const organizationTeamTaskID = requireString(
+    createdOrganizationTeamTask.json,
+    "id",
+  );
+  const teamWorkSearch = await client.request(
+    "GET",
+    `/api/teams/${orgTeamID}/work?query=${
+      encodeURIComponent(organizationTeamTaskTitle)
+    }&limit=1&offset=0`,
+    noScenarioBody,
+  );
+  assertStatus(teamWorkSearch, 200, "team work queue search");
+  const teamWorkPage = requireArray(teamWorkSearch.json, "tasks");
+  assertScenario(
+    teamWorkPage.length === 1 &&
+      requireString(requireRecord(teamWorkPage[0], "teamWorkPage[0]"), "id") ===
+        organizationTeamTaskID,
+    "team work queue search must return the created organization-team task",
+  );
+
   const taskDetail = await client.request(
     "GET",
     `/api/tasks/${taskID}`,

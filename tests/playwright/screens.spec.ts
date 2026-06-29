@@ -219,6 +219,12 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]+$/);
   await expect(page.getByTestId("active-organization")).toBeVisible();
   await expect(page.getByTestId("org-task-query")).toBeVisible();
+  await page.getByTestId("org-task-query").fill("missing task");
+  await page.getByTestId("org-task-search").click();
+  await expect(page.getByTestId("org-tasks-empty")).toBeVisible();
+  await expect(page.getByTestId("org-tasks-page-offset")).toHaveText(
+    "Offset 0",
+  );
   await page.getByTestId("org-task-filter-open").click();
   // The owner is a real member of the org they created.
   await expect(page.getByTestId("org-member-row")).toHaveCount(1);
@@ -243,6 +249,11 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page.getByTestId("team-detail-name")).toContainText(teamName);
   await expect(page.getByTestId("team-work-dashboard")).toBeVisible();
   await expect(page.getByTestId("team-work-query")).toBeVisible();
+  await page.getByTestId("team-work-query").fill("missing task");
+  await page.getByTestId("team-work-search").click();
+  await expect(page.getByTestId("team-work-page-offset")).toHaveText(
+    "Offset 0",
+  );
   await page.getByTestId("team-work-filter-ready").click();
   await expect(page.getByTestId("team-review-queue-empty")).toBeVisible();
   await expect(page.getByTestId("team-ready-work-empty")).toBeVisible();
@@ -331,8 +342,9 @@ test("workers see requested revisions in their submission inbox", async ({ page,
       data: { response_json: '{"answer":"revise me"}' },
     },
   );
-  expect(submissionResponse.ok()).toBeTruthy();
-  const submitted = (await submissionResponse.json()) as SubmissionCreatedBody;
+  const submissionBody = await submissionResponse.text();
+  expect(submissionResponse.ok(), submissionBody).toBeTruthy();
+  const submitted = JSON.parse(submissionBody) as SubmissionCreatedBody;
   const reviewNote = `Please revise ${crypto.randomUUID()}`;
   const requestChangesResponse = await request.post(
     `/api/tasks/${task.id}/submissions/${submitted.submission.id}/request-changes`,
@@ -349,6 +361,13 @@ test("workers see requested revisions in their submission inbox", async ({ page,
   await expect(page.getByTestId("revision-inbox")).toBeVisible();
   await expect(page.getByTestId("revision-inbox")).toContainText(task.id);
   await expect(page.getByTestId("revision-inbox")).toContainText(reviewNote);
+  await page.getByTestId("revision-resubmit").click();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${task.id}$`));
+  await expect
+    .poll(async () =>
+      JSON.parse(await page.getByTestId("detail-submit-input").inputValue())
+    )
+    .toEqual({ answer: "revise me" });
 });
 
 test("requesters scope a task to a standalone team", async ({ page, request }) => {

@@ -285,14 +285,32 @@ func (AnyParticipationPolicyFilter) participationPolicyFilter() {}
 
 func (ParticipationPolicyEquals) participationPolicyFilter() {}
 
+// SearchFilter is an optional task-list search filter. NoSearchFilter means no
+// search restriction; SearchContains restricts the listing to task title or ID
+// matches.
+type SearchFilter interface {
+	searchFilter()
+}
+
+type NoSearchFilter struct{}
+
+type SearchContains struct {
+	Value SearchText
+}
+
+func (NoSearchFilter) searchFilter() {}
+
+func (SearchContains) searchFilter() {}
+
 // ListFilters groups the optional discovery/list filters applied to a task listing.
 type ListFilters struct {
 	State         StateFilter
 	Participation ParticipationPolicyFilter
+	Search        SearchFilter
 }
 
 func NoListFilters() ListFilters {
-	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}}
+	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}, Search: NoSearchFilter{}}
 }
 
 type PublicListScope struct {

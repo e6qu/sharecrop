@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -346,6 +347,10 @@ func TestTaskListPagination(t *testing.T) {
 	if secondPage.Tasks[0].ID != fullPage.Tasks[2].ID || secondPage.Tasks[1].ID != fullPage.Tasks[3].ID {
 		t.Fatalf("second page = [%q %q], want [%q %q]", secondPage.Tasks[0].ID, secondPage.Tasks[1].ID, fullPage.Tasks[2].ID, fullPage.Tasks[3].ID)
 	}
+
+	invalidPageResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&limit=abc&offset=0", owner.AccessToken)
+	defer invalidPageResponse.Body.Close()
+	assertStatus(t, invalidPageResponse, http.StatusBadRequest)
 }
 
 func TestTaskListFiltersByStateAndParticipation(t *testing.T) {
@@ -374,6 +379,39 @@ func TestTaskListFiltersByStateAndParticipation(t *testing.T) {
 	invalidResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&state=bogus", owner.AccessToken)
 	defer invalidResponse.Body.Close()
 	assertStatus(t, invalidResponse, http.StatusBadRequest)
+}
+
+func TestTaskListFiltersBySearchQuery(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "search-owner")
+	searchTitle := "Needle queue " + uniqueTestSuffix(t)
+	otherTitle := "Haystack queue " + uniqueTestSuffix(t)
+	searchTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, titledUserTaskRequestJSON(owner.SubjectID, searchTitle))
+	otherTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, titledUserTaskRequestJSON(owner.SubjectID, otherTitle))
+
+	searchListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&query="+url.QueryEscape(searchTitle)))
+	assertTaskPresent(t, searchListing, searchTaskID)
+	assertTaskAbsent(t, searchListing, otherTaskID)
+
+	organizationID := createOrganization(t, server, owner, "Search Queue Org")
+	orgTitle := "Organization queue " + uniqueTestSuffix(t)
+	orgTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, organizationVisibleTaskRequestJSON(owner.SubjectID, organizationID, orgTitle))
+	orgListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=organization&organization_id="+organizationID+"&query="+url.QueryEscape(orgTitle)+"&limit=1&offset=0"))
+	assertTaskPresent(t, orgListing, orgTaskID)
+
+	createTeamResponse := postJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/teams", []byte(`{"name":"Search crew"}`), owner.AccessToken)
+	defer createTeamResponse.Body.Close()
+	assertStatus(t, createTeamResponse, http.StatusCreated)
+	var team teamHTTPResponse
+	if err := json.NewDecoder(createTeamResponse.Body).Decode(&team); err != nil {
+		t.Fatalf("decode organization team: %v", err)
+	}
+	teamTitle := "Team queue " + uniqueTestSuffix(t)
+	teamTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, organizationTeamVisibleTaskRequestJSON(owner.SubjectID, organizationID, team.ID, teamTitle))
+	teamListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/teams/"+team.ID+"/work?query="+url.QueryEscape(teamTitle)+"&limit=1&offset=0"))
+	assertTaskPresent(t, teamListing, teamTaskID)
 }
 
 func TestTaskListItemExposesActiveAssignee(t *testing.T) {
@@ -542,6 +580,46 @@ func userTaskRequestJSON(userID string) string {
 		"description":"Review response examples against the local schema parser.",
 		"reward":{"kind":"none","credit_amount":0},
 		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+}
+
+func titledUserTaskRequestJSON(userID string, title string) string {
+	return `{
+		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
+		"title":"` + title + `",
+		"description":"Review response examples against the local schema parser.",
+		"reward":{"kind":"none","credit_amount":0},
+		"visibility":{"kind":"default","user_id":"","team_id":"","organization_id":""},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+}
+
+func organizationVisibleTaskRequestJSON(userID string, organizationID string, title string) string {
+	return `{
+		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
+		"title":"` + title + `",
+		"description":"Review organization queue search.",
+		"reward":{"kind":"none","credit_amount":0},
+		"visibility":{"kind":"organization","user_id":"","team_id":"","organization_id":"` + organizationID + `"},
+		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
+		"response_schema_json":"{\"kind\":\"freeform\"}",
+		"payload":{"kind":"none","json":""}
+	}`
+}
+
+func organizationTeamVisibleTaskRequestJSON(userID string, organizationID string, teamID string, title string) string {
+	return `{
+		"owner":{"kind":"user","user_id":"` + userID + `","team_id":"","organization_id":""},
+		"title":"` + title + `",
+		"description":"Review team queue search.",
+		"reward":{"kind":"none","credit_amount":0},
+		"participation":{"policy":"open","assignee_scope":"organization_team","reservation_expiry_hours":48},
+		"visibility":{"kind":"organization_team","user_id":"","team_id":"` + teamID + `","organization_id":"` + organizationID + `"},
 		"placement":{"kind":"standalone","series_id":"","series_title":"","series_position":0},
 		"response_schema_json":"{\"kind\":\"freeform\"}",
 		"payload":{"kind":"none","json":""}

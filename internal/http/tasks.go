@@ -85,7 +85,14 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value, filtersAccepted.value, parsePage(r))
+	pageResult := parsePageStrict(r)
+	pageAccepted, pageMatched := pageResult.(pageParseAccepted)
+	if !pageMatched {
+		writeError(w, http.StatusBadRequest, pageResult.(pageParseRejected).reason)
+		return
+	}
+
+	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value, filtersAccepted.value, pageAccepted.value)
 	switch listed := result.(type) {
 	case task.ListRejected:
 		writeDomainError(w, listed.Reason)
@@ -763,6 +770,15 @@ func parseTaskListFilters(r *http.Request) taskListFiltersResult {
 			return taskListFiltersRejected{reason: policyResult.(task.ParticipationPolicyRejected).Reason}
 		}
 		filters.Participation = task.ParticipationPolicyEquals{Value: policyAccepted.Value}
+	}
+
+	if rawSearch := query.Get("query"); rawSearch != "" {
+		searchResult := task.NewSearchText(rawSearch)
+		searchAccepted, matched := searchResult.(task.SearchTextAccepted)
+		if !matched {
+			return taskListFiltersRejected{reason: searchResult.(task.SearchTextRejected).Reason}
+		}
+		filters.Search = task.SearchContains{Value: searchAccepted.Value}
 	}
 
 	return taskListFiltersAccepted{value: filters}

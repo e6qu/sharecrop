@@ -186,6 +186,13 @@
       .slice(offset, offset + limit);
   }
 
+  function taskPage(url, items) {
+    return selectorPage(url, items, (taskItem, query) =>
+      taskItem.title.toLowerCase().includes(query) ||
+      taskItem.id.toLowerCase().includes(query)
+    );
+  }
+
   function task(overrides) {
     return Object.assign({
       id: nextId("task"),
@@ -201,6 +208,7 @@
       state: "open",
       visibility_kind: "public",
       visibility_id: "",
+      visibility_organization_id: "",
       series_kind: "standalone",
       series_id: "",
       series_position: 0,
@@ -1009,12 +1017,15 @@
       );
     } else if (scope === "organization") {
       list = db.tasks.filter((t) =>
-        t.visibility_kind === "organization" &&
-        (!orgId || t.visibility_id === orgId)
+        (t.visibility_kind === "organization" ||
+          t.visibility_kind === "organization_team") &&
+        (!orgId ||
+          t.visibility_id === orgId ||
+          t.visibility_organization_id === orgId)
       );
     }
     if (stateFilter) list = list.filter((t) => t.state === stateFilter);
-    return ok({ tasks: list.map((t) => listItem(t, actorId)) });
+    return ok({ tasks: taskPage(url, list).map((t) => listItem(t, actorId)) });
   });
   on("GET", "/api/tasks/:id", (p, _url, _body, actorId) => {
     const t = findTask(p.id);
@@ -1033,10 +1044,17 @@
     const visibilityKind = visibility.kind || "public";
     const visibilityId = visibilityKind === "organization"
       ? (visibility.organization_id || "")
+      : visibilityKind === "organization_team"
+      ? (visibility.team_id || "")
       : visibilityKind === "team"
       ? (visibility.team_id || "")
       : visibilityKind === "user"
       ? (visibility.user_id || "")
+      : "";
+    const visibilityOrganizationId = visibilityKind === "organization"
+      ? (visibility.organization_id || "")
+      : visibilityKind === "organization_team"
+      ? (visibility.organization_id || "")
       : "";
     const participation = (body && body.participation) || {};
     const t = task({
@@ -1051,6 +1069,7 @@
       reservation_expiry_hours: participation.reservation_expiry_hours || 48,
       visibility_kind: visibilityKind,
       visibility_id: visibilityId,
+      visibility_organization_id: visibilityOrganizationId,
       response_schema_json: body.response_schema_json || '{"kind":"freeform"}',
       task_type: body.task_type || "general",
       reference_url: body.reference_url || "",
@@ -1939,12 +1958,14 @@
     if (!team) return err(404, "team not found");
     return ok({ team, members: db.teamMembers[p.id] || [] });
   });
-  on("GET", "/api/teams/:id/work", (p) =>
+  on("GET", "/api/teams/:id/work", (p, url) =>
     ok({
-      tasks: db.tasks
-        .filter((t) =>
+      tasks: taskPage(
+        url,
+        db.tasks.filter((t) =>
           t.visibility_id === p.id || t.active_assignee_id === p.id
-        )
+        ),
+      )
         .map((t) => listItem(t)),
     }));
   on("POST", "/api/teams/:id/members", (p, _url, body) => {

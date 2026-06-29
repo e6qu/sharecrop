@@ -435,6 +435,29 @@ func TestTaskListItemResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":0,"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"reserved","viewer_action":"wait","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"user","active_assignee_id":"user-2"}`)
 }
 
+func TestOrganizationTeamTaskListItemResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskListItemResponse{
+		ID:                     "task-2",
+		OwnerKind:              "organization",
+		Title:                  "Review org queue",
+		RewardKind:             "none",
+		RewardCreditAmount:     0,
+		RewardCollectibleCount: 0,
+		ParticipationPolicy:    "open",
+		AssigneeScope:          "organization_team",
+		ReservationExpiryHours: 48,
+		State:                  "open",
+		VisibilityKind:         "organization_team",
+		AvailabilityKind:       "available",
+		ViewerAction:           "submit",
+		ReviewerAction:         "none",
+		CreatedBy:              "user-1",
+		ActiveAssigneeKind:     "",
+		ActiveAssigneeID:       "",
+	})
+	assertWireShape(t, encoded, err, `{"id":"task-2","owner_kind":"organization","title":"Review org queue","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"organization_team","reservation_expiry_hours":48,"state":"open","visibility_kind":"organization_team","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"","active_assignee_id":""}`)
+}
+
 func assertWireShape(t *testing.T, got []byte, err error, want string) {
 	t.Helper()
 	if err != nil {
