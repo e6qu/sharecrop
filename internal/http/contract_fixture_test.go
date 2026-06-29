@@ -54,6 +54,16 @@ func TestAccountProfileRequestWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"email":"new@example.com"}`)
 }
 
+func TestPrivacyRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(privacyRequest{Kind: "data_export"})
+	assertWireShape(t, encoded, err, `{"kind":"data_export"}`)
+}
+
+func TestPrivacyRequestResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(privacyRequestResponse{Kind: "data_export", Status: "queued", RequestedBy: "user-1"})
+	assertWireShape(t, encoded, err, `{"kind":"data_export","status":"queued","requested_by":"user-1"}`)
+}
+
 func TestUsersResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(usersResponse{Users: []userDirectoryEntryResponse{{ID: "user-1", Email: "person@example.com", Status: "active"}}})
 	assertWireShape(t, encoded, err, `{"users":[{"id":"user-1","email":"person@example.com","status":"active"}]}`)

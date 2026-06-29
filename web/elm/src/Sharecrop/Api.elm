@@ -10,6 +10,7 @@ import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
+import Sharecrop.Generated.Privacy as Privacy
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
@@ -1017,6 +1018,15 @@ deactivateAccount token =
         "/api/account"
         Http.emptyBody
         (Http.expectWhatever DeactivateAccountReceived)
+
+
+requestPrivacy : String -> Privacy.PrivacyRequestKind -> Cmd Msg
+requestPrivacy token kind =
+    authorizedRequest "POST"
+        token
+        "/api/privacy-requests"
+        (Http.jsonBody (Encode.object [ ( "kind", Privacy.privacyRequestKindEncoder kind ) ]))
+        (Http.expectJson PrivacyRequestReceived Privacy.privacyRequestResponseDecoder)
 
 
 createOrgTeamCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )

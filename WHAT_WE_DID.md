@@ -1,5 +1,38 @@
 # What We Did
 
+`task/org-ops-queues-privacy` combined saved queue views, organization
+operations, revision timeline polish, audited privacy requests, contracts,
+parity, demo behavior, browser coverage, and docs:
+
+- **Saved queue views.** Team work and organization task queues now let users
+  save and reapply in-session query/filter/type/sort combinations.
+- **Organization operations.** Organization detail pages show loaded balance,
+  team, active/inactive member, collectible, and task-state counts.
+- **Revision timeline.** Worker submission pages now include a revision
+  timeline alongside the revision inbox and submission history.
+- **Privacy requests.** Authenticated users can create audited privacy requests
+  for data export or sensitive-field deletion. Requests are queued audit
+  records; export generation, deletion, redaction, and retention jobs remain
+  explicit future work.
+- **Contracts and parity.** Added generated Privacy Elm contracts, HTTP
+  request/response fixture tests, handler tests, backendless demo parity,
+  shared scenario privacy request/audit assertions, and Playwright coverage for
+  the new browser controls.
+- **Docs.** Updated API reference, deletion semantics, operations runbook,
+  readiness review, status, bugs, and next-task queue.
+- **Verification.** Passed: `go test ./...`;
+  `deno check tools/*.ts tests/**/*.ts`; `deno lint tools tests`;
+  `deno fmt --check deno.json tools tests`;
+  `deno run --allow-read tools/check_policy.ts`;
+  `deno test --allow-read tests/deno`; `make check-format`;
+  `make check-contracts`; `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
+  go vet ./...`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go
+  tool deadcode -test ./...`;
+  `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src
+  tests`; and focused Playwright demo/mobile/screens tests with local-server
+  escalation.
+
 `task/queue-revisions-ops-privacy` combined queue tooling, revision-history
 polish, admin inspectability, parity, contracts, docs, and privacy groundwork:
 

@@ -5,6 +5,7 @@ Sharecrop does not expose hard-delete features for core rows. Current lifecycle 
 ## Current Behavior
 
 - Account removal is deactivation: email is anonymized, password credentials are removed, refresh tokens are revoked, and account-token rows are revoked.
+- Users can create audited privacy requests for data export or sensitive-field deletion. These requests are queued audit records; they do not perform hard deletion, export generation, redaction, or retention work.
 - Organization members are deactivated, not deleted.
 - Tasks are cancelled, closed, refunded, unpublished, or left in their recorded lifecycle state.
 - Submissions, comments, reservations, ledger entries, collectibles, audit events, notifications, and ownership rows remain as historical records.
@@ -21,7 +22,7 @@ Sharecrop does not expose hard-delete features for core rows. Current lifecycle 
 
 ## Implementation Gate
 
-Before implementing a new deletion endpoint, add a design note that identifies:
+Before implementing a deletion executor, redaction executor, retention job, or export generator, add a design note that identifies:
 
 - the lifecycle state or tombstone shape,
 - every referencing table and foreign-key behavior,

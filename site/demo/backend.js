@@ -416,6 +416,7 @@
       metadata_json: '{"task_id":"task-4"}',
       created_at: "2026-06-22T10:45:00Z",
     }],
+    auditEvents: [],
     tasks: [],
   };
 
@@ -958,6 +959,19 @@
     db.notifications.unshift(notification);
     return notification;
   }
+  function recordAudit(actorUserId, action, subjectKind, subjectId, metadata) {
+    const event = {
+      id: nextId("audit"),
+      actor_user_id: actorUserId,
+      action,
+      subject_kind: subjectKind,
+      subject_id: subjectId,
+      metadata_json: JSON.stringify(metadata || {}),
+      created_at: new Date().toISOString(),
+    };
+    db.auditEvents.unshift(event);
+    return event;
+  }
 
   function match(method, path) {
     const segs = path.split("?")[0].split("/").filter((s) => s !== "");
@@ -1043,6 +1057,20 @@
     return ok({ status: "profile_updated" });
   });
   on("DELETE", "/api/account", () => ok({ status: "deactivated" }));
+  on("POST", "/api/privacy-requests", (_p, _url, body, actorId) => {
+    const kind = String((body && body.kind) || "");
+    if (kind !== "data_export" && kind !== "sensitive_field_deletion") {
+      return err(400, "privacy request kind is invalid");
+    }
+    recordAudit(actorId, "privacy_request_created", "privacy_request", actorId, {
+      kind,
+    });
+    return ok({
+      kind,
+      status: "queued",
+      requested_by: actorId,
+    }, 201);
+  });
 
   on(
     "GET",
@@ -1859,10 +1887,23 @@
       active_subject_rate_buckets: 0,
       secure_cookies: "disabled",
     }));
-  on("GET", "/api/admin/audit-events", () =>
-    ok({
-      events: [],
-    }));
+  on("GET", "/api/admin/audit-events", (_p, url) => {
+    const params = new URL(url).searchParams;
+    let events = db.auditEvents.slice();
+    const action = params.get("action") || "";
+    const subjectKind = params.get("subject_kind") || "";
+    const subjectId = params.get("subject_id") || "";
+    if (action !== "") {
+      events = events.filter((event) => event.action === action);
+    }
+    if (subjectKind !== "") {
+      events = events.filter((event) => event.subject_kind === subjectKind);
+    }
+    if (subjectId !== "") {
+      events = events.filter((event) => event.subject_id === subjectId);
+    }
+    return ok({ events });
+  });
   on("GET", "/api/notifications", (_p, _url, _body, actorId) =>
     ok({
       notifications: db.notifications.filter((n) =>

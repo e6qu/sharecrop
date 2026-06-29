@@ -24,8 +24,10 @@ Test gaps:
   is intentionally not used because tasks, submissions, comments, ledger
   entries, and ownership rows reference users.
 - Submission responses expose indexed sensitive-field metadata for authorized
-  submission viewers. User-facing export/delete requests, retention jobs, and
-  audit events for sensitive-field access/deletion are still not implemented.
+  submission viewers. User-facing privacy request intake exists as queued audit
+  records, but export generation, request-resolution workflow, retention jobs,
+  redaction jobs, and audit events for sensitive-field access/deletion are still
+  not implemented.
 - The asset economy is intentionally internal-only: rewards are Sharecrop
   credits and admin-minted Sharecrop collectibles. User-issued tokens,
   organization-issued tokens, per-project tokens, crypto rewards, and external
@@ -34,12 +36,13 @@ Test gaps:
   expanding as the API grows.
 - Local database-backed integration verification through `make db-checks`
   requires `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR`;
-  `go test -tags http_e2e ./tests/http_e2e` was attempted on this branch but
-  could not run locally because `DATABASE_URL` was not set and the sandbox
-  blocked `httptest` network binding.
-- Local real-app Playwright requires PostgreSQL on `localhost:15432`. Local
-  real-app Playwright was not run on this branch because PostgreSQL was not
-  reachable. Demo Playwright passed locally against the backendless demo.
+  local `make db-checks` was not run on this branch because `DATABASE_URL` was
+  not set.
+- A one-off manual screenshot capture through `deno eval` was attempted for the
+  new organization operations and privacy controls, but this Deno build does
+  not accept the usual `-A` or `--allow-all` flags for `deno eval`. Focused
+  Playwright demo/mobile/screens coverage passed with assertions for the new UI
+  and mobile overflow.
 
 Known risks:
 
@@ -55,9 +58,10 @@ Known risks:
   re-implements API behavior in JS and can drift from the Go backend's actual
   semantics. Deno tests compare its route surface with the real HTTP router,
   validate representative response shapes, and run shared scenario parity flows
-  for selectors, admin operations, collectibles, tasks, comments, submissions,
-  notifications, and a multi-actor reservation/submission-review/payout flow,
-  but they do not prove every handler has identical domain semantics.
+  for selectors, admin operations, privacy request/audit shape, collectibles,
+  tasks, comments, submissions, notifications, and a multi-actor
+  reservation/submission-review/payout flow, but they do not prove every handler
+  has identical domain semantics.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

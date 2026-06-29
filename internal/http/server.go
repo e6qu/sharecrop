@@ -236,6 +236,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("PATCH /api/account/password", server.changePassword)
 	mux.HandleFunc("PATCH /api/account/profile", server.updateAccountProfile)
 	mux.HandleFunc("DELETE /api/account", server.deactivateAccount)
+	mux.HandleFunc("POST /api/privacy-requests", server.createPrivacyRequest)
 	mux.HandleFunc("GET /api/organizations", server.listOrganizations)
 	mux.HandleFunc("POST /api/organizations", server.createOrganization)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/members", server.listOrganizationMembers)

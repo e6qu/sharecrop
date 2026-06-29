@@ -53,7 +53,7 @@ GET /api/admin/audit-events?action=submission_accepted&subject_kind=submission&l
 
 The response reports account-token delivery mode, secure-cookie mode, active MCP session count, active rate-limit buckets, and whether MCP/rate-limit storage is process-local.
 
-The audit endpoint supports optional `action`, `subject_kind`, and `subject_id` filters plus pagination. Use these filters when investigating task refunds, submission review outcomes, organization member changes, account deactivation, and admin collectible awards.
+The audit endpoint supports optional `action`, `subject_kind`, and `subject_id` filters plus pagination. Use these filters when investigating task refunds, submission review outcomes, organization member changes, account deactivation, privacy requests, and admin collectible awards. Privacy requests use `action=privacy_request_created` and `subject_kind=privacy_request`.
 
 ## Current Operational Limits
 

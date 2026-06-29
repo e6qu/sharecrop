@@ -10,6 +10,7 @@ import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
+import Sharecrop.Generated.Privacy as Privacy
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
@@ -76,6 +77,15 @@ type alias UserDirectoryEntry =
     { id : String
     , email : String
     , status : String
+    }
+
+
+type alias QueueView =
+    { name : String
+    , query : String
+    , stateFilter : String
+    , typeFilter : String
+    , sort : String
     }
 
 
@@ -165,6 +175,8 @@ type alias LoggedInModel =
     , orgTaskSort : String
     , orgTaskOffset : Int
     , orgTaskMessage : Maybe String
+    , orgTaskSavedViewName : String
+    , orgTaskSavedViews : List QueueView
     , orgCollectibles : List Collectible.CollectibleResponse
     , orgCollectiblesMessage : Maybe String
     , teamCollectibles : List Collectible.CollectibleResponse
@@ -194,6 +206,8 @@ type alias LoggedInModel =
     , teamWorkSort : String
     , teamWorkOffset : Int
     , teamWorkMessage : Maybe String
+    , teamWorkSavedViewName : String
+    , teamWorkSavedViews : List QueueView
     , teamMemberEmail : String
     , teamMemberMessage : Maybe String
     , createOrgTeamName : String
@@ -461,6 +475,9 @@ type Msg
     | TeamWorkFilterChanged String
     | TeamWorkTypeFilterChanged String
     | TeamWorkSortChanged String
+    | TeamWorkSavedViewNameChanged String
+    | SaveTeamWorkViewClicked
+    | ApplyTeamWorkViewClicked String
     | SearchTeamWorkClicked
     | PreviousTeamWorkPageClicked
     | NextTeamWorkPageClicked
@@ -472,6 +489,9 @@ type Msg
     | OrgTaskFilterChanged String
     | OrgTaskTypeFilterChanged String
     | OrgTaskSortChanged String
+    | OrgTaskSavedViewNameChanged String
+    | SaveOrgTaskViewClicked
+    | ApplyOrgTaskViewClicked String
     | SearchOrgTasksClicked
     | PreviousOrgTasksPageClicked
     | NextOrgTasksPageClicked
@@ -515,6 +535,8 @@ type Msg
     | EmailVerificationRequested (Result Http.Error String)
     | AccountActionReceived (Result Http.Error ())
     | DeactivateAccountReceived (Result Http.Error ())
+    | PrivacyRequestClicked Privacy.PrivacyRequestKind
+    | PrivacyRequestReceived (Result Http.Error Privacy.PrivacyRequestResponse)
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
     | AuditActionFilterChanged String

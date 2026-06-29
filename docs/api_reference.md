@@ -21,6 +21,7 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `PATCH /api/account/password`: change the authenticated user's password.
 - `PATCH /api/account/profile`: change the authenticated user's profile email.
 - `DELETE /api/account`: deactivate the authenticated account.
+- `POST /api/privacy-requests`: create an audited privacy request. Accepted `kind` values are `data_export` and `sensitive_field_deletion`; the response includes `kind`, `status`, and `requested_by`.
 
 ## Tasks
 
@@ -105,4 +106,5 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - Selector-backed browser flows use `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams.
 - Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
 - Submission responses include `sensitive_fields` metadata for indexed sensitive response paths. The metadata identifies path, category, retention, and redaction policy; it does not perform deletion by itself.
+- Privacy requests are queued audit records. They do not perform export generation, hard deletion, redaction, or retention jobs.
 - Rewards are Sharecrop credits and admin-minted Sharecrop collectibles only. External wallets, crypto integrations, and per-project tokens are out of scope.
