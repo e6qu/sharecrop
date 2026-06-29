@@ -105,10 +105,10 @@ Implemented:
 
 Missing or partial:
 
-- Collectible-only and bundle tasks can be created from the task form, but the collectible count is still fixed to one by the HTTP parser and actual collectible escrow is still attached from the Collectibles page.
+- Collectible-only and bundle tasks can be created from the task form with selected collectibles escrowed at create time.
 - Organization-owned funding can select an accessible organization.
-- Organization visibility and organization-team reservation use selectors. User/team recipient fields still use raw IDs where no searchable directory endpoint exists.
-- Series membership during task creation is not exposed; series add uses a raw task id.
+- Organization visibility, organization-team reservation, default-collectible award, collectible transfer, and series add-task flows use selectors where directory data exists.
+- Raw IDs remain visible in protocol surfaces, links, audit/event metadata, and copyable API/MCP examples. No confirmed high-traffic user-entered raw-ID flow is currently listed.
 
 ### Implementor
 
@@ -203,16 +203,14 @@ Missing or partial:
 
 ## Documentation Drift Found
 
-- `BUGS.md` still says review tips are credit-only, but collectible tips are implemented in the browser and backend.
-- `BUGS.md` still says the browser cannot list organization members, but the organization detail page now lists members from `GET /api/organizations/{id}/members`.
-- `docs/user_stories.md` still says mock social sign-in options exist, but the current real Elm auth view only has email/password login/register.
-- `docs/user_stories.md` says collectible or inventory tips are deferred, but collectible tips are implemented.
-- `docs/user_stories.md` has been updated for organization role management, worker task-local submissions, reward-kind creation, and selector coverage.
+- Review tips support credits and collectibles in the browser and backend.
+- User stories should continue to distinguish implemented collectible tips from deferred external reward systems.
+- The browser uses email/password login/register plus guest entry. Provider email delivery and social sign-in are not implemented.
 
 ## Suggested Delivery Sequence
 
-1. Finish account lifecycle: verification, reset/change password, settings, account deactivation/deletion, and browser guest entry if guests remain part of the product.
-2. Add searchable user/team directories so remaining recipient fields can use selectors instead of raw IDs.
-3. Finish reward setup: collectible escrow during task creation, count handling, and clearer funding/open preconditions.
-4. Add Playwright coverage for organization role management, worker task-local submissions, organization-team reservation, reward-kind creation, and selector flows.
-5. Add operations foundation: deployment manifest, migration process, backups, logs/metrics, audit events, admin tools, and Postgres-backed MCP/rate-limit state for multi-process deployments.
+1. Keep expanding shared scenario parity for user-visible API surfaces and backendless demo behavior.
+2. Keep expanding fixture-level HTTP contract coverage as request and response surfaces change.
+3. Add Playwright coverage when browser workflows change materially.
+4. Add provider email delivery only if account setup stops being admin-driven.
+5. Do not replace the JavaScript backendless demo with WASM until the documented storage-adapter gates are met without fallbacks.

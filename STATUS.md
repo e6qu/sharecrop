@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 78 work, merged into `main`.
+The repository contains pull request 1 through pull request 79 work, merged into `main`.
 
-Active task: runtime-store verification ergonomics, expanded scenario parity, collectible-tip transaction hardening, organization-bound collectible semantics, deletion-policy documentation, contract fixture growth, and Pages routing checks are implemented on `task/runtime-parity-reward-hardening`. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
+Active task: continuity cleanup, database-backed check confirmation, expanded scenario parity, fixture coverage, raw-ID audit, backendless demo semantic parity, and submission-discussion polish are implemented on `task/parity-contract-discussion-polish`. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -27,6 +27,7 @@ Current implemented surface:
 - Account deactivation anonymizes email, removes password credentials, and revokes active refresh/account tokens.
 - Selector APIs support `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams where those lists are exposed.
 - A shared scenario parity runner covers selector pagination/query, admin operations, account-token issue shape, collectible catalog/mint/transfer, organization/team/task/task-comment creation, submission creation/comments, notification read shape, and a multi-actor reservation approval/submission acceptance/payout/notification flow against the backendless demo. It can be run against a real API with an explicit admin origin/token.
+- The shared scenario parity runner also covers organization reviewer acceptance of an organization-owned task funded from the organization balance.
 - A GitHub Pages routing check script verifies deployed root/docs/demo entry paths and demo assets after deployment.
 - The Pages workflow runs the deployed routing check after GitHub Pages deployment.
 - `make db-checks` runs migrations plus database-backed integration and HTTP E2E tests when `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR` are set.
@@ -51,8 +52,9 @@ Current verification:
 - `go tool deadcode -test ./...` passed.
 - `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
-- `make db-checks` was not run locally because `DATABASE_URL` is not set.
-- `make check-contracts` regenerated the expected collectible contract diff; it should pass after the branch commit contains the generated file.
+- PR 79 CI passed, including `db-checks`.
+- `make check-contracts` passed after PR 79 was merged.
+- A focused Playwright submission-discussion check was attempted locally. The sandbox blocked local server binding, and escalation was unavailable because the environment usage limit was reached. The updated Playwright assertions should run in PR CI.
 
 Blocking issues:
 

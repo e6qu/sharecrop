@@ -1,5 +1,14 @@
 # What We Did
 
+`task/parity-contract-discussion-polish` combined post-merge continuity cleanup, parity growth, contract coverage, demo semantics, and submission discussion polish:
+
+- **Continuity and verification.** Updated status/readiness/user-story docs after PR 79, removed stale raw-ID and collectible notes, and confirmed PR 79 CI passed with `db-checks`.
+- **Shared scenario parity.** Added a multi-actor organization reviewer path: the scenario provisions a reviewer by email, creates and organization-funds an organization-owned task, has a separate worker submit, and accepts the submission as the organization reviewer.
+- **Backendless demo parity.** The demo now checks task-owner or organization reviewer permission before accept/reject/request-changes review actions, and newly created demo organizations receive an organization balance for funding parity.
+- **Contract coverage.** Submission comment creation now has its own request type and HTTP fixture instead of reusing the series-comment request shape.
+- **Discussion UX.** After a worker submits or a reviewer action succeeds, the browser opens that submission's discussion thread and labels the active discussion as open. Playwright assertions cover both flows.
+- **Verification.** Passed: `go test ./...`; `deno test --allow-read tests/deno`; `deno check tools/*.ts tests/**/*.ts`; `deno lint tools tests`; `deno run --allow-read tools/check_policy.ts`; `make check-contracts`; `make check-format`; `go vet ./...`; `go tool deadcode -test ./...`; `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests`; `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`. A focused Playwright run was not completed locally because the sandbox blocked local server binding and escalation was unavailable after the environment usage limit was reached.
+
 `task/runtime-parity-reward-hardening` combined runtime verification ergonomics, scenario parity, reward transaction hardening, organization-scoped collectibles, deletion semantics, contract fixtures, and deployed routing checks:
 
 - **Runtime verification.** Added `tools/run_db_checks.sh` and `make db-checks`, and replaced duplicate PR database jobs with one `db-checks` job that runs migrations, integration tests, and HTTP E2E tests against Postgres.

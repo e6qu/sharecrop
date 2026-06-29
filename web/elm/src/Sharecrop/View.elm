@@ -2126,7 +2126,7 @@ mySubmissionRow state submission =
     div [ Html.Attributes.class "space-y-2 py-3", testId "my-submission-row" ]
         [ div [ Html.Attributes.class "flex items-center justify-between gap-2" ]
             [ Ui.badge (submissionStateLabel submission.state)
-            , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "my-submission-comments-toggle" ] "Comments"
+            , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "my-submission-comments-toggle" ] (discussionButtonLabel state submission.id)
             ]
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "my-submission-response" ] submission.responseJSON
@@ -2215,7 +2215,7 @@ submissionRow state submission =
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "submission-response" ] submission.responseJSON
         , validationErrorsView submission.validationErrors
-        , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "submission-comments-toggle" ] "Comments"
+        , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "submission-comments-toggle" ] (discussionButtonLabel state submission.id)
         , submissionCommentsThread state submission
         ]
 
@@ -2238,6 +2238,14 @@ submissionCommentsThread state submission =
 
     else
         text ""
+
+discussionButtonLabel : LoggedInModel -> String -> String
+discussionButtonLabel state submissionId =
+    if state.activeSubmissionCommentsID == Just submissionId then
+        "Discussion open"
+
+    else
+        "Discuss"
 
 
 submissionCommentRow : Submission.SubmissionCommentResponse -> Html Msg

@@ -354,7 +354,7 @@ type Msg
     | AcceptClicked String
     | RequestChangesClicked String
     | RejectClicked String
-    | ReviewActionReceived (Result Http.Error ())
+    | ReviewActionReceived String (Result Http.Error ())
     | CollectibleNameChanged String
     | CollectibleKindChosen Collectible.CollectibleKind
     | CollectiblePolicyChosen Collectible.CollectibleTransferPolicy

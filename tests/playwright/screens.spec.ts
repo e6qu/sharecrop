@@ -87,6 +87,10 @@ test("agents discover, submit to, and have a task accepted through the browser",
   );
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toBeVisible();
+  await expect(page.getByTestId("my-submission-comments-toggle")).toHaveText(
+    "Discussion open",
+  );
+  await expect(page.getByTestId("submission-comments-thread")).toBeVisible();
 
   // Owner reviews and accepts the submission through the UI.
   await page.getByTestId("logout").click();
@@ -100,6 +104,10 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await ownerRow.getByTestId("discovery-view").click();
   await expect(page.getByTestId("submission-row")).toHaveCount(1);
   await page.getByTestId("accept-submission").click();
+  await expect(page.getByTestId("submission-comments-toggle")).toHaveText(
+    "Discussion open",
+  );
+  await expect(page.getByTestId("submission-comments-thread")).toBeVisible();
   await expect(page.getByTestId("accept-submission")).toHaveCount(0);
 });
 

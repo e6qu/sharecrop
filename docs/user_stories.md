@@ -67,6 +67,6 @@ This document maps the current product surface to user-facing flows for the brow
 
 - Anonymous worker identity and payout are deferred; submissions currently require registered users.
 - Organization-team reservation now has browser selectors, but full team submission and team-scoped worker dashboards still need more coverage.
-- Some recipient flows still require raw IDs where no selector has been wired yet.
+- Raw IDs remain visible in protocol surfaces, links, audit/event metadata, and copyable API/MCP examples. No confirmed high-traffic user-entered raw-ID flow is currently listed.
 - Rewards are intentionally limited to Sharecrop credits and admin-minted Sharecrop collectibles. User-issued tokens, organization-issued tokens, per-project tokens, crypto rewards, external wallets, and automated crypto payout are out of scope.
 - MCP HTTP sessions and SSE replay buffers are in-memory and not shared across restarts or multiple app processes.

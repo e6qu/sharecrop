@@ -1392,9 +1392,27 @@
       member.user_id === userId && member.status === "active"
     );
   }
+  function hasOrgReviewPermission(orgId, userId) {
+    return (db.members[orgId] || []).some((member) =>
+      member.user_id === userId && member.status === "active" &&
+      member.roles.some((role) =>
+        role === "owner" || role === "admin" || role === "reviewer"
+      )
+    );
+  }
+  function canReviewTask(t, actorId) {
+    if (t.created_by === actorId) return true;
+    if (t.owner_kind === "organization" && t.owner_id) {
+      return hasOrgReviewPermission(t.owner_id, actorId);
+    }
+    return false;
+  }
   const decide = (state, availability) => (p, _url, body, actorId) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
+    if (!canReviewTask(t, actorId)) {
+      return err(403, "only the task owner or an organization reviewer can review submissions");
+    }
     const s = t.submissions.find((x) => x.id === p.sid);
     if (!s) return err(404, "submission not found");
     if (s.state !== "submitted") {
@@ -1469,6 +1487,9 @@
     (p, _url, body, actorId) => {
       const t = findTask(p.id);
       if (!t) return err(404, "task not found");
+      if (!canReviewTask(t, actorId)) {
+        return err(403, "only the task owner or an organization reviewer can accept submissions for the task");
+      }
       const s = t.submissions.find((x) => x.id === p.sid);
       if (!s) return err(404, "submission not found");
       if (s.state !== "submitted") {
@@ -1779,6 +1800,7 @@
       roles: ["owner"],
     }];
     db.orgTeams[o.id] = [];
+    db.orgBalances[o.id] = 100;
     return ok(o, 201);
   });
   on(

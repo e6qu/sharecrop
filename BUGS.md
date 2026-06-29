@@ -13,7 +13,8 @@ Test gaps:
 - Account lifecycle deletion semantics are deactivation plus credential/session/token revocation and email anonymization. Hard row deletion is intentionally not used because tasks, submissions, comments, ledger entries, and ownership rows reference users.
 - The asset economy is intentionally internal-only: rewards are Sharecrop credits and admin-minted Sharecrop collectibles. User-issued tokens, organization-issued tokens, per-project tokens, crypto rewards, and external wallets are out of scope.
 - Request/command contracts and HTTP contract fixture tests should keep expanding as the API grows.
-- Local database-backed integration verification through `make db-checks` requires `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR`.
+- Local database-backed integration verification through `make db-checks` requires `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR`; PR 79 CI passed this job.
+- A focused local Playwright run for submission-discussion auto-open behavior did not complete because the sandbox blocked binding the local server port and escalation was unavailable after the environment usage limit was reached. The Playwright assertions are present and should run in PR CI.
 
 Known risks:
 

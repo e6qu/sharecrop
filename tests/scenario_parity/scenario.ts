@@ -124,6 +124,7 @@ function assertNotificationShape(notification: JsonRecord): void {
 
 interface ScenarioActor {
   subjectID: string;
+  email: string;
   client: ScenarioClient;
 }
 
@@ -131,8 +132,9 @@ async function registerScenarioActor(
   client: ScenarioClient,
   label: string,
 ): Promise<ScenarioActor> {
+  const email = `scenario-${label}-${Date.now()}@example.com`;
   const registered = await client.request("POST", "/api/auth/register", {
-    email: `scenario-${label}-${Date.now()}@example.com`,
+    email,
     password: "correct horse battery staple",
   });
   assertStatus(registered, 201, `register ${label}`);
@@ -140,6 +142,7 @@ async function registerScenarioActor(
   const accessToken = requireString(registered.json, "access_token");
   return {
     subjectID,
+    email,
     client: client.withAccessToken(accessToken),
   };
 }
@@ -397,6 +400,83 @@ export async function runSharedScenarioParity(
       requireString(requireRecord(standaloneTeamPage[0], "teams[0]"), "id") ===
         standaloneTeamID,
     "standalone team selector must return the created team",
+  );
+
+  const orgReviewer = await registerScenarioActor(client, "org-reviewer");
+  const orgWorker = await registerScenarioActor(client, "org-worker");
+  const provisionedReviewer = await client.request(
+    "POST",
+    `/api/organizations/${organizationID}/members`,
+    {
+      email: orgReviewer.email,
+      roles: ["member", "reviewer"],
+    },
+  );
+  assertStatus(provisionedReviewer, 201, "provision org reviewer");
+
+  const orgReviewTask = await client.request("POST", "/api/tasks", {
+    owner: { kind: "organization", organization_id: organizationID },
+    title: uniqueName("Scenario parity org reviewer task"),
+    description: "Created to verify organization reviewer acceptance.",
+    visibility: { kind: "public" },
+    participation: {
+      policy: "open",
+      assignee_scope: "user",
+      reservation_expiry_hours: 48,
+    },
+    reward: {
+      kind: "credit",
+      credit_amount: 25,
+      collectible_ids: [],
+    },
+    response_schema_json: '{"kind":"freeform"}',
+    payload: { kind: "none", json: "" },
+  });
+  assertStatus(orgReviewTask, 201, "create org reviewer task");
+  const orgReviewTaskID = requireString(orgReviewTask.json, "id");
+
+  const orgFunded = await client.request(
+    "POST",
+    `/api/tasks/${orgReviewTaskID}/funding`,
+    {
+      amount: 25,
+      idempotency_key: `scenario-org-fund-${orgReviewTaskID}`,
+      organization_id: organizationID,
+    },
+  );
+  assertStatus(orgFunded, 201, "fund org reviewer task");
+
+  const orgOpened = await client.request(
+    "POST",
+    `/api/tasks/${orgReviewTaskID}/open`,
+    {},
+  );
+  assertStatus(orgOpened, 200, "open org reviewer task");
+
+  const orgWorkerSubmission = await orgWorker.client.request(
+    "POST",
+    `/api/tasks/${orgReviewTaskID}/submissions`,
+    { response_json: '{"org_review":"ready"}' },
+  );
+  assertStatus(orgWorkerSubmission, 201, "org worker submit");
+  const orgSubmission = requireRecord(
+    orgWorkerSubmission.json["submission"],
+    "orgWorkerSubmission",
+  );
+  const orgSubmissionID = requireString(orgSubmission, "id");
+
+  const orgReviewed = await orgReviewer.client.request(
+    "POST",
+    `/api/tasks/${orgReviewTaskID}/submissions/${orgSubmissionID}/accept`,
+    {
+      idempotency_key: `scenario-org-accept-${orgSubmissionID}`,
+      payout_amount: 25,
+    },
+  );
+  assertStatus(orgReviewed, 200, "org reviewer accept");
+  assertScenario(
+    requireString(orgReviewed.json, "worker_user_id") === orgWorker.subjectID,
+    "org reviewer accept must pay the submitting worker",
   );
 
   const taskTitle = uniqueName("Scenario parity task");

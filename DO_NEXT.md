@@ -4,18 +4,26 @@ Current priority from [docs/application_readiness_review.md](./docs/application_
 
 Next recommended work:
 
-1. Run `make db-checks` in CI or a local database environment for the runtime-parity/reward-hardening branch.
-2. Keep expanding shared scenario parity as new user-visible API surfaces are added. The current suite covers selectors, collectible mint/transfer/create-time refund, comments, notifications, and multi-actor reservation/submission acceptance.
-3. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
-4. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
-5. Do not replace `site/demo/backend.js` with WASM until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
+1. Keep expanding shared scenario parity as new user-visible API surfaces are added. The current suite covers selectors, collectible mint/transfer/create-time refund, comments, notifications, organization reviewer acceptance, and multi-actor reservation/submission acceptance.
+2. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
+3. Audit remaining raw-ID browser flows and replace high-traffic fields with selectors where directory data exists.
+4. Keep improving backendless demo semantic parity through shared scenarios before any WASM replacement.
+5. Keep polishing submission discussion discoverability and end-to-end ergonomics as review workflows grow.
+6. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
+7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The parity-contract-discussion-polish branch confirmed PR 79 CI passed with `db-checks`, cleaned stale readiness/user-story notes, and recorded that current raw-ID browser exposure is limited to protocol surfaces/links/audit/API examples unless a new high-traffic flow is found.
+2. The branch expanded shared scenario parity with organization reviewer acceptance of an organization-owned task funded from the organization balance.
+3. The branch tightened backendless demo review permissions for organization-owned tasks, initialized balances for newly created demo organizations, and added a submission-comment request wire-shape fixture.
+4. The branch made the browser auto-open the submission discussion after a worker submits and after a reviewer action succeeds, with focused Playwright assertions added for that behavior.
 
 1. The runtime-parity/reward-hardening branch added `make db-checks`, a PR CI database-backed runtime job, deployed Pages routing verification, organization-scoped collectibles, in-transaction collectible tips, deletion-semantics documentation, collectible contract fixture expansion, and shared scenario parity for create-time collectible refund.
 2. The branch removed the separate accept-then-gift collectible tip window by settling collectible tips inside `LedgerStore.AcceptSubmission`.
 3. The branch re-enabled `transferable_within_organization` tips with an explicit collectible organization scope and active-membership checks.
 4. The branch kept rewards limited to Sharecrop credits and admin-minted Sharecrop collectibles.
+5. PR 79 CI passed, including `db-checks`.
 
 1. The multi-actor parity branch added scenario clients that carry distinct actor tokens and a shared scenario for approval-required reservation, owner approval, worker submission, owner acceptance with payout/tip, worker balance, and owner/worker notifications.
 2. The branch made the backendless demo token-aware for local demo bearer tokens, so protected demo routes fail on missing/unknown tokens instead of silently acting as the seeded user.
