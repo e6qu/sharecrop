@@ -720,6 +720,19 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 	case task.OrganizationListScope:
 		arguments["organization_id"] = typed.OrganizationID.String()
 		where = " where task_visibility_scopes.organization_id = @organization_id"
+	case task.TeamListScope:
+		arguments["team_id"] = typed.TeamID.String()
+		arguments["include_reserved"] = typed.IncludeReserved
+		where = `
+			where (
+				task_visibility_scopes.team_id = @team_id
+				or active_reservation.team_id = @team_id
+			)
+			and (
+				@include_reserved::boolean
+				or active_reservation.assignee_kind is null
+				or active_reservation.team_id = @team_id
+			)`
 	case task.CreatorListScope:
 		arguments["creator_id"] = typed.CreatorID.String()
 		arguments["visibility_kind"] = task.VisibilityKindPublic.String()

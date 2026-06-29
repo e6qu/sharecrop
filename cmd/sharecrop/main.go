@@ -15,6 +15,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/app"
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/contracts"
 	"github.com/e6qu/sharecrop/internal/db"
@@ -188,8 +189,13 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	assetService := assets.NewService(db.NewCollectibleStore(pool))
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddress(),
-		Handler:           httpserver.New(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService),
+		Addr: cfg.HTTPAddress(),
+		Handler: httpserver.NewWithRuntimeState(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, httpserver.RuntimeState{
+			IPRateLimiter:      db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
+			SubjectRateLimiter: db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
+			MCPSessions:        httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
+			AuditService:       audit.NewService(db.NewAuditStore(pool)),
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

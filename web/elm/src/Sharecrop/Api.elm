@@ -3,6 +3,7 @@ module Sharecrop.Api exposing (..)
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
@@ -332,7 +333,14 @@ routeLoadCmd token subjectId page =
         TeamDetailPage teamId ->
             Cmd.batch
                 [ authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
+                , authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/work") Http.emptyBody (Http.expectJson TeamWorkReceived Task.tasksResponseDecoder)
                 , fetchTeamCollectibles token teamId
+                ]
+
+        AdminPage ->
+            Cmd.batch
+                [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (Http.expectJson OperationsReceived Admin.operationsResponseDecoder)
+                , authorizedRequest "GET" token "/api/admin/audit-events" Http.emptyBody (Http.expectJson AuditEventsReceived Admin.auditEventsResponseDecoder)
                 ]
 
         NotFoundPage ->

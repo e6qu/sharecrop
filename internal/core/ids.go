@@ -70,6 +70,10 @@ type RefreshTokenID struct {
 	value id.ID
 }
 
+type AuditEventID struct {
+	value id.ID
+}
+
 type UserIDResult interface {
 	userIDResult()
 }
@@ -855,5 +859,44 @@ func submissionCommentIDFromIDResult(result id.IDResult) SubmissionCommentIDResu
 		return SubmissionCommentIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return SubmissionCommentIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type AuditEventIDResult interface {
+	auditEventIDResult()
+}
+
+type AuditEventIDCreated struct {
+	Value AuditEventID
+}
+
+type AuditEventIDRejected struct {
+	Reason DomainError
+}
+
+func (AuditEventIDCreated) auditEventIDResult() {}
+
+func (AuditEventIDRejected) auditEventIDResult() {}
+
+func NewAuditEventID() AuditEventIDResult {
+	return auditEventIDFromIDResult(id.New())
+}
+
+func ParseAuditEventID(raw string) AuditEventIDResult {
+	return auditEventIDFromIDResult(id.Parse(raw))
+}
+
+func (id AuditEventID) String() string {
+	return id.value.String()
+}
+
+func auditEventIDFromIDResult(result id.IDResult) AuditEventIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return AuditEventIDCreated{Value: AuditEventID{value: typed.Value}}
+	case id.IDRejected:
+		return AuditEventIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return AuditEventIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }

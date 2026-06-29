@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -131,6 +132,9 @@ func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionOrganizationMemberProvision, audit.Subject{Kind: "organization_member", ID: provisioned.Value.ID.String()}, audit.EmptyMetadata()) {
+		return
+	}
 	writeOrganizationMemberResponse(w, http.StatusCreated, memberToResponse(provisioned.Value))
 }
 
@@ -147,6 +151,9 @@ func (server Server) deactivateOrganizationMember(w http.ResponseWriter, r *http
 		return
 	}
 
+	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberDisabled, audit.Subject{Kind: "organization_user", ID: target.organizationID.String() + ":" + target.userID.String()}, audit.EmptyMetadata()) {
+		return
+	}
 	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "deactivated"})
 }
 
@@ -175,6 +182,9 @@ func (server Server) updateOrganizationMemberRoles(w http.ResponseWriter, r *htt
 		return
 	}
 
+	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberRoles, audit.Subject{Kind: "organization_member", ID: updated.Value.ID.String()}, audit.EmptyMetadata()) {
+		return
+	}
 	writeOrganizationMemberResponse(w, http.StatusOK, memberToResponse(updated.Value))
 }
 

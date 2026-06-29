@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/ledger"
 )
 
@@ -94,5 +95,8 @@ func (server Server) refundTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionTaskRefunded, audit.Subject{Kind: "task", ID: refunded.Escrow.TaskID.String()}, audit.EmptyMetadata()) {
+		return
+	}
 	writeJSON(w, http.StatusOK, escrowToResponse(refunded.Escrow))
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 )
 
@@ -278,6 +279,9 @@ func (server Server) deactivateAccount(w http.ResponseWriter, r *http.Request) {
 	result := server.authService.DeactivateAccount(r.Context(), actor.subject.ID)
 	if _, ok := result.(auth.AccountActionAccepted); !ok {
 		writeDomainError(w, result.(auth.AccountActionRejected).Reason)
+		return
+	}
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionAccountDeactivated, audit.Subject{Kind: "user", ID: actor.subject.ID.String()}, audit.EmptyMetadata()) {
 		return
 	}
 	server.clearRefreshCookie(w)

@@ -1514,6 +1514,10 @@
       active_subject_rate_buckets: 0,
       secure_cookies: "disabled",
     }));
+  on("GET", "/api/admin/audit-events", () =>
+    ok({
+      events: [],
+    }));
   on("POST", "/api/tasks/:id/collectible-reward", (p, _url, body) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
@@ -1632,6 +1636,15 @@
     if (!team) return err(404, "team not found");
     return ok({ team, members: db.teamMembers[p.id] || [] });
   });
+  on("GET", "/api/teams/:id/work", (p) =>
+    ok({
+      tasks: db.tasks
+        .filter((t) =>
+          t.visibility_id === p.id || t.active_assignee_id === p.id
+        )
+        .map(taskListItem),
+    })
+  );
   on("POST", "/api/teams/:id/members", (p, _url, body) => {
     const team = db.standaloneTeams.concat(...Object.values(db.orgTeams)).find((
       x,

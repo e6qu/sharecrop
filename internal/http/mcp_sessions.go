@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -26,10 +27,19 @@ const maxMCPSessionsPerSubject = 16
 const maxMCPSessionsTotal = 1024
 
 type mcpHTTPSessionStore struct {
-	mu       sync.Mutex
-	sessions map[string]*mcpHTTPSession
-	ttl      time.Duration
-	now      func() time.Time
+	mu          sync.Mutex
+	sessions    map[string]*mcpHTTPSession
+	ttl         time.Duration
+	now         func() time.Time
+	persistence MCPSessionPersistence
+}
+
+type MCPSessionPersistence interface {
+	CreateMCPSession(context.Context, string, string, time.Time) error
+	TouchMCPSession(context.Context, string, string, time.Time, time.Time) (bool, error)
+	CloseMCPSession(context.Context, string, time.Time) (bool, error)
+	ActiveMCPSessionCount(context.Context, time.Time) (int, error)
+	ActiveMCPSessionCountForSubject(context.Context, string, time.Time) (int, error)
 }
 
 type mcpHTTPSession struct {
@@ -52,6 +62,17 @@ func newMCPHTTPSessionStore() *mcpHTTPSessionStore {
 	return &mcpHTTPSessionStore{sessions: make(map[string]*mcpHTTPSession), ttl: mcpSessionTTL, now: time.Now}
 }
 
+func newPersistedMCPHTTPSessionStore(persistence MCPSessionPersistence) *mcpHTTPSessionStore {
+	return &mcpHTTPSessionStore{sessions: make(map[string]*mcpHTTPSession), ttl: mcpSessionTTL, now: time.Now, persistence: persistence}
+}
+
+func NewPersistedMCPHTTPSessionStore(persistence MCPSessionPersistence) *mcpHTTPSessionStore {
+	if persistence == nil {
+		panic("MCP session persistence is required")
+	}
+	return newPersistedMCPHTTPSessionStore(persistence)
+}
+
 // evictExpiredLocked removes sessions idle for longer than the TTL. Callers must
 // hold the store mutex.
 func (store *mcpHTTPSessionStore) evictExpiredLocked() {
@@ -72,19 +93,41 @@ func (store *mcpHTTPSessionStore) create(id string, subject string) bool {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.evictExpiredLocked()
-	if len(store.sessions) >= maxMCPSessionsTotal {
-		return false
-	}
-	perSubject := 0
-	for _, session := range store.sessions {
-		if session.subject == subject {
-			perSubject++
+	now := store.now()
+	if store.persistence != nil {
+		cutoff := now.Add(-store.ttl)
+		total, err := store.persistence.ActiveMCPSessionCount(context.Background(), cutoff)
+		if err != nil {
+			panic(fmt.Sprintf("count active MCP sessions failed: %v", err))
+		}
+		if total >= maxMCPSessionsTotal {
+			return false
+		}
+		perSubject, err := store.persistence.ActiveMCPSessionCountForSubject(context.Background(), subject, cutoff)
+		if err != nil {
+			panic(fmt.Sprintf("count subject MCP sessions failed: %v", err))
+		}
+		if perSubject >= maxMCPSessionsPerSubject {
+			return false
+		}
+		if err := store.persistence.CreateMCPSession(context.Background(), id, subject, now); err != nil {
+			panic(fmt.Sprintf("create MCP session failed: %v", err))
+		}
+	} else {
+		if len(store.sessions) >= maxMCPSessionsTotal {
+			return false
+		}
+		perSubject := 0
+		for _, session := range store.sessions {
+			if session.subject == subject {
+				perSubject++
+			}
+		}
+		if perSubject >= maxMCPSessionsPerSubject {
+			return false
 		}
 	}
-	if perSubject >= maxMCPSessionsPerSubject {
-		return false
-	}
-	store.sessions[id] = &mcpHTTPSession{id: id, subject: subject, events: make([]mcpHTTPEvent, 0), subs: make(map[int64]chan mcpHTTPEvent), lastSeen: store.now()}
+	store.sessions[id] = &mcpHTTPSession{id: id, subject: subject, events: make([]mcpHTTPEvent, 0), subs: make(map[int64]chan mcpHTTPEvent), lastSeen: now}
 	return true
 }
 
@@ -94,9 +137,26 @@ func (store *mcpHTTPSessionStore) existsForSubject(id string, subject string) bo
 	store.evictExpiredLocked()
 	session, found := store.sessions[id]
 	if !found || session.closed || session.subject != subject {
-		return false
+		if store.persistence == nil {
+			return false
+		}
+		now := store.now()
+		exists, err := store.persistence.TouchMCPSession(context.Background(), id, subject, now, now.Add(-store.ttl))
+		if err != nil {
+			panic(fmt.Sprintf("touch MCP session failed: %v", err))
+		}
+		if !exists {
+			return false
+		}
+		store.sessions[id] = &mcpHTTPSession{id: id, subject: subject, events: make([]mcpHTTPEvent, 0), subs: make(map[int64]chan mcpHTTPEvent), lastSeen: now}
+		return true
 	}
 	session.lastSeen = store.now()
+	if store.persistence != nil {
+		if _, err := store.persistence.TouchMCPSession(context.Background(), id, subject, session.lastSeen, session.lastSeen.Add(-store.ttl)); err != nil {
+			panic(fmt.Sprintf("touch MCP session failed: %v", err))
+		}
+	}
 	return true
 }
 
@@ -105,13 +165,25 @@ func (store *mcpHTTPSessionStore) terminate(id string) bool {
 	defer store.mu.Unlock()
 	session, found := store.sessions[id]
 	if !found || session.closed {
-		return false
+		if store.persistence == nil {
+			return false
+		}
+		closed, err := store.persistence.CloseMCPSession(context.Background(), id, store.now())
+		if err != nil {
+			panic(fmt.Sprintf("close MCP session failed: %v", err))
+		}
+		return closed
 	}
 	session.closed = true
 	for _, subscriber := range session.subs {
 		close(subscriber)
 	}
 	delete(store.sessions, id)
+	if store.persistence != nil {
+		if _, err := store.persistence.CloseMCPSession(context.Background(), id, store.now()); err != nil {
+			panic(fmt.Sprintf("close MCP session failed: %v", err))
+		}
+	}
 	return true
 }
 
@@ -123,6 +195,11 @@ func (store *mcpHTTPSessionStore) appendEvent(sessionID string, payload []byte) 
 		return "", false
 	}
 	session.lastSeen = store.now()
+	if store.persistence != nil {
+		if _, err := store.persistence.TouchMCPSession(context.Background(), sessionID, session.subject, session.lastSeen, session.lastSeen.Add(-store.ttl)); err != nil {
+			panic(fmt.Sprintf("touch MCP session failed: %v", err))
+		}
+	}
 	session.nextID++
 	eventID := session.id + "-" + strconv.FormatInt(session.nextID, 10)
 	copied := make([]byte, len(payload))
@@ -183,10 +260,24 @@ func (store *mcpHTTPSessionStore) replayAndSubscribe(sessionID string, lastEvent
 }
 
 func (store *mcpHTTPSessionStore) activeSessionCount() int {
+	if store.persistence != nil {
+		count, err := store.persistence.ActiveMCPSessionCount(context.Background(), store.now().Add(-store.ttl))
+		if err != nil {
+			panic(fmt.Sprintf("count active MCP sessions failed: %v", err))
+		}
+		return count
+	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.evictExpiredLocked()
 	return len(store.sessions)
+}
+
+func (store *mcpHTTPSessionStore) storageKind() string {
+	if store.persistence != nil {
+		return "postgres_session_process_stream"
+	}
+	return "process_memory"
 }
 
 func newMCPHTTPSessionID() string {

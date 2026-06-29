@@ -731,6 +731,14 @@ func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeRe
 			return taskListScopeRejected{reason: rejected.Reason.Description()}
 		}
 		return taskListScopeAccepted{value: task.OrganizationListScope{OrganizationID: organizationID.Value, UserID: actor.ID, IncludeReserved: includeReserved}}
+	case "team":
+		teamIDResult := core.ParseTeamID(r.URL.Query().Get("team_id"))
+		teamID, matched := teamIDResult.(core.TeamIDCreated)
+		if !matched {
+			rejected := teamIDResult.(core.TeamIDRejected)
+			return taskListScopeRejected{reason: rejected.Reason.Description()}
+		}
+		return taskListScopeAccepted{value: task.TeamListScope{TeamID: teamID.Value, IncludeReserved: includeReserved}}
 	default:
 		return taskListScopeRejected{reason: "task list scope is invalid"}
 	}

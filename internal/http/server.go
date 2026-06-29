@@ -12,6 +12,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
@@ -127,6 +128,11 @@ type LedgerService interface {
 	ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 }
 
+type AuditService interface {
+	Record(context.Context, core.UserID, audit.Action, audit.Subject, audit.Metadata) audit.RecordResult
+	List(context.Context, core.Page) audit.ListResult
+}
+
 type Server struct {
 	staticFiles         fs.FS
 	authService         AuthService
@@ -140,23 +146,47 @@ type Server struct {
 	mcpServer           mcp.Server
 	mcpSessions         *mcpHTTPSessionStore
 	secureCookies       bool
-	ipRateLimiter       *rateLimiter
-	subjectRateLimiter  *rateLimiter
+	ipRateLimiter       RateLimiter
+	subjectRateLimiter  RateLimiter
 	adminUserIDs        map[string]bool
 	accountTokens       accountTokenDelivery
+	auditService        AuditService
+}
+
+type RuntimeState struct {
+	IPRateLimiter      RateLimiter
+	SubjectRateLimiter RateLimiter
+	MCPSessions        *mcpHTTPSessionStore
+	AuditService       AuditService
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
 // volume on unauthenticated endpoints (by client IP) and MCP tool calls (by agent
 // subject) without impeding normal use.
 const (
-	ipRateCapacity      = 20
-	ipRateRefillPerSec  = 5
-	mcpRateCapacity     = 60
-	mcpRateRefillPerSec = 10
+	IPRateCapacity      = 20
+	IPRateRefillPerSec  = 5
+	MCPRateCapacity     = 60
+	MCPRateRefillPerSec = 10
 )
 
 func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService) http.Handler {
+	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, RuntimeState{
+		IPRateLimiter:      newRateLimiter(IPRateCapacity, IPRateRefillPerSec),
+		SubjectRateLimiter: newRateLimiter(MCPRateCapacity, MCPRateRefillPerSec),
+		MCPSessions:        newMCPHTTPSessionStore(),
+		AuditService:       newMemoryAuditService(),
+	})
+}
+
+func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService, runtime RuntimeState) http.Handler {
+	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil {
+		panic("runtime state requires explicit rate limiters, MCP sessions, and audit service")
+	}
+	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, runtime)
+}
+
+func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService, runtime RuntimeState) http.Handler {
 	server := Server{
 		staticFiles:         staticFiles,
 		authService:         authService,
@@ -168,13 +198,14 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		agentService:        agentService,
 		assetService:        assetService,
 		mcpServer:           mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}),
-		mcpSessions:         newMCPHTTPSessionStore(),
+		mcpSessions:         runtime.MCPSessions,
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
 		secureCookies:      os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
-		ipRateLimiter:      newRateLimiter(ipRateCapacity, ipRateRefillPerSec),
-		subjectRateLimiter: newRateLimiter(mcpRateCapacity, mcpRateRefillPerSec),
+		ipRateLimiter:      runtime.IPRateLimiter,
+		subjectRateLimiter: runtime.SubjectRateLimiter,
 		accountTokens:      newAccountTokenDeliveryFromEnv(),
+		auditService:       runtime.AuditService,
 		// Platform admins (e.g. for awarding default collectibles) are bootstrapped
 		// from a comma-separated env list of user ids.
 		adminUserIDs: parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS")),
@@ -204,6 +235,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("GET /api/teams", server.listStandaloneTeams)
 	mux.HandleFunc("POST /api/teams", server.createStandaloneTeam)
 	mux.HandleFunc("GET /api/teams/{team_id}", server.getTeam)
+	mux.HandleFunc("GET /api/teams/{team_id}/work", server.getTeamWork)
 	mux.HandleFunc("POST /api/teams/{team_id}/members", server.addTeamMember)
 	mux.HandleFunc("GET /api/users", server.listUsers)
 	mux.HandleFunc("GET /api/users/{user_id}", server.getUserProfile)
@@ -255,6 +287,7 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	mux.HandleFunc("POST /api/collectibles/award", server.awardCollectible)
 	mux.HandleFunc("POST /api/collectibles/{id}/transfer", server.transferCollectible)
 	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
+	mux.HandleFunc("GET /api/admin/audit-events", server.listAuditEvents)
 	mux.HandleFunc("GET /api/organizations/{id}/collectibles", server.listOrganizationCollectibles)
 	mux.HandleFunc("GET /api/teams/{id}/collectibles", server.listTeamCollectibles)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)
@@ -854,7 +887,7 @@ func authResponseForSubject(subject auth.Subject, accessToken auth.AccessToken) 
 // allowByIP rate-limits an unauthenticated endpoint by client IP. It writes a
 // 429 and returns false when the caller should stop.
 func (server Server) allowByIP(w http.ResponseWriter, r *http.Request) bool {
-	if !server.ipRateLimiter.allow(clientIP(r)) {
+	if !server.ipRateLimiter.Allow(clientIP(r)) {
 		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
 		return false
 	}
@@ -864,7 +897,7 @@ func (server Server) allowByIP(w http.ResponseWriter, r *http.Request) bool {
 // allowBySubject rate-limits an authenticated, DB-heavy endpoint by acting
 // subject so a single account cannot spam transactional review operations.
 func (server Server) allowBySubject(w http.ResponseWriter, subjectID string) bool {
-	if !server.subjectRateLimiter.allow(subjectID) {
+	if !server.subjectRateLimiter.Allow(subjectID) {
 		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
 		return false
 	}

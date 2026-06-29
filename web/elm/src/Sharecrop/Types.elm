@@ -3,6 +3,7 @@ module Sharecrop.Types exposing (..)
 import Browser
 import Browser.Navigation as Nav
 import Http
+import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
@@ -42,6 +43,7 @@ type Page
     | SeriesListPage
     | SeriesDetailPage String
     | TeamDetailPage String
+    | AdminPage
     | NotFoundPage
 
 
@@ -167,6 +169,7 @@ type alias LoggedInModel =
     , seriesRenameDescription : String
     , teamDetail : Maybe Team.TeamDetailResponse
     , teamDetailError : Maybe String
+    , teamWork : List Task.TaskListItemResponse
     , teamMemberEmail : String
     , teamMemberMessage : Maybe String
     , createOrgTeamName : String
@@ -196,6 +199,9 @@ type alias LoggedInModel =
     , accountMessage : Maybe String
     , userDirectory : List UserDirectoryEntry
     , userDirectoryQuery : String
+    , operations : Maybe Admin.OperationsResponse
+    , auditEvents : List Admin.AuditEventResponse
+    , adminMessage : Maybe String
     }
 
 
@@ -391,6 +397,7 @@ type Msg
     | SeriesRenameDescriptionChanged String
     | UpdateSeriesClicked String
     | TeamDetailReceived (Result Http.Error Team.TeamDetailResponse)
+    | TeamWorkReceived (Result Http.Error Task.TasksResponse)
     | TeamMemberEmailChanged String
     | AddTeamMemberClicked String
     | AddTeamMemberReceived (Result Http.Error Team.TeamDetailResponse)
@@ -435,6 +442,8 @@ type Msg
     | EmailVerificationRequested (Result Http.Error String)
     | AccountActionReceived (Result Http.Error ())
     | DeactivateAccountReceived (Result Http.Error ())
+    | OperationsReceived (Result Http.Error Admin.OperationsResponse)
+    | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
 
 
 pageToPath : Page -> String
@@ -490,6 +499,9 @@ pageToPath page =
 
         TeamDetailPage teamId ->
             "/teams/" ++ teamId
+
+        AdminPage ->
+            "/admin"
 
         NotFoundPage ->
             "/not-found"

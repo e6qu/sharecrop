@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+type RateLimiter interface {
+	Allow(key string) bool
+	ActiveBuckets() int
+	StorageKind() string
+}
+
 // rateLimiter is an in-memory token-bucket limiter keyed by an arbitrary string
 // (a client IP for unauthenticated endpoints, an agent subject for MCP). It is a
 // defense-in-depth/availability control, not a distributed quota; like the MCP
@@ -37,8 +43,8 @@ func newRateLimiter(capacity int, refillPerSec float64) *rateLimiter {
 	}
 }
 
-// allow consumes one token for key and reports whether the request is permitted.
-func (limiter *rateLimiter) allow(key string) bool {
+// Allow consumes one token for key and reports whether the request is permitted.
+func (limiter *rateLimiter) Allow(key string) bool {
 	limiter.mu.Lock()
 	defer limiter.mu.Unlock()
 
@@ -74,11 +80,15 @@ func (limiter *rateLimiter) evictFullLocked(now time.Time) {
 	}
 }
 
-func (limiter *rateLimiter) activeBuckets() int {
+func (limiter *rateLimiter) ActiveBuckets() int {
 	limiter.mu.Lock()
 	defer limiter.mu.Unlock()
 	limiter.evictFullLocked(limiter.now())
 	return len(limiter.buckets)
+}
+
+func (limiter *rateLimiter) StorageKind() string {
+	return "process_memory"
 }
 
 // clientIP returns the direct peer address (host without port). It intentionally

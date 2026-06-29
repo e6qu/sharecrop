@@ -2,7 +2,13 @@
 
 Current priority from [docs/application_readiness_review.md](./docs/application_readiness_review.md):
 
-Recently finished:
+Earlier finished:
+
+1. The combined runtime/audit/team-dashboard branch wired Postgres-backed rate-limit buckets, persisted MCP HTTP session identity for production `serve`, admin audit writes/viewing, team work dashboards, generated Admin Elm contracts, and demo base-path/bundle parity.
+2. The branch kept email provider delivery and anonymous worker identity out of scope. Account and organization setup remains admin/org-admin driven.
+3. The branch removed a response-encoding fallback in MCP raw response handling; response encoding failures now fail loudly.
+
+Earlier finished:
 
 1. The combined product-readiness branch added an operations runbook, systemd service template, operations-state schema foundation, and admin operations status endpoint.
 2. The browser user selector can query `/api/users?query=...`; selector Playwright coverage now exercises the search path.
@@ -19,11 +25,10 @@ Recently finished:
 
 Remaining after the combined PR:
 
-1. Wire runtime adapters for Postgres-backed rate-limit buckets and MCP HTTP sessions. The tables exist, but the process still reports `process_memory` storage.
-2. Add an SMTP/provider email adapter for account verification and password reset. Log delivery exists; provider delivery does not.
-3. Add an admin audit-event writer and audit viewer for admin collectible awards, account lifecycle actions, ledger settlement, refunds, and moderation events.
-4. Add team-scoped submission dashboards and notification/inbox flows for approval, request-changes, accept/reject, and comments.
-5. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
+1. Add explicit notification records or inbox unread-state if the product needs more than the team review queue/team work dashboard.
+2. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
+3. Add deeper Postgres integration tests for audit event listing and persisted MCP HTTP session admission/counting.
+4. Revisit GitHub Pages hard-refresh behavior after deployment. The demo now handles `/demo/` base paths and serves the current Elm bundle, but pull request CI cannot observe the deployed Pages fallback behavior.
 
 Recently finished:
 
@@ -48,7 +53,7 @@ Polish follow-ups from `task/polish-bugfix-uiux-review`:
 
 Other queued work:
 
-1. Make the real-Elm demo base-path aware for GitHub Pages: pass a base (the demo's path prefix) via flags and have `pageToPath`/`pageFromUrl` honor it, plus add a Pages SPA fallback (e.g. a `404.html`), so hard-refresh and deep-links on demo sub-routes work and the URL stays under `/demo/`. Today only in-app click navigation works (see BUGS.md).
-2. Redesign anonymous worker identity only if guests return to the product; registered-user submissions are the current model.
+1. Do not add anonymous worker identity unless the product direction changes. Registered-user submissions are the current model.
+2. Do not add provider email delivery yet. Account and organization setup stays admin/org-admin driven.
 
 Before starting, reread [AGENTS.md](./AGENTS.md) and update the continuity files if task scope changes.

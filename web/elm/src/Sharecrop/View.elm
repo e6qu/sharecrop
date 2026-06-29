@@ -71,13 +71,13 @@ authView model =
 loggedInView : Model -> LoggedInModel -> Html Msg
 loggedInView model state =
     div [ Html.Attributes.class "space-y-6" ]
-        [ navBar model.demo state.page state.subjectId
+        [ navBar model.demo state.page state.subjectId state.isAdmin
         , pageView model.origin state
         ]
 
 
-navBar : Bool -> Page -> String -> Html Msg
-navBar demo current subjectId =
+navBar : Bool -> Page -> String -> Bool -> Html Msg
+navBar demo current subjectId isAdmin =
     div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
         [ navLink current OverviewPage "overview" "Overview"
         , navLink current TasksPage "tasks" "Tasks"
@@ -88,6 +88,11 @@ navBar demo current subjectId =
         , navLink current CollectiblesPage "collectibles" "Collectibles"
         , navLink current SeriesListPage "series-list" "Series"
         , navLink current OrganizationsPage "organizations" "Organizations"
+        , if isAdmin then
+            navLink current AdminPage "admin" "Admin"
+
+          else
+            text ""
         , a [ href ("#/users/" ++ subjectId), Html.Attributes.class Ui.secondaryButtonClass, testId "nav-profile" ] [ text "Profile" ]
         , Ui.secondaryButton [ type_ "button", onClick LogoutClicked, testId "logout" ] "Log out"
         , if demo then
@@ -109,6 +114,57 @@ navLink current target identifier labelText =
                 Ui.secondaryButtonClass
     in
     a [ href ("#" ++ pageToPath target), Html.Attributes.class styleClass, testId ("nav-" ++ identifier) ] [ text labelText ]
+
+
+adminView : LoggedInModel -> Html Msg
+adminView state =
+    Ui.card
+        [ Ui.sectionTitle "Operations"
+        , case state.operations of
+            Just operations ->
+                Html.dl [ Html.Attributes.class "grid gap-2 text-sm sm:grid-cols-2", testId "admin-operations" ]
+                    [ operationFact "Status" operations.status
+                    , operationFact "Account token delivery" operations.accountTokenDelivery
+                    , operationFact "MCP storage" operations.mcpStorage
+                    , operationFact "Rate limit storage" operations.rateLimitStorage
+                    , operationFact "Secure cookies" operations.secureCookies
+                    , operationFact "Active MCP sessions" (String.fromInt operations.activeMCPSessions)
+                    , operationFact "IP rate buckets" (String.fromInt operations.activeIPRateBuckets)
+                    , operationFact "Subject rate buckets" (String.fromInt operations.activeSubjectRateBuckets)
+                    ]
+
+            Nothing ->
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-operations-empty" ] [ text "Operations status is not loaded." ]
+        , Ui.sectionTitle "Audit events"
+        , if List.isEmpty state.auditEvents then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-audit-empty" ] [ text "No audit events." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-audit-events" ]
+                (List.map auditEventRow state.auditEvents)
+        , maybeNote state.adminMessage "admin-message"
+        ]
+
+
+operationFact : String -> String -> Html Msg
+operationFact labelText valueText =
+    div [ Html.Attributes.class "rounded border border-slate-200 p-2" ]
+        [ Html.dt [ Html.Attributes.class "text-xs font-semibold text-slate-500" ] [ text labelText ]
+        , Html.dd [ Html.Attributes.class "break-words text-slate-900" ] [ text valueText ]
+        ]
+
+
+auditEventRow : { event | action : String, subjectKind : String, subjectID : String, actorUserID : String, createdAt : String, metadataJSON : String } -> Html Msg
+auditEventRow event =
+    div [ Html.Attributes.class "space-y-1 py-2 text-sm", testId "admin-audit-event" ]
+        [ p [ Html.Attributes.class "font-medium" ] [ text (event.action ++ " on " ++ event.subjectKind) ]
+        , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text ("Subject " ++ event.subjectID ++ " · actor " ++ event.actorUserID ++ " · " ++ event.createdAt) ]
+        , if event.metadataJSON == "{}" then
+            text ""
+
+          else
+            Ui.codeBlock [ testId "admin-audit-metadata" ] event.metadataJSON
+        ]
 
 
 pageView : String -> LoggedInModel -> Html Msg
@@ -165,6 +221,9 @@ pageView origin state =
         TeamDetailPage teamId ->
             teamDetailView teamId state
 
+        AdminPage ->
+            adminView state
+
         NotFoundPage ->
             Ui.card
                 [ Ui.sectionTitle "Page not found"
@@ -199,6 +258,10 @@ teamDetailView teamId state =
 
                       else
                         text ""
+                    , Ui.sectionTitle "Review queue"
+                    , teamReviewQueue state.teamWork
+                    , Ui.sectionTitle "Team work"
+                    , tasksList state.teamWork
                     , Ui.sectionTitle "Collectibles"
                     , collectiblesHoldingsList "team-collectibles" state.teamCollectibles
                     ]
@@ -211,6 +274,19 @@ teamDetailView teamId state =
                     Nothing ->
                         p [ Html.Attributes.class "text-sm text-slate-500", testId "team-detail-missing" ] [ text ("Loading team " ++ teamId ++ "…") ]
         ]
+
+
+teamReviewQueue : List Task.TaskListItemResponse -> Html Msg
+teamReviewQueue tasks =
+    let
+        reviewTasks =
+            List.filter (\item -> item.reviewerAction /= "none") tasks
+    in
+    if List.isEmpty reviewTasks then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "team-review-empty" ] [ text "No submissions waiting for team review." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "team-review-queue" ] (List.map taskRow reviewTasks)
 
 
 collectiblesHoldingsList : String -> List Collectible.CollectibleResponse -> Html Msg

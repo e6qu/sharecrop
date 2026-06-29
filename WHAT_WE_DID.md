@@ -1254,3 +1254,34 @@ The `task/product-readiness-foundation` branch verification was performed:
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./...` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode -test ./...` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build GOMODCACHE=/Users/zardoz/projects/sharecrop/.cache/go-mod ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+
+The `task/runtime-audit-team-dashboard` branch added runtime state, audit, and team dashboard work:
+
+- Production `serve` now wires Postgres-backed rate-limit buckets.
+- Production `serve` now persists MCP HTTP session identity, TTL admission state, close state, and active counts in Postgres. Live SSE subscribers and replay buffers remain process-local and operations reports `postgres_session_process_stream`.
+- Runtime construction fails loudly when explicit production runtime dependencies are missing.
+- MCP raw response encoding no longer synthesizes a fallback response if JSON encoding fails; it now fails loudly.
+- Audit events were added with a Postgres store and admin list endpoint.
+- Audit writes now cover admin default collectible awards, account deactivation, organization member provisioning, organization member role updates, organization member deactivation, submission accept/request-changes/reject decisions, and task refunds.
+- The Elm app gained an admin page that shows operations status and audit events for platform admins.
+- Team detail pages now load `/api/teams/{team_id}/work`, show a review queue, and show team work.
+- Task listing supports `scope=team`.
+- Generated Elm contracts now include Admin operations/audit response types.
+- The backendless demo implements team work and admin audit routes, serves the current compiled Elm bundle, and computes a `/demo/` base path explicitly.
+
+The `task/runtime-audit-team-dashboard` branch verification was performed:
+
+- `go test ./...` passed.
+- `make check-format` passed.
+- `make check-contracts` passed.
+- `deno task check:policy` passed.
+- `deno check tools/*.ts tests/**/*.ts` passed.
+- `deno task lint` passed.
+- `deno test --allow-read tests/deno` passed.
+- `go vet ./...` passed.
+- `go tool deadcode -test ./...` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm make build` passed.
+- `deno task e2e:ui` passed with local Postgres.
+- Local Playwright screenshot/overflow checks passed for admin desktop/mobile and team desktop/mobile.
+- `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations go test -tags integration ./tests/integration` passed.
+- `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e` passed.

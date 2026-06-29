@@ -7,6 +7,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/task"
 )
 
 type teamDetailResponse struct {
@@ -49,6 +50,36 @@ func (server Server) getTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeTeamDetailResponse(w, http.StatusOK, teamDetailFrom(got))
+}
+
+func (server Server) getTeamWork(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+
+	teamIDResult := core.ParseTeamID(r.PathValue("team_id"))
+	teamIDCreated, teamIDMatched := teamIDResult.(core.TeamIDCreated)
+	if !teamIDMatched {
+		writeError(w, http.StatusBadRequest, teamIDResult.(core.TeamIDRejected).Reason.Description())
+		return
+	}
+
+	teamResult := server.organizationService.GetTeam(r.Context(), actor.subject, teamIDCreated.Value)
+	if _, matched := teamResult.(org.TeamGot); !matched {
+		writeDomainError(w, teamResult.(org.GetTeamRejected).Reason)
+		return
+	}
+
+	result := server.taskService.List(r.Context(), actor.subject, task.TeamListScope{TeamID: teamIDCreated.Value, IncludeReserved: true}, task.NoListFilters(), parsePage(r))
+	listed, matched := result.(task.TasksListed)
+	if !matched {
+		writeDomainError(w, result.(task.ListRejected).Reason)
+		return
+	}
+	writeTasksResponse(w, http.StatusOK, tasksToResponse(listed.Values))
 }
 
 func (server Server) addTeamMember(w http.ResponseWriter, r *http.Request) {

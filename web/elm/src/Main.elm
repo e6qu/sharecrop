@@ -144,6 +144,7 @@ emptyLoggedIn response =
     , seriesRenameDescription = ""
     , teamDetail = Nothing
     , teamDetailError = Nothing
+    , teamWork = []
     , teamMemberEmail = ""
     , teamMemberMessage = Nothing
     , createOrgTeamName = ""
@@ -173,6 +174,9 @@ emptyLoggedIn response =
     , accountMessage = Nothing
     , userDirectory = []
     , userDirectoryQuery = ""
+    , operations = Nothing
+    , auditEvents = []
+    , adminMessage = Nothing
     }
 
 
@@ -253,6 +257,9 @@ pageFromUrl url =
         [ "teams", teamId ] ->
             TeamDetailPage teamId
 
+        [ "admin" ] ->
+            AdminPage
+
         [ "organizations" ] ->
             OrganizationsPage
 
@@ -296,7 +303,10 @@ enterPage page state =
             { state | page = page, seriesDetail = Nothing, seriesDetailError = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
 
         TeamDetailPage _ ->
-            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamCollectibles = [], teamMemberEmail = "", teamMemberMessage = Nothing }
+            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamCollectibles = [], teamMemberEmail = "", teamMemberMessage = Nothing }
+
+        AdminPage ->
+            { state | page = page, operations = Nothing, auditEvents = [], adminMessage = Nothing }
 
         CollectibleDetailPage _ ->
             { state | page = page, transferMessage = Nothing, transferRecipientId = "" }
@@ -1086,6 +1096,19 @@ update msg model =
             , Cmd.none
             )
 
+        TeamWorkReceived result ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    case result of
+                        Ok response ->
+                            { state | teamWork = response.tasks }
+
+                        Err _ ->
+                            { state | teamWork = [] }
+                )
+            , Cmd.none
+            )
+
         TeamMemberEmailChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | teamMemberEmail = value }), Cmd.none )
 
@@ -1319,6 +1342,18 @@ update msg model =
 
         DeactivateAccountReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        OperationsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | operations = Just response, adminMessage = Nothing }), Cmd.none )
+
+        OperationsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | operations = Nothing, adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AuditEventsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | auditEvents = response.events, adminMessage = Nothing }), Cmd.none )
+
+        AuditEventsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         LinkClicked request ->
             case request of
