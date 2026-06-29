@@ -15,6 +15,30 @@ func Modules() []Module {
 		collectibleModule(),
 		adminModule(),
 		notificationModule(),
+		privacyModule(),
+	}
+}
+
+func privacyModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Privacy"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("PrivacyRequestKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("PrivacyRequestKindDataExport"), Tag: "data_export"},
+					{Name: NewElmTypeName("PrivacyRequestKindSensitiveFieldDeletion"), Tag: "sensitive_field_deletion"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("PrivacyRequestResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: StringRef{}},
+					{Name: NewElmValueName("status"), JSONName: NewJSONFieldName("status"), Type: StringRef{}},
+					{Name: NewElmValueName("requestedBy"), JSONName: NewJSONFieldName("requested_by"), Type: StringRef{}},
+				},
+			},
+		},
 	}
 }
 

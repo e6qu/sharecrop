@@ -5,25 +5,26 @@ Current priority from
 
 Next recommended work:
 
-1. Add saved queue views if high-volume team or organization work queues need
-   reusable views beyond the current server-backed search, type filters, sort,
-   and pagination.
-2. Add a richer revision timeline if repeated request-changes rounds become
-   common. The worker submissions page now exposes response history, review
-   notes, validation errors, sensitive-field metadata, and revision shortcuts.
-3. Keep expanding shared scenario parity as new user-visible API surfaces are
+1. Persist saved queue views if operators need them to survive reloads or move
+   across devices. Current saved views are in-session browser state for team
+   work and organization task queues.
+2. Add organization ledger and org-scoped audit panels if the operations
+   dashboard needs billing/history views beyond the currently loaded balance,
+   member, team, collectible, and task-state counts.
+3. Add privacy request operator resolution, export generation, retention jobs,
+   and sensitive-field redaction only after lifecycle/executor design is
+   written.
+4. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    team/organization queue search/type/sort, organization reviewer acceptance,
-   sensitive-field response metadata, and multi-actor reservation/submission
-   acceptance.
-4. Keep expanding generated/fixture-level HTTP contract coverage as the API
+   sensitive-field response metadata, privacy request/audit shape, and
+   multi-actor reservation/submission acceptance.
+5. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-5. Audit remaining raw-ID browser flows and replace high-traffic fields with
+6. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit.
-6. Add user-facing export/delete request flows and sensitive-field
-   retention/deletion workflows only after the lifecycle design is written.
 7. Keep improving backendless demo semantic parity through shared scenarios
    before any WASM replacement.
 8. Add provider email delivery only if the product direction changes; current
@@ -32,6 +33,13 @@ Next recommended work:
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The org-ops-queues-privacy branch added in-session saved views for team work
+   and organization task queues, a loaded-data organization operations
+   dashboard, a worker submission revision timeline, audited privacy request
+   creation, generated Privacy Elm contracts, HTTP fixture/unit coverage,
+   shared scenario parity for privacy request/audit shape, backendless demo
+   parity, browser assertions, and docs updates.
 
 1. The queue-revisions-ops-privacy branch added task-list `task_type` and
    `sort` filters, browser queue controls, audit-event filters, submission

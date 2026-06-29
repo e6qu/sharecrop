@@ -192,6 +192,44 @@ func TestCreateOrganizationRequiresUserToken(t *testing.T) {
 	}
 }
 
+func TestPrivacyRequestEndpointReturnsQueuedResponse(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy-requests", strings.NewReader(`{"kind":"data_export"}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
+	}
+
+	var body privacyRequestResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Kind != "data_export" {
+		t.Fatalf("kind = %q, want data_export", body.Kind)
+	}
+	if body.Status != "queued" {
+		t.Fatalf("status = %q, want queued", body.Status)
+	}
+	if body.RequestedBy == "" {
+		t.Fatalf("requested_by is empty")
+	}
+}
+
+func TestPrivacyRequestEndpointRejectsInvalidKind(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy-requests", strings.NewReader(`{"kind":"hard_delete"}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
 func TestCreateTaskEndpointUsesDefaultUserVisibility(t *testing.T) {
 	userIDResult := core.NewUserID()
 	userIDCreated := userIDResult.(core.UserIDCreated)

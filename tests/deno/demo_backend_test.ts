@@ -201,7 +201,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
   );
   assertEquals(auth.status, 200, "refresh status");
   requireString(auth.json, "subject_kind");
-  requireString(auth.json, "subject_id");
+  const subjectID = requireString(auth.json, "subject_id");
   const accessToken = requireString(auth.json, "access_token");
 
   const verification = await request(
@@ -226,6 +226,36 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "verified",
     "email verification confirm body",
   );
+
+  const privacyRequest = await request(
+    backend,
+    "POST",
+    "/api/privacy-requests",
+    { kind: "sensitive_field_deletion" },
+    accessToken,
+  );
+  assertEquals(privacyRequest.status, 201, "privacy request status");
+  assertEquals(
+    requireString(privacyRequest.json, "requested_by"),
+    subjectID,
+    "privacy request actor",
+  );
+  assertEquals(
+    requireString(privacyRequest.json, "status"),
+    "queued",
+    "privacy request queued status",
+  );
+
+  const privacyAudit = await request(
+    backend,
+    "GET",
+    "/api/admin/audit-events?action=privacy_request_created&subject_kind=privacy_request",
+    undefined,
+    accessToken,
+  );
+  assertEquals(privacyAudit.status, 200, "privacy audit status");
+  const events = requireArray(privacyAudit.json, "events");
+  assert(events.length > 0, "privacy request must create an audit event");
 
   const reset = await request(
     backend,

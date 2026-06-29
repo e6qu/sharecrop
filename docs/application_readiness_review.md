@@ -58,8 +58,10 @@ support surfaces are absent.
    - Team and organization task lists now have server-backed task search,
      task-type filters, sorting, and pagination. Organization task state filters
      are server-backed.
+   - Team and organization queues have in-session saved views for repeated
+     query/filter/sort combinations.
    - Result: the core organization-team task path works, but richer queue
-     saved views still need product polish.
+     persistence and operator-specific queue defaults still need product polish.
 
 2. **Worker revision and submission-discussion flows still need polish.**
    - Workers can submit and can list their own submissions from the profile
@@ -208,13 +210,15 @@ Implemented:
 - Fund organization-owned tasks from organization credits.
 - Choose provisioned roles, update roles, deactivate members, and review
   organization-owned task submissions when authorized.
+- Organization detail exposes an operations dashboard with loaded balance,
+  member, team, collectible, and task-state counts.
 
 Missing or partial:
 
-- Browser does not expose a full organization operations dashboard for
-  billing-style views or audit history.
-- Team-scoped work dashboards exist, but high-volume filters and sorting are
-  still partial.
+- Organization operations dashboard metrics are limited to data already loaded
+  by the organization detail page; organization ledger history and org-scoped
+  audit history are not separate dashboard panels.
+- Saved queue views are in-session only.
 
 ### Agent Operator
 
@@ -259,12 +263,14 @@ Implemented:
   redacted for receipt lookup.
 - Submission responses expose indexed sensitive-field metadata so authorized
   users can see which response paths are governed by retention/redaction policy.
+- Users can create audited privacy requests for data export or
+  sensitive-field deletion.
 
 Missing or partial:
 
-- No user-facing export/delete request flow.
 - No retention job or deletion workflow for fields marked `delete_on_request`.
 - No audit events for sensitive-field access/deletion.
+- No export generator or privacy request operator resolution workflow.
 - No attachment/object-storage model.
 
 ### Lists, Search, And Navigation
@@ -273,12 +279,14 @@ Implemented:
 
 - API pagination exists for many list endpoints.
 - Browser has filters for task state and discovery reserved inclusion.
+- Team and organization task queues expose search, task-type filters, sort,
+  pagination, and in-session saved views.
 
 Missing or partial:
 
 - Browser task and discovery pages expose pagination controls. Some other list
   pages still rely on their first page or selector-local paging.
-- No search, sort, full-text filtering, or saved views.
+- Full-text search and persisted saved views are not implemented.
 - Several flows require copying raw UUIDs between pages.
 
 ## Documentation Drift Found

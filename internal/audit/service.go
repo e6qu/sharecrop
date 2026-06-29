@@ -30,6 +30,7 @@ var (
 	ActionSubmissionChangesRequested  = Action{value: "submission_changes_requested"}
 	ActionSubmissionRejected          = Action{value: "submission_rejected"}
 	ActionTaskRefunded                = Action{value: "task_refunded"}
+	ActionPrivacyRequestCreated       = Action{value: "privacy_request_created"}
 )
 
 func (action Action) String() string {

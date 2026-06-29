@@ -192,6 +192,40 @@ export async function runSharedScenarioParity(
     "email verification response must include a token or sent status",
   );
 
+  const privacyRequest = await client.request(
+    "POST",
+    "/api/privacy-requests",
+    { kind: "data_export" },
+  );
+  assertStatus(privacyRequest, 201, "privacy request");
+  assertScenario(
+    requireString(privacyRequest.json, "kind") === "data_export",
+    "privacy request kind must round trip",
+  );
+  assertScenario(
+    requireString(privacyRequest.json, "status") === "queued",
+    "privacy request status must be queued",
+  );
+  assertScenario(
+    requireString(privacyRequest.json, "requested_by") === subjectID,
+    "privacy request actor must match authenticated user",
+  );
+
+  const privacyAudit = await client.request(
+    "GET",
+    "/api/admin/audit-events?action=privacy_request_created&subject_kind=privacy_request",
+    noScenarioBody,
+  );
+  assertStatus(privacyAudit, 200, "privacy request audit events");
+  const privacyAuditEvents = requireArray(privacyAudit.json, "events");
+  assertScenario(
+    privacyAuditEvents.some((event) => {
+      const record = requireRecord(event, "privacyAuditEvent");
+      return requireString(record, "subject_id") === subjectID;
+    }),
+    "privacy request must be visible in audit events",
+  );
+
   const users = await client.request(
     "GET",
     "/api/users?query=user&limit=2&offset=0",

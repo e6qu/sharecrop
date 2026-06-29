@@ -218,6 +218,8 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("select-organization").first().click();
   await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]+$/);
   await expect(page.getByTestId("active-organization")).toBeVisible();
+  await expect(page.getByTestId("org-operations-dashboard")).toBeVisible();
+  await expect(page.getByTestId("org-ops-members-active")).toContainText("1");
   await expect(page.getByTestId("org-task-query")).toBeVisible();
   await page.getByTestId("org-task-query").fill("missing task");
   await page.getByTestId("org-task-search").click();
@@ -226,6 +228,14 @@ test("users open an organization and manage its teams and members", async ({ pag
     "Offset 0",
   );
   await page.getByTestId("org-task-filter-open").click();
+  await page.getByTestId("org-task-saved-view-name").fill("Open tasks");
+  await page.getByTestId("org-task-save-view").click();
+  await expect(page.getByTestId("org-task-saved-view")).toContainText(
+    "Open tasks",
+  );
+  await page.getByTestId("org-task-query").fill("");
+  await page.getByTestId("org-task-saved-view").click();
+  await expect(page.getByTestId("org-task-query")).toHaveValue("missing task");
   // The owner is a real member of the org they created.
   await expect(page.getByTestId("org-member-row")).toHaveCount(1);
 
@@ -255,6 +265,16 @@ test("users open an organization and manage its teams and members", async ({ pag
     "Offset 0",
   );
   await page.getByTestId("team-work-filter-ready").click();
+  await page.getByTestId("team-work-saved-view-name").fill("Ready work");
+  await page.getByTestId("team-work-save-view").click();
+  await expect(page.getByTestId("team-work-saved-view")).toContainText(
+    "Ready work",
+  );
+  await page.getByTestId("team-work-query").fill("");
+  await page.getByTestId("team-work-saved-view").click();
+  await expect(page.getByTestId("team-work-query")).toHaveValue(
+    "missing task",
+  );
   await expect(page.getByTestId("team-review-queue-empty")).toBeVisible();
   await expect(page.getByTestId("team-ready-work-empty")).toBeVisible();
 });
@@ -311,6 +331,10 @@ test("a user profile page lists the user's public tasks", async ({ page, request
   await expect(
     page.getByTestId("user-task-row").filter({ hasText: title }),
   ).toHaveCount(1);
+  await page.getByTestId("request-data-export").click();
+  await expect(page.getByTestId("account-message")).toContainText(
+    "Privacy request queued: data_export",
+  );
 
   // The work and submissions sub-pages are their own linkable URLs.
   await page.getByTestId("user-work-link").click();
@@ -361,6 +385,10 @@ test("workers see requested revisions in their submission inbox", async ({ page,
   await expect(page.getByTestId("revision-inbox")).toBeVisible();
   await expect(page.getByTestId("revision-inbox")).toContainText(task.id);
   await expect(page.getByTestId("revision-inbox")).toContainText(reviewNote);
+  await expect(page.getByTestId("revision-timeline")).toBeVisible();
+  await expect(page.getByTestId("revision-timeline-row")).toContainText(
+    reviewNote,
+  );
   await page.getByTestId("revision-resubmit").click();
   await expect(page).toHaveURL(new RegExp(`/tasks/${task.id}$`));
   await expect

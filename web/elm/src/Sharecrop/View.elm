@@ -11,6 +11,7 @@ import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
+import Sharecrop.Generated.Privacy as Privacy
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
@@ -373,6 +374,14 @@ teamWorkDashboard teamId state =
         , paginationControls "team-work-page" PreviousTeamWorkPageClicked NextTeamWorkPageClicked state.teamWorkOffset
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "team-work-filter" ]
             (List.map (teamWorkFilterButton state.teamWorkFilter) teamWorkFilterOptions)
+        , queueSavedViews
+            { nameValue = state.teamWorkSavedViewName
+            , nameChanged = TeamWorkSavedViewNameChanged
+            , saveClicked = SaveTeamWorkViewClicked
+            , applyClicked = ApplyTeamWorkViewClicked
+            , views = state.teamWorkSavedViews
+            , prefix = "team-work"
+            }
         , teamWorkSection "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
         , teamWorkSection "Ready for team" "team-ready-work" "No team-visible tasks are ready for action." readyForTeam
         , teamWorkSection "Assigned to team" "team-assigned-work" "No tasks are currently assigned to this team." assignedToTeam
@@ -402,6 +411,49 @@ teamWorkFilterButton selected ( tag, labelText ) =
                )
         )
         labelText
+
+
+queueSavedViews config =
+    div [ Html.Attributes.class "space-y-2 rounded-md border border-slate-200 bg-white p-3", testId (config.prefix ++ "-saved-views") ]
+        [ form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit config.saveClicked ]
+            [ Ui.fieldLabel "Saved view"
+                [ Ui.textInput [ type_ "text", placeholder "View name", value config.nameValue, onInput config.nameChanged, testId (config.prefix ++ "-saved-view-name") ] ]
+            , Ui.secondaryButton [ type_ "submit", testId (config.prefix ++ "-save-view") ] "Save"
+            ]
+        , if List.isEmpty config.views then
+            p [ Html.Attributes.class "text-xs text-slate-500", testId (config.prefix ++ "-saved-views-empty") ] [ text "No saved views." ]
+
+          else
+            div [ Html.Attributes.class "flex flex-wrap gap-2", testId (config.prefix ++ "-saved-view-list") ]
+                (List.map
+                    (\savedView ->
+                        Ui.secondaryButton [ type_ "button", onClick (config.applyClicked savedView.name), testId (config.prefix ++ "-saved-view") ] (queueViewLabel savedView)
+                    )
+                    config.views
+                )
+        ]
+
+
+queueViewLabel : QueueView -> String
+queueViewLabel savedView =
+    savedView.name
+        ++ " · "
+        ++ queuePart "query" savedView.query
+        ++ " · "
+        ++ queuePart "state" savedView.stateFilter
+        ++ " · "
+        ++ queuePart "type" savedView.typeFilter
+        ++ " · "
+        ++ savedView.sort
+
+
+queuePart : String -> String -> String
+queuePart name valueText =
+    if String.trim valueText == "" then
+        name ++ ": any"
+
+    else
+        name ++ ": " ++ valueText
 
 
 filterTeamWork : String -> String -> List Task.TaskListItemResponse -> List Task.TaskListItemResponse
@@ -702,6 +754,7 @@ userSubmissionsView userId state =
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
                 (List.map userSubmissionRow submissions)
+        , revisionTimelineView submissions
         ]
 
 
@@ -720,6 +773,31 @@ userSubmissionRow item =
         , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (submissionStateLabel item.state) ]
         , reviewNoteView item.reviewNote
         , Ui.codeBlock [ testId "user-submission-response" ] item.responseJSON
+        , validationErrorsView item.validationErrors
+        , sensitiveFieldsView item.sensitiveFields
+        ]
+
+
+revisionTimelineView : List Submission.SubmissionResponse -> Html Msg
+revisionTimelineView submissions =
+    div [ Html.Attributes.class "space-y-2", testId "revision-timeline" ]
+        [ Ui.sectionTitle "Revision timeline"
+        , if List.isEmpty submissions then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "revision-timeline-empty" ] [ text "No submission history." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100" ] (List.map revisionTimelineRow submissions)
+        ]
+
+
+revisionTimelineRow : Submission.SubmissionResponse -> Html Msg
+revisionTimelineRow item =
+    div [ Html.Attributes.class "space-y-1 py-2", testId "revision-timeline-row" ]
+        [ div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+            [ Ui.badge (submissionStateLabel item.state)
+            , a [ href ("#/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline", testId "revision-timeline-task-link" ] [ text ("Task " ++ item.taskID) ]
+            ]
+        , reviewNoteView item.reviewNote
         , validationErrorsView item.validationErrors
         , sensitiveFieldsView item.sensitiveFields
         ]
@@ -792,6 +870,13 @@ accountSettingsCard state =
             [ Ui.fieldLabel "Current password" [ Ui.textInput [ type_ "password", value state.currentPassword, onInput CurrentPasswordChanged, testId "current-password" ] ]
             , Ui.fieldLabel "New password" [ Ui.textInput [ type_ "password", value state.newPassword, onInput NewPasswordChanged, testId "new-password" ] ]
             , Ui.primaryButton [ type_ "submit", testId "change-password" ] "Change password"
+            ]
+        , div [ Html.Attributes.class "space-y-2" ]
+            [ Ui.label_ "Privacy requests"
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ Ui.secondaryButton [ type_ "button", onClick (PrivacyRequestClicked Privacy.PrivacyRequestKindDataExport), testId "request-data-export" ] "Request data export"
+                , Ui.secondaryButton [ type_ "button", onClick (PrivacyRequestClicked Privacy.PrivacyRequestKindSensitiveFieldDeletion), testId "request-sensitive-deletion" ] "Request sensitive-field deletion"
+                ]
             ]
         , Ui.dangerButton [ type_ "button", onClick DeactivateAccountClicked, testId "deactivate-account" ] "Deactivate account"
         , maybeNote state.accountMessage "account-message"
@@ -912,6 +997,7 @@ activeOrganizationView state =
     else
         div [ Html.Attributes.class "mt-4 space-y-4 rounded-md bg-slate-50 p-4", testId "active-organization" ]
             [ Ui.label_ ("Balance: " ++ balanceLabel state.orgBalance)
+            , organizationOperationsDashboard state
             , Ui.sectionTitle "Organization tasks"
             , orgTaskControls state
             , tasksListSimple "org-tasks" state.orgTasks
@@ -940,6 +1026,46 @@ activeOrganizationView state =
             ]
 
 
+organizationOperationsDashboard : LoggedInModel -> Html Msg
+organizationOperationsDashboard state =
+    div [ Html.Attributes.class "space-y-3 rounded-md border border-slate-200 bg-white p-3", testId "org-operations-dashboard" ]
+        [ Ui.sectionTitle "Operations"
+        , div [ Html.Attributes.class "grid gap-2 sm:grid-cols-2" ]
+            [ operationMetric "Balance" (balanceLabel state.orgBalance) "org-ops-balance"
+            , operationMetric "Teams" (String.fromInt (List.length state.orgTeams)) "org-ops-teams"
+            , operationMetric "Active members" (String.fromInt (countMembers Organization.MembershipStatusActive state.orgMembers)) "org-ops-members-active"
+            , operationMetric "Inactive members" (String.fromInt (inactiveMemberCount state.orgMembers)) "org-ops-members-inactive"
+            , operationMetric "Collectibles" (String.fromInt (List.length state.orgCollectibles)) "org-ops-collectibles"
+            , operationMetric "Draft tasks" (String.fromInt (countTasks Task.TaskStateDraft state.orgTasks)) "org-ops-tasks-draft"
+            , operationMetric "Open tasks" (String.fromInt (countTasks Task.TaskStateOpen state.orgTasks)) "org-ops-tasks-open"
+            , operationMetric "Closed tasks" (String.fromInt (countTasks Task.TaskStateClosed state.orgTasks)) "org-ops-tasks-closed"
+            ]
+        ]
+
+
+operationMetric : String -> String -> String -> Html Msg
+operationMetric labelText valueText identifier =
+    div [ Html.Attributes.class "rounded-md bg-slate-50 p-3", testId identifier ]
+        [ p [ Html.Attributes.class "text-xs uppercase text-slate-500" ] [ text labelText ]
+        , p [ Html.Attributes.class "text-lg font-semibold text-slate-900" ] [ text valueText ]
+        ]
+
+
+countMembers : Organization.MembershipStatus -> List Organization.OrganizationMemberResponse -> Int
+countMembers status members =
+    List.length (List.filter (\member -> member.status == status) members)
+
+
+inactiveMemberCount : List Organization.OrganizationMemberResponse -> Int
+inactiveMemberCount members =
+    List.length members - countMembers Organization.MembershipStatusActive members
+
+
+countTasks : Task.TaskState -> List Task.TaskListItemResponse -> Int
+countTasks state tasks =
+    List.length (List.filter (\task -> task.state == state) tasks)
+
+
 orgTaskControls : LoggedInModel -> Html Msg
 orgTaskControls state =
     div [ Html.Attributes.class "space-y-2" ]
@@ -953,6 +1079,14 @@ orgTaskControls state =
         , paginationControls "org-tasks-page" PreviousOrgTasksPageClicked NextOrgTasksPageClicked state.orgTaskOffset
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "org-task-filter" ]
             (List.map (orgTaskFilterButton state.orgTaskFilter) orgTaskFilterOptions)
+        , queueSavedViews
+            { nameValue = state.orgTaskSavedViewName
+            , nameChanged = OrgTaskSavedViewNameChanged
+            , saveClicked = SaveOrgTaskViewClicked
+            , applyClicked = ApplyOrgTaskViewClicked
+            , views = state.orgTaskSavedViews
+            , prefix = "org-task"
+            }
         ]
 
 

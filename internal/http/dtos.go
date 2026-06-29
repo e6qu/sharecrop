@@ -46,6 +46,18 @@ type accountProfileRequest struct {
 	Email string `json:"email"`
 }
 
+type privacyRequest struct {
+	Kind string `json:"kind"`
+}
+
+type privacyRequestResponse struct {
+	Kind        string `json:"kind"`
+	Status      string `json:"status"`
+	RequestedBy string `json:"requested_by"`
+}
+
+func (privacyRequestResponse) writableResponse() {}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }

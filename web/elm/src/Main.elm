@@ -139,6 +139,8 @@ emptyLoggedIn response =
     , orgTaskSort = "newest"
     , orgTaskOffset = 0
     , orgTaskMessage = Nothing
+    , orgTaskSavedViewName = ""
+    , orgTaskSavedViews = []
     , orgCollectibles = []
     , orgCollectiblesMessage = Nothing
     , teamCollectibles = []
@@ -168,6 +170,8 @@ emptyLoggedIn response =
     , teamWorkSort = "newest"
     , teamWorkOffset = 0
     , teamWorkMessage = Nothing
+    , teamWorkSavedViewName = ""
+    , teamWorkSavedViews = []
     , teamMemberEmail = ""
     , teamMemberMessage = Nothing
     , createOrgTeamName = ""
@@ -251,6 +255,18 @@ replaceNotification replacement notifications =
                 notification
         )
         notifications
+
+
+saveQueueView : QueueView -> List QueueView -> List QueueView
+saveQueueView view views =
+    view :: List.filter (\existing -> existing.name /= view.name) views
+
+
+queueViewByName : String -> List QueueView -> Maybe QueueView
+queueViewByName name views =
+    views
+        |> List.filter (\view -> view.name == name)
+        |> List.head
 
 
 orgTeamSearchOrganizationID : LoggedInModel -> String
@@ -1421,6 +1437,58 @@ update msg model =
                             ( updated, Cmd.none )
                 )
 
+        TeamWorkSavedViewNameChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | teamWorkSavedViewName = value }), Cmd.none )
+
+        SaveTeamWorkViewClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        name =
+                            String.trim state.teamWorkSavedViewName
+                    in
+                    if name == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | teamWorkMessage = Just "A saved view name is required." }), Cmd.none )
+
+                    else
+                        let
+                            view =
+                                { name = name
+                                , query = state.teamWorkQuery
+                                , stateFilter = state.teamWorkFilter
+                                , typeFilter = state.teamWorkTypeFilter
+                                , sort = state.teamWorkSort
+                                }
+                        in
+                        ( Api.updateLoggedIn model (\current -> { current | teamWorkSavedViews = saveQueueView view current.teamWorkSavedViews, teamWorkSavedViewName = "", teamWorkMessage = Just ("Saved view: " ++ name) }), Cmd.none )
+                )
+
+        ApplyTeamWorkViewClicked name ->
+            Api.withSession model
+                (\state ->
+                    case ( state.teamDetail, queueViewByName name state.teamWorkSavedViews ) of
+                        ( Just detail, Just view ) ->
+                            ( Api.updateLoggedIn model
+                                (\current ->
+                                    { current
+                                        | teamWorkQuery = view.query
+                                        , teamWorkFilter = view.stateFilter
+                                        , teamWorkTypeFilter = view.typeFilter
+                                        , teamWorkSort = view.sort
+                                        , teamWorkOffset = 0
+                                        , teamWorkMessage = Just ("Applied view: " ++ view.name)
+                                    }
+                                )
+                            , Api.fetchTeamWork state.accessToken detail.team.id view.query view.typeFilter view.sort 0
+                            )
+
+                        ( _, Nothing ) ->
+                            ( Api.updateLoggedIn model (\current -> { current | teamWorkMessage = Just "Saved view was not found." }), Cmd.none )
+
+                        ( Nothing, _ ) ->
+                            ( model, Cmd.none )
+                )
+
         SearchTeamWorkClicked ->
             Api.withSession model
                 (\state ->
@@ -1515,6 +1583,55 @@ update msg model =
                             0
                     in
                     ( Api.updateLoggedIn model (\current -> { current | orgTaskSort = value, orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter state.orgTaskTypeFilter value offset )
+                )
+
+        OrgTaskSavedViewNameChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | orgTaskSavedViewName = value }), Cmd.none )
+
+        SaveOrgTaskViewClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        name =
+                            String.trim state.orgTaskSavedViewName
+                    in
+                    if name == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | orgTaskMessage = Just "A saved view name is required." }), Cmd.none )
+
+                    else
+                        let
+                            view =
+                                { name = name
+                                , query = state.orgTaskQuery
+                                , stateFilter = state.orgTaskFilter
+                                , typeFilter = state.orgTaskTypeFilter
+                                , sort = state.orgTaskSort
+                                }
+                        in
+                        ( Api.updateLoggedIn model (\current -> { current | orgTaskSavedViews = saveQueueView view current.orgTaskSavedViews, orgTaskSavedViewName = "", orgTaskMessage = Just ("Saved view: " ++ name) }), Cmd.none )
+                )
+
+        ApplyOrgTaskViewClicked name ->
+            Api.withSession model
+                (\state ->
+                    case queueViewByName name state.orgTaskSavedViews of
+                        Just view ->
+                            ( Api.updateLoggedIn model
+                                (\current ->
+                                    { current
+                                        | orgTaskQuery = view.query
+                                        , orgTaskFilter = view.stateFilter
+                                        , orgTaskTypeFilter = view.typeFilter
+                                        , orgTaskSort = view.sort
+                                        , orgTaskOffset = 0
+                                        , orgTaskMessage = Just ("Applied view: " ++ view.name)
+                                    }
+                                )
+                            , Api.fetchOrgTasksPage state.accessToken state.activeOrgId view.query view.stateFilter view.typeFilter view.sort 0
+                            )
+
+                        Nothing ->
+                            ( Api.updateLoggedIn model (\current -> { current | orgTaskMessage = Just "Saved view was not found." }), Cmd.none )
                 )
 
         SearchOrgTasksClicked ->
@@ -1742,6 +1859,9 @@ update msg model =
         DeactivateAccountClicked ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.deactivateAccount state.accessToken ))
 
+        PrivacyRequestClicked kind ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.requestPrivacy state.accessToken kind ))
+
         EmailVerificationRequested (Ok token) ->
             if token == "" then
                 ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just "Verification instructions sent." }), Cmd.none )
@@ -1764,6 +1884,12 @@ update msg model =
             )
 
         DeactivateAccountReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        PrivacyRequestReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just ("Privacy request queued: " ++ response.kind) }), Cmd.none )
+
+        PrivacyRequestReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         OperationsReceived (Ok response) ->
