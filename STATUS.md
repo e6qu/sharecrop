@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 72 work, merged into `main`.
+The repository contains pull request 1 through pull request 73 work, merged into `main`.
 
-Active task: combined product-readiness foundation branch is ready for review. It adds operations runbook/deployment schema basics, searchable user directory UI, account-token log delivery mode, broader HTTP contract fixtures, concrete account deactivation/erasure semantics, submission comment form polish, and internal-only reward scope cleanup.
+Active task: combined runtime/audit/team-dashboard branch is implemented and under verification. Email/provider delivery and anonymous worker identity are out of scope.
 
 Current implemented surface:
 
@@ -18,6 +18,10 @@ Current implemented surface:
 - Backendless demo routes now cover current real API routes except the documented real-only health/MCP/root routes.
 - Backendless demo account lifecycle, user directory, organization/team member provisioning, and create-time collectible rewards mirror the current real-app flows closely enough for browser demo coverage.
 - Admin operations status is available to platform admins at `/api/admin/operations`.
+- Production `serve` wires Postgres-backed rate-limit buckets and persisted MCP HTTP session identity; MCP live SSE stream buffers remain process-local and operations reports `postgres_session_process_stream`.
+- Platform admins can view audit events at `#/admin`; audit writes cover admin default collectible awards, account deactivation, organization member provisioning/role/deactivation actions, submission review outcomes, and task refunds.
+- Team detail pages load a team review queue and team work list from `/api/teams/{team_id}/work`.
+- The backendless demo serves the current compiled Elm bundle, includes the admin operations/audit route, and handles `/demo/` base paths explicitly.
 - Account verification/reset token issue supports API-visible local/test mode and log-delivery mode.
 - Account deactivation anonymizes email, removes password credentials, and revokes active refresh/account tokens.
 - User directory selectors can query `/api/users?query=...` from the browser.
@@ -25,8 +29,7 @@ Current implemented surface:
 
 Current verification:
 
-- PR #72 verification passed before merge: `make check-format check-contracts check-policy check-ts lint vet test-deno frontend build`, `go tool deadcode -test ./...`, `go test ./...`, HTTP E2E with local Postgres, and targeted Playwright specs for demo, account lifecycle, and selector-backed task creation.
-- Current branch verification passed: `make check-format check-contracts check-policy check-ts lint vet test-deno frontend build`, `go test ./...`, `go tool deadcode -test ./...`, HTTP E2E with local Postgres, targeted Playwright account/selector specs, and clean `make build` with workspace-local Go caches.
+- This branch passed `go test ./...`, `make check-format`, `make check-contracts`, `deno task check:policy`, `deno check tools/*.ts tests/**/*.ts`, `deno task lint`, `deno test --allow-read tests/deno`, `go vet ./...`, `go tool deadcode -test ./...`, `ELM_BIN=/opt/homebrew/bin/elm make build`, full Playwright UI E2E, local screenshot/overflow checks for admin and team pages, integration tests with local Postgres, and HTTP E2E with local Postgres.
 
 Blocking issues:
 

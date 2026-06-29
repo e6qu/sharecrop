@@ -104,6 +104,19 @@ func TestOperationsResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"status":"ok","account_token_delivery":"log","mcp_storage":"process_memory","rate_limit_storage":"process_memory","active_mcp_sessions":2,"active_ip_rate_buckets":3,"active_subject_rate_buckets":4,"secure_cookies":"enabled"}`)
 }
 
+func TestAuditEventsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(auditEventsResponse{Events: []auditEventResponse{{
+		ID:           "event-1",
+		ActorUserID:  "user-1",
+		Action:       "submission_accepted",
+		SubjectKind:  "submission",
+		SubjectID:    "submission-1",
+		MetadataJSON: "{}",
+		CreatedAt:    "2026-06-29T00:00:00Z",
+	}}})
+	assertWireShape(t, encoded, err, `{"events":[{"id":"event-1","actor_user_id":"user-1","action":"submission_accepted","subject_kind":"submission","subject_id":"submission-1","metadata_json":"{}","created_at":"2026-06-29T00:00:00Z"}]}`)
+}
+
 func TestTaskListItemResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(taskListItemResponse{
 		ID:                     "task-1",

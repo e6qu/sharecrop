@@ -1,5 +1,6 @@
 const source = "web/elm/src/Main.elm";
 const output = "web/static/app.js";
+const demoOutput = "site/demo/elm.js";
 const elmCompiler = Deno.env.get("ELM_BIN");
 
 if (elmCompiler === undefined || elmCompiler.length === 0) {
@@ -19,6 +20,8 @@ const status = await command.output();
 if (!status.success) {
   Deno.exit(status.code);
 }
+
+await Deno.copyFile(output, demoOutput);
 
 async function rejectRecursiveNpmShim(path: string): Promise<void> {
   let contents = "";

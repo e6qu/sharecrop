@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/submission"
@@ -115,6 +116,9 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionSubmissionAccepted, audit.Subject{Kind: "submission", ID: accepted.SubmissionID.String()}, audit.EmptyMetadata()) {
+		return
+	}
 	writeJSON(w, http.StatusOK, acceptToResponse(accepted))
 }
 func (server Server) requestSubmissionChanges(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +144,9 @@ func (server Server) requestSubmissionChanges(w http.ResponseWriter, r *http.Req
 	changed, matched := result.(ledger.ChangesRequested)
 	if !matched {
 		writeDomainError(w, result.(ledger.RequestChangesRejected).Reason)
+		return
+	}
+	if !server.recordAudit(w, r.Context(), path.actor.ID, audit.ActionSubmissionChangesRequested, audit.Subject{Kind: "submission", ID: changed.SubmissionID.String()}, audit.EmptyMetadata()) {
 		return
 	}
 	writeJSON(w, http.StatusOK, reviewSubmissionResponse{
@@ -205,6 +212,9 @@ func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
 	response.SubmissionID = rejected.SubmissionID.String()
 	response.State = "rejected"
 	response.ReviewNote = note.Value.String()
+	if !server.recordAudit(w, r.Context(), path.actor.ID, audit.ActionSubmissionRejected, audit.Subject{Kind: "submission", ID: rejected.SubmissionID.String()}, audit.EmptyMetadata()) {
+		return
+	}
 	writeJSON(w, http.StatusOK, response)
 }
 func (server Server) parseReviewPath(w http.ResponseWriter, r *http.Request) reviewPathResult {

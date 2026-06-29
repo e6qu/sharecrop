@@ -33,11 +33,11 @@ func (server Server) operationsStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, operationsResponse{
 		Status:                   "ok",
 		AccountTokenDelivery:     server.accountTokens.mode,
-		MCPStorage:               "process_memory",
-		RateLimitStorage:         "process_memory",
+		MCPStorage:               server.mcpSessions.storageKind(),
+		RateLimitStorage:         server.ipRateLimiter.StorageKind(),
 		ActiveMCPSessions:        server.mcpSessions.activeSessionCount(),
-		ActiveIPRateBuckets:      server.ipRateLimiter.activeBuckets(),
-		ActiveSubjectRateBuckets: server.subjectRateLimiter.activeBuckets(),
+		ActiveIPRateBuckets:      server.ipRateLimiter.ActiveBuckets(),
+		ActiveSubjectRateBuckets: server.subjectRateLimiter.ActiveBuckets(),
 		SecureCookies:            secureCookies,
 	})
 }

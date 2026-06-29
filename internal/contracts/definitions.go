@@ -13,6 +13,46 @@ func Modules() []Module {
 		ledgerModule(),
 		agentModule(),
 		collectibleModule(),
+		adminModule(),
+	}
+}
+
+func adminModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Admin"),
+		Definitions: []Definition{
+			Product{
+				Name: NewElmTypeName("OperationsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("status"), JSONName: NewJSONFieldName("status"), Type: StringRef{}},
+					{Name: NewElmValueName("accountTokenDelivery"), JSONName: NewJSONFieldName("account_token_delivery"), Type: StringRef{}},
+					{Name: NewElmValueName("mcpStorage"), JSONName: NewJSONFieldName("mcp_storage"), Type: StringRef{}},
+					{Name: NewElmValueName("rateLimitStorage"), JSONName: NewJSONFieldName("rate_limit_storage"), Type: StringRef{}},
+					{Name: NewElmValueName("activeMCPSessions"), JSONName: NewJSONFieldName("active_mcp_sessions"), Type: IntRef{}},
+					{Name: NewElmValueName("activeIPRateBuckets"), JSONName: NewJSONFieldName("active_ip_rate_buckets"), Type: IntRef{}},
+					{Name: NewElmValueName("activeSubjectRateBuckets"), JSONName: NewJSONFieldName("active_subject_rate_buckets"), Type: IntRef{}},
+					{Name: NewElmValueName("secureCookies"), JSONName: NewJSONFieldName("secure_cookies"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("AuditEventResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("actorUserID"), JSONName: NewJSONFieldName("actor_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("action"), JSONName: NewJSONFieldName("action"), Type: StringRef{}},
+					{Name: NewElmValueName("subjectKind"), JSONName: NewJSONFieldName("subject_kind"), Type: StringRef{}},
+					{Name: NewElmValueName("subjectID"), JSONName: NewJSONFieldName("subject_id"), Type: StringRef{}},
+					{Name: NewElmValueName("metadataJSON"), JSONName: NewJSONFieldName("metadata_json"), Type: StringRef{}},
+					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("AuditEventsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("events"), JSONName: NewJSONFieldName("events"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("AuditEventResponse")}}},
+				},
+			},
+		},
 	}
 }
 

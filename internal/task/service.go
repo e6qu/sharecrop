@@ -311,6 +311,11 @@ type OrganizationListScope struct {
 	IncludeReserved bool
 }
 
+type TeamListScope struct {
+	TeamID          core.TeamID
+	IncludeReserved bool
+}
+
 // CreatorListScope lists the public tasks created by a user. It exposes only
 // publicly visible tasks, so every authenticated viewer may read another user's
 // public profile without leaking private or scoped tasks.
@@ -330,6 +335,8 @@ func (PublicListScope) listScope() {}
 func (UserListScope) listScope() {}
 
 func (OrganizationListScope) listScope() {}
+
+func (TeamListScope) listScope() {}
 
 func (CreatorListScope) listScope() {}
 
@@ -713,6 +720,8 @@ func (service Service) requireListPermission(ctx context.Context, actor auth.Use
 		if rejected, matched := check.(org.PermissionDenied); matched {
 			return listPermissionRejected{reason: rejected.Reason}
 		}
+		return listPermissionAccepted{}
+	case TeamListScope:
 		return listPermissionAccepted{}
 	case CreatorListScope:
 		return listPermissionAccepted{}

@@ -5361,6 +5361,7 @@ var $elm$browser$Browser$application = _Browser_application;
 var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $elm$json$Json$Decode$field = _Json_decodeField;
 var $author$project$Sharecrop$Types$LoggedOut = {$: 'LoggedOut'};
+var $author$project$Sharecrop$Types$AdminPage = {$: 'AdminPage'};
 var $author$project$Sharecrop$Types$AgentsPage = {$: 'AgentsPage'};
 var $author$project$Sharecrop$Types$CollectibleDetailPage = function (a) {
 	return {$: 'CollectibleDetailPage', a: a};
@@ -5410,7 +5411,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 		$elm$core$String$split,
 		'/',
 		A2($elm$core$String$dropLeft, 1, fragment));
-	_v0$17:
+	_v0$18:
 	while (true) {
 		if (_v0.b) {
 			if (!_v0.b.b) {
@@ -5429,10 +5430,12 @@ var $author$project$Main$pageFromUrl = function (url) {
 						return $author$project$Sharecrop$Types$CollectiblesPage;
 					case 'series':
 						return $author$project$Sharecrop$Types$SeriesListPage;
+					case 'admin':
+						return $author$project$Sharecrop$Types$AdminPage;
 					case 'organizations':
 						return $author$project$Sharecrop$Types$OrganizationsPage;
 					default:
-						break _v0$17;
+						break _v0$18;
 				}
 			} else {
 				if (!_v0.b.b.b) {
@@ -5467,7 +5470,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 							var userId = _v7.a;
 							return $author$project$Sharecrop$Types$UserDetailPage(userId);
 						default:
-							break _v0$17;
+							break _v0$18;
 					}
 				} else {
 					if ((_v0.a === 'users') && (!_v0.b.b.b.b)) {
@@ -5483,15 +5486,15 @@ var $author$project$Main$pageFromUrl = function (url) {
 								var _v11 = _v10.b;
 								return $author$project$Sharecrop$Types$UserSubmissionsPage(userId);
 							default:
-								break _v0$17;
+								break _v0$18;
 						}
 					} else {
-						break _v0$17;
+						break _v0$18;
 					}
 				}
 			}
 		} else {
-			break _v0$17;
+			break _v0$18;
 		}
 	}
 	return $author$project$Sharecrop$Types$NotFoundPage;
@@ -7970,7 +7973,11 @@ var $author$project$Main$enterPage = F2(
 			case 'TeamDetailPage':
 				return _Utils_update(
 					state,
-					{page: page, teamCollectibles: _List_Nil, teamDetail: $elm$core$Maybe$Nothing, teamDetailError: $elm$core$Maybe$Nothing, teamMemberEmail: '', teamMemberMessage: $elm$core$Maybe$Nothing});
+					{page: page, teamCollectibles: _List_Nil, teamDetail: $elm$core$Maybe$Nothing, teamDetailError: $elm$core$Maybe$Nothing, teamMemberEmail: '', teamMemberMessage: $elm$core$Maybe$Nothing, teamWork: _List_Nil});
+			case 'AdminPage':
+				return _Utils_update(
+					state,
+					{adminMessage: $elm$core$Maybe$Nothing, auditEvents: _List_Nil, operations: $elm$core$Maybe$Nothing, page: page});
 			case 'CollectibleDetailPage':
 				return _Utils_update(
 					state,
@@ -8521,10 +8528,12 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		activeOrgId: '',
 		activeSubmissionCommentsID: $elm$core$Maybe$Nothing,
 		addSeriesTaskId: '',
+		adminMessage: $elm$core$Maybe$Nothing,
 		agentLabel: '',
 		agentMessage: $elm$core$Maybe$Nothing,
 		agentScopes: _List_fromArray(
 			[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite]),
+		auditEvents: _List_Nil,
 		awardDefaultMessage: $elm$core$Maybe$Nothing,
 		awardMessage: $elm$core$Maybe$Nothing,
 		awardRecipientId: '',
@@ -8577,6 +8586,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		isAdmin: response.role === 'admin',
 		newCredential: $elm$core$Maybe$Nothing,
 		newPassword: '',
+		operations: $elm$core$Maybe$Nothing,
 		orgBalance: $elm$core$Maybe$Nothing,
 		orgCollectibles: _List_Nil,
 		orgMembers: _List_Nil,
@@ -8628,6 +8638,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		teamDetailError: $elm$core$Maybe$Nothing,
 		teamMemberEmail: '',
 		teamMemberMessage: $elm$core$Maybe$Nothing,
+		teamWork: _List_Nil,
 		transferMessage: $elm$core$Maybe$Nothing,
 		transferRecipientId: '',
 		userAgentToken: $elm$core$Maybe$Nothing,
@@ -9647,12 +9658,45 @@ var $author$project$Sharecrop$Api$revokeAgent = F2(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AgentRevoked, $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder));
 	});
+var $author$project$Sharecrop$Types$AuditEventsReceived = function (a) {
+	return {$: 'AuditEventsReceived', a: a};
+};
+var $author$project$Sharecrop$Types$OperationsReceived = function (a) {
+	return {$: 'OperationsReceived', a: a};
+};
 var $author$project$Sharecrop$Types$TeamDetailReceived = function (a) {
 	return {$: 'TeamDetailReceived', a: a};
+};
+var $author$project$Sharecrop$Types$TeamWorkReceived = function (a) {
+	return {$: 'TeamWorkReceived', a: a};
 };
 var $author$project$Sharecrop$Types$UserWorkReceived = function (a) {
 	return {$: 'UserWorkReceived', a: a};
 };
+var $author$project$Sharecrop$Generated$Admin$AuditEventsResponse = function (events) {
+	return {events: events};
+};
+var $author$project$Sharecrop$Generated$Admin$AuditEventResponse = F7(
+	function (id, actorUserID, action, subjectKind, subjectID, metadataJSON, createdAt) {
+		return {action: action, actorUserID: actorUserID, createdAt: createdAt, id: id, metadataJSON: metadataJSON, subjectID: subjectID, subjectKind: subjectKind};
+	});
+var $author$project$Sharecrop$Generated$Admin$auditEventResponseDecoder = A8(
+	$elm$json$Json$Decode$map7,
+	$author$project$Sharecrop$Generated$Admin$AuditEventResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'actor_user_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'action', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'subject_kind', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'metadata_json', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Admin$AuditEventsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'events',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Admin$auditEventResponseDecoder)));
 var $author$project$Sharecrop$Types$CollectibleCatalogReceived = function (a) {
 	return {$: 'CollectibleCatalogReceived', a: a};
 };
@@ -9840,6 +9884,21 @@ var $author$project$Sharecrop$Api$loadOrganization = F2(
 					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgTasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder))
 				]));
 	});
+var $author$project$Sharecrop$Generated$Admin$OperationsResponse = F8(
+	function (status, accountTokenDelivery, mcpStorage, rateLimitStorage, activeMCPSessions, activeIPRateBuckets, activeSubjectRateBuckets, secureCookies) {
+		return {accountTokenDelivery: accountTokenDelivery, activeIPRateBuckets: activeIPRateBuckets, activeMCPSessions: activeMCPSessions, activeSubjectRateBuckets: activeSubjectRateBuckets, mcpStorage: mcpStorage, rateLimitStorage: rateLimitStorage, secureCookies: secureCookies, status: status};
+	});
+var $author$project$Sharecrop$Generated$Admin$operationsResponseDecoder = A9(
+	$elm$json$Json$Decode$map8,
+	$author$project$Sharecrop$Generated$Admin$OperationsResponse,
+	A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'account_token_delivery', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'mcp_storage', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'rate_limit_storage', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'active_mcp_sessions', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'active_ip_rate_buckets', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'active_subject_rate_buckets', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'secure_cookies', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 	function (token, subjectId, page) {
 		switch (page.$) {
@@ -9929,7 +9988,33 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 							'/api/teams/' + teamId,
 							$elm$http$Http$emptyBody,
 							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamDetailReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder)),
+							A5(
+							$author$project$Sharecrop$Api$authorizedRequest,
+							'GET',
+							token,
+							'/api/teams/' + (teamId + '/work'),
+							$elm$http$Http$emptyBody,
+							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamWorkReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder)),
 							A2($author$project$Sharecrop$Api$fetchTeamCollectibles, token, teamId)
+						]));
+			case 'AdminPage':
+				return $elm$core$Platform$Cmd$batch(
+					_List_fromArray(
+						[
+							A5(
+							$author$project$Sharecrop$Api$authorizedRequest,
+							'GET',
+							token,
+							'/api/admin/operations',
+							$elm$http$Http$emptyBody,
+							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OperationsReceived, $author$project$Sharecrop$Generated$Admin$operationsResponseDecoder)),
+							A5(
+							$author$project$Sharecrop$Api$authorizedRequest,
+							'GET',
+							token,
+							'/api/admin/audit-events',
+							$elm$http$Http$emptyBody,
+							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AuditEventsReceived, $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder))
 						]));
 			default:
 				return $elm$core$Platform$Cmd$none;
@@ -12768,6 +12853,25 @@ var $author$project$Main$update = F2(
 							}
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'TeamWorkReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							if (result.$ === 'Ok') {
+								var response = result.a;
+								return _Utils_update(
+									state,
+									{teamWork: response.tasks});
+							} else {
+								return _Utils_update(
+									state,
+									{teamWork: _List_Nil});
+							}
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'TeamMemberEmailChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -13122,9 +13226,9 @@ var $author$project$Main$update = F2(
 						$author$project$Sharecrop$Api$updateLoggedIn,
 						model,
 						function (state) {
-							var _v7 = $author$project$Sharecrop$View$taskTemplate(value);
-							if (_v7.$ === 'Just') {
-								var template = _v7.a;
+							var _v8 = $author$project$Sharecrop$View$taskTemplate(value);
+							if (_v8.$ === 'Just') {
+								var template = _v8.a;
 								return _Utils_update(
 									state,
 									{createDescription: template.description, createResponseSchema: template.schema, createSchemaFields: _List_Nil, createTaskType: value});
@@ -13362,9 +13466,9 @@ var $author$project$Main$update = F2(
 											{submissionCommentBody: ''});
 									}),
 								function () {
-									var _v8 = state.activeSubmissionCommentsID;
-									if (_v8.$ === 'Just') {
-										var submissionId = _v8.a;
+									var _v9 = state.activeSubmissionCommentsID;
+									if (_v9.$ === 'Just') {
+										var submissionId = _v9.a;
 										return A2($author$project$Sharecrop$Api$fetchSubmissionComments, state.accessToken, submissionId);
 									} else {
 										return $elm$core$Platform$Cmd$none;
@@ -13615,6 +13719,69 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'OperationsReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Nothing,
+										operations: $elm$core$Maybe$Just(response)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error)),
+										operations: $elm$core$Maybe$Nothing
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AuditEventsReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{adminMessage: $elm$core$Maybe$Nothing, auditEvents: response.events});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error)),
+										auditEvents: _List_Nil
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'LinkClicked':
 				var request = msg.a;
 				if (request.$ === 'Internal') {
@@ -13634,9 +13801,9 @@ var $author$project$Main$update = F2(
 			case 'UrlChanged':
 				var url = msg.a;
 				var page = $author$project$Main$pageFromUrl(url);
-				var _v10 = model.session;
-				if (_v10.$ === 'LoggedIn') {
-					var state = _v10.a;
+				var _v11 = model.session;
+				if (_v11.$ === 'LoggedIn') {
+					var state = _v11.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -14058,6 +14225,8 @@ var $author$project$Sharecrop$Types$pageToPath = function (page) {
 		case 'TeamDetailPage':
 			var teamId = page.a;
 			return '/teams/' + teamId;
+		case 'AdminPage':
+			return '/admin';
 		default:
 			return '/not-found';
 	}
@@ -14081,8 +14250,8 @@ var $author$project$Sharecrop$View$navLink = F4(
 					$elm$html$Html$text(labelText)
 				]));
 	});
-var $author$project$Sharecrop$View$navBar = F3(
-	function (demo, current, subjectId) {
+var $author$project$Sharecrop$View$navBar = F4(
+	function (demo, current, subjectId, isAdmin) {
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
@@ -14100,6 +14269,7 @@ var $author$project$Sharecrop$View$navBar = F3(
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CollectiblesPage, 'collectibles', 'Collectibles'),
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$SeriesListPage, 'series-list', 'Series'),
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OrganizationsPage, 'organizations', 'Organizations'),
+					isAdmin ? A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$AdminPage, 'admin', 'Admin') : $elm$html$Html$text(''),
 					A2(
 					$elm$html$Html$a,
 					_List_fromArray(
@@ -14132,12 +14302,60 @@ var $author$project$Sharecrop$View$navBar = F3(
 					'Reset demo') : $elm$html$Html$text('')
 				]));
 	});
-var $author$project$Sharecrop$Types$AgentLabelChanged = function (a) {
-	return {$: 'AgentLabelChanged', a: a};
+var $author$project$Sharecrop$Ui$codeBlockClass = 'overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100';
+var $elm$html$Html$pre = _VirtualDom_node('pre');
+var $author$project$Sharecrop$Ui$codeBlock = F2(
+	function (attrs, value) {
+		return A2(
+			$elm$html$Html$pre,
+			A2(
+				$elm$core$List$cons,
+				$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$codeBlockClass),
+				attrs),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(value)
+				]));
+	});
+var $author$project$Sharecrop$View$auditEventRow = function (event) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('space-y-1 py-2 text-sm'),
+				$author$project$Sharecrop$Ui$testId('admin-audit-event')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('font-medium')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(event.action + (' on ' + event.subjectKind))
+					])),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs text-slate-500 break-words')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Subject ' + (event.subjectID + (' · actor ' + (event.actorUserID + (' · ' + event.createdAt)))))
+					])),
+				(event.metadataJSON === '{}') ? $elm$html$Html$text('') : A2(
+				$author$project$Sharecrop$Ui$codeBlock,
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$Ui$testId('admin-audit-metadata')
+					]),
+				event.metadataJSON)
+			]));
 };
-var $author$project$Sharecrop$Types$CreateAgentClicked = {$: 'CreateAgentClicked'};
-var $author$project$Sharecrop$Labels$allScopes = _List_fromArray(
-	[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview]);
 var $author$project$Sharecrop$Ui$card = function (children) {
 	return A2(
 		$elm$html$Html$div,
@@ -14147,6 +14365,155 @@ var $author$project$Sharecrop$Ui$card = function (children) {
 			]),
 		children);
 };
+var $elm$html$Html$dl = _VirtualDom_node('dl');
+var $author$project$Sharecrop$Ui$noteText = F2(
+	function (identifier, message) {
+		return A2(
+			$elm$html$Html$p,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-sm text-slate-600'),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(message)
+				]));
+	});
+var $author$project$Sharecrop$View$maybeNote = F2(
+	function (message, identifier) {
+		if (message.$ === 'Just') {
+			var value = message.a;
+			return A2($author$project$Sharecrop$Ui$noteText, identifier, value);
+		} else {
+			return $elm$html$Html$text('');
+		}
+	});
+var $elm$html$Html$dd = _VirtualDom_node('dd');
+var $elm$html$Html$dt = _VirtualDom_node('dt');
+var $author$project$Sharecrop$View$operationFact = F2(
+	function (labelText, valueText) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('rounded border border-slate-200 p-2')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$dt,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-xs font-semibold text-slate-500')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(labelText)
+						])),
+					A2(
+					$elm$html$Html$dd,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('break-words text-slate-900')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(valueText)
+						]))
+				]));
+	});
+var $elm$html$Html$h2 = _VirtualDom_node('h2');
+var $author$project$Sharecrop$Ui$sectionTitle = function (title) {
+	return A2(
+		$elm$html$Html$h2,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-lg font-medium')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(title)
+			]));
+};
+var $author$project$Sharecrop$View$adminView = function (state) {
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Operations'),
+				function () {
+				var _v0 = state.operations;
+				if (_v0.$ === 'Just') {
+					var operations = _v0.a;
+					return A2(
+						$elm$html$Html$dl,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('grid gap-2 text-sm sm:grid-cols-2'),
+								$author$project$Sharecrop$Ui$testId('admin-operations')
+							]),
+						_List_fromArray(
+							[
+								A2($author$project$Sharecrop$View$operationFact, 'Status', operations.status),
+								A2($author$project$Sharecrop$View$operationFact, 'Account token delivery', operations.accountTokenDelivery),
+								A2($author$project$Sharecrop$View$operationFact, 'MCP storage', operations.mcpStorage),
+								A2($author$project$Sharecrop$View$operationFact, 'Rate limit storage', operations.rateLimitStorage),
+								A2($author$project$Sharecrop$View$operationFact, 'Secure cookies', operations.secureCookies),
+								A2(
+								$author$project$Sharecrop$View$operationFact,
+								'Active MCP sessions',
+								$elm$core$String$fromInt(operations.activeMCPSessions)),
+								A2(
+								$author$project$Sharecrop$View$operationFact,
+								'IP rate buckets',
+								$elm$core$String$fromInt(operations.activeIPRateBuckets)),
+								A2(
+								$author$project$Sharecrop$View$operationFact,
+								'Subject rate buckets',
+								$elm$core$String$fromInt(operations.activeSubjectRateBuckets))
+							]));
+				} else {
+					return A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+								$author$project$Sharecrop$Ui$testId('admin-operations-empty')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Operations status is not loaded.')
+							]));
+				}
+			}(),
+				$author$project$Sharecrop$Ui$sectionTitle('Audit events'),
+				$elm$core$List$isEmpty(state.auditEvents) ? A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+						$author$project$Sharecrop$Ui$testId('admin-audit-empty')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('No audit events.')
+					])) : A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+						$author$project$Sharecrop$Ui$testId('admin-audit-events')
+					]),
+				A2($elm$core$List$map, $author$project$Sharecrop$View$auditEventRow, state.auditEvents)),
+				A2($author$project$Sharecrop$View$maybeNote, state.adminMessage, 'admin-message')
+			]));
+};
+var $author$project$Sharecrop$Types$AgentLabelChanged = function (a) {
+	return {$: 'AgentLabelChanged', a: a};
+};
+var $author$project$Sharecrop$Types$CreateAgentClicked = {$: 'CreateAgentClicked'};
+var $author$project$Sharecrop$Labels$allScopes = _List_fromArray(
+	[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview]);
 var $author$project$Sharecrop$Labels$credentialStateLabel = function (state) {
 	if (state.$ === 'AgentCredentialStateActive') {
 		return 'active';
@@ -14250,44 +14617,6 @@ var $author$project$Sharecrop$View$credentialsList = function (credentials) {
 			]),
 		A2($elm$core$List$map, $author$project$Sharecrop$View$credentialRow, credentials));
 };
-var $author$project$Sharecrop$Ui$noteText = F2(
-	function (identifier, message) {
-		return A2(
-			$elm$html$Html$p,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('text-sm text-slate-600'),
-					$author$project$Sharecrop$Ui$testId(identifier)
-				]),
-			_List_fromArray(
-				[
-					$elm$html$Html$text(message)
-				]));
-	});
-var $author$project$Sharecrop$View$maybeNote = F2(
-	function (message, identifier) {
-		if (message.$ === 'Just') {
-			var value = message.a;
-			return A2($author$project$Sharecrop$Ui$noteText, identifier, value);
-		} else {
-			return $elm$html$Html$text('');
-		}
-	});
-var $author$project$Sharecrop$Ui$codeBlockClass = 'overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100';
-var $elm$html$Html$pre = _VirtualDom_node('pre');
-var $author$project$Sharecrop$Ui$codeBlock = F2(
-	function (attrs, value) {
-		return A2(
-			$elm$html$Html$pre,
-			A2(
-				$elm$core$List$cons,
-				$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$codeBlockClass),
-				attrs),
-			_List_fromArray(
-				[
-					$elm$html$Html$text(value)
-				]));
-	});
 var $author$project$Sharecrop$View$mcpConfig = F2(
 	function (origin, secret) {
 		return '{\n  \"mcpServers\": {\n    \"sharecrop\": {\n      \"url\": \"' + (origin + ('/mcp\",\n      \"headers\": { \"Authorization\": \"Bearer ' + (secret + '\" }\n    }\n  }\n}')));
@@ -14399,19 +14728,6 @@ var $author$project$Sharecrop$View$scopeCheckbox = F2(
 						]))
 				]));
 	});
-var $elm$html$Html$h2 = _VirtualDom_node('h2');
-var $author$project$Sharecrop$Ui$sectionTitle = function (title) {
-	return A2(
-		$elm$html$Html$h2,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('text-lg font-medium')
-			]),
-		_List_fromArray(
-			[
-				$elm$html$Html$text(title)
-			]));
-};
 var $author$project$Sharecrop$View$agentsView = F2(
 	function (origin, state) {
 		return $author$project$Sharecrop$Ui$card(
@@ -19953,6 +20269,32 @@ var $author$project$Sharecrop$Types$AddTeamMemberClicked = function (a) {
 var $author$project$Sharecrop$Types$TeamMemberEmailChanged = function (a) {
 	return {$: 'TeamMemberEmailChanged', a: a};
 };
+var $author$project$Sharecrop$View$teamReviewQueue = function (tasks) {
+	var reviewTasks = A2(
+		$elm$core$List$filter,
+		function (item) {
+			return item.reviewerAction !== 'none';
+		},
+		tasks);
+	return $elm$core$List$isEmpty(reviewTasks) ? A2(
+		$elm$html$Html$p,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+				$author$project$Sharecrop$Ui$testId('team-review-empty')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text('No submissions waiting for team review.')
+			])) : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+				$author$project$Sharecrop$Ui$testId('team-review-queue')
+			]),
+		A2($elm$core$List$map, $author$project$Sharecrop$View$taskRow, reviewTasks));
+};
 var $author$project$Sharecrop$View$teamDetailView = F2(
 	function (teamId, state) {
 		return $author$project$Sharecrop$Ui$card(
@@ -20063,6 +20405,10 @@ var $author$project$Sharecrop$View$teamDetailView = F2(
 											'Add member'),
 											A2($author$project$Sharecrop$View$maybeNote, state.teamMemberMessage, 'team-member-message')
 										])) : $elm$html$Html$text(''),
+									$author$project$Sharecrop$Ui$sectionTitle('Review queue'),
+									$author$project$Sharecrop$View$teamReviewQueue(state.teamWork),
+									$author$project$Sharecrop$Ui$sectionTitle('Team work'),
+									$author$project$Sharecrop$View$tasksList(state.teamWork),
 									$author$project$Sharecrop$Ui$sectionTitle('Collectibles'),
 									A2($author$project$Sharecrop$View$collectiblesHoldingsList, 'team-collectibles', state.teamCollectibles)
 								]));
@@ -20652,6 +20998,8 @@ var $author$project$Sharecrop$View$pageView = F2(
 			case 'TeamDetailPage':
 				var teamId = _v0.a;
 				return A2($author$project$Sharecrop$View$teamDetailView, teamId, state);
+			case 'AdminPage':
+				return $author$project$Sharecrop$View$adminView(state);
 			default:
 				return $author$project$Sharecrop$Ui$card(
 					_List_fromArray(
@@ -20692,7 +21040,7 @@ var $author$project$Sharecrop$View$loggedInView = F2(
 				]),
 			_List_fromArray(
 				[
-					A3($author$project$Sharecrop$View$navBar, model.demo, state.page, state.subjectId),
+					A4($author$project$Sharecrop$View$navBar, model.demo, state.page, state.subjectId, state.isAdmin),
 					A2($author$project$Sharecrop$View$pageView, model.origin, state)
 				]));
 	});

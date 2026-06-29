@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
@@ -176,6 +177,9 @@ func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
 		writeDomainError(w, result.(assets.MintRejected).Reason)
+		return
+	}
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionAdminCollectibleAwarded, audit.Subject{Kind: "collectible", ID: minted.Value.ID.String()}, audit.EmptyMetadata()) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, collectibleToResponse(minted.Value))

@@ -80,8 +80,7 @@ func (server Server) handleBatch(ctx context.Context, subject auth.UserSubject, 
 func singleResponse(response Response) RawResult {
 	encoded, err := json.Marshal(response)
 	if err != nil {
-		fallback, _ := json.Marshal(errorResponse(json.RawMessage("null"), codeInternalError, "failed to encode response"))
-		return RawResult{Payload: fallback, HasResponse: true}
+		panic("failed to encode MCP response")
 	}
 	return RawResult{Payload: encoded, HasResponse: true}
 }
