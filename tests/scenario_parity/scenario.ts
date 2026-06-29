@@ -751,6 +751,35 @@ export async function runSharedScenarioParity(
     "owner submission list must include worker submission",
   );
 
+  const ownerCommentBody = uniqueName("Scenario parity owner comment");
+  const ownerSubmissionComment = await owner.client.request(
+    "POST",
+    `/api/submissions/${multiActorSubmissionID}/comments`,
+    { body: ownerCommentBody },
+  );
+  assertStatus(ownerSubmissionComment, 201, "owner adds submission comment");
+
+  const workerCommentNotifications = await worker.client.request(
+    "GET",
+    "/api/notifications",
+    noScenarioBody,
+  );
+  assertStatus(workerCommentNotifications, 200, "worker comment notifications");
+  const workerCommentNotificationList = requireArray(
+    workerCommentNotifications.json,
+    "notifications",
+  );
+  assertScenario(
+    workerCommentNotificationList.some((item) => {
+      const notification = requireRecord(item, "workerCommentNotifications[]");
+      return requireString(notification, "kind") === "submission_commented" &&
+        requireString(notification, "actor_user_id") === owner.subjectID &&
+        requireString(notification, "recipient_user_id") === worker.subjectID &&
+        requireString(notification, "subject_id") === multiActorSubmissionID;
+    }),
+    "worker inbox must include owner submission-comment notification",
+  );
+
   const acceptedSubmission = await owner.client.request(
     "POST",
     `/api/tasks/${multiActorTaskID}/submissions/${multiActorSubmissionID}/accept`,

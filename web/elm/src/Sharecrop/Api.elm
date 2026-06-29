@@ -258,7 +258,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "", fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -285,7 +285,7 @@ refreshTasksAndLedger : Model -> Cmd Msg
 refreshTasksAndLedger model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter, fetchBalance state.accessToken, fetchLedger state.accessToken ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListOffset, fetchBalance state.accessToken, fetchLedger state.accessToken ]
 
         LoggedOut ->
             Cmd.none
@@ -295,7 +295,7 @@ refreshTasksAndDiscovery : Model -> Cmd Msg
 refreshTasksAndDiscovery model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter, fetchDiscovery state.accessToken state.discoveryIncludeReserved ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListOffset, fetchDiscovery state.accessToken state.discoveryIncludeReserved state.discoveryOffset ]
 
         LoggedOut ->
             Cmd.none
@@ -308,7 +308,7 @@ routeLoadCmd token subjectId page =
             Cmd.batch [ fetchBalance token, fetchLedger token ]
 
         TasksPage ->
-            fetchTasks token ""
+            fetchTasks token "" 0
 
         CreateTaskPage ->
             Cmd.batch [ fetchOrganizations token, fetchCollectibles token, fetchUserDirectory token, fetchStandaloneTeams token ]
@@ -317,16 +317,16 @@ routeLoadCmd token subjectId page =
             fetchDetailCommands token subjectId taskId
 
         DiscoveryPage ->
-            fetchDiscovery token False
+            fetchDiscovery token False 0
 
         FundingPage ->
-            Cmd.batch [ fetchTasks token "", fetchOrganizations token ]
+            Cmd.batch [ fetchTasks token "" 0, fetchOrganizations token ]
 
         AgentsPage ->
             fetchCredentials token
 
         CollectiblesPage ->
-            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token "", fetchOrganizations token ]
+            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token "" 0, fetchOrganizations token ]
 
         OrganizationsPage ->
             fetchOrganizations token
@@ -582,15 +582,18 @@ fetchLedger token =
     authorizedRequest "GET" token "/api/credits/ledger" Http.emptyBody (Http.expectJson LedgerReceived Ledger.ledgerResponseDecoder)
 
 
-fetchTasks : String -> String -> Cmd Msg
-fetchTasks token stateFilter =
+fetchTasks : String -> String -> Int -> Cmd Msg
+fetchTasks token stateFilter offset =
     let
+        pageQuery =
+            "limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset
+
         query =
             if stateFilter == "" then
-                "/api/tasks?scope=user"
+                "/api/tasks?scope=user&" ++ pageQuery
 
             else
-                "/api/tasks?scope=user&state=" ++ stateFilter
+                "/api/tasks?scope=user&state=" ++ stateFilter ++ "&" ++ pageQuery
     in
     authorizedRequest "GET" token query Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
 
@@ -609,9 +612,9 @@ postCreateTask state =
         (Http.expectJson CreateTaskReceived taskDetailDecoder)
 
 
-fetchDiscovery : String -> Bool -> Cmd Msg
-fetchDiscovery token includeReserved =
-    authorizedRequest "GET" token ("/api/tasks?scope=public&include_reserved=" ++ boolQuery includeReserved) Http.emptyBody (Http.expectJson DiscoveryReceived Task.tasksResponseDecoder)
+fetchDiscovery : String -> Bool -> Int -> Cmd Msg
+fetchDiscovery token includeReserved offset =
+    authorizedRequest "GET" token ("/api/tasks?scope=public&include_reserved=" ++ boolQuery includeReserved ++ "&limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson DiscoveryReceived Task.tasksResponseDecoder)
 
 
 fetchPublicTaskDetail : String -> String -> Cmd Msg

@@ -96,6 +96,14 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await page.getByTestId("logout").click();
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toHaveText("80 credits");
+  await page.getByTestId("nav-inbox").click();
+  const submissionNotification = page.getByTestId("notification-row").filter({
+    hasText: "submission_created",
+  });
+  await expect(submissionNotification.getByTestId("notification-task-link"))
+    .toBeVisible();
+  await submissionNotification.getByTestId("notification-task-link").click();
+  await expect(page.getByTestId("detail-title")).toContainText(title);
 
   await page.getByTestId("nav-discovery").click();
   const ownerRow = page.getByTestId("discovery-task-row").filter({
@@ -223,6 +231,9 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("org-team-row").filter({ hasText: teamName }).click();
   await expect(page).toHaveURL(/\/teams\/[0-9a-f-]+$/);
   await expect(page.getByTestId("team-detail-name")).toContainText(teamName);
+  await expect(page.getByTestId("team-work-dashboard")).toBeVisible();
+  await expect(page.getByTestId("team-review-queue-empty")).toBeVisible();
+  await expect(page.getByTestId("team-ready-work-empty")).toBeVisible();
 });
 
 test("requesters filter their task list by state", async ({ page, request }) => {
@@ -356,6 +367,7 @@ test("a team owner adds a member to a standalone team", async ({ page, request }
   await expect(page.getByTestId("balance")).toBeVisible();
   await page.goto(`/#/teams/${team.id}`);
   await expect(page.getByTestId("team-detail-name")).toBeVisible();
+  await expect(page.getByTestId("team-work-dashboard")).toBeVisible();
   await expect(page.getByTestId("team-members-empty")).toBeVisible();
 
   await page.getByTestId("team-member-email").fill(member.email);

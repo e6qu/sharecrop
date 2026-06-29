@@ -324,6 +324,66 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "read notification state",
   );
 
+  const seededSubmissionComments = await request(
+    backend,
+    "GET",
+    "/api/submissions/sub-4-sol/comments",
+    undefined,
+    accessToken,
+  );
+  assertEquals(
+    seededSubmissionComments.status,
+    200,
+    "seeded submission comments status",
+  );
+  const seededComments = requireArray(
+    seededSubmissionComments.json,
+    "comments",
+  );
+  assert(seededComments.length > 0, "seeded submission comments should load");
+
+  const strangerAuth = await request(
+    backend,
+    "POST",
+    "/api/auth/register",
+    {
+      email: "stranger@example.com",
+      password: "correct horse battery staple",
+    },
+    "",
+  );
+  const strangerToken = requireString(strangerAuth.json, "access_token");
+  const deniedComments = await request(
+    backend,
+    "GET",
+    "/api/submissions/sub-4-sol/comments",
+    undefined,
+    strangerToken,
+  );
+  assertEquals(
+    deniedComments.status,
+    403,
+    "stranger submission comments status",
+  );
+
+  const addedSubmissionComment = await request(
+    backend,
+    "POST",
+    "/api/submissions/sub-4-sol/comments",
+    { body: "Thanks, checking that now." },
+    accessToken,
+  );
+  assertEquals(
+    addedSubmissionComment.status,
+    201,
+    "add seeded submission comment status",
+  );
+  assertEquals(
+    requireString(addedSubmissionComment.json, "body"),
+    "Thanks, checking that now.",
+    "added submission comment body",
+  );
+
   const minted = await request(backend, "POST", "/api/collectibles", {
     name: "Demo selector medal",
     kind: "badge",

@@ -1308,9 +1308,27 @@
   on(
     "GET",
     "/api/submissions/:id/comments",
-    (p) => ok({ comments: db.submissionComments[p.id] || [] }),
+    (p, _url, _body, actorId) => {
+      const context = findSubmissionContext(p.id);
+      if (!context) return err(404, "submission not found");
+      if (!canAccessSubmissionThread(context, actorId)) {
+        return err(
+          403,
+          "only the submitter or reviewer can read submission comments",
+        );
+      }
+      return ok({ comments: db.submissionComments[p.id] || [] });
+    },
   );
   on("POST", "/api/submissions/:id/comments", (p, _url, body, actorId) => {
+    const context = findSubmissionContext(p.id);
+    if (!context) return err(404, "submission not found");
+    if (!canAccessSubmissionThread(context, actorId)) {
+      return err(
+        403,
+        "only the submitter or reviewer can add submission comments",
+      );
+    }
     const c = {
       id: nextId("scom"),
       submission_id: p.id,
@@ -1319,6 +1337,12 @@
       created_at: "2026-06-24T10:00:00Z",
     };
     (db.submissionComments[p.id] = db.submissionComments[p.id] || []).push(c);
+    const recipient = context.submission.submitter_id === actorId
+      ? context.task.created_by
+      : context.submission.submitter_id;
+    notify(recipient, actorId, "submission_commented", "submission", p.id, {
+      task_id: context.task.id,
+    });
     return ok(c, 201);
   });
   on("GET", "/api/tasks/:id/submissions", (p) => {
@@ -1406,6 +1430,17 @@
       return hasOrgReviewPermission(t.owner_id, actorId);
     }
     return false;
+  }
+  function findSubmissionContext(submissionId) {
+    for (const t of db.tasks) {
+      const submission = t.submissions.find((s) => s.id === submissionId);
+      if (submission) return { task: t, submission };
+    }
+    return null;
+  }
+  function canAccessSubmissionThread(context, actorId) {
+    return context.submission.submitter_id === actorId ||
+      canReviewTask(context.task, actorId);
   }
   const decide = (state, availability) => (p, _url, body, actorId) => {
     const t = findTask(p.id);

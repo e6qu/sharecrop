@@ -83,6 +83,7 @@ emptyLoggedIn response =
     , fundNonce = 0
     , tasks = []
     , taskStateFilter = ""
+    , taskListOffset = 0
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
     , credentials = []
@@ -90,6 +91,7 @@ emptyLoggedIn response =
     , agentMessage = Nothing
     , discoveryTasks = []
     , discoveryIncludeReserved = False
+    , discoveryOffset = 0
     , detail = Nothing
     , detailError = Nothing
     , reservations = []
@@ -319,6 +321,12 @@ pageFromUrl url =
 enterPage : Page -> LoggedInModel -> LoggedInModel
 enterPage page state =
     case page of
+        TasksPage ->
+            { state | page = page, taskStateFilter = "", taskListOffset = 0 }
+
+        DiscoveryPage ->
+            { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0 }
+
         OrganizationDetailPage organizationId ->
             { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgCollectibles = [], orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
@@ -453,9 +461,29 @@ update msg model =
         TaskStateFilterChanged value ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | taskStateFilter = value })
+                    Api.updateLoggedIn model (\state -> { state | taskStateFilter = value, taskListOffset = 0 })
             in
-            Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken value ))
+            Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken value 0 ))
+
+        PreviousTasksPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.taskListOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | taskListOffset = offset }), Api.fetchTasks state.accessToken state.taskStateFilter offset )
+                )
+
+        NextTasksPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.taskListOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | taskListOffset = offset }), Api.fetchTasks state.accessToken state.taskStateFilter offset )
+                )
 
         CreateTitleChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createTitle = value }), Cmd.none )
@@ -709,9 +737,29 @@ update msg model =
                 (\state ->
                     let
                         nextState =
-                            { state | discoveryIncludeReserved = value }
+                            { state | discoveryIncludeReserved = value, discoveryOffset = 0 }
                     in
-                    ( Api.updateLoggedIn model (\_ -> nextState), Api.fetchDiscovery state.accessToken value )
+                    ( Api.updateLoggedIn model (\_ -> nextState), Api.fetchDiscovery state.accessToken value 0 )
+                )
+
+        PreviousDiscoveryPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.discoveryOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | discoveryOffset = offset }), Api.fetchDiscovery state.accessToken state.discoveryIncludeReserved offset )
+                )
+
+        NextDiscoveryPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.discoveryOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | discoveryOffset = offset }), Api.fetchDiscovery state.accessToken state.discoveryIncludeReserved offset )
                 )
 
         DiscoveryReceived result ->
@@ -907,7 +955,7 @@ update msg model =
                 updated =
                     Api.updateLoggedIn model (\state -> { state | awardMessage = Just (View.awardSuccessLabel collectible) })
             in
-            Api.withSession updated (\state -> ( updated, Cmd.batch [ Api.fetchCollectibles state.accessToken, Api.fetchTasks state.accessToken state.taskStateFilter ] ))
+            Api.withSession updated (\state -> ( updated, Cmd.batch [ Api.fetchCollectibles state.accessToken, Api.fetchTasks state.accessToken state.taskStateFilter state.taskListOffset ] ))
 
         AwardReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )

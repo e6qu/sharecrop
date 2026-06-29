@@ -10,6 +10,9 @@ See:
 - [DO_NEXT.md](./DO_NEXT.md)
 - [BUGS.md](./BUGS.md)
 - [docs/operations_runbook.md](./docs/operations_runbook.md)
+- [docs/api_reference.md](./docs/api_reference.md)
+- [docs/mcp_reference.md](./docs/mcp_reference.md)
+- [docs/agent_scheduling.md](./docs/agent_scheduling.md)
 
 ## Local Commands
 

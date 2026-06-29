@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -72,6 +73,14 @@ func (server Server) addSubmissionComment(w http.ResponseWriter, r *http.Request
 	added, addedMatched := result.(submission.SubmissionCommentAdded)
 	if !addedMatched {
 		writeDomainError(w, result.(submission.SubmissionCommentRejected).Reason)
+		return
+	}
+
+	recipient := added.SubmitterID
+	if actor.ID == added.SubmitterID {
+		recipient = added.TaskCreatorID
+	}
+	if !server.notify(w, r.Context(), recipient, actor.ID, notification.KindSubmissionCommented, notificationSubjectForSubmission(submissionID), taskNotificationMetadata(added.TaskID)) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, submissionCommentToResponse(added.Value))
