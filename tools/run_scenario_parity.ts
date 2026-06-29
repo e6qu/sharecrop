@@ -49,12 +49,16 @@ function parseResponseBody(text: string, label: string): JsonRecord {
 
 const options = parseArgs(Deno.args);
 
-await runSharedScenarioParity({
-  async request(method, path, body) {
+const clientForToken = (accessToken: string) => ({
+  async request(
+    method: string,
+    path: string,
+    body: typeof noScenarioBody | JsonRecord,
+  ) {
     const response = await fetch(`${options.origin}${path}`, {
       method,
       headers: {
-        "Authorization": `Bearer ${options.token}`,
+        "Authorization": `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: body === noScenarioBody ? undefined : JSON.stringify(body),
@@ -65,6 +69,11 @@ await runSharedScenarioParity({
       json: parseResponseBody(text, `${method} ${path}`),
     };
   },
+  withAccessToken(nextToken: string) {
+    return clientForToken(nextToken);
+  },
 });
+
+await runSharedScenarioParity(clientForToken(options.token));
 
 console.log("shared scenario parity suite passed");

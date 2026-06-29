@@ -14,6 +14,7 @@ interface DemoBackend {
     method: string,
     rawUrl: string,
     rawBody: string | undefined,
+    headers: Record<string, string>,
   ): Promise<DemoResponse>;
 }
 
@@ -68,11 +69,13 @@ async function request(
   method: string,
   path: string,
   body: Record<string, unknown> | undefined,
+  accessToken: string,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   const response = await backend.resolve(
     method,
     path,
     body === undefined ? undefined : JSON.stringify(body),
+    accessToken === "" ? {} : { Authorization: `Bearer ${accessToken}` },
   );
   const parsed = response.body === "" ? {} : JSON.parse(response.body);
   assert(isRecord(parsed), `${method} ${path} returned a non-record body`);
@@ -189,17 +192,24 @@ Deno.test("backendless demo route surface tracks real API routes", async () => {
 Deno.test("backendless demo returns client-decodable shapes for account, directory, task, and reward flows", async () => {
   const backend = await loadDemoBackend();
 
-  const auth = await request(backend, "POST", "/api/auth/refresh", undefined);
+  const auth = await request(
+    backend,
+    "POST",
+    "/api/auth/refresh",
+    undefined,
+    "",
+  );
   assertEquals(auth.status, 200, "refresh status");
   requireString(auth.json, "subject_kind");
   requireString(auth.json, "subject_id");
-  requireString(auth.json, "access_token");
+  const accessToken = requireString(auth.json, "access_token");
 
   const verification = await request(
     backend,
     "POST",
     "/api/account/email-verification",
     {},
+    accessToken,
   );
   assertEquals(verification.status, 201, "email verification request status");
   const verificationToken = requireString(verification.json, "token");
@@ -208,6 +218,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "POST",
     "/api/auth/email-verification/confirm",
     { token: verificationToken },
+    "",
   );
   assertEquals(verified.status, 200, "email verification confirm status");
   assertEquals(
@@ -221,6 +232,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "POST",
     "/api/auth/password-reset/request",
     { email: "worker@example.com" },
+    "",
   );
   assertEquals(reset.status, 201, "password reset request status");
   const resetToken = requireString(reset.json, "token");
@@ -229,6 +241,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "POST",
     "/api/auth/password-reset/confirm",
     { token: resetToken, password: "changed horse battery staple" },
+    "",
   );
   assertEquals(resetConfirmed.status, 200, "password reset confirm status");
   assertEquals(
@@ -242,6 +255,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "GET",
     "/api/users?query=mara",
     undefined,
+    accessToken,
   );
   const users = requireArray(directory.json, "users");
   assert(users.length > 0, "user directory should include seeded demo users");
@@ -250,7 +264,13 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
   requireString(user, "email");
   requireString(user, "status");
 
-  const tasks = await request(backend, "GET", "/api/tasks", undefined);
+  const tasks = await request(
+    backend,
+    "GET",
+    "/api/tasks",
+    undefined,
+    accessToken,
+  );
   const taskItems = requireArray(tasks.json, "tasks");
   assert(taskItems.length > 0, "task list should include seeded tasks");
   assertTaskListItemShape(taskItems[0]);
@@ -260,6 +280,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "GET",
     "/api/tasks/task-1",
     undefined,
+    accessToken,
   );
   assertTaskDetailShape(detail.json);
 
@@ -268,6 +289,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "GET",
     "/api/notifications",
     undefined,
+    accessToken,
   );
   const notificationItems = requireArray(notifications.json, "notifications");
   assert(
@@ -293,6 +315,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "POST",
     `/api/notifications/${notificationID}/read`,
     undefined,
+    accessToken,
   );
   assertEquals(readNotification.status, 200, "mark notification read status");
   assertEquals(
@@ -305,7 +328,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     name: "Demo selector medal",
     kind: "badge",
     transfer_policy: "non_transferable_except_payout",
-  });
+  }, accessToken);
   assertEquals(minted.status, 201, "mint collectible status");
   const collectibleID = requireString(minted.json, "id");
 
@@ -326,7 +349,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     },
     response_schema_json: '{"kind":"freeform"}',
     payload: { kind: "none", json: "" },
-  });
+  }, accessToken);
   assertEquals(created.status, 201, "create collectible task status");
   assertEquals(
     requireString(created.json, "reward_kind"),
@@ -344,6 +367,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     "GET",
     "/api/not-a-real-route",
     undefined,
+    "",
   );
   assertEquals(missing.status, 404, "unknown demo API route status");
   assertEquals(

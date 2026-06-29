@@ -18915,24 +18915,17 @@ var $author$project$Sharecrop$View$seriesCreatorControls = F2(
 						[
 							A2(
 							$author$project$Sharecrop$Ui$fieldLabel,
-							'Add task by ID',
+							'Add task',
 							_List_fromArray(
 								[
-									$author$project$Sharecrop$Ui$textInput(
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$type_('text'),
-											$elm$html$Html$Attributes$placeholder('task id'),
-											$elm$html$Html$Attributes$value(state.addSeriesTaskId),
-											$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AddSeriesTaskIdChanged),
-											$author$project$Sharecrop$Ui$testId('series-add-task-id')
-										]))
+									A4($author$project$Sharecrop$View$taskPicker, 'series-add-task-id', state.addSeriesTaskId, $author$project$Sharecrop$Types$AddSeriesTaskIdChanged, state.tasks)
 								])),
 							A2(
 							$author$project$Sharecrop$Ui$primaryButton,
 							_List_fromArray(
 								[
 									$elm$html$Html$Attributes$type_('submit'),
+									$elm$html$Html$Attributes$disabled(state.addSeriesTaskId === ''),
 									$author$project$Sharecrop$Ui$testId('series-add-task')
 								]),
 							'Add task')

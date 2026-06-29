@@ -21,6 +21,7 @@ interface DemoBackend {
     method: string,
     rawUrl: string,
     rawBody: string | undefined,
+    headers: Record<string, string>,
   ): Promise<DemoResponse>;
 }
 
@@ -53,14 +54,23 @@ function parseBody(body: string): JsonRecord {
 
 Deno.test("shared scenario parity suite runs against backendless demo", async () => {
   const backend = await loadDemoBackend();
-  await runSharedScenarioParity({
-    async request(method, path, body) {
+  const clientForToken = (accessToken: string) => ({
+    async request(
+      method: string,
+      path: string,
+      body: JsonRecord | typeof noScenarioBody,
+    ) {
       const response = await backend.resolve(
         method,
         path,
         body === noScenarioBody ? undefined : JSON.stringify(body),
+        accessToken === "" ? {} : { Authorization: `Bearer ${accessToken}` },
       );
       return { status: response.status, json: parseBody(response.body) };
     },
+    withAccessToken(nextToken: string) {
+      return clientForToken(nextToken);
+    },
   });
+  await runSharedScenarioParity(clientForToken(""));
 });

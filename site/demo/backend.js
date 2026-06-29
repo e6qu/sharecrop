@@ -4,9 +4,9 @@
 // intercepts XMLHttpRequest and answers the /api/* calls the client makes from an
 // in-memory, stateful store seeded with realistic agentic-work tasks — so the
 // demo is the same code as the shipped client, with no backend, and cannot drift
-// from the real UI. It is intentionally a demo fake: tokens are not validated,
-// the single seeded "you" is the requester Mara, and behavior mirrors the Go
-// backend's contracts closely enough to drive every screen.
+// from the real UI. It is intentionally a demo fake: tokens are local demo
+// bearer strings mapped to users, and behavior mirrors the Go backend's
+// contracts closely enough to drive every screen.
 (function () {
   "use strict";
 
@@ -336,7 +336,15 @@
     },
     users: DEMO_USERS.slice(),
     accountTokens: {},
+    accessTokens: { "demo-access-token": ME },
     appliedFunding: {},
+    balances: {
+      [ME]: 1250,
+      "user-jules": 100,
+      "user-ren": 100,
+      "user-tala": 100,
+      "user-sol": 100,
+    },
     notifications: [{
       id: "notif-seed",
       recipient_user_id: ME,
@@ -624,7 +632,8 @@
   ];
 
   // --- shape helpers (mirror the Go DTOs the Elm client decodes) ---
-  function listItem(t) {
+  function listItem(t, actorId) {
+    const viewer = actorId || ME;
     return {
       id: t.id,
       owner_kind: t.owner_kind,
@@ -639,13 +648,14 @@
       visibility_kind: t.visibility_kind,
       availability_kind: t.availability_kind,
       viewer_action: viewerAction(t),
-      reviewer_action: reviewerAction(t),
+      reviewer_action: reviewerAction(t, viewer),
       created_by: t.created_by,
       active_assignee_kind: activeAssignee(t) ? "user" : "",
       active_assignee_id: activeAssignee(t),
     };
   }
-  function detail(t) {
+  function detail(t, actorId) {
+    const viewer = actorId || ME;
     return {
       id: t.id,
       owner_kind: t.owner_kind,
@@ -672,7 +682,7 @@
       created_by: t.created_by,
       availability_kind: t.availability_kind,
       viewer_action: viewerAction(t),
-      reviewer_action: reviewerAction(t),
+      reviewer_action: reviewerAction(t, viewer),
     };
   }
   function activeAssignee(t) {
@@ -690,11 +700,11 @@
     }
     return "none";
   }
-  function reviewerAction(t) {
-    if (t.created_by === ME) return "review";
+  function reviewerAction(t, actorId) {
+    if (t.created_by === actorId) return "review";
     if (t.owner_kind !== "organization") return "none";
     const membership = (db.members[t.owner_id] || []).find((m) =>
-      m.user_id === ME && m.status === "active"
+      m.user_id === actorId && m.status === "active"
     );
     if (!membership) return "none";
     return membership.roles.some((role) =>
@@ -811,13 +821,38 @@
     status,
     body: JSON.stringify({ error: message }),
   });
-  const auth = () => ({
+  const auth = (userId, token) => ({
     subject_kind: "user",
-    subject_id: ME,
-    access_token: "demo-access-token",
+    subject_id: userId,
+    access_token: token,
     role: "admin",
   });
   const findTask = (id) => db.tasks.find((t) => t.id === id);
+  function accessTokenForUser(userId) {
+    const token = "demo-access-" + userId + "-" + nextId("tok");
+    db.accessTokens[token] = userId;
+    return token;
+  }
+  function actorFromHeaders(headers) {
+    const authorization = headers &&
+      (headers.Authorization || headers.authorization);
+    if (!authorization) return null;
+    const prefix = "Bearer ";
+    if (authorization.slice(0, prefix.length) !== prefix) return null;
+    return db.accessTokens[authorization.slice(prefix.length)] || null;
+  }
+  function ensureActor(actorId) {
+    return actorId && db.users.some((u) => u.id === actorId) ? actorId : null;
+  }
+  function balanceFor(userId) {
+    if (!Object.prototype.hasOwnProperty.call(db.balances, userId)) {
+      db.balances[userId] = 100;
+    }
+    return db.balances[userId];
+  }
+  function adjustUserBalance(userId, amount) {
+    db.balances[userId] = balanceFor(userId) + amount;
+  }
   function findOrCreateUserByEmail(email) {
     const clean = String(email || "").trim().toLowerCase();
     if (clean === "") return null;
@@ -825,12 +860,13 @@
     if (!user) {
       user = { id: nextId("user"), email: clean, status: "active" };
       db.users.push(user);
+      db.balances[user.id] = 100;
     }
     return user;
   }
-  function accountToken(kind) {
+  function accountToken(kind, actorId) {
     const token = "demo-" + kind + "-" + nextId("tok");
-    db.accountTokens[token] = { kind, user_id: ME };
+    db.accountTokens[token] = { kind, user_id: actorId || ME };
     return token;
   }
   function consumeAccountToken(token, kind) {
@@ -883,21 +919,45 @@
     }
     return null;
   }
+  function allowsAnonymousRoute(method, pathname) {
+    return (method === "POST" && (
+      pathname === "/api/auth/refresh" ||
+      pathname === "/api/auth/login" ||
+      pathname === "/api/auth/register" ||
+      pathname === "/api/auth/guest" ||
+      pathname === "/api/auth/email-verification/confirm" ||
+      pathname === "/api/auth/password-reset/request" ||
+      pathname === "/api/auth/password-reset/confirm"
+    ));
+  }
 
   // Auth: refresh auto-succeeds so the demo boots straight into the seeded app.
-  on("POST", "/api/auth/refresh", () => ok(auth()));
-  on("POST", "/api/auth/login", () => ok(auth()));
-  on("POST", "/api/auth/register", () => ok(auth(), 201));
-  on("POST", "/api/auth/guest", () => ok(auth(), 201));
+  on("POST", "/api/auth/refresh", () => ok(auth(ME, "demo-access-token")));
+  on("POST", "/api/auth/login", (_p, _url, body) => {
+    const user = findOrCreateUserByEmail(body && body.email);
+    if (!user) return err(400, "email is required");
+    return ok(auth(user.id, accessTokenForUser(user.id)));
+  });
+  on("POST", "/api/auth/register", (_p, _url, body) => {
+    const user = findOrCreateUserByEmail(body && body.email);
+    if (!user) return err(400, "email is required");
+    return ok(auth(user.id, accessTokenForUser(user.id)), 201);
+  });
+  on("POST", "/api/auth/guest", () => {
+    const user = findOrCreateUserByEmail(
+      "guest-" + nextId("user") + "@sharecrop.demo",
+    );
+    return ok(auth(user.id, accessTokenForUser(user.id)), 201);
+  });
   on("POST", "/api/auth/logout", () => empty());
   on("POST", "/api/auth/email-verification/confirm", (_p, _url, body) => {
     return consumeAccountToken(body && body.token, "email_verification")
       ? ok({ status: "verified" })
       : err(400, "account token is invalid");
   });
-  on("POST", "/api/auth/password-reset/request", (_p, _url, body) => {
+  on("POST", "/api/auth/password-reset/request", (_p, _url, body, actorId) => {
     findOrCreateUserByEmail(body && body.email);
-    return ok({ token: accountToken("password_reset") }, 201);
+    return ok({ token: accountToken("password_reset", actorId) }, 201);
   });
   on("POST", "/api/auth/password-reset/confirm", (_p, _url, body) => {
     return consumeAccountToken(body && body.token, "password_reset")
@@ -907,15 +967,16 @@
   on(
     "POST",
     "/api/account/email-verification",
-    () => ok({ token: accountToken("email_verification") }, 201),
+    (_p, _url, _body, actorId) =>
+      ok({ token: accountToken("email_verification", actorId) }, 201),
   );
   on(
     "PATCH",
     "/api/account/password",
     () => ok({ status: "password_changed" }),
   );
-  on("PATCH", "/api/account/profile", (_p, _url, body) => {
-    const me = db.users.find((u) => u.id === ME);
+  on("PATCH", "/api/account/profile", (_p, _url, body, actorId) => {
+    const me = db.users.find((u) => u.id === actorId);
     if (me && body && body.email) {
       me.email = String(body.email).trim().toLowerCase();
     }
@@ -923,18 +984,23 @@
   });
   on("DELETE", "/api/account", () => ok({ status: "deactivated" }));
 
-  on("GET", "/api/credits/balance", () => ok({ amount: db.balance }));
+  on(
+    "GET",
+    "/api/credits/balance",
+    (_p, _url, _body, actorId) => ok({ amount: balanceFor(actorId) }),
+  );
   on("GET", "/api/credits/ledger", () => ok({ entries: db.ledger }));
 
-  on("GET", "/api/tasks", (_p, url) => {
+  on("GET", "/api/tasks", (_p, url, _body, actorId) => {
     const scope = url.searchParams.get("scope") || "";
     const includeReserved = url.searchParams.get("include_reserved") === "true";
     const stateFilter = url.searchParams.get("state") || "";
     const orgId = url.searchParams.get("organization_id") || "";
     let list = db.tasks; // default (empty scope): everything visible to the demo user
-    if (scope === "user") list = db.tasks.filter((t) => t.created_by === ME);
-    // Discovery shows open public tasks only (mirrors the real public scope).
-    else if (scope === "public") {
+    if (scope === "user") {
+      list = db.tasks.filter((t) => t.created_by === actorId);
+    } else if (scope === "public") {
+      // Discovery shows open public tasks only (mirrors the real public scope).
       list = db.tasks.filter((t) =>
         t.visibility_kind === "public" && t.state === "open" &&
         (includeReserved || !activeAssignee(t))
@@ -946,13 +1012,13 @@
       );
     }
     if (stateFilter) list = list.filter((t) => t.state === stateFilter);
-    return ok({ tasks: list.map(listItem) });
+    return ok({ tasks: list.map((t) => listItem(t, actorId)) });
   });
-  on("GET", "/api/tasks/:id", (p) => {
+  on("GET", "/api/tasks/:id", (p, _url, _body, actorId) => {
     const t = findTask(p.id);
-    return t ? ok(detail(t)) : err(404, "task not found");
+    return t ? ok(detail(t, actorId)) : err(404, "task not found");
   });
-  on("POST", "/api/tasks", async (_p, _url, body) => {
+  on("POST", "/api/tasks", async (_p, _url, body, actorId) => {
     // Honor the owner / visibility scope / assignee / reservation fields the
     // client sends, so an org-owned or org-scoped task is stored as such (and
     // shows up under its org), matching the real backend.
@@ -960,7 +1026,7 @@
     const ownerKind = owner.kind || "user";
     const ownerId = ownerKind === "organization"
       ? (owner.organization_id || "")
-      : (owner.user_id || ME);
+      : (owner.user_id || actorId);
     const visibility = (body && body.visibility) || {};
     const visibilityKind = visibility.kind || "public";
     const visibilityId = visibilityKind === "organization"
@@ -995,9 +1061,12 @@
         : "",
       state: "draft",
       availability_kind: "available",
+      created_by: actorId,
     });
     ((body.reward && body.reward.collectible_ids) || []).forEach((id) => {
-      const c = db.collectibles.find((x) => x.id === id && x.owner_id === ME);
+      const c = db.collectibles.find((x) =>
+        x.id === id && x.owner_id === actorId
+      );
       if (c) {
         c.state = "escrowed";
         t.reward_collectible_count += 1;
@@ -1046,20 +1115,20 @@
     "/api/tasks/:id/comments",
     (p) => ok({ comments: db.taskComments[p.id] || [] }),
   );
-  on("POST", "/api/tasks/:id/comments", (p, _url, body) => {
+  on("POST", "/api/tasks/:id/comments", (p, _url, body, actorId) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
     const comment = {
       id: nextId("tcom"),
       task_id: t.id,
-      author_user_id: ME,
+      author_user_id: actorId,
       body: (body && body.body) || "",
       created_at: "2026-06-25T12:00:00Z",
     };
     (db.taskComments[t.id] = db.taskComments[t.id] || []).push(comment);
     return ok(comment, 201);
   });
-  on("POST", "/api/tasks/:id/refund", (p) => {
+  on("POST", "/api/tasks/:id/refund", (p, _url, _body, actorId) => {
     // Unified refund: release held credits AND any escrowed collectibles (so a
     // bundle reward refunds in one shot), then cancel. Mirrors the real backend's
     // /refund, which calls refundHeldCollectibleReward inside the same tx.
@@ -1070,7 +1139,7 @@
     }
     const released = t.escrow || 0;
     if (released === 0) return err(409, "task has no escrow to refund");
-    funderAdjust(t, released);
+    funderAdjust(t, released, actorId);
     db.ledger.push({
       id: nextId("entry"),
       kind: "task_refund",
@@ -1093,17 +1162,17 @@
   });
   // Refund escrowed collectible rewards back to the requester's holdings
   // (mirrors the real backend's POST /collectible-refund -> RefundReward).
-  on("POST", "/api/tasks/:id/collectible-refund", (p) => {
+  on("POST", "/api/tasks/:id/collectible-refund", (p, _url, _body, actorId) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
-    if (t.created_by !== ME) {
+    if (t.created_by !== actorId) {
       return err(403, "only the task requester can refund rewards");
     }
     if (t.state !== "draft" && t.state !== "open") {
       return err(409, "only draft or open tasks can be refunded");
     }
     const escrowed = db.collectibles.filter((c) =>
-      c.state === "escrowed" && c.owner_id === ME
+      c.state === "escrowed" && c.owner_id === actorId
     );
     if (escrowed.length === 0) {
       return err(409, "task has no escrowed collectibles to refund");
@@ -1115,7 +1184,7 @@
     t.reward_kind = t.reward_credit_amount > 0 ? "credit" : "none";
     return ok({ collectibles: escrowed });
   });
-  on("POST", "/api/tasks/:id/funding", (p, _url, body) => {
+  on("POST", "/api/tasks/:id/funding", (p, _url, body, actorId) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
     const amount = (body && body.amount) || 0;
@@ -1138,10 +1207,10 @@
       db.orgBalances[orgId] -= amount;
       t.fundedOrg = orgId;
     } else {
-      if (amount > db.balance) {
+      if (amount > balanceFor(actorId)) {
         return err(409, "insufficient credits to fund the task");
       }
-      db.balance -= amount;
+      adjustUserBalance(actorId, -amount);
     }
     // Funding only moves credits into escrow; task state is unchanged (the /open
     // route moves draft -> open). "funded" is not a valid TaskState.
@@ -1149,7 +1218,7 @@
     if (key) db.appliedFunding[key] = true;
     return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
   });
-  on("POST", "/api/tasks/:id/reservations", (p, _url, body) => {
+  on("POST", "/api/tasks/:id/reservations", (p, _url, body, actorId) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
     if (t.state !== "open") return err(409, "only open tasks can be reserved");
@@ -1165,17 +1234,17 @@
           : "this task does not accept user reservations",
       );
     }
-    if (t.created_by === ME) {
+    if (t.created_by === actorId) {
       return err(409, "task requester cannot reserve their own task");
     }
-    let assigneeId = ME;
+    let assigneeId = actorId;
     if (assigneeKind === "organization_team") {
       const orgId = (body && body.organization_id) || "";
       const teamId = (body && body.team_id) || "";
       const team = (db.orgTeams[orgId] || []).find((value) =>
         value.id === teamId
       );
-      if (!team || !(db.teamMembers[teamId] || []).includes(ME)) {
+      if (!team || !(db.teamMembers[teamId] || []).includes(actorId)) {
         return err(403, "organization team membership denied");
       }
       assigneeId = teamId;
@@ -1189,7 +1258,7 @@
       assignee_kind: assigneeKind,
       assignee_id: assigneeId,
       state,
-      requested_by: ME,
+      requested_by: actorId,
     };
     t.reservations.push(r);
     if (state === "active") t.availability_kind = "reserved";
@@ -1201,23 +1270,24 @@
       ? ok({ reservations: t.reservations })
       : err(404, "task not found");
   });
-  const reservationChange = (state, availability) => (p) => {
-    const t = findTask(p.id);
-    if (!t) return err(404, "task not found");
-    // Mirrors the real backend: approve/decline/cancel are requester-only.
-    if (t.created_by !== ME) {
-      return err(403, "only the task requester can change reservations");
-    }
-    const r = t.reservations.find((x) => x.id === p.rid);
-    if (!r) return err(404, "reservation not found");
-    // Only pending/active reservations can transition (matches the store guard).
-    if (r.state !== "requested" && r.state !== "active") {
-      return err(409, "reservation is not pending or active");
-    }
-    r.state = state;
-    if (availability) t.availability_kind = availability;
-    return ok(r);
-  };
+  const reservationChange =
+    (state, availability) => (p, _url, _body, actorId) => {
+      const t = findTask(p.id);
+      if (!t) return err(404, "task not found");
+      // Mirrors the real backend: approve/decline/cancel are requester-only.
+      if (t.created_by !== actorId) {
+        return err(403, "only the task requester can change reservations");
+      }
+      const r = t.reservations.find((x) => x.id === p.rid);
+      if (!r) return err(404, "reservation not found");
+      // Only pending/active reservations can transition (matches the store guard).
+      if (r.state !== "requested" && r.state !== "active") {
+        return err(409, "reservation is not pending or active");
+      }
+      r.state = state;
+      if (availability) t.availability_kind = availability;
+      return ok(r);
+    };
   on(
     "POST",
     "/api/tasks/:id/reservations/:rid/approve",
@@ -1238,11 +1308,11 @@
     "/api/submissions/:id/comments",
     (p) => ok({ comments: db.submissionComments[p.id] || [] }),
   );
-  on("POST", "/api/submissions/:id/comments", (p, _url, body) => {
+  on("POST", "/api/submissions/:id/comments", (p, _url, body, actorId) => {
     const c = {
       id: nextId("scom"),
       submission_id: p.id,
-      author_user_id: ME,
+      author_user_id: actorId,
       body: (body && body.body) || "",
       created_at: "2026-06-24T10:00:00Z",
     };
@@ -1253,16 +1323,16 @@
     const t = findTask(p.id);
     return t ? ok({ submissions: t.submissions }) : err(404, "task not found");
   });
-  on("POST", "/api/tasks/:id/submissions", (p, _url, body) => {
+  on("POST", "/api/tasks/:id/submissions", (p, _url, body, actorId) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
     // Reservation eligibility: non-open tasks require an active reservation first
     // (mirrors CheckSubmissionEligibility in the real backend).
     const mineActive = t.reservations.find((r) =>
       r.state === "active" &&
-      (r.assignee_id === ME ||
+      (r.assignee_id === actorId ||
         (r.assignee_kind === "organization_team" &&
-          (db.teamMembers[r.assignee_id] || []).includes(ME)))
+          (db.teamMembers[r.assignee_id] || []).includes(actorId)))
     );
     if (t.participation_policy !== "open" && !mineActive) {
       return err(409, "reserve the task before submitting");
@@ -1290,7 +1360,7 @@
     const s = {
       id: nextId("sub"),
       task_id: t.id,
-      submitter_id: ME,
+      submitter_id: actorId,
       state,
       response_json: raw || "{}",
       review_note: "",
@@ -1301,7 +1371,7 @@
       t.availability_kind = "reserved"; // availability stays reserved; the submission state carries "submitted"
       if (mineActive) mineActive.state = "submitted";
     }
-    notify(t.created_by, ME, "submission_created", "submission", s.id, {
+    notify(t.created_by, actorId, "submission_created", "submission", s.id, {
       task_id: t.id,
     });
     return ok({ submission: s, receipt_token: nextId("receipt") }, 201);
@@ -1310,12 +1380,12 @@
     db.ledger.push({ id: nextId("entry"), kind, amount, task_id: taskId });
   }
   // Refunds and tips return to whichever wallet funded the task (org or personal).
-  function funderAdjust(t, amount) {
+  function funderAdjust(t, amount, actorId) {
     if (t.fundedOrg) {
       db.orgBalances[t.fundedOrg] = (db.orgBalances[t.fundedOrg] || 0) + amount;
-    } else db.balance += amount;
+    } else adjustUserBalance(actorId || t.created_by, amount);
   }
-  const decide = (state, availability) => (p, _url, body) => {
+  const decide = (state, availability) => (p, _url, body, actorId) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
     const s = t.submissions.find((x) => x.id === p.sid);
@@ -1348,15 +1418,17 @@
       const refund = Math.max(0, escrow - payout);
       tip = (body && body.tip_amount) || 0;
       if (payout > 0) {
+        adjustUserBalance(s.submitter_id, payout);
         pushLedger("task_payout", -payout, t.id);
         payoutKind = "credit";
       }
       if (refund > 0) {
-        funderAdjust(t, refund);
+        funderAdjust(t, refund, actorId);
         pushLedger("task_refund", refund, t.id);
       }
       if (tip > 0) {
-        funderAdjust(t, -tip);
+        funderAdjust(t, -tip, actorId);
+        adjustUserBalance(s.submitter_id, tip);
         pushLedger("task_tip", -tip, t.id);
       }
       t.escrow = 0;
@@ -1365,7 +1437,7 @@
     }
     notify(
       s.submitter_id,
-      ME,
+      actorId,
       state === "changes_requested"
         ? "submission_changes_requested"
         : "submission_rejected",
@@ -1384,75 +1456,93 @@
       tip_amount: tip,
     });
   };
-  on("POST", "/api/tasks/:id/submissions/:sid/accept", (p, _url, body) => {
-    const t = findTask(p.id);
-    if (!t) return err(404, "task not found");
-    const s = t.submissions.find((x) => x.id === p.sid);
-    if (!s) return err(404, "submission not found");
-    if (s.state !== "submitted") {
-      return err(409, "only submitted work can be accepted");
-    }
-    if (t.state !== "open") return err(409, "only open tasks can be reviewed");
-    if (t.submissions.some((x) => x.state === "accepted")) {
-      return err(409, "task already has an accepted submission");
-    }
-    const escrow = t.escrow || 0;
-    const payout = Math.min(
-      (body && body.payout_amount) || t.reward_credit_amount || 0,
-      escrow,
-    );
-    const refund = Math.max(0, escrow - payout);
-    const tip = (body && body.tip_amount) || 0;
-    let payoutKind = "none";
-    // The escrow was deducted from the requester wallet at funding time, so a
-    // payout leaves the held escrow (no balance change), an unpaid remainder is
-    // refunded, and a tip is charged from the current balance. Ledger entries
-    // make all of this visible.
-    if (payout > 0) {
-      pushLedger("task_payout", -payout, t.id);
-      payoutKind = "credit";
-    }
-    if (refund > 0) {
-      funderAdjust(t, refund);
-      pushLedger("task_refund", refund, t.id);
-    }
-    if (tip > 0) {
-      funderAdjust(t, -tip);
-      pushLedger("task_tip", -tip, t.id);
-    }
-    // Optional collectible tip: transfer a held collectible from the requester's
-    // inventory to the worker (mirrors the real backend's GiftCollectible on accept).
-    const tippedIds = [];
-    const tipCollectibleId = (body && body.tip_collectible_id) || "";
-    if (tipCollectibleId) {
-      const c = db.collectibles.find((x) =>
-        x.id === tipCollectibleId && x.owner_id === ME
+  on(
+    "POST",
+    "/api/tasks/:id/submissions/:sid/accept",
+    (p, _url, body, actorId) => {
+      const t = findTask(p.id);
+      if (!t) return err(404, "task not found");
+      const s = t.submissions.find((x) => x.id === p.sid);
+      if (!s) return err(404, "submission not found");
+      if (s.state !== "submitted") {
+        return err(409, "only submitted work can be accepted");
+      }
+      if (t.state !== "open") {
+        return err(
+          409,
+          "only open tasks can be reviewed",
+        );
+      }
+      if (t.submissions.some((x) => x.state === "accepted")) {
+        return err(409, "task already has an accepted submission");
+      }
+      const escrow = t.escrow || 0;
+      const payout = Math.min(
+        (body && body.payout_amount) || t.reward_credit_amount || 0,
+        escrow,
       );
-      if (!c) return err(409, "collectible tip is not available");
-      c.owner_id = s.submitter_id;
-      tippedIds.push(c.id);
-      if (payoutKind === "none") payoutKind = "collectible";
-      else if (payoutKind === "credit") payoutKind = "bundle";
-    }
-    s.state = "accepted";
-    t.escrow = 0;
-    t.availability_kind = "closed";
-    t.state = "closed";
-    notify(s.submitter_id, ME, "submission_accepted", "submission", s.id, {
-      task_id: t.id,
-    });
-    return ok({
-      task_id: t.id,
-      submission_id: s.id,
-      payout_kind: payoutKind,
-      payout_amount: payout,
-      worker_user_id: (payout > 0 || tippedIds.length > 0)
-        ? s.submitter_id
-        : "",
-      collectible_ids: tippedIds,
-      tip_amount: tip,
-    });
-  });
+      const refund = Math.max(0, escrow - payout);
+      const tip = (body && body.tip_amount) || 0;
+      let payoutKind = "none";
+      // The escrow was deducted from the requester wallet at funding time, so a
+      // payout leaves the held escrow (no balance change), an unpaid remainder is
+      // refunded, and a tip is charged from the current balance. Ledger entries
+      // make all of this visible.
+      if (payout > 0) {
+        adjustUserBalance(s.submitter_id, payout);
+        pushLedger("task_payout", -payout, t.id);
+        payoutKind = "credit";
+      }
+      if (refund > 0) {
+        funderAdjust(t, refund, actorId);
+        pushLedger("task_refund", refund, t.id);
+      }
+      if (tip > 0) {
+        funderAdjust(t, -tip, actorId);
+        adjustUserBalance(s.submitter_id, tip);
+        pushLedger("task_tip", -tip, t.id);
+      }
+      // Optional collectible tip: transfer a held collectible from the requester's
+      // inventory to the worker (mirrors the real backend's GiftCollectible on accept).
+      const tippedIds = [];
+      const tipCollectibleId = (body && body.tip_collectible_id) || "";
+      if (tipCollectibleId) {
+        const c = db.collectibles.find((x) =>
+          x.id === tipCollectibleId && x.owner_id === actorId
+        );
+        if (!c) return err(409, "collectible tip is not available");
+        c.owner_id = s.submitter_id;
+        tippedIds.push(c.id);
+        if (payoutKind === "none") payoutKind = "collectible";
+        else if (payoutKind === "credit") payoutKind = "bundle";
+      }
+      s.state = "accepted";
+      t.escrow = 0;
+      t.availability_kind = "closed";
+      t.state = "closed";
+      notify(
+        s.submitter_id,
+        actorId,
+        "submission_accepted",
+        "submission",
+        s.id,
+        {
+          task_id: t.id,
+        },
+      );
+      return ok({
+        task_id: t.id,
+        submission_id: s.id,
+        payout_kind: payoutKind,
+        payout_amount: payout,
+        worker_user_id: (payout > 0 || tippedIds.length > 0)
+          ? s.submitter_id
+          : "",
+        collectible_ids: tippedIds,
+        tip_amount: tip,
+      });
+    },
+  );
   on(
     "POST",
     "/api/tasks/:id/submissions/:sid/reject",
@@ -1500,10 +1590,12 @@
   on(
     "GET",
     "/api/collectibles",
-    () =>
-      ok({ collectibles: db.collectibles.filter((c) => c.owner_id === ME) }),
+    (_p, _url, _body, actorId) =>
+      ok({
+        collectibles: db.collectibles.filter((c) => c.owner_id === actorId),
+      }),
   );
-  on("POST", "/api/collectibles", (_p, _url, body) => {
+  on("POST", "/api/collectibles", (_p, _url, body, actorId) => {
     const c = {
       id: nextId("col"),
       name: (body && body.name) || "Collectible",
@@ -1511,7 +1603,7 @@
       state: "minted",
       transfer_policy: (body && body.transfer_policy) ||
         "transferable_between_users",
-      owner_id: ME,
+      owner_id: actorId,
       owner_kind: "user",
       art: (body && body.art) || "",
     };
@@ -1597,13 +1689,15 @@
     ok({
       events: [],
     }));
-  on("GET", "/api/notifications", () =>
+  on("GET", "/api/notifications", (_p, _url, _body, actorId) =>
     ok({
-      notifications: db.notifications.filter((n) => n.recipient_user_id === ME),
+      notifications: db.notifications.filter((n) =>
+        n.recipient_user_id === actorId
+      ),
     }));
-  on("POST", "/api/notifications/:id/read", (p) => {
+  on("POST", "/api/notifications/:id/read", (p, _url, _body, actorId) => {
     const notification = db.notifications.find((n) =>
-      n.id === p.id && n.recipient_user_id === ME
+      n.id === p.id && n.recipient_user_id === actorId
     );
     if (!notification) return err(404, "notification not found");
     notification.state = "read";
@@ -1636,17 +1730,17 @@
         ),
       }),
   );
-  on("POST", "/api/organizations", (_p, _url, body) => {
+  on("POST", "/api/organizations", (_p, _url, body, actorId) => {
     const o = {
       id: nextId("org"),
       name: (body && body.name) || "Org",
-      created_by: ME,
+      created_by: actorId,
     };
     db.organizations.push(o);
     db.members[o.id] = [{
       id: nextId("mem"),
       organization_id: o.id,
-      user_id: ME,
+      user_id: actorId,
       status: "active",
       roles: ["owner"],
     }];
@@ -1711,14 +1805,14 @@
         ),
       }),
   );
-  on("POST", "/api/organizations/:id/teams", (p, _url, body) => {
+  on("POST", "/api/organizations/:id/teams", (p, _url, body, actorId) => {
     const team = {
       id: nextId("team"),
       owner_kind: "organization",
       organization_id: p.id,
       owner_user_id: "",
       name: (body && body.name) || "Team",
-      created_by: ME,
+      created_by: actorId,
     };
     (db.orgTeams[p.id] = db.orgTeams[p.id] || []).push(team);
     return ok(team, 201);
@@ -1734,14 +1828,14 @@
           team.id.toLowerCase().includes(query),
       ),
     }));
-  on("POST", "/api/teams", (_p, _url, body) => {
+  on("POST", "/api/teams", (_p, _url, body, actorId) => {
     const team = {
       id: nextId("team"),
       owner_kind: "user",
       organization_id: "",
-      owner_user_id: ME,
+      owner_user_id: actorId,
       name: (body && body.name) || "Team",
-      created_by: ME,
+      created_by: actorId,
     };
     db.standaloneTeams.push(team);
     db.teamMembers[team.id] = [];
@@ -1760,7 +1854,7 @@
         .filter((t) =>
           t.visibility_id === p.id || t.active_assignee_id === p.id
         )
-        .map(taskListItem),
+        .map((t) => listItem(t)),
     }));
   on("POST", "/api/teams/:id/members", (p, _url, body) => {
     const team = db.standaloneTeams.concat(...Object.values(db.orgTeams)).find((
@@ -1783,14 +1877,14 @@
     return { series: s, tasks, comments: db.seriesComments[s.id] || [] };
   }
   on("GET", "/api/task-series", () => ok({ series: db.series }));
-  on("POST", "/api/task-series", (_p, _url, body) => {
+  on("POST", "/api/task-series", (_p, _url, body, actorId) => {
     const s = {
       id: nextId("series"),
       owner_kind: "user",
       title: (body && body.title) || "Series",
       description: (body && body.description) || "",
       state: "draft",
-      created_by: ME,
+      created_by: actorId,
     };
     db.series.unshift(s);
     db.seriesComments[s.id] = [];
@@ -1860,13 +1954,13 @@
     "/api/task-series/:id/comments",
     (p) => ok({ comments: db.seriesComments[p.id] || [] }),
   );
-  on("POST", "/api/task-series/:id/comments", (p, _url, body) => {
+  on("POST", "/api/task-series/:id/comments", (p, _url, body, actorId) => {
     const s = findSeries(p.id);
     if (!s) return err(404, "series not found");
     const comment = {
       id: nextId("scom"),
       series_id: s.id,
-      author_user_id: ME,
+      author_user_id: actorId,
       body: (body && body.body) || "",
       created_at: "2026-06-25T12:00:00Z",
     };
@@ -1930,7 +2024,7 @@
   const base = (window.location.origin && window.location.origin !== "null")
     ? window.location.origin
     : "http://demo.local";
-  function resolve(method, rawUrl, rawBody) {
+  function resolve(method, rawUrl, rawBody, rawHeaders) {
     let url;
     try {
       url = new URL(rawUrl, base);
@@ -1943,6 +2037,10 @@
       console.warn("[demo-backend] unhandled", method, url.pathname);
       return Promise.resolve(err(404, "demo route not implemented"));
     }
+    const actorId = ensureActor(actorFromHeaders(rawHeaders || {}));
+    if (!actorId && !allowsAnonymousRoute(method, url.pathname)) {
+      return Promise.resolve(err(401, "valid bearer access token is required"));
+    }
     let body = null;
     if (rawBody && typeof rawBody === "string") {
       try {
@@ -1952,7 +2050,9 @@
       }
     }
     try {
-      return Promise.resolve(found.handler(found.params, url, body));
+      return Promise.resolve(
+        found.handler(found.params, url, body, actorId || ME),
+      );
     } catch (e) {
       console.error("[demo-backend] handler error", method, url.pathname, e);
       return Promise.resolve(
@@ -1982,6 +2082,7 @@
     this.responseText = "";
     this.response = "";
     this.responseType = "";
+    this._headers = {};
   }
   DemoXHR.prototype.open = function (method, url) {
     this._method = (method || "GET").toUpperCase();
@@ -2000,6 +2101,7 @@
   };
   DemoXHR.prototype.setRequestHeader = function (k, v) {
     if (this._real) this._real.setRequestHeader(k, v);
+    else this._headers[k] = v;
   };
   DemoXHR.prototype.getAllResponseHeaders = function () {
     return this._real
@@ -2048,17 +2150,19 @@
       return this._real.send(body);
     }
     const self = this;
-    resolve(this._method, this._url, body).then(function (result) {
-      const res = result || ok({});
-      self.status = res.status;
-      self.statusText = res.status >= 400 ? "Error" : "OK";
-      self.responseText = res.body || "";
-      self.response = res.body || "";
-      self.readyState = 4;
-      self._emit("readystatechange");
-      self._emit("load");
-      self._emit("loadend");
-    });
+    resolve(this._method, this._url, body, this._headers).then(
+      function (result) {
+        const res = result || ok({});
+        self.status = res.status;
+        self.statusText = res.status >= 400 ? "Error" : "OK";
+        self.responseText = res.body || "";
+        self.response = res.body || "";
+        self.readyState = 4;
+        self._emit("readystatechange");
+        self._emit("load");
+        self._emit("loadend");
+      },
+    );
   };
   window.XMLHttpRequest = DemoXHR;
 })();
