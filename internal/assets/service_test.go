@@ -50,7 +50,7 @@ func TestNewCollectibleNameRejectsBlank(t *testing.T) {
 func TestServiceMintCreatesMintedCollectible(t *testing.T) {
 	store := &memoryStore{}
 	service := NewService(store)
-	minted, matched := service.Mint(context.Background(), CollectibleOwnerKindUser, newUserID(t).String(), name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout, "golden-sickle").(CollectibleMinted)
+	minted, matched := service.Mint(context.Background(), CollectibleOwnerKindUser, newUserID(t).String(), "", name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout, "golden-sickle").(CollectibleMinted)
 	if !matched {
 		t.Fatalf("mint was rejected")
 	}
@@ -59,6 +59,20 @@ func TestServiceMintCreatesMintedCollectible(t *testing.T) {
 	}
 	if len(store.created) != 1 {
 		t.Fatalf("store create count = %d, want 1", len(store.created))
+	}
+}
+
+func TestServiceMintScopesOrganizationOwnedCollectible(t *testing.T) {
+	store := &memoryStore{}
+	service := NewService(store)
+	organizationID := newOrganizationID(t).String()
+
+	minted, matched := service.Mint(context.Background(), CollectibleOwnerKindOrganization, organizationID, "", name(t, "Org badge"), CollectibleKindBadge, TransferPolicyTransferableWithinOrg, "harvest-star").(CollectibleMinted)
+	if !matched {
+		t.Fatalf("mint was rejected")
+	}
+	if minted.Value.OrganizationID != organizationID {
+		t.Fatalf("organization id = %q, want %q", minted.Value.OrganizationID, organizationID)
 	}
 }
 
@@ -105,6 +119,15 @@ func newUserID(t *testing.T) core.UserID {
 	created, matched := core.NewUserID().(core.UserIDCreated)
 	if !matched {
 		t.Fatalf("user id rejected")
+	}
+	return created.Value
+}
+
+func newOrganizationID(t *testing.T) core.OrganizationID {
+	t.Helper()
+	created, matched := core.NewOrganizationID().(core.OrganizationIDCreated)
+	if !matched {
+		t.Fatalf("organization id rejected")
 	}
 	return created.Value
 }

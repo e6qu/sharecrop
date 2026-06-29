@@ -315,13 +315,13 @@ func TestMintCollectibleRequestWireShape(t *testing.T) {
 }
 
 func TestCollectibleResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(collectibleResponse{ID: "collectible-1", Name: "Harvest Star", Kind: "badge", State: "minted", TransferPolicy: "transferable_between_users", OwnerID: "user-1", OwnerKind: "user", Art: "harvest-star"})
-	assertWireShape(t, encoded, err, `{"id":"collectible-1","name":"Harvest Star","kind":"badge","state":"minted","transfer_policy":"transferable_between_users","owner_id":"user-1","owner_kind":"user","art":"harvest-star"}`)
+	encoded, err := json.Marshal(collectibleResponse{ID: "collectible-1", Name: "Harvest Star", Kind: "badge", State: "minted", TransferPolicy: "transferable_between_users", OwnerID: "user-1", OwnerKind: "user", OrganizationID: "org-1", Art: "harvest-star"})
+	assertWireShape(t, encoded, err, `{"id":"collectible-1","name":"Harvest Star","kind":"badge","state":"minted","transfer_policy":"transferable_between_users","owner_id":"user-1","owner_kind":"user","organization_id":"org-1","art":"harvest-star"}`)
 }
 
 func TestCollectiblesResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(collectiblesResponse{Collectibles: []collectibleResponse{{ID: "collectible-1", Name: "Harvest Star", Kind: "badge", State: "minted", TransferPolicy: "transferable_between_users", OwnerID: "user-1", OwnerKind: "user", Art: "harvest-star"}}})
-	assertWireShape(t, encoded, err, `{"collectibles":[{"id":"collectible-1","name":"Harvest Star","kind":"badge","state":"minted","transfer_policy":"transferable_between_users","owner_id":"user-1","owner_kind":"user","art":"harvest-star"}]}`)
+	encoded, err := json.Marshal(collectiblesResponse{Collectibles: []collectibleResponse{{ID: "collectible-1", Name: "Harvest Star", Kind: "badge", State: "minted", TransferPolicy: "transferable_between_users", OwnerID: "user-1", OwnerKind: "user", OrganizationID: "", Art: "harvest-star"}}})
+	assertWireShape(t, encoded, err, `{"collectibles":[{"id":"collectible-1","name":"Harvest Star","kind":"badge","state":"minted","transfer_policy":"transferable_between_users","owner_id":"user-1","owner_kind":"user","organization_id":"","art":"harvest-star"}]}`)
 }
 
 func TestCollectibleRewardRequestWireShape(t *testing.T) {
@@ -330,8 +330,8 @@ func TestCollectibleRewardRequestWireShape(t *testing.T) {
 }
 
 func TestAwardCollectibleRequestWireShape(t *testing.T) {
-	encoded, err := json.Marshal(awardCollectibleRequest{Slug: "harvest-star", RecipientKind: "user", RecipientID: "user-1"})
-	assertWireShape(t, encoded, err, `{"slug":"harvest-star","recipient_kind":"user","recipient_id":"user-1"}`)
+	encoded, err := json.Marshal(awardCollectibleRequest{Slug: "harvest-star", RecipientKind: "user", RecipientID: "user-1", OrganizationID: "org-1"})
+	assertWireShape(t, encoded, err, `{"slug":"harvest-star","recipient_kind":"user","recipient_id":"user-1","organization_id":"org-1"}`)
 }
 
 func TestTransferCollectibleRequestWireShape(t *testing.T) {

@@ -79,9 +79,24 @@ type CreditTip struct {
 	Amount       CreditAmount
 }
 
+type CollectibleTip struct {
+	WorkerUserID  core.UserID
+	CollectibleID core.CollectibleID
+}
+
+type BundleTip struct {
+	WorkerUserID  core.UserID
+	Amount        CreditAmount
+	CollectibleID core.CollectibleID
+}
+
 func (NoTip) tipOutcome() {}
 
 func (CreditTip) tipOutcome() {}
+
+func (CollectibleTip) tipOutcome() {}
+
+func (BundleTip) tipOutcome() {}
 
 type RequestChangesResult interface {
 	requestChangesResult()

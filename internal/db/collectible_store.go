@@ -19,9 +19,9 @@ func NewCollectibleStore(pool *pgxpool.Pool) CollectibleStore {
 
 func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible assets.Collectible) assets.CreateStoreResult {
 	_, err := store.pool.Exec(ctx, `
-		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, owner_kind, art)
-		values ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID, collectible.OwnerKind, collectible.Art)
+		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, owner_kind, organization_id, art)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID, collectible.OwnerKind, nullableText(collectible.OrganizationID), collectible.Art)
 	if err != nil {
 		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible failed")}
 	}
@@ -30,7 +30,7 @@ func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible
 
 func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) assets.ListStoreResult {
 	rows, err := store.pool.Query(ctx, `
-		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, art
+		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art
 		from collectibles
 		where owner_user_id = $1 and owner_kind = 'user'
 		order by created_at desc, id
@@ -45,7 +45,7 @@ func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.U
 
 func (store CollectibleStore) ListCollectiblesByOwner(ctx context.Context, ownerKind string, ownerID string, page core.Page) assets.ListStoreResult {
 	rows, err := store.pool.Query(ctx, `
-		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, art
+		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art
 		from collectibles
 		where owner_user_id = $1 and owner_kind = $2
 		order by created_at desc, id
@@ -267,6 +267,11 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 	if denied, matched := assets.AllowsTip(collectible.value.Policy).(assets.RewardDenied); matched {
 		return assets.GiftRejected{Reason: denied.Reason}
 	}
+	if collectible.value.Policy == assets.TransferPolicyTransferableWithinOrg {
+		if reason, rejected := requireSharedCollectibleOrganization(ctx, tx, collectible.value, command.FromUserID, command.ToUserID); rejected {
+			return assets.GiftRejected{Reason: reason}
+		}
+	}
 
 	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, owner_kind = 'user', state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.ToUserID.String()); err != nil {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer collectible failed")}
@@ -281,8 +286,32 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 	return assets.CollectibleGifted{Value: gifted}
 }
 
+func requireSharedCollectibleOrganization(ctx context.Context, tx pgx.Tx, collectible assets.Collectible, from core.UserID, to core.UserID) (core.DomainError, bool) {
+	if collectible.OrganizationID == "" {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "within-organization collectible has no organization"), true
+	}
+	for _, userID := range []core.UserID{from, to} {
+		var active bool
+		if err := tx.QueryRow(ctx, `
+			select exists(
+				select 1
+				from organization_memberships
+				where organization_id = $1
+					and user_id = $2
+					and status = 'active'
+			)
+		`, collectible.OrganizationID, userID.String()).Scan(&active); err != nil {
+			return core.NewDomainError(core.ErrorCodeInvalidState, "check collectible organization membership failed"), true
+		}
+		if !active {
+			return core.NewDomainError(core.ErrorCodePermissionDenied, "within-organization collectible can only be tipped between organization members"), true
+		}
+	}
+	return core.DomainError{}, false
+}
+
 func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.CollectibleID) collectibleParseResult {
-	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, art from collectibles where id = $1 for update", collectibleID.String())
+	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art from collectibles where id = $1 for update", collectibleID.String())
 	if err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock collectible failed")}
 	}
@@ -294,7 +323,7 @@ func lockCollectible(ctx context.Context, tx pgx.Tx, collectibleID core.Collecti
 }
 
 func findCollectible(ctx context.Context, tx pgx.Tx, rawCollectibleID string) collectibleParseResult {
-	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, art from collectibles where id = $1", rawCollectibleID)
+	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art from collectibles where id = $1", rawCollectibleID)
 	if err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible failed")}
 	}
@@ -313,14 +342,15 @@ func scanCollectible(rows pgx.Rows) collectibleParseResult {
 	var rawPolicy string
 	var rawOwner string
 	var rawOwnerKind string
+	var rawOrganizationID string
 	var rawArt string
-	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawOwnerKind, &rawArt); err != nil {
+	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawOwnerKind, &rawOrganizationID, &rawArt); err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible failed")}
 	}
-	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawOwnerKind, rawArt)
+	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawOwnerKind, rawOrganizationID, rawArt)
 }
 
-func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string, rawOwnerKind string, rawArt string) collectibleParseResult {
+func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string, rawOwnerKind string, rawOrganizationID string, rawArt string) collectibleParseResult {
 	idResult := core.ParseCollectibleID(rawID)
 	collectibleID, idMatched := idResult.(core.CollectibleIDCreated)
 	if !idMatched {
@@ -349,14 +379,27 @@ func parseCollectible(rawID string, rawName string, rawKind string, rawState str
 	if !assets.ValidCollectibleOwnerKind(rawOwnerKind) {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "collectible owner kind is invalid")}
 	}
+	if rawOrganizationID != "" {
+		if _, matched := core.ParseOrganizationID(rawOrganizationID).(core.OrganizationIDCreated); !matched {
+			return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible organization is invalid")}
+		}
+	}
 	return collectibleParsed{value: assets.Collectible{
-		ID:        collectibleID.Value,
-		Name:      name.Value,
-		Kind:      kind.Value,
-		State:     state.Value,
-		Policy:    policy.Value,
-		OwnerKind: rawOwnerKind,
-		OwnerID:   rawOwner,
-		Art:       rawArt,
+		ID:             collectibleID.Value,
+		Name:           name.Value,
+		Kind:           kind.Value,
+		State:          state.Value,
+		Policy:         policy.Value,
+		OwnerKind:      rawOwnerKind,
+		OwnerID:        rawOwner,
+		OrganizationID: rawOrganizationID,
+		Art:            rawArt,
 	}}
+}
+
+func nullableText(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

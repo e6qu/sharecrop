@@ -98,23 +98,96 @@ func TestMultipleCollectibleRefundReturnsAll(t *testing.T) {
 	}
 }
 
+func TestWithinOrganizationCollectibleTipRequiresSharedActiveMembership(t *testing.T) {
+	pool := newPool(t)
+	collectibleStore := db.NewCollectibleStore(pool)
+
+	owner := createUser(t, pool, "org-tip-owner")
+	worker := createUser(t, pool, "org-tip-worker")
+	outsider := createUser(t, pool, "org-tip-outsider")
+	organizationID := insertIntegrationOrganization(t, pool, owner)
+	insertIntegrationMembership(t, pool, organizationID, owner)
+	insertIntegrationMembership(t, pool, organizationID, worker)
+
+	collectibleID := mintIntegrationScopedCollectible(t, collectibleStore, owner, organizationID, "Org medal")
+
+	result := collectibleStore.GiftCollectible(context.Background(), assets.GiftStoreCommand{
+		FromUserID:    owner,
+		ToUserID:      worker,
+		CollectibleID: collectibleID,
+	})
+	gifted, matched := result.(assets.CollectibleGifted)
+	if !matched {
+		t.Fatalf("gift result = %T (%s), want CollectibleGifted", result, result.(assets.GiftRejected).Reason.Description())
+	}
+	if gifted.Value.OwnerID != worker.String() {
+		t.Fatalf("gift owner = %q, want worker", gifted.Value.OwnerID)
+	}
+
+	deniedCollectibleID := mintIntegrationScopedCollectible(t, collectibleStore, owner, organizationID, "Org medal denied")
+	denied := collectibleStore.GiftCollectible(context.Background(), assets.GiftStoreCommand{
+		FromUserID:    owner,
+		ToUserID:      outsider,
+		CollectibleID: deniedCollectibleID,
+	})
+	if _, matched := denied.(assets.GiftRejected); !matched {
+		t.Fatalf("gift to outsider = %T, want GiftRejected", denied)
+	}
+}
+
 func mintIntegrationCollectible(t *testing.T, store db.CollectibleStore, owner core.UserID, name string) core.CollectibleID {
+	t.Helper()
+	return mintIntegrationCollectibleWithPolicy(t, store, owner, "", name, assets.TransferPolicyNonTransferableExceptPayout)
+}
+
+func mintIntegrationScopedCollectible(t *testing.T, store db.CollectibleStore, owner core.UserID, organizationID core.OrganizationID, name string) core.CollectibleID {
+	t.Helper()
+	return mintIntegrationCollectibleWithPolicy(t, store, owner, organizationID.String(), name, assets.TransferPolicyTransferableWithinOrg)
+}
+
+func mintIntegrationCollectibleWithPolicy(t *testing.T, store db.CollectibleStore, owner core.UserID, organizationID string, name string, policy assets.TransferPolicy) core.CollectibleID {
 	t.Helper()
 	idCreated := core.NewCollectibleID().(core.CollectibleIDCreated)
 	nameAccepted := assets.NewCollectibleName(name).(assets.CollectibleNameAccepted)
 	collectible := assets.Collectible{
-		ID:        idCreated.Value,
-		Name:      nameAccepted.Value,
-		Kind:      assets.CollectibleKindBadge,
-		State:     assets.CollectibleStateMinted,
-		Policy:    assets.TransferPolicyNonTransferableExceptPayout,
-		OwnerKind: assets.CollectibleOwnerKindUser,
-		OwnerID:   owner.String(),
+		ID:             idCreated.Value,
+		Name:           nameAccepted.Value,
+		Kind:           assets.CollectibleKindBadge,
+		State:          assets.CollectibleStateMinted,
+		Policy:         policy,
+		OwnerKind:      assets.CollectibleOwnerKindUser,
+		OwnerID:        owner.String(),
+		OrganizationID: organizationID,
 	}
 	if _, matched := store.CreateCollectible(context.Background(), collectible).(assets.CreateStoreAccepted); !matched {
 		t.Fatalf("create collectible rejected")
 	}
 	return idCreated.Value
+}
+
+func insertIntegrationOrganization(t *testing.T, pool *pgxpool.Pool, owner core.UserID) core.OrganizationID {
+	t.Helper()
+	organizationID := core.NewOrganizationID().(core.OrganizationIDCreated)
+	_, err := pool.Exec(context.Background(), `
+		insert into organizations (id, name, created_by_user_id)
+		values ($1, 'Integration Org', $2)
+	`, organizationID.Value.String(), owner.String())
+	if err != nil {
+		t.Fatalf("insert organization: %v", err)
+	}
+	return organizationID.Value
+}
+
+func insertIntegrationMembership(t *testing.T, pool *pgxpool.Pool, organizationID core.OrganizationID, userID core.UserID) {
+	t.Helper()
+	membershipID := core.NewOrganizationMembershipID().(core.OrganizationMembershipIDCreated)
+	_, err := pool.Exec(context.Background(), `
+		insert into organization_memberships (id, organization_id, user_id, status)
+		values ($1, $2, $3, 'active')
+	`, membershipID.Value.String(), organizationID.String(), userID.String())
+	if err != nil {
+		t.Fatalf("insert organization membership: %v", err)
+	}
 }
 
 func fundCollectible(t *testing.T, store db.CollectibleStore, owner core.UserID, taskID core.TaskID, collectibleID core.CollectibleID) {

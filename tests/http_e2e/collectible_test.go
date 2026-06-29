@@ -275,6 +275,7 @@ type collectibleHTTPResponse struct {
 	TransferPolicy string `json:"transfer_policy"`
 	OwnerID        string `json:"owner_id"`
 	OwnerKind      string `json:"owner_kind"`
+	OrganizationID string `json:"organization_id"`
 	Art            string `json:"art"`
 }
 
@@ -388,6 +389,13 @@ func TestCollectibleTipTransfersOnAccept(t *testing.T) {
 		[]byte(`{"idempotency_key":"tip-accept-`+task.ID+`","payout_amount":30,"tip_collectible_id":"`+tipID+`"}`), owner.AccessToken)
 	defer accept.Body.Close()
 	assertStatus(t, accept, http.StatusOK)
+	var accepted acceptHTTPResponse
+	if err := json.NewDecoder(accept.Body).Decode(&accepted); err != nil {
+		t.Fatalf("decode accept response: %v", err)
+	}
+	if len(accepted.CollectibleIDs) != 1 || accepted.CollectibleIDs[0] != tipID {
+		t.Fatalf("accept collectible ids = %v, want [%q]", accepted.CollectibleIDs, tipID)
+	}
 
 	workerOwned := listCollectibles(t, server, worker.AccessToken)
 	if len(workerOwned) != 1 || workerOwned[0].ID != tipID {

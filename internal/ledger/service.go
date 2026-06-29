@@ -28,6 +28,7 @@ type AcceptStoreCommand struct {
 	IdempotencyKey   IdempotencyKey
 	CreditSelection  CreditReviewSelection
 	TipSelection     TipSelection
+	CollectibleTip   CollectibleTipSelection
 }
 
 type RequestChangesStoreCommand struct {
@@ -107,10 +108,10 @@ func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID 
 }
 
 func (service Service) AcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey) AcceptResult {
-	return service.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, FullCreditReviewSelection{}, NoTipSelection{})
+	return service.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, FullCreditReviewSelection{}, NoTipSelection{}, NoCollectibleTipSelection{})
 }
 
-func (service Service) ReviewAcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, creditSelection CreditReviewSelection, tipSelection TipSelection) AcceptResult {
+func (service Service) ReviewAcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, creditSelection CreditReviewSelection, tipSelection TipSelection, collectibleTip CollectibleTipSelection) AcceptResult {
 	payoutEntryID, idResult := newLedgerEntryID()
 	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
 		return AcceptRejected{Reason: rejected.reason}
@@ -139,6 +140,7 @@ func (service Service) ReviewAcceptSubmission(ctx context.Context, requester cor
 		IdempotencyKey:   key,
 		CreditSelection:  creditSelection,
 		TipSelection:     tipSelection,
+		CollectibleTip:   collectibleTip,
 	})
 }
 

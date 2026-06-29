@@ -172,12 +172,18 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	if !tipMatched {
 		return ledger.AcceptRejected{Reason: tipResult.(tipRejected).reason}
 	}
+	collectibleTipResult := payCollectibleTip(ctx, tx, command.RequesterUserID, rawWorkerID, command.CollectibleTip)
+	collectibleTip, collectibleTipMatched := collectibleTipResult.(tipResolved)
+	if !collectibleTipMatched {
+		return ledger.AcceptRejected{Reason: collectibleTipResult.(tipRejected).reason}
+	}
+	tipOutcome := combineTips(tip.outcome, collectibleTip.outcome)
 
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit accept submission transaction failed")}
 	}
 
-	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: tip.outcome}
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: tipOutcome}
 }
 
 func combinePayouts(first ledger.PayoutOutcome, second ledger.PayoutOutcome) ledger.PayoutOutcome {
@@ -187,6 +193,18 @@ func combinePayouts(first ledger.PayoutOutcome, second ledger.PayoutOutcome) led
 		return ledger.BundlePayout{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleIDs: collectible.CollectibleIDs}
 	}
 	if _, firstNone := first.(ledger.NoPayout); firstNone {
+		return second
+	}
+	return first
+}
+
+func combineTips(first ledger.TipOutcome, second ledger.TipOutcome) ledger.TipOutcome {
+	credit, hasCredit := first.(ledger.CreditTip)
+	collectible, hasCollectible := second.(ledger.CollectibleTip)
+	if hasCredit && hasCollectible && credit.WorkerUserID == collectible.WorkerUserID {
+		return ledger.BundleTip{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleID: collectible.CollectibleID}
+	}
+	if _, firstNone := first.(ledger.NoTip); firstNone {
 		return second
 	}
 	return first

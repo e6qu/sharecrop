@@ -248,6 +248,20 @@ func (NoTipSelection) tipSelection() {}
 
 func (CreditTipSelection) tipSelection() {}
 
+type CollectibleTipSelection interface {
+	collectibleTipSelection()
+}
+
+type NoCollectibleTipSelection struct{}
+
+type CollectibleTipSelected struct {
+	ID core.CollectibleID
+}
+
+func (NoCollectibleTipSelection) collectibleTipSelection() {}
+
+func (CollectibleTipSelected) collectibleTipSelection() {}
+
 type BanSelection interface {
 	banSelection()
 }

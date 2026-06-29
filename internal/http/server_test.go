@@ -715,7 +715,7 @@ func (testLedgerService) AcceptSubmission(_ context.Context, _ core.UserID, task
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
-func (testLedgerService) ReviewAcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection) ledger.AcceptResult {
+func (testLedgerService) ReviewAcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection) ledger.AcceptResult {
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
@@ -761,9 +761,9 @@ func (testAgentService) List(context.Context, core.UserID, core.Page) agent.List
 
 type testAssetService struct{}
 
-func (testAssetService) Mint(_ context.Context, ownerKind string, ownerID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
+func (testAssetService) Mint(_ context.Context, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
 	idCreated := core.NewCollectibleID().(core.CollectibleIDCreated)
-	return assets.CollectibleMinted{Value: assets.Collectible{ID: idCreated.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerKind: ownerKind, OwnerID: ownerID, Art: art}}
+	return assets.CollectibleMinted{Value: assets.Collectible{ID: idCreated.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerKind: ownerKind, OwnerID: ownerID, OrganizationID: organizationID, Art: art}}
 }
 
 func (testAssetService) ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult {

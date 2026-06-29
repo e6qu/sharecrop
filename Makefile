@@ -1,6 +1,6 @@
 APP := bin/sharecrop
 
-.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-policy check-ts ci contracts css docker-down docker-up e2e-ui elm fmt frontend lint migrate-up serve test test-deno test-go test-http test-integration vet
+.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-policy check-ts ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up serve test test-deno test-go test-http test-integration vet
 
 build: frontend
 	go build -o $(APP) ./cmd/sharecrop
@@ -32,6 +32,9 @@ ci: check-format check-contracts check-policy check-ts check-copy-paste check-de
 
 css:
 	deno task css:build
+
+db-checks:
+	./tools/run_db_checks.sh
 
 docker-up:
 	docker compose up -d postgres

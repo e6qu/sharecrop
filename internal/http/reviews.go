@@ -4,29 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
-
-// payoutWorker reports the worker credited by an accept payout (every paid
-// payout names the worker; a zero-reward accept does not).
-func payoutWorker(payout ledger.PayoutOutcome) (core.UserID, bool) {
-	switch outcome := payout.(type) {
-	case ledger.CreditPayout:
-		return outcome.WorkerUserID, true
-	case ledger.CollectiblePayout:
-		return outcome.WorkerUserID, true
-	case ledger.BundlePayout:
-		return outcome.WorkerUserID, true
-	default:
-		var zero core.UserID
-		return zero, false
-	}
-}
 
 func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
@@ -81,18 +64,15 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the optional collectible-tip id up front so a malformed request is
-	// rejected before settlement happens.
-	var tipCollectibleID core.CollectibleID
-	tipCollectible := request.TipCollectibleID != ""
-	if tipCollectible {
+	collectibleTip := ledger.CollectibleTipSelection(ledger.NoCollectibleTipSelection{})
+	if request.TipCollectibleID != "" {
 		collectibleIDResult := core.ParseCollectibleID(request.TipCollectibleID)
 		collectibleIDAccepted, collectibleIDMatched := collectibleIDResult.(core.CollectibleIDCreated)
 		if !collectibleIDMatched {
 			writeError(w, http.StatusBadRequest, collectibleIDResult.(core.CollectibleIDRejected).Reason.Description())
 			return
 		}
-		tipCollectibleID = collectibleIDAccepted.Value
+		collectibleTip = ledger.CollectibleTipSelected{ID: collectibleIDAccepted.Value}
 	}
 
 	submissionResult := server.submissionService.Get(r.Context(), actor.subject, submissionIDAccepted.Value)
@@ -102,26 +82,11 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value, creditSelection.value, tipSelection.value)
+	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value, creditSelection.value, tipSelection.value, collectibleTip)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		writeDomainError(w, result.(ledger.AcceptRejected).Reason)
 		return
-	}
-
-	// A collectible tip is a separate transfer (assets store) sequenced after the
-	// credit settle. The worker is the one the payout credited.
-	if tipCollectible {
-		worker, hasWorker := payoutWorker(accepted.Payout)
-		if !hasWorker {
-			writeError(w, http.StatusBadRequest, "a collectible tip requires a paid acceptance that identifies the worker")
-			return
-		}
-		giftResult := server.assetService.GiftCollectible(r.Context(), actor.subject.ID, worker, tipCollectibleID)
-		if _, gifted := giftResult.(assets.CollectibleGifted); !gifted {
-			writeDomainError(w, giftResult.(assets.GiftRejected).Reason)
-			return
-		}
 	}
 
 	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionSubmissionAccepted, audit.Subject{Kind: "submission", ID: accepted.SubmissionID.String()}, audit.EmptyMetadata()) {
@@ -291,11 +256,39 @@ func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionRespon
 		response.CollectibleIDs = collectibleIDStrings(payout.CollectibleIDs)
 		response.WorkerUserID = payout.WorkerUserID.String()
 	}
-	if tip, matched := accepted.Tip.(ledger.CreditTip); matched {
+	switch tip := accepted.Tip.(type) {
+	case ledger.CreditTip:
 		response.TipAmount = tip.Amount.Int64()
+		if response.WorkerUserID == "" {
+			response.WorkerUserID = tip.WorkerUserID.String()
+		}
+	case ledger.CollectibleTip:
+		response.CollectibleIDs = append(response.CollectibleIDs, tip.CollectibleID.String())
+		if response.WorkerUserID == "" {
+			response.WorkerUserID = tip.WorkerUserID.String()
+		}
+		response.PayoutKind = appendCollectiblePayoutKind(response.PayoutKind)
+	case ledger.BundleTip:
+		response.TipAmount = tip.Amount.Int64()
+		response.CollectibleIDs = append(response.CollectibleIDs, tip.CollectibleID.String())
+		if response.WorkerUserID == "" {
+			response.WorkerUserID = tip.WorkerUserID.String()
+		}
+		response.PayoutKind = appendCollectiblePayoutKind(response.PayoutKind)
 	}
 	return response
 }
+
+func appendCollectiblePayoutKind(current string) string {
+	if current == "none" {
+		return "collectible"
+	}
+	if current == "credit" {
+		return "bundle"
+	}
+	return current
+}
+
 func reviewOutcomeToResponse(payout ledger.PayoutOutcome, tip ledger.TipOutcome) reviewSubmissionResponse {
 	response := reviewSubmissionResponse{PayoutKind: "none"}
 	if credit, matched := payout.(ledger.CreditPayout); matched {

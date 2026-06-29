@@ -61,8 +61,8 @@ func (services mcpServices) AcceptSubmission(ctx context.Context, requester core
 	return services.ledgerService.AcceptSubmission(ctx, requester, taskID, submissionID, key)
 }
 
-func (services mcpServices) ReviewAcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection) ledger.AcceptResult {
-	return services.ledgerService.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, creditSelection, tipSelection)
+func (services mcpServices) ReviewAcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection) ledger.AcceptResult {
+	return services.ledgerService.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip)
 }
 
 func (services mcpServices) RequestChanges(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, note submission.ReviewNote) ledger.RequestChangesResult {
