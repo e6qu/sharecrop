@@ -408,8 +408,8 @@ func TestNotificationResponseWireShape(t *testing.T) {
 }
 
 func TestNotificationsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(notificationsResponse{Notifications: []notificationResponse{{ID: "notification-1", RecipientUserID: "user-2", ActorUserID: "user-1", Kind: "submission_created", SubjectKind: "submission", SubjectID: "submission-1", State: "unread", MetadataJSON: "{}", CreatedAt: "2026-06-29T00:00:00Z"}}})
-	assertWireShape(t, encoded, err, `{"notifications":[{"id":"notification-1","recipient_user_id":"user-2","actor_user_id":"user-1","kind":"submission_created","subject_kind":"submission","subject_id":"submission-1","state":"unread","metadata_json":"{}","created_at":"2026-06-29T00:00:00Z"}]}`)
+	encoded, err := json.Marshal(notificationsResponse{Notifications: []notificationResponse{{ID: "notification-1", RecipientUserID: "user-2", ActorUserID: "user-1", Kind: "submission_commented", SubjectKind: "submission", SubjectID: "submission-1", State: "unread", MetadataJSON: `{"task_id":"task-1"}`, CreatedAt: "2026-06-29T00:00:00Z"}}})
+	assertWireShape(t, encoded, err, `{"notifications":[{"id":"notification-1","recipient_user_id":"user-2","actor_user_id":"user-1","kind":"submission_commented","subject_kind":"submission","subject_id":"submission-1","state":"unread","metadata_json":"{\"task_id\":\"task-1\"}","created_at":"2026-06-29T00:00:00Z"}]}`)
 }
 
 func TestTaskListItemResponseWireShape(t *testing.T) {

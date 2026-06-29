@@ -110,6 +110,7 @@ type alias LoggedInModel =
     , tasks : List Task.TaskListItemResponse
     , taskStateFilter : String
     , taskListOffset : Int
+    , taskListQuery : String
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
     , credentials : List Agent.AgentCredentialResponse
@@ -118,6 +119,7 @@ type alias LoggedInModel =
     , discoveryTasks : List Task.TaskListItemResponse
     , discoveryIncludeReserved : Bool
     , discoveryOffset : Int
+    , discoveryQuery : String
     , detail : Maybe PublicTaskDetail
     , detailError : Maybe String
     , reservations : List Task.TaskReservationResponse
@@ -155,8 +157,13 @@ type alias LoggedInModel =
     , standaloneTeams : List Team.TeamResponse
     , orgMembers : List Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
+    , orgTaskQuery : String
+    , orgTaskFilter : String
+    , orgTaskMessage : Maybe String
     , orgCollectibles : List Collectible.CollectibleResponse
+    , orgCollectiblesMessage : Maybe String
     , teamCollectibles : List Collectible.CollectibleResponse
+    , teamCollectiblesMessage : Maybe String
     , userProfile : Maybe Task.UserProfileResponse
     , userProfileError : Maybe String
     , userWork : List Task.TaskListItemResponse
@@ -174,6 +181,9 @@ type alias LoggedInModel =
     , teamDetail : Maybe Team.TeamDetailResponse
     , teamDetailError : Maybe String
     , teamWork : List Task.TaskListItemResponse
+    , teamWorkQuery : String
+    , teamWorkFilter : String
+    , teamWorkMessage : Maybe String
     , teamMemberEmail : String
     , teamMemberMessage : Maybe String
     , createOrgTeamName : String
@@ -280,6 +290,7 @@ type Msg
     | LedgerReceived (Result Http.Error Ledger.LedgerResponse)
     | TasksReceived (Result Http.Error Task.TasksResponse)
     | TaskStateFilterChanged String
+    | TaskListQueryChanged String
     | PreviousTasksPageClicked
     | NextTasksPageClicked
     | CreateTitleChanged String
@@ -334,6 +345,7 @@ type Msg
     | LogoutClicked
     | LogoutReceived (Result Http.Error ())
     | DiscoveryIncludeReservedChanged Bool
+    | DiscoveryQueryChanged String
     | PreviousDiscoveryPageClicked
     | NextDiscoveryPageClicked
     | DiscoveryReceived (Result Http.Error Task.TasksResponse)
@@ -429,10 +441,14 @@ type Msg
     | UpdateSeriesClicked String
     | TeamDetailReceived (Result Http.Error Team.TeamDetailResponse)
     | TeamWorkReceived (Result Http.Error Task.TasksResponse)
+    | TeamWorkQueryChanged String
+    | TeamWorkFilterChanged String
     | TeamMemberEmailChanged String
     | AddTeamMemberClicked String
     | AddTeamMemberReceived (Result Http.Error Team.TeamDetailResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
+    | OrgTaskQueryChanged String
+    | OrgTaskFilterChanged String
     | OrgCollectiblesReceived (Result Http.Error Collectible.CollectiblesResponse)
     | TeamCollectiblesReceived (Result Http.Error Collectible.CollectiblesResponse)
     | CreateOrgTeamNameChanged String

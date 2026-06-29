@@ -10,6 +10,12 @@ interface TaskBody {
   id: string;
 }
 
+interface SubmissionCreatedBody {
+  submission: {
+    id: string;
+  };
+}
+
 async function registerViaApi(
   request: {
     post: (
@@ -75,6 +81,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("discovery-query").fill(title);
   const workerRow = page.getByTestId("discovery-task-row").filter({
     hasText: title,
   });
@@ -166,6 +173,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await page.getByTestId("logout").click();
   await loginViaUi(page, other.email);
   await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("discovery-query").fill(title);
   await expect(
     page.getByTestId("discovery-task-row").filter({ hasText: title }),
   ).toHaveCount(0);
@@ -210,6 +218,8 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("select-organization").first().click();
   await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]+$/);
   await expect(page.getByTestId("active-organization")).toBeVisible();
+  await expect(page.getByTestId("org-task-query")).toBeVisible();
+  await page.getByTestId("org-task-filter-open").click();
   // The owner is a real member of the org they created.
   await expect(page.getByTestId("org-member-row")).toHaveCount(1);
 
@@ -232,6 +242,8 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page).toHaveURL(/\/teams\/[0-9a-f-]+$/);
   await expect(page.getByTestId("team-detail-name")).toContainText(teamName);
   await expect(page.getByTestId("team-work-dashboard")).toBeVisible();
+  await expect(page.getByTestId("team-work-query")).toBeVisible();
+  await page.getByTestId("team-work-filter-ready").click();
   await expect(page.getByTestId("team-review-queue-empty")).toBeVisible();
   await expect(page.getByTestId("team-ready-work-empty")).toBeVisible();
 });
@@ -258,6 +270,12 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   await expect(page.getByTestId("task-row").filter({ hasText: title }))
     .toHaveCount(0);
   await page.getByTestId("task-filter-draft").click();
+  await expect(page.getByTestId("task-row").filter({ hasText: title }))
+    .toHaveCount(1);
+  await page.getByTestId("tasks-query").fill("not " + title);
+  await expect(page.getByTestId("task-row").filter({ hasText: title }))
+    .toHaveCount(0);
+  await page.getByTestId("tasks-query").fill(title);
   await expect(page.getByTestId("task-row").filter({ hasText: title }))
     .toHaveCount(1);
 });
@@ -289,6 +307,48 @@ test("a user profile page lists the user's public tasks", async ({ page, request
   await page.getByTestId("back-user").click();
   await page.getByTestId("user-submissions-link").click();
   await expect(page).toHaveURL(/\/users\/[^/]+\/submissions$/);
+});
+
+test("workers see requested revisions in their submission inbox", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "revision-owner");
+  const worker = await registerViaApi(request, "revision-worker");
+  const title = `Revision inbox ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 0),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+  const openResponse = await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+  expect(openResponse.ok()).toBeTruthy();
+  const submissionResponse = await request.post(
+    `/api/tasks/${task.id}/submissions`,
+    {
+      headers: { Authorization: `Bearer ${worker.body.access_token}` },
+      data: { response_json: '{"answer":"revise me"}' },
+    },
+  );
+  expect(submissionResponse.ok()).toBeTruthy();
+  const submitted = (await submissionResponse.json()) as SubmissionCreatedBody;
+  const reviewNote = `Please revise ${crypto.randomUUID()}`;
+  const requestChangesResponse = await request.post(
+    `/api/tasks/${task.id}/submissions/${submitted.submission.id}/request-changes`,
+    {
+      headers: { Authorization: `Bearer ${owner.body.access_token}` },
+      data: { review_note: reviewNote },
+    },
+  );
+  expect(requestChangesResponse.ok()).toBeTruthy();
+
+  await loginViaUi(page, worker.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.goto(`/#/users/${worker.body.subject_id}/submissions`);
+  await expect(page.getByTestId("revision-inbox")).toBeVisible();
+  await expect(page.getByTestId("revision-inbox")).toContainText(task.id);
+  await expect(page.getByTestId("revision-inbox")).toContainText(reviewNote);
 });
 
 test("requesters scope a task to a standalone team", async ({ page, request }) => {

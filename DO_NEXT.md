@@ -4,16 +4,20 @@ Current priority from [docs/application_readiness_review.md](./docs/application_
 
 Next recommended work:
 
-1. Keep expanding shared scenario parity as new user-visible API surfaces are added. The current suite covers selectors, collectible mint/transfer/create-time refund, comments, notifications, organization reviewer acceptance, and multi-actor reservation/submission acceptance.
-2. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
-3. Audit remaining raw-ID browser flows and replace high-traffic fields with selectors where directory data exists.
-4. Continue moving first-page-only browser lists to explicit pagination where high-volume use is expected.
-5. Keep improving backendless demo semantic parity through shared scenarios before any WASM replacement.
-6. Keep polishing submission discussion discoverability and end-to-end ergonomics as review workflows grow.
+1. Add server-side queue search/pagination where high-volume team and organization work queues need more than loaded-list filtering.
+2. Add worker-side resubmission shortcuts from the revision inbox.
+3. Keep expanding shared scenario parity as new user-visible API surfaces are added. The current suite covers selectors, collectible mint/transfer/create-time refund, comments, notifications with task metadata, organization reviewer acceptance, and multi-actor reservation/submission acceptance.
+4. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
+5. Audit remaining raw-ID browser flows and replace high-traffic fields with selectors where directory data exists.
+6. Keep improving backendless demo semantic parity through shared scenarios before any WASM replacement.
 7. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
 8. Do not replace `site/demo/backend.js` with WASM until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The post-PR81 dashboards/revisions/parity branch added loaded-list search/filter controls for team work, organization tasks, requester tasks, and discovery; added a worker revision inbox; surfaced dashboard load failures in section-specific messages; tightened submission-comment notification metadata parity; added browser coverage for the new flows; and added [docs/onboarding.md](./docs/onboarding.md).
+
+1. PR 81 CI passed, including `db-checks` and Playwright.
 
 1. The readiness-dashboard-docs-parity branch updated post-PR80 continuity, confirmed PR 80 CI passed with `db-checks` and Playwright, repaired stale readiness-review gaps, added team work dashboard sections, submission-comment notifications, inbox task links, task/discovery pagination controls, API/MCP/scheduling docs, and backendless demo thread-access parity.
 

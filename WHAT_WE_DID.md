@@ -1230,6 +1230,33 @@ The `task/demo-ui-polish-pass` branch polished the expanded static demo after sp
 The `task/demo-ui-polish-pass` branch verification was performed:
 
 - `node --check site/demo/app.js` passed.
+The `task/post81-dashboards-revisions-parity` branch added post-PR81 dashboard, revision, parity, and onboarding work:
+
+- Team work, organization task, requester task, and discovery lists gained loaded-list search/filter controls.
+- Worker submission pages gained a revision inbox for submissions in `changes_requested`.
+- Team/organization work and collectible load failures now surface section-specific messages instead of being hidden by unrelated successful loads.
+- Shared scenario parity now asserts `submission_commented` notification task metadata.
+- HTTP contract fixtures cover the `submission_commented` notification list shape.
+- Browser tests cover the new list search controls, team/org dashboard controls, and revision inbox flow.
+- [docs/onboarding.md](./docs/onboarding.md) was added and linked from README and hosted docs.
+- The readiness review was updated for the new dashboard, revision, and onboarding surfaces.
+
+The `task/post81-dashboards-revisions-parity` branch verification was performed:
+
+- `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test ./...` passed.
+- `deno test --allow-read tests/deno` passed.
+- `deno check tools/*.ts tests/**/*.ts` passed.
+- `deno lint tools tests` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make check-contracts` passed.
+- `make check-format` passed.
+- `deno run --allow-read tools/check_policy.ts` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go vet ./...` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode -test ./...` passed.
+- `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests` passed.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts --no-deps --output=/Users/zardoz/projects/sharecrop/test-results tests/playwright/demo.spec.ts tests/playwright/mobile.spec.ts` passed against the already-running demo server.
+- Local real-app Playwright was not run because PostgreSQL was not reachable at `localhost:15432`.
+
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts tests/playwright/demo_static.spec.ts` passed.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/capture_demo_screenshots.ts` captured desktop and mobile screenshots; screenshots reviewed included the Mission Board, Review Queue, Command desktop, and showcase mobile states.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys tools/audit_demo_ui.ts` passed for deployed and local demo pages.

@@ -122,6 +122,12 @@ function assertNotificationShape(notification: JsonRecord): void {
   ].forEach((key) => requireString(notification, key));
 }
 
+function requireMetadataRecord(value: JsonRecord, label: string): JsonRecord {
+  const metadataJSON = requireString(value, "metadata_json");
+  const parsed = JSON.parse(metadataJSON) as unknown;
+  return requireRecord(parsed, label);
+}
+
 interface ScenarioActor {
   subjectID: string;
   email: string;
@@ -772,12 +778,17 @@ export async function runSharedScenarioParity(
   assertScenario(
     workerCommentNotificationList.some((item) => {
       const notification = requireRecord(item, "workerCommentNotifications[]");
+      const metadata = requireMetadataRecord(
+        notification,
+        "workerCommentNotification.metadata_json",
+      );
       return requireString(notification, "kind") === "submission_commented" &&
         requireString(notification, "actor_user_id") === owner.subjectID &&
         requireString(notification, "recipient_user_id") === worker.subjectID &&
-        requireString(notification, "subject_id") === multiActorSubmissionID;
+        requireString(notification, "subject_id") === multiActorSubmissionID &&
+        requireString(metadata, "task_id") === multiActorTaskID;
     }),
-    "worker inbox must include owner submission-comment notification",
+    "worker inbox must include owner submission-comment notification with task metadata",
   );
 
   const acceptedSubmission = await owner.client.request(

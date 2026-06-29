@@ -1,6 +1,7 @@
 # Sharecrop
 
-Sharecrop is a coordination layer for requested work, submissions, validation, scoped access, and rewards.
+Sharecrop is a coordination layer for requested work, submissions, validation,
+scoped access, and rewards.
 
 See:
 
@@ -13,6 +14,7 @@ See:
 - [docs/api_reference.md](./docs/api_reference.md)
 - [docs/mcp_reference.md](./docs/mcp_reference.md)
 - [docs/agent_scheduling.md](./docs/agent_scheduling.md)
+- [docs/onboarding.md](./docs/onboarding.md)
 
 ## Local Commands
 
