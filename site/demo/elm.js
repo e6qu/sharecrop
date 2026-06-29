@@ -6354,9 +6354,10 @@ var $author$project$Sharecrop$Types$OrgMembersReceived = function (a) {
 var $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen = {$: 'TaskParticipationPolicyOpen'};
 var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
-var $author$project$Sharecrop$Types$ReviewActionReceived = function (a) {
-	return {$: 'ReviewActionReceived', a: a};
-};
+var $author$project$Sharecrop$Types$ReviewActionReceived = F2(
+	function (a, b) {
+		return {$: 'ReviewActionReceived', a: a, b: b};
+	});
 var $elm$json$Json$Encode$int = _Json_wrap;
 var $elm$core$String$trim = _String_trim;
 var $author$project$Sharecrop$Api$intInputOrZero = function (raw) {
@@ -6454,7 +6455,8 @@ var $author$project$Sharecrop$Api$postAccept = F6(
 			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/accept'))),
 			$elm$http$Http$jsonBody(
 				A4($author$project$Sharecrop$Api$acceptRequestBody, submissionId, payoutAmount, tipAmount, tipCollectibleId)),
-			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$ReviewActionReceived));
+			$elm$http$Http$expectWhatever(
+				$author$project$Sharecrop$Types$ReviewActionReceived(submissionId)));
 	});
 var $author$project$Sharecrop$Api$updateLoggedIn = F2(
 	function (model, change) {
@@ -9551,7 +9553,8 @@ var $author$project$Sharecrop$Api$postReject = F7(
 			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/reject'))),
 			$elm$http$Http$jsonBody(
 				A5($author$project$Sharecrop$Api$rejectRequestBody, submissionId, reviewNote, partialCredit, tipAmount, banImplementor)),
-			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$ReviewActionReceived));
+			$elm$http$Http$expectWhatever(
+				$author$project$Sharecrop$Types$ReviewActionReceived(submissionId)));
 	});
 var $author$project$Sharecrop$Api$rejectCommand = F3(
 	function (model, state, submissionId) {
@@ -9615,7 +9618,8 @@ var $author$project$Sharecrop$Api$postRequestChanges = F4(
 			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/request-changes'))),
 			$elm$http$Http$jsonBody(
 				$author$project$Sharecrop$Api$requestChangesBody(reviewNote)),
-			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$ReviewActionReceived));
+			$elm$http$Http$expectWhatever(
+				$author$project$Sharecrop$Types$ReviewActionReceived(submissionId)));
 	});
 var $author$project$Sharecrop$Api$requestChangesCommand = F3(
 	function (model, state, submissionId) {
@@ -11982,19 +11986,32 @@ var $author$project$Main$update = F2(
 			case 'SubmitReceived':
 				if (msg.a.$ === 'Ok') {
 					var created = msg.a.a;
-					return _Utils_Tuple2(
-						A2(
-							$author$project$Sharecrop$Api$updateLoggedIn,
-							model,
-							function (state) {
-								return _Utils_update(
-									state,
-									{
-										submitMessage: $elm$core$Maybe$Just(
-											$author$project$Sharecrop$View$submitSuccessLabel(created))
-									});
-							}),
-						$author$project$Sharecrop$Api$refreshDetailSubmissions(model));
+					return A2(
+						$author$project$Sharecrop$Api$withSession,
+						model,
+						function (state) {
+							return _Utils_Tuple2(
+								A2(
+									$author$project$Sharecrop$Api$updateLoggedIn,
+									model,
+									function (current) {
+										return _Utils_update(
+											current,
+											{
+												activeSubmissionCommentsID: $elm$core$Maybe$Just(created.submission.id),
+												submissionCommentMessage: $elm$core$Maybe$Nothing,
+												submissionComments: _List_Nil,
+												submitMessage: $elm$core$Maybe$Just(
+													$author$project$Sharecrop$View$submitSuccessLabel(created))
+											});
+									}),
+								$elm$core$Platform$Cmd$batch(
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Api$refreshDetailSubmissions(model),
+											A2($author$project$Sharecrop$Api$fetchSubmissionComments, state.accessToken, created.submission.id)
+										])));
+						});
 				} else {
 					var error = msg.a.a;
 					return _Utils_Tuple2(
@@ -12096,26 +12113,40 @@ var $author$project$Main$update = F2(
 						return A3($author$project$Sharecrop$Api$rejectCommand, model, state, submissionId);
 					});
 			case 'ReviewActionReceived':
-				if (msg.a.$ === 'Ok') {
-					return _Utils_Tuple2(
-						A2(
-							$author$project$Sharecrop$Api$updateLoggedIn,
-							model,
-							function (state) {
-								return _Utils_update(
-									state,
-									{
-										reviewBan: false,
-										reviewMessage: $elm$core$Maybe$Just('Review saved.'),
-										reviewNote: '',
-										reviewPartialCredit: '',
-										reviewTip: '',
-										reviewTipCollectibleId: ''
-									});
-							}),
-						$author$project$Sharecrop$Api$refreshAfterAccept(model));
+				if (msg.b.$ === 'Ok') {
+					var submissionId = msg.a;
+					return A2(
+						$author$project$Sharecrop$Api$withSession,
+						model,
+						function (state) {
+							return _Utils_Tuple2(
+								A2(
+									$author$project$Sharecrop$Api$updateLoggedIn,
+									model,
+									function (current) {
+										return _Utils_update(
+											current,
+											{
+												activeSubmissionCommentsID: $elm$core$Maybe$Just(submissionId),
+												reviewBan: false,
+												reviewMessage: $elm$core$Maybe$Just('Review saved.'),
+												reviewNote: '',
+												reviewPartialCredit: '',
+												reviewTip: '',
+												reviewTipCollectibleId: '',
+												submissionCommentMessage: $elm$core$Maybe$Nothing,
+												submissionComments: _List_Nil
+											});
+									}),
+								$elm$core$Platform$Cmd$batch(
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Api$refreshAfterAccept(model),
+											A2($author$project$Sharecrop$Api$fetchSubmissionComments, state.accessToken, submissionId)
+										])));
+						});
 				} else {
-					var error = msg.a.a;
+					var error = msg.b.a;
 					return _Utils_Tuple2(
 						A2(
 							$author$project$Sharecrop$Api$updateLoggedIn,
@@ -19696,6 +19727,12 @@ var $author$project$Sharecrop$View$detailCard = F2(
 var $author$project$Sharecrop$Types$OpenSubmissionComments = function (a) {
 	return {$: 'OpenSubmissionComments', a: a};
 };
+var $author$project$Sharecrop$View$discussionButtonLabel = F2(
+	function (state, submissionId) {
+		return _Utils_eq(
+			state.activeSubmissionCommentsID,
+			$elm$core$Maybe$Just(submissionId)) ? 'Discussion open' : 'Discuss';
+	});
 var $author$project$Sharecrop$View$reviewNoteView = function (note) {
 	return $elm$core$String$isEmpty(
 		$elm$core$String$trim(note)) ? $elm$html$Html$text('') : A2(
@@ -19861,7 +19898,7 @@ var $author$project$Sharecrop$View$mySubmissionRow = F2(
 									$author$project$Sharecrop$Types$OpenSubmissionComments(submission.id)),
 									$author$project$Sharecrop$Ui$testId('my-submission-comments-toggle')
 								]),
-							'Comments')
+							A2($author$project$Sharecrop$View$discussionButtonLabel, state, submission.id))
 						])),
 					$author$project$Sharecrop$View$reviewNoteView(submission.reviewNote),
 					A2(
@@ -20569,7 +20606,7 @@ var $author$project$Sharecrop$View$submissionRow = F2(
 							$author$project$Sharecrop$Types$OpenSubmissionComments(submission.id)),
 							$author$project$Sharecrop$Ui$testId('submission-comments-toggle')
 						]),
-					'Comments'),
+					A2($author$project$Sharecrop$View$discussionButtonLabel, state, submission.id)),
 					A2($author$project$Sharecrop$View$submissionCommentsThread, state, submission)
 				]));
 	});

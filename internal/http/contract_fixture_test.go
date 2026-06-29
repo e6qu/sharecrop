@@ -270,6 +270,11 @@ func TestSubmissionCommentsResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","submission_id":"submission-1","author_user_id":"user-1","body":"Please revise.","created_at":"2026-06-29T00:00:00Z"}]}`)
 }
 
+func TestSubmissionCommentRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(submissionCommentRequest{Body: "Please revise."})
+	assertWireShape(t, encoded, err, `{"body":"Please revise."}`)
+}
+
 func TestTaskCommentsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(taskCommentsResponse{Comments: []taskCommentResponse{{ID: "comment-1", TaskID: "task-1", AuthorUserID: "user-1", Body: "Looks ready.", CreatedAt: "2026-06-29T00:00:00Z"}}})
 	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","task_id":"task-1","author_user_id":"user-1","body":"Looks ready.","created_at":"2026-06-29T00:00:00Z"}]}`)

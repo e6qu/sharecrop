@@ -22,6 +22,10 @@ type submissionCommentsResponse struct {
 	Comments []submissionCommentResponse `json:"comments"`
 }
 
+type submissionCommentRequest struct {
+	Body string `json:"body"`
+}
+
 func (submissionCommentResponse) writableResponse() {}
 
 func (submissionCommentsResponse) writableResponse() {}
@@ -53,7 +57,7 @@ func (server Server) addSubmissionComment(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	var request seriesCommentRequest
+	var request submissionCommentRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "request body is invalid")
 		return

@@ -753,7 +753,7 @@ postAccept token taskId submissionId payoutAmount tipAmount tipCollectibleId =
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/accept")
         (Http.jsonBody (acceptRequestBody submissionId payoutAmount tipAmount tipCollectibleId))
-        (Http.expectWhatever ReviewActionReceived)
+        (Http.expectWhatever (ReviewActionReceived submissionId))
 
 
 postRequestChanges : String -> String -> String -> String -> Cmd Msg
@@ -762,7 +762,7 @@ postRequestChanges token taskId submissionId reviewNote =
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/request-changes")
         (Http.jsonBody (requestChangesBody reviewNote))
-        (Http.expectWhatever ReviewActionReceived)
+        (Http.expectWhatever (ReviewActionReceived submissionId))
 
 
 postReject : String -> String -> String -> String -> String -> String -> Bool -> Cmd Msg
@@ -771,7 +771,7 @@ postReject token taskId submissionId reviewNote partialCredit tipAmount banImple
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/reject")
         (Http.jsonBody (rejectRequestBody submissionId reviewNote partialCredit tipAmount banImplementor))
-        (Http.expectWhatever ReviewActionReceived)
+        (Http.expectWhatever (ReviewActionReceived submissionId))
 
 
 fetchCollectibles : String -> Cmd Msg

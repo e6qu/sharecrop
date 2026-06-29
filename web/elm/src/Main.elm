@@ -814,9 +814,15 @@ update msg model =
             Api.withSession model (\state -> Api.submitCommand model state)
 
         SubmitReceived (Ok created) ->
-            ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just (View.submitSuccessLabel created) })
-            , Api.refreshDetailSubmissions model
-            )
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | submitMessage = Just (View.submitSuccessLabel created), activeSubmissionCommentsID = Just created.submission.id, submissionComments = [], submissionCommentMessage = Nothing })
+                    , Cmd.batch
+                        [ Api.refreshDetailSubmissions model
+                        , Api.fetchSubmissionComments state.accessToken created.submission.id
+                        ]
+                    )
+                )
 
         SubmitReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -845,12 +851,20 @@ update msg model =
         RejectClicked submissionId ->
             Api.withSession model (\state -> Api.rejectCommand model state submissionId)
 
-        ReviewActionReceived (Ok _) ->
+        ReviewActionReceived submissionId (Ok _) ->
             -- Clear the review form so the next submission in the list does not
             -- inherit the previous one's note / partial credit / tip / collectible tip / ban.
-            ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just "Review saved.", reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False }), Api.refreshAfterAccept model )
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | reviewMessage = Just "Review saved.", reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, activeSubmissionCommentsID = Just submissionId, submissionComments = [], submissionCommentMessage = Nothing })
+                    , Cmd.batch
+                        [ Api.refreshAfterAccept model
+                        , Api.fetchSubmissionComments state.accessToken submissionId
+                        ]
+                    )
+                )
 
-        ReviewActionReceived (Err error) ->
+        ReviewActionReceived _ (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         CollectibleNameChanged value ->
