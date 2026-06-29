@@ -9,7 +9,7 @@ import (
 
 type Store interface {
 	CreateOrganization(context.Context, core.OrganizationID, OrganizationName, core.UserID, core.OrganizationMembershipID) CreateOrganizationStoreResult
-	ListOrganizationsForUser(context.Context, core.UserID, core.Page) ListOrganizationsResult
+	ListOrganizationsForUser(context.Context, core.UserID, string, core.Page) ListOrganizationsResult
 	FindMemberRoles(context.Context, core.OrganizationID, core.UserID) MemberRolesResult
 	ListMembers(context.Context, core.OrganizationID, core.Page) ListMembersResult
 	ProvisionMember(context.Context, core.OrganizationMembershipID, core.OrganizationID, auth.EmailAddress, []Role) ProvisionMemberStoreResult
@@ -19,8 +19,8 @@ type Store interface {
 	CreateStandaloneTeam(context.Context, core.TeamID, core.UserID, TeamName) CreateTeamStoreResult
 	AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult
 	AddTeamMemberByEmail(context.Context, core.TeamID, auth.EmailAddress) AddTeamMemberStoreResult
-	ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult
-	ListStandaloneTeams(context.Context, core.UserID, core.Page) TeamListResult
+	ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, string, core.Page) TeamListResult
+	ListStandaloneTeams(context.Context, core.UserID, string, core.Page) TeamListResult
 	FindTeam(context.Context, core.TeamID) FindTeamResult
 	ListTeamMembers(context.Context, core.TeamID) TeamMembersResult
 }
@@ -94,8 +94,8 @@ func (OrganizationsListed) listOrganizationsResult() {}
 
 func (ListOrganizationsRejected) listOrganizationsResult() {}
 
-func (service Service) ListOrganizations(ctx context.Context, actor auth.UserSubject, page core.Page) ListOrganizationsResult {
-	result := service.store.ListOrganizationsForUser(ctx, actor.ID, page)
+func (service Service) ListOrganizations(ctx context.Context, actor auth.UserSubject, query string, page core.Page) ListOrganizationsResult {
+	result := service.store.ListOrganizationsForUser(ctx, actor.ID, query, page)
 	listed, matched := result.(OrganizationsListed)
 	if !matched {
 		rejected := result.(ListOrganizationsRejected)
@@ -228,8 +228,8 @@ func (service Service) CreateStandaloneTeam(ctx context.Context, actor auth.User
 	return TeamCreated{Value: Team{ID: teamIDCreated.Value, Owner: UserOwnedTeam{OwnerUserID: actor.ID}, Name: name, CreatedBy: actor.ID}}
 }
 
-func (service Service) ListStandaloneTeams(ctx context.Context, actor auth.UserSubject, page core.Page) ListTeamsResult {
-	result := service.store.ListStandaloneTeams(ctx, actor.ID, page)
+func (service Service) ListStandaloneTeams(ctx context.Context, actor auth.UserSubject, query string, page core.Page) ListTeamsResult {
+	result := service.store.ListStandaloneTeams(ctx, actor.ID, query, page)
 	listed, matched := result.(TeamsListed)
 	if !matched {
 		rejected := result.(TeamListRejected)
@@ -254,8 +254,8 @@ func (OrganizationTeamsListed) listTeamsResult() {}
 
 func (ListTeamsRejected) listTeamsResult() {}
 
-func (service Service) ListOrganizationTeams(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID, page core.Page) ListTeamsResult {
-	result := service.store.ListOrganizationTeams(ctx, organizationID, actor.ID, page)
+func (service Service) ListOrganizationTeams(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID, query string, page core.Page) ListTeamsResult {
+	result := service.store.ListOrganizationTeams(ctx, organizationID, actor.ID, query, page)
 	listed, matched := result.(TeamsListed)
 	if !matched {
 		rejected := result.(TeamListRejected)

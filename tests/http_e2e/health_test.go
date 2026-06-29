@@ -110,7 +110,7 @@ func (healthOrganizationService) CreateOrganization(context.Context, auth.UserSu
 	return org.CreateOrganizationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) ListOrganizations(context.Context, auth.UserSubject, core.Page) org.ListOrganizationsResult {
+func (healthOrganizationService) ListOrganizations(context.Context, auth.UserSubject, string, core.Page) org.ListOrganizationsResult {
 	return org.ListOrganizationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -138,11 +138,11 @@ func (healthOrganizationService) ListMembers(context.Context, auth.UserSubject, 
 	return org.ListMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult {
+func (healthOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, string, core.Page) org.ListTeamsResult {
 	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) ListStandaloneTeams(context.Context, auth.UserSubject, core.Page) org.ListTeamsResult {
+func (healthOrganizationService) ListStandaloneTeams(context.Context, auth.UserSubject, string, core.Page) org.ListTeamsResult {
 	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

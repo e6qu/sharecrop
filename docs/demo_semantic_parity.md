@@ -1,11 +1,16 @@
 # Backendless Demo Semantic Parity
 
-`site/demo/backend.js` is a fake backend. It now has route and response-shape parity checks, and selected user-flow semantics are covered by Deno tests. It still cannot prove full semantic parity with the Go API because it reimplements behavior in JavaScript.
+`site/demo/backend.js` is a fake backend. It now has route and response-shape parity checks, a shared scenario runner used by Deno demo tests, and a CLI entry point for running the same scenario against a deployed or local real API. It still cannot prove full semantic parity with the Go API because it reimplements behavior in JavaScript.
+
+## Current Checks
+
+- `deno test --allow-read tests/deno` runs demo route/shape checks and the shared scenario parity suite against `site/demo/backend.js`.
+- `deno task check:scenario-parity -- --origin <api-origin> --token <access-token>` runs the same shared scenario against a real API. The supplied token must be able to refresh auth, create organizations, teams, tasks, and task comments.
+- `deno task check:pages-routing -- --origin <pages-origin>` checks deployed GitHub Pages root, docs, demo entry paths, and demo assets after deployment.
 
 ## Options
 
-1. Add shared scenario tests that run the same scripted user flows against the Go HTTP API and the demo backend.
-   - Best next step.
+1. Expand shared scenario tests that run the same scripted user flows against the Go HTTP API and the demo backend.
    - Keeps the backendless demo on static hosting.
    - Catches behavior drift for task creation, reservations, submissions, reviews, notifications, collectibles, org/team flows, account tokens, and admin views.
    - Does not require replacing the demo backend immediately.
@@ -27,4 +32,6 @@
 
 ## Recommendation
 
-Build shared scenario parity tests first. They improve the current backendless demo and transfer directly to the backend-backed solution. After the core scenario suite exists, run a WASM spike focused on one vertical slice, such as task creation plus submission review plus notifications. Adopt WASM only if it can use explicit browser storage adapters without fallbacks or dead paths.
+Keep expanding shared scenario parity before replacing the fake backend. The first suite covers selector pagination/query behavior plus org/team/task/comment creation. Add reservation, submission review, notification, collectible, account-token, and admin-operation flows as follow-up scenarios.
+
+Use [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md) for the current WASM finding. Adopt WASM only if it can use explicit browser storage adapters without fallbacks or dead paths.

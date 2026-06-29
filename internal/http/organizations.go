@@ -53,7 +53,7 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.organizationService.ListOrganizations(r.Context(), actor.subject, parsePage(r))
+	result := server.organizationService.ListOrganizations(r.Context(), actor.subject, r.URL.Query().Get("query"), parsePage(r))
 	listed, matched := result.(org.OrganizationsListed)
 	if !matched {
 		rejected := result.(org.ListOrganizationsRejected)
@@ -281,7 +281,7 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value, parsePage(r))
+	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value, r.URL.Query().Get("query"), parsePage(r))
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
@@ -339,7 +339,7 @@ func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result := server.organizationService.ListStandaloneTeams(r.Context(), actor.subject, parsePage(r))
+	result := server.organizationService.ListStandaloneTeams(r.Context(), actor.subject, r.URL.Query().Get("query"), parsePage(r))
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)

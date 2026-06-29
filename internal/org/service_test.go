@@ -44,9 +44,38 @@ func TestServiceDeniesProvisionWithoutPermission(t *testing.T) {
 	}
 }
 
+func TestServicePassesSelectorQueriesToStore(t *testing.T) {
+	store := newMemoryStore()
+	service := NewService(store)
+	actor := testUserSubject(t)
+	organization := testOrganizationID(t)
+	page := acceptedPage(t, 20, 40)
+
+	service.ListOrganizations(context.Background(), actor, "lattice", page)
+	if store.lastOrganizationQuery != "lattice" || !samePage(store.lastOrganizationPage, page) {
+		t.Fatalf("organization selector query/page = %q/%+v, want lattice/%+v", store.lastOrganizationQuery, store.lastOrganizationPage, page)
+	}
+
+	service.ListStandaloneTeams(context.Background(), actor, "field", page)
+	if store.lastStandaloneTeamQuery != "field" || !samePage(store.lastStandaloneTeamPage, page) {
+		t.Fatalf("standalone team selector query/page = %q/%+v, want field/%+v", store.lastStandaloneTeamQuery, store.lastStandaloneTeamPage, page)
+	}
+
+	service.ListOrganizationTeams(context.Background(), actor, organization, "survey", page)
+	if store.lastOrgTeamQuery != "survey" || !samePage(store.lastOrgTeamPage, page) {
+		t.Fatalf("organization team selector query/page = %q/%+v, want survey/%+v", store.lastOrgTeamQuery, store.lastOrgTeamPage, page)
+	}
+}
+
 type memoryStore struct {
-	organizations map[string]Organization
-	members       map[string]OrganizationMember
+	organizations           map[string]Organization
+	members                 map[string]OrganizationMember
+	lastOrganizationQuery   string
+	lastOrganizationPage    core.Page
+	lastStandaloneTeamQuery string
+	lastStandaloneTeamPage  core.Page
+	lastOrgTeamQuery        string
+	lastOrgTeamPage         core.Page
 }
 
 func newMemoryStore() *memoryStore {
@@ -68,7 +97,9 @@ func (store *memoryStore) CreateOrganization(_ context.Context, organizationID c
 	return CreateOrganizationStoreAccepted{}
 }
 
-func (store *memoryStore) ListOrganizationsForUser(_ context.Context, userID core.UserID, _ core.Page) ListOrganizationsResult {
+func (store *memoryStore) ListOrganizationsForUser(_ context.Context, userID core.UserID, query string, page core.Page) ListOrganizationsResult {
+	store.lastOrganizationQuery = query
+	store.lastOrganizationPage = page
 	values := make([]Organization, 0)
 	for _, organization := range store.organizations {
 		if _, matched := store.members[organization.ID.String()+":"+userID.String()]; matched {
@@ -133,11 +164,15 @@ func (store *memoryStore) AddTeamMemberByEmail(context.Context, core.TeamID, aut
 	return TeamMemberAdded{}
 }
 
-func (store *memoryStore) ListOrganizationTeams(context.Context, core.OrganizationID, core.UserID, core.Page) TeamListResult {
+func (store *memoryStore) ListOrganizationTeams(_ context.Context, _ core.OrganizationID, _ core.UserID, query string, page core.Page) TeamListResult {
+	store.lastOrgTeamQuery = query
+	store.lastOrgTeamPage = page
 	return TeamsListed{Values: []Team{}}
 }
 
-func (store *memoryStore) ListStandaloneTeams(context.Context, core.UserID, core.Page) TeamListResult {
+func (store *memoryStore) ListStandaloneTeams(_ context.Context, _ core.UserID, query string, page core.Page) TeamListResult {
+	store.lastStandaloneTeamQuery = query
+	store.lastStandaloneTeamPage = page
 	return TeamsListed{Values: []Team{}}
 }
 
@@ -192,6 +227,20 @@ func testOrganizationID(t *testing.T) core.OrganizationID {
 		t.Fatalf("organization id result = %T, want OrganizationIDCreated", result)
 	}
 	return created.Value
+}
+
+func acceptedPage(t *testing.T, limit int, offset int) core.Page {
+	t.Helper()
+	result := core.NewPage(limit, offset)
+	accepted, matched := result.(core.PageAccepted)
+	if !matched {
+		t.Fatalf("page result = %T, want PageAccepted", result)
+	}
+	return accepted.Value
+}
+
+func samePage(left core.Page, right core.Page) bool {
+	return left.Limit() == right.Limit() && left.Offset() == right.Offset()
 }
 
 func testUserIDFromEmail(auth.EmailAddress) core.UserID {

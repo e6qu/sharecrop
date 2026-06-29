@@ -49,15 +49,15 @@ type SubjectVerifier interface {
 
 type OrganizationService interface {
 	CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult
-	ListOrganizations(context.Context, auth.UserSubject, core.Page) org.ListOrganizationsResult
+	ListOrganizations(context.Context, auth.UserSubject, string, core.Page) org.ListOrganizationsResult
 	ListMembers(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListMembersResult
 	ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
 	DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
 	UpdateMemberRoles(context.Context, auth.UserSubject, core.OrganizationID, core.UserID, []org.Role) org.UpdateMemberRolesResult
 	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
 	CreateStandaloneTeam(context.Context, auth.UserSubject, org.TeamName) org.CreateTeamResult
-	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult
-	ListStandaloneTeams(context.Context, auth.UserSubject, core.Page) org.ListTeamsResult
+	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, string, core.Page) org.ListTeamsResult
+	ListStandaloneTeams(context.Context, auth.UserSubject, string, core.Page) org.ListTeamsResult
 	GetTeam(context.Context, auth.UserSubject, core.TeamID) org.GetTeamResult
 	AddTeamMember(context.Context, auth.UserSubject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck

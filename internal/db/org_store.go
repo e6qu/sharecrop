@@ -55,16 +55,17 @@ func (store OrgStore) CreateOrganization(ctx context.Context, organizationID cor
 	return org.CreateOrganizationStoreAccepted{}
 }
 
-func (store OrgStore) ListOrganizationsForUser(ctx context.Context, userID core.UserID, page core.Page) org.ListOrganizationsResult {
+func (store OrgStore) ListOrganizationsForUser(ctx context.Context, userID core.UserID, query string, page core.Page) org.ListOrganizationsResult {
 	rows, err := store.pool.Query(ctx, `
 		select organizations.id::text, organizations.name, organizations.created_by_user_id::text
 		from organizations
 		join organization_memberships on organization_memberships.organization_id = organizations.id
 		where organization_memberships.user_id = $1
 			and organization_memberships.status = $2
+			and ($3 = '' or lower(organizations.name) like '%' || lower($3) || '%')
 		order by organizations.name
-		limit $3 offset $4
-	`, userID.String(), org.MembershipStatusActive.String(), page.Limit(), page.Offset())
+		limit $4 offset $5
+	`, userID.String(), org.MembershipStatusActive.String(), query, page.Limit(), page.Offset())
 	if err != nil {
 		return org.ListOrganizationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list organizations failed")}
 	}
@@ -380,7 +381,7 @@ func (store OrgStore) AddTeamMemberByEmail(ctx context.Context, teamID core.Team
 	return store.AddTeamMember(ctx, teamID, userIDCreated.Value)
 }
 
-func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, page core.Page) org.TeamListResult {
+func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, query string, page core.Page) org.TeamListResult {
 	rolesResult := store.FindMemberRoles(ctx, organizationID, userID)
 	if _, matched := rolesResult.(org.MemberRolesFound); !matched {
 		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization team access denied")}
@@ -390,9 +391,10 @@ func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID 
 		select id::text, owner_kind, coalesce(organization_id::text, ''), coalesce(owner_user_id::text, ''), name, created_by_user_id::text
 		from teams
 		where organization_id = $1
+		and ($2 = '' or lower(name) like '%' || lower($2) || '%')
 		order by name
-		limit $2 offset $3
-	`, organizationID.String(), page.Limit(), page.Offset())
+		limit $3 offset $4
+	`, organizationID.String(), query, page.Limit(), page.Offset())
 	if err != nil {
 		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list organization teams failed")}
 	}
@@ -409,14 +411,15 @@ func (store OrgStore) CreateStandaloneTeam(ctx context.Context, teamID core.Team
 }
 
 // ListStandaloneTeams lists the user-owned teams for the given user.
-func (store OrgStore) ListStandaloneTeams(ctx context.Context, ownerUserID core.UserID, page core.Page) org.TeamListResult {
+func (store OrgStore) ListStandaloneTeams(ctx context.Context, ownerUserID core.UserID, query string, page core.Page) org.TeamListResult {
 	rows, err := store.pool.Query(ctx, `
 		select id::text, owner_kind, coalesce(organization_id::text, ''), coalesce(owner_user_id::text, ''), name, created_by_user_id::text
 		from teams
 		where owner_kind = 'user' and owner_user_id = $1
+		and ($2 = '' or lower(name) like '%' || lower($2) || '%')
 		order by name
-		limit $2 offset $3
-	`, ownerUserID.String(), page.Limit(), page.Offset())
+		limit $3 offset $4
+	`, ownerUserID.String(), query, page.Limit(), page.Offset())
 	if err != nil {
 		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list standalone teams failed")}
 	}

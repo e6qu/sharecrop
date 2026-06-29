@@ -444,7 +444,7 @@ func (testOrganizationService) CreateOrganization(_ context.Context, actor auth.
 	return org.OrganizationCreated{Value: org.Organization{ID: idCreated.Value, Name: name, CreatedBy: actor.ID}}
 }
 
-func (testOrganizationService) ListOrganizations(context.Context, auth.UserSubject, core.Page) org.ListOrganizationsResult {
+func (testOrganizationService) ListOrganizations(context.Context, auth.UserSubject, string, core.Page) org.ListOrganizationsResult {
 	return org.OrganizationsListed{Values: []org.Organization{}}
 }
 
@@ -484,11 +484,11 @@ func (testOrganizationService) CreateStandaloneTeam(_ context.Context, actor aut
 	return org.TeamCreated{Value: org.Team{ID: teamIDCreated.Value, Owner: org.UserOwnedTeam{OwnerUserID: actor.ID}, Name: name, CreatedBy: actor.ID}}
 }
 
-func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListTeamsResult {
+func (testOrganizationService) ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, string, core.Page) org.ListTeamsResult {
 	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 
-func (testOrganizationService) ListStandaloneTeams(context.Context, auth.UserSubject, core.Page) org.ListTeamsResult {
+func (testOrganizationService) ListStandaloneTeams(context.Context, auth.UserSubject, string, core.Page) org.ListTeamsResult {
 	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 
