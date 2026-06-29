@@ -99,7 +99,10 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
   await expect(page.getByTestId("catalog-entry")).toHaveCount(25);
 
   // Award one to myself (the demo user id), then it appears in my holdings.
-  await page.getByTestId("award-recipient-id").fill("user-mara");
+  await page.getByTestId("award-recipient-id-query").fill("mara");
+  await page.getByTestId("award-recipient-id").selectOption({
+    label: "mara@sharecrop.demo",
+  });
   await page.getByTestId("catalog-award").first().click();
   await expect(page.getByTestId("award-default-message")).toContainText(
     "Awarded",
@@ -107,7 +110,10 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
   // Open the newly held collectible and trade it to another user.
   await page.getByTestId("collectible-link").first().click();
   await expect(page.getByTestId("collectible-detail-name")).toBeVisible();
-  await page.getByTestId("transfer-recipient-id").fill("user-jules");
+  await page.getByTestId("transfer-recipient-id-query").fill("jules");
+  await page.getByTestId("transfer-recipient-id").selectOption({
+    label: "jules@sharecrop.demo",
+  });
   await page.getByTestId("transfer-collectible").click();
   await expect(page.getByTestId("transfer-message")).toContainText(
     "Transferred",

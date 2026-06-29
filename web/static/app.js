@@ -15997,6 +15997,145 @@ var $author$project$Sharecrop$Sprites$pixel = F2(
 				$elm$core$Dict$fromList($author$project$Sharecrop$Sprites$placeholderPalette));
 		}
 	});
+var $author$project$Sharecrop$Types$NextUserDirectoryPageClicked = {$: 'NextUserDirectoryPageClicked'};
+var $author$project$Sharecrop$Types$PreviousUserDirectoryPageClicked = {$: 'PreviousUserDirectoryPageClicked'};
+var $author$project$Sharecrop$Types$SearchUserDirectoryClicked = {$: 'SearchUserDirectoryClicked'};
+var $author$project$Sharecrop$Types$UserDirectoryQueryChanged = function (a) {
+	return {$: 'UserDirectoryQueryChanged', a: a};
+};
+var $elm$html$Html$option = _VirtualDom_node('option');
+var $elm$html$Html$select = _VirtualDom_node('select');
+var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
+var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
+var $author$project$Sharecrop$View$selectorSearchControls = F8(
+	function (identifier, placeholderText, query, queryChange, search, previous, next, offset) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$textInput(
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('search'),
+									$elm$html$Html$Attributes$placeholder(placeholderText),
+									$elm$html$Html$Attributes$value(query),
+									$elm$html$Html$Events$onInput(queryChange),
+									$author$project$Sharecrop$Ui$testId(identifier + '-query')
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(search),
+									$author$project$Sharecrop$Ui$testId(identifier + '-search')
+								]),
+							'Search')
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2 text-xs text-slate-500')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Attributes$disabled(!offset),
+									$elm$html$Html$Events$onClick(previous),
+									$author$project$Sharecrop$Ui$testId(identifier + '-previous')
+								]),
+							'Previous'),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$testId(identifier + '-offset')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									'Offset ' + $elm$core$String$fromInt(offset))
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(next),
+									$author$project$Sharecrop$Ui$testId(identifier + '-next')
+								]),
+							'Next')
+						]))
+				]));
+	});
+var $author$project$Sharecrop$View$userPicker = F7(
+	function (identifier, selectedUserId, query, change, blankLabel, users, offset) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2')
+				]),
+			_List_fromArray(
+				[
+					A8($author$project$Sharecrop$View$selectorSearchControls, identifier, 'Search users', query, $author$project$Sharecrop$Types$UserDirectoryQueryChanged, $author$project$Sharecrop$Types$SearchUserDirectoryClicked, $author$project$Sharecrop$Types$PreviousUserDirectoryPageClicked, $author$project$Sharecrop$Types$NextUserDirectoryPageClicked, offset),
+					A2(
+					$elm$html$Html$select,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+							$elm$html$Html$Attributes$value(selectedUserId),
+							$elm$html$Html$Events$onInput(change),
+							$author$project$Sharecrop$Ui$testId(identifier)
+						]),
+					A2(
+						$elm$core$List$cons,
+						A2(
+							$elm$html$Html$option,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$value('')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(blankLabel)
+								])),
+						A2(
+							$elm$core$List$map,
+							function (user) {
+								return A2(
+									$elm$html$Html$option,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$value(user.id),
+											$elm$html$Html$Attributes$selected(
+											_Utils_eq(selectedUserId, user.id))
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(user.email)
+										]));
+							},
+							users)))
+				]));
+	});
 var $author$project$Sharecrop$View$collectibleDetailView = F2(
 	function (collectibleId, state) {
 		return $author$project$Sharecrop$Ui$card(
@@ -16087,15 +16226,7 @@ var $author$project$Sharecrop$View$collectibleDetailView = F2(
 									_List_fromArray(
 										[
 											$author$project$Sharecrop$Ui$label_('Trade to another user'),
-											$author$project$Sharecrop$Ui$textInput(
-											_List_fromArray(
-												[
-													$elm$html$Html$Attributes$type_('text'),
-													$elm$html$Html$Attributes$placeholder('Recipient user id'),
-													$elm$html$Html$Attributes$value(state.transferRecipientId),
-													$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$TransferRecipientIdChanged),
-													$author$project$Sharecrop$Ui$testId('transfer-recipient-id')
-												])),
+											A7($author$project$Sharecrop$View$userPicker, 'transfer-recipient-id', state.transferRecipientId, state.userDirectoryQuery, $author$project$Sharecrop$Types$TransferRecipientIdChanged, 'Choose user', state.userDirectory, state.userDirectoryOffset),
 											A2(
 											$author$project$Sharecrop$Ui$primaryButton,
 											_List_fromArray(
@@ -16128,8 +16259,6 @@ var $author$project$Sharecrop$View$collectibleDetailView = F2(
 var $author$project$Sharecrop$Types$AwardTaskIdChanged = function (a) {
 	return {$: 'AwardTaskIdChanged', a: a};
 };
-var $elm$html$Html$option = _VirtualDom_node('option');
-var $elm$html$Html$select = _VirtualDom_node('select');
 var $author$project$Sharecrop$Labels$collectibleCountLabel = function (count) {
 	return (count === 1) ? '1 collectible' : ($elm$core$String$fromInt(count) + ' collectibles');
 };
@@ -16146,7 +16275,6 @@ var $author$project$Sharecrop$Labels$rewardLabel = F3(
 				return (collectibleCount > 0) ? $author$project$Sharecrop$Labels$collectibleCountLabel(collectibleCount) : 'no reward';
 		}
 	});
-var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
 var $author$project$Sharecrop$Labels$taskStateLabel = function (state) {
 	switch (state.$) {
 		case 'TaskStateDraft':
@@ -16236,90 +16364,17 @@ var $author$project$Sharecrop$Types$AwardRecipientIdChanged = function (a) {
 	return {$: 'AwardRecipientIdChanged', a: a};
 };
 var $author$project$Sharecrop$Types$NextOrganizationsPageClicked = {$: 'NextOrganizationsPageClicked'};
+var $author$project$Sharecrop$Types$NextStandaloneTeamsPageClicked = {$: 'NextStandaloneTeamsPageClicked'};
 var $author$project$Sharecrop$Types$OrganizationQueryChanged = function (a) {
 	return {$: 'OrganizationQueryChanged', a: a};
 };
 var $author$project$Sharecrop$Types$PreviousOrganizationsPageClicked = {$: 'PreviousOrganizationsPageClicked'};
+var $author$project$Sharecrop$Types$PreviousStandaloneTeamsPageClicked = {$: 'PreviousStandaloneTeamsPageClicked'};
 var $author$project$Sharecrop$Types$SearchOrganizationsClicked = {$: 'SearchOrganizationsClicked'};
-var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
-var $author$project$Sharecrop$View$selectorSearchControls = F8(
-	function (identifier, placeholderText, query, queryChange, search, previous, next, offset) {
-		return A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('space-y-2')
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
-						]),
-					_List_fromArray(
-						[
-							$author$project$Sharecrop$Ui$textInput(
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('search'),
-									$elm$html$Html$Attributes$placeholder(placeholderText),
-									$elm$html$Html$Attributes$value(query),
-									$elm$html$Html$Events$onInput(queryChange),
-									$author$project$Sharecrop$Ui$testId(identifier + '-query')
-								])),
-							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Events$onClick(search),
-									$author$project$Sharecrop$Ui$testId(identifier + '-search')
-								]),
-							'Search')
-						])),
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2 text-xs text-slate-500')
-						]),
-					_List_fromArray(
-						[
-							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Attributes$disabled(!offset),
-									$elm$html$Html$Events$onClick(previous),
-									$author$project$Sharecrop$Ui$testId(identifier + '-previous')
-								]),
-							'Previous'),
-							A2(
-							$elm$html$Html$span,
-							_List_fromArray(
-								[
-									$author$project$Sharecrop$Ui$testId(identifier + '-offset')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(
-									'Offset ' + $elm$core$String$fromInt(offset))
-								])),
-							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Events$onClick(next),
-									$author$project$Sharecrop$Ui$testId(identifier + '-next')
-								]),
-							'Next')
-						]))
-				]));
-	});
+var $author$project$Sharecrop$Types$SearchStandaloneTeamsClicked = {$: 'SearchStandaloneTeamsClicked'};
+var $author$project$Sharecrop$Types$StandaloneTeamQueryChanged = function (a) {
+	return {$: 'StandaloneTeamQueryChanged', a: a};
+};
 var $author$project$Sharecrop$View$organizationPicker = function (identifier) {
 	return function (selectedOrganizationId) {
 		return function (query) {
@@ -16390,16 +16445,78 @@ var $author$project$Sharecrop$View$organizationPicker = function (identifier) {
 		};
 	};
 };
+var $author$project$Sharecrop$View$teamPicker = function (identifier) {
+	return function (selectedTeamId) {
+		return function (query) {
+			return function (change) {
+				return function (queryChange) {
+					return function (search) {
+						return function (previous) {
+							return function (next) {
+								return function (blankLabel) {
+									return function (teams) {
+										return function (offset) {
+											return A2(
+												$elm$html$Html$div,
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$class('space-y-2')
+													]),
+												_List_fromArray(
+													[
+														A8($author$project$Sharecrop$View$selectorSearchControls, identifier, 'Search teams', query, queryChange, search, previous, next, offset),
+														A2(
+														$elm$html$Html$select,
+														_List_fromArray(
+															[
+																$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+																$elm$html$Html$Attributes$value(selectedTeamId),
+																$elm$html$Html$Events$onInput(change),
+																$author$project$Sharecrop$Ui$testId(identifier)
+															]),
+														A2(
+															$elm$core$List$cons,
+															A2(
+																$elm$html$Html$option,
+																_List_fromArray(
+																	[
+																		$elm$html$Html$Attributes$value('')
+																	]),
+																_List_fromArray(
+																	[
+																		$elm$html$Html$text(blankLabel)
+																	])),
+															A2(
+																$elm$core$List$map,
+																function (team) {
+																	return A2(
+																		$elm$html$Html$option,
+																		_List_fromArray(
+																			[
+																				$elm$html$Html$Attributes$value(team.id),
+																				$elm$html$Html$Attributes$selected(
+																				_Utils_eq(selectedTeamId, team.id))
+																			]),
+																		_List_fromArray(
+																			[
+																				$elm$html$Html$text(team.name)
+																			]));
+																},
+																teams)))
+													]));
+										};
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};
 var $author$project$Sharecrop$View$awardRecipientPicker = function (state) {
-	return (state.awardRecipientKind === 'organization') ? $author$project$Sharecrop$View$organizationPicker('award-recipient-id')(state.awardRecipientId)(state.organizationQuery)($author$project$Sharecrop$Types$AwardRecipientIdChanged)($author$project$Sharecrop$Types$OrganizationQueryChanged)($author$project$Sharecrop$Types$SearchOrganizationsClicked)($author$project$Sharecrop$Types$PreviousOrganizationsPageClicked)($author$project$Sharecrop$Types$NextOrganizationsPageClicked)('Choose organization')(state.organizations)(state.organizationOffset) : $author$project$Sharecrop$Ui$textInput(
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$type_('text'),
-				$elm$html$Html$Attributes$placeholder('Recipient id'),
-				$elm$html$Html$Attributes$value(state.awardRecipientId),
-				$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AwardRecipientIdChanged),
-				$author$project$Sharecrop$Ui$testId('award-recipient-id')
-			]));
+	return (state.awardRecipientKind === 'organization') ? $author$project$Sharecrop$View$organizationPicker('award-recipient-id')(state.awardRecipientId)(state.organizationQuery)($author$project$Sharecrop$Types$AwardRecipientIdChanged)($author$project$Sharecrop$Types$OrganizationQueryChanged)($author$project$Sharecrop$Types$SearchOrganizationsClicked)($author$project$Sharecrop$Types$PreviousOrganizationsPageClicked)($author$project$Sharecrop$Types$NextOrganizationsPageClicked)('Choose organization')(state.organizations)(state.organizationOffset) : ((state.awardRecipientKind === 'team') ? $author$project$Sharecrop$View$teamPicker('award-recipient-id')(state.awardRecipientId)(state.standaloneTeamQuery)($author$project$Sharecrop$Types$AwardRecipientIdChanged)($author$project$Sharecrop$Types$StandaloneTeamQueryChanged)($author$project$Sharecrop$Types$SearchStandaloneTeamsClicked)($author$project$Sharecrop$Types$PreviousStandaloneTeamsPageClicked)($author$project$Sharecrop$Types$NextStandaloneTeamsPageClicked)('Choose team')(state.standaloneTeams)(state.standaloneTeamOffset) : A7($author$project$Sharecrop$View$userPicker, 'award-recipient-id', state.awardRecipientId, state.userDirectoryQuery, $author$project$Sharecrop$Types$AwardRecipientIdChanged, 'Choose user', state.userDirectory, state.userDirectoryOffset));
 };
 var $author$project$Sharecrop$View$chooserButton = F4(
 	function (isSelected, msg, identifier, labelText) {
@@ -17373,149 +17490,16 @@ var $author$project$Sharecrop$Types$CreateScopeTeamIdChanged = function (a) {
 var $author$project$Sharecrop$Types$CreateScopeUserIdChanged = function (a) {
 	return {$: 'CreateScopeUserIdChanged', a: a};
 };
-var $author$project$Sharecrop$Types$NextStandaloneTeamsPageClicked = {$: 'NextStandaloneTeamsPageClicked'};
-var $author$project$Sharecrop$Types$PreviousStandaloneTeamsPageClicked = {$: 'PreviousStandaloneTeamsPageClicked'};
-var $author$project$Sharecrop$Types$SearchStandaloneTeamsClicked = {$: 'SearchStandaloneTeamsClicked'};
-var $author$project$Sharecrop$Types$StandaloneTeamQueryChanged = function (a) {
-	return {$: 'StandaloneTeamQueryChanged', a: a};
-};
-var $author$project$Sharecrop$View$teamPicker = function (identifier) {
-	return function (selectedTeamId) {
-		return function (query) {
-			return function (change) {
-				return function (queryChange) {
-					return function (search) {
-						return function (previous) {
-							return function (next) {
-								return function (blankLabel) {
-									return function (teams) {
-										return function (offset) {
-											return A2(
-												$elm$html$Html$div,
-												_List_fromArray(
-													[
-														$elm$html$Html$Attributes$class('space-y-2')
-													]),
-												_List_fromArray(
-													[
-														A8($author$project$Sharecrop$View$selectorSearchControls, identifier, 'Search teams', query, queryChange, search, previous, next, offset),
-														A2(
-														$elm$html$Html$select,
-														_List_fromArray(
-															[
-																$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
-																$elm$html$Html$Attributes$value(selectedTeamId),
-																$elm$html$Html$Events$onInput(change),
-																$author$project$Sharecrop$Ui$testId(identifier)
-															]),
-														A2(
-															$elm$core$List$cons,
-															A2(
-																$elm$html$Html$option,
-																_List_fromArray(
-																	[
-																		$elm$html$Html$Attributes$value('')
-																	]),
-																_List_fromArray(
-																	[
-																		$elm$html$Html$text(blankLabel)
-																	])),
-															A2(
-																$elm$core$List$map,
-																function (team) {
-																	return A2(
-																		$elm$html$Html$option,
-																		_List_fromArray(
-																			[
-																				$elm$html$Html$Attributes$value(team.id),
-																				$elm$html$Html$Attributes$selected(
-																				_Utils_eq(selectedTeamId, team.id))
-																			]),
-																		_List_fromArray(
-																			[
-																				$elm$html$Html$text(team.name)
-																			]));
-																},
-																teams)))
-													]));
-										};
-									};
-								};
-							};
-						};
-					};
-				};
-			};
-		};
-	};
-};
-var $author$project$Sharecrop$Types$NextUserDirectoryPageClicked = {$: 'NextUserDirectoryPageClicked'};
-var $author$project$Sharecrop$Types$PreviousUserDirectoryPageClicked = {$: 'PreviousUserDirectoryPageClicked'};
-var $author$project$Sharecrop$Types$SearchUserDirectoryClicked = {$: 'SearchUserDirectoryClicked'};
-var $author$project$Sharecrop$Types$UserDirectoryQueryChanged = function (a) {
-	return {$: 'UserDirectoryQueryChanged', a: a};
-};
-var $author$project$Sharecrop$View$userPicker = F7(
-	function (identifier, selectedUserId, query, change, blankLabel, users, offset) {
-		return A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('space-y-2')
-				]),
-			_List_fromArray(
-				[
-					A8($author$project$Sharecrop$View$selectorSearchControls, identifier, 'Search users', query, $author$project$Sharecrop$Types$UserDirectoryQueryChanged, $author$project$Sharecrop$Types$SearchUserDirectoryClicked, $author$project$Sharecrop$Types$PreviousUserDirectoryPageClicked, $author$project$Sharecrop$Types$NextUserDirectoryPageClicked, offset),
-					A2(
-					$elm$html$Html$select,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
-							$elm$html$Html$Attributes$value(selectedUserId),
-							$elm$html$Html$Events$onInput(change),
-							$author$project$Sharecrop$Ui$testId(identifier)
-						]),
-					A2(
-						$elm$core$List$cons,
-						A2(
-							$elm$html$Html$option,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$value('')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(blankLabel)
-								])),
-						A2(
-							$elm$core$List$map,
-							function (user) {
-								return A2(
-									$elm$html$Html$option,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$value(user.id),
-											$elm$html$Html$Attributes$selected(
-											_Utils_eq(selectedUserId, user.id))
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text(user.email)
-										]));
-							},
-							users)))
-				]));
-	});
 var $author$project$Sharecrop$View$visibilityScopeField = function (state) {
 	return _Utils_eq(state.createVisibility, $author$project$Sharecrop$Types$visibilityUserTag) ? A2(
 		$author$project$Sharecrop$Ui$fieldLabel,
-		'Share with user ID',
+		'Share with user',
 		_List_fromArray(
 			[
 				A7($author$project$Sharecrop$View$userPicker, 'create-scope-user', state.createScopeUserId, state.userDirectoryQuery, $author$project$Sharecrop$Types$CreateScopeUserIdChanged, 'Choose user', state.userDirectory, state.userDirectoryOffset)
 			])) : (_Utils_eq(state.createVisibility, $author$project$Sharecrop$Types$visibilityTeamTag) ? A2(
 		$author$project$Sharecrop$Ui$fieldLabel,
-		'Share with team ID',
+		'Share with team',
 		_List_fromArray(
 			[
 				$author$project$Sharecrop$View$teamPicker('create-scope-team')(state.createScopeTeamId)(state.standaloneTeamQuery)($author$project$Sharecrop$Types$CreateScopeTeamIdChanged)($author$project$Sharecrop$Types$StandaloneTeamQueryChanged)($author$project$Sharecrop$Types$SearchStandaloneTeamsClicked)($author$project$Sharecrop$Types$PreviousStandaloneTeamsPageClicked)($author$project$Sharecrop$Types$NextStandaloneTeamsPageClicked)('Choose team')(state.standaloneTeams)(state.standaloneTeamOffset)

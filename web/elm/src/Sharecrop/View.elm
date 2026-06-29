@@ -372,7 +372,7 @@ collectibleDetailView collectibleId state =
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Transfer policy: " ++ collectiblePolicyLabel collectible.transferPolicy) ]
                     , div [ Html.Attributes.class "mt-3 space-y-2" ]
                         [ Ui.label_ "Trade to another user"
-                        , Ui.textInput [ type_ "text", placeholder "Recipient user id", value state.transferRecipientId, onInput TransferRecipientIdChanged, testId "transfer-recipient-id" ]
+                        , userPicker "transfer-recipient-id" state.transferRecipientId state.userDirectoryQuery TransferRecipientIdChanged "Choose user" state.userDirectory state.userDirectoryOffset
                         , Ui.primaryButton [ type_ "button", onClick (TransferCollectibleClicked collectible.id), testId "transfer-collectible" ] "Trade"
                         ]
                     ]
@@ -1319,11 +1319,11 @@ assigneeScopeButton selected scope =
 visibilityScopeField : LoggedInModel -> Html Msg
 visibilityScopeField state =
     if state.createVisibility == visibilityUserTag then
-        Ui.fieldLabel "Share with user ID"
+        Ui.fieldLabel "Share with user"
             [ userPicker "create-scope-user" state.createScopeUserId state.userDirectoryQuery CreateScopeUserIdChanged "Choose user" state.userDirectory state.userDirectoryOffset ]
 
     else if state.createVisibility == visibilityTeamTag then
-        Ui.fieldLabel "Share with team ID"
+        Ui.fieldLabel "Share with team"
             [ teamPicker "create-scope-team" state.createScopeTeamId state.standaloneTeamQuery CreateScopeTeamIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams state.standaloneTeamOffset ]
 
     else if state.createVisibility == visibilityOrganizationTag then
@@ -1641,8 +1641,11 @@ awardRecipientPicker state =
     if state.awardRecipientKind == "organization" then
         organizationPicker "award-recipient-id" state.awardRecipientId state.organizationQuery AwardRecipientIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations state.organizationOffset
 
+    else if state.awardRecipientKind == "team" then
+        teamPicker "award-recipient-id" state.awardRecipientId state.standaloneTeamQuery AwardRecipientIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams state.standaloneTeamOffset
+
     else
-        Ui.textInput [ type_ "text", placeholder "Recipient id", value state.awardRecipientId, onInput AwardRecipientIdChanged, testId "award-recipient-id" ]
+        userPicker "award-recipient-id" state.awardRecipientId state.userDirectoryQuery AwardRecipientIdChanged "Choose user" state.userDirectory state.userDirectoryOffset
 
 
 catalogGallery : LoggedInModel -> Html Msg
