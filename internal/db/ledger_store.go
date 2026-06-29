@@ -487,3 +487,39 @@ func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, pag
 	}
 	return ledger.EntriesListed{Values: entries}
 }
+
+func (store LedgerStore) ListOrganizationEntries(ctx context.Context, organizationID core.OrganizationID, page core.Page) ledger.ListEntriesResult {
+	rows, err := store.pool.Query(ctx, `
+		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, '')
+		from ledger_entries
+		join credit_accounts on credit_accounts.id = ledger_entries.account_id
+		where credit_accounts.organization_id = $1
+		order by ledger_entries.created_at, ledger_entries.id
+		limit $2 offset $3
+	`, organizationID.String(), page.Limit(), page.Offset())
+	if err != nil {
+		return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list organization ledger entries failed")}
+	}
+	defer rows.Close()
+
+	entries := make([]ledger.LedgerEntry, 0)
+	for rows.Next() {
+		var rawID string
+		var rawKind string
+		var amount int64
+		var rawTaskID string
+		if err := rows.Scan(&rawID, &rawKind, &amount, &rawTaskID); err != nil {
+			return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan organization ledger entry failed")}
+		}
+		entryResult := parseLedgerEntry(rawID, rawKind, amount, rawTaskID)
+		entry, matched := entryResult.(ledgerEntryParsed)
+		if !matched {
+			return ledger.ListEntriesRejected{Reason: entryResult.(ledgerEntryParseRejected).reason}
+		}
+		entries = append(entries, entry.value)
+	}
+	if err := rows.Err(); err != nil {
+		return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read organization ledger entries failed")}
+	}
+	return ledger.EntriesListed{Values: entries}
+}

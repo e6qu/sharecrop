@@ -9,6 +9,7 @@ import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
+import Sharecrop.Generated.SavedQueueViews as SavedQueueViews
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Labels exposing (httpErrorLabel, participationPolicyTag)
 import Sharecrop.Types exposing (..)
@@ -129,6 +130,8 @@ emptyLoggedIn response =
     , orgMessage = Nothing
     , activeOrgId = ""
     , orgBalance = Nothing
+    , orgLedger = []
+    , orgAuditEvents = []
     , orgTeams = []
     , standaloneTeams = []
     , orgMembers = []
@@ -257,6 +260,26 @@ replaceNotification replacement notifications =
         notifications
 
 
+teamWorkSavedViewScope : String
+teamWorkSavedViewScope =
+    "team_work"
+
+
+orgTaskSavedViewScope : String
+orgTaskSavedViewScope =
+    "organization_tasks"
+
+
+queueViewFromResponse : SavedQueueViews.SavedQueueViewResponse -> QueueView
+queueViewFromResponse response =
+    { name = response.name
+    , query = response.query
+    , stateFilter = response.stateFilter
+    , typeFilter = response.typeFilter
+    , sort = response.sort
+    }
+
+
 saveQueueView : QueueView -> List QueueView -> List QueueView
 saveQueueView view views =
     view :: List.filter (\existing -> existing.name /= view.name) views
@@ -367,7 +390,7 @@ enterPage page state =
             { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0, discoveryQuery = "" }
 
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgAuditEvents = [], orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing }
@@ -1101,6 +1124,15 @@ update msg model =
         OrgBalanceReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgBalance = Api.balanceFromResult result }), Cmd.none )
 
+        OrgLedgerReceived result ->
+            ( Api.updateLoggedIn model (\state -> { state | orgLedger = Api.entriesFromResult result }), Cmd.none )
+
+        OrgAuditEventsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = response.events }), Cmd.none )
+
+        OrgAuditEventsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = [], orgTaskMessage = Just (httpErrorLabel error) }), Cmd.none )
+
         OrgTeamsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgTeams = Api.teamsFromResult result }), Cmd.none )
 
@@ -1460,7 +1492,7 @@ update msg model =
                                 , sort = state.teamWorkSort
                                 }
                         in
-                        ( Api.updateLoggedIn model (\current -> { current | teamWorkSavedViews = saveQueueView view current.teamWorkSavedViews, teamWorkSavedViewName = "", teamWorkMessage = Just ("Saved view: " ++ name) }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | teamWorkMessage = Nothing }), Api.saveSavedQueueView state.accessToken teamWorkSavedViewScope view )
                 )
 
         ApplyTeamWorkViewClicked name ->
@@ -1608,7 +1640,7 @@ update msg model =
                                 , sort = state.orgTaskSort
                                 }
                         in
-                        ( Api.updateLoggedIn model (\current -> { current | orgTaskSavedViews = saveQueueView view current.orgTaskSavedViews, orgTaskSavedViewName = "", orgTaskMessage = Just ("Saved view: " ++ name) }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | orgTaskMessage = Nothing }), Api.saveSavedQueueView state.accessToken orgTaskSavedViewScope view )
                 )
 
         ApplyOrgTaskViewClicked name ->
@@ -1891,6 +1923,40 @@ update msg model =
 
         PrivacyRequestReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        SavedQueueViewsReceived (Ok response) ->
+            let
+                teamViews =
+                    response.views
+                        |> List.filter (\view -> view.scope == teamWorkSavedViewScope)
+                        |> List.map queueViewFromResponse
+
+                orgViews =
+                    response.views
+                        |> List.filter (\view -> view.scope == orgTaskSavedViewScope)
+                        |> List.map queueViewFromResponse
+            in
+            ( Api.updateLoggedIn model (\state -> { state | teamWorkSavedViews = teamViews, orgTaskSavedViews = orgViews }), Cmd.none )
+
+        SavedQueueViewsReceived (Err _) ->
+            ( model, Cmd.none )
+
+        SavedQueueViewSaved (Ok response) ->
+            let
+                view =
+                    queueViewFromResponse response
+            in
+            if response.scope == teamWorkSavedViewScope then
+                ( Api.updateLoggedIn model (\state -> { state | teamWorkSavedViews = saveQueueView view state.teamWorkSavedViews, teamWorkSavedViewName = "", teamWorkMessage = Just ("Saved view: " ++ view.name) }), Cmd.none )
+
+            else if response.scope == orgTaskSavedViewScope then
+                ( Api.updateLoggedIn model (\state -> { state | orgTaskSavedViews = saveQueueView view state.orgTaskSavedViews, orgTaskSavedViewName = "", orgTaskMessage = Just ("Saved view: " ++ view.name) }), Cmd.none )
+
+            else
+                ( model, Cmd.none )
+
+        SavedQueueViewSaved (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | teamWorkMessage = Just (httpErrorLabel error), orgTaskMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         OperationsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | operations = Just response, adminMessage = Nothing }), Cmd.none )

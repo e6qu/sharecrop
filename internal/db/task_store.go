@@ -417,7 +417,7 @@ func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID co
 			select 1
 			from task_reservations
 			left join team_members
-				on task_reservations.assignee_kind = 'organization_team'
+				on task_reservations.assignee_kind in ('organization_team', 'team')
 				and task_reservations.team_id = team_members.team_id
 				and team_members.user_id = $2
 			where task_reservations.task_id = $1
@@ -426,6 +426,8 @@ func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID co
 				(task_reservations.assignee_kind = 'user' and task_reservations.user_id = $2)
 				or
 				(task_reservations.assignee_kind = 'organization_team' and team_members.user_id = $2)
+				or
+				(task_reservations.assignee_kind = 'team' and team_members.user_id = $2)
 			)
 		)
 	`, taskID.String(), submitterID.String()).Scan(&activeForSubmitter); err != nil {
@@ -540,6 +542,8 @@ func assigneeSQLColumns(assignee task.Assignee) assigneeSQL {
 		return assigneeSQL{kind: task.AssigneeScopeUser.String(), userID: stringPointer(typed.UserID.String())}
 	case task.OrganizationTeamAssignee:
 		return assigneeSQL{kind: task.AssigneeScopeOrganizationTeam.String(), teamID: stringPointer(typed.TeamID.String()), organizationID: stringPointer(typed.OrganizationID.String())}
+	case task.TeamAssignee:
+		return assigneeSQL{kind: task.AssigneeScopeTeam.String(), teamID: stringPointer(typed.TeamID.String())}
 	default:
 		return assigneeSQL{}
 	}
@@ -915,6 +919,13 @@ func parseActiveAssignee(kind string, rawUserID string, rawOrganizationID string
 			return activeAssigneeRejected{reason: teamIDResult.(core.TeamIDRejected).Reason}
 		}
 		return activeAssigneeAccepted{value: task.ActiveOrganizationTeamAssignee{OrganizationID: organizationID.Value, TeamID: teamID.Value}}
+	case task.AssigneeScopeTeam.String():
+		teamIDResult := core.ParseTeamID(rawTeamID)
+		teamID, teamMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamMatched {
+			return activeAssigneeRejected{reason: teamIDResult.(core.TeamIDRejected).Reason}
+		}
+		return activeAssigneeAccepted{value: task.ActiveTeamAssignee{TeamID: teamID.Value}}
 	default:
 		return activeAssigneeRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "active assignee kind is invalid")}
 	}
@@ -1356,6 +1367,13 @@ func parseReservationAssignee(rawKind string, rawUserID string, rawTeamID string
 			return reservationAssigneeRejected{reason: teamIDResult.(core.TeamIDRejected).Reason}
 		}
 		return reservationAssigneeAccepted{value: task.OrganizationTeamAssignee{OrganizationID: organizationIDAccepted.Value, TeamID: teamIDAccepted.Value}}
+	case task.AssigneeScopeTeam.String():
+		teamIDResult := core.ParseTeamID(rawTeamID)
+		teamIDAccepted, teamMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamMatched {
+			return reservationAssigneeRejected{reason: teamIDResult.(core.TeamIDRejected).Reason}
+		}
+		return reservationAssigneeAccepted{value: task.TeamAssignee{TeamID: teamIDAccepted.Value}}
 	default:
 		return reservationAssigneeRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "reservation assignee kind is invalid")}
 	}

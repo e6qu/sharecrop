@@ -19,15 +19,16 @@ Test gaps:
   `SHARECROP_ACCOUNT_TOKEN_DELIVERY=log`, which logs tokens and returns a sent
   status. Provider email delivery is intentionally deferred; admins are expected
   to set up accounts and organizations directly for now.
-- Account lifecycle deletion semantics are deactivation plus
-  credential/session/token revocation and email anonymization. Hard row deletion
-  is intentionally not used because tasks, submissions, comments, ledger
-  entries, and ownership rows reference users.
+- Account lifecycle semantics are deactivation plus credential/session/token
+  revocation and email anonymization. Row removal is not part of the project
+  direction because tasks, submissions, comments, ledger entries, and ownership
+  rows reference users.
 - Submission responses expose indexed sensitive-field metadata for authorized
-  submission viewers. User-facing privacy request intake exists as queued audit
-  records, but export generation, request-resolution workflow, retention jobs,
-  redaction jobs, and audit events for sensitive-field access/deletion are still
-  not implemented.
+  submission viewers. Privacy requests are persisted and can be resolved by
+  platform admins. Resolution stores basic export JSON or marks
+  delete-on-request sensitive-field metadata as redacted. Deeper export content
+  coverage, browser admin request handling, and retention automation remain open
+  product work.
 - The asset economy is intentionally internal-only: rewards are Sharecrop
   credits and admin-minted Sharecrop collectibles. User-issued tokens,
   organization-issued tokens, per-project tokens, crypto rewards, and external
@@ -38,11 +39,10 @@ Test gaps:
   requires `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR`;
   local `make db-checks` was not run on this branch because `DATABASE_URL` was
   not set.
-- A one-off manual screenshot capture through `deno eval` was attempted for the
-  new organization operations and privacy controls, but this Deno build does
-  not accept the usual `-A` or `--allow-all` flags for `deno eval`. Focused
-  Playwright demo/mobile/screens coverage passed with assertions for the new UI
-  and mobile overflow.
+- Focused Playwright demo/mobile/screens coverage for the current branch could
+  not run locally because the sandbox blocked local port binding and escalation
+  was blocked by the approval system usage limit. Frontend build, Deno checks,
+  demo route-surface checks, and shared demo scenario parity passed.
 
 Known risks:
 
@@ -68,12 +68,10 @@ Known risks:
   wires Postgres-backed rate-limit buckets, audit events, notifications,
   persisted MCP HTTP session identity, and persisted MCP replay events.
 - MCP HTTP session identity, TTL admission, close state, active counts, and
-  replay events are persisted in Postgres for production `serve`, but live SSE
-  subscriber channels remain process-local.
-- Standalone (user-owned) teams can be created, listed, and selected for task
-  visibility. They are not yet selectable as organization-team assignees because
-  task assignment currently models user and organization-team scopes only.
+  replay events are persisted in Postgres for production `serve`. Persisted live
+  SSE subscribers poll the replay table for cross-process fan-out groundwork.
 - Foreign keys use the PostgreSQL default `NO ACTION`, which blocks deletion of
-  referenced rows. The application has no core hard-delete paths, so orphan rows
-  cannot occur. [docs/deletion_semantics.md](./docs/deletion_semantics.md)
-  defines the design gate for future deletion features.
+  referenced rows. Application lifecycle work uses state changes, redaction,
+  tombstones, and audit records rather than core-row removal.
+  [docs/deletion_semantics.md](./docs/deletion_semantics.md) defines the
+  lifecycle and redaction rules.

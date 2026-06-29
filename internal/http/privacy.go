@@ -1,19 +1,150 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/audit"
+	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/core/id"
 )
 
 const (
 	privacyKindDataExport              = "data_export"
 	privacyKindSensitiveFieldDeletion  = "sensitive_field_deletion"
 	privacyRequestQueuedStatus         = "queued"
+	privacyRequestResolvedStatus       = "resolved"
 	privacyRequestAuditSubjectKind     = "privacy_request"
 	privacyRequestMetadataEncodingFail = "privacy request metadata could not be encoded"
 )
+
+type PrivacyRequestRecord struct {
+	ID             string
+	RequestedBy    core.UserID
+	Kind           string
+	State          string
+	ExportJSON     string
+	ResolutionNote string
+	CreatedAt      time.Time
+	ResolvedAt     time.Time
+}
+
+type PrivacyMutationResult interface {
+	privacyMutationResult()
+}
+
+type PrivacyRequestSaved struct {
+	Value PrivacyRequestRecord
+}
+
+type PrivacyRequestMutationRejected struct {
+	Reason core.DomainError
+}
+
+func (PrivacyRequestSaved) privacyMutationResult() {}
+
+func (PrivacyRequestMutationRejected) privacyMutationResult() {}
+
+type PrivacyListResult interface {
+	privacyListResult()
+}
+
+type PrivacyRequestsListed struct {
+	Values []PrivacyRequestRecord
+}
+
+type PrivacyRequestListRejected struct {
+	Reason core.DomainError
+}
+
+func (PrivacyRequestsListed) privacyListResult() {}
+
+func (PrivacyRequestListRejected) privacyListResult() {}
+
+type memoryPrivacyService struct {
+	mu       sync.Mutex
+	requests []PrivacyRequestRecord
+}
+
+func newMemoryPrivacyService() *memoryPrivacyService {
+	return &memoryPrivacyService{requests: []PrivacyRequestRecord{}}
+}
+
+func (service *memoryPrivacyService) Create(_ context.Context, requester core.UserID, kind string) PrivacyMutationResult {
+	requestIDResult := id.New()
+	requestID, requestIDMatched := requestIDResult.(id.IDCreated)
+	if !requestIDMatched {
+		return PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, requestIDResult.(id.IDRejected).Description)}
+	}
+	record := PrivacyRequestRecord{ID: requestID.Value.String(), RequestedBy: requester, Kind: kind, State: privacyRequestQueuedStatus, CreatedAt: time.Now().UTC()}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	service.requests = append([]PrivacyRequestRecord{record}, service.requests...)
+	return PrivacyRequestSaved{Value: record}
+}
+
+func (service *memoryPrivacyService) ListForRequester(_ context.Context, requester core.UserID, page core.Page) PrivacyListResult {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	filtered := make([]PrivacyRequestRecord, 0)
+	for index := range service.requests {
+		if service.requests[index].RequestedBy == requester {
+			filtered = append(filtered, service.requests[index])
+		}
+	}
+	return PrivacyRequestsListed{Values: privacyPage(filtered, page)}
+}
+
+func (service *memoryPrivacyService) ListAll(_ context.Context, page core.Page) PrivacyListResult {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	values := make([]PrivacyRequestRecord, len(service.requests))
+	copy(values, service.requests)
+	return PrivacyRequestsListed{Values: privacyPage(values, page)}
+}
+
+func (service *memoryPrivacyService) Resolve(_ context.Context, requestID string, note string) PrivacyMutationResult {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	for index := range service.requests {
+		if service.requests[index].ID != requestID {
+			continue
+		}
+		record := service.requests[index]
+		if record.State != privacyRequestQueuedStatus {
+			return PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "privacy request is already resolved")}
+		}
+		record.State = privacyRequestResolvedStatus
+		record.ResolutionNote = strings.TrimSpace(note)
+		record.ResolvedAt = time.Now().UTC()
+		if record.Kind == privacyKindDataExport {
+			exportBytes, err := json.Marshal(map[string]string{"user_id": record.RequestedBy.String()})
+			if err != nil {
+				return PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "privacy export encoding failed")}
+			}
+			record.ExportJSON = string(exportBytes)
+		}
+		service.requests[index] = record
+		return PrivacyRequestSaved{Value: record}
+	}
+	return PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "privacy request was not found")}
+}
+
+func privacyPage(values []PrivacyRequestRecord, page core.Page) []PrivacyRequestRecord {
+	start := page.Offset()
+	if start > len(values) {
+		start = len(values)
+	}
+	end := start + page.Limit()
+	if end > len(values) {
+		end = len(values)
+	}
+	return values[start:end]
+}
 
 func (server Server) createPrivacyRequest(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
@@ -33,28 +164,116 @@ func (server Server) createPrivacyRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	metadataBytes, err := json.Marshal(map[string]string{"kind": request.Kind})
+	result := server.privacyService.Create(r.Context(), actor.subject.ID, request.Kind)
+	saved, savedMatched := result.(PrivacyRequestSaved)
+	if !savedMatched {
+		writeDomainError(w, result.(PrivacyRequestMutationRejected).Reason)
+		return
+	}
+
+	if !server.recordPrivacyAuditWithSubjectID(w, r, actor.subject.ID, audit.ActionPrivacyRequestCreated, saved.Value, actor.subject.ID.String()) {
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, privacyRequestToResponse(saved.Value))
+}
+
+func (server Server) listPrivacyRequests(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	result := server.privacyService.ListForRequester(r.Context(), actor.subject.ID, parsePage(r))
+	server.writePrivacyListResult(w, result)
+}
+
+func (server Server) listAdminPrivacyRequests(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	if !server.adminUserIDs[actor.subject.ID.String()] {
+		writeError(w, http.StatusForbidden, "platform admin access is required")
+		return
+	}
+	result := server.privacyService.ListAll(r.Context(), parsePage(r))
+	server.writePrivacyListResult(w, result)
+}
+
+func (server Server) resolveAdminPrivacyRequest(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	if !server.adminUserIDs[actor.subject.ID.String()] {
+		writeError(w, http.StatusForbidden, "platform admin access is required")
+		return
+	}
+	var request privacyResolveRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	result := server.privacyService.Resolve(r.Context(), r.PathValue("privacy_request_id"), request.ResolutionNote)
+	saved, savedMatched := result.(PrivacyRequestSaved)
+	if !savedMatched {
+		writeDomainError(w, result.(PrivacyRequestMutationRejected).Reason)
+		return
+	}
+	if !server.recordPrivacyAudit(w, r, actor.subject.ID, audit.ActionFromString("privacy_request_resolved"), saved.Value) {
+		return
+	}
+	writeJSON(w, http.StatusOK, privacyRequestToResponse(saved.Value))
+}
+
+func (server Server) writePrivacyListResult(w http.ResponseWriter, result PrivacyListResult) {
+	listed, matched := result.(PrivacyRequestsListed)
+	if !matched {
+		writeDomainError(w, result.(PrivacyRequestListRejected).Reason)
+		return
+	}
+	response := privacyRequestsResponse{Requests: make([]privacyRequestResponse, 0, len(listed.Values))}
+	for index := range listed.Values {
+		response.Requests = append(response.Requests, privacyRequestToResponse(listed.Values[index]))
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (server Server) recordPrivacyAudit(w http.ResponseWriter, r *http.Request, actor core.UserID, action audit.Action, record PrivacyRequestRecord) bool {
+	return server.recordPrivacyAuditWithSubjectID(w, r, actor, action, record, record.ID)
+}
+
+func (server Server) recordPrivacyAuditWithSubjectID(w http.ResponseWriter, r *http.Request, actor core.UserID, action audit.Action, record PrivacyRequestRecord, subjectID string) bool {
+	metadataBytes, err := json.Marshal(map[string]string{"kind": record.Kind, "state": record.State})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, privacyRequestMetadataEncodingFail)
-		return
+		return false
 	}
-
-	if !server.recordAudit(
+	return server.recordAudit(
 		w,
 		r.Context(),
-		actor.subject.ID,
-		audit.ActionPrivacyRequestCreated,
-		audit.Subject{Kind: privacyRequestAuditSubjectKind, ID: actor.subject.ID.String()},
+		actor,
+		action,
+		audit.Subject{Kind: privacyRequestAuditSubjectKind, ID: subjectID},
 		audit.Metadata{JSON: string(metadataBytes)},
-	) {
-		return
-	}
+	)
+}
 
-	writeJSON(w, http.StatusCreated, privacyRequestResponse{
-		Kind:        request.Kind,
-		Status:      privacyRequestQueuedStatus,
-		RequestedBy: actor.subject.ID.String(),
-	})
+func privacyRequestToResponse(record PrivacyRequestRecord) privacyRequestResponse {
+	return privacyRequestResponse{
+		ID:             record.ID,
+		Kind:           record.Kind,
+		Status:         record.State,
+		RequestedBy:    record.RequestedBy.String(),
+		ExportJSON:     record.ExportJSON,
+		ResolutionNote: record.ResolutionNote,
+	}
 }
 
 func validPrivacyRequestKind(kind string) bool {

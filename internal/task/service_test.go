@@ -407,6 +407,16 @@ func (store *taskPermissionStore) CheckOrganizationTeamMembership(_ context.Cont
 	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization team membership denied")}
 }
 
+func (store *taskPermissionStore) CheckTeamMembership(_ context.Context, teamID core.TeamID, userID core.UserID) org.PermissionCheck {
+	for grantIndex := range store.teamGrants {
+		grant := store.teamGrants[grantIndex]
+		if grant.teamID == teamID && grant.userID == userID {
+			return org.PermissionGranted{}
+		}
+	}
+	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team membership denied")}
+}
+
 func testCreateCommand(t *testing.T, actor auth.UserSubject, owner Owner, visibility Visibility) CreateCommand {
 	t.Helper()
 	title := acceptedTitle(t, "Collect schema examples")

@@ -198,6 +198,8 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 			MCPSessions:         httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
 			AuditService:        audit.NewService(db.NewAuditStore(pool)),
 			NotificationService: notificationService,
+			SavedQueueViews:     db.NewSavedQueueViewStore(pool),
+			PrivacyService:      db.NewPrivacyStore(pool),
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

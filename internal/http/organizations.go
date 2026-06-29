@@ -41,6 +41,9 @@ func (server Server) createOrganization(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionOrganizationCreated, audit.Subject{Kind: "organization", ID: created.Value.ID.String()}, audit.EmptyMetadata()) {
+		return
+	}
 	writeOrganizationResponse(w, http.StatusCreated, organizationToResponse(created.Value))
 }
 
@@ -135,6 +138,9 @@ func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.
 	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionOrganizationMemberProvision, audit.Subject{Kind: "organization_member", ID: provisioned.Value.ID.String()}, audit.EmptyMetadata()) {
 		return
 	}
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionOrganizationMemberProvision, audit.Subject{Kind: "organization", ID: organizationIDAccepted.value.String()}, audit.EmptyMetadata()) {
+		return
+	}
 	writeOrganizationMemberResponse(w, http.StatusCreated, memberToResponse(provisioned.Value))
 }
 
@@ -152,6 +158,9 @@ func (server Server) deactivateOrganizationMember(w http.ResponseWriter, r *http
 	}
 
 	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberDisabled, audit.Subject{Kind: "organization_user", ID: target.organizationID.String() + ":" + target.userID.String()}, audit.EmptyMetadata()) {
+		return
+	}
+	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberDisabled, audit.Subject{Kind: "organization", ID: target.organizationID.String()}, audit.EmptyMetadata()) {
 		return
 	}
 	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "deactivated"})
@@ -183,6 +192,9 @@ func (server Server) updateOrganizationMemberRoles(w http.ResponseWriter, r *htt
 	}
 
 	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberRoles, audit.Subject{Kind: "organization_member", ID: updated.Value.ID.String()}, audit.EmptyMetadata()) {
+		return
+	}
+	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberRoles, audit.Subject{Kind: "organization", ID: target.organizationID.String()}, audit.EmptyMetadata()) {
 		return
 	}
 	writeOrganizationMemberResponse(w, http.StatusOK, memberToResponse(updated.Value))

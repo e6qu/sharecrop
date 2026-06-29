@@ -60,8 +60,13 @@ func TestPrivacyRequestWireShape(t *testing.T) {
 }
 
 func TestPrivacyRequestResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(privacyRequestResponse{Kind: "data_export", Status: "queued", RequestedBy: "user-1"})
-	assertWireShape(t, encoded, err, `{"kind":"data_export","status":"queued","requested_by":"user-1"}`)
+	encoded, err := json.Marshal(privacyRequestResponse{ID: "privacy-1", Kind: "data_export", Status: "queued", RequestedBy: "user-1", ExportJSON: "", ResolutionNote: ""})
+	assertWireShape(t, encoded, err, `{"id":"privacy-1","kind":"data_export","status":"queued","requested_by":"user-1","export_json":"","resolution_note":""}`)
+}
+
+func TestPrivacyRequestsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(privacyRequestsResponse{Requests: []privacyRequestResponse{{ID: "privacy-1", Kind: "sensitive_field_deletion", Status: "resolved", RequestedBy: "user-1", ExportJSON: "", ResolutionNote: "done"}}})
+	assertWireShape(t, encoded, err, `{"requests":[{"id":"privacy-1","kind":"sensitive_field_deletion","status":"resolved","requested_by":"user-1","export_json":"","resolution_note":"done"}]}`)
 }
 
 func TestUsersResponseWireShape(t *testing.T) {
@@ -420,6 +425,16 @@ func TestNotificationResponseWireShape(t *testing.T) {
 func TestNotificationsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(notificationsResponse{Notifications: []notificationResponse{{ID: "notification-1", RecipientUserID: "user-2", ActorUserID: "user-1", Kind: "submission_commented", SubjectKind: "submission", SubjectID: "submission-1", State: "unread", MetadataJSON: `{"task_id":"task-1"}`, CreatedAt: "2026-06-29T00:00:00Z"}}})
 	assertWireShape(t, encoded, err, `{"notifications":[{"id":"notification-1","recipient_user_id":"user-2","actor_user_id":"user-1","kind":"submission_commented","subject_kind":"submission","subject_id":"submission-1","state":"unread","metadata_json":"{\"task_id\":\"task-1\"}","created_at":"2026-06-29T00:00:00Z"}]}`)
+}
+
+func TestSavedQueueViewResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(savedQueueViewResponse{ID: "saved-view-1", Scope: "team_work", Name: "Ready work", Query: "review", StateFilter: "ready", TypeFilter: "code_review", Sort: "title_asc"})
+	assertWireShape(t, encoded, err, `{"id":"saved-view-1","scope":"team_work","name":"Ready work","query":"review","state_filter":"ready","type_filter":"code_review","sort":"title_asc"}`)
+}
+
+func TestSavedQueueViewsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(savedQueueViewsResponse{Views: []savedQueueViewResponse{{ID: "saved-view-1", Scope: "organization_tasks", Name: "Open org", Query: "field", StateFilter: "open", TypeFilter: "", Sort: "newest"}}})
+	assertWireShape(t, encoded, err, `{"views":[{"id":"saved-view-1","scope":"organization_tasks","name":"Open org","query":"field","state_filter":"open","type_filter":"","sort":"newest"}]}`)
 }
 
 func TestTaskListItemResponseWireShape(t *testing.T) {

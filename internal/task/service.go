@@ -35,6 +35,7 @@ type Store interface {
 type OrganizationPermissions interface {
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 	CheckOrganizationTeamMembership(context.Context, core.OrganizationID, core.TeamID, core.UserID) org.PermissionCheck
+	CheckTeamMembership(context.Context, core.TeamID, core.UserID) org.PermissionCheck
 }
 
 type Service struct {
@@ -493,6 +494,14 @@ func (service Service) ReserveForOrganizationTeam(ctx context.Context, actor aut
 		return ReservationRejected{Reason: rejected.Reason}
 	}
 	return service.reserve(ctx, actor, taskID, OrganizationTeamAssignee{OrganizationID: organizationID, TeamID: teamID}, AssigneeScopeOrganizationTeam, "this task does not accept organization team reservations")
+}
+
+func (service Service) ReserveForTeam(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, teamID core.TeamID) ReservationResult {
+	check := service.organizationPermissions.CheckTeamMembership(ctx, teamID, actor.ID)
+	if rejected, matched := check.(org.PermissionDenied); matched {
+		return ReservationRejected{Reason: rejected.Reason}
+	}
+	return service.reserve(ctx, actor, taskID, TeamAssignee{TeamID: teamID}, AssigneeScopeTeam, "this task does not accept team reservations")
 }
 
 func (service Service) reserve(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, assignee Assignee, requiredScope AssigneeScope, wrongScopeMessage string) ReservationResult {

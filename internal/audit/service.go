@@ -23,6 +23,7 @@ type Action struct {
 var (
 	ActionAdminCollectibleAwarded     = Action{value: "admin_collectible_awarded"}
 	ActionAccountDeactivated          = Action{value: "account_deactivated"}
+	ActionOrganizationCreated         = Action{value: "organization_created"}
 	ActionOrganizationMemberProvision = Action{value: "organization_member_provisioned"}
 	ActionOrganizationMemberRoles     = Action{value: "organization_member_roles_updated"}
 	ActionOrganizationMemberDisabled  = Action{value: "organization_member_deactivated"}

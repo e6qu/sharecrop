@@ -186,6 +186,13 @@ func (server Server) reserveTaskForRequest(ctx context.Context, actor auth.UserS
 			return task.ReservationRejected{Reason: teamIDResult.(core.TeamIDRejected).Reason}
 		}
 		return server.taskService.ReserveForOrganizationTeam(ctx, actor, taskID, organizationID.Value, teamID.Value)
+	case task.AssigneeScopeTeam.String():
+		teamIDResult := core.ParseTeamID(request.TeamID)
+		teamID, teamIDMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamIDMatched {
+			return task.ReservationRejected{Reason: teamIDResult.(core.TeamIDRejected).Reason}
+		}
+		return server.taskService.ReserveForTeam(ctx, actor, taskID, teamID.Value)
 	default:
 		return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "reservation assignee kind is invalid")}
 	}
@@ -833,6 +840,8 @@ func activeAssigneeResponseParts(active task.ActiveAssignee) activeAssigneeParts
 		return activeAssigneeParts{kind: task.AssigneeScopeUser.String(), id: typed.UserID.String()}
 	case task.ActiveOrganizationTeamAssignee:
 		return activeAssigneeParts{kind: task.AssigneeScopeOrganizationTeam.String(), id: typed.TeamID.String()}
+	case task.ActiveTeamAssignee:
+		return activeAssigneeParts{kind: task.AssigneeScopeTeam.String(), id: typed.TeamID.String()}
 	default:
 		return activeAssigneeParts{kind: "", id: ""}
 	}
@@ -961,6 +970,8 @@ func reservationAssigneeResponseParts(assignee task.Assignee) responseParts {
 		return responseParts{kind: task.AssigneeScopeUser.String(), id: typed.UserID.String()}
 	case task.OrganizationTeamAssignee:
 		return responseParts{kind: task.AssigneeScopeOrganizationTeam.String(), id: typed.TeamID.String()}
+	case task.TeamAssignee:
+		return responseParts{kind: task.AssigneeScopeTeam.String(), id: typed.TeamID.String()}
 	default:
 		return responseParts{}
 	}

@@ -230,6 +230,98 @@ func TestPrivacyRequestEndpointRejectsInvalidKind(t *testing.T) {
 	}
 }
 
+func TestSavedQueueViewsRoundTrip(t *testing.T) {
+	handler := testHandler()
+
+	saveRequest := httptest.NewRequest(http.MethodPost, "/api/saved-queue-views", strings.NewReader(`{"scope":"team_work","name":"Ready work","query":"review","state_filter":"ready","type_filter":"code_review","sort":"title_asc"}`))
+	saveRequest.Header.Set("Authorization", "Bearer test-access-token")
+	saveResponse := httptest.NewRecorder()
+
+	handler.ServeHTTP(saveResponse, saveRequest)
+
+	if saveResponse.Code != http.StatusOK {
+		t.Fatalf("save status = %d, want %d", saveResponse.Code, http.StatusOK)
+	}
+
+	var saved savedQueueViewResponse
+	if err := json.NewDecoder(saveResponse.Body).Decode(&saved); err != nil {
+		t.Fatalf("decode saved view: %v", err)
+	}
+	if saved.Scope != "team_work" || saved.Name != "Ready work" || saved.Query != "review" || saved.StateFilter != "ready" || saved.TypeFilter != "code_review" || saved.Sort != "title_asc" {
+		t.Fatalf("saved view = %+v, want team_work Ready work review ready code_review title_asc", saved)
+	}
+
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/saved-queue-views?scope=team_work", nil)
+	listRequest.Header.Set("Authorization", "Bearer test-access-token")
+	listResponse := httptest.NewRecorder()
+
+	handler.ServeHTTP(listResponse, listRequest)
+
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listResponse.Code, http.StatusOK)
+	}
+
+	var list savedQueueViewsResponse
+	if err := json.NewDecoder(listResponse.Body).Decode(&list); err != nil {
+		t.Fatalf("decode saved views: %v", err)
+	}
+	if len(list.Views) != 1 || list.Views[0].Name != "Ready work" {
+		t.Fatalf("listed views = %+v, want saved Ready work view", list.Views)
+	}
+}
+
+func TestSavedQueueViewsRejectInvalidScope(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/saved-queue-views", strings.NewReader(`{"scope":"unknown","name":"Ready work"}`))
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
+func TestOrganizationLedgerEndpoint(t *testing.T) {
+	organizationID := core.NewOrganizationID().(core.OrganizationIDCreated)
+	request := httptest.NewRequest(http.MethodGet, "/api/organizations/"+organizationID.Value.String()+"/credits/ledger", nil)
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body ledgerListResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode ledger response: %v", err)
+	}
+	if body.Entries == nil {
+		t.Fatalf("entries is nil")
+	}
+}
+
+func TestOrganizationAuditEndpoint(t *testing.T) {
+	organizationID := core.NewOrganizationID().(core.OrganizationIDCreated)
+	request := httptest.NewRequest(http.MethodGet, "/api/organizations/"+organizationID.Value.String()+"/audit-events", nil)
+	request.Header.Set("Authorization", "Bearer test-access-token")
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body auditEventsResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode audit response: %v", err)
+	}
+	if body.Events == nil {
+		t.Fatalf("events is nil")
+	}
+}
+
 func TestCreateTaskEndpointUsesDefaultUserVisibility(t *testing.T) {
 	userIDResult := core.NewUserID()
 	userIDCreated := userIDResult.(core.UserIDCreated)
@@ -444,6 +536,8 @@ type testSubmissionService struct{}
 
 type testLedgerService struct{}
 
+var stableTestUserID = core.NewUserID().(core.UserIDCreated).Value
+
 func testAuthService() testAuth {
 	return testAuth{}
 }
@@ -525,9 +619,7 @@ func (testAuth) DeactivateAccount(context.Context, core.UserID) auth.AccountActi
 }
 
 func (testVerifier) Verify(auth.AccessToken) auth.SubjectVerifyResult {
-	idResult := core.NewUserID()
-	idCreated := idResult.(core.UserIDCreated)
-	return auth.SubjectVerified{Value: auth.UserSubject{ID: idCreated.Value}}
+	return auth.SubjectVerified{Value: auth.UserSubject{ID: stableTestUserID}}
 }
 
 func (testOrganizationService) CreateOrganization(_ context.Context, actor auth.UserSubject, name org.OrganizationName) org.CreateOrganizationResult {
@@ -593,6 +685,14 @@ func (testOrganizationService) AddTeamMember(context.Context, auth.UserSubject, 
 }
 
 func (testOrganizationService) CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck {
+	return org.PermissionGranted{}
+}
+
+func (testOrganizationService) CheckOrganizationTeamMembership(context.Context, core.OrganizationID, core.TeamID, core.UserID) org.PermissionCheck {
+	return org.PermissionGranted{}
+}
+
+func (testOrganizationService) CheckTeamMembership(context.Context, core.TeamID, core.UserID) org.PermissionCheck {
 	return org.PermissionGranted{}
 }
 
@@ -709,6 +809,17 @@ func (testTaskService) ReserveForOrganizationTeam(_ context.Context, actor auth.
 		ID:          reservationID.Value,
 		TaskID:      taskID,
 		Assignee:    task.OrganizationTeamAssignee{OrganizationID: organizationID, TeamID: teamID},
+		State:       task.ReservationStateActive,
+		RequestedBy: actor.ID,
+	}}
+}
+
+func (testTaskService) ReserveForTeam(_ context.Context, actor auth.UserSubject, taskID core.TaskID, teamID core.TeamID) task.ReservationResult {
+	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
+	return task.ReservationCreated{Value: task.Reservation{
+		ID:          reservationID.Value,
+		TaskID:      taskID,
+		Assignee:    task.TeamAssignee{TeamID: teamID},
 		State:       task.ReservationStateActive,
 		RequestedBy: actor.ID,
 	}}
@@ -834,6 +945,10 @@ func (testLedgerService) Balance(context.Context, core.UserID) ledger.BalanceRes
 }
 
 func (testLedgerService) ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult {
+	return ledger.EntriesListed{Values: []ledger.LedgerEntry{}}
+}
+
+func (testLedgerService) ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ledger.ListEntriesResult {
 	return ledger.EntriesListed{Values: []ledger.LedgerEntry{}}
 }
 

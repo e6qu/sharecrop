@@ -22,8 +22,7 @@ type Task struct {
 }
 
 // ActiveAssignee describes the worker currently holding an active reservation on
-// a task. NoActiveAssignee means the task has no active reservation; ActiveUserAssignee
-// or ActiveOrganizationTeamAssignee identify the holder.
+// a task. NoActiveAssignee means the task has no active reservation.
 type ActiveAssignee interface {
 	activeAssignee()
 }
@@ -39,11 +38,17 @@ type ActiveOrganizationTeamAssignee struct {
 	TeamID         core.TeamID
 }
 
+type ActiveTeamAssignee struct {
+	TeamID core.TeamID
+}
+
 func (NoActiveAssignee) activeAssignee() {}
 
 func (ActiveUserAssignee) activeAssignee() {}
 
 func (ActiveOrganizationTeamAssignee) activeAssignee() {}
+
+func (ActiveTeamAssignee) activeAssignee() {}
 
 // ListItem is the read model returned by task listings. It carries the task plus
 // the active reservation assignee, which the bare Task domain object does not track.
@@ -196,6 +201,7 @@ type AssigneeScope struct {
 var (
 	AssigneeScopeUser             = AssigneeScope{value: "user"}
 	AssigneeScopeOrganizationTeam = AssigneeScope{value: "organization_team"}
+	AssigneeScopeTeam             = AssigneeScope{value: "team"}
 )
 
 type AssigneeScopeResult interface {
@@ -220,6 +226,8 @@ func ParseAssigneeScope(raw string) AssigneeScopeResult {
 		return AssigneeScopeAccepted{Value: AssigneeScopeUser}
 	case AssigneeScopeOrganizationTeam.value:
 		return AssigneeScopeAccepted{Value: AssigneeScopeOrganizationTeam}
+	case AssigneeScopeTeam.value:
+		return AssigneeScopeAccepted{Value: AssigneeScopeTeam}
 	default:
 		return AssigneeScopeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task assignee scope is invalid")}
 	}
@@ -280,9 +288,15 @@ type OrganizationTeamAssignee struct {
 	TeamID         core.TeamID
 }
 
+type TeamAssignee struct {
+	TeamID core.TeamID
+}
+
 func (UserAssignee) assignee() {}
 
 func (OrganizationTeamAssignee) assignee() {}
+
+func (TeamAssignee) assignee() {}
 
 type ReservationState struct {
 	value string

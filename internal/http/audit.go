@@ -9,6 +9,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/org"
 )
 
 type auditEventResponse struct {
@@ -125,6 +126,43 @@ func (server Server) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filters := parseAuditListFilters(r)
+	result := server.auditService.List(r.Context(), filters, parsePage(r))
+	listed, listedMatched := result.(audit.EventsListed)
+	if !listedMatched {
+		writeDomainError(w, result.(audit.ListRejected).Reason)
+		return
+	}
+
+	response := auditEventsResponse{Events: make([]auditEventResponse, 0, len(listed.Values))}
+	for _, event := range listed.Values {
+		response.Events = append(response.Events, auditEventToResponse(event))
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (server Server) listOrganizationAuditEvents(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+
+	organizationIDResult := parseOrganizationPathValue(r)
+	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
+	if !organizationIDMatched {
+		writeError(w, http.StatusBadRequest, organizationIDResult.(organizationIDRejected).reason)
+		return
+	}
+
+	check := server.organizationService.CheckOrganizationPermission(r.Context(), organizationIDAccepted.value, actor.subject.ID, org.PermissionManageMembers)
+	if rejected, denied := check.(org.PermissionDenied); denied {
+		writeDomainError(w, rejected.Reason)
+		return
+	}
+
+	filters := audit.NoListFilters()
+	filters.SubjectID = audit.SubjectIDEquals{Value: organizationIDAccepted.value.String()}
 	result := server.auditService.List(r.Context(), filters, parsePage(r))
 	listed, listedMatched := result.(audit.EventsListed)
 	if !listedMatched {

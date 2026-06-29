@@ -11,6 +11,7 @@ import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Privacy as Privacy
+import Sharecrop.Generated.SavedQueueViews as SavedQueueViews
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
@@ -165,6 +166,8 @@ type alias LoggedInModel =
     , orgMessage : Maybe String
     , activeOrgId : String
     , orgBalance : Maybe Int
+    , orgLedger : List Ledger.LedgerEntryResponse
+    , orgAuditEvents : List Admin.AuditEventResponse
     , orgTeams : List Team.TeamResponse
     , standaloneTeams : List Team.TeamResponse
     , orgMembers : List Organization.OrganizationMemberResponse
@@ -424,6 +427,8 @@ type Msg
     | CreateOrgClicked
     | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
     | OrgBalanceReceived (Result Http.Error Ledger.BalanceResponse)
+    | OrgLedgerReceived (Result Http.Error Ledger.LedgerResponse)
+    | OrgAuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
     | StandaloneTeamsReceived (Result Http.Error Team.TeamsResponse)
     | UserDirectoryReceived (Result Http.Error (List UserDirectoryEntry))
@@ -478,6 +483,8 @@ type Msg
     | TeamWorkSavedViewNameChanged String
     | SaveTeamWorkViewClicked
     | ApplyTeamWorkViewClicked String
+    | SavedQueueViewsReceived (Result Http.Error SavedQueueViews.SavedQueueViewsResponse)
+    | SavedQueueViewSaved (Result Http.Error SavedQueueViews.SavedQueueViewResponse)
     | SearchTeamWorkClicked
     | PreviousTeamWorkPageClicked
     | NextTeamWorkPageClicked

@@ -58,7 +58,7 @@ support surfaces are absent.
    - Team and organization task lists now have server-backed task search,
      task-type filters, sorting, and pagination. Organization task state filters
      are server-backed.
-   - Team and organization queues have in-session saved views for repeated
+   - Team and organization queues have persisted saved views for repeated
      query/filter/sort combinations.
    - Result: the core organization-team task path works, but richer queue
      persistence and operator-specific queue defaults still need product polish.
@@ -148,8 +148,8 @@ Implemented:
 Missing or partial:
 
 - No SMTP/provider adapter for production email delivery.
-- Account deletion is deactivation plus credential/session/token revocation and
-  email anonymization, not hard row deletion.
+- Account lifecycle is deactivation plus credential/session/token revocation
+  and email anonymization, not row removal.
 - No OAuth/social login despite earlier story text referencing mock providers.
 
 ### Requester
@@ -233,7 +233,10 @@ Implemented:
 
 Missing or partial:
 
-- MCP HTTP session state and rate limits are process-local.
+- Production `serve` can use Postgres-backed MCP HTTP session identity, replay
+  events, rate limits, notifications, audit events, saved views, and privacy
+  requests. Persisted MCP live SSE subscribers poll the replay table for
+  cross-process fan-out groundwork.
 - There is no operator UI for active MCP sessions, last use, or abuse
   investigation.
 - The task detail token helper mints broad worker tokens for the current user;
@@ -280,7 +283,7 @@ Implemented:
 - API pagination exists for many list endpoints.
 - Browser has filters for task state and discovery reserved inclusion.
 - Team and organization task queues expose search, task-type filters, sort,
-  pagination, and in-session saved views.
+  pagination, and persisted saved views.
 
 Missing or partial:
 

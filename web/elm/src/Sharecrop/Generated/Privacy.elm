@@ -36,22 +36,46 @@ privacyRequestKindEncoder privacyRequestKind =
 
 
 type alias PrivacyRequestResponse =
-    { kind : String
+    { id : String
+    , kind : String
     , status : String
     , requestedBy : String
+    , exportJSON : String
+    , resolutionNote : String
     }
 
 privacyRequestResponseDecoder : Decoder PrivacyRequestResponse
 privacyRequestResponseDecoder =
-    Decode.map3 PrivacyRequestResponse
+    Decode.map6 PrivacyRequestResponse
+        (Decode.field "id" Decode.string)
         (Decode.field "kind" Decode.string)
         (Decode.field "status" Decode.string)
         (Decode.field "requested_by" Decode.string)
+        (Decode.field "export_json" Decode.string)
+        (Decode.field "resolution_note" Decode.string)
 
 privacyRequestResponseEncoder : PrivacyRequestResponse -> Encode.Value
 privacyRequestResponseEncoder privacyRequestResponse =
     Encode.object
-        [ ( "kind", Encode.string privacyRequestResponse.kind )
+        [ ( "id", Encode.string privacyRequestResponse.id )
+        , ( "kind", Encode.string privacyRequestResponse.kind )
         , ( "status", Encode.string privacyRequestResponse.status )
         , ( "requested_by", Encode.string privacyRequestResponse.requestedBy )
+        , ( "export_json", Encode.string privacyRequestResponse.exportJSON )
+        , ( "resolution_note", Encode.string privacyRequestResponse.resolutionNote )
+        ]
+
+type alias PrivacyRequestsResponse =
+    { requests : List PrivacyRequestResponse
+    }
+
+privacyRequestsResponseDecoder : Decoder PrivacyRequestsResponse
+privacyRequestsResponseDecoder =
+    Decode.map PrivacyRequestsResponse
+        (Decode.field "requests" (Decode.list privacyRequestResponseDecoder))
+
+privacyRequestsResponseEncoder : PrivacyRequestsResponse -> Encode.Value
+privacyRequestsResponseEncoder privacyRequestsResponse =
+    Encode.object
+        [ ( "requests", Encode.list privacyRequestResponseEncoder privacyRequestsResponse.requests )
         ]

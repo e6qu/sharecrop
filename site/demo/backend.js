@@ -416,6 +416,8 @@
       metadata_json: '{"task_id":"task-4"}',
       created_at: "2026-06-22T10:45:00Z",
     }],
+    savedQueueViews: [],
+    privacyRequests: [],
     auditEvents: [],
     tasks: [],
   };
@@ -1062,14 +1064,97 @@
     if (kind !== "data_export" && kind !== "sensitive_field_deletion") {
       return err(400, "privacy request kind is invalid");
     }
-    recordAudit(actorId, "privacy_request_created", "privacy_request", actorId, {
-      kind,
-    });
-    return ok({
+    const request = {
+      id: nextId("privacy"),
       kind,
       status: "queued",
       requested_by: actorId,
-    }, 201);
+      export_json: "",
+      resolution_note: "",
+    };
+    db.privacyRequests.unshift(request);
+    recordAudit(actorId, "privacy_request_created", "privacy_request", actorId, {
+      kind,
+    });
+    return ok(request, 201);
+  });
+  on("GET", "/api/privacy-requests", (_p, _url, _body, actorId) =>
+    ok({
+      requests: db.privacyRequests.filter((request) =>
+        request.requested_by === actorId
+      ),
+    }));
+
+  function savedQueueViewFromBody(body, actorId) {
+    const scope = String((body && body.scope) || "").trim();
+    const name = String((body && body.name) || "").trim();
+    if (scope !== "team_work" && scope !== "organization_tasks") {
+      return { error: "saved queue view scope is invalid" };
+    }
+    if (name === "") {
+      return { error: "saved queue view name is required" };
+    }
+    return {
+      id: "",
+      user_id: actorId,
+      scope,
+      name,
+      query: String((body && body.query) || "").trim(),
+      state_filter: String((body && body.state_filter) || "").trim(),
+      type_filter: String((body && body.type_filter) || "").trim(),
+      sort: String((body && body.sort) || "newest").trim(),
+    };
+  }
+
+  function savedQueueViewResponse(view) {
+    return {
+      id: view.id,
+      scope: view.scope,
+      name: view.name,
+      query: view.query,
+      state_filter: view.state_filter,
+      type_filter: view.type_filter,
+      sort: view.sort,
+    };
+  }
+
+  on("GET", "/api/saved-queue-views", (_p, url, _body, actorId) => {
+    const scope = String(url.searchParams.get("scope") || "").trim();
+    if (
+      scope !== "" && scope !== "team_work" &&
+      scope !== "organization_tasks"
+    ) {
+      return err(400, "saved queue view scope is invalid");
+    }
+    return ok({
+      views: db.savedQueueViews
+        .filter((view) =>
+          view.user_id === actorId && (scope === "" || view.scope === scope)
+        )
+        .map(savedQueueViewResponse),
+    });
+  });
+
+  on("POST", "/api/saved-queue-views", (_p, _url, body, actorId) => {
+    const view = savedQueueViewFromBody(body, actorId);
+    if (view.error) return err(400, view.error);
+    const existing = db.savedQueueViews.find((candidate) =>
+      candidate.user_id === actorId &&
+      candidate.scope === view.scope &&
+      candidate.name === view.name
+    );
+    if (existing) {
+      Object.assign(existing, {
+        query: view.query,
+        state_filter: view.state_filter,
+        type_filter: view.type_filter,
+        sort: view.sort,
+      });
+      return ok(savedQueueViewResponse(existing));
+    }
+    view.id = nextId("saved-view");
+    db.savedQueueViews.unshift(view);
+    return ok(savedQueueViewResponse(view), 201);
   });
 
   on(
@@ -1314,6 +1399,13 @@
     // Funding only moves credits into escrow; task state is unchanged (the /open
     // route moves draft -> open). "funded" is not a valid TaskState.
     t.escrow += amount;
+    db.ledger.push({
+      id: nextId("entry"),
+      kind: "task_escrow",
+      amount: -amount,
+      task_id: t.id,
+      organization_id: orgId,
+    });
     if (key) db.appliedFunding[key] = true;
     return ok({ task_id: t.id, amount: t.escrow, state: "held" }, 201);
   });
@@ -1330,6 +1422,8 @@
         409,
         assigneeKind === "organization_team"
           ? "this task does not accept organization team reservations"
+          : assigneeKind === "team"
+          ? "this task does not accept team reservations"
           : "this task does not accept user reservations",
       );
     }
@@ -1345,6 +1439,13 @@
       );
       if (!team || !(db.teamMembers[teamId] || []).includes(actorId)) {
         return err(403, "organization team membership denied");
+      }
+      assigneeId = teamId;
+    } else if (assigneeKind === "team") {
+      const teamId = (body && body.team_id) || "";
+      const team = db.standaloneTeams.find((value) => value.id === teamId);
+      if (!team || !(db.teamMembers[teamId] || []).includes(actorId)) {
+        return err(403, "team membership denied");
       }
       assigneeId = teamId;
     }
@@ -1505,8 +1606,14 @@
       receipt_token: nextId("receipt"),
     }, 201);
   });
-  function pushLedger(kind, amount, taskId) {
-    db.ledger.push({ id: nextId("entry"), kind, amount, task_id: taskId });
+  function pushLedger(kind, amount, taskId, organizationId) {
+    db.ledger.push({
+      id: nextId("entry"),
+      kind,
+      amount,
+      task_id: taskId,
+      organization_id: organizationId || "",
+    });
   }
   // Refunds and tips return to whichever wallet funded the task (org or personal).
   function funderAdjust(t, amount, actorId) {
@@ -1585,17 +1692,17 @@
       tip = (body && body.tip_amount) || 0;
       if (payout > 0) {
         adjustUserBalance(s.submitter_id, payout);
-        pushLedger("task_payout", -payout, t.id);
+        pushLedger("task_payout", -payout, t.id, t.fundedOrg);
         payoutKind = "credit";
       }
       if (refund > 0) {
         funderAdjust(t, refund, actorId);
-        pushLedger("task_refund", refund, t.id);
+        pushLedger("task_refund", refund, t.id, t.fundedOrg);
       }
       if (tip > 0) {
         funderAdjust(t, -tip, actorId);
         adjustUserBalance(s.submitter_id, tip);
-        pushLedger("task_tip", -tip, t.id);
+        pushLedger("task_tip", -tip, t.id, t.fundedOrg);
       }
       t.escrow = 0;
       if (reservation) reservation.state = "cancelled_by_requester";
@@ -1662,17 +1769,17 @@
       // make all of this visible.
       if (payout > 0) {
         adjustUserBalance(s.submitter_id, payout);
-        pushLedger("task_payout", -payout, t.id);
+        pushLedger("task_payout", -payout, t.id, t.fundedOrg);
         payoutKind = "credit";
       }
       if (refund > 0) {
         funderAdjust(t, refund, actorId);
-        pushLedger("task_refund", refund, t.id);
+        pushLedger("task_refund", refund, t.id, t.fundedOrg);
       }
       if (tip > 0) {
         funderAdjust(t, -tip, actorId);
         adjustUserBalance(s.submitter_id, tip);
-        pushLedger("task_tip", -tip, t.id);
+        pushLedger("task_tip", -tip, t.id, t.fundedOrg);
       }
       // Optional collectible tip: transfer a held collectible from the requester's
       // inventory to the worker (mirrors the real backend's GiftCollectible on accept).
@@ -1904,6 +2011,36 @@
     }
     return ok({ events });
   });
+  on("GET", "/api/admin/privacy-requests", () =>
+    ok({ requests: db.privacyRequests }));
+  on(
+    "POST",
+    "/api/admin/privacy-requests/:id/resolve",
+    (p, _url, body, actorId) => {
+      const request = db.privacyRequests.find((candidate) =>
+        candidate.id === p.id
+      );
+      if (!request) return err(404, "privacy request was not found");
+      if (request.status !== "queued") {
+        return err(409, "privacy request is already resolved");
+      }
+      request.status = "resolved";
+      request.resolution_note = String(
+        (body && body.resolution_note) || "",
+      ).trim();
+      if (request.kind === "data_export") {
+        request.export_json = JSON.stringify({ user_id: request.requested_by });
+      }
+      recordAudit(
+        actorId,
+        "privacy_request_resolved",
+        "privacy_request",
+        request.id,
+        { kind: request.kind },
+      );
+      return ok(request);
+    },
+  );
   on("GET", "/api/notifications", (_p, _url, _body, actorId) =>
     ok({
       notifications: db.notifications.filter((n) =>
@@ -1961,6 +2098,7 @@
     }];
     db.orgTeams[o.id] = [];
     db.orgBalances[o.id] = 100;
+    recordAudit(actorId, "organization_created", "organization", o.id, {});
     return ok(o, 201);
   });
   on(
@@ -1968,12 +2106,20 @@
     "/api/organizations/:id/credits/balance",
     (p) => ok({ amount: db.orgBalances[p.id] || 0 }),
   );
+  on("GET", "/api/organizations/:id/credits/ledger", (p) =>
+    ok({
+      entries: db.ledger.filter((entry) => entry.organization_id === p.id),
+    }));
+  on("GET", "/api/organizations/:id/audit-events", (p) =>
+    ok({
+      events: db.auditEvents.filter((event) => event.subject_id === p.id),
+    }));
   on(
     "GET",
     "/api/organizations/:id/members",
     (p) => ok({ members: db.members[p.id] || [] }),
   );
-  on("POST", "/api/organizations/:id/members", (p, _url, body) => {
+  on("POST", "/api/organizations/:id/members", (p, _url, body, actorId) => {
     const user = findOrCreateUserByEmail(body && body.email);
     const m = {
       id: nextId("mem"),
@@ -1983,12 +2129,19 @@
       roles: (body && body.roles) || ["member"],
     };
     (db.members[p.id] = db.members[p.id] || []).push(m);
+    recordAudit(
+      actorId,
+      "organization_member_provisioned",
+      "organization",
+      p.id,
+      { member_id: m.id },
+    );
     return ok(m, 201);
   });
   on(
     "PATCH",
     "/api/organizations/:id/members/:userId/roles",
-    (p, _url, body) => {
+    (p, _url, body, actorId) => {
       const member = (db.members[p.id] || []).find((m) =>
         m.user_id === p.userId && m.status === "active"
       );
@@ -1996,17 +2149,35 @@
       member.roles = (body && body.roles && body.roles.length > 0)
         ? body.roles
         : ["member"];
+      recordAudit(
+        actorId,
+        "organization_member_roles_updated",
+        "organization",
+        p.id,
+        { member_id: member.id },
+      );
       return ok(member);
     },
   );
-  on("PATCH", "/api/organizations/:id/members/:userId/deactivate", (p) => {
+  on(
+    "PATCH",
+    "/api/organizations/:id/members/:userId/deactivate",
+    (p, _url, _body, actorId) => {
     const member = (db.members[p.id] || []).find((m) =>
       m.user_id === p.userId && m.status === "active"
     );
     if (!member) return err(404, "member not found");
     member.status = "inactive";
+      recordAudit(
+        actorId,
+        "organization_member_deactivated",
+        "organization",
+        p.id,
+        { member_id: member.id },
+      );
     return empty();
-  });
+    },
+  );
   on(
     "GET",
     "/api/organizations/:id/teams",

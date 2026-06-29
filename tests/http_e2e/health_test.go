@@ -242,6 +242,10 @@ func (healthTaskService) ReserveForOrganizationTeam(context.Context, auth.UserSu
 	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthTaskService) ReserveForTeam(context.Context, auth.UserSubject, core.TaskID, core.TeamID) task.ReservationResult {
+	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthTaskService) ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
@@ -325,6 +329,10 @@ func (healthLedgerService) Balance(context.Context, core.UserID) ledger.BalanceR
 }
 
 func (healthLedgerService) ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult {
+	return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthLedgerService) ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ledger.ListEntriesResult {
 	return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
