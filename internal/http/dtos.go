@@ -51,12 +51,52 @@ type privacyRequest struct {
 }
 
 type privacyRequestResponse struct {
-	Kind        string `json:"kind"`
-	Status      string `json:"status"`
-	RequestedBy string `json:"requested_by"`
+	ID             string `json:"id"`
+	Kind           string `json:"kind"`
+	Status         string `json:"status"`
+	RequestedBy    string `json:"requested_by"`
+	ExportJSON     string `json:"export_json"`
+	ResolutionNote string `json:"resolution_note"`
 }
 
 func (privacyRequestResponse) writableResponse() {}
+
+type privacyRequestsResponse struct {
+	Requests []privacyRequestResponse `json:"requests"`
+}
+
+func (privacyRequestsResponse) writableResponse() {}
+
+type privacyResolveRequest struct {
+	ResolutionNote string `json:"resolution_note"`
+}
+
+type savedQueueViewRequest struct {
+	Scope       string `json:"scope"`
+	Name        string `json:"name"`
+	Query       string `json:"query"`
+	StateFilter string `json:"state_filter"`
+	TypeFilter  string `json:"type_filter"`
+	Sort        string `json:"sort"`
+}
+
+type savedQueueViewResponse struct {
+	ID          string `json:"id"`
+	Scope       string `json:"scope"`
+	Name        string `json:"name"`
+	Query       string `json:"query"`
+	StateFilter string `json:"state_filter"`
+	TypeFilter  string `json:"type_filter"`
+	Sort        string `json:"sort"`
+}
+
+func (savedQueueViewResponse) writableResponse() {}
+
+type savedQueueViewsResponse struct {
+	Views []savedQueueViewResponse `json:"views"`
+}
+
+func (savedQueueViewsResponse) writableResponse() {}
 
 type errorResponse struct {
 	Error string `json:"error"`

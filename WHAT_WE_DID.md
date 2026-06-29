@@ -1,5 +1,39 @@
 # What We Did
 
+`task/persisted-ops-privacy-lifecycle` added persisted operations and privacy
+lifecycle work:
+
+- **Saved queue views.** Team work and organization task saved views are now
+  persisted in Postgres and mirrored by the backendless demo.
+- **Organization operations.** Organization detail pages now include
+  organization ledger rows and org-scoped audit rows in the operations
+  dashboard.
+- **Privacy lifecycle.** Privacy requests are persisted, listable by requester
+  and platform admin, and resolvable by platform admins. Resolution stores
+  basic data-export JSON or marks delete-on-request sensitive-field metadata as
+  redacted without removing core rows.
+- **Audit.** Organization create/member actions now also write
+  organization-subject audit rows for org-scoped panels.
+- **Team assignees.** Standalone teams are valid task assignees; reservations
+  require team membership and submission eligibility recognizes active team
+  reservations.
+- **MCP.** Persisted MCP SSE subscribers poll the replay table for
+  cross-process fan-out groundwork.
+- **Contracts and parity.** Generated Elm contracts, backendless demo routes,
+  HTTP fixture coverage, scenario/demo tests, and continuity docs were updated.
+  Hard deletes remained prohibited.
+- **Verification.** Passed: `go test ./...`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go vet ./...`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode
+  -test ./...`; `make check-format`;
+  `deno run --allow-read tools/check_policy.ts`;
+  `deno check tools/*.ts tests/**/*.ts`; `deno lint tools tests`;
+  `deno test --allow-read tests/deno`; and
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`.
+- **Skipped local browser run.** Focused Playwright demo/mobile/screens coverage
+  could not run locally because sandboxed port binding failed and escalation was
+  blocked by the approval system usage limit.
+
 `task/org-ops-queues-privacy` combined saved queue views, organization
 operations, revision timeline polish, audited privacy requests, contracts,
 parity, demo behavior, browser coverage, and docs:
@@ -138,8 +172,8 @@ deletion semantics, contract fixtures, and deployed routing checks:
   shape and create-time collectible reward refund.
 - **Deletion semantics.** Added
   [docs/deletion_semantics.md](./docs/deletion_semantics.md), defining current
-  deactivation/state/redaction behavior and the gate for any future deletion
-  endpoint.
+  deactivation/state/redaction behavior and the rules for lifecycle and
+  redaction workflows.
 - **Verification.** Passed: `go test ./...`;
   `go test ./internal/http ./internal/db ./internal/assets ./internal/ledger`;
   `deno check tools/*.ts tests/**/*.ts`; `deno lint tools tests`;

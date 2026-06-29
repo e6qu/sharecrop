@@ -247,6 +247,13 @@ func (store *mcpHTTPSessionStore) replayAndSubscribe(sessionID string, lastEvent
 		for index := range eventIDs {
 			events = append(events, mcpHTTPEvent{id: eventIDs[index], payload: payloads[index]})
 		}
+		nextLastEventID := lastEventID
+		if len(events) > 0 {
+			nextLastEventID = events[len(events)-1].id
+		}
+		subscriber, cancel := store.pollPersistedEvents(sessionID, nextLastEventID)
+		store.mu.Unlock()
+		return events, subscriber, cancel, true
 	} else {
 		start := 0
 		if lastEventID != "" {
@@ -282,6 +289,45 @@ func (store *mcpHTTPSessionStore) replayAndSubscribe(sessionID string, lastEvent
 	return events, subscriber, cancel, true
 }
 
+func (store *mcpHTTPSessionStore) pollPersistedEvents(sessionID string, lastEventID string) (<-chan mcpHTTPEvent, func()) {
+	subscriber := make(chan mcpHTTPEvent, 16)
+	done := make(chan struct{})
+	cancelOnce := sync.Once{}
+	go func() {
+		defer close(subscriber)
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		currentLastEventID := lastEventID
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				eventIDs, payloads, err := store.persistence.ListMCPEvents(context.Background(), sessionID, currentLastEventID, 100)
+				if err != nil {
+					panic(fmt.Sprintf("poll MCP events failed: %v", err))
+				}
+				for index := range eventIDs {
+					event := mcpHTTPEvent{id: eventIDs[index], payload: payloads[index]}
+					currentLastEventID = event.id
+					select {
+					case subscriber <- event:
+					case <-done:
+						return
+					default:
+					}
+				}
+			}
+		}
+	}()
+	cancel := func() {
+		cancelOnce.Do(func() {
+			close(done)
+		})
+	}
+	return subscriber, cancel
+}
+
 func (store *mcpHTTPSessionStore) activeSessionCount() int {
 	if store.persistence != nil {
 		count, err := store.persistence.ActiveMCPSessionCount(context.Background(), store.now().Add(-store.ttl))
@@ -298,7 +344,7 @@ func (store *mcpHTTPSessionStore) activeSessionCount() int {
 
 func (store *mcpHTTPSessionStore) storageKind() string {
 	if store.persistence != nil {
-		return "postgres_session_replay_process_stream"
+		return "postgres_session_replay_polling_stream"
 	}
 	return "process_memory"
 }

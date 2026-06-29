@@ -257,6 +257,50 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
   const events = requireArray(privacyAudit.json, "events");
   assert(events.length > 0, "privacy request must create an audit event");
 
+  const savedView = await request(
+    backend,
+    "POST",
+    "/api/saved-queue-views",
+    {
+      scope: "team_work",
+      name: "Ready work",
+      query: "review",
+      state_filter: "ready",
+      type_filter: "code_review",
+      sort: "title_asc",
+    },
+    accessToken,
+  );
+  assertEquals(savedView.status, 201, "saved queue view status");
+  requireString(savedView.json, "id");
+  assertEquals(
+    requireString(savedView.json, "scope"),
+    "team_work",
+    "saved queue view scope",
+  );
+  assertEquals(
+    requireString(savedView.json, "name"),
+    "Ready work",
+    "saved queue view name",
+  );
+
+  const savedViews = await request(
+    backend,
+    "GET",
+    "/api/saved-queue-views?scope=team_work",
+    undefined,
+    accessToken,
+  );
+  assertEquals(savedViews.status, 200, "saved queue views list status");
+  const views = requireArray(savedViews.json, "views");
+  assertEquals(views.length, 1, "saved queue views list size");
+  const firstView = requireRecord(views[0], "saved queue view");
+  assertEquals(
+    requireString(firstView, "type_filter"),
+    "code_review",
+    "saved queue view type filter",
+  );
+
   const reset = await request(
     backend,
     "POST",

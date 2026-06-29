@@ -495,3 +495,17 @@ func (service Service) CheckOrganizationTeamMembership(ctx context.Context, orga
 	}
 	return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization team membership denied")}
 }
+
+func (service Service) CheckTeamMembership(ctx context.Context, teamID core.TeamID, userID core.UserID) PermissionCheck {
+	membersResult := service.store.ListTeamMembers(ctx, teamID)
+	members, matched := membersResult.(TeamMembersListed)
+	if !matched {
+		return PermissionDenied{Reason: membersResult.(TeamMembersRejected).Reason}
+	}
+	for _, memberID := range members.Values {
+		if memberID == userID {
+			return PermissionGranted{}
+		}
+	}
+	return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team membership denied")}
+}

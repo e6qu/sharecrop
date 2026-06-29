@@ -5,34 +5,35 @@ Current priority from
 
 Next recommended work:
 
-1. Persist saved queue views if operators need them to survive reloads or move
-   across devices. Current saved views are in-session browser state for team
-   work and organization task queues.
-2. Add organization ledger and org-scoped audit panels if the operations
-   dashboard needs billing/history views beyond the currently loaded balance,
-   member, team, collectible, and task-state counts.
-3. Add privacy request operator resolution, export generation, retention jobs,
-   and sensitive-field redaction only after lifecycle/executor design is
-   written.
-4. Keep expanding shared scenario parity as new user-visible API surfaces are
+1. Add deeper privacy lifecycle coverage for export contents, sensitive-field
+   redaction effects, and privacy request admin resolution UI if operators need
+   browser-based request handling.
+2. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    team/organization queue search/type/sort, organization reviewer acceptance,
    sensitive-field response metadata, privacy request/audit shape, and
    multi-actor reservation/submission acceptance.
-5. Keep expanding generated/fixture-level HTTP contract coverage as the API
+3. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-6. Audit remaining raw-ID browser flows and replace high-traffic fields with
+4. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit.
-7. Keep improving backendless demo semantic parity through shared scenarios
+5. Keep improving backendless demo semantic parity through shared scenarios
    before any WASM replacement.
-8. Add provider email delivery only if the product direction changes; current
+6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-9. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The persisted-ops-privacy-lifecycle branch added persisted saved queue
+   views, organization ledger and org-scoped audit dashboard panels, persisted
+   privacy request listing/resolution with export JSON and sensitive-field
+   redaction state updates, standalone-team task assignees, persisted MCP SSE
+   polling fan-out groundwork, backendless demo parity, generated contracts,
+   and continuity updates. Hard deletes remained prohibited.
 
 1. The org-ops-queues-privacy branch added in-session saved views for team work
    and organization task queues, a loaded-data organization operations

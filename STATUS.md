@@ -1,14 +1,16 @@
 # Status
 
-The repository contains pull request 1 through pull request 84 work, merged into
-`main`, plus the current `task/org-ops-queues-privacy` branch.
+The repository contains pull request 1 through pull request 85 work, merged into
+`main`, plus the current `task/persisted-ops-privacy-lifecycle` branch.
 
-Active task: saved queue views, richer revision timelines, privacy request
-workflow, organization operations dashboards, contract/parity expansion,
-API/docs updates, and backendless demo parity have been implemented on
-`task/org-ops-queues-privacy`. Email/provider delivery, anonymous worker
-identity, per-project tokens, external wallets, and crypto integrations are out
-of scope.
+Active task: persisted saved queue views, organization ledger and org-scoped
+audit dashboard panels, privacy request persistence/resolution/export/redaction,
+standalone-team assignee support, and MCP live subscriber fan-out groundwork are
+implemented on `task/persisted-ops-privacy-lifecycle`. Hard deletes remain out
+of scope; use soft deletes, explicit lifecycle states, redaction, and
+tombstone/audit records.
+Email/provider delivery, anonymous worker identity, per-project tokens, external
+wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -44,8 +46,10 @@ Current implemented surface:
 - Admin operations status is available to platform admins at
   `/api/admin/operations`.
 - Production `serve` wires Postgres-backed rate-limit buckets, audit events,
-  notification inbox rows, persisted MCP HTTP session identity, and persisted
-  MCP HTTP replay events. MCP live SSE subscribers remain process-local.
+  notification inbox rows, persisted MCP HTTP session identity, persisted MCP
+  HTTP replay events, saved queue views, and privacy requests. Persisted MCP
+  live SSE subscribers poll the replay table for cross-process fan-out
+  groundwork.
 - Platform admins can view audit events at `#/admin`; audit writes cover admin
   default collectible awards, account deactivation, organization member
   provisioning/role/deactivation actions, submission review outcomes, and task
@@ -57,10 +61,11 @@ Current implemented surface:
 - Team work and organization task queues support server-side search and
   pagination, task-type filters, and sorting. Organization task state filters
   are server-backed.
-- Team work and organization task queues have in-session saved views for
+- Team work and organization task queues have persisted saved views for
   reusable query/filter/sort combinations.
 - Organization detail pages expose an operations dashboard with loaded balance,
-  member, team, collectible, and task-state counts.
+  ledger rows, org-scoped audit rows, member, team, collectible, and task-state
+  counts.
 - Admin audit event listing supports action, subject-kind, subject-id, and page
   filters through the API and browser controls.
 - Submission responses include indexed sensitive-field metadata, and browser
@@ -68,9 +73,10 @@ Current implemented surface:
   notes, sensitive-field summaries, and revision shortcuts where available.
 - Worker submission profile pages include a revision timeline for submission
   state, review-note, validation-error, and sensitive-field history.
-- Users can create audited privacy requests for data export or
-  sensitive-field deletion. These requests are queued audit records and do not
-  perform export generation, deletion, redaction, or retention jobs.
+- Users can create persisted audited privacy requests for data export or
+  sensitive-field deletion. Platform admins can list and resolve requests.
+  Resolution stores data-export JSON or marks delete-on-request sensitive-field
+  metadata as redacted without removing core rows.
 - Requester task lists and discovery lists have loaded-list search/filter
   controls.
 - Worker submission profile pages include a revision inbox for submissions in
@@ -119,9 +125,11 @@ Current implemented surface:
   and collectible tip in one ledger transaction.
 - Series add-task management uses the loaded task selector instead of a raw
   task-ID text field.
-- Deletion semantics are documented in
-  [docs/deletion_semantics.md](./docs/deletion_semantics.md); core rows are not
-  hard-deleted without an explicit lifecycle design.
+- Standalone teams can be selected as task assignees, and standalone-team
+  reservations require team membership.
+- Lifecycle and redaction semantics are documented in
+  [docs/deletion_semantics.md](./docs/deletion_semantics.md); core-row removal
+  is not part of the project direction.
 - The WASM demo backend spike is documented with explicit storage-adapter gates
   and no fallback path.
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -140,7 +148,9 @@ Current verification:
 - `deno run --allow-read tools/check_policy.ts` passed.
 - `deno test --allow-read tests/deno` passed.
 - `make check-format` passed.
-- `make check-contracts` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
+  check-contracts` regenerated the expected changed Elm contracts; it exits
+  nonzero until the generated files are committed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go vet ./...`
   passed.
@@ -154,7 +164,9 @@ Current verification:
   tests/playwright/playwright.config.ts --no-deps
   --output=/Users/zardoz/projects/sharecrop/test-results
   tests/playwright/demo.spec.ts tests/playwright/mobile.spec.ts
-  tests/playwright/screens.spec.ts` passed with local-server escalation.
+  tests/playwright/screens.spec.ts` could not run in the sandbox because local
+  port binding was blocked; escalation was blocked by the approval system usage
+  limit.
 - PR 85 CI passed, including `db-checks` and Playwright.
 - PR 84 CI passed before merge.
 

@@ -80,6 +80,7 @@ type Store interface {
 	Balance(context.Context, core.UserID) BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) BalanceResult
 	ListEntries(context.Context, core.UserID, core.Page) ListEntriesResult
+	ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ListEntriesResult
 }
 
 type Service struct {
@@ -249,4 +250,8 @@ func (service Service) OrganizationBalance(ctx context.Context, organizationID c
 
 func (service Service) ListEntries(ctx context.Context, owner core.UserID, page core.Page) ListEntriesResult {
 	return service.store.ListEntries(ctx, owner, page)
+}
+
+func (service Service) ListOrganizationEntries(ctx context.Context, organizationID core.OrganizationID, page core.Page) ListEntriesResult {
+	return service.store.ListOrganizationEntries(ctx, organizationID, page)
 }

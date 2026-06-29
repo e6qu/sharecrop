@@ -193,6 +193,10 @@ func (store *memoryStore) ListEntries(_ context.Context, _ core.UserID, _ core.P
 	return EntriesListed{Values: nil}
 }
 
+func (store *memoryStore) ListOrganizationEntries(_ context.Context, _ core.OrganizationID, _ core.Page) ListEntriesResult {
+	return EntriesListed{Values: nil}
+}
+
 func newTestEntry(t *testing.T, amount int64) LedgerEntry {
 	t.Helper()
 	signed, matched := ParseSignedAmount(amount).(SignedAmountAccepted)

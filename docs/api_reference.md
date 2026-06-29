@@ -106,5 +106,5 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - Selector-backed browser flows use `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams.
 - Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
 - Submission responses include `sensitive_fields` metadata for indexed sensitive response paths. The metadata identifies path, category, retention, and redaction policy; it does not perform deletion by itself.
-- Privacy requests are queued audit records. They do not perform export generation, hard deletion, redaction, or retention jobs.
+- Privacy requests are persisted. Requesters can list their own requests, and platform admins can list and resolve requests. Resolution stores basic export JSON for data-export requests or marks delete-on-request sensitive-field metadata as redacted. Core rows are not removed.
 - Rewards are Sharecrop credits and admin-minted Sharecrop collectibles only. External wallets, crypto integrations, and per-project tokens are out of scope.

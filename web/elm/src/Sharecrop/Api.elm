@@ -11,6 +11,7 @@ import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Privacy as Privacy
+import Sharecrop.Generated.SavedQueueViews as SavedQueueViews
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
@@ -259,7 +260,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "" "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "" "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token, fetchSavedQueueViews token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -640,6 +641,30 @@ fetchTeamWork token teamId queryText typeFilter sortOrder offset =
     authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/work?" ++ taskSearchParams queryText typeFilter sortOrder offset) Http.emptyBody (Http.expectJson TeamWorkReceived Task.tasksResponseDecoder)
 
 
+fetchSavedQueueViews : String -> Cmd Msg
+fetchSavedQueueViews token =
+    authorizedRequest "GET" token "/api/saved-queue-views" Http.emptyBody (Http.expectJson SavedQueueViewsReceived SavedQueueViews.savedQueueViewsResponseDecoder)
+
+
+saveSavedQueueView : String -> String -> QueueView -> Cmd Msg
+saveSavedQueueView token scope view =
+    authorizedRequest "POST"
+        token
+        "/api/saved-queue-views"
+        (Http.jsonBody
+            (Encode.object
+                [ ( "scope", Encode.string scope )
+                , ( "name", Encode.string view.name )
+                , ( "query", Encode.string view.query )
+                , ( "state_filter", Encode.string view.stateFilter )
+                , ( "type_filter", Encode.string view.typeFilter )
+                , ( "sort", Encode.string view.sort )
+                ]
+            )
+        )
+        (Http.expectJson SavedQueueViewSaved SavedQueueViews.savedQueueViewResponseDecoder)
+
+
 fetchCredentials : String -> Cmd Msg
 fetchCredentials token =
     authorizedRequest "GET" token "/api/agent-credentials" Http.emptyBody (Http.expectJson CredentialsReceived Agent.agentCredentialsResponseDecoder)
@@ -737,6 +762,12 @@ reservationRequestBody state =
                     Encode.object
                         [ ( "assignee_kind", Encode.string "organization_team" )
                         , ( "organization_id", Encode.string state.reservationOrganizationId )
+                        , ( "team_id", Encode.string state.reservationTeamId )
+                        ]
+
+                Task.TaskAssigneeScopeTeam ->
+                    Encode.object
+                        [ ( "assignee_kind", Encode.string "team" )
                         , ( "team_id", Encode.string state.reservationTeamId )
                         ]
 
@@ -915,6 +946,8 @@ loadOrganization token organizationId =
     else
         Cmd.batch
             [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (Http.expectJson OrgBalanceReceived Ledger.balanceResponseDecoder)
+            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0") Http.emptyBody (Http.expectJson OrgLedgerReceived Ledger.ledgerResponseDecoder)
+            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0") Http.emptyBody (Http.expectJson OrgAuditEventsReceived Admin.auditEventsResponseDecoder)
             , fetchOrgTeams token organizationId
             , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder)
             , fetchOrgTasksPage token organizationId "" "" "" "newest" 0

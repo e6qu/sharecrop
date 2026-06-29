@@ -119,6 +119,9 @@ assigneeScopeTag scope =
         Task.TaskAssigneeScopeOrganizationTeam ->
             "organization_team"
 
+        Task.TaskAssigneeScopeTeam ->
+            "team"
+
 
 assigneeScopeLabel : Task.TaskAssigneeScope -> String
 assigneeScopeLabel scope =
@@ -128,6 +131,9 @@ assigneeScopeLabel scope =
 
         Task.TaskAssigneeScopeOrganizationTeam ->
             "organization team"
+
+        Task.TaskAssigneeScopeTeam ->
+            "team"
 
 
 availabilityKindLabel : Task.TaskAvailabilityKind -> String

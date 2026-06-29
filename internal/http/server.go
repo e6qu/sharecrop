@@ -85,6 +85,7 @@ type TaskService interface {
 	ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult
 	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ReserveForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
+	ReserveForTeam(context.Context, auth.UserSubject, core.TaskID, core.TeamID) task.ReservationResult
 	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
@@ -128,6 +129,7 @@ type LedgerService interface {
 	Balance(context.Context, core.UserID) ledger.BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult
 	ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
+	ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ledger.ListEntriesResult
 }
 
 type AuditService interface {
@@ -139,6 +141,13 @@ type NotificationService interface {
 	Notify(context.Context, core.UserID, core.UserID, notification.Kind, notification.Subject, notification.Metadata) notification.NotifyResult
 	List(context.Context, core.UserID, core.Page) notification.ListResult
 	MarkRead(context.Context, core.UserID, core.NotificationID) notification.MarkReadResult
+}
+
+type PrivacyService interface {
+	Create(context.Context, core.UserID, string) PrivacyMutationResult
+	ListForRequester(context.Context, core.UserID, core.Page) PrivacyListResult
+	ListAll(context.Context, core.Page) PrivacyListResult
+	Resolve(context.Context, string, string) PrivacyMutationResult
 }
 
 type Server struct {
@@ -160,6 +169,8 @@ type Server struct {
 	accountTokens       accountTokenDelivery
 	auditService        AuditService
 	notificationService NotificationService
+	savedQueueViews     SavedQueueViewService
+	privacyService      PrivacyService
 }
 
 type RuntimeState struct {
@@ -168,6 +179,8 @@ type RuntimeState struct {
 	MCPSessions         *mcpHTTPSessionStore
 	AuditService        AuditService
 	NotificationService NotificationService
+	SavedQueueViews     SavedQueueViewService
+	PrivacyService      PrivacyService
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
@@ -187,12 +200,14 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		MCPSessions:         newMCPHTTPSessionStore(),
 		AuditService:        newMemoryAuditService(),
 		NotificationService: notification.NewService(notification.NewMemoryStore()),
+		SavedQueueViews:     newMemorySavedQueueViewService(),
+		PrivacyService:      newMemoryPrivacyService(),
 	})
 }
 
 func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService, runtime RuntimeState) http.Handler {
-	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil {
-		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, and notification service")
+	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil {
+		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, saved queue views, and privacy service")
 	}
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, runtime)
 }
@@ -218,6 +233,8 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		accountTokens:       newAccountTokenDeliveryFromEnv(),
 		auditService:        runtime.AuditService,
 		notificationService: runtime.NotificationService,
+		savedQueueViews:     runtime.SavedQueueViews,
+		privacyService:      runtime.PrivacyService,
 		// Platform admins (e.g. for awarding default collectibles) are bootstrapped
 		// from a comma-separated env list of user ids.
 		adminUserIDs: parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS")),
@@ -237,6 +254,9 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("PATCH /api/account/profile", server.updateAccountProfile)
 	mux.HandleFunc("DELETE /api/account", server.deactivateAccount)
 	mux.HandleFunc("POST /api/privacy-requests", server.createPrivacyRequest)
+	mux.HandleFunc("GET /api/privacy-requests", server.listPrivacyRequests)
+	mux.HandleFunc("GET /api/saved-queue-views", server.listSavedQueueViews)
+	mux.HandleFunc("POST /api/saved-queue-views", server.upsertSavedQueueView)
 	mux.HandleFunc("GET /api/organizations", server.listOrganizations)
 	mux.HandleFunc("POST /api/organizations", server.createOrganization)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/members", server.listOrganizationMembers)
@@ -245,6 +265,8 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("PATCH /api/organizations/{organization_id}/members/{user_id}/deactivate", server.deactivateOrganizationMember)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/teams", server.listOrganizationTeams)
 	mux.HandleFunc("POST /api/organizations/{organization_id}/teams", server.createOrganizationTeam)
+	mux.HandleFunc("GET /api/organizations/{organization_id}/credits/ledger", server.organizationCreditsLedger)
+	mux.HandleFunc("GET /api/organizations/{organization_id}/audit-events", server.listOrganizationAuditEvents)
 	mux.HandleFunc("GET /api/teams", server.listStandaloneTeams)
 	mux.HandleFunc("POST /api/teams", server.createStandaloneTeam)
 	mux.HandleFunc("GET /api/teams/{team_id}", server.getTeam)
@@ -301,6 +323,8 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/collectibles/{id}/transfer", server.transferCollectible)
 	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
 	mux.HandleFunc("GET /api/admin/audit-events", server.listAuditEvents)
+	mux.HandleFunc("GET /api/admin/privacy-requests", server.listAdminPrivacyRequests)
+	mux.HandleFunc("POST /api/admin/privacy-requests/{privacy_request_id}/resolve", server.resolveAdminPrivacyRequest)
 	mux.HandleFunc("GET /api/notifications", server.listNotifications)
 	mux.HandleFunc("POST /api/notifications/{notification_id}/read", server.markNotificationRead)
 	mux.HandleFunc("GET /api/organizations/{id}/collectibles", server.listOrganizationCollectibles)

@@ -16,6 +16,33 @@ func Modules() []Module {
 		adminModule(),
 		notificationModule(),
 		privacyModule(),
+		savedQueueViewsModule(),
+	}
+}
+
+func savedQueueViewsModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.SavedQueueViews"),
+		Definitions: []Definition{
+			Product{
+				Name: NewElmTypeName("SavedQueueViewResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("scope"), JSONName: NewJSONFieldName("scope"), Type: StringRef{}},
+					{Name: NewElmValueName("name"), JSONName: NewJSONFieldName("name"), Type: StringRef{}},
+					{Name: NewElmValueName("query"), JSONName: NewJSONFieldName("query"), Type: StringRef{}},
+					{Name: NewElmValueName("stateFilter"), JSONName: NewJSONFieldName("state_filter"), Type: StringRef{}},
+					{Name: NewElmValueName("typeFilter"), JSONName: NewJSONFieldName("type_filter"), Type: StringRef{}},
+					{Name: NewElmValueName("sort"), JSONName: NewJSONFieldName("sort"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("SavedQueueViewsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("views"), JSONName: NewJSONFieldName("views"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SavedQueueViewResponse")}}},
+				},
+			},
+		},
 	}
 }
 
@@ -33,9 +60,18 @@ func privacyModule() Module {
 			Product{
 				Name: NewElmTypeName("PrivacyRequestResponse"),
 				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: StringRef{}},
 					{Name: NewElmValueName("status"), JSONName: NewJSONFieldName("status"), Type: StringRef{}},
 					{Name: NewElmValueName("requestedBy"), JSONName: NewJSONFieldName("requested_by"), Type: StringRef{}},
+					{Name: NewElmValueName("exportJSON"), JSONName: NewJSONFieldName("export_json"), Type: StringRef{}},
+					{Name: NewElmValueName("resolutionNote"), JSONName: NewJSONFieldName("resolution_note"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("PrivacyRequestsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("requests"), JSONName: NewJSONFieldName("requests"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("PrivacyRequestResponse")}}},
 				},
 			},
 		},
@@ -416,6 +452,7 @@ func taskModule() Module {
 				Variants: []Variant{
 					{Name: NewElmTypeName("TaskAssigneeScopeUser"), Tag: "user"},
 					{Name: NewElmTypeName("TaskAssigneeScopeOrganizationTeam"), Tag: "organization_team"},
+					{Name: NewElmTypeName("TaskAssigneeScopeTeam"), Tag: "team"},
 				},
 			},
 			Enum{

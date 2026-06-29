@@ -1,11 +1,12 @@
 module Sharecrop.View exposing (..)
 
 import Browser
-import Html exposing (Html, a, div, form, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
+import Html exposing (Html, a, div, form, h3, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
 import Html.Attributes exposing (checked, disabled, href, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
@@ -1040,6 +1041,43 @@ organizationOperationsDashboard state =
             , operationMetric "Open tasks" (String.fromInt (countTasks Task.TaskStateOpen state.orgTasks)) "org-ops-tasks-open"
             , operationMetric "Closed tasks" (String.fromInt (countTasks Task.TaskStateClosed state.orgTasks)) "org-ops-tasks-closed"
             ]
+        , orgLedgerPanel state.orgLedger
+        , orgAuditPanel state.orgAuditEvents
+        ]
+
+
+orgLedgerPanel : List Ledger.LedgerEntryResponse -> Html Msg
+orgLedgerPanel entries =
+    div [ Html.Attributes.class "space-y-2", testId "org-ledger-panel" ]
+        [ h3 [ Html.Attributes.class "text-sm font-semibold text-slate-900" ] [ text "Organization ledger" ]
+        , if List.isEmpty entries then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "org-ledger-empty" ] [ text "No ledger entries." ]
+
+          else
+            table [ Html.Attributes.class "w-full text-left text-sm" ]
+                [ tbody [ testId "org-ledger" ] (List.map ledgerRow entries)
+                ]
+        ]
+
+
+orgAuditPanel : List Admin.AuditEventResponse -> Html Msg
+orgAuditPanel events =
+    div [ Html.Attributes.class "space-y-2", testId "org-audit-panel" ]
+        [ h3 [ Html.Attributes.class "text-sm font-semibold text-slate-900" ] [ text "Organization audit" ]
+        , if List.isEmpty events then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "org-audit-empty" ] [ text "No audit events." ]
+
+          else
+            div [ Html.Attributes.class "space-y-2", testId "org-audit-events" ]
+                (List.map orgAuditEventRow events)
+        ]
+
+
+orgAuditEventRow : Admin.AuditEventResponse -> Html Msg
+orgAuditEventRow event =
+    div [ Html.Attributes.class "rounded-md bg-slate-50 p-2 text-sm", testId "org-audit-event" ]
+        [ p [ Html.Attributes.class "font-medium text-slate-900" ] [ text event.action ]
+        , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (event.subjectKind ++ " · " ++ event.createdAt) ]
         ]
 
 
@@ -1626,7 +1664,7 @@ visibilityButton selected tag =
 
 allAssigneeScopes : List Task.TaskAssigneeScope
 allAssigneeScopes =
-    [ Task.TaskAssigneeScopeUser, Task.TaskAssigneeScopeOrganizationTeam ]
+    [ Task.TaskAssigneeScopeUser, Task.TaskAssigneeScopeOrganizationTeam, Task.TaskAssigneeScopeTeam ]
 
 
 assigneeScopeButton : Task.TaskAssigneeScope -> Task.TaskAssigneeScope -> Html Msg
@@ -2432,6 +2470,9 @@ organizationTeamReservationFields state detail =
                 [ Ui.fieldLabel "Organization" [ organizationPicker "reservation-organization-id" state.reservationOrganizationId state.organizationQuery ReservationOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations state.organizationOffset ]
                 , Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId state.orgTeamQuery ReservationTeamIdChanged OrgTeamQueryChanged SearchOrgTeamsClicked PreviousOrgTeamsPageClicked NextOrgTeamsPageClicked "Choose team" state.orgTeams state.orgTeamOffset ]
                 ]
+
+        Task.TaskAssigneeScopeTeam ->
+            Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId state.standaloneTeamQuery ReservationTeamIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams state.standaloneTeamOffset ]
 
         _ ->
             text ""

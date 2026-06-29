@@ -221,6 +221,7 @@ taskParticipationPolicyEncoder taskParticipationPolicy =
 type TaskAssigneeScope
     = TaskAssigneeScopeUser
     | TaskAssigneeScopeOrganizationTeam
+    | TaskAssigneeScopeTeam
 
 taskAssigneeScopeDecoder : Decoder TaskAssigneeScope
 taskAssigneeScopeDecoder =
@@ -234,6 +235,9 @@ taskAssigneeScopeDecoder =
                     "organization_team" ->
                         Decode.succeed TaskAssigneeScopeOrganizationTeam
 
+                    "team" ->
+                        Decode.succeed TaskAssigneeScopeTeam
+
                     _ ->
                         Decode.fail "invalid TaskAssigneeScope"
             )
@@ -246,6 +250,9 @@ taskAssigneeScopeEncoder taskAssigneeScope =
 
         TaskAssigneeScopeOrganizationTeam ->
             Encode.string "organization_team"
+
+        TaskAssigneeScopeTeam ->
+            Encode.string "team"
 
 
 type TaskAvailabilityKind
