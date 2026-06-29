@@ -2,11 +2,23 @@
 
 Current priority from [docs/application_readiness_review.md](./docs/application_readiness_review.md):
 
-Earlier finished:
+Next recommended work:
 
-1. The combined runtime/audit/team-dashboard branch wired Postgres-backed rate-limit buckets, persisted MCP HTTP session identity for production `serve`, admin audit writes/viewing, team work dashboards, generated Admin Elm contracts, and demo base-path/bundle parity.
-2. The branch kept email provider delivery and anonymous worker identity out of scope. Account and organization setup remains admin/org-admin driven.
-3. The branch removed a response-encoding fallback in MCP raw response handling; response encoding failures now fail loudly.
+1. Add shared scenario parity tests that execute the same flows against the Go HTTP API and `site/demo/backend.js`. Start with create task, reserve, submit, review, notifications, collectibles, organization/team visibility, account tokens, and admin operations. See [docs/demo_semantic_parity.md](./docs/demo_semantic_parity.md).
+2. Add paginated/typeahead browser selectors for large user/team/org directories.
+3. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
+4. Revisit GitHub Pages hard-refresh behavior after deployment. Pull request CI cannot observe the deployed Pages routing behavior.
+5. Consider a Go/WASM demo-backend spike only after scenario parity tests exist. The spike should use explicit browser storage adapters and must not add fallbacks.
+
+Recently finished:
+
+1. The current branch added a persisted notification inbox, generated notification contracts, browser Inbox page, demo notification routes, HTTP contract fixtures, and domain/store tests.
+2. The current branch added direct integration tests for audit event listing, notification lifecycle, Postgres rate-limit buckets, MCP HTTP session counts, and persisted MCP replay events. These tests require `DATABASE_URL`.
+3. The current branch persisted MCP HTTP replay events in Postgres. Live SSE subscriber channels remain process-local.
+4. The current branch added [docs/demo_semantic_parity.md](./docs/demo_semantic_parity.md), recommending shared scenario parity tests before any Go/WASM demo backend spike.
+5. The combined runtime/audit/team-dashboard branch wired Postgres-backed rate-limit buckets, persisted MCP HTTP session identity for production `serve`, admin audit writes/viewing, team work dashboards, generated Admin Elm contracts, and demo base-path/bundle parity.
+6. The branch kept email provider delivery and anonymous worker identity out of scope. Account and organization setup remains admin/org-admin driven.
+7. The branch removed a response-encoding fallback in MCP raw response handling; response encoding failures now fail loudly.
 
 Earlier finished:
 
@@ -23,12 +35,10 @@ Earlier finished:
 - Shared Playwright scenario constants cover account lifecycle and selector-backed reward creation flows.
 - Real backend coverage for the carried-over behaviors is confirmed by existing HTTP E2E and targeted Playwright account/selector specs.
 
-Remaining after the combined PR:
+Remaining after recent combined PRs:
 
-1. Add explicit notification records or inbox unread-state if the product needs more than the team review queue/team work dashboard.
-2. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
-3. Add deeper Postgres integration tests for audit event listing and persisted MCP HTTP session admission/counting.
-4. Revisit GitHub Pages hard-refresh behavior after deployment. The demo now handles `/demo/` base paths and serves the current Elm bundle, but pull request CI cannot observe the deployed Pages fallback behavior.
+1. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
+2. Revisit GitHub Pages hard-refresh behavior after deployment. The demo now handles `/demo/` base paths and serves the current Elm bundle, but pull request CI cannot observe the deployed Pages routing behavior.
 
 Recently finished:
 

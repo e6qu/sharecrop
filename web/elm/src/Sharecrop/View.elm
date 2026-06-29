@@ -8,6 +8,7 @@ import Json.Encode as Encode
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
@@ -86,6 +87,7 @@ navBar demo current subjectId isAdmin =
         , navLink current FundingPage "funding" "Funding"
         , navLink current AgentsPage "agents" "Agents"
         , navLink current CollectiblesPage "collectibles" "Collectibles"
+        , navLink current InboxPage "inbox" "Inbox"
         , navLink current SeriesListPage "series-list" "Series"
         , navLink current OrganizationsPage "organizations" "Organizations"
         , if isAdmin then
@@ -167,6 +169,50 @@ auditEventRow event =
         ]
 
 
+inboxView : LoggedInModel -> Html Msg
+inboxView state =
+    Ui.card
+        [ Ui.sectionTitle "Inbox"
+        , if List.isEmpty state.notifications then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "inbox-empty" ] [ text "No notifications." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "inbox-list" ]
+                (List.map notificationRow state.notifications)
+        , maybeNote state.inboxMessage "inbox-message"
+        ]
+
+
+notificationRow : Notification.NotificationResponse -> Html Msg
+notificationRow notification =
+    div [ Html.Attributes.class "space-y-2 py-3 text-sm", testId "notification-row" ]
+        [ div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2" ]
+            [ p [ Html.Attributes.class "font-medium text-slate-900" ] [ text (notification.kind ++ " on " ++ notification.subjectKind) ]
+            , span [ Html.Attributes.class (notificationStateClass notification.state), testId "notification-state" ] [ text notification.state ]
+            ]
+        , p [ Html.Attributes.class "break-words text-xs text-slate-500" ] [ text ("Subject " ++ notification.subjectID ++ " · actor " ++ notification.actorUserID ++ " · " ++ notification.createdAt) ]
+        , if notification.metadataJSON == "{}" then
+            text ""
+
+          else
+            Ui.codeBlock [ testId "notification-metadata" ] notification.metadataJSON
+        , if notification.state == "unread" then
+            Ui.secondaryButton [ type_ "button", onClick (MarkNotificationReadClicked notification.id), testId "notification-mark-read" ] "Mark read"
+
+          else
+            text ""
+        ]
+
+
+notificationStateClass : String -> String
+notificationStateClass state =
+    if state == "unread" then
+        "rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900"
+
+    else
+        "rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600"
+
+
 pageView : String -> LoggedInModel -> Html Msg
 pageView origin state =
     case state.page of
@@ -223,6 +269,9 @@ pageView origin state =
 
         AdminPage ->
             adminView state
+
+        InboxPage ->
+            inboxView state
 
         NotFoundPage ->
             Ui.card

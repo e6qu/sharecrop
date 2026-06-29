@@ -17,6 +17,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/mcp"
+	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -108,6 +109,7 @@ type AssetService interface {
 
 type SubmissionService interface {
 	Submit(context.Context, submission.SubmitCommand) submission.SubmitResult
+	Get(context.Context, auth.UserSubject, core.SubmissionID) submission.GetResult
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
 	ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult
@@ -133,6 +135,12 @@ type AuditService interface {
 	List(context.Context, core.Page) audit.ListResult
 }
 
+type NotificationService interface {
+	Notify(context.Context, core.UserID, core.UserID, notification.Kind, notification.Subject, notification.Metadata) notification.NotifyResult
+	List(context.Context, core.UserID, core.Page) notification.ListResult
+	MarkRead(context.Context, core.UserID, core.NotificationID) notification.MarkReadResult
+}
+
 type Server struct {
 	staticFiles         fs.FS
 	authService         AuthService
@@ -151,13 +159,15 @@ type Server struct {
 	adminUserIDs        map[string]bool
 	accountTokens       accountTokenDelivery
 	auditService        AuditService
+	notificationService NotificationService
 }
 
 type RuntimeState struct {
-	IPRateLimiter      RateLimiter
-	SubjectRateLimiter RateLimiter
-	MCPSessions        *mcpHTTPSessionStore
-	AuditService       AuditService
+	IPRateLimiter       RateLimiter
+	SubjectRateLimiter  RateLimiter
+	MCPSessions         *mcpHTTPSessionStore
+	AuditService        AuditService
+	NotificationService NotificationService
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
@@ -172,16 +182,17 @@ const (
 
 func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService) http.Handler {
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, RuntimeState{
-		IPRateLimiter:      newRateLimiter(IPRateCapacity, IPRateRefillPerSec),
-		SubjectRateLimiter: newRateLimiter(MCPRateCapacity, MCPRateRefillPerSec),
-		MCPSessions:        newMCPHTTPSessionStore(),
-		AuditService:       newMemoryAuditService(),
+		IPRateLimiter:       newRateLimiter(IPRateCapacity, IPRateRefillPerSec),
+		SubjectRateLimiter:  newRateLimiter(MCPRateCapacity, MCPRateRefillPerSec),
+		MCPSessions:         newMCPHTTPSessionStore(),
+		AuditService:        newMemoryAuditService(),
+		NotificationService: notification.NewService(notification.NewMemoryStore()),
 	})
 }
 
 func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService, runtime RuntimeState) http.Handler {
-	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil {
-		panic("runtime state requires explicit rate limiters, MCP sessions, and audit service")
+	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil {
+		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, and notification service")
 	}
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, runtime)
 }
@@ -201,11 +212,12 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		mcpSessions:         runtime.MCPSessions,
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
-		secureCookies:      os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
-		ipRateLimiter:      runtime.IPRateLimiter,
-		subjectRateLimiter: runtime.SubjectRateLimiter,
-		accountTokens:      newAccountTokenDeliveryFromEnv(),
-		auditService:       runtime.AuditService,
+		secureCookies:       os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
+		ipRateLimiter:       runtime.IPRateLimiter,
+		subjectRateLimiter:  runtime.SubjectRateLimiter,
+		accountTokens:       newAccountTokenDeliveryFromEnv(),
+		auditService:        runtime.AuditService,
+		notificationService: runtime.NotificationService,
 		// Platform admins (e.g. for awarding default collectibles) are bootstrapped
 		// from a comma-separated env list of user ids.
 		adminUserIDs: parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS")),
@@ -288,6 +300,8 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/collectibles/{id}/transfer", server.transferCollectible)
 	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
 	mux.HandleFunc("GET /api/admin/audit-events", server.listAuditEvents)
+	mux.HandleFunc("GET /api/notifications", server.listNotifications)
+	mux.HandleFunc("POST /api/notifications/{notification_id}/read", server.markNotificationRead)
 	mux.HandleFunc("GET /api/organizations/{id}/collectibles", server.listOrganizationCollectibles)
 	mux.HandleFunc("GET /api/teams/{id}/collectibles", server.listTeamCollectibles)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)

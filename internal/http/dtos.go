@@ -266,6 +266,22 @@ type submissionsResponse struct {
 	Submissions []submissionResponse `json:"submissions"`
 }
 
+type notificationResponse struct {
+	ID              string `json:"id"`
+	RecipientUserID string `json:"recipient_user_id"`
+	ActorUserID     string `json:"actor_user_id"`
+	Kind            string `json:"kind"`
+	SubjectKind     string `json:"subject_kind"`
+	SubjectID       string `json:"subject_id"`
+	State           string `json:"state"`
+	MetadataJSON    string `json:"metadata_json"`
+	CreatedAt       string `json:"created_at"`
+}
+
+type notificationsResponse struct {
+	Notifications []notificationResponse `json:"notifications"`
+}
+
 type submissionCreatedResponse struct {
 	Submission   submissionResponse `json:"submission"`
 	ReceiptToken string             `json:"receipt_token"`

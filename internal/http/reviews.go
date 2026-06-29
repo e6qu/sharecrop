@@ -8,6 +8,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
 
@@ -94,6 +95,13 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		tipCollectibleID = collectibleIDAccepted.Value
 	}
 
+	submissionResult := server.submissionService.Get(r.Context(), actor.subject, submissionIDAccepted.Value)
+	submissionFound, submissionMatched := submissionResult.(submission.SubmissionGot)
+	if !submissionMatched {
+		writeDomainError(w, submissionResult.(submission.GetRejected).Reason)
+		return
+	}
+
 	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value, creditSelection.value, tipSelection.value)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
@@ -119,6 +127,9 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionSubmissionAccepted, audit.Subject{Kind: "submission", ID: accepted.SubmissionID.String()}, audit.EmptyMetadata()) {
 		return
 	}
+	if !server.notify(w, r.Context(), submissionFound.Value.SubmitterID, actor.subject.ID, notification.KindSubmissionAccepted, notificationSubjectForSubmission(accepted.SubmissionID), taskNotificationMetadata(accepted.TaskID)) {
+		return
+	}
 	writeJSON(w, http.StatusOK, acceptToResponse(accepted))
 }
 func (server Server) requestSubmissionChanges(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +151,13 @@ func (server Server) requestSubmissionChanges(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	submissionResult := server.submissionService.Get(r.Context(), path.actor, path.submissionID)
+	submissionFound, submissionMatched := submissionResult.(submission.SubmissionGot)
+	if !submissionMatched {
+		writeDomainError(w, submissionResult.(submission.GetRejected).Reason)
+		return
+	}
+
 	result := server.ledgerService.RequestChanges(r.Context(), path.actor.ID, path.taskID, path.submissionID, note.Value)
 	changed, matched := result.(ledger.ChangesRequested)
 	if !matched {
@@ -147,6 +165,9 @@ func (server Server) requestSubmissionChanges(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if !server.recordAudit(w, r.Context(), path.actor.ID, audit.ActionSubmissionChangesRequested, audit.Subject{Kind: "submission", ID: changed.SubmissionID.String()}, audit.EmptyMetadata()) {
+		return
+	}
+	if !server.notify(w, r.Context(), submissionFound.Value.SubmitterID, path.actor.ID, notification.KindSubmissionChangesRequested, notificationSubjectForSubmission(changed.SubmissionID), taskNotificationMetadata(changed.TaskID)) {
 		return
 	}
 	writeJSON(w, http.StatusOK, reviewSubmissionResponse{
@@ -201,6 +222,13 @@ func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
 		banSelection = ledger.BanImplementorSelection{}
 	}
 
+	submissionResult := server.submissionService.Get(r.Context(), path.actor, path.submissionID)
+	submissionFound, submissionMatched := submissionResult.(submission.SubmissionGot)
+	if !submissionMatched {
+		writeDomainError(w, submissionResult.(submission.GetRejected).Reason)
+		return
+	}
+
 	result := server.ledgerService.RejectSubmission(r.Context(), path.actor.ID, path.taskID, path.submissionID, key.Value, note.Value, creditSelection.value, tipSelection.value, banSelection)
 	rejected, matched := result.(ledger.SubmissionRejected)
 	if !matched {
@@ -213,6 +241,9 @@ func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
 	response.State = "rejected"
 	response.ReviewNote = note.Value.String()
 	if !server.recordAudit(w, r.Context(), path.actor.ID, audit.ActionSubmissionRejected, audit.Subject{Kind: "submission", ID: rejected.SubmissionID.String()}, audit.EmptyMetadata()) {
+		return
+	}
+	if !server.notify(w, r.Context(), submissionFound.Value.SubmitterID, path.actor.ID, notification.KindSubmissionRejected, notificationSubjectForSubmission(rejected.SubmissionID), taskNotificationMetadata(rejected.TaskID)) {
 		return
 	}
 	writeJSON(w, http.StatusOK, response)

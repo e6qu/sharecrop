@@ -263,6 +263,44 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
   );
   assertTaskDetailShape(detail.json);
 
+  const notifications = await request(
+    backend,
+    "GET",
+    "/api/notifications",
+    undefined,
+  );
+  const notificationItems = requireArray(notifications.json, "notifications");
+  assert(
+    notificationItems.length > 0,
+    "notifications should include seeded inbox rows",
+  );
+  const notification = requireRecord(notificationItems[0], "notifications[0]");
+  const notificationID = requireString(notification, "id");
+  requireString(notification, "recipient_user_id");
+  requireString(notification, "actor_user_id");
+  requireString(notification, "kind");
+  requireString(notification, "subject_kind");
+  requireString(notification, "subject_id");
+  requireString(notification, "metadata_json");
+  requireString(notification, "created_at");
+  assertEquals(
+    requireString(notification, "state"),
+    "unread",
+    "seed notification state",
+  );
+  const readNotification = await request(
+    backend,
+    "POST",
+    `/api/notifications/${notificationID}/read`,
+    undefined,
+  );
+  assertEquals(readNotification.status, 200, "mark notification read status");
+  assertEquals(
+    requireString(readNotification.json, "state"),
+    "read",
+    "read notification state",
+  );
+
   const minted = await request(backend, "POST", "/api/collectibles", {
     name: "Demo selector medal",
     kind: "badge",

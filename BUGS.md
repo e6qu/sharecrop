@@ -12,9 +12,9 @@ Test gaps:
 - Account verification and password reset support `SHARECROP_ACCOUNT_TOKEN_DELIVERY=log`, which logs tokens and returns a sent status. Provider email delivery is intentionally deferred; admins are expected to set up accounts and organizations directly for now.
 - Account lifecycle deletion semantics are deactivation plus credential/session/token revocation and email anonymization. Hard row deletion is intentionally not used because tasks, submissions, comments, ledger entries, and ownership rows reference users.
 - The asset economy is intentionally internal-only: rewards are Sharecrop credits and admin-minted Sharecrop collectibles. User-issued tokens, organization-issued tokens, per-project tokens, crypto rewards, and external wallets are out of scope.
-- Request/command contracts and HTTP contract fixture tests still need to expand as the API grows. The backendless demo now has route-surface and representative response-shape tests, but those are not a full generated fixture suite.
+- Request/command contracts and HTTP contract fixture tests still need to expand as the API grows. The backendless demo has route-surface and representative response-shape tests, but those are not a full generated fixture suite.
 - User directory browser selectors currently load the first page rather than a typeahead query result; large installations need paginated/typeahead UI.
-- Audit event listing and persisted MCP HTTP session admission/counting need direct Postgres integration tests. Current coverage exercises the HTTP/API paths and production wiring through E2E tests.
+- Local integration verification requires `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR`. The current branch adds integration tests for notifications, audit listing, persisted MCP sessions/replay events, and rate-limit buckets, but they were not executable in this environment because `DATABASE_URL` is not set.
 
 Known risks:
 
@@ -24,7 +24,7 @@ Known risks:
 
 - A collectible review tip and the credit settle are separate per-store transactions sequenced in one accept request (credit settle first, then `GiftCollectible`). The settle is idempotent and the gift is replay-safe (already-owned-by-worker is a no-op), so a retried accept recovers; the only residual is a small window where the credit accept commits but the gift fails (e.g. the collectible changed owner concurrently), returning an error after a committed accept. Folding the tip into the ledger transaction would remove the window.
 - `transferable_within_organization` collectibles cannot be tipped yet: collectibles carry no organization, so the within-org bound is unenforceable and `AllowsTip` denies it rather than allow a cross-org gift. Re-enable once collectibles carry an org and the gift checks shared membership.
-- The default test/demo HTTP constructor still uses in-memory rate-limit buckets, audit events, and MCP sessions. Production `serve` wires Postgres-backed rate-limit buckets, audit events, and persisted MCP HTTP session identity.
-- MCP HTTP session identity, TTL admission, close state, and active counts are persisted in Postgres for production `serve`, but live SSE subscribers and replay buffers remain process-local. Operations reports this as `postgres_session_process_stream`.
+- The default test/demo HTTP constructor still uses in-memory rate-limit buckets, audit events, notifications, and MCP sessions. Production `serve` wires Postgres-backed rate-limit buckets, audit events, notifications, persisted MCP HTTP session identity, and persisted MCP replay events.
+- MCP HTTP session identity, TTL admission, close state, active counts, and replay events are persisted in Postgres for production `serve`, but live SSE subscriber channels remain process-local.
 - Standalone (user-owned) teams can be created, listed, and selected for task visibility. They are not yet selectable as organization-team assignees because task assignment currently models user and organization-team scopes only.
 - Foreign keys use the PostgreSQL default `NO ACTION`, which blocks deletion of referenced rows. The application has no deletion paths, so orphan rows cannot occur. Explicit `ON DELETE` behavior is not defined and should be designed alongside any future deletion feature.

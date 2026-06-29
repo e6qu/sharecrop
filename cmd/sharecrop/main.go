@@ -22,6 +22,7 @@ import (
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/mcp"
+	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -187,14 +188,16 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
 	agentService := agent.NewService(db.NewAgentStore(pool))
 	assetService := assets.NewService(db.NewCollectibleStore(pool))
+	notificationService := notification.NewService(db.NewNotificationStore(pool))
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress(),
 		Handler: httpserver.NewWithRuntimeState(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, httpserver.RuntimeState{
-			IPRateLimiter:      db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
-			SubjectRateLimiter: db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
-			MCPSessions:        httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
-			AuditService:       audit.NewService(db.NewAuditStore(pool)),
+			IPRateLimiter:       db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
+			SubjectRateLimiter:  db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
+			MCPSessions:         httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
+			AuditService:        audit.NewService(db.NewAuditStore(pool)),
+			NotificationService: notificationService,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

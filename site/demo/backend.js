@@ -308,6 +308,17 @@
     users: DEMO_USERS.slice(),
     accountTokens: {},
     appliedFunding: {},
+    notifications: [{
+      id: "notif-seed",
+      recipient_user_id: ME,
+      actor_user_id: "user-sol",
+      kind: "submission_created",
+      subject_kind: "submission",
+      subject_id: "sub-4-sol",
+      state: "unread",
+      metadata_json: '{"task_id":"task-4"}',
+      created_at: "2026-06-22T10:45:00Z",
+    }],
     tasks: [],
   };
 
@@ -799,6 +810,22 @@
     delete db.accountTokens[token];
     return true;
   }
+  function notify(recipientUserId, actorUserId, kind, subjectKind, subjectId, metadata) {
+    if (recipientUserId === actorUserId) return null;
+    const notification = {
+      id: nextId("notif"),
+      recipient_user_id: recipientUserId,
+      actor_user_id: actorUserId,
+      kind,
+      subject_kind: subjectKind,
+      subject_id: subjectId,
+      state: "unread",
+      metadata_json: JSON.stringify(metadata || {}),
+      created_at: new Date().toISOString(),
+    };
+    db.notifications.unshift(notification);
+    return notification;
+  }
 
   function match(method, path) {
     const segs = path.split("?")[0].split("/").filter((s) => s !== "");
@@ -1238,6 +1265,9 @@
       t.availability_kind = "reserved"; // availability stays reserved; the submission state carries "submitted"
       if (mineActive) mineActive.state = "submitted";
     }
+    notify(t.created_by, ME, "submission_created", "submission", s.id, {
+      task_id: t.id,
+    });
     return ok({ submission: s, receipt_token: nextId("receipt") }, 201);
   });
   function pushLedger(kind, amount, taskId) {
@@ -1297,6 +1327,16 @@
       if (reservation) reservation.state = "cancelled_by_requester";
       t.availability_kind = availability;
     }
+    notify(
+      s.submitter_id,
+      ME,
+      state === "changes_requested"
+        ? "submission_changes_requested"
+        : "submission_rejected",
+      "submission",
+      s.id,
+      { task_id: t.id },
+    );
     return ok({
       task_id: t.id,
       submission_id: s.id,
@@ -1362,6 +1402,9 @@
     t.escrow = 0;
     t.availability_kind = "closed";
     t.state = "closed";
+    notify(s.submitter_id, ME, "submission_accepted", "submission", s.id, {
+      task_id: t.id,
+    });
     return ok({
       task_id: t.id,
       submission_id: s.id,
@@ -1518,6 +1561,18 @@
     ok({
       events: [],
     }));
+  on("GET", "/api/notifications", () =>
+    ok({
+      notifications: db.notifications.filter((n) => n.recipient_user_id === ME),
+    }));
+  on("POST", "/api/notifications/:id/read", (p) => {
+    const notification = db.notifications.find((n) =>
+      n.id === p.id && n.recipient_user_id === ME
+    );
+    if (!notification) return err(404, "notification not found");
+    notification.state = "read";
+    return ok(notification);
+  });
   on("POST", "/api/tasks/:id/collectible-reward", (p, _url, body) => {
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");

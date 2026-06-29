@@ -668,6 +668,20 @@ func (testSubmissionService) FindByReceipt(context.Context, submission.ReceiptTo
 	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test submission service")}
 }
 
+func (testSubmissionService) Get(_ context.Context, actor auth.UserSubject, submissionID core.SubmissionID) submission.GetResult {
+	taskIDCreated := core.NewTaskID().(core.TaskIDCreated)
+	sourceResult := submission.NewResponseSource("{}")
+	sourceAccepted := sourceResult.(submission.ResponseSourceAccepted)
+	return submission.SubmissionGot{Value: submission.Submission{
+		ID:             submissionID,
+		TaskID:         taskIDCreated.Value,
+		SubmitterID:    actor.ID,
+		State:          submission.StateSubmitted,
+		ResponseSource: sourceAccepted.Value,
+		Validation:     submission.ValidationPassed{},
+	}}
+}
+
 func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }

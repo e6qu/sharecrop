@@ -8,6 +8,7 @@ import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
@@ -44,6 +45,7 @@ type Page
     | SeriesDetailPage String
     | TeamDetailPage String
     | AdminPage
+    | InboxPage
     | NotFoundPage
 
 
@@ -202,6 +204,8 @@ type alias LoggedInModel =
     , operations : Maybe Admin.OperationsResponse
     , auditEvents : List Admin.AuditEventResponse
     , adminMessage : Maybe String
+    , notifications : List Notification.NotificationResponse
+    , inboxMessage : Maybe String
     }
 
 
@@ -444,6 +448,9 @@ type Msg
     | DeactivateAccountReceived (Result Http.Error ())
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
+    | NotificationsReceived (Result Http.Error Notification.NotificationsResponse)
+    | MarkNotificationReadClicked String
+    | NotificationReadReceived (Result Http.Error Notification.NotificationResponse)
 
 
 pageToPath : Page -> String
@@ -502,6 +509,9 @@ pageToPath page =
 
         AdminPage ->
             "/admin"
+
+        InboxPage ->
+            "/inbox"
 
         NotFoundPage ->
             "/not-found"

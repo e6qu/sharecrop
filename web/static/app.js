@@ -5370,6 +5370,7 @@ var $author$project$Sharecrop$Types$CollectiblesPage = {$: 'CollectiblesPage'};
 var $author$project$Sharecrop$Types$CreateTaskPage = {$: 'CreateTaskPage'};
 var $author$project$Sharecrop$Types$DiscoveryPage = {$: 'DiscoveryPage'};
 var $author$project$Sharecrop$Types$FundingPage = {$: 'FundingPage'};
+var $author$project$Sharecrop$Types$InboxPage = {$: 'InboxPage'};
 var $author$project$Sharecrop$Types$NotFoundPage = {$: 'NotFoundPage'};
 var $author$project$Sharecrop$Types$OrganizationDetailPage = function (a) {
 	return {$: 'OrganizationDetailPage', a: a};
@@ -5411,7 +5412,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 		$elm$core$String$split,
 		'/',
 		A2($elm$core$String$dropLeft, 1, fragment));
-	_v0$18:
+	_v0$19:
 	while (true) {
 		if (_v0.b) {
 			if (!_v0.b.b) {
@@ -5432,10 +5433,12 @@ var $author$project$Main$pageFromUrl = function (url) {
 						return $author$project$Sharecrop$Types$SeriesListPage;
 					case 'admin':
 						return $author$project$Sharecrop$Types$AdminPage;
+					case 'inbox':
+						return $author$project$Sharecrop$Types$InboxPage;
 					case 'organizations':
 						return $author$project$Sharecrop$Types$OrganizationsPage;
 					default:
-						break _v0$18;
+						break _v0$19;
 				}
 			} else {
 				if (!_v0.b.b.b) {
@@ -5470,7 +5473,7 @@ var $author$project$Main$pageFromUrl = function (url) {
 							var userId = _v7.a;
 							return $author$project$Sharecrop$Types$UserDetailPage(userId);
 						default:
-							break _v0$18;
+							break _v0$19;
 					}
 				} else {
 					if ((_v0.a === 'users') && (!_v0.b.b.b.b)) {
@@ -5486,15 +5489,15 @@ var $author$project$Main$pageFromUrl = function (url) {
 								var _v11 = _v10.b;
 								return $author$project$Sharecrop$Types$UserSubmissionsPage(userId);
 							default:
-								break _v0$18;
+								break _v0$19;
 						}
 					} else {
-						break _v0$18;
+						break _v0$19;
 					}
 				}
 			}
 		} else {
-			break _v0$18;
+			break _v0$19;
 		}
 	}
 	return $author$project$Sharecrop$Types$NotFoundPage;
@@ -7978,6 +7981,10 @@ var $author$project$Main$enterPage = F2(
 				return _Utils_update(
 					state,
 					{adminMessage: $elm$core$Maybe$Nothing, auditEvents: _List_Nil, operations: $elm$core$Maybe$Nothing, page: page});
+			case 'InboxPage':
+				return _Utils_update(
+					state,
+					{inboxMessage: $elm$core$Maybe$Nothing, notifications: _List_Nil, page: page});
 			case 'CollectibleDetailPage':
 				return _Utils_update(
 					state,
@@ -8583,9 +8590,11 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundNonce: 0,
 		fundOrganizationId: '',
 		fundTaskId: '',
+		inboxMessage: $elm$core$Maybe$Nothing,
 		isAdmin: response.role === 'admin',
 		newCredential: $elm$core$Maybe$Nothing,
 		newPassword: '',
+		notifications: _List_Nil,
 		operations: $elm$core$Maybe$Nothing,
 		orgBalance: $elm$core$Maybe$Nothing,
 		orgCollectibles: _List_Nil,
@@ -8666,6 +8675,42 @@ var $elm$core$Maybe$map = F2(
 		} else {
 			return $elm$core$Maybe$Nothing;
 		}
+	});
+var $author$project$Sharecrop$Types$NotificationReadReceived = function (a) {
+	return {$: 'NotificationReadReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Notification$NotificationResponse = F9(
+	function (id, recipientUserID, actorUserID, kind, subjectKind, subjectID, state, metadataJSON, createdAt) {
+		return {actorUserID: actorUserID, createdAt: createdAt, id: id, kind: kind, metadataJSON: metadataJSON, recipientUserID: recipientUserID, state: state, subjectID: subjectID, subjectKind: subjectKind};
+	});
+var $author$project$Sharecrop$Generated$Notification$notificationResponseDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (finish) {
+		return A2(
+			$elm$json$Json$Decode$map,
+			finish,
+			A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
+	},
+	A9(
+		$elm$json$Json$Decode$map8,
+		$author$project$Sharecrop$Generated$Notification$NotificationResponse,
+		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'recipient_user_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'actor_user_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'subject_kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'metadata_json', $elm$json$Json$Decode$string)));
+var $author$project$Sharecrop$Api$markNotificationRead = F2(
+	function (token, notificationId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/notifications/' + (notificationId + '/read'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$NotificationReadReceived, $author$project$Sharecrop$Generated$Notification$notificationResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$membersFromResult = function (result) {
 	if (result.$ === 'Ok') {
@@ -9508,6 +9553,15 @@ var $author$project$Sharecrop$Api$removeSeriesTaskCommand = F3(
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
 	});
+var $author$project$Main$replaceNotification = F2(
+	function (replacement, notifications) {
+		return A2(
+			$elm$core$List$map,
+			function (notification) {
+				return _Utils_eq(notification.id, replacement.id) ? replacement : notification;
+			},
+			notifications);
+	});
 var $author$project$Sharecrop$Api$requestChangesBody = function (reviewNote) {
 	return $elm$json$Json$Encode$object(
 		_List_fromArray(
@@ -9763,6 +9817,28 @@ var $author$project$Sharecrop$Api$fetchDetailCommands = F3(
 					$author$project$Sharecrop$Api$fetchOrganizations(token)
 				]));
 	});
+var $author$project$Sharecrop$Types$NotificationsReceived = function (a) {
+	return {$: 'NotificationsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Notification$NotificationsResponse = function (notifications) {
+	return {notifications: notifications};
+};
+var $author$project$Sharecrop$Generated$Notification$notificationsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Notification$NotificationsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'notifications',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Notification$notificationResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchNotifications = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'GET',
+		token,
+		'/api/notifications',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$NotificationsReceived, $author$project$Sharecrop$Generated$Notification$notificationsResponseDecoder));
+};
 var $author$project$Sharecrop$Types$OrgCollectiblesReceived = function (a) {
 	return {$: 'OrgCollectiblesReceived', a: a};
 };
@@ -10016,6 +10092,8 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 							$elm$http$Http$emptyBody,
 							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AuditEventsReceived, $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder))
 						]));
+			case 'InboxPage':
+				return $author$project$Sharecrop$Api$fetchNotifications(token);
 			default:
 				return $elm$core$Platform$Cmd$none;
 		}
@@ -13782,6 +13860,78 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'NotificationsReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{inboxMessage: $elm$core$Maybe$Nothing, notifications: response.notifications});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										inboxMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error)),
+										notifications: _List_Nil
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'MarkNotificationReadClicked':
+				var notificationId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A2($author$project$Sharecrop$Api$markNotificationRead, state.accessToken, notificationId));
+					});
+			case 'NotificationReadReceived':
+				if (msg.a.$ === 'Ok') {
+					var notification = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										inboxMessage: $elm$core$Maybe$Nothing,
+										notifications: A2($author$project$Main$replaceNotification, notification, state.notifications)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										inboxMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'LinkClicked':
 				var request = msg.a;
 				if (request.$ === 'Internal') {
@@ -14227,6 +14377,8 @@ var $author$project$Sharecrop$Types$pageToPath = function (page) {
 			return '/teams/' + teamId;
 		case 'AdminPage':
 			return '/admin';
+		case 'InboxPage':
+			return '/inbox';
 		default:
 			return '/not-found';
 	}
@@ -14267,6 +14419,7 @@ var $author$project$Sharecrop$View$navBar = F4(
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$FundingPage, 'funding', 'Funding'),
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$AgentsPage, 'agents', 'Agents'),
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CollectiblesPage, 'collectibles', 'Collectibles'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$InboxPage, 'inbox', 'Inbox'),
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$SeriesListPage, 'series-list', 'Series'),
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OrganizationsPage, 'organizations', 'Organizations'),
 					isAdmin ? A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$AdminPage, 'admin', 'Admin') : $elm$html$Html$text(''),
@@ -17284,6 +17437,108 @@ var $author$project$Sharecrop$View$fundingView = function (state) {
 					]),
 				'Fund task'),
 				A2($author$project$Sharecrop$View$maybeNote, state.fundMessage, 'fund-message')
+			]));
+};
+var $author$project$Sharecrop$Types$MarkNotificationReadClicked = function (a) {
+	return {$: 'MarkNotificationReadClicked', a: a};
+};
+var $author$project$Sharecrop$View$notificationStateClass = function (state) {
+	return (state === 'unread') ? 'rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900' : 'rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600';
+};
+var $author$project$Sharecrop$View$notificationRow = function (notification) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('space-y-2 py-3 text-sm'),
+				$author$project$Sharecrop$Ui$testId('notification-row')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap items-center justify-between gap-2')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('font-medium text-slate-900')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(notification.kind + (' on ' + notification.subjectKind))
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class(
+								$author$project$Sharecrop$View$notificationStateClass(notification.state)),
+								$author$project$Sharecrop$Ui$testId('notification-state')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(notification.state)
+							]))
+					])),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('break-words text-xs text-slate-500')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Subject ' + (notification.subjectID + (' · actor ' + (notification.actorUserID + (' · ' + notification.createdAt)))))
+					])),
+				(notification.metadataJSON === '{}') ? $elm$html$Html$text('') : A2(
+				$author$project$Sharecrop$Ui$codeBlock,
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$Ui$testId('notification-metadata')
+					]),
+				notification.metadataJSON),
+				(notification.state === 'unread') ? A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Sharecrop$Types$MarkNotificationReadClicked(notification.id)),
+						$author$project$Sharecrop$Ui$testId('notification-mark-read')
+					]),
+				'Mark read') : $elm$html$Html$text('')
+			]));
+};
+var $author$project$Sharecrop$View$inboxView = function (state) {
+	return $author$project$Sharecrop$Ui$card(
+		_List_fromArray(
+			[
+				$author$project$Sharecrop$Ui$sectionTitle('Inbox'),
+				$elm$core$List$isEmpty(state.notifications) ? A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+						$author$project$Sharecrop$Ui$testId('inbox-empty')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('No notifications.')
+					])) : A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+						$author$project$Sharecrop$Ui$testId('inbox-list')
+					]),
+				A2($elm$core$List$map, $author$project$Sharecrop$View$notificationRow, state.notifications)),
+				A2($author$project$Sharecrop$View$maybeNote, state.inboxMessage, 'inbox-message')
 			]));
 };
 var $author$project$Sharecrop$Types$CreateOrgTeamClicked = {$: 'CreateOrgTeamClicked'};
@@ -21000,6 +21255,8 @@ var $author$project$Sharecrop$View$pageView = F2(
 				return A2($author$project$Sharecrop$View$teamDetailView, teamId, state);
 			case 'AdminPage':
 				return $author$project$Sharecrop$View$adminView(state);
+			case 'InboxPage':
+				return $author$project$Sharecrop$View$inboxView(state);
 			default:
 				return $author$project$Sharecrop$Ui$card(
 					_List_fromArray(

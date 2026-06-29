@@ -40,6 +40,8 @@ type MCPSessionPersistence interface {
 	CloseMCPSession(context.Context, string, time.Time) (bool, error)
 	ActiveMCPSessionCount(context.Context, time.Time) (int, error)
 	ActiveMCPSessionCountForSubject(context.Context, string, time.Time) (int, error)
+	AppendMCPEvent(context.Context, string, []byte, time.Time) (string, []byte, error)
+	ListMCPEvents(context.Context, string, string, int) ([]string, [][]byte, error)
 }
 
 type mcpHTTPSession struct {
@@ -200,11 +202,20 @@ func (store *mcpHTTPSessionStore) appendEvent(sessionID string, payload []byte) 
 			panic(fmt.Sprintf("touch MCP session failed: %v", err))
 		}
 	}
-	session.nextID++
-	eventID := session.id + "-" + strconv.FormatInt(session.nextID, 10)
 	copied := make([]byte, len(payload))
 	copy(copied, payload)
-	event := mcpHTTPEvent{id: eventID, payload: copied}
+	var event mcpHTTPEvent
+	if store.persistence != nil {
+		eventID, eventPayload, err := store.persistence.AppendMCPEvent(context.Background(), sessionID, copied, session.lastSeen)
+		if err != nil {
+			panic(fmt.Sprintf("append MCP event failed: %v", err))
+		}
+		event = mcpHTTPEvent{id: eventID, payload: eventPayload}
+	} else {
+		session.nextID++
+		eventID := session.id + "-" + strconv.FormatInt(session.nextID, 10)
+		event = mcpHTTPEvent{id: eventID, payload: copied}
+	}
 	session.events = append(session.events, event)
 	if len(session.events) > 100 {
 		session.events = session.events[len(session.events)-100:]
@@ -215,7 +226,7 @@ func (store *mcpHTTPSessionStore) appendEvent(sessionID string, payload []byte) 
 		default:
 		}
 	}
-	return eventID, true
+	return event.id, true
 }
 
 func (store *mcpHTTPSessionStore) replayAndSubscribe(sessionID string, lastEventID string) ([]mcpHTTPEvent, <-chan mcpHTTPEvent, func(), bool) {
@@ -226,18 +237,30 @@ func (store *mcpHTTPSessionStore) replayAndSubscribe(sessionID string, lastEvent
 		return nil, nil, func() {}, false
 	}
 	session.lastSeen = store.now()
-	start := 0
-	if lastEventID != "" {
-		start = len(session.events)
-		for index := range session.events {
-			if session.events[index].id == lastEventID {
-				start = index + 1
-				break
+	var events []mcpHTTPEvent
+	if store.persistence != nil {
+		eventIDs, payloads, err := store.persistence.ListMCPEvents(context.Background(), sessionID, lastEventID, 100)
+		if err != nil {
+			panic(fmt.Sprintf("list MCP events failed: %v", err))
+		}
+		events = make([]mcpHTTPEvent, 0, len(eventIDs))
+		for index := range eventIDs {
+			events = append(events, mcpHTTPEvent{id: eventIDs[index], payload: payloads[index]})
+		}
+	} else {
+		start := 0
+		if lastEventID != "" {
+			start = len(session.events)
+			for index := range session.events {
+				if session.events[index].id == lastEventID {
+					start = index + 1
+					break
+				}
 			}
 		}
+		events = make([]mcpHTTPEvent, len(session.events[start:]))
+		copy(events, session.events[start:])
 	}
-	events := make([]mcpHTTPEvent, len(session.events[start:]))
-	copy(events, session.events[start:])
 	session.nextSub++
 	subID := session.nextSub
 	subscriber := make(chan mcpHTTPEvent, 16)
@@ -275,7 +298,7 @@ func (store *mcpHTTPSessionStore) activeSessionCount() int {
 
 func (store *mcpHTTPSessionStore) storageKind() string {
 	if store.persistence != nil {
-		return "postgres_session_process_stream"
+		return "postgres_session_replay_process_stream"
 	}
 	return "process_memory"
 }
