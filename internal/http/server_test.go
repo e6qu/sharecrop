@@ -49,7 +49,7 @@ func TestIndex(t *testing.T) {
 }
 
 func TestParseTaskListFiltersAcceptsSearchQuery(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/api/tasks?query=queue", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/tasks?query=queue&task_type=code_review&sort=title_asc", nil)
 
 	result := parseTaskListFilters(request)
 	accepted, matched := result.(taskListFiltersAccepted)
@@ -62,6 +62,16 @@ func TestParseTaskListFiltersAcceptsSearchQuery(t *testing.T) {
 	}
 	if search.Value.String() != "queue" {
 		t.Fatalf("search query = %q, want queue", search.Value.String())
+	}
+	typeFilter, matched := accepted.value.Type.(task.TypeEquals)
+	if !matched {
+		t.Fatalf("type filter = %T, want TypeEquals", accepted.value.Type)
+	}
+	if typeFilter.Value.String() != "code_review" {
+		t.Fatalf("task type = %q, want code_review", typeFilter.Value.String())
+	}
+	if accepted.value.Sort != task.SortTitleAsc {
+		t.Fatalf("sort = %q, want title_asc", accepted.value.Sort.String())
 	}
 }
 
@@ -80,6 +90,15 @@ func TestParsePageStrictRejectsInvalidLimit(t *testing.T) {
 	result := parsePageStrict(request)
 	if _, matched := result.(pageParseRejected); !matched {
 		t.Fatalf("page = %T, want pageParseRejected", result)
+	}
+}
+
+func TestParseTaskListFiltersRejectsInvalidSort(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/tasks?sort=random", nil)
+
+	result := parseTaskListFilters(request)
+	if _, matched := result.(taskListFiltersRejected); !matched {
+		t.Fatalf("filters = %T, want taskListFiltersRejected", result)
 	}
 }
 

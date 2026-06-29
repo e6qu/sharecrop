@@ -147,6 +147,7 @@ func submissionToResponse(value submission.Submission) submissionResponse {
 		ResponseJSON:     value.ResponseSource.String(),
 		ReviewNote:       value.ReviewNote.String(),
 		ValidationErrors: errors,
+		SensitiveFields:  submissionSensitiveFieldsToResponse(value.SensitiveFields),
 	}
 }
 func submissionValidationErrorsToResponse(outcome submission.ValidationOutcome) []submissionValidationErrorResponse {
@@ -160,4 +161,18 @@ func submissionValidationErrorsToResponse(outcome submission.ValidationOutcome) 
 		errors = append(errors, submissionValidationErrorResponse{Path: validationError.Path, Message: validationError.Message})
 	}
 	return errors
+}
+
+func submissionSensitiveFieldsToResponse(fields []submission.SensitiveField) []submissionSensitiveFieldResponse {
+	values := make([]submissionSensitiveFieldResponse, 0, len(fields))
+	for fieldIndex := range fields {
+		field := fields[fieldIndex]
+		values = append(values, submissionSensitiveFieldResponse{
+			Path:      field.Path,
+			Category:  field.Category,
+			Retention: field.Retention,
+			Redaction: field.Redaction,
+		})
+	}
+	return values
 }

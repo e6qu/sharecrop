@@ -302,15 +302,85 @@ func (NoSearchFilter) searchFilter() {}
 
 func (SearchContains) searchFilter() {}
 
+// TypeFilter is an optional task-type filter for task listing. AnyTypeFilter
+// means no restriction; TypeEquals restricts the listing to one task type.
+type TypeFilter interface {
+	typeFilter()
+}
+
+type AnyTypeFilter struct{}
+
+type TypeEquals struct {
+	Value TaskType
+}
+
+func (AnyTypeFilter) typeFilter() {}
+
+func (TypeEquals) typeFilter() {}
+
+type SortOrder struct {
+	value string
+}
+
+var (
+	SortNewest     = SortOrder{value: "newest"}
+	SortOldest     = SortOrder{value: "oldest"}
+	SortTitleAsc   = SortOrder{value: "title_asc"}
+	SortTitleDesc  = SortOrder{value: "title_desc"}
+	SortRewardDesc = SortOrder{value: "reward_desc"}
+	SortRewardAsc  = SortOrder{value: "reward_asc"}
+)
+
+type SortOrderResult interface {
+	sortOrderResult()
+}
+
+type SortOrderAccepted struct {
+	Value SortOrder
+}
+
+type SortOrderRejected struct {
+	Reason core.DomainError
+}
+
+func (SortOrderAccepted) sortOrderResult() {}
+
+func (SortOrderRejected) sortOrderResult() {}
+
+func ParseSortOrder(raw string) SortOrderResult {
+	switch raw {
+	case "", SortNewest.value:
+		return SortOrderAccepted{Value: SortNewest}
+	case SortOldest.value:
+		return SortOrderAccepted{Value: SortOldest}
+	case SortTitleAsc.value:
+		return SortOrderAccepted{Value: SortTitleAsc}
+	case SortTitleDesc.value:
+		return SortOrderAccepted{Value: SortTitleDesc}
+	case SortRewardDesc.value:
+		return SortOrderAccepted{Value: SortRewardDesc}
+	case SortRewardAsc.value:
+		return SortOrderAccepted{Value: SortRewardAsc}
+	default:
+		return SortOrderRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task sort is invalid")}
+	}
+}
+
+func (order SortOrder) String() string {
+	return order.value
+}
+
 // ListFilters groups the optional discovery/list filters applied to a task listing.
 type ListFilters struct {
 	State         StateFilter
 	Participation ParticipationPolicyFilter
 	Search        SearchFilter
+	Type          TypeFilter
+	Sort          SortOrder
 }
 
 func NoListFilters() ListFilters {
-	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}, Search: NoSearchFilter{}}
+	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}, Search: NoSearchFilter{}, Type: AnyTypeFilter{}, Sort: SortNewest}
 }
 
 type PublicListScope struct {

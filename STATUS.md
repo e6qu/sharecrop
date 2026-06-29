@@ -1,12 +1,12 @@
 # Status
 
-The repository contains pull request 1 through pull request 82 work, merged into
-`main`, plus the current `task/server-queues-revisions-parity` branch.
+The repository contains pull request 1 through pull request 83 work, merged into
+`main`, plus the current `task/queue-revisions-ops-privacy` branch.
 
-Active task: server-side team/organization queue search and pagination,
-revision-inbox resubmission shortcuts, parity/contract expansion, raw-ID audit
-fixes, and backendless demo parity improvements are implemented on
-`task/server-queues-revisions-parity`. Email/provider delivery, anonymous worker
+Active task: richer queue tooling, revision-history polish, runtime/admin
+inspectability, contract/parity expansion, API/docs updates, and privacy
+workflow groundwork are being implemented on
+`task/queue-revisions-ops-privacy`. Email/provider delivery, anonymous worker
 identity, per-project tokens, external wallets, and crypto integrations are out
 of scope.
 
@@ -55,7 +55,13 @@ Current implemented surface:
 - Team detail pages split team work into review, ready-for-team, and
   assigned-to-team sections.
 - Team work and organization task queues support server-side search and
-  pagination. Organization task state filters are server-backed.
+  pagination, task-type filters, and sorting. Organization task state filters
+  are server-backed.
+- Admin audit event listing supports action, subject-kind, subject-id, and page
+  filters through the API and browser controls.
+- Submission responses include indexed sensitive-field metadata, and browser
+  submission history views show response bodies, validation errors, review
+  notes, sensitive-field summaries, and revision shortcuts where available.
 - Requester task lists and discovery lists have loaded-list search/filter
   controls.
 - Worker submission profile pages include a revision inbox for submissions in
@@ -80,7 +86,8 @@ Current implemented surface:
 - The shared scenario parity runner also covers organization reviewer acceptance
   of an organization-owned task funded from the organization balance.
 - The shared scenario parity runner covers submission-comment notifications and
-  team/organization queue search.
+  team/organization queue search/type/sort behavior plus sensitive-field
+  response metadata.
 - A GitHub Pages routing check script verifies deployed root/docs/demo entry
   paths and demo assets after deployment.
 - The Pages workflow runs the deployed routing check after GitHub Pages
@@ -123,18 +130,18 @@ Current verification:
 - `deno run --allow-read tools/check_policy.ts` passed.
 - `deno test --allow-read tests/deno` passed.
 - `make check-format` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
 - `go vet ./...` passed.
 - `go tool deadcode -test ./...` passed.
 - `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests`
   passed.
-- `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
 - `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts --no-deps --output=/Users/zardoz/projects/sharecrop/test-results tests/playwright/demo.spec.ts tests/playwright/mobile.spec.ts`
   passed against the already-running demo server.
 - `go test -tags http_e2e ./tests/http_e2e` was attempted locally but could not
   run because `DATABASE_URL` was not set and the sandbox blocked `httptest`
   network binding. The new HTTP E2E coverage is expected to run in PR
   `db-checks`.
-- PR 82 CI passed before merge.
+- PR 83 CI passed before merge.
 
 Blocking issues:
 

@@ -139,6 +139,17 @@ adminView state =
             Nothing ->
                 p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-operations-empty" ] [ text "Operations status is not loaded." ]
         , Ui.sectionTitle "Audit events"
+        , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-3" ]
+            [ Ui.fieldLabel "Action"
+                [ Ui.textInput [ placeholder "submission_accepted", value state.auditActionFilter, onInput AuditActionFilterChanged, testId "admin-audit-action" ] ]
+            , Ui.fieldLabel "Subject kind"
+                [ Ui.textInput [ placeholder "submission", value state.auditSubjectKindFilter, onInput AuditSubjectKindFilterChanged, testId "admin-audit-subject-kind" ] ]
+            , Ui.fieldLabel "Subject ID"
+                [ Ui.textInput [ placeholder "ID", value state.auditSubjectIDFilter, onInput AuditSubjectIDFilterChanged, testId "admin-audit-subject-id" ] ]
+            ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.secondaryButton [ type_ "button", onClick SearchAuditEventsClicked, testId "admin-audit-search" ] "Search"
+            ]
         , if List.isEmpty state.auditEvents then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-audit-empty" ] [ text "No audit events." ]
 
@@ -354,6 +365,8 @@ teamWorkDashboard teamId state =
     div [ Html.Attributes.class "space-y-4", testId "team-work-dashboard" ]
         [ Ui.fieldLabel "Search team work"
             [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.teamWorkQuery, onInput TeamWorkQueryChanged, testId "team-work-query" ] ]
+        , taskTypeFilterSelect "team-work-type" state.teamWorkTypeFilter TeamWorkTypeFilterChanged
+        , taskSortSelect "team-work-sort" state.teamWorkSort TeamWorkSortChanged
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             [ Ui.secondaryButton [ type_ "button", onClick SearchTeamWorkClicked, testId "team-work-search" ] "Search"
             ]
@@ -706,6 +719,9 @@ userSubmissionRow item =
         [ a [ href ("#/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline", testId "user-submission-task-link" ] [ text ("Task " ++ item.taskID) ]
         , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (submissionStateLabel item.state) ]
         , reviewNoteView item.reviewNote
+        , Ui.codeBlock [ testId "user-submission-response" ] item.responseJSON
+        , validationErrorsView item.validationErrors
+        , sensitiveFieldsView item.sensitiveFields
         ]
 
 
@@ -929,6 +945,8 @@ orgTaskControls state =
     div [ Html.Attributes.class "space-y-2" ]
         [ Ui.fieldLabel "Search organization tasks"
             [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.orgTaskQuery, onInput OrgTaskQueryChanged, testId "org-task-query" ] ]
+        , taskTypeFilterSelect "org-task-type" state.orgTaskTypeFilter OrgTaskTypeFilterChanged
+        , taskSortSelect "org-task-sort" state.orgTaskSort OrgTaskSortChanged
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             [ Ui.secondaryButton [ type_ "button", onClick SearchOrgTasksClicked, testId "org-task-search" ] "Search"
             ]
@@ -1591,6 +1609,8 @@ tasksView origin state =
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
         , Ui.fieldLabel "Search loaded tasks"
             [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.taskListQuery, onInput TaskListQueryChanged, testId "tasks-query" ] ]
+        , taskTypeFilterSelect "tasks-type" state.taskListTypeFilter TaskListTypeFilterChanged
+        , taskSortSelect "tasks-sort" state.taskListSort TaskListSortChanged
         , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset
         , tasksList visibleTasks
         ]
@@ -1618,6 +1638,50 @@ taskFilterButton selected ( tag, labelText ) =
                )
         )
         labelText
+
+
+taskTypeFilterSelect : String -> String -> (String -> Msg) -> Html Msg
+taskTypeFilterSelect identifier selectedType change =
+    Ui.fieldLabel "Task type"
+        [ select [ Html.Attributes.class Ui.fieldClass, value selectedType, onInput change, testId identifier ]
+            (List.map (stringOption selectedType) taskTypeFilterOptions)
+        ]
+
+
+taskTypeFilterOptions : List ( String, String )
+taskTypeFilterOptions =
+    [ ( "", "All types" )
+    , ( "general", "General" )
+    , ( "code_review", "Code review" )
+    , ( "security_review", "Security review" )
+    , ( "product_review", "Product review" )
+    , ( "ui_ux_review", "UI/UX review" )
+    , ( "qa_testing", "QA testing" )
+    ]
+
+
+taskSortSelect : String -> String -> (String -> Msg) -> Html Msg
+taskSortSelect identifier selectedSort change =
+    Ui.fieldLabel "Sort"
+        [ select [ Html.Attributes.class Ui.fieldClass, value selectedSort, onInput change, testId identifier ]
+            (List.map (stringOption selectedSort) taskSortOptions)
+        ]
+
+
+taskSortOptions : List ( String, String )
+taskSortOptions =
+    [ ( "newest", "Newest" )
+    , ( "oldest", "Oldest" )
+    , ( "title_asc", "Title A-Z" )
+    , ( "title_desc", "Title Z-A" )
+    , ( "reward_desc", "Reward high-low" )
+    , ( "reward_asc", "Reward low-high" )
+    ]
+
+
+stringOption : String -> ( String, String ) -> Html Msg
+stringOption selectedValue ( optionValue, labelText ) =
+    option [ value optionValue, selected (selectedValue == optionValue) ] [ text labelText ]
 
 
 organizationPicker : String -> String -> String -> (String -> Msg) -> (String -> Msg) -> Msg -> Msg -> Msg -> String -> List Organization.OrganizationResponse -> Int -> Html Msg
@@ -2341,6 +2405,7 @@ mySubmissionRow state submission =
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "my-submission-response" ] submission.responseJSON
         , validationErrorsView submission.validationErrors
+        , sensitiveFieldsView submission.sensitiveFields
         , submissionCommentsThread state submission
         ]
 
@@ -2501,6 +2566,24 @@ validationErrorsView errors =
 validationErrorView : Submission.SubmissionValidationErrorResponse -> Html Msg
 validationErrorView item =
     p [ Html.Attributes.class "text-xs text-red-700" ] [ text (item.path ++ ": " ++ item.message) ]
+
+
+sensitiveFieldsView : List Submission.SubmissionSensitiveFieldResponse -> Html Msg
+sensitiveFieldsView fields =
+    if List.isEmpty fields then
+        text ""
+
+    else
+        div [ Html.Attributes.class "space-y-1 rounded border border-slate-200 bg-slate-50 px-3 py-2", testId "submission-sensitive-fields" ]
+            (p [ Html.Attributes.class "text-xs font-semibold text-slate-700" ] [ text "Sensitive fields" ]
+                :: List.map sensitiveFieldView fields
+            )
+
+
+sensitiveFieldView : Submission.SubmissionSensitiveFieldResponse -> Html Msg
+sensitiveFieldView field =
+    p [ Html.Attributes.class "text-xs text-slate-600", testId "submission-sensitive-field" ]
+        [ text (field.path ++ " · " ++ field.category ++ " · " ++ field.retention ++ " · " ++ field.redaction) ]
 
 
 

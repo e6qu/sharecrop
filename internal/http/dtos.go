@@ -252,6 +252,13 @@ type submissionValidationErrorResponse struct {
 	Message string `json:"message"`
 }
 
+type submissionSensitiveFieldResponse struct {
+	Path      string `json:"path"`
+	Category  string `json:"category"`
+	Retention string `json:"retention"`
+	Redaction string `json:"redaction"`
+}
+
 type submissionResponse struct {
 	ID               string                              `json:"id"`
 	TaskID           string                              `json:"task_id"`
@@ -260,6 +267,7 @@ type submissionResponse struct {
 	ResponseJSON     string                              `json:"response_json"`
 	ReviewNote       string                              `json:"review_note"`
 	ValidationErrors []submissionValidationErrorResponse `json:"validation_errors"`
+	SensitiveFields  []submissionSensitiveFieldResponse  `json:"sensitive_fields"`
 }
 
 type submissionsResponse struct {

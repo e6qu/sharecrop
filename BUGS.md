@@ -23,6 +23,9 @@ Test gaps:
   credential/session/token revocation and email anonymization. Hard row deletion
   is intentionally not used because tasks, submissions, comments, ledger
   entries, and ownership rows reference users.
+- Submission responses expose indexed sensitive-field metadata for authorized
+  submission viewers. User-facing export/delete requests, retention jobs, and
+  audit events for sensitive-field access/deletion are still not implemented.
 - The asset economy is intentionally internal-only: rewards are Sharecrop
   credits and admin-minted Sharecrop collectibles. User-issued tokens,
   organization-issued tokens, per-project tokens, crypto rewards, and external

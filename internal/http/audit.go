@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,22 +55,61 @@ func (service *memoryAuditService) Record(_ context.Context, actor core.UserID, 
 	return audit.EventRecorded{}
 }
 
-func (service *memoryAuditService) List(_ context.Context, page core.Page) audit.ListResult {
+func (service *memoryAuditService) List(_ context.Context, filters audit.ListFilters, page core.Page) audit.ListResult {
 	service.mu.Lock()
 	defer service.mu.Unlock()
+	filtered := make([]audit.Event, 0, len(service.events))
+	for eventIndex := range service.events {
+		event := service.events[eventIndex]
+		if !auditEventMatchesFilters(event, filters) {
+			continue
+		}
+		filtered = append(filtered, event)
+	}
 	start := page.Offset()
-	if start > len(service.events) {
-		start = len(service.events)
+	if start > len(filtered) {
+		start = len(filtered)
 	}
 	end := start + page.Limit()
-	if end > len(service.events) {
-		end = len(service.events)
+	if end > len(filtered) {
+		end = len(filtered)
 	}
 	values := make([]audit.Event, 0, end-start)
 	for index := end - 1; index >= start; index-- {
-		values = append(values, service.events[index])
+		values = append(values, filtered[index])
 	}
 	return audit.EventsListed{Values: values}
+}
+
+func auditEventMatchesFilters(event audit.Event, filters audit.ListFilters) bool {
+	switch filter := filters.Action.(type) {
+	case audit.ActionEquals:
+		if event.Action.String() != filter.Value.String() {
+			return false
+		}
+	case audit.AnyAction:
+	default:
+		return false
+	}
+	switch filter := filters.SubjectKind.(type) {
+	case audit.SubjectKindEquals:
+		if event.Subject.Kind != filter.Value {
+			return false
+		}
+	case audit.AnySubjectKind:
+	default:
+		return false
+	}
+	switch filter := filters.SubjectID.(type) {
+	case audit.SubjectIDEquals:
+		if event.Subject.ID != filter.Value {
+			return false
+		}
+	case audit.AnySubjectID:
+	default:
+		return false
+	}
+	return true
 }
 
 func (server Server) listAuditEvents(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +124,8 @@ func (server Server) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.auditService.List(r.Context(), parsePage(r))
+	filters := parseAuditListFilters(r)
+	result := server.auditService.List(r.Context(), filters, parsePage(r))
 	listed, listedMatched := result.(audit.EventsListed)
 	if !listedMatched {
 		writeDomainError(w, result.(audit.ListRejected).Reason)
@@ -96,6 +137,20 @@ func (server Server) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		response.Events = append(response.Events, auditEventToResponse(event))
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func parseAuditListFilters(r *http.Request) audit.ListFilters {
+	filters := audit.NoListFilters()
+	if rawAction := strings.TrimSpace(r.URL.Query().Get("action")); rawAction != "" {
+		filters.Action = audit.ActionEquals{Value: audit.ActionFromString(rawAction)}
+	}
+	if rawSubjectKind := strings.TrimSpace(r.URL.Query().Get("subject_kind")); rawSubjectKind != "" {
+		filters.SubjectKind = audit.SubjectKindEquals{Value: rawSubjectKind}
+	}
+	if rawSubjectID := strings.TrimSpace(r.URL.Query().Get("subject_id")); rawSubjectID != "" {
+		filters.SubjectID = audit.SubjectIDEquals{Value: rawSubjectID}
+	}
+	return filters
 }
 
 func (server Server) recordAudit(w http.ResponseWriter, ctx context.Context, actor core.UserID, action audit.Action, subject audit.Subject, metadata audit.Metadata) bool {

@@ -29,13 +29,42 @@ func (store AuditStore) Record(ctx context.Context, event audit.Event) audit.Rec
 	return audit.EventRecorded{}
 }
 
-func (store AuditStore) List(ctx context.Context, page core.Page) audit.ListResult {
+func (store AuditStore) List(ctx context.Context, filters audit.ListFilters, page core.Page) audit.ListResult {
+	where := ""
+	arguments := pgx.NamedArgs{"limit": page.Limit(), "offset": page.Offset()}
+
+	switch filter := filters.Action.(type) {
+	case audit.ActionEquals:
+		arguments["action"] = filter.Value.String()
+		where += " where action = @action"
+	case audit.AnyAction:
+	default:
+		return audit.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "audit action filter is invalid")}
+	}
+	switch filter := filters.SubjectKind.(type) {
+	case audit.SubjectKindEquals:
+		arguments["subject_kind"] = filter.Value
+		where += auditFilterPrefix(where) + " subject_kind = @subject_kind"
+	case audit.AnySubjectKind:
+	default:
+		return audit.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "audit subject kind filter is invalid")}
+	}
+	switch filter := filters.SubjectID.(type) {
+	case audit.SubjectIDEquals:
+		arguments["subject_id"] = filter.Value
+		where += auditFilterPrefix(where) + " subject_id = @subject_id"
+	case audit.AnySubjectID:
+	default:
+		return audit.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "audit subject id filter is invalid")}
+	}
+
 	rows, err := store.pool.Query(ctx, `
 		select id::text, actor_user_id::text, action, subject_kind, subject_id, metadata_json::text, created_at
 		from audit_events
+		`+where+`
 		order by created_at desc, id desc
-		limit $1 offset $2
-	`, page.Limit(), page.Offset())
+		limit @limit offset @offset
+	`, arguments)
 	if err != nil {
 		return audit.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list audit events failed")}
 	}
@@ -54,6 +83,13 @@ func (store AuditStore) List(ctx context.Context, page core.Page) audit.ListResu
 		return audit.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read audit events failed")}
 	}
 	return audit.EventsListed{Values: events}
+}
+
+func auditFilterPrefix(where string) string {
+	if where == "" {
+		return " where"
+	}
+	return " and"
 }
 
 type auditEventResult interface {

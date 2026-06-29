@@ -553,6 +553,15 @@ func submissionModule() Module {
 				},
 			},
 			Product{
+				Name: NewElmTypeName("SubmissionSensitiveFieldResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("path"), JSONName: NewJSONFieldName("path"), Type: StringRef{}},
+					{Name: NewElmValueName("category"), JSONName: NewJSONFieldName("category"), Type: StringRef{}},
+					{Name: NewElmValueName("retention"), JSONName: NewJSONFieldName("retention"), Type: StringRef{}},
+					{Name: NewElmValueName("redaction"), JSONName: NewJSONFieldName("redaction"), Type: StringRef{}},
+				},
+			},
+			Product{
 				Name: NewElmTypeName("SubmissionResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
@@ -562,6 +571,7 @@ func submissionModule() Module {
 					{Name: NewElmValueName("responseJSON"), JSONName: NewJSONFieldName("response_json"), Type: StringRef{}},
 					{Name: NewElmValueName("reviewNote"), JSONName: NewJSONFieldName("review_note"), Type: StringRef{}},
 					{Name: NewElmValueName("validationErrors"), JSONName: NewJSONFieldName("validation_errors"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionValidationErrorResponse")}}},
+					{Name: NewElmValueName("sensitiveFields"), JSONName: NewJSONFieldName("sensitive_fields"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionSensitiveFieldResponse")}}},
 				},
 			},
 			Product{

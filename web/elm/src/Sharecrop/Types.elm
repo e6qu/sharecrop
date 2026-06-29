@@ -111,6 +111,8 @@ type alias LoggedInModel =
     , taskStateFilter : String
     , taskListOffset : Int
     , taskListQuery : String
+    , taskListTypeFilter : String
+    , taskListSort : String
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
     , credentials : List Agent.AgentCredentialResponse
@@ -159,6 +161,8 @@ type alias LoggedInModel =
     , orgTasks : List Task.TaskListItemResponse
     , orgTaskQuery : String
     , orgTaskFilter : String
+    , orgTaskTypeFilter : String
+    , orgTaskSort : String
     , orgTaskOffset : Int
     , orgTaskMessage : Maybe String
     , orgCollectibles : List Collectible.CollectibleResponse
@@ -186,6 +190,8 @@ type alias LoggedInModel =
     , teamWork : List Task.TaskListItemResponse
     , teamWorkQuery : String
     , teamWorkFilter : String
+    , teamWorkTypeFilter : String
+    , teamWorkSort : String
     , teamWorkOffset : Int
     , teamWorkMessage : Maybe String
     , teamMemberEmail : String
@@ -226,6 +232,9 @@ type alias LoggedInModel =
     , orgTeamOffset : Int
     , operations : Maybe Admin.OperationsResponse
     , auditEvents : List Admin.AuditEventResponse
+    , auditActionFilter : String
+    , auditSubjectKindFilter : String
+    , auditSubjectIDFilter : String
     , adminMessage : Maybe String
     , notifications : List Notification.NotificationResponse
     , inboxMessage : Maybe String
@@ -295,6 +304,8 @@ type Msg
     | TasksReceived (Result Http.Error Task.TasksResponse)
     | TaskStateFilterChanged String
     | TaskListQueryChanged String
+    | TaskListTypeFilterChanged String
+    | TaskListSortChanged String
     | PreviousTasksPageClicked
     | NextTasksPageClicked
     | CreateTitleChanged String
@@ -448,6 +459,8 @@ type Msg
     | TeamWorkReceived (Result Http.Error Task.TasksResponse)
     | TeamWorkQueryChanged String
     | TeamWorkFilterChanged String
+    | TeamWorkTypeFilterChanged String
+    | TeamWorkSortChanged String
     | SearchTeamWorkClicked
     | PreviousTeamWorkPageClicked
     | NextTeamWorkPageClicked
@@ -457,6 +470,8 @@ type Msg
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | OrgTaskQueryChanged String
     | OrgTaskFilterChanged String
+    | OrgTaskTypeFilterChanged String
+    | OrgTaskSortChanged String
     | SearchOrgTasksClicked
     | PreviousOrgTasksPageClicked
     | NextOrgTasksPageClicked
@@ -502,6 +517,10 @@ type Msg
     | DeactivateAccountReceived (Result Http.Error ())
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
+    | AuditActionFilterChanged String
+    | AuditSubjectKindFilterChanged String
+    | AuditSubjectIDFilterChanged String
+    | SearchAuditEventsClicked
     | NotificationsReceived (Result Http.Error Notification.NotificationsResponse)
     | MarkNotificationReadClicked String
     | NotificationReadReceived (Result Http.Error Notification.NotificationResponse)

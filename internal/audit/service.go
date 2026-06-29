@@ -55,7 +55,7 @@ func EmptyMetadata() Metadata {
 
 type Store interface {
 	Record(context.Context, Event) RecordResult
-	List(context.Context, core.Page) ListResult
+	List(context.Context, ListFilters, core.Page) ListResult
 }
 
 type Service struct {
@@ -112,6 +112,58 @@ func (EventsListed) listResult() {}
 
 func (ListRejected) listResult() {}
 
-func (service Service) List(ctx context.Context, page core.Page) ListResult {
-	return service.store.List(ctx, page)
+type ListFilters struct {
+	Action      ActionFilter
+	SubjectKind SubjectKindFilter
+	SubjectID   SubjectIDFilter
+}
+
+func NoListFilters() ListFilters {
+	return ListFilters{Action: AnyAction{}, SubjectKind: AnySubjectKind{}, SubjectID: AnySubjectID{}}
+}
+
+type ActionFilter interface {
+	actionFilter()
+}
+
+type AnyAction struct{}
+
+type ActionEquals struct {
+	Value Action
+}
+
+func (AnyAction) actionFilter() {}
+
+func (ActionEquals) actionFilter() {}
+
+type SubjectKindFilter interface {
+	subjectKindFilter()
+}
+
+type AnySubjectKind struct{}
+
+type SubjectKindEquals struct {
+	Value string
+}
+
+func (AnySubjectKind) subjectKindFilter() {}
+
+func (SubjectKindEquals) subjectKindFilter() {}
+
+type SubjectIDFilter interface {
+	subjectIDFilter()
+}
+
+type AnySubjectID struct{}
+
+type SubjectIDEquals struct {
+	Value string
+}
+
+func (AnySubjectID) subjectIDFilter() {}
+
+func (SubjectIDEquals) subjectIDFilter() {}
+
+func (service Service) List(ctx context.Context, filters ListFilters, page core.Page) ListResult {
+	return service.store.List(ctx, filters, page)
 }

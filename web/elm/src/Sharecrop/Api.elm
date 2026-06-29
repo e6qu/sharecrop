@@ -258,7 +258,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "" "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -285,7 +285,7 @@ refreshTasksAndLedger : Model -> Cmd Msg
 refreshTasksAndLedger model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListOffset, fetchBalance state.accessToken, fetchLedger state.accessToken ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset, fetchBalance state.accessToken, fetchLedger state.accessToken ]
 
         LoggedOut ->
             Cmd.none
@@ -295,7 +295,7 @@ refreshTasksAndDiscovery : Model -> Cmd Msg
 refreshTasksAndDiscovery model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListOffset, fetchDiscovery state.accessToken state.discoveryIncludeReserved state.discoveryOffset ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset, fetchDiscovery state.accessToken state.discoveryIncludeReserved state.discoveryOffset ]
 
         LoggedOut ->
             Cmd.none
@@ -308,7 +308,7 @@ routeLoadCmd token subjectId page =
             Cmd.batch [ fetchBalance token, fetchLedger token ]
 
         TasksPage ->
-            fetchTasks token "" 0
+            fetchTasks token "" "" "newest" 0
 
         CreateTaskPage ->
             Cmd.batch [ fetchOrganizations token, fetchCollectibles token, fetchUserDirectory token, fetchStandaloneTeams token ]
@@ -320,13 +320,13 @@ routeLoadCmd token subjectId page =
             fetchDiscovery token False 0
 
         FundingPage ->
-            Cmd.batch [ fetchTasks token "" 0, fetchOrganizations token ]
+            Cmd.batch [ fetchTasks token "" "" "newest" 0, fetchOrganizations token ]
 
         AgentsPage ->
             fetchCredentials token
 
         CollectiblesPage ->
-            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token "" 0, fetchOrganizations token ]
+            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token "" "" "newest" 0, fetchOrganizations token ]
 
         OrganizationsPage ->
             fetchOrganizations token
@@ -355,14 +355,14 @@ routeLoadCmd token subjectId page =
         TeamDetailPage teamId ->
             Cmd.batch
                 [ authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
-                , fetchTeamWork token teamId "" 0
+                , fetchTeamWork token teamId "" "" "newest" 0
                 , fetchTeamCollectibles token teamId
                 ]
 
         AdminPage ->
             Cmd.batch
                 [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (Http.expectJson OperationsReceived Admin.operationsResponseDecoder)
-                , authorizedRequest "GET" token "/api/admin/audit-events" Http.emptyBody (Http.expectJson AuditEventsReceived Admin.auditEventsResponseDecoder)
+                , fetchAuditEvents token "" "" ""
                 ]
 
         InboxPage ->
@@ -582,41 +582,61 @@ fetchLedger token =
     authorizedRequest "GET" token "/api/credits/ledger" Http.emptyBody (Http.expectJson LedgerReceived Ledger.ledgerResponseDecoder)
 
 
-fetchTasks : String -> String -> Int -> Cmd Msg
-fetchTasks token stateFilter offset =
+fetchTasks : String -> String -> String -> String -> Int -> Cmd Msg
+fetchTasks token stateFilter typeFilter sortOrder offset =
     let
         pageQuery =
             "limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset
 
-        query =
+        stateQuery =
             if stateFilter == "" then
-                "/api/tasks?scope=user&" ++ pageQuery
+                ""
 
             else
-                "/api/tasks?scope=user&state=" ++ stateFilter ++ "&" ++ pageQuery
+                "&state=" ++ Url.percentEncode stateFilter
+
+        typeQuery =
+            if typeFilter == "" then
+                ""
+
+            else
+                "&task_type=" ++ Url.percentEncode typeFilter
+
+        sortQuery =
+            "&sort=" ++ Url.percentEncode sortOrder
     in
-    authorizedRequest "GET" token query Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
+    authorizedRequest "GET" token ("/api/tasks?scope=user&" ++ pageQuery ++ stateQuery ++ typeQuery ++ sortQuery) Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
 
 
-taskSearchParams : String -> Int -> String
-taskSearchParams queryText offset =
+taskSearchParams : String -> String -> String -> Int -> String
+taskSearchParams queryText typeFilter sortOrder offset =
     let
         pageQuery =
             "limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset
 
         trimmed =
             String.trim queryText
+
+        queryPart =
+            if trimmed == "" then
+                ""
+
+            else
+                "&query=" ++ Url.percentEncode trimmed
+
+        typePart =
+            if typeFilter == "" then
+                ""
+
+            else
+                "&task_type=" ++ Url.percentEncode typeFilter
     in
-    if trimmed == "" then
-        pageQuery
-
-    else
-        pageQuery ++ "&query=" ++ Url.percentEncode trimmed
+    pageQuery ++ queryPart ++ typePart ++ "&sort=" ++ Url.percentEncode sortOrder
 
 
-fetchTeamWork : String -> String -> String -> Int -> Cmd Msg
-fetchTeamWork token teamId queryText offset =
-    authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/work?" ++ taskSearchParams queryText offset) Http.emptyBody (Http.expectJson TeamWorkReceived Task.tasksResponseDecoder)
+fetchTeamWork : String -> String -> String -> String -> String -> Int -> Cmd Msg
+fetchTeamWork token teamId queryText typeFilter sortOrder offset =
+    authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/work?" ++ taskSearchParams queryText typeFilter sortOrder offset) Http.emptyBody (Http.expectJson TeamWorkReceived Task.tasksResponseDecoder)
 
 
 fetchCredentials : String -> Cmd Msg
@@ -896,12 +916,12 @@ loadOrganization token organizationId =
             [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (Http.expectJson OrgBalanceReceived Ledger.balanceResponseDecoder)
             , fetchOrgTeams token organizationId
             , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder)
-            , fetchOrgTasksPage token organizationId "" "" 0
+            , fetchOrgTasksPage token organizationId "" "" "" "newest" 0
             ]
 
 
-fetchOrgTasksPage : String -> String -> String -> String -> Int -> Cmd Msg
-fetchOrgTasksPage token organizationId queryText stateFilter offset =
+fetchOrgTasksPage : String -> String -> String -> String -> String -> String -> Int -> Cmd Msg
+fetchOrgTasksPage token organizationId queryText stateFilter typeFilter sortOrder offset =
     let
         stateQuery =
             if stateFilter == "" then
@@ -910,7 +930,34 @@ fetchOrgTasksPage token organizationId queryText stateFilter offset =
             else
                 "&state=" ++ stateFilter
     in
-    authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId ++ "&" ++ taskSearchParams queryText offset ++ stateQuery) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
+    authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId ++ "&" ++ taskSearchParams queryText typeFilter sortOrder offset ++ stateQuery) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
+
+
+fetchAuditEvents : String -> String -> String -> String -> Cmd Msg
+fetchAuditEvents token actionFilter subjectKindFilter subjectIDFilter =
+    let
+        actionQuery =
+            if String.trim actionFilter == "" then
+                ""
+
+            else
+                "&action=" ++ Url.percentEncode (String.trim actionFilter)
+
+        subjectKindQuery =
+            if String.trim subjectKindFilter == "" then
+                ""
+
+            else
+                "&subject_kind=" ++ Url.percentEncode (String.trim subjectKindFilter)
+
+        subjectIDQuery =
+            if String.trim subjectIDFilter == "" then
+                ""
+
+            else
+                "&subject_id=" ++ Url.percentEncode (String.trim subjectIDFilter)
+    in
+    authorizedRequest "GET" token ("/api/admin/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0" ++ actionQuery ++ subjectKindQuery ++ subjectIDQuery) Http.emptyBody (Http.expectJson AuditEventsReceived Admin.auditEventsResponseDecoder)
 
 
 fetchOrgTeams : String -> String -> Cmd Msg

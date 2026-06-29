@@ -772,8 +772,35 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task search filter is invalid")}
 	}
 
+	switch typeFilter := filters.Type.(type) {
+	case task.TypeEquals:
+		arguments["filter_task_type"] = typeFilter.Value.String()
+		where += " and tasks.task_type = @filter_task_type"
+	case task.AnyTypeFilter:
+	default:
+		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task type filter is invalid")}
+	}
+
+	orderBy := " order by tasks.created_at desc, tasks.id desc"
+	switch filters.Sort {
+	case task.SortNewest:
+		orderBy = " order by tasks.created_at desc, tasks.id desc"
+	case task.SortOldest:
+		orderBy = " order by tasks.created_at asc, tasks.id asc"
+	case task.SortTitleAsc:
+		orderBy = " order by lower(tasks.title) asc, tasks.created_at desc, tasks.id desc"
+	case task.SortTitleDesc:
+		orderBy = " order by lower(tasks.title) desc, tasks.created_at desc, tasks.id desc"
+	case task.SortRewardDesc:
+		orderBy = " order by coalesce(tasks.reward_credit_amount, 0) desc, tasks.created_at desc, tasks.id desc"
+	case task.SortRewardAsc:
+		orderBy = " order by coalesce(tasks.reward_credit_amount, 0) asc, tasks.created_at desc, tasks.id desc"
+	default:
+		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task sort is invalid")}
+	}
+
 	return listQueryAccepted{
-		sql:       taskListSelectSQL() + where + " order by tasks.created_at desc limit @limit offset @offset",
+		sql:       taskListSelectSQL() + where + orderBy + " limit @limit offset @offset",
 		arguments: arguments,
 	}
 }
