@@ -175,6 +175,13 @@ emptyLoggedIn response =
     , accountMessage = Nothing
     , userDirectory = []
     , userDirectoryQuery = ""
+    , userDirectoryOffset = 0
+    , organizationQuery = ""
+    , organizationOffset = 0
+    , standaloneTeamQuery = ""
+    , standaloneTeamOffset = 0
+    , orgTeamQuery = ""
+    , orgTeamOffset = 0
     , operations = Nothing
     , auditEvents = []
     , adminMessage = Nothing
@@ -219,6 +226,15 @@ replaceNotification replacement notifications =
                 notification
         )
         notifications
+
+
+orgTeamSearchOrganizationID : LoggedInModel -> String
+orgTeamSearchOrganizationID state =
+    if state.reservationOrganizationId /= "" then
+        state.reservationOrganizationId
+
+    else
+        state.activeOrgId
 
 
 loggedInForPage : Auth.AuthResponse -> Page -> LoggedInModel
@@ -742,7 +758,7 @@ update msg model =
         ReservationOrganizationIdChanged value ->
             Api.withSession model
                 (\state ->
-                    ( Api.updateLoggedIn model (\current -> { current | reservationOrganizationId = value, reservationTeamId = "", orgTeams = [] })
+                    ( Api.updateLoggedIn model (\current -> { current | reservationOrganizationId = value, reservationTeamId = "", orgTeams = [], orgTeamQuery = "", orgTeamOffset = 0 })
                     , if value == "" then
                         Cmd.none
 
@@ -975,12 +991,131 @@ update msg model =
             )
 
         UserDirectoryQueryChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | userDirectoryQuery = value }), Cmd.none )
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | userDirectoryQuery = value, userDirectoryOffset = 0 }), Api.fetchUserDirectoryPage state.accessToken value 0 )
+                )
 
         SearchUserDirectoryClicked ->
             Api.withSession model
                 (\state ->
-                    ( model, Api.fetchUserDirectoryQuery state.accessToken state.userDirectoryQuery )
+                    ( Api.updateLoggedIn model (\current -> { current | userDirectoryOffset = 0 }), Api.fetchUserDirectoryPage state.accessToken state.userDirectoryQuery 0 )
+                )
+
+        PreviousUserDirectoryPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.userDirectoryOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | userDirectoryOffset = offset }), Api.fetchUserDirectoryPage state.accessToken state.userDirectoryQuery offset )
+                )
+
+        NextUserDirectoryPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.userDirectoryOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | userDirectoryOffset = offset }), Api.fetchUserDirectoryPage state.accessToken state.userDirectoryQuery offset )
+                )
+
+        OrganizationQueryChanged value ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | organizationQuery = value, organizationOffset = 0 }), Api.fetchOrganizationsPage state.accessToken value 0 )
+                )
+
+        SearchOrganizationsClicked ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | organizationOffset = 0 }), Api.fetchOrganizationsPage state.accessToken state.organizationQuery 0 )
+                )
+
+        PreviousOrganizationsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.organizationOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | organizationOffset = offset }), Api.fetchOrganizationsPage state.accessToken state.organizationQuery offset )
+                )
+
+        NextOrganizationsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.organizationOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | organizationOffset = offset }), Api.fetchOrganizationsPage state.accessToken state.organizationQuery offset )
+                )
+
+        StandaloneTeamQueryChanged value ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | standaloneTeamQuery = value, standaloneTeamOffset = 0 }), Api.fetchStandaloneTeamsPage state.accessToken value 0 )
+                )
+
+        SearchStandaloneTeamsClicked ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | standaloneTeamOffset = 0 }), Api.fetchStandaloneTeamsPage state.accessToken state.standaloneTeamQuery 0 )
+                )
+
+        PreviousStandaloneTeamsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.standaloneTeamOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | standaloneTeamOffset = offset }), Api.fetchStandaloneTeamsPage state.accessToken state.standaloneTeamQuery offset )
+                )
+
+        NextStandaloneTeamsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.standaloneTeamOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | standaloneTeamOffset = offset }), Api.fetchStandaloneTeamsPage state.accessToken state.standaloneTeamQuery offset )
+                )
+
+        OrgTeamQueryChanged value ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | orgTeamQuery = value, orgTeamOffset = 0 }), Api.fetchOrgTeamsPage state.accessToken (orgTeamSearchOrganizationID state) value 0 )
+                )
+
+        SearchOrgTeamsClicked ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | orgTeamOffset = 0 }), Api.fetchOrgTeamsPage state.accessToken (orgTeamSearchOrganizationID state) state.orgTeamQuery 0 )
+                )
+
+        PreviousOrgTeamsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.orgTeamOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgTeamOffset = offset }), Api.fetchOrgTeamsPage state.accessToken (orgTeamSearchOrganizationID state) state.orgTeamQuery offset )
+                )
+
+        NextOrgTeamsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.orgTeamOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgTeamOffset = offset }), Api.fetchOrgTeamsPage state.accessToken (orgTeamSearchOrganizationID state) state.orgTeamQuery offset )
                 )
 
         OrgMembersReceived result ->

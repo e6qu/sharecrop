@@ -26,10 +26,12 @@ test("task creation uses directory selectors and funds selected collectible rewa
   expect(targetResponse.ok()).toBeTruthy();
   const target = (await targetResponse.json()) as AuthBody;
 
+  const teamName =
+    `${selectorRewardScenario.teamNamePrefix} ${crypto.randomUUID()}`;
   const teamResponse = await request.post("/api/teams", {
     headers: { Authorization: `Bearer ${owner.access_token}` },
     data: {
-      name: `${selectorRewardScenario.teamNamePrefix} ${crypto.randomUUID()}`,
+      name: teamName,
     },
   });
   expect(teamResponse.ok()).toBeTruthy();
@@ -67,7 +69,9 @@ test("task creation uses directory selectors and funds selected collectible rewa
 
   await page.getByTestId("create-visibility-user").click();
   await page.getByTestId("create-scope-user-query").fill(targetEmail);
-  await page.getByTestId("create-scope-user-search").click();
+  await expect(page.getByTestId("create-scope-user")).toContainText(
+    targetEmail,
+  );
   await page.getByTestId("create-scope-user").selectOption({
     label: targetEmail,
   });
@@ -76,6 +80,10 @@ test("task creation uses directory selectors and funds selected collectible rewa
   );
 
   await page.getByTestId("create-visibility-team").click();
+  await page.getByTestId("create-scope-team-query").fill(
+    selectorRewardScenario.teamNamePrefix,
+  );
+  await expect(page.getByTestId("create-scope-team")).toContainText(teamName);
   await page.getByTestId("create-scope-team").selectOption(team.id);
   await expect(page.getByTestId("create-scope-team")).toHaveValue(team.id);
 

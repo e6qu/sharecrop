@@ -157,6 +157,35 @@
   let seq = 100;
   const nextId = (prefix) => `${prefix}-${++seq}`;
 
+  function positiveIntParam(url, name, defaultValue) {
+    const raw = url.searchParams.get(name);
+    if (raw === null || raw === "") return defaultValue;
+    const value = parseInt(raw, 10);
+    if (!Number.isInteger(value) || String(value) !== raw || value < 1) {
+      throw new Error(`invalid ${name} query parameter`);
+    }
+    return value;
+  }
+
+  function nonNegativeIntParam(url, name) {
+    const raw = url.searchParams.get(name);
+    if (raw === null || raw === "") return 0;
+    const value = parseInt(raw, 10);
+    if (!Number.isInteger(value) || String(value) !== raw || value < 0) {
+      throw new Error(`invalid ${name} query parameter`);
+    }
+    return value;
+  }
+
+  function selectorPage(url, items, matches) {
+    const query = (url.searchParams.get("query") || "").trim().toLowerCase();
+    const limit = Math.min(100, positiveIntParam(url, "limit", 50));
+    const offset = nonNegativeIntParam(url, "offset");
+    return items
+      .filter((item) => query === "" || matches(item, query))
+      .slice(offset, offset + limit);
+  }
+
   function task(overrides) {
     return Object.assign({
       id: nextId("task"),
@@ -810,7 +839,14 @@
     delete db.accountTokens[token];
     return true;
   }
-  function notify(recipientUserId, actorUserId, kind, subjectKind, subjectId, metadata) {
+  function notify(
+    recipientUserId,
+    actorUserId,
+    kind,
+    subjectKind,
+    subjectId,
+    metadata,
+  ) {
     if (recipientUserId === actorUserId) return null;
     const notification = {
       id: nextId("notif"),
@@ -1589,7 +1625,16 @@
   on(
     "GET",
     "/api/organizations",
-    () => ok({ organizations: db.organizations }),
+    (_p, url) =>
+      ok({
+        organizations: selectorPage(
+          url,
+          db.organizations,
+          (organization, query) =>
+            organization.name.toLowerCase().includes(query) ||
+            organization.id.toLowerCase().includes(query),
+        ),
+      }),
   );
   on("POST", "/api/organizations", (_p, _url, body) => {
     const o = {
@@ -1655,7 +1700,16 @@
   on(
     "GET",
     "/api/organizations/:id/teams",
-    (p) => ok({ teams: db.orgTeams[p.id] || [] }),
+    (p, url) =>
+      ok({
+        teams: selectorPage(
+          url,
+          db.orgTeams[p.id] || [],
+          (team, query) =>
+            team.name.toLowerCase().includes(query) ||
+            team.id.toLowerCase().includes(query),
+        ),
+      }),
   );
   on("POST", "/api/organizations/:id/teams", (p, _url, body) => {
     const team = {
@@ -1670,7 +1724,16 @@
     return ok(team, 201);
   });
 
-  on("GET", "/api/teams", () => ok({ teams: db.standaloneTeams }));
+  on("GET", "/api/teams", (_p, url) =>
+    ok({
+      teams: selectorPage(
+        url,
+        db.standaloneTeams,
+        (team, query) =>
+          team.name.toLowerCase().includes(query) ||
+          team.id.toLowerCase().includes(query),
+      ),
+    }));
   on("POST", "/api/teams", (_p, _url, body) => {
     const team = {
       id: nextId("team"),
@@ -1698,8 +1761,7 @@
           t.visibility_id === p.id || t.active_assignee_id === p.id
         )
         .map(taskListItem),
-    })
-  );
+    }));
   on("POST", "/api/teams/:id/members", (p, _url, body) => {
     const team = db.standaloneTeams.concat(...Object.values(db.orgTeams)).find((
       x,
@@ -1812,20 +1874,13 @@
     return ok(comment, 201);
   });
   on("GET", "/api/users", (_p, url) => {
-    const query = (url.searchParams.get("query") || "").trim().toLowerCase();
-    const pageSize = Math.max(
-      1,
-      Math.min(
-        100,
-        parseInt(url.searchParams.get("page_size") || "50", 10) || 50,
-      ),
+    const users = selectorPage(
+      url,
+      db.users,
+      (user, query) =>
+        user.email.toLowerCase().includes(query) ||
+        user.id.toLowerCase().includes(query),
     );
-    const users = db.users
-      .filter((u) =>
-        query === "" || u.email.toLowerCase().includes(query) ||
-        u.id.toLowerCase().includes(query)
-      )
-      .slice(0, pageSize);
     return ok({ users });
   });
   on(
@@ -1900,7 +1955,9 @@
       return Promise.resolve(found.handler(found.params, url, body));
     } catch (e) {
       console.error("[demo-backend] handler error", method, url.pathname, e);
-      return Promise.resolve(err(500, "demo backend error"));
+      return Promise.resolve(
+        err(500, e && e.message ? e.message : "demo backend error"),
+      );
     }
   }
 

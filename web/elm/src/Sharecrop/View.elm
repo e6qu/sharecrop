@@ -1320,15 +1320,15 @@ visibilityScopeField : LoggedInModel -> Html Msg
 visibilityScopeField state =
     if state.createVisibility == visibilityUserTag then
         Ui.fieldLabel "Share with user ID"
-            [ userPicker "create-scope-user" state.createScopeUserId state.userDirectoryQuery CreateScopeUserIdChanged "Choose user" state.userDirectory ]
+            [ userPicker "create-scope-user" state.createScopeUserId state.userDirectoryQuery CreateScopeUserIdChanged "Choose user" state.userDirectory state.userDirectoryOffset ]
 
     else if state.createVisibility == visibilityTeamTag then
         Ui.fieldLabel "Share with team ID"
-            [ teamPicker "create-scope-team" state.createScopeTeamId CreateScopeTeamIdChanged "Choose team" state.standaloneTeams ]
+            [ teamPicker "create-scope-team" state.createScopeTeamId state.standaloneTeamQuery CreateScopeTeamIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams state.standaloneTeamOffset ]
 
     else if state.createVisibility == visibilityOrganizationTag then
         Ui.fieldLabel "Share with organization"
-            [ organizationPicker "create-scope-organization" state.createScopeOrganizationId CreateScopeOrganizationIdChanged "Choose organization" state.organizations ]
+            [ organizationPicker "create-scope-organization" state.createScopeOrganizationId state.organizationQuery CreateScopeOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations state.organizationOffset ]
 
     else
         text ""
@@ -1387,7 +1387,7 @@ fundingView state =
         [ Ui.sectionTitle "Fund a task"
         , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged state.tasks
         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
-        , organizationPicker "fund-organization" state.fundOrganizationId FundOrganizationIdChanged "Personal balance" state.organizations
+        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset
         , Ui.primaryButton [ type_ "submit", disabled (state.fundTaskId == ""), testId "fund" ] "Fund task"
         , maybeNote state.fundMessage "fund-message"
         ]
@@ -1444,61 +1444,55 @@ taskFilterButton selected ( tag, labelText ) =
         labelText
 
 
-organizationPicker : String -> String -> (String -> Msg) -> String -> List Organization.OrganizationResponse -> Html Msg
-organizationPicker identifier selectedOrganizationId change blankLabel organizations =
-    select
-        [ Html.Attributes.class Ui.fieldClass
-        , value selectedOrganizationId
-        , onInput change
-        , testId identifier
-        ]
-        (option [ value "" ] [ text blankLabel ]
-            :: List.map
-                (\organization ->
-                    option [ value organization.id, selected (selectedOrganizationId == organization.id) ] [ text organization.name ]
-                )
-                organizations
-        )
-
-
-userPicker : String -> String -> String -> (String -> Msg) -> String -> List UserDirectoryEntry -> Html Msg
-userPicker identifier selectedUserId query change blankLabel users =
+organizationPicker : String -> String -> String -> (String -> Msg) -> (String -> Msg) -> Msg -> Msg -> Msg -> String -> List Organization.OrganizationResponse -> Int -> Html Msg
+organizationPicker identifier selectedOrganizationId query change queryChange search previous next blankLabel organizations offset =
     div [ Html.Attributes.class "space-y-2" ]
-        [ div [ Html.Attributes.class "flex gap-2" ]
-            [ Ui.textInput [ type_ "search", placeholder "Search users", value query, onInput UserDirectoryQueryChanged, testId (identifier ++ "-query") ]
-            , Ui.secondaryButton [ type_ "button", onClick SearchUserDirectoryClicked, testId (identifier ++ "-search") ] "Search"
-            ]
+        [ selectorSearchControls identifier "Search organizations" query queryChange search previous next offset
         , select
-            [ Html.Attributes.class Ui.fieldClass
-            , value selectedUserId
-            , onInput change
-            , testId identifier
-            ]
+            [ Html.Attributes.class Ui.fieldClass, value selectedOrganizationId, onInput change, testId identifier ]
             (option [ value "" ] [ text blankLabel ]
-                :: List.map
-                    (\user ->
-                        option [ value user.id, selected (selectedUserId == user.id) ] [ text user.email ]
-                    )
-                    users
+                :: List.map (\organization -> option [ value organization.id, selected (selectedOrganizationId == organization.id) ] [ text organization.name ]) organizations
             )
         ]
 
 
-teamPicker : String -> String -> (String -> Msg) -> String -> List Team.TeamResponse -> Html Msg
-teamPicker identifier selectedTeamId change blankLabel teams =
-    select
-        [ Html.Attributes.class Ui.fieldClass
-        , value selectedTeamId
-        , onInput change
-        , testId identifier
+userPicker : String -> String -> String -> (String -> Msg) -> String -> List UserDirectoryEntry -> Int -> Html Msg
+userPicker identifier selectedUserId query change blankLabel users offset =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ selectorSearchControls identifier "Search users" query UserDirectoryQueryChanged SearchUserDirectoryClicked PreviousUserDirectoryPageClicked NextUserDirectoryPageClicked offset
+        , select
+            [ Html.Attributes.class Ui.fieldClass, value selectedUserId, onInput change, testId identifier ]
+            (option [ value "" ] [ text blankLabel ]
+                :: List.map (\user -> option [ value user.id, selected (selectedUserId == user.id) ] [ text user.email ]) users
+            )
         ]
-        (option [ value "" ] [ text blankLabel ]
-            :: List.map
-                (\team ->
-                    option [ value team.id, selected (selectedTeamId == team.id) ] [ text team.name ]
-                )
-                teams
-        )
+
+
+teamPicker : String -> String -> String -> (String -> Msg) -> (String -> Msg) -> Msg -> Msg -> Msg -> String -> List Team.TeamResponse -> Int -> Html Msg
+teamPicker identifier selectedTeamId query change queryChange search previous next blankLabel teams offset =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ selectorSearchControls identifier "Search teams" query queryChange search previous next offset
+        , select
+            [ Html.Attributes.class Ui.fieldClass, value selectedTeamId, onInput change, testId identifier ]
+            (option [ value "" ] [ text blankLabel ]
+                :: List.map (\team -> option [ value team.id, selected (selectedTeamId == team.id) ] [ text team.name ]) teams
+            )
+        ]
+
+
+selectorSearchControls : String -> String -> String -> (String -> Msg) -> Msg -> Msg -> Msg -> Int -> Html Msg
+selectorSearchControls identifier placeholderText query queryChange search previous next offset =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.textInput [ type_ "search", placeholder placeholderText, value query, onInput queryChange, testId (identifier ++ "-query") ]
+            , Ui.secondaryButton [ type_ "button", onClick search, testId (identifier ++ "-search") ] "Search"
+            ]
+        , div [ Html.Attributes.class "flex flex-wrap items-center gap-2 text-xs text-slate-500" ]
+            [ Ui.secondaryButton [ type_ "button", disabled (offset == 0), onClick previous, testId (identifier ++ "-previous") ] "Previous"
+            , span [ testId (identifier ++ "-offset") ] [ text ("Offset " ++ String.fromInt offset) ]
+            , Ui.secondaryButton [ type_ "button", onClick next, testId (identifier ++ "-next") ] "Next"
+            ]
+        ]
 
 
 activeAssigneeSuffix : Task.TaskListItemResponse -> String
@@ -1645,7 +1639,7 @@ awardRecipientControl state =
 awardRecipientPicker : LoggedInModel -> Html Msg
 awardRecipientPicker state =
     if state.awardRecipientKind == "organization" then
-        organizationPicker "award-recipient-id" state.awardRecipientId AwardRecipientIdChanged "Choose organization" state.organizations
+        organizationPicker "award-recipient-id" state.awardRecipientId state.organizationQuery AwardRecipientIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations state.organizationOffset
 
     else
         Ui.textInput [ type_ "text", placeholder "Recipient id", value state.awardRecipientId, onInput AwardRecipientIdChanged, testId "award-recipient-id" ]
@@ -2024,8 +2018,8 @@ organizationTeamReservationFields state detail =
     case detail.assigneeScope of
         Task.TaskAssigneeScopeOrganizationTeam ->
             div [ Html.Attributes.class "grid gap-3 md:grid-cols-2" ]
-                [ Ui.fieldLabel "Organization" [ organizationPicker "reservation-organization-id" state.reservationOrganizationId ReservationOrganizationIdChanged "Choose organization" state.organizations ]
-                , Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId ReservationTeamIdChanged "Choose team" state.orgTeams ]
+                [ Ui.fieldLabel "Organization" [ organizationPicker "reservation-organization-id" state.reservationOrganizationId state.organizationQuery ReservationOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations state.organizationOffset ]
+                , Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId state.orgTeamQuery ReservationTeamIdChanged OrgTeamQueryChanged SearchOrgTeamsClicked PreviousOrgTeamsPageClicked NextOrgTeamsPageClicked "Choose team" state.orgTeams state.orgTeamOffset ]
                 ]
 
         _ ->

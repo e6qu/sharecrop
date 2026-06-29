@@ -98,6 +98,27 @@ boolQuery value =
         "false"
 
 
+selectorPageSize : Int
+selectorPageSize =
+    20
+
+
+selectorQuery : String -> Int -> String -> String
+selectorQuery queryText offset base =
+    let
+        clean =
+            String.trim queryText
+
+        queryPart =
+            if clean == "" then
+                ""
+
+            else
+                "&query=" ++ Url.percentEncode clean
+    in
+    base ++ "?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset ++ queryPart
+
+
 toggleScope : Agent.AgentScope -> List Agent.AgentScope -> List Agent.AgentScope
 toggleScope scope scopes =
     if List.member scope scopes then
@@ -790,7 +811,12 @@ transferCollectible token collectibleId recipientId =
 
 fetchOrganizations : String -> Cmd Msg
 fetchOrganizations token =
-    authorizedRequest "GET" token "/api/organizations" Http.emptyBody (Http.expectJson OrganizationsReceived Organization.organizationsResponseDecoder)
+    fetchOrganizationsPage token "" 0
+
+
+fetchOrganizationsPage : String -> String -> Int -> Cmd Msg
+fetchOrganizationsPage token queryText offset =
+    authorizedRequest "GET" token (selectorQuery queryText offset "/api/organizations") Http.emptyBody (Http.expectJson OrganizationsReceived Organization.organizationsResponseDecoder)
 
 
 userDirectoryEntryDecoder : Decode.Decoder UserDirectoryEntry
@@ -803,28 +829,27 @@ userDirectoryEntryDecoder =
 
 fetchUserDirectory : String -> Cmd Msg
 fetchUserDirectory token =
-    fetchUserDirectoryQuery token ""
+    fetchUserDirectoryPage token "" 0
 
 
 fetchUserDirectoryQuery : String -> String -> Cmd Msg
 fetchUserDirectoryQuery token queryText =
-    let
-        clean =
-            String.trim queryText
+    fetchUserDirectoryPage token queryText 0
 
-        query =
-            if clean == "" then
-                "/api/users"
 
-            else
-                "/api/users?query=" ++ Url.percentEncode clean
-    in
-    authorizedRequest "GET" token query Http.emptyBody (Http.expectJson UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))
+fetchUserDirectoryPage : String -> String -> Int -> Cmd Msg
+fetchUserDirectoryPage token queryText offset =
+    authorizedRequest "GET" token (selectorQuery queryText offset "/api/users") Http.emptyBody (Http.expectJson UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))
 
 
 fetchStandaloneTeams : String -> Cmd Msg
 fetchStandaloneTeams token =
-    authorizedRequest "GET" token "/api/teams" Http.emptyBody (Http.expectJson StandaloneTeamsReceived Team.teamsResponseDecoder)
+    fetchStandaloneTeamsPage token "" 0
+
+
+fetchStandaloneTeamsPage : String -> String -> Int -> Cmd Msg
+fetchStandaloneTeamsPage token queryText offset =
+    authorizedRequest "GET" token (selectorQuery queryText offset "/api/teams") Http.emptyBody (Http.expectJson StandaloneTeamsReceived Team.teamsResponseDecoder)
 
 
 refreshOrganizations : Model -> Cmd Msg
@@ -853,7 +878,16 @@ loadOrganization token organizationId =
 
 fetchOrgTeams : String -> String -> Cmd Msg
 fetchOrgTeams token organizationId =
-    authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/teams") Http.emptyBody (Http.expectJson OrgTeamsReceived Team.teamsResponseDecoder)
+    fetchOrgTeamsPage token organizationId "" 0
+
+
+fetchOrgTeamsPage : String -> String -> String -> Int -> Cmd Msg
+fetchOrgTeamsPage token organizationId queryText offset =
+    if organizationId == "" then
+        Cmd.none
+
+    else
+        authorizedRequest "GET" token (selectorQuery queryText offset ("/api/organizations/" ++ organizationId ++ "/teams")) Http.emptyBody (Http.expectJson OrgTeamsReceived Team.teamsResponseDecoder)
 
 
 requestEmailVerification : String -> Cmd Msg

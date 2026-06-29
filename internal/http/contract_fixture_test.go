@@ -14,9 +14,44 @@ func TestAuthResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"subject_kind":"user","subject_id":"subject-1","access_token":"token-1","role":"member"}`)
 }
 
+func TestAuthRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(authRequest{Email: "person@example.com", Password: "correct horse battery staple"})
+	assertWireShape(t, encoded, err, `{"email":"person@example.com","password":"correct horse battery staple"}`)
+}
+
+func TestAccountTokenResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(accountTokenResponse{Token: "account-token-1"})
+	assertWireShape(t, encoded, err, `{"token":"account-token-1"}`)
+}
+
 func TestAccountTokenSentResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(accountTokenSentResponse{Status: "sent"})
 	assertWireShape(t, encoded, err, `{"status":"sent"}`)
+}
+
+func TestAccountTokenRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(accountTokenRequest{Token: "account-token-1"})
+	assertWireShape(t, encoded, err, `{"token":"account-token-1"}`)
+}
+
+func TestPasswordResetRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(passwordResetRequest{Email: "person@example.com"})
+	assertWireShape(t, encoded, err, `{"email":"person@example.com"}`)
+}
+
+func TestPasswordResetConfirmRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(passwordResetConfirmRequest{Token: "reset-token-1", Password: "changed horse battery staple"})
+	assertWireShape(t, encoded, err, `{"token":"reset-token-1","password":"changed horse battery staple"}`)
+}
+
+func TestPasswordChangeRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(passwordChangeRequest{CurrentPassword: "old password", NewPassword: "new password"})
+	assertWireShape(t, encoded, err, `{"current_password":"old password","new_password":"new password"}`)
+}
+
+func TestAccountProfileRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(accountProfileRequest{Email: "new@example.com"})
+	assertWireShape(t, encoded, err, `{"email":"new@example.com"}`)
 }
 
 func TestUsersResponseWireShape(t *testing.T) {
@@ -64,14 +99,95 @@ func TestOrganizationResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"id":"org-1","name":"Lattice Field Co","created_by":"user-1"}`)
 }
 
+func TestOrganizationRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(organizationRequest{Name: "Lattice Field Co"})
+	assertWireShape(t, encoded, err, `{"name":"Lattice Field Co"}`)
+}
+
+func TestProvisionMemberRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(provisionMemberRequest{Email: "member@example.com", Roles: []string{"member", "reviewer"}})
+	assertWireShape(t, encoded, err, `{"email":"member@example.com","roles":["member","reviewer"]}`)
+}
+
+func TestUpdateMemberRolesRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(updateMemberRolesRequest{Roles: []string{"owner"}})
+	assertWireShape(t, encoded, err, `{"roles":["owner"]}`)
+}
+
 func TestOrganizationMemberResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(organizationMemberResponse{ID: "member-1", OrganizationID: "org-1", UserID: "user-1", Status: "active", Roles: []string{"owner"}})
 	assertWireShape(t, encoded, err, `{"id":"member-1","organization_id":"org-1","user_id":"user-1","status":"active","roles":["owner"]}`)
 }
 
+func TestTeamRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(teamRequest{Name: "Survey crew"})
+	assertWireShape(t, encoded, err, `{"name":"Survey crew"}`)
+}
+
+func TestTeamDetailResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(teamDetailResponse{Team: teamResponse{ID: "team-1", OwnerKind: "organization", OrganizationID: "org-1", OwnerUserID: "", Name: "Survey crew", CreatedBy: "user-1"}, Members: []string{"user-1", "user-2"}})
+	assertWireShape(t, encoded, err, `{"team":{"id":"team-1","owner_kind":"organization","organization_id":"org-1","owner_user_id":"","name":"Survey crew","created_by":"user-1"},"members":["user-1","user-2"]}`)
+}
+
 func TestTaskCapabilityTokenResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(taskCapabilityTokenResponse{ID: "cap-1", TaskID: "task-1", State: "active", Token: "secret-token"})
 	assertWireShape(t, encoded, err, `{"id":"cap-1","task_id":"task-1","state":"active","token":"secret-token"}`)
+}
+
+func TestTaskRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskRequest{
+		Owner:        taskOwnerRequest{Kind: "organization", OrganizationID: "org-1"},
+		Title:        "Label receipts",
+		Description:  "Extract the receipt totals.",
+		TaskType:     "qa_testing",
+		ReferenceURL: "https://example.com/pr/1",
+		Reward: taskRewardRequest{
+			Kind:           "bundle",
+			CreditAmount:   25,
+			CollectibleIDs: []string{"collectible-1"},
+		},
+		Participation:      taskParticipationRequest{Policy: "approval_required", AssigneeScope: "organization_team", ReservationExpiryHours: 72},
+		Visibility:         taskVisibilityRequest{Kind: "organization", OrganizationID: "org-1"},
+		Placement:          taskPlacementRequest{Kind: "existing_series", SeriesID: "series-1", SeriesPosition: 2},
+		ResponseSchemaJSON: `{"kind":"freeform"}`,
+		Payload:            taskPayloadRequest{Kind: "json", JSON: `{"batch":"A"}`},
+	})
+	assertWireShape(t, encoded, err, `{"owner":{"kind":"organization","user_id":"","team_id":"","organization_id":"org-1"},"title":"Label receipts","description":"Extract the receipt totals.","task_type":"qa_testing","reference_url":"https://example.com/pr/1","reward":{"kind":"bundle","credit_amount":25,"collectible_ids":["collectible-1"]},"participation":{"policy":"approval_required","assignee_scope":"organization_team","reservation_expiry_hours":72},"visibility":{"kind":"organization","user_id":"","team_id":"","organization_id":"org-1"},"placement":{"kind":"existing_series","series_id":"series-1","series_title":"","series_position":2},"response_schema_json":"{\"kind\":\"freeform\"}","payload":{"kind":"json","json":"{\"batch\":\"A\"}"}}`)
+}
+
+func TestFundingRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(fundingRequest{Amount: 50, IdempotencyKey: "funding-key-1", OrganizationID: "org-1"})
+	assertWireShape(t, encoded, err, `{"amount":50,"idempotency_key":"funding-key-1","organization_id":"org-1"}`)
+}
+
+func TestIdempotentRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(idempotentRequest{IdempotencyKey: "key-1"})
+	assertWireShape(t, encoded, err, `{"idempotency_key":"key-1"}`)
+}
+
+func TestReservationRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(reservationRequest{AssigneeKind: "organization_team", OrganizationID: "org-1", TeamID: "team-1"})
+	assertWireShape(t, encoded, err, `{"assignee_kind":"organization_team","organization_id":"org-1","team_id":"team-1"}`)
+}
+
+func TestSubmissionRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(submissionRequest{ResponseJSON: `{"answer":42}`})
+	assertWireShape(t, encoded, err, `{"response_json":"{\"answer\":42}"}`)
+}
+
+func TestAcceptSubmissionRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(acceptSubmissionRequest{IdempotencyKey: "accept-key-1", PayoutAmount: 20, TipAmount: 5, TipCollectibleID: "collectible-1"})
+	assertWireShape(t, encoded, err, `{"idempotency_key":"accept-key-1","payout_amount":20,"tip_amount":5,"tip_collectible_id":"collectible-1"}`)
+}
+
+func TestRequestChangesRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(requestChangesRequest{ReviewNote: "Please include totals."})
+	assertWireShape(t, encoded, err, `{"review_note":"Please include totals."}`)
+}
+
+func TestRejectSubmissionRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(rejectSubmissionRequest{IdempotencyKey: "reject-key-1", ReviewNote: "Invalid response.", PartialCreditAmount: 3, TipAmount: 1, BanImplementor: true})
+	assertWireShape(t, encoded, err, `{"idempotency_key":"reject-key-1","review_note":"Invalid response.","partial_credit_amount":3,"tip_amount":1,"ban_implementor":true}`)
 }
 
 func TestSubmissionCreatedResponseWireShape(t *testing.T) {
@@ -92,6 +208,65 @@ func TestSubmissionResponseWireShape(t *testing.T) {
 func TestSubmissionCommentsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(submissionCommentsResponse{Comments: []submissionCommentResponse{{ID: "comment-1", SubmissionID: "submission-1", AuthorUserID: "user-1", Body: "Please revise.", CreatedAt: "2026-06-29T00:00:00Z"}}})
 	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","submission_id":"submission-1","author_user_id":"user-1","body":"Please revise.","created_at":"2026-06-29T00:00:00Z"}]}`)
+}
+
+func TestTaskCommentsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskCommentsResponse{Comments: []taskCommentResponse{{ID: "comment-1", TaskID: "task-1", AuthorUserID: "user-1", Body: "Looks ready.", CreatedAt: "2026-06-29T00:00:00Z"}}})
+	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","task_id":"task-1","author_user_id":"user-1","body":"Looks ready.","created_at":"2026-06-29T00:00:00Z"}]}`)
+}
+
+func TestCreateSeriesRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(createSeriesRequest{Title: "Release checks", Description: "Grouped QA work."})
+	assertWireShape(t, encoded, err, `{"title":"Release checks","description":"Grouped QA work."}`)
+}
+
+func TestAddTaskToSeriesRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(addTaskToSeriesRequest{TaskID: "task-1"})
+	assertWireShape(t, encoded, err, `{"task_id":"task-1"}`)
+}
+
+func TestReorderSeriesRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(reorderSeriesRequest{TaskIDs: []string{"task-2", "task-1"}})
+	assertWireShape(t, encoded, err, `{"task_ids":["task-2","task-1"]}`)
+}
+
+func TestSeriesCommentRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(seriesCommentRequest{Body: "Ship after review."})
+	assertWireShape(t, encoded, err, `{"body":"Ship after review."}`)
+}
+
+func TestTaskSeriesDetailResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskSeriesDetailResponse{
+		Series:   taskSeriesResponse{ID: "series-1", OwnerKind: "user", Title: "Release checks", Description: "Grouped QA work.", State: "published", CreatedBy: "user-1"},
+		Tasks:    []taskResponse{{ID: "task-1", OwnerKind: "user", OwnerID: "user-1", Title: "Label receipts", Description: "Extract totals.", TaskType: "general", ReferenceURL: "", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", VisibilityID: "", SeriesKind: "existing_series", SeriesID: "series-1", SeriesPosition: 1, ResponseSchemaJSON: `{"kind":"freeform"}`, PayloadKind: "none", PayloadJSON: "", CreatedBy: "user-1", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none"}},
+		Comments: []seriesCommentResponse{{ID: "comment-1", SeriesID: "series-1", AuthorUserID: "user-1", Body: "Ready.", CreatedAt: "2026-06-29T00:00:00Z"}},
+	})
+	assertWireShape(t, encoded, err, `{"series":{"id":"series-1","owner_kind":"user","title":"Release checks","description":"Grouped QA work.","state":"published","created_by":"user-1"},"tasks":[{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"existing_series","series_id":"series-1","series_position":1,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"none","payload_json":"","created_by":"user-1","availability_kind":"available","viewer_action":"submit","reviewer_action":"none"}],"comments":[{"id":"comment-1","series_id":"series-1","author_user_id":"user-1","body":"Ready.","created_at":"2026-06-29T00:00:00Z"}]}`)
+}
+
+func TestMintCollectibleRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(mintCollectibleRequest{Name: "Harvest Star", Kind: "badge", TransferPolicy: "transferable_between_users", Art: "harvest-star"})
+	assertWireShape(t, encoded, err, `{"name":"Harvest Star","kind":"badge","transfer_policy":"transferable_between_users","art":"harvest-star"}`)
+}
+
+func TestCollectibleRewardRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(collectibleRewardRequest{CollectibleID: "collectible-1"})
+	assertWireShape(t, encoded, err, `{"collectible_id":"collectible-1"}`)
+}
+
+func TestAwardCollectibleRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(awardCollectibleRequest{Slug: "harvest-star", RecipientKind: "user", RecipientID: "user-1"})
+	assertWireShape(t, encoded, err, `{"slug":"harvest-star","recipient_kind":"user","recipient_id":"user-1"}`)
+}
+
+func TestTransferCollectibleRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(transferCollectibleRequest{RecipientID: "user-2"})
+	assertWireShape(t, encoded, err, `{"recipient_id":"user-2"}`)
+}
+
+func TestCollectibleCatalogResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(collectibleCatalogResponse{Entries: []catalogEntryResponse{{Slug: "harvest-star", Name: "Harvest Star", Kind: "badge", TransferPolicy: "transferable_between_users", Art: "harvest-star"}}})
+	assertWireShape(t, encoded, err, `{"entries":[{"slug":"harvest-star","name":"Harvest Star","kind":"badge","transfer_policy":"transferable_between_users","art":"harvest-star"}]}`)
 }
 
 func TestAgentCredentialResponseWireShape(t *testing.T) {

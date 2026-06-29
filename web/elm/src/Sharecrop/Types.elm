@@ -201,6 +201,13 @@ type alias LoggedInModel =
     , accountMessage : Maybe String
     , userDirectory : List UserDirectoryEntry
     , userDirectoryQuery : String
+    , userDirectoryOffset : Int
+    , organizationQuery : String
+    , organizationOffset : Int
+    , standaloneTeamQuery : String
+    , standaloneTeamOffset : Int
+    , orgTeamQuery : String
+    , orgTeamOffset : Int
     , operations : Maybe Admin.OperationsResponse
     , auditEvents : List Admin.AuditEventResponse
     , adminMessage : Maybe String
@@ -375,6 +382,20 @@ type Msg
     | UserDirectoryReceived (Result Http.Error (List UserDirectoryEntry))
     | UserDirectoryQueryChanged String
     | SearchUserDirectoryClicked
+    | PreviousUserDirectoryPageClicked
+    | NextUserDirectoryPageClicked
+    | OrganizationQueryChanged String
+    | SearchOrganizationsClicked
+    | PreviousOrganizationsPageClicked
+    | NextOrganizationsPageClicked
+    | StandaloneTeamQueryChanged String
+    | SearchStandaloneTeamsClicked
+    | PreviousStandaloneTeamsPageClicked
+    | NextStandaloneTeamsPageClicked
+    | OrgTeamQueryChanged String
+    | SearchOrgTeamsClicked
+    | PreviousOrgTeamsPageClicked
+    | NextOrgTeamsPageClicked
     | OrgMembersReceived (Result Http.Error Organization.OrganizationMembersResponse)
     | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
     | UserWorkReceived (Result Http.Error Task.TasksResponse)
