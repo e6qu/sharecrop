@@ -74,6 +74,10 @@ type AuditEventID struct {
 	value id.ID
 }
 
+type NotificationID struct {
+	value id.ID
+}
+
 type UserIDResult interface {
 	userIDResult()
 }
@@ -898,5 +902,44 @@ func auditEventIDFromIDResult(result id.IDResult) AuditEventIDResult {
 		return AuditEventIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return AuditEventIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type NotificationIDResult interface {
+	notificationIDResult()
+}
+
+type NotificationIDCreated struct {
+	Value NotificationID
+}
+
+type NotificationIDRejected struct {
+	Reason DomainError
+}
+
+func (NotificationIDCreated) notificationIDResult() {}
+
+func (NotificationIDRejected) notificationIDResult() {}
+
+func NewNotificationID() NotificationIDResult {
+	return notificationIDFromIDResult(id.New())
+}
+
+func ParseNotificationID(raw string) NotificationIDResult {
+	return notificationIDFromIDResult(id.Parse(raw))
+}
+
+func (id NotificationID) String() string {
+	return id.value.String()
+}
+
+func notificationIDFromIDResult(result id.IDResult) NotificationIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return NotificationIDCreated{Value: NotificationID{value: typed.Value}}
+	case id.IDRejected:
+		return NotificationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return NotificationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }

@@ -7,7 +7,9 @@ import (
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/submission"
+	"github.com/e6qu/sharecrop/internal/task"
 )
 
 func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *http.Request) {
@@ -38,11 +40,23 @@ func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *htt
 	server.submitResponse(w, r, requestAccepted.command)
 }
 func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, command submission.SubmitCommand) {
+	taskResult := server.taskService.Get(r.Context(), auth.UserSubject{ID: command.SubmitterID}, command.TaskID)
+	taskFound, taskMatched := taskResult.(task.TaskGot)
+	if !taskMatched {
+		rejected := taskResult.(task.GetRejected)
+		writeDomainError(w, rejected.Reason)
+		return
+	}
+
 	result := server.submissionService.Submit(r.Context(), command)
 	created, matched := result.(submission.SubmissionCreated)
 	if !matched {
 		rejected := result.(submission.SubmitRejected)
 		writeDomainError(w, rejected.Reason)
+		return
+	}
+
+	if !server.notify(w, r.Context(), taskFound.Value.CreatedBy, command.SubmitterID, notification.KindSubmissionCreated, notificationSubjectForSubmission(created.Value.ID), taskNotificationMetadata(command.TaskID)) {
 		return
 	}
 

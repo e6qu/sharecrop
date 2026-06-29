@@ -179,6 +179,30 @@ func (SubmissionsListed) listResult() {}
 
 func (ListRejected) listResult() {}
 
+type GetResult interface {
+	getResult()
+}
+
+type SubmissionGot struct {
+	Value Submission
+}
+
+type GetRejected struct {
+	Reason core.DomainError
+}
+
+func (SubmissionGot) getResult() {}
+
+func (GetRejected) getResult() {}
+
+func (service Service) Get(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID) GetResult {
+	value, problem := service.loadCommentableSubmission(ctx, actor, submissionID)
+	if problem != nil {
+		return GetRejected{Reason: *problem}
+	}
+	return SubmissionGot{Value: value}
+}
+
 func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, page core.Page) ListResult {
 	taskResult := service.taskStore.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(task.FindTaskStoreAccepted)

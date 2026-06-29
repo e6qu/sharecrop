@@ -7,6 +7,7 @@ import Sharecrop.Api as Api
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
+import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Labels exposing (httpErrorLabel, participationPolicyTag)
@@ -177,6 +178,8 @@ emptyLoggedIn response =
     , operations = Nothing
     , auditEvents = []
     , adminMessage = Nothing
+    , notifications = []
+    , inboxMessage = Nothing
     }
 
 
@@ -203,6 +206,19 @@ applySchemaFields transform state =
         | createSchemaFields = nextFields
         , createResponseSchema = View.schemaFromFields nextFields
     }
+
+
+replaceNotification : Notification.NotificationResponse -> List Notification.NotificationResponse -> List Notification.NotificationResponse
+replaceNotification replacement notifications =
+    List.map
+        (\notification ->
+            if notification.id == replacement.id then
+                replacement
+
+            else
+                notification
+        )
+        notifications
 
 
 loggedInForPage : Auth.AuthResponse -> Page -> LoggedInModel
@@ -260,6 +276,9 @@ pageFromUrl url =
         [ "admin" ] ->
             AdminPage
 
+        [ "inbox" ] ->
+            InboxPage
+
         [ "organizations" ] ->
             OrganizationsPage
 
@@ -307,6 +326,9 @@ enterPage page state =
 
         AdminPage ->
             { state | page = page, operations = Nothing, auditEvents = [], adminMessage = Nothing }
+
+        InboxPage ->
+            { state | page = page, notifications = [], inboxMessage = Nothing }
 
         CollectibleDetailPage _ ->
             { state | page = page, transferMessage = Nothing, transferRecipientId = "" }
@@ -1354,6 +1376,21 @@ update msg model =
 
         AuditEventsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        NotificationsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | notifications = response.notifications, inboxMessage = Nothing }), Cmd.none )
+
+        NotificationsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | notifications = [], inboxMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        MarkNotificationReadClicked notificationId ->
+            Api.withSession model (\state -> ( model, Api.markNotificationRead state.accessToken notificationId ))
+
+        NotificationReadReceived (Ok notification) ->
+            ( Api.updateLoggedIn model (\state -> { state | notifications = replaceNotification notification state.notifications, inboxMessage = Nothing }), Cmd.none )
+
+        NotificationReadReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | inboxMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         LinkClicked request ->
             case request of

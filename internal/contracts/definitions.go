@@ -14,6 +14,35 @@ func Modules() []Module {
 		agentModule(),
 		collectibleModule(),
 		adminModule(),
+		notificationModule(),
+	}
+}
+
+func notificationModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Notification"),
+		Definitions: []Definition{
+			Product{
+				Name: NewElmTypeName("NotificationResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("recipientUserID"), JSONName: NewJSONFieldName("recipient_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("actorUserID"), JSONName: NewJSONFieldName("actor_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: StringRef{}},
+					{Name: NewElmValueName("subjectKind"), JSONName: NewJSONFieldName("subject_kind"), Type: StringRef{}},
+					{Name: NewElmValueName("subjectID"), JSONName: NewJSONFieldName("subject_id"), Type: StringRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: StringRef{}},
+					{Name: NewElmValueName("metadataJSON"), JSONName: NewJSONFieldName("metadata_json"), Type: StringRef{}},
+					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("NotificationsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("notifications"), JSONName: NewJSONFieldName("notifications"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("NotificationResponse")}}},
+				},
+			},
+		},
 	}
 }
 

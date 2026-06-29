@@ -1,5 +1,15 @@
 # What We Did
 
+`task/runtime-notifications-demo-parity` combined runtime coverage, notifications, MCP replay persistence, contract fixtures, and demo parity planning:
+
+- **Notification inbox.** Added `NotificationID`, a notification domain service, memory store, Postgres store, migrations, runtime wiring, and HTTP routes for `GET /api/notifications` and `POST /api/notifications/{notification_id}/read`. Submission creation notifies the task creator, and accept/request-changes/reject notifies the submitter. Self-notifications are skipped as an explicit domain outcome.
+- **Inbox UI and contracts.** Added generated `Sharecrop.Generated.Notification` Elm contracts, notification HTTP wire-shape fixtures, browser state/messages/API calls, an Inbox nav entry, the Inbox page, unread/read badges, metadata rendering, and mark-read behavior.
+- **Backendless demo parity.** `site/demo/backend.js` now has seeded notifications, notification routes, mark-read behavior, and notification creation on submission/review events. Deno demo tests validate route parity and the notification response shape. The demo bundle was rebuilt from the current Elm app.
+- **MCP replay persistence.** Added `mcp_http_events` and Postgres persistence for MCP HTTP replay events. Session identity, active counts, close state, and replay rows are persisted; live SSE subscriber channels remain process-local.
+- **Runtime-store coverage.** Added integration tests for notification lifecycle, audit event listing, persisted MCP HTTP session counts/replay events, and Postgres rate-limit buckets. These tests require `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR`.
+- **Demo semantic-parity planning.** Added [docs/demo_semantic_parity.md](./docs/demo_semantic_parity.md), recommending shared scenario parity tests before a Go/WASM demo-backend spike.
+- **Verification.** Passed: `go test ./...`; `make check-format check-ts lint`; `make check-contracts`; `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; `deno task test`; `make check-policy vet check-dead-code`; `make check-copy-paste`; targeted Playwright demo/mobile specs. Manual screenshot review of `#/inbox` desktop/mobile found no layout or overflow issue. Integration tests were present but local execution stopped at `DATABASE_URL is required`.
+
 `task/account-directories-rewards-playwright` combined four follow-up tracks into one branch by explicit request:
 
 - **Account lifecycle.** Added account status and account-token storage migrations; login rejects deactivated accounts. The auth service, DB store, and HTTP API now support browser guest entry, email-verification token issue/confirm, password-reset token issue/confirm, password change, profile email update, and account deactivation with session/token revocation. The browser exposes reset controls on the signed-out page and settings controls on the user's profile page.

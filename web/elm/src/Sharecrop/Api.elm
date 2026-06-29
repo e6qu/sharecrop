@@ -8,6 +8,7 @@ import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
@@ -342,6 +343,9 @@ routeLoadCmd token subjectId page =
                 [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (Http.expectJson OperationsReceived Admin.operationsResponseDecoder)
                 , authorizedRequest "GET" token "/api/admin/audit-events" Http.emptyBody (Http.expectJson AuditEventsReceived Admin.auditEventsResponseDecoder)
                 ]
+
+        InboxPage ->
+            fetchNotifications token
 
         NotFoundPage ->
             Cmd.none
@@ -1400,6 +1404,16 @@ addSeriesCommentCommand model state seriesId =
             (Http.jsonBody (Encode.object [ ( "body", Encode.string (String.trim state.seriesCommentBody) ) ]))
             (Http.expectJson SeriesCommentReceived TaskSeries.seriesCommentResponseDecoder)
         )
+
+
+fetchNotifications : String -> Cmd Msg
+fetchNotifications token =
+    authorizedRequest "GET" token "/api/notifications" Http.emptyBody (Http.expectJson NotificationsReceived Notification.notificationsResponseDecoder)
+
+
+markNotificationRead : String -> String -> Cmd Msg
+markNotificationRead token notificationId =
+    authorizedRequest "POST" token ("/api/notifications/" ++ notificationId ++ "/read") Http.emptyBody (Http.expectJson NotificationReadReceived Notification.notificationResponseDecoder)
 
 
 moveSeriesTaskOrder : Bool -> String -> List SeriesTaskEntry -> List String

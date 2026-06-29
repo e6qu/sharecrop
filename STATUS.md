@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 73 work, merged into `main`.
+The repository contains pull request 1 through pull request 74 work, plus the current runtime notifications and demo-parity branch.
 
-Active task: combined runtime/audit/team-dashboard branch is implemented and under verification. Email/provider delivery and anonymous worker identity are out of scope.
+Active task: runtime notifications, persisted MCP event replay, runtime-store coverage, generated notification contracts, inbox UI/demo parity, and demo semantic-parity planning. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -16,9 +16,10 @@ Current implemented surface:
 - Authenticated user directory and selector-backed user/team controls are available in task creation where the app has loaded directory data.
 - Collectible and bundle task creation can escrow selected collectibles immediately and task responses show the held collectible count.
 - Backendless demo routes now cover current real API routes except the documented real-only health/MCP/root routes.
+- Users have a persisted notification inbox for submission-created and submission-review events. The browser has an Inbox page with mark-read support, and the backendless demo mirrors the routes and seeded unread state.
 - Backendless demo account lifecycle, user directory, organization/team member provisioning, and create-time collectible rewards mirror the current real-app flows closely enough for browser demo coverage.
 - Admin operations status is available to platform admins at `/api/admin/operations`.
-- Production `serve` wires Postgres-backed rate-limit buckets and persisted MCP HTTP session identity; MCP live SSE stream buffers remain process-local and operations reports `postgres_session_process_stream`.
+- Production `serve` wires Postgres-backed rate-limit buckets, audit events, notification inbox rows, persisted MCP HTTP session identity, and persisted MCP HTTP replay events. MCP live SSE subscribers remain process-local.
 - Platform admins can view audit events at `#/admin`; audit writes cover admin default collectible awards, account deactivation, organization member provisioning/role/deactivation actions, submission review outcomes, and task refunds.
 - Team detail pages load a team review queue and team work list from `/api/teams/{team_id}/work`.
 - The backendless demo serves the current compiled Elm bundle, includes the admin operations/audit route, and handles `/demo/` base paths explicitly.
@@ -29,7 +30,9 @@ Current implemented surface:
 
 Current verification:
 
-- This branch passed `go test ./...`, `make check-format`, `make check-contracts`, `deno task check:policy`, `deno check tools/*.ts tests/**/*.ts`, `deno task lint`, `deno test --allow-read tests/deno`, `go vet ./...`, `go tool deadcode -test ./...`, `ELM_BIN=/opt/homebrew/bin/elm make build`, full Playwright UI E2E, local screenshot/overflow checks for admin and team pages, integration tests with local Postgres, and HTTP E2E with local Postgres.
+- Current branch passed: `go test ./...`, `make check-format check-ts lint`, `make check-contracts`, `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`, `deno task test`, `make check-policy vet check-dead-code`, `make check-copy-paste`, and targeted Playwright demo/mobile specs.
+- Current branch screenshot review: `#/inbox` desktop and mobile screenshots passed visual inspection; Playwright reported no horizontal overflow.
+- Current branch integration tests are present but did not run locally because `DATABASE_URL` is not set in this environment.
 
 Blocking issues:
 
