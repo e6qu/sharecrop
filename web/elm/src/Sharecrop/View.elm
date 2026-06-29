@@ -319,9 +319,10 @@ teamDetailView teamId state =
 
                       else
                         text ""
-                    , teamWorkDashboard detail.team.id state.teamWork
+                    , teamWorkDashboard detail.team.id state
                     , Ui.sectionTitle "Collectibles"
                     , collectiblesHoldingsList "team-collectibles" state.teamCollectibles
+                    , maybeNote state.teamCollectiblesMessage "team-collectibles-message"
                     ]
 
             Nothing ->
@@ -334,23 +335,76 @@ teamDetailView teamId state =
         ]
 
 
-teamWorkDashboard : String -> List Task.TaskListItemResponse -> Html Msg
-teamWorkDashboard teamId tasks =
+teamWorkDashboard : String -> LoggedInModel -> Html Msg
+teamWorkDashboard teamId state =
     let
+        filteredTasks =
+            state.teamWork
+                |> filterTasksByQuery state.teamWorkQuery
+                |> filterTeamWork teamId state.teamWorkFilter
+
         reviewTasks =
-            List.filter (\item -> item.reviewerAction /= "none") tasks
+            List.filter (\item -> item.reviewerAction /= "none") filteredTasks
 
         readyForTeam =
-            List.filter teamCanActOnTask tasks
+            List.filter teamCanActOnTask filteredTasks
 
         assignedToTeam =
-            List.filter (\item -> item.activeAssigneeID == teamId) tasks
+            List.filter (\item -> item.activeAssigneeID == teamId) filteredTasks
     in
     div [ Html.Attributes.class "space-y-4", testId "team-work-dashboard" ]
-        [ teamWorkSection "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
+        [ Ui.fieldLabel "Search team work"
+            [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.teamWorkQuery, onInput TeamWorkQueryChanged, testId "team-work-query" ] ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "team-work-filter" ]
+            (List.map (teamWorkFilterButton state.teamWorkFilter) teamWorkFilterOptions)
+        , teamWorkSection "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
         , teamWorkSection "Ready for team" "team-ready-work" "No team-visible tasks are ready for action." readyForTeam
         , teamWorkSection "Assigned to team" "team-assigned-work" "No tasks are currently assigned to this team." assignedToTeam
+        , maybeNote state.teamWorkMessage "team-work-message"
         ]
+
+
+teamWorkFilterOptions : List ( String, String )
+teamWorkFilterOptions =
+    [ ( "", "All" )
+    , ( "review", "Review" )
+    , ( "ready", "Ready" )
+    , ( "assigned", "Assigned" )
+    ]
+
+
+teamWorkFilterButton : String -> ( String, String ) -> Html Msg
+teamWorkFilterButton selected ( tag, labelText ) =
+    chooserButton (selected == tag)
+        (TeamWorkFilterChanged tag)
+        ("team-work-filter-"
+            ++ (if tag == "" then
+                    "all"
+
+                else
+                    tag
+               )
+        )
+        labelText
+
+
+filterTeamWork : String -> String -> List Task.TaskListItemResponse -> List Task.TaskListItemResponse
+filterTeamWork teamId tag tasks =
+    case tag of
+        "review" ->
+            List.filter (\item -> item.reviewerAction /= "none") tasks
+
+        "ready" ->
+            List.filter teamCanActOnTask tasks
+
+        "assigned" ->
+            List.filter (\item -> item.activeAssigneeID == teamId) tasks
+
+        "" ->
+            tasks
+
+        _ ->
+            []
 
 
 teamCanActOnTask : Task.TaskListItemResponse -> Bool
@@ -609,24 +663,41 @@ userTaskListView heading identifier userId tasks =
 
 userSubmissionsView : String -> List Submission.SubmissionResponse -> Html Msg
 userSubmissionsView userId submissions =
+    let
+        revisionItems =
+            List.filter isRevisionSubmission submissions
+    in
     Ui.card
         [ a [ href ("#/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
         , Ui.sectionTitle "Submissions"
+        , Ui.sectionTitle "Revision inbox"
+        , if List.isEmpty revisionItems then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "revision-inbox-empty" ] [ text "No requested revisions." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "revision-inbox" ]
+                (List.map userSubmissionRow revisionItems)
         , if List.isEmpty submissions then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "user-submissions-empty" ] [ text "No submissions." ]
 
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
-                (List.map
-                    (\item ->
-                        div [ Html.Attributes.class "space-y-1 py-2", testId "user-submission-row" ]
-                            [ a [ href ("#/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline" ] [ text ("Task " ++ item.taskID) ]
-                            , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (submissionStateLabel item.state) ]
-                            ]
-                    )
-                    submissions
-                )
+                (List.map userSubmissionRow submissions)
         ]
+
+
+userSubmissionRow : Submission.SubmissionResponse -> Html Msg
+userSubmissionRow item =
+    div [ Html.Attributes.class "space-y-1 py-2", testId "user-submission-row" ]
+        [ a [ href ("#/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline", testId "user-submission-task-link" ] [ text ("Task " ++ item.taskID) ]
+        , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (submissionStateLabel item.state) ]
+        , reviewNoteView item.reviewNote
+        ]
+
+
+isRevisionSubmission : Submission.SubmissionResponse -> Bool
+isRevisionSubmission submission =
+    submission.state == Submission.SubmissionStateChangesRequested
 
 
 userDetailView : String -> String -> LoggedInModel -> Html Msg
@@ -812,7 +883,9 @@ activeOrganizationView state =
         div [ Html.Attributes.class "mt-4 space-y-4 rounded-md bg-slate-50 p-4", testId "active-organization" ]
             [ Ui.label_ ("Balance: " ++ balanceLabel state.orgBalance)
             , Ui.sectionTitle "Organization tasks"
-            , tasksListSimple "org-tasks" state.orgTasks
+            , orgTaskControls state
+            , tasksListSimple "org-tasks" (filteredOrgTasks state)
+            , maybeNote state.orgTaskMessage "org-task-message"
             , Ui.sectionTitle "Teams"
             , orgTeamsList state.orgTeams
             , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit CreateOrgTeamClicked ]
@@ -833,7 +906,49 @@ activeOrganizationView state =
             , maybeNote state.provisionMemberMessage "provision-member-message"
             , Ui.sectionTitle "Collectibles"
             , collectiblesHoldingsList "org-collectibles" state.orgCollectibles
+            , maybeNote state.orgCollectiblesMessage "org-collectibles-message"
             ]
+
+
+orgTaskControls : LoggedInModel -> Html Msg
+orgTaskControls state =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ Ui.fieldLabel "Search organization tasks"
+            [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.orgTaskQuery, onInput OrgTaskQueryChanged, testId "org-task-query" ] ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "org-task-filter" ]
+            (List.map (orgTaskFilterButton state.orgTaskFilter) orgTaskFilterOptions)
+        ]
+
+
+orgTaskFilterOptions : List ( String, String )
+orgTaskFilterOptions =
+    [ ( "", "All" )
+    , ( "open", "Open" )
+    , ( "draft", "Draft" )
+    , ( "closed", "Closed" )
+    ]
+
+
+orgTaskFilterButton : String -> ( String, String ) -> Html Msg
+orgTaskFilterButton selected ( tag, labelText ) =
+    chooserButton (selected == tag)
+        (OrgTaskFilterChanged tag)
+        ("org-task-filter-"
+            ++ (if tag == "" then
+                    "all"
+
+                else
+                    tag
+               )
+        )
+        labelText
+
+
+filteredOrgTasks : LoggedInModel -> List Task.TaskListItemResponse
+filteredOrgTasks state =
+    state.orgTasks
+        |> filterTasksByQuery state.orgTaskQuery
+        |> filterTasksByStateTag state.orgTaskFilter
 
 
 orgTeamsList : List Team.TeamResponse -> Html Msg
@@ -1455,12 +1570,18 @@ taskOption selectedTaskId item =
 
 tasksView : String -> LoggedInModel -> Html Msg
 tasksView origin state =
+    let
+        visibleTasks =
+            filterTasksByQuery state.taskListQuery state.tasks
+    in
     Ui.card
         [ Ui.sectionTitle "My tasks"
         , Ui.label_ "Filter by state"
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
+        , Ui.fieldLabel "Search loaded tasks"
+            [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.taskListQuery, onInput TaskListQueryChanged, testId "tasks-query" ] ]
         , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset
-        , tasksList state.tasks
+        , tasksList visibleTasks
         ]
 
 
@@ -1546,6 +1667,43 @@ activeAssigneeSuffix item =
 
     else
         " · reserved by " ++ item.activeAssigneeID
+
+
+filterTasksByQuery : String -> List Task.TaskListItemResponse -> List Task.TaskListItemResponse
+filterTasksByQuery query tasks =
+    let
+        normalized =
+            String.toLower (String.trim query)
+    in
+    if normalized == "" then
+        tasks
+
+    else
+        List.filter
+            (\item ->
+                String.contains normalized (String.toLower item.title)
+                    || String.contains normalized (String.toLower item.id)
+            )
+            tasks
+
+
+filterTasksByStateTag : String -> List Task.TaskListItemResponse -> List Task.TaskListItemResponse
+filterTasksByStateTag tag tasks =
+    case tag of
+        "open" ->
+            List.filter (\item -> item.state == Task.TaskStateOpen) tasks
+
+        "draft" ->
+            List.filter (\item -> item.state == Task.TaskStateDraft) tasks
+
+        "closed" ->
+            List.filter (\item -> item.state == Task.TaskStateClosed) tasks
+
+        "" ->
+            tasks
+
+        _ ->
+            []
 
 
 tasksList : List Task.TaskListItemResponse -> Html Msg
@@ -1798,11 +1956,17 @@ awardCollectibleButton awardTaskId collectible =
 
 discoveryView : LoggedInModel -> Html Msg
 discoveryView state =
+    let
+        visibleTasks =
+            filterTasksByQuery state.discoveryQuery state.discoveryTasks
+    in
     Ui.card
         [ Ui.sectionTitle "Discover public tasks"
         , Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
+        , Ui.fieldLabel "Search loaded discovery"
+            [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.discoveryQuery, onInput DiscoveryQueryChanged, testId "discovery-query" ] ]
         , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset
-        , discoveryList state.discoveryTasks
+        , discoveryList visibleTasks
         ]
 
 

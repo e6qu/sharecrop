@@ -84,6 +84,7 @@ emptyLoggedIn response =
     , tasks = []
     , taskStateFilter = ""
     , taskListOffset = 0
+    , taskListQuery = ""
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
     , credentials = []
@@ -92,6 +93,7 @@ emptyLoggedIn response =
     , discoveryTasks = []
     , discoveryIncludeReserved = False
     , discoveryOffset = 0
+    , discoveryQuery = ""
     , detail = Nothing
     , detailError = Nothing
     , reservations = []
@@ -129,8 +131,13 @@ emptyLoggedIn response =
     , standaloneTeams = []
     , orgMembers = []
     , orgTasks = []
+    , orgTaskQuery = ""
+    , orgTaskFilter = ""
+    , orgTaskMessage = Nothing
     , orgCollectibles = []
+    , orgCollectiblesMessage = Nothing
     , teamCollectibles = []
+    , teamCollectiblesMessage = Nothing
     , userProfile = Nothing
     , userProfileError = Nothing
     , userWork = []
@@ -148,6 +155,9 @@ emptyLoggedIn response =
     , teamDetail = Nothing
     , teamDetailError = Nothing
     , teamWork = []
+    , teamWorkQuery = ""
+    , teamWorkFilter = ""
+    , teamWorkMessage = Nothing
     , teamMemberEmail = ""
     , teamMemberMessage = Nothing
     , createOrgTeamName = ""
@@ -322,13 +332,13 @@ enterPage : Page -> LoggedInModel -> LoggedInModel
 enterPage page state =
     case page of
         TasksPage ->
-            { state | page = page, taskStateFilter = "", taskListOffset = 0 }
+            { state | page = page, taskStateFilter = "", taskListOffset = 0, taskListQuery = "" }
 
         DiscoveryPage ->
-            { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0 }
+            { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0, discoveryQuery = "" }
 
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgCollectibles = [], orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing }
@@ -346,7 +356,7 @@ enterPage page state =
             { state | page = page, seriesDetail = Nothing, seriesDetailError = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
 
         TeamDetailPage _ ->
-            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamCollectibles = [], teamMemberEmail = "", teamMemberMessage = Nothing }
+            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
             { state | page = page, operations = Nothing, auditEvents = [], adminMessage = Nothing }
@@ -464,6 +474,9 @@ update msg model =
                     Api.updateLoggedIn model (\state -> { state | taskStateFilter = value, taskListOffset = 0 })
             in
             Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken value 0 ))
+
+        TaskListQueryChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | taskListQuery = value }), Cmd.none )
 
         PreviousTasksPageClicked ->
             Api.withSession model
@@ -741,6 +754,9 @@ update msg model =
                     in
                     ( Api.updateLoggedIn model (\_ -> nextState), Api.fetchDiscovery state.accessToken value 0 )
                 )
+
+        DiscoveryQueryChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | discoveryQuery = value }), Cmd.none )
 
         PreviousDiscoveryPageClicked ->
             Api.withSession model
@@ -1320,13 +1336,19 @@ update msg model =
                 (\state ->
                     case result of
                         Ok response ->
-                            { state | teamWork = response.tasks }
+                            { state | teamWork = response.tasks, teamWorkMessage = Nothing }
 
-                        Err _ ->
-                            { state | teamWork = [] }
+                        Err error ->
+                            { state | teamWork = [], teamWorkMessage = Just (httpErrorLabel error) }
                 )
             , Cmd.none
             )
+
+        TeamWorkQueryChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | teamWorkQuery = value }), Cmd.none )
+
+        TeamWorkFilterChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | teamWorkFilter = value }), Cmd.none )
 
         TeamMemberEmailChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | teamMemberEmail = value }), Cmd.none )
@@ -1340,20 +1362,29 @@ update msg model =
         AddTeamMemberReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | teamMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
 
-        OrgTasksReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTasks = Api.tasksFromResult result }), Cmd.none )
+        OrgTasksReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgTasks = response.tasks, orgTaskMessage = Nothing }), Cmd.none )
+
+        OrgTasksReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgTasks = [], orgTaskMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        OrgTaskQueryChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | orgTaskQuery = value }), Cmd.none )
+
+        OrgTaskFilterChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | orgTaskFilter = value }), Cmd.none )
 
         OrgCollectiblesReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgCollectibles = response.collectibles }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgCollectibles = response.collectibles, orgCollectiblesMessage = Nothing }), Cmd.none )
 
-        OrgCollectiblesReceived (Err _) ->
-            ( model, Cmd.none )
+        OrgCollectiblesReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgCollectibles = [], orgCollectiblesMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         TeamCollectiblesReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | teamCollectibles = response.collectibles }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | teamCollectibles = response.collectibles, teamCollectiblesMessage = Nothing }), Cmd.none )
 
-        TeamCollectiblesReceived (Err _) ->
-            ( model, Cmd.none )
+        TeamCollectiblesReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | teamCollectibles = [], teamCollectiblesMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         CreateOrgTeamNameChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createOrgTeamName = value }), Cmd.none )

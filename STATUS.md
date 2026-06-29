@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 80 work, merged into `main`.
+The repository contains pull request 1 through pull request 81 work, merged into `main`, plus the current `task/post81-dashboards-revisions-parity` branch.
 
-Active task: post-PR80 continuity cleanup, PR80 verification follow-up, team/org work dashboard improvements, submission revision/discussion polish, navigation/docs improvements, and backendless demo parity hardening are implemented on `task/readiness-dashboard-docs-parity`. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
+Active task: dashboard/list polish, revision inbox, contract/scenario parity expansion, and onboarding docs are implemented on `task/post81-dashboards-revisions-parity`. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -23,6 +23,9 @@ Current implemented surface:
 - Platform admins can view audit events at `#/admin`; audit writes cover admin default collectible awards, account deactivation, organization member provisioning/role/deactivation actions, submission review outcomes, and task refunds.
 - Team detail pages load a team review queue and team work list from `/api/teams/{team_id}/work`.
 - Team detail pages split team work into review, ready-for-team, and assigned-to-team sections.
+- Team work, organization tasks, requester task lists, and discovery lists have loaded-list search/filter controls.
+- Worker submission profile pages include a revision inbox for submissions in `changes_requested`.
+- Team/organization dashboard load failures surface section-specific messages instead of silently rendering empty lists.
 - The backendless demo serves the current compiled Elm bundle, includes the admin operations/audit route, and handles `/demo/` base paths explicitly.
 - Account verification/reset token issue supports API-visible local/test mode and log-delivery mode.
 - Account deactivation anonymizes email, removes password credentials, and revokes active refresh/account tokens.
@@ -44,6 +47,7 @@ Current implemented surface:
 - The WASM demo backend spike is documented with explicit storage-adapter gates and no fallback path.
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles only; user/org/per-project tokens, external wallets, and crypto integrations are out of scope.
 - README and hosted docs link to the repository HTTP API reference, MCP reference, operator runbook, and agent-side scheduling recipe.
+- README and hosted docs link to the onboarding guide in [docs/onboarding.md](./docs/onboarding.md).
 
 Current verification:
 
@@ -57,9 +61,9 @@ Current verification:
 - `go tool deadcode -test ./...` passed.
 - `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
-- PR 80 CI passed, including `db-checks` and Playwright.
-- Focused local Playwright reached the app server, but every registration failed because the configured local PostgreSQL endpoint `localhost:15432` was not reachable.
+- `deno run --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts --no-deps --output=/Users/zardoz/projects/sharecrop/test-results tests/playwright/demo.spec.ts tests/playwright/mobile.spec.ts` passed against the already-running demo server.
+- PR 81 CI passed, including `db-checks` and Playwright.
 
 Blocking issues:
 
-- None known.
+- Local real-app Playwright was not run because PostgreSQL was not reachable at `localhost:15432`. Demo Playwright passed locally, and PR 81 CI passed real-app Playwright before this branch.
