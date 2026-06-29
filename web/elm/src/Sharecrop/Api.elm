@@ -355,7 +355,7 @@ routeLoadCmd token subjectId page =
         TeamDetailPage teamId ->
             Cmd.batch
                 [ authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
-                , authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/work") Http.emptyBody (Http.expectJson TeamWorkReceived Task.tasksResponseDecoder)
+                , fetchTeamWork token teamId "" 0
                 , fetchTeamCollectibles token teamId
                 ]
 
@@ -596,6 +596,27 @@ fetchTasks token stateFilter offset =
                 "/api/tasks?scope=user&state=" ++ stateFilter ++ "&" ++ pageQuery
     in
     authorizedRequest "GET" token query Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
+
+
+taskSearchParams : String -> Int -> String
+taskSearchParams queryText offset =
+    let
+        pageQuery =
+            "limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset
+
+        trimmed =
+            String.trim queryText
+    in
+    if trimmed == "" then
+        pageQuery
+
+    else
+        pageQuery ++ "&query=" ++ Url.percentEncode trimmed
+
+
+fetchTeamWork : String -> String -> String -> Int -> Cmd Msg
+fetchTeamWork token teamId queryText offset =
+    authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/work?" ++ taskSearchParams queryText offset) Http.emptyBody (Http.expectJson TeamWorkReceived Task.tasksResponseDecoder)
 
 
 fetchCredentials : String -> Cmd Msg
@@ -875,8 +896,21 @@ loadOrganization token organizationId =
             [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (Http.expectJson OrgBalanceReceived Ledger.balanceResponseDecoder)
             , fetchOrgTeams token organizationId
             , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder)
-            , authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
+            , fetchOrgTasksPage token organizationId "" "" 0
             ]
+
+
+fetchOrgTasksPage : String -> String -> String -> String -> Int -> Cmd Msg
+fetchOrgTasksPage token organizationId queryText stateFilter offset =
+    let
+        stateQuery =
+            if stateFilter == "" then
+                ""
+
+            else
+                "&state=" ++ stateFilter
+    in
+    authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId ++ "&" ++ taskSearchParams queryText offset ++ stateQuery) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
 
 
 fetchOrgTeams : String -> String -> Cmd Msg

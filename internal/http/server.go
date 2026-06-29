@@ -855,6 +855,53 @@ func parsePage(r *http.Request) core.Page {
 	return accepted.Value
 }
 
+type pageParseResult interface {
+	pageParseResult()
+}
+
+type pageParseAccepted struct {
+	value core.Page
+}
+
+type pageParseRejected struct {
+	reason string
+}
+
+func (pageParseAccepted) pageParseResult() {}
+
+func (pageParseRejected) pageParseResult() {}
+
+func parsePageStrict(r *http.Request) pageParseResult {
+	query := r.URL.Query()
+	rawLimit := query.Get("limit")
+	rawOffset := query.Get("offset")
+	if rawLimit == "" && rawOffset == "" {
+		return pageParseAccepted{value: core.DefaultPage()}
+	}
+	limit := core.DefaultPage().Limit()
+	if rawLimit != "" {
+		parsed, limitErr := strconv.Atoi(rawLimit)
+		if limitErr != nil {
+			return pageParseRejected{reason: "limit query parameter is invalid"}
+		}
+		limit = parsed
+	}
+	offset := core.DefaultPage().Offset()
+	if rawOffset != "" {
+		parsed, offsetErr := strconv.Atoi(rawOffset)
+		if offsetErr != nil {
+			return pageParseRejected{reason: "offset query parameter is invalid"}
+		}
+		offset = parsed
+	}
+	pageResult := core.NewPage(limit, offset)
+	accepted, matched := pageResult.(core.PageAccepted)
+	if !matched {
+		return pageParseRejected{reason: pageResult.(core.PageRejected).Reason.Description()}
+	}
+	return pageParseAccepted{value: accepted.Value}
+}
+
 type submissionRequestResult interface {
 	submissionRequestResult()
 }

@@ -48,6 +48,41 @@ func TestIndex(t *testing.T) {
 	}
 }
 
+func TestParseTaskListFiltersAcceptsSearchQuery(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/tasks?query=queue", nil)
+
+	result := parseTaskListFilters(request)
+	accepted, matched := result.(taskListFiltersAccepted)
+	if !matched {
+		t.Fatalf("filters = %T, want taskListFiltersAccepted", result)
+	}
+	search, matched := accepted.value.Search.(task.SearchContains)
+	if !matched {
+		t.Fatalf("search filter = %T, want SearchContains", accepted.value.Search)
+	}
+	if search.Value.String() != "queue" {
+		t.Fatalf("search query = %q, want queue", search.Value.String())
+	}
+}
+
+func TestParseTaskListFiltersRejectsBlankSearchQuery(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/tasks?query=+++", nil)
+
+	result := parseTaskListFilters(request)
+	if _, matched := result.(taskListFiltersRejected); !matched {
+		t.Fatalf("filters = %T, want taskListFiltersRejected", result)
+	}
+}
+
+func TestParsePageStrictRejectsInvalidLimit(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/tasks?limit=abc&offset=0", nil)
+
+	result := parsePageStrict(request)
+	if _, matched := result.(pageParseRejected); !matched {
+		t.Fatalf("page = %T, want pageParseRejected", result)
+	}
+}
+
 func TestRegisterEndpoint(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"email":"person@example.com","password":"correct horse battery staple"}`))
 	response := httptest.NewRecorder()

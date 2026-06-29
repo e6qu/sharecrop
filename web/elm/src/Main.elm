@@ -133,6 +133,7 @@ emptyLoggedIn response =
     , orgTasks = []
     , orgTaskQuery = ""
     , orgTaskFilter = ""
+    , orgTaskOffset = 0
     , orgTaskMessage = Nothing
     , orgCollectibles = []
     , orgCollectiblesMessage = Nothing
@@ -142,6 +143,8 @@ emptyLoggedIn response =
     , userProfileError = Nothing
     , userWork = []
     , userSubmissions = []
+    , pendingRevisionTaskID = Nothing
+    , pendingRevisionResponse = ""
     , seriesDetail = Nothing
     , seriesDetailError = Nothing
     , seriesList = []
@@ -157,6 +160,7 @@ emptyLoggedIn response =
     , teamWork = []
     , teamWorkQuery = ""
     , teamWorkFilter = ""
+    , teamWorkOffset = 0
     , teamWorkMessage = Nothing
     , teamMemberEmail = ""
     , teamMemberMessage = Nothing
@@ -338,7 +342,7 @@ enterPage page state =
             { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0, discoveryQuery = "" }
 
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing }
@@ -356,7 +360,7 @@ enterPage page state =
             { state | page = page, seriesDetail = Nothing, seriesDetailError = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
 
         TeamDetailPage _ ->
-            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
+            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
             { state | page = page, operations = Nothing, auditEvents = [], adminMessage = Nothing }
@@ -367,12 +371,12 @@ enterPage page state =
         CollectibleDetailPage _ ->
             { state | page = page, transferMessage = Nothing, transferRecipientId = "" }
 
-        TaskDetailPage _ ->
+        TaskDetailPage taskId ->
             -- Clear the previous task's detail substate so a task->task link does
             -- not briefly show the prior task's badges, submissions, or comments.
             -- Review form fields are reset here too so the prior submission's
             -- note / partial credit / tip / ban does not carry over to the next.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = "", submitMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "" }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -388,6 +392,15 @@ enterPage page state =
 
         _ ->
             { state | page = page }
+
+
+revisionDraftFor : String -> LoggedInModel -> String
+revisionDraftFor taskId state =
+    if state.pendingRevisionTaskID == Just taskId then
+        state.pendingRevisionResponse
+
+    else
+        ""
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -1218,6 +1231,11 @@ update msg model =
         UserSubmissionsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.submissionsFromResult result }), Cmd.none )
 
+        StartRevisionClicked taskId responseJson ->
+            ( Api.updateLoggedIn model (\state -> { state | pendingRevisionTaskID = Just taskId, pendingRevisionResponse = responseJson })
+            , Nav.pushUrl model.key ("#/tasks/" ++ taskId)
+            )
+
         SeriesListReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | seriesList = Api.seriesFromResult result }), Cmd.none )
 
@@ -1350,6 +1368,51 @@ update msg model =
         TeamWorkFilterChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | teamWorkFilter = value }), Cmd.none )
 
+        SearchTeamWorkClicked ->
+            Api.withSession model
+                (\state ->
+                    case state.teamDetail of
+                        Just detail ->
+                            let
+                                offset =
+                                    0
+                            in
+                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery offset )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+                )
+
+        PreviousTeamWorkPageClicked ->
+            Api.withSession model
+                (\state ->
+                    case state.teamDetail of
+                        Just detail ->
+                            let
+                                offset =
+                                    max 0 (state.teamWorkOffset - Api.selectorPageSize)
+                            in
+                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery offset )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+                )
+
+        NextTeamWorkPageClicked ->
+            Api.withSession model
+                (\state ->
+                    case state.teamDetail of
+                        Just detail ->
+                            let
+                                offset =
+                                    state.teamWorkOffset + Api.selectorPageSize
+                            in
+                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery offset )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+                )
+
         TeamMemberEmailChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | teamMemberEmail = value }), Cmd.none )
 
@@ -1372,7 +1435,44 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgTaskQuery = value }), Cmd.none )
 
         OrgTaskFilterChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTaskFilter = value }), Cmd.none )
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            0
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskFilter = value, orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery value offset )
+                )
+
+        SearchOrgTasksClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            0
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter offset )
+                )
+
+        PreviousOrgTasksPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.orgTaskOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter offset )
+                )
+
+        NextOrgTasksPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.orgTaskOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter offset )
+                )
 
         OrgCollectiblesReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | orgCollectibles = response.collectibles, orgCollectiblesMessage = Nothing }), Cmd.none )

@@ -73,7 +73,21 @@ func (server Server) getTeamWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.taskService.List(r.Context(), actor.subject, task.TeamListScope{TeamID: teamIDCreated.Value, IncludeReserved: true}, task.NoListFilters(), parsePage(r))
+	filtersResult := parseTaskListFilters(r)
+	filtersAccepted, filtersMatched := filtersResult.(taskListFiltersAccepted)
+	if !filtersMatched {
+		writeDomainError(w, filtersResult.(taskListFiltersRejected).reason)
+		return
+	}
+
+	pageResult := parsePageStrict(r)
+	pageAccepted, pageMatched := pageResult.(pageParseAccepted)
+	if !pageMatched {
+		writeError(w, http.StatusBadRequest, pageResult.(pageParseRejected).reason)
+		return
+	}
+
+	result := server.taskService.List(r.Context(), actor.subject, task.TeamListScope{TeamID: teamIDCreated.Value, IncludeReserved: true}, filtersAccepted.value, pageAccepted.value)
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		writeDomainError(w, result.(task.ListRejected).Reason)

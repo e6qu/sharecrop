@@ -159,6 +159,7 @@ type alias LoggedInModel =
     , orgTasks : List Task.TaskListItemResponse
     , orgTaskQuery : String
     , orgTaskFilter : String
+    , orgTaskOffset : Int
     , orgTaskMessage : Maybe String
     , orgCollectibles : List Collectible.CollectibleResponse
     , orgCollectiblesMessage : Maybe String
@@ -168,6 +169,8 @@ type alias LoggedInModel =
     , userProfileError : Maybe String
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
+    , pendingRevisionTaskID : Maybe String
+    , pendingRevisionResponse : String
     , seriesDetail : Maybe SeriesDetailData
     , seriesDetailError : Maybe String
     , seriesList : List TaskSeries.TaskSeriesResponse
@@ -183,6 +186,7 @@ type alias LoggedInModel =
     , teamWork : List Task.TaskListItemResponse
     , teamWorkQuery : String
     , teamWorkFilter : String
+    , teamWorkOffset : Int
     , teamWorkMessage : Maybe String
     , teamMemberEmail : String
     , teamMemberMessage : Maybe String
@@ -418,6 +422,7 @@ type Msg
     | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
     | UserWorkReceived (Result Http.Error Task.TasksResponse)
     | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
+    | StartRevisionClicked String String
     | SeriesListReceived (Result Http.Error TaskSeries.TaskSeriesListResponse)
     | CreateSeriesTitleChanged String
     | CreateSeriesDescriptionChanged String
@@ -443,12 +448,18 @@ type Msg
     | TeamWorkReceived (Result Http.Error Task.TasksResponse)
     | TeamWorkQueryChanged String
     | TeamWorkFilterChanged String
+    | SearchTeamWorkClicked
+    | PreviousTeamWorkPageClicked
+    | NextTeamWorkPageClicked
     | TeamMemberEmailChanged String
     | AddTeamMemberClicked String
     | AddTeamMemberReceived (Result Http.Error Team.TeamDetailResponse)
     | OrgTasksReceived (Result Http.Error Task.TasksResponse)
     | OrgTaskQueryChanged String
     | OrgTaskFilterChanged String
+    | SearchOrgTasksClicked
+    | PreviousOrgTasksPageClicked
+    | NextOrgTasksPageClicked
     | OrgCollectiblesReceived (Result Http.Error Collectible.CollectiblesResponse)
     | TeamCollectiblesReceived (Result Http.Error Collectible.CollectiblesResponse)
     | CreateOrgTeamNameChanged String

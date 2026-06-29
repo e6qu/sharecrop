@@ -438,6 +438,24 @@ func acceptedTitle(t *testing.T, raw string) Title {
 	return accepted.Value
 }
 
+func TestNewSearchTextTrimsInput(t *testing.T) {
+	result := NewSearchText("  queue task  ")
+	accepted, matched := result.(SearchTextAccepted)
+	if !matched {
+		t.Fatalf("search text = %T, want SearchTextAccepted", result)
+	}
+	if accepted.Value.String() != "queue task" {
+		t.Fatalf("search text = %q, want queue task", accepted.Value.String())
+	}
+}
+
+func TestNewSearchTextRejectsEmptyInput(t *testing.T) {
+	result := NewSearchText("   ")
+	if _, matched := result.(SearchTextRejected); !matched {
+		t.Fatalf("search text = %T, want SearchTextRejected", result)
+	}
+}
+
 func acceptedDescription(t *testing.T, raw string) Description {
 	t.Helper()
 	result := NewDescription(raw)

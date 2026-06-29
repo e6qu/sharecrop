@@ -55,10 +55,11 @@ support surfaces are absent.
      backendless demo.
    - Team detail pages split team work into review, ready-for-team, and
      assigned-to-team sections.
-   - Team and organization task lists now have loaded-list search and
-     state/work-type filters.
-   - Result: the core organization-team task path works, but high-volume
-     server-side queue tooling still needs product polish.
+   - Team and organization task lists now have server-backed task search and
+     pagination. Organization task state filters are server-backed, and team
+     work-type filters apply to the loaded page.
+   - Result: the core organization-team task path works, but richer queue
+     sorting and saved views still need product polish.
 
 2. **Worker revision and submission-discussion flows still need polish.**
    - Workers can submit and can list their own submissions from the profile
@@ -70,8 +71,10 @@ support surfaces are absent.
    - Submission-created, review, and submission-comment notifications exist.
    - The worker submissions page includes a revision inbox for requested
      changes.
-   - Result: "request changes" is implemented, but worker-side resubmission
-     shortcuts still need product polish.
+   - The revision inbox can open the task detail with the previous response
+     prefilled for editing.
+   - Result: "request changes" is implemented, but a revision history view still
+     needs product polish.
 
 3. **The reward economy is internal only by product decision.**
    - Credits are signup grants and internal ledger entries.
