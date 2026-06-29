@@ -28,6 +28,12 @@ func TestSubmissionReceiptRedactionAndRequesterList(t *testing.T) {
 	if createdBody.Submission.State != "submitted" {
 		t.Fatalf("submission state = %q, want submitted", createdBody.Submission.State)
 	}
+	if len(createdBody.Submission.SensitiveFields) != 1 {
+		t.Fatalf("sensitive field count = %d, want 1", len(createdBody.Submission.SensitiveFields))
+	}
+	if createdBody.Submission.SensitiveFields[0].Path != "email" {
+		t.Fatalf("sensitive field path = %q, want email", createdBody.Submission.SensitiveFields[0].Path)
+	}
 
 	receiptResponse, err := http.Get(server.URL + "/api/submission-receipts/" + createdBody.ReceiptToken)
 	if err != nil {
@@ -51,6 +57,9 @@ func TestSubmissionReceiptRedactionAndRequesterList(t *testing.T) {
 	// Redaction applies only to viewers who lack permission (the receipt path above).
 	if listBody.Submissions[0].ResponseJSON != `{"email": "person@example.com"}` {
 		t.Fatalf("requester list response = %q, want unredacted email", listBody.Submissions[0].ResponseJSON)
+	}
+	if len(listBody.Submissions[0].SensitiveFields) != 1 {
+		t.Fatalf("requester sensitive field count = %d, want 1", len(listBody.Submissions[0].SensitiveFields))
 	}
 
 	// A submitter who is not the requester and holds no review permission must not be
@@ -111,17 +120,25 @@ func TestInvalidSubmissionIsRecorded(t *testing.T) {
 }
 
 type submissionHTTPResponse struct {
-	ID               string                             `json:"id"`
-	TaskID           string                             `json:"task_id"`
-	SubmitterID      string                             `json:"submitter_id"`
-	State            string                             `json:"state"`
-	ResponseJSON     string                             `json:"response_json"`
-	ValidationErrors []submissionValidationHTTPResponse `json:"validation_errors"`
+	ID               string                                 `json:"id"`
+	TaskID           string                                 `json:"task_id"`
+	SubmitterID      string                                 `json:"submitter_id"`
+	State            string                                 `json:"state"`
+	ResponseJSON     string                                 `json:"response_json"`
+	ValidationErrors []submissionValidationHTTPResponse     `json:"validation_errors"`
+	SensitiveFields  []submissionSensitiveFieldHTTPResponse `json:"sensitive_fields"`
 }
 
 type submissionValidationHTTPResponse struct {
 	Path    string `json:"path"`
 	Message string `json:"message"`
+}
+
+type submissionSensitiveFieldHTTPResponse struct {
+	Path      string `json:"path"`
+	Category  string `json:"category"`
+	Retention string `json:"retention"`
+	Redaction string `json:"redaction"`
 }
 
 type submissionCreatedHTTPResponse struct {

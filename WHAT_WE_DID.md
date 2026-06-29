@@ -1,5 +1,25 @@
 # What We Did
 
+`task/queue-revisions-ops-privacy` combined queue tooling, revision-history
+polish, admin inspectability, parity, contracts, docs, and privacy groundwork:
+
+- **Queue tooling.** Task list APIs now accept `task_type` and `sort` filters in
+  addition to existing scope/state/search/pagination filters. Team work,
+  organization tasks, and requester task lists expose browser controls for task
+  type and sort.
+- **Revision and privacy views.** Worker submission history rows show response
+  bodies, validation errors, review notes, sensitive-field metadata, and the
+  existing revision shortcut for requested changes.
+- **Admin inspectability.** Admin audit events can be filtered by action,
+  subject kind, and subject ID through HTTP and browser controls.
+- **Contract and parity coverage.** Submission response contracts now include
+  `sensitive_fields`; fixture tests, HTTP E2E helpers, shared scenario parity,
+  and the backendless demo were updated for queue type/sort and sensitive-field
+  response metadata.
+- **Docs.** API, operations, readiness, demo-parity, and continuity docs were
+  updated. Export/delete request flows and sensitive-field deletion jobs remain
+  deferred until their lifecycle design is written.
+
 `task/readiness-dashboard-docs-parity` combined post-PR80 cleanup,
 dashboard/navigation polish, discussion notifications, docs, and demo parity:
 

@@ -3,13 +3,14 @@ package submission
 import "github.com/e6qu/sharecrop/internal/core"
 
 type Submission struct {
-	ID             core.SubmissionID
-	TaskID         core.TaskID
-	SubmitterID    core.UserID
-	State          State
-	ResponseSource ResponseSource
-	Validation     ValidationOutcome
-	ReviewNote     ReviewNote
+	ID              core.SubmissionID
+	TaskID          core.TaskID
+	SubmitterID     core.UserID
+	State           State
+	ResponseSource  ResponseSource
+	Validation      ValidationOutcome
+	SensitiveFields []SensitiveField
+	ReviewNote      ReviewNote
 }
 
 type Receipt struct {

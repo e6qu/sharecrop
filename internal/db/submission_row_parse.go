@@ -12,7 +12,14 @@ type validationErrorDTO struct {
 	Message string `json:"message"`
 }
 
-func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawReviewNote string, rawValidationErrors string) submissionRowResult {
+type sensitiveFieldDTO struct {
+	Path      string `json:"path"`
+	Category  string `json:"category"`
+	Retention string `json:"retention"`
+	Redaction string `json:"redaction"`
+}
+
+func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawReviewNote string, rawValidationErrors string, rawSensitiveFields string) submissionRowResult {
 	submissionIDResult := core.ParseSubmissionID(rawSubmissionID)
 	submissionID, submissionIDMatched := submissionIDResult.(core.SubmissionIDCreated)
 	if !submissionIDMatched {
@@ -55,6 +62,13 @@ func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID stri
 		return submissionRowRejected{reason: rejected.reason}
 	}
 
+	sensitiveResult := parseSensitiveFields(rawSensitiveFields)
+	sensitiveFields, sensitiveMatched := sensitiveResult.(sensitiveFieldsAccepted)
+	if !sensitiveMatched {
+		rejected := sensitiveResult.(sensitiveFieldsRejected)
+		return submissionRowRejected{reason: rejected.reason}
+	}
+
 	noteResult := submission.NewStoredReviewNote(rawReviewNote)
 	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
 	if !noteMatched {
@@ -63,13 +77,14 @@ func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID stri
 	}
 
 	return submissionRowAccepted{value: submission.Submission{
-		ID:             submissionID.Value,
-		TaskID:         taskID.Value,
-		SubmitterID:    submitterID.Value,
-		State:          state.Value,
-		ResponseSource: source.Value,
-		Validation:     outcome.value,
-		ReviewNote:     note.Value,
+		ID:              submissionID.Value,
+		TaskID:          taskID.Value,
+		SubmitterID:     submitterID.Value,
+		State:           state.Value,
+		ResponseSource:  source.Value,
+		Validation:      outcome.value,
+		SensitiveFields: sensitiveFields.values,
+		ReviewNote:      note.Value,
 	}}
 }
 
@@ -103,4 +118,38 @@ func parseValidationOutcome(raw string) validationOutcomeResult {
 		errors = append(errors, submission.ValidationError{Path: value.Path, Message: value.Message})
 	}
 	return validationOutcomeAccepted{value: submission.ValidationFailed{Errors: errors}}
+}
+
+type sensitiveFieldsResult interface {
+	sensitiveFieldsResult()
+}
+
+type sensitiveFieldsAccepted struct {
+	values []submission.SensitiveField
+}
+
+type sensitiveFieldsRejected struct {
+	reason core.DomainError
+}
+
+func (sensitiveFieldsAccepted) sensitiveFieldsResult() {}
+
+func (sensitiveFieldsRejected) sensitiveFieldsResult() {}
+
+func parseSensitiveFields(raw string) sensitiveFieldsResult {
+	var values []sensitiveFieldDTO
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return sensitiveFieldsRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission sensitive fields are invalid")}
+	}
+	fields := make([]submission.SensitiveField, 0, len(values))
+	for valueIndex := range values {
+		value := values[valueIndex]
+		fields = append(fields, submission.SensitiveField{
+			Path:      value.Path,
+			Category:  value.Category,
+			Retention: value.Retention,
+			Redaction: value.Redaction,
+		})
+	}
+	return sensitiveFieldsAccepted{values: fields}
 }

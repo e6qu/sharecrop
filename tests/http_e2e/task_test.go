@@ -395,6 +395,13 @@ func TestTaskListFiltersBySearchQuery(t *testing.T) {
 	assertTaskPresent(t, searchListing, searchTaskID)
 	assertTaskAbsent(t, searchListing, otherTaskID)
 
+	codeReviewTitle := "Code review queue " + uniqueTestSuffix(t)
+	codeReviewRequest := strings.Replace(titledUserTaskRequestJSON(owner.SubjectID, codeReviewTitle), `"description":`, `"task_type":"code_review","reference_url":"","description":`, 1)
+	codeReviewTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, codeReviewRequest)
+	typeListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&task_type=code_review&sort=title_asc"))
+	assertTaskPresent(t, typeListing, codeReviewTaskID)
+	assertTaskAbsent(t, typeListing, searchTaskID)
+
 	organizationID := createOrganization(t, server, owner, "Search Queue Org")
 	orgTitle := "Organization queue " + uniqueTestSuffix(t)
 	orgTaskID := createUserTaskFromJSON(t, server, owner.AccessToken, organizationVisibleTaskRequestJSON(owner.SubjectID, organizationID, orgTitle))

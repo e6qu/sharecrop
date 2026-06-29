@@ -781,6 +781,24 @@ func parseTaskListFilters(r *http.Request) taskListFiltersResult {
 		filters.Search = task.SearchContains{Value: searchAccepted.Value}
 	}
 
+	if rawType := query.Get("task_type"); rawType != "" {
+		typeResult := task.ParseTaskType(rawType)
+		typeAccepted, matched := typeResult.(task.TaskTypeAccepted)
+		if !matched {
+			return taskListFiltersRejected{reason: typeResult.(task.TaskTypeRejected).Reason}
+		}
+		filters.Type = task.TypeEquals{Value: typeAccepted.Value}
+	}
+
+	if rawSort := query.Get("sort"); rawSort != "" {
+		sortResult := task.ParseSortOrder(rawSort)
+		sortAccepted, matched := sortResult.(task.SortOrderAccepted)
+		if !matched {
+			return taskListFiltersRejected{reason: sortResult.(task.SortOrderRejected).Reason}
+		}
+		filters.Sort = sortAccepted.Value
+	}
+
 	return taskListFiltersAccepted{value: filters}
 }
 func taskListItemToResponse(item task.ListItem) taskListItemResponse {

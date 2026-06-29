@@ -85,6 +85,8 @@ emptyLoggedIn response =
     , taskStateFilter = ""
     , taskListOffset = 0
     , taskListQuery = ""
+    , taskListTypeFilter = ""
+    , taskListSort = "newest"
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
     , credentials = []
@@ -133,6 +135,8 @@ emptyLoggedIn response =
     , orgTasks = []
     , orgTaskQuery = ""
     , orgTaskFilter = ""
+    , orgTaskTypeFilter = ""
+    , orgTaskSort = "newest"
     , orgTaskOffset = 0
     , orgTaskMessage = Nothing
     , orgCollectibles = []
@@ -160,6 +164,8 @@ emptyLoggedIn response =
     , teamWork = []
     , teamWorkQuery = ""
     , teamWorkFilter = ""
+    , teamWorkTypeFilter = ""
+    , teamWorkSort = "newest"
     , teamWorkOffset = 0
     , teamWorkMessage = Nothing
     , teamMemberEmail = ""
@@ -200,6 +206,9 @@ emptyLoggedIn response =
     , orgTeamOffset = 0
     , operations = Nothing
     , auditEvents = []
+    , auditActionFilter = ""
+    , auditSubjectKindFilter = ""
+    , auditSubjectIDFilter = ""
     , adminMessage = Nothing
     , notifications = []
     , inboxMessage = Nothing
@@ -336,13 +345,13 @@ enterPage : Page -> LoggedInModel -> LoggedInModel
 enterPage page state =
     case page of
         TasksPage ->
-            { state | page = page, taskStateFilter = "", taskListOffset = 0, taskListQuery = "" }
+            { state | page = page, taskStateFilter = "", taskListOffset = 0, taskListQuery = "", taskListTypeFilter = "", taskListSort = "newest" }
 
         DiscoveryPage ->
             { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0, discoveryQuery = "" }
 
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing }
@@ -360,10 +369,10 @@ enterPage page state =
             { state | page = page, seriesDetail = Nothing, seriesDetailError = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
 
         TeamDetailPage _ ->
-            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
+            { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkTypeFilter = "", teamWorkSort = "newest", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
-            { state | page = page, operations = Nothing, auditEvents = [], adminMessage = Nothing }
+            { state | page = page, operations = Nothing, auditEvents = [], auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         InboxPage ->
             { state | page = page, notifications = [], inboxMessage = Nothing }
@@ -486,10 +495,24 @@ update msg model =
                 updated =
                     Api.updateLoggedIn model (\state -> { state | taskStateFilter = value, taskListOffset = 0 })
             in
-            Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken value 0 ))
+            Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken value state.taskListTypeFilter state.taskListSort 0 ))
 
         TaskListQueryChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | taskListQuery = value }), Cmd.none )
+
+        TaskListTypeFilterChanged value ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | taskListTypeFilter = value, taskListOffset = 0 })
+            in
+            Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken state.taskStateFilter value state.taskListSort 0 ))
+
+        TaskListSortChanged value ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | taskListSort = value, taskListOffset = 0 })
+            in
+            Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter value 0 ))
 
         PreviousTasksPageClicked ->
             Api.withSession model
@@ -498,7 +521,7 @@ update msg model =
                         offset =
                             max 0 (state.taskListOffset - Api.selectorPageSize)
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | taskListOffset = offset }), Api.fetchTasks state.accessToken state.taskStateFilter offset )
+                    ( Api.updateLoggedIn model (\current -> { current | taskListOffset = offset }), Api.fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort offset )
                 )
 
         NextTasksPageClicked ->
@@ -508,7 +531,7 @@ update msg model =
                         offset =
                             state.taskListOffset + Api.selectorPageSize
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | taskListOffset = offset }), Api.fetchTasks state.accessToken state.taskStateFilter offset )
+                    ( Api.updateLoggedIn model (\current -> { current | taskListOffset = offset }), Api.fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort offset )
                 )
 
         CreateTitleChanged value ->
@@ -984,7 +1007,7 @@ update msg model =
                 updated =
                     Api.updateLoggedIn model (\state -> { state | awardMessage = Just (View.awardSuccessLabel collectible) })
             in
-            Api.withSession updated (\state -> ( updated, Cmd.batch [ Api.fetchCollectibles state.accessToken, Api.fetchTasks state.accessToken state.taskStateFilter state.taskListOffset ] ))
+            Api.withSession updated (\state -> ( updated, Cmd.batch [ Api.fetchCollectibles state.accessToken, Api.fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset ] ))
 
         AwardReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -1368,6 +1391,36 @@ update msg model =
         TeamWorkFilterChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | teamWorkFilter = value }), Cmd.none )
 
+        TeamWorkTypeFilterChanged value ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | teamWorkTypeFilter = value, teamWorkOffset = 0 })
+            in
+            Api.withSession updated
+                (\state ->
+                    case state.teamDetail of
+                        Just detail ->
+                            ( updated, Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery value state.teamWorkSort 0 )
+
+                        Nothing ->
+                            ( updated, Cmd.none )
+                )
+
+        TeamWorkSortChanged value ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | teamWorkSort = value, teamWorkOffset = 0 })
+            in
+            Api.withSession updated
+                (\state ->
+                    case state.teamDetail of
+                        Just detail ->
+                            ( updated, Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery state.teamWorkTypeFilter value 0 )
+
+                        Nothing ->
+                            ( updated, Cmd.none )
+                )
+
         SearchTeamWorkClicked ->
             Api.withSession model
                 (\state ->
@@ -1377,7 +1430,7 @@ update msg model =
                                 offset =
                                     0
                             in
-                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery offset )
+                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery state.teamWorkTypeFilter state.teamWorkSort offset )
 
                         Nothing ->
                             ( model, Cmd.none )
@@ -1392,7 +1445,7 @@ update msg model =
                                 offset =
                                     max 0 (state.teamWorkOffset - Api.selectorPageSize)
                             in
-                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery offset )
+                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery state.teamWorkTypeFilter state.teamWorkSort offset )
 
                         Nothing ->
                             ( model, Cmd.none )
@@ -1407,7 +1460,7 @@ update msg model =
                                 offset =
                                     state.teamWorkOffset + Api.selectorPageSize
                             in
-                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery offset )
+                            ( Api.updateLoggedIn model (\current -> { current | teamWorkOffset = offset }), Api.fetchTeamWork state.accessToken detail.team.id state.teamWorkQuery state.teamWorkTypeFilter state.teamWorkSort offset )
 
                         Nothing ->
                             ( model, Cmd.none )
@@ -1441,7 +1494,27 @@ update msg model =
                         offset =
                             0
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | orgTaskFilter = value, orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery value offset )
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskFilter = value, orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery value state.orgTaskTypeFilter state.orgTaskSort offset )
+                )
+
+        OrgTaskTypeFilterChanged value ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            0
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskTypeFilter = value, orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter value state.orgTaskSort offset )
+                )
+
+        OrgTaskSortChanged value ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            0
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskSort = value, orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter state.orgTaskTypeFilter value offset )
                 )
 
         SearchOrgTasksClicked ->
@@ -1451,7 +1524,7 @@ update msg model =
                         offset =
                             0
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter offset )
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter state.orgTaskTypeFilter state.orgTaskSort offset )
                 )
 
         PreviousOrgTasksPageClicked ->
@@ -1461,7 +1534,7 @@ update msg model =
                         offset =
                             max 0 (state.orgTaskOffset - Api.selectorPageSize)
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter offset )
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter state.orgTaskTypeFilter state.orgTaskSort offset )
                 )
 
         NextOrgTasksPageClicked ->
@@ -1471,7 +1544,7 @@ update msg model =
                         offset =
                             state.orgTaskOffset + Api.selectorPageSize
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter offset )
+                    ( Api.updateLoggedIn model (\current -> { current | orgTaskOffset = offset }), Api.fetchOrgTasksPage state.accessToken state.activeOrgId state.orgTaskQuery state.orgTaskFilter state.orgTaskTypeFilter state.orgTaskSort offset )
                 )
 
         OrgCollectiblesReceived (Ok response) ->
@@ -1704,6 +1777,18 @@ update msg model =
 
         AuditEventsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AuditActionFilterChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | auditActionFilter = value }), Cmd.none )
+
+        AuditSubjectKindFilterChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | auditSubjectKindFilter = value }), Cmd.none )
+
+        AuditSubjectIDFilterChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | auditSubjectIDFilter = value }), Cmd.none )
+
+        SearchAuditEventsClicked ->
+            Api.withSession model (\state -> ( model, Api.fetchAuditEvents state.accessToken state.auditActionFilter state.auditSubjectKindFilter state.auditSubjectIDFilter ))
 
         NotificationsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | notifications = response.notifications, inboxMessage = Nothing }), Cmd.none )

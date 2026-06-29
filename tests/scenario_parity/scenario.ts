@@ -490,6 +490,7 @@ export async function runSharedScenarioParity(
     owner: { kind: "user", user_id: subjectID },
     title: taskTitle,
     description: "Created by the shared scenario parity suite.",
+    task_type: "code_review",
     visibility: { kind: "organization", organization_id: organizationID },
     participation: {
       policy: "reservation_required",
@@ -513,7 +514,7 @@ export async function runSharedScenarioParity(
     "GET",
     `/api/tasks?scope=organization&organization_id=${organizationID}&query=${
       encodeURIComponent(taskTitle)
-    }&limit=1&offset=0`,
+    }&task_type=code_review&sort=title_asc&limit=1&offset=0`,
     noScenarioBody,
   );
   assertStatus(organizationTaskSearch, 200, "organization task queue search");
@@ -540,6 +541,7 @@ export async function runSharedScenarioParity(
       owner: { kind: "user", user_id: subjectID },
       title: organizationTeamTaskTitle,
       description: "Created to verify team queue search.",
+      task_type: "qa_testing",
       visibility: {
         kind: "organization_team",
         organization_id: organizationID,
@@ -572,7 +574,7 @@ export async function runSharedScenarioParity(
     "GET",
     `/api/teams/${orgTeamID}/work?query=${
       encodeURIComponent(organizationTeamTaskTitle)
-    }&limit=1&offset=0`,
+    }&task_type=qa_testing&sort=reward_desc&limit=1&offset=0`,
     noScenarioBody,
   );
   assertStatus(teamWorkSearch, 200, "team work queue search");
@@ -661,6 +663,7 @@ export async function runSharedScenarioParity(
     requireString(submission, "state") === "submitted",
     "submission must be accepted by schema validation",
   );
+  requireArray(submission, "sensitive_fields");
 
   const listedSubmissions = await client.request(
     "GET",
@@ -670,10 +673,11 @@ export async function runSharedScenarioParity(
   assertStatus(listedSubmissions, 200, "list submissions");
   const submissionList = requireArray(listedSubmissions.json, "submissions");
   assertScenario(
-    submissionList.some((item) =>
-      requireString(requireRecord(item, "submissions[]"), "id") ===
-        submissionID
-    ),
+    submissionList.some((item) => {
+      const listed = requireRecord(item, "submissions[]");
+      requireArray(listed, "sensitive_fields");
+      return requireString(listed, "id") === submissionID;
+    }),
     "listed submissions must include created submission",
   );
 

@@ -74,6 +74,30 @@ submissionValidationErrorResponseEncoder submissionValidationErrorResponse =
         , ( "message", Encode.string submissionValidationErrorResponse.message )
         ]
 
+type alias SubmissionSensitiveFieldResponse =
+    { path : String
+    , category : String
+    , retention : String
+    , redaction : String
+    }
+
+submissionSensitiveFieldResponseDecoder : Decoder SubmissionSensitiveFieldResponse
+submissionSensitiveFieldResponseDecoder =
+    Decode.map4 SubmissionSensitiveFieldResponse
+        (Decode.field "path" Decode.string)
+        (Decode.field "category" Decode.string)
+        (Decode.field "retention" Decode.string)
+        (Decode.field "redaction" Decode.string)
+
+submissionSensitiveFieldResponseEncoder : SubmissionSensitiveFieldResponse -> Encode.Value
+submissionSensitiveFieldResponseEncoder submissionSensitiveFieldResponse =
+    Encode.object
+        [ ( "path", Encode.string submissionSensitiveFieldResponse.path )
+        , ( "category", Encode.string submissionSensitiveFieldResponse.category )
+        , ( "retention", Encode.string submissionSensitiveFieldResponse.retention )
+        , ( "redaction", Encode.string submissionSensitiveFieldResponse.redaction )
+        ]
+
 type alias SubmissionResponse =
     { id : String
     , taskID : String
@@ -82,11 +106,12 @@ type alias SubmissionResponse =
     , responseJSON : String
     , reviewNote : String
     , validationErrors : List SubmissionValidationErrorResponse
+    , sensitiveFields : List SubmissionSensitiveFieldResponse
     }
 
 submissionResponseDecoder : Decoder SubmissionResponse
 submissionResponseDecoder =
-    Decode.map7 SubmissionResponse
+    Decode.map8 SubmissionResponse
         (Decode.field "id" Decode.string)
         (Decode.field "task_id" Decode.string)
         (Decode.field "submitter_id" Decode.string)
@@ -94,6 +119,7 @@ submissionResponseDecoder =
         (Decode.field "response_json" Decode.string)
         (Decode.field "review_note" Decode.string)
         (Decode.field "validation_errors" (Decode.list submissionValidationErrorResponseDecoder))
+        (Decode.field "sensitive_fields" (Decode.list submissionSensitiveFieldResponseDecoder))
 
 submissionResponseEncoder : SubmissionResponse -> Encode.Value
 submissionResponseEncoder submissionResponse =
@@ -105,6 +131,7 @@ submissionResponseEncoder submissionResponse =
         , ( "response_json", Encode.string submissionResponse.responseJSON )
         , ( "review_note", Encode.string submissionResponse.reviewNote )
         , ( "validation_errors", Encode.list submissionValidationErrorResponseEncoder submissionResponse.validationErrors )
+        , ( "sensitive_fields", Encode.list submissionSensitiveFieldResponseEncoder submissionResponse.sensitiveFields )
         ]
 
 type alias SubmissionsResponse =

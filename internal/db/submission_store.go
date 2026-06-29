@@ -67,13 +67,14 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 	}
 
 	return submission.CreateSubmissionStoreAccepted{Value: submission.Submission{
-		ID:             submissionID,
-		TaskID:         command.TaskID,
-		SubmitterID:    command.SubmitterID,
-		State:          state,
-		ResponseSource: command.ResponseSource,
-		Validation:     outcome,
-		ReviewNote:     submission.EmptyReviewNote(),
+		ID:              submissionID,
+		TaskID:          command.TaskID,
+		SubmitterID:     command.SubmitterID,
+		State:           state,
+		ResponseSource:  command.ResponseSource,
+		Validation:      outcome,
+		SensitiveFields: sensitiveFields,
+		ReviewNote:      submission.EmptyReviewNote(),
 	}}
 }
 
@@ -214,6 +215,19 @@ func submissionSelectSQL() string {
 				)
 				from submission_validation_errors
 				where submission_validation_errors.submission_id = submissions.id
+			), '[]'::jsonb)::text,
+			coalesce((
+				select jsonb_agg(
+					jsonb_build_object(
+						'path', submission_sensitive_fields.path,
+						'category', submission_sensitive_fields.category,
+						'retention', submission_sensitive_fields.retention,
+						'redaction', submission_sensitive_fields.redaction
+					)
+					order by submission_sensitive_fields.field_index
+				)
+				from submission_sensitive_fields
+				where submission_sensitive_fields.submission_id = submissions.id
 			), '[]'::jsonb)::text
 		from submissions
 	`
@@ -276,8 +290,9 @@ func scanSubmissionRow(rows pgx.Rows) submissionRowResult {
 	var rawResponse string
 	var rawReviewNote string
 	var rawValidationErrors string
-	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawState, &rawResponse, &rawReviewNote, &rawValidationErrors); err != nil {
+	var rawSensitiveFields string
+	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawState, &rawResponse, &rawReviewNote, &rawValidationErrors, &rawSensitiveFields); err != nil {
 		return submissionRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan submission failed")}
 	}
-	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawState, rawResponse, rawReviewNote, rawValidationErrors)
+	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawState, rawResponse, rawReviewNote, rawValidationErrors, rawSensitiveFields)
 }

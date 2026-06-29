@@ -5,29 +5,39 @@ Current priority from
 
 Next recommended work:
 
-1. Add richer queue product tooling where needed: sorting, saved views, and
-   server-side work-type filters beyond the current team loaded-page type
-   filter.
-2. Add a revision history view for workers/requesters if repeated
-   request-changes rounds become common.
+1. Add saved queue views if high-volume team or organization work queues need
+   reusable views beyond the current server-backed search, type filters, sort,
+   and pagination.
+2. Add a richer revision timeline if repeated request-changes rounds become
+   common. The worker submissions page now exposes response history, review
+   notes, validation errors, sensitive-field metadata, and revision shortcuts.
 3. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
-   team/organization queue search, organization reviewer acceptance, and
-   multi-actor reservation/submission acceptance.
+   team/organization queue search/type/sort, organization reviewer acceptance,
+   sensitive-field response metadata, and multi-actor reservation/submission
+   acceptance.
 4. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
 5. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit.
-6. Keep improving backendless demo semantic parity through shared scenarios
+6. Add user-facing export/delete request flows and sensitive-field
+   retention/deletion workflows only after the lifecycle design is written.
+7. Keep improving backendless demo semantic parity through shared scenarios
    before any WASM replacement.
-7. Add provider email delivery only if the product direction changes; current
+8. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-8. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+9. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The queue-revisions-ops-privacy branch added task-list `task_type` and
+   `sort` filters, browser queue controls, audit-event filters, submission
+   sensitive-field metadata in responses, visible worker submission response and
+   privacy summaries, shared scenario parity for queue type/sort and sensitive
+   metadata, backendless demo parity, and docs updates.
 
 1. The server-queues/revisions/parity branch added task-list search filters,
    server-side search/pagination for organization task and team work queues, a

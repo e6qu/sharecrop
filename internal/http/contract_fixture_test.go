@@ -246,8 +246,8 @@ func TestRejectSubmissionRequestWireShape(t *testing.T) {
 }
 
 func TestSubmissionCreatedResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionCreatedResponse{Submission: submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", ValidationErrors: []submissionValidationErrorResponse{}}, ReceiptToken: "receipt-1"})
-	assertWireShape(t, encoded, err, `{"submission":{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","validation_errors":[]},"receipt_token":"receipt-1"}`)
+	encoded, err := json.Marshal(submissionCreatedResponse{Submission: submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}, ReceiptToken: "receipt-1"})
+	assertWireShape(t, encoded, err, `{"submission":{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","validation_errors":[],"sensitive_fields":[]},"receipt_token":"receipt-1"}`)
 }
 
 func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
@@ -256,13 +256,13 @@ func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
 }
 
 func TestSubmissionResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", ValidationErrors: []submissionValidationErrorResponse{}})
-	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","validation_errors":[]}`)
+	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{{Path: "email", Category: "pii", Retention: "delete_on_request", Redaction: "replace"}}})
+	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","validation_errors":[],"sensitive_fields":[{"path":"email","category":"pii","retention":"delete_on_request","redaction":"replace"}]}`)
 }
 
 func TestSubmissionsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionsResponse{Submissions: []submissionResponse{{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", ValidationErrors: []submissionValidationErrorResponse{}}}})
-	assertWireShape(t, encoded, err, `{"submissions":[{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","validation_errors":[]}]}`)
+	encoded, err := json.Marshal(submissionsResponse{Submissions: []submissionResponse{{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}}})
+	assertWireShape(t, encoded, err, `{"submissions":[{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","validation_errors":[],"sensitive_fields":[]}]}`)
 }
 
 func TestSubmissionCommentsResponseWireShape(t *testing.T) {

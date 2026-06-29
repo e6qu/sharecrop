@@ -55,11 +55,11 @@ support surfaces are absent.
      backendless demo.
    - Team detail pages split team work into review, ready-for-team, and
      assigned-to-team sections.
-   - Team and organization task lists now have server-backed task search and
-     pagination. Organization task state filters are server-backed, and team
-     work-type filters apply to the loaded page.
+   - Team and organization task lists now have server-backed task search,
+     task-type filters, sorting, and pagination. Organization task state filters
+     are server-backed.
    - Result: the core organization-team task path works, but richer queue
-     sorting and saved views still need product polish.
+     saved views still need product polish.
 
 2. **Worker revision and submission-discussion flows still need polish.**
    - Workers can submit and can list their own submissions from the profile
@@ -67,14 +67,15 @@ support surfaces are absent.
    - The task detail fetches task submissions, but the backend only allows task
      owners/reviewers to list all task submissions.
    - The worker submissions page shows review notes, response body, validation
-     errors, and submission comments.
+     errors, sensitive-field metadata, and submission comments.
    - Submission-created, review, and submission-comment notifications exist.
    - The worker submissions page includes a revision inbox for requested
      changes.
    - The revision inbox can open the task detail with the previous response
      prefilled for editing.
-   - Result: "request changes" is implemented, but a revision history view still
-     needs product polish.
+   - Result: "request changes" is implemented, and the submissions page now
+     exposes the basic revision history. Higher-volume timeline grouping still
+     needs product polish if repeated rounds become common.
 
 3. **The reward economy is internal only by product decision.**
    - Credits are signup grants and internal ledger entries.
@@ -256,6 +257,8 @@ Implemented:
 
 - Sensitive fields can be declared in schema, indexed on submission, and
   redacted for receipt lookup.
+- Submission responses expose indexed sensitive-field metadata so authorized
+  users can see which response paths are governed by retention/redaction policy.
 
 Missing or partial:
 

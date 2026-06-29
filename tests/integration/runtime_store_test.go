@@ -68,7 +68,7 @@ func TestAuditStoreListsPersistedEvents(t *testing.T) {
 		t.Fatalf("record audit rejected: %T", recordResult)
 	}
 
-	listResult := service.List(context.Background(), core.DefaultPage())
+	listResult := service.List(context.Background(), audit.NoListFilters(), core.DefaultPage())
 	listed, listedMatched := listResult.(audit.EventsListed)
 	if !listedMatched {
 		t.Fatalf("list audit rejected: %T", listResult)
@@ -78,6 +78,15 @@ func TestAuditStoreListsPersistedEvents(t *testing.T) {
 	}
 	if listed.Values[0].ActorUserID != actor {
 		t.Fatalf("expected latest audit actor %s, got %s", actor.String(), listed.Values[0].ActorUserID.String())
+	}
+
+	filteredResult := service.List(context.Background(), audit.ListFilters{Action: audit.ActionEquals{Value: audit.ActionSubmissionAccepted}, SubjectKind: audit.SubjectKindEquals{Value: "submission"}, SubjectID: audit.AnySubjectID{}}, core.DefaultPage())
+	filtered, filteredMatched := filteredResult.(audit.EventsListed)
+	if !filteredMatched {
+		t.Fatalf("filtered list audit rejected: %T", filteredResult)
+	}
+	if len(filtered.Values) == 0 {
+		t.Fatalf("expected filtered audit event")
 	}
 }
 

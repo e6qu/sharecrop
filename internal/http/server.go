@@ -132,7 +132,7 @@ type LedgerService interface {
 
 type AuditService interface {
 	Record(context.Context, core.UserID, audit.Action, audit.Subject, audit.Metadata) audit.RecordResult
-	List(context.Context, core.Page) audit.ListResult
+	List(context.Context, audit.ListFilters, core.Page) audit.ListResult
 }
 
 type NotificationService interface {

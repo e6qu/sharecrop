@@ -97,10 +97,12 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `GET /api/notifications`: list authenticated-user notifications.
 - `POST /api/notifications/{notification_id}/read`: mark a notification read.
 - `GET /api/admin/operations`: platform-admin runtime status.
-- `GET /api/admin/audit-events`: platform-admin audit event list.
+- `GET /api/admin/audit-events`: platform-admin audit event list. Supports `action`, `subject_kind`, `subject_id`, `limit`, and `offset`.
 
 ## Notes
 
 - Pagination uses `limit` and `offset` where list handlers expose paging.
 - Selector-backed browser flows use `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams.
+- Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
+- Submission responses include `sensitive_fields` metadata for indexed sensitive response paths. The metadata identifies path, category, retention, and redaction policy; it does not perform deletion by itself.
 - Rewards are Sharecrop credits and admin-minted Sharecrop collectibles only. External wallets, crypto integrations, and per-project tokens are out of scope.

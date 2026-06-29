@@ -187,10 +187,60 @@
   }
 
   function taskPage(url, items) {
-    return selectorPage(url, items, (taskItem, query) =>
-      taskItem.title.toLowerCase().includes(query) ||
-      taskItem.id.toLowerCase().includes(query)
-    );
+    const query = (url.searchParams.get("query") || "").trim().toLowerCase();
+    const taskType = url.searchParams.get("task_type") || "";
+    const sort = url.searchParams.get("sort") || "newest";
+    const taskTypes = new Set([
+      "",
+      "general",
+      "code_review",
+      "security_review",
+      "product_review",
+      "ui_ux_review",
+      "qa_testing",
+    ]);
+    if (!taskTypes.has(taskType)) {
+      throw new Error("invalid task_type query parameter");
+    }
+    const limit = Math.min(100, positiveIntParam(url, "limit", 50));
+    const offset = nonNegativeIntParam(url, "offset");
+    const sorted = items
+      .filter((taskItem) => !taskType || taskItem.task_type === taskType)
+      .filter((taskItem) =>
+        query === "" ||
+        taskItem.title.toLowerCase().includes(query) ||
+        taskItem.id.toLowerCase().includes(query)
+      );
+    switch (sort) {
+      case "newest":
+        break;
+      case "oldest":
+        sorted.reverse();
+        break;
+      case "title_asc":
+        sorted.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case "title_desc":
+        sorted.sort((a, b) => b.title.localeCompare(a.title));
+        break;
+      case "reward_desc":
+        sorted.sort((a, b) =>
+          (b.reward_credit_amount || 0) - (a.reward_credit_amount || 0)
+        );
+        break;
+      case "reward_asc":
+        sorted.sort((a, b) =>
+          (a.reward_credit_amount || 0) - (b.reward_credit_amount || 0)
+        );
+        break;
+      default:
+        throw new Error("invalid sort query parameter");
+    }
+    return sorted.slice(offset, offset + limit);
+  }
+
+  function submissionResponse(submission) {
+    return Object.assign({ sensitive_fields: [] }, submission);
   }
 
   function task(overrides) {
@@ -1366,7 +1416,9 @@
   });
   on("GET", "/api/tasks/:id/submissions", (p) => {
     const t = findTask(p.id);
-    return t ? ok({ submissions: t.submissions }) : err(404, "task not found");
+    return t
+      ? ok({ submissions: t.submissions.map(submissionResponse) })
+      : err(404, "task not found");
   });
   on("POST", "/api/tasks/:id/submissions", (p, _url, body, actorId) => {
     const t = findTask(p.id);
@@ -1410,6 +1462,7 @@
       response_json: raw || "{}",
       review_note: "",
       validation_errors: errors,
+      sensitive_fields: [],
     };
     t.submissions.push(s);
     if (state === "submitted") {
@@ -1419,7 +1472,10 @@
     notify(t.created_by, actorId, "submission_created", "submission", s.id, {
       task_id: t.id,
     });
-    return ok({ submission: s, receipt_token: nextId("receipt") }, 201);
+    return ok({
+      submission: submissionResponse(s),
+      receipt_token: nextId("receipt"),
+    }, 201);
   });
   function pushLedger(kind, amount, taskId) {
     db.ledger.push({ id: nextId("entry"), kind, amount, task_id: taskId });
@@ -1465,7 +1521,10 @@
     const t = findTask(p.id);
     if (!t) return err(404, "task not found");
     if (!canReviewTask(t, actorId)) {
-      return err(403, "only the task owner or an organization reviewer can review submissions");
+      return err(
+        403,
+        "only the task owner or an organization reviewer can review submissions",
+      );
     }
     const s = t.submissions.find((x) => x.id === p.sid);
     if (!s) return err(404, "submission not found");
@@ -1542,7 +1601,10 @@
       const t = findTask(p.id);
       if (!t) return err(404, "task not found");
       if (!canReviewTask(t, actorId)) {
-        return err(403, "only the task owner or an organization reviewer can accept submissions for the task");
+        return err(
+          403,
+          "only the task owner or an organization reviewer can accept submissions for the task",
+        );
       }
       const s = t.submissions.find((x) => x.id === p.sid);
       if (!s) return err(404, "submission not found");
@@ -1604,7 +1666,10 @@
         }
         if (c.transfer_policy === "transferable_within_organization") {
           if (!c.organization_id) {
-            return err(409, "within-organization collectible has no organization");
+            return err(
+              409,
+              "within-organization collectible has no organization",
+            );
           }
           if (
             !activeOrgMember(c.organization_id, actorId) ||
@@ -2113,7 +2178,7 @@
       ok({
         submissions: db.tasks.flatMap((t) => t.submissions).filter((s) =>
           s.submitter_id === p.id
-        ),
+        ).map(submissionResponse),
       }),
   );
   on(
@@ -2129,6 +2194,7 @@
           response_json: "{}",
           review_note: "",
           validation_errors: [],
+          sensitive_fields: [],
         },
       }),
   );
