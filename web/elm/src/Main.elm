@@ -7,6 +7,7 @@ import Sharecrop.Api as Api
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
+import Sharecrop.Generated.Moderation as Moderation
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Privacy as Privacy
@@ -107,6 +108,9 @@ emptyLoggedIn response =
     , submissions = []
     , submitInput = ""
     , submitMessage = Nothing
+    , moderationReason = Moderation.ModerationReasonPolicy
+    , moderationDetails = ""
+    , moderationMessage = Nothing
     , reviewNote = ""
     , reviewPartialCredit = ""
     , reviewTip = ""
@@ -214,6 +218,7 @@ emptyLoggedIn response =
     , orgTeamOffset = 0
     , operations = Nothing
     , auditEvents = []
+    , adminModerationReports = []
     , adminPrivacyRequests = []
     , adminPrivacyResolutionNote = ""
     , auditActionFilter = ""
@@ -427,7 +432,7 @@ enterPage page state =
             { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkTypeFilter = "", teamWorkSort = "newest", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
-            { state | page = page, operations = Nothing, auditEvents = [], adminPrivacyRequests = [], adminPrivacyResolutionNote = "", auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
+            { state | page = page, operations = Nothing, auditEvents = [], adminModerationReports = [], adminPrivacyRequests = [], adminPrivacyResolutionNote = "", auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         InboxPage ->
             { state | page = page, notifications = [], inboxMessage = Nothing }
@@ -440,7 +445,7 @@ enterPage page state =
             -- not briefly show the prior task's badges, submissions, or comments.
             -- Review form fields are reset here too so the prior submission's
             -- note / partial credit / tip / ban does not carry over to the next.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "" }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "" }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -981,6 +986,26 @@ update msg model =
 
         SubmitReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        ModerationReasonChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | moderationReason = value }), Cmd.none )
+
+        ModerationDetailsChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | moderationDetails = value }), Cmd.none )
+
+        ReportTaskClicked taskId ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | moderationMessage = Nothing })
+                    , Api.reportTask state.accessToken taskId state.moderationReason state.moderationDetails
+                    )
+                )
+
+        ModerationReportReceived (Ok report) ->
+            ( Api.updateLoggedIn model (\state -> { state | moderationDetails = "", moderationMessage = Just ("Report submitted: " ++ report.reason) }), Cmd.none )
+
+        ModerationReportReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | moderationMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         ReviewNoteChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | reviewNote = value }), Cmd.none )
@@ -1985,6 +2010,12 @@ update msg model =
 
         AuditEventsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AdminModerationReportsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = response.reports, adminMessage = Nothing }), Cmd.none )
+
+        AdminModerationReportsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         AdminPrivacyRequestsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = response.requests, adminMessage = Nothing }), Cmd.none )

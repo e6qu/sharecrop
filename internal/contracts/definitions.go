@@ -16,7 +16,58 @@ func Modules() []Module {
 		adminModule(),
 		notificationModule(),
 		privacyModule(),
+		moderationModule(),
 		savedQueueViewsModule(),
+	}
+}
+
+func moderationModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Moderation"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("ModerationSubjectKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("ModerationSubjectKindTask"), Tag: "task"},
+					{Name: NewElmTypeName("ModerationSubjectKindSubmission"), Tag: "submission"},
+					{Name: NewElmTypeName("ModerationSubjectKindTaskComment"), Tag: "task_comment"},
+					{Name: NewElmTypeName("ModerationSubjectKindSubmissionComment"), Tag: "submission_comment"},
+					{Name: NewElmTypeName("ModerationSubjectKindTaskSeriesComment"), Tag: "task_series_comment"},
+					{Name: NewElmTypeName("ModerationSubjectKindUser"), Tag: "user"},
+					{Name: NewElmTypeName("ModerationSubjectKindOrganization"), Tag: "organization"},
+					{Name: NewElmTypeName("ModerationSubjectKindTeam"), Tag: "team"},
+					{Name: NewElmTypeName("ModerationSubjectKindCollectible"), Tag: "collectible"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("ModerationReason"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("ModerationReasonSpam"), Tag: "spam"},
+					{Name: NewElmTypeName("ModerationReasonAbuse"), Tag: "abuse"},
+					{Name: NewElmTypeName("ModerationReasonPII"), Tag: "pii"},
+					{Name: NewElmTypeName("ModerationReasonPolicy"), Tag: "policy"},
+					{Name: NewElmTypeName("ModerationReasonOther"), Tag: "other"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("ModerationReportResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("subjectKind"), JSONName: NewJSONFieldName("subject_kind"), Type: StringRef{}},
+					{Name: NewElmValueName("subjectID"), JSONName: NewJSONFieldName("subject_id"), Type: StringRef{}},
+					{Name: NewElmValueName("reason"), JSONName: NewJSONFieldName("reason"), Type: StringRef{}},
+					{Name: NewElmValueName("details"), JSONName: NewJSONFieldName("details"), Type: StringRef{}},
+					{Name: NewElmValueName("reporterUserID"), JSONName: NewJSONFieldName("reporter_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("ModerationReportsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("reports"), JSONName: NewJSONFieldName("reports"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("ModerationReportResponse")}}},
+				},
+			},
+		},
 	}
 }
 

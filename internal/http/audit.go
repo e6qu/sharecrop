@@ -53,7 +53,7 @@ func (service *memoryAuditService) Record(_ context.Context, actor core.UserID, 
 		Metadata:    metadata,
 		CreatedAt:   time.Now().UTC(),
 	})
-	return audit.EventRecorded{}
+	return audit.EventRecorded{Value: service.events[len(service.events)-1]}
 }
 
 func (service *memoryAuditService) List(_ context.Context, filters audit.ListFilters, page core.Page) audit.ListResult {

@@ -585,6 +585,68 @@ export async function runSharedScenarioParity(
   const taskID = requireString(createdTask.json, "id");
   assertTaskSummaryShape(createdTask.json);
 
+  const moderationReport = await client.request(
+    "POST",
+    "/api/moderation/reports",
+    {
+      subject_kind: "task",
+      subject_id: taskID,
+      reason: "policy",
+      details: "Scenario parity moderation report.",
+    },
+  );
+  assertStatus(moderationReport, 201, "create moderation report");
+  assertScenario(
+    requireString(moderationReport.json, "subject_kind") === "task",
+    "moderation report subject kind must round trip",
+  );
+  assertScenario(
+    requireString(moderationReport.json, "subject_id") === taskID,
+    "moderation report subject id must round trip",
+  );
+  assertScenario(
+    requireString(moderationReport.json, "reason") === "policy",
+    "moderation report reason must round trip",
+  );
+  assertScenario(
+    requireString(moderationReport.json, "reporter_user_id") === subjectID,
+    "moderation report reporter must match authenticated user",
+  );
+  requireString(moderationReport.json, "created_at");
+
+  const adminModerationList = await client.request(
+    "GET",
+    "/api/admin/moderation/reports",
+    noScenarioBody,
+  );
+  assertStatus(adminModerationList, 200, "admin moderation report list");
+  const adminModerationReports = requireArray(
+    adminModerationList.json,
+    "reports",
+  );
+  assertScenario(
+    adminModerationReports.some((report) => {
+      const record = requireRecord(report, "moderationReport");
+      return requireString(record, "subject_id") === taskID;
+    }),
+    "admin moderation report list must include created report",
+  );
+
+  const moderationAudit = await client.request(
+    "GET",
+    "/api/admin/audit-events?action=moderation_report_created&subject_kind=task",
+    noScenarioBody,
+  );
+  assertStatus(moderationAudit, 200, "moderation report audit events");
+  const moderationAuditEvents = requireArray(moderationAudit.json, "events");
+  assertScenario(
+    moderationAuditEvents.some((event) => {
+      const record = requireRecord(event, "moderationAuditEvent");
+      return requireString(record, "subject_id") === taskID;
+    }),
+    "moderation report must be visible in audit events",
+  );
+
   const organizationTaskSearch = await client.request(
     "GET",
     `/api/tasks?scope=organization&organization_id=${organizationID}&query=${

@@ -256,11 +256,14 @@ Implemented:
   resolution stores export JSON; sensitive-field deletion resolution marks
   delete-on-request sensitive-field metadata as redacted and records affected
   counts.
+- Admins can list task moderation reports created by authenticated users. The
+  current implementation persists reports as audit events.
 
 Missing or partial:
 
 - No browser/admin page for configuring admins.
-- No moderation workflow for abusive tasks/submissions/comments.
+- Moderation triage states/actions such as resolve, dismiss, annotate, and
+  subject-specific links are not implemented yet.
 - No platform fee, billing, payout, or external wallet model.
 
 ### Data, Privacy, And Compliance
@@ -302,7 +305,8 @@ Missing or partial:
 - Full-text search is not implemented.
 - Raw UUIDs remain visible in links, protocol surfaces, metadata, audit rows,
   and API/MCP examples. No confirmed high-traffic user-entered raw-ID flow is
-  currently listed.
+  currently listed. The current audit is in
+  [raw_id_browser_flow_audit.md](./raw_id_browser_flow_audit.md).
 
 ## Documentation Drift Found
 

@@ -37,7 +37,11 @@ Test gaps:
   expanding as the API grows.
 - Full Playwright mobile/screens coverage was not run locally for this branch.
   Focused demo Playwright coverage passed, including admin privacy request
-  resolution, and a focused admin privacy screenshot was inspected.
+  resolution and task moderation reporting. Focused task moderation and admin
+  moderation screenshots were inspected.
+- Moderation reports can be created and listed by platform admins, but
+  moderation triage states/actions such as resolve, dismiss, annotate, and
+  subject-specific links are still follow-up work.
 
 Known risks:
 
@@ -54,13 +58,15 @@ Known risks:
   semantics. Deno tests compare its route surface with the real HTTP router,
   validate representative response shapes, and run shared scenario parity flows
   for selectors, admin operations, privacy request/audit/resolution shape,
-  sensitive-field redaction state, collectibles, tasks, comments, submissions,
-  notifications, and a multi-actor reservation/submission-review/payout flow,
-  but they do not prove every handler has identical domain semantics.
+  moderation report/admin-list/audit shape, sensitive-field redaction state,
+  collectibles, tasks, comments, submissions, notifications, and a multi-actor
+  reservation/submission-review/payout flow, but they do not prove every handler
+  has identical domain semantics.
 - Go code compiles to `js/wasm` for representative packages and the main
-  command, but a WASM demo backend still lacks explicit browser storage
-  adapters, a request adapter, deterministic reset, startup measurements, and a
-  JS/WASM scenario test runner.
+  command. A narrow `internal/wasmdemo` request-adapter spike exists for privacy
+  and moderation route classification, but a WASM demo backend still lacks
+  explicit browser storage adapters, domain-service execution, deterministic
+  reset, startup measurements, and a JS/WASM scenario test runner.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

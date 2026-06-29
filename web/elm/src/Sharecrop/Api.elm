@@ -8,6 +8,7 @@ import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Moderation as Moderation
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Privacy as Privacy
@@ -365,6 +366,7 @@ routeLoadCmd token subjectId page =
             Cmd.batch
                 [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (Http.expectJson OperationsReceived Admin.operationsResponseDecoder)
                 , fetchAuditEvents token "" "" ""
+                , fetchAdminModerationReports token
                 , fetchAdminPrivacyRequests token
                 ]
 
@@ -1000,6 +1002,11 @@ fetchAdminPrivacyRequests token =
     authorizedRequest "GET" token "/api/admin/privacy-requests?limit=25&offset=0" Http.emptyBody (Http.expectJson AdminPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
 
 
+fetchAdminModerationReports : String -> Cmd Msg
+fetchAdminModerationReports token =
+    authorizedRequest "GET" token "/api/admin/moderation/reports?limit=25&offset=0" Http.emptyBody (Http.expectJson AdminModerationReportsReceived Moderation.moderationReportsResponseDecoder)
+
+
 resolveAdminPrivacyRequest : String -> String -> String -> Cmd Msg
 resolveAdminPrivacyRequest token requestId resolutionNote =
     authorizedRequest "POST"
@@ -1075,6 +1082,23 @@ requestPrivacy token kind =
         "/api/privacy-requests"
         (Http.jsonBody (Encode.object [ ( "kind", Privacy.privacyRequestKindEncoder kind ) ]))
         (Http.expectJson PrivacyRequestReceived Privacy.privacyRequestResponseDecoder)
+
+
+reportTask : String -> String -> Moderation.ModerationReason -> String -> Cmd Msg
+reportTask token taskId reason details =
+    authorizedRequest "POST"
+        token
+        "/api/moderation/reports"
+        (Http.jsonBody
+            (Encode.object
+                [ ( "subject_kind", Encode.string "task" )
+                , ( "subject_id", Encode.string taskId )
+                , ( "reason", Moderation.moderationReasonEncoder reason )
+                , ( "details", Encode.string details )
+                ]
+            )
+        )
+        (Http.expectJson ModerationReportReceived Moderation.moderationReportResponseDecoder)
 
 
 createOrgTeamCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )

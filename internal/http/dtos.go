@@ -74,6 +74,31 @@ type privacyResolveRequest struct {
 	ResolutionNote string `json:"resolution_note"`
 }
 
+type moderationReportRequest struct {
+	SubjectKind string `json:"subject_kind"`
+	SubjectID   string `json:"subject_id"`
+	Reason      string `json:"reason"`
+	Details     string `json:"details"`
+}
+
+type moderationReportResponse struct {
+	ID             string `json:"id"`
+	SubjectKind    string `json:"subject_kind"`
+	SubjectID      string `json:"subject_id"`
+	Reason         string `json:"reason"`
+	Details        string `json:"details"`
+	ReporterUserID string `json:"reporter_user_id"`
+	CreatedAt      string `json:"created_at"`
+}
+
+func (moderationReportResponse) writableResponse() {}
+
+type moderationReportsResponse struct {
+	Reports []moderationReportResponse `json:"reports"`
+}
+
+func (moderationReportsResponse) writableResponse() {}
+
 type savedQueueViewRequest struct {
 	Scope       string `json:"scope"`
 	Name        string `json:"name"`

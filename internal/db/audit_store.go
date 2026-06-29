@@ -26,7 +26,7 @@ func (store AuditStore) Record(ctx context.Context, event audit.Event) audit.Rec
 	if err != nil {
 		return audit.RecordRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record audit event failed")}
 	}
-	return audit.EventRecorded{}
+	return audit.EventRecorded{Value: event}
 }
 
 func (store AuditStore) List(ctx context.Context, filters audit.ListFilters, page core.Page) audit.ListResult {

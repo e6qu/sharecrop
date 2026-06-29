@@ -5,32 +5,44 @@ Current priority from
 
 Next recommended work:
 
-1. Add retention automation for delete-on-request sensitive fields and decide
+1. Add moderation triage actions for platform admins: resolve, dismiss,
+   annotate, and filter moderation reports without deleting underlying task,
+   submission, comment, or audit rows.
+2. Add direct subject links from moderation report rows where the reported
+   subject has a browser route.
+3. Add retention automation for delete-on-request sensitive fields and decide
    whether it should be an operator-triggered job, scheduled job, or both.
-2. Add sensitive-field access event recording if operators need evidence of
+4. Add sensitive-field access event recording if operators need evidence of
    sensitive metadata reads, not only redaction events.
-3. Keep expanding shared scenario parity as new user-visible API surfaces are
+5. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    team/organization queue search/type/sort, organization reviewer acceptance,
    sensitive-field response metadata/redaction state, privacy
-   request/audit/resolution shape, and multi-actor reservation/submission
-   acceptance.
-4. Keep expanding generated/fixture-level HTTP contract coverage as the API
+   request/audit/resolution shape, moderation report/admin-list/audit shape, and
+   multi-actor reservation/submission acceptance.
+6. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-5. Audit remaining raw-ID browser flows and replace high-traffic fields with
+7. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
-   remains after the latest audit.
-6. Create a narrow WASM request-adapter spike only after explicit browser
-   storage adapters exist for one vertical slice. Privacy requests are the best
-   first candidate. Do not add fallback stores or unimplemented-handler
-   substitutes.
-7. Add provider email delivery only if the product direction changes; current
+   remains after the latest audit in
+   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
+8. Add an explicit browser storage adapter for one WASM demo slice only after
+   the adapter can run without fallback stores or hidden substitute behavior.
+   Privacy requests and moderation reports are the current candidate slices.
+9. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-8. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+10. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The moderation-parity-contract-wasm branch added task reporting, admin
+   moderation report listing, moderation audit projection, generated Moderation
+   Elm contracts, HTTP wire-shape fixtures, shared scenario parity for
+   moderation report/admin-list/audit shape, backendless demo parity, focused
+   Playwright demo coverage, a raw-ID browser-flow audit, and a narrow
+   `internal/wasmdemo` request-adapter spike. Hard deletes remained prohibited.
 
 1. The privacy-ops-demo-wasm-parity branch added admin browser resolution for
    privacy requests, richer persisted data-export JSON, sensitive-field
