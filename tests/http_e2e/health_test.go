@@ -262,6 +262,10 @@ func (healthSubmissionService) Submit(context.Context, submission.SubmitCommand)
 	return submission.SubmitRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthSubmissionService) Get(context.Context, auth.UserSubject, core.SubmissionID) submission.GetResult {
+	return submission.GetRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthSubmissionService) FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult {
 	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
