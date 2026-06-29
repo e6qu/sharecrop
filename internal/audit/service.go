@@ -32,6 +32,7 @@ var (
 	ActionSubmissionRejected          = Action{value: "submission_rejected"}
 	ActionTaskRefunded                = Action{value: "task_refunded"}
 	ActionPrivacyRequestCreated       = Action{value: "privacy_request_created"}
+	ActionModerationReportCreated     = Action{value: "moderation_report_created"}
 )
 
 func (action Action) String() string {
@@ -72,7 +73,9 @@ type RecordResult interface {
 	recordResult()
 }
 
-type EventRecorded struct{}
+type EventRecorded struct {
+	Value Event
+}
 
 type RecordRejected struct {
 	Reason core.DomainError
@@ -88,14 +91,15 @@ func (service Service) Record(ctx context.Context, actor core.UserID, action Act
 	if !idMatched {
 		return RecordRejected{Reason: idResult.(core.AuditEventIDRejected).Reason}
 	}
-	return service.store.Record(ctx, Event{
+	event := Event{
 		ID:          idCreated.Value,
 		ActorUserID: actor,
 		Action:      action,
 		Subject:     subject,
 		Metadata:    metadata,
 		CreatedAt:   time.Now().UTC(),
-	})
+	}
+	return service.store.Record(ctx, event)
 }
 
 type ListResult interface {

@@ -8,6 +8,7 @@ import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Moderation as Moderation
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Privacy as Privacy
@@ -142,6 +143,9 @@ type alias LoggedInModel =
     , submissions : List Submission.SubmissionResponse
     , submitInput : String
     , submitMessage : Maybe String
+    , moderationReason : Moderation.ModerationReason
+    , moderationDetails : String
+    , moderationMessage : Maybe String
     , reviewNote : String
     , reviewPartialCredit : String
     , reviewTip : String
@@ -249,6 +253,7 @@ type alias LoggedInModel =
     , orgTeamOffset : Int
     , operations : Maybe Admin.OperationsResponse
     , auditEvents : List Admin.AuditEventResponse
+    , adminModerationReports : List Moderation.ModerationReportResponse
     , adminPrivacyRequests : List Privacy.PrivacyRequestResponse
     , adminPrivacyResolutionNote : String
     , auditActionFilter : String
@@ -398,6 +403,10 @@ type Msg
     | SubmitInputChanged String
     | SubmitClicked
     | SubmitReceived (Result Http.Error Submission.SubmissionCreatedResponse)
+    | ModerationReasonChanged Moderation.ModerationReason
+    | ModerationDetailsChanged String
+    | ReportTaskClicked String
+    | ModerationReportReceived (Result Http.Error Moderation.ModerationReportResponse)
     | ReviewNoteChanged String
     | ReviewPartialCreditChanged String
     | ReviewTipChanged String
@@ -548,6 +557,7 @@ type Msg
     | PrivacyRequestReceived (Result Http.Error Privacy.PrivacyRequestResponse)
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
+    | AdminModerationReportsReceived (Result Http.Error Moderation.ModerationReportsResponse)
     | AdminPrivacyRequestsReceived (Result Http.Error Privacy.PrivacyRequestsResponse)
     | AdminPrivacyResolutionNoteChanged String
     | ResolveAdminPrivacyRequestClicked String

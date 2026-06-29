@@ -6,7 +6,26 @@ The backendless demo currently uses `site/demo/backend.js`, an in-browser fake b
 
 A Go/WASM demo backend is viable only after the application services can run against explicit browser storage adapters. The current production server wires domain services through Postgres-backed stores, auth/session stores, rate-limit buckets, audit stores, notification stores, and MCP stores. A browser build cannot reuse pgx, migrations, process-local server wiring, or `net/http` handlers directly.
 
-Current decision: keep `site/demo/backend.js` as the backendless demo backend. The shared scenario suite now covers multi-actor reservation approval, worker submission, owner acceptance, payouts/tips, notifications, privacy request resolution, and sensitive-field redaction state. That coverage is a better next guardrail than starting a WASM replacement before browser storage adapters exist.
+Current decision: keep `site/demo/backend.js` as the backendless demo backend.
+The shared scenario suite now covers multi-actor reservation approval, worker
+submission, owner acceptance, payouts/tips, notifications, privacy request
+resolution, sensitive-field redaction state, and moderation report projection.
+That coverage is a better guardrail than starting a WASM replacement before
+browser storage adapters exist.
+
+## Request Adapter Spike
+
+`internal/wasmdemo` contains a narrow request-adapter spike. It classifies only
+the privacy and moderation route pairs:
+
+- `POST /api/privacy-requests`
+- `GET /api/admin/privacy-requests`
+- `POST /api/moderation/reports`
+- `GET /api/admin/moderation/reports`
+
+Unsupported methods and routes return explicit rejection results. The package
+does not execute domain services, provide browser storage, or replace
+`site/demo/backend.js`.
 
 ## Compile Check
 
@@ -47,4 +66,9 @@ Do not replace `site/demo/backend.js` until the WASM path can satisfy these gate
 
 ## Next Spike Step
 
-Create a narrow WASM request adapter around one vertical slice only after explicit browser storage adapters exist for that slice. The first suitable slice is privacy requests because it has a compact route surface, clear persistence needs, and shared scenario coverage. If the slice requires broad store rewrites or hidden substitute behavior, keep the JavaScript demo backend and expand shared parity tests instead.
+The next WASM step is an explicit browser storage adapter for one of the
+classified slices. Privacy requests and moderation reports are the current
+candidate slices because both have compact route surfaces and shared scenario
+coverage. If a slice requires broad store rewrites or hidden substitute
+behavior, keep the JavaScript demo backend and expand shared parity tests
+instead.

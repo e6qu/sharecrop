@@ -1,5 +1,41 @@
 # What We Did
 
+`task/moderation-parity-contract-wasm` added moderation foundations, parity
+coverage, contract coverage, and a bounded WASM adapter spike:
+
+- **Moderation workflow foundation.** Authenticated users can report tasks from
+  task detail. Reports are persisted as `moderation_report_created` audit
+  events and listed for platform admins through the Admin moderation panel and
+  `/api/admin/moderation/reports`.
+- **Audit event echoing.** Audit record results now carry the exact recorded
+  event, so audit-backed workflows can return the created record without
+  reloading a latest matching event.
+- **Contracts and parity.** Generated Moderation Elm contracts, HTTP
+  wire-shape fixtures, backendless demo behavior, shared scenario parity, and
+  focused Playwright demo coverage were added for moderation
+  report/admin-list/audit shape.
+- **Raw-ID audit.** The current browser raw-ID audit is documented in
+  [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md). No
+  confirmed high-traffic user-entered raw-ID flow remains listed; protocol,
+  route, audit, metadata, and API/MCP example IDs remain visible.
+- **WASM spike.** `internal/wasmdemo` now classifies the privacy/moderation
+  route pairs through explicit request-adapter results. Unsupported routes fail
+  explicitly. No fallback stores or replacement demo backend were added.
+- **Demo/readiness docs.** `docs/wasm_demo_backend_spike.md` was refreshed for
+  the adapter spike and current adoption gates.
+- **Verification.** Passed: `go test ./...`; focused Go tests for
+  audit/db/http/wasmdemo; `make check-contracts`; `make check-format`; `deno
+  check tools/*.ts tests/**/*.ts`; `deno lint tools tests`; `deno test
+  --allow-read tests/deno`; `deno run --allow-read tools/check_policy.ts`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; `go tool deadcode
+  -test ./...`; `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools
+  web/elm/src tests`; tagged integration tests with local `DATABASE_URL`;
+  tagged HTTP E2E tests with local `DATABASE_URL` and
+  `SHARECROP_ACCESS_TOKEN_SECRET`; `GOOS=js GOARCH=wasm go test -c` for
+  `./internal/wasmdemo`; and focused Playwright
+  `tests/playwright/demo.spec.ts`. Focused task moderation/admin moderation
+  screenshots were inspected.
+
 `task/privacy-ops-demo-wasm-parity` deepened privacy/operator handling and demo
 parity:
 

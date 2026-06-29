@@ -1012,6 +1012,46 @@
     db.auditEvents.unshift(event);
     return event;
   }
+  function validModerationSubjectKind(value) {
+    return [
+      "task",
+      "submission",
+      "task_comment",
+      "submission_comment",
+      "task_series_comment",
+      "user",
+      "organization",
+      "team",
+      "collectible",
+    ].includes(value);
+  }
+  function validModerationReason(value) {
+    return ["spam", "abuse", "pii", "policy", "other"].includes(value);
+  }
+  function moderationReportFromAuditEvent(event) {
+    if (event.action !== "moderation_report_created") {
+      throw new Error("audit event is not a moderation report");
+    }
+    if (!validModerationSubjectKind(event.subject_kind)) {
+      throw new Error("moderation subject kind is invalid");
+    }
+    const metadata = JSON.parse(event.metadata_json);
+    if (
+      !validModerationReason(metadata.reason) ||
+      typeof metadata.details !== "string"
+    ) {
+      throw new Error("moderation reason is invalid");
+    }
+    return {
+      id: event.id,
+      subject_kind: event.subject_kind,
+      subject_id: event.subject_id,
+      reason: metadata.reason,
+      details: metadata.details,
+      reporter_user_id: event.actor_user_id,
+      created_at: event.created_at,
+    };
+  }
 
   function match(method, path) {
     const segs = path.split("?")[0].split("/").filter((s) => s !== "");
@@ -1125,6 +1165,42 @@
         request.requested_by === actorId
       ),
     }));
+
+  on("POST", "/api/moderation/reports", (_p, _url, body, actorId) => {
+    if (
+      !body ||
+      typeof body.subject_kind !== "string" ||
+      typeof body.subject_id !== "string" ||
+      typeof body.reason !== "string" ||
+      typeof body.details !== "string"
+    ) {
+      return err(400, "moderation report request is invalid");
+    }
+    const subjectKind = body.subject_kind.trim();
+    const subjectId = body.subject_id.trim();
+    const reason = body.reason.trim();
+    const details = body.details.trim();
+    if (!validModerationSubjectKind(subjectKind)) {
+      return err(400, "moderation subject kind is invalid");
+    }
+    if (subjectId === "") {
+      return err(400, "moderation subject id is required");
+    }
+    if (!validModerationReason(reason)) {
+      return err(400, "moderation reason is invalid");
+    }
+    if (details.length > 2000) {
+      return err(400, "moderation details are too long");
+    }
+    const event = recordAudit(
+      actorId,
+      "moderation_report_created",
+      subjectKind,
+      subjectId,
+      { reason, details },
+    );
+    return ok(moderationReportFromAuditEvent(event), 201);
+  });
 
   function savedQueueViewFromBody(body, actorId) {
     const scope = String((body && body.scope) || "").trim();
@@ -2052,6 +2128,12 @@
     }
     return ok({ events });
   });
+  on("GET", "/api/admin/moderation/reports", () =>
+    ok({
+      reports: db.auditEvents
+        .filter((event) => event.action === "moderation_report_created")
+        .map(moderationReportFromAuditEvent),
+    }));
   on("GET", "/api/admin/privacy-requests", () =>
     ok({ requests: db.privacyRequests }));
   on(

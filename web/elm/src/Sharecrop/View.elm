@@ -1,7 +1,7 @@
 module Sharecrop.View exposing (..)
 
 import Browser
-import Html exposing (Html, a, div, form, h3, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
+import Html exposing (Html, a, button, div, form, h3, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
 import Html.Attributes exposing (checked, disabled, href, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Json.Decode as Decode
@@ -10,6 +10,7 @@ import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Moderation as Moderation
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Privacy as Privacy
@@ -167,6 +168,13 @@ adminView state =
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-privacy-requests" ]
                 (List.map (adminPrivacyRequestRow state.adminPrivacyResolutionNote) state.adminPrivacyRequests)
+        , Ui.sectionTitle "Moderation reports"
+        , if List.isEmpty state.adminModerationReports then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-moderation-empty" ] [ text "No moderation reports." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-moderation-reports" ]
+                (List.map adminModerationReportRow state.adminModerationReports)
         , maybeNote state.adminMessage "admin-message"
         ]
 
@@ -221,6 +229,26 @@ adminPrivacyRequestRow resolutionNote request =
 
           else
             text ""
+        ]
+
+
+adminModerationReportRow : Moderation.ModerationReportResponse -> Html Msg
+adminModerationReportRow report =
+    div [ Html.Attributes.class "space-y-2 py-3 text-sm", testId "admin-moderation-report" ]
+        [ div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+            [ Ui.badge report.reason
+            , span [ Html.Attributes.class "font-medium text-slate-900" ] [ text report.subjectKind ]
+            , span [ Html.Attributes.class "break-all text-xs text-slate-500" ] [ text report.subjectID ]
+            ]
+        , Html.dl [ Html.Attributes.class "grid gap-2 sm:grid-cols-2" ]
+            [ operationFact "Reporter" report.reporterUserID
+            , operationFact "Created" report.createdAt
+            ]
+        , if report.details == "" then
+            text ""
+
+          else
+            p [ Html.Attributes.class "text-sm text-slate-700 break-words", testId "admin-moderation-details" ] [ text report.details ]
         ]
 
 
@@ -2363,7 +2391,7 @@ taskDetailPageView origin state =
                 else
                     [ reservationCard state, submitCard state, mySubmissionsCard state ]
                )
-            ++ [ taskCommentsCard state ]
+            ++ [ taskCommentsCard state, moderationReportCard state ]
         )
 
 
@@ -2395,6 +2423,52 @@ taskCommentRow comment =
         [ a [ href ("#/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-slate-600 underline" ] [ text comment.authorUserID ]
         , p [ Html.Attributes.class "text-sm text-slate-700 break-words" ] [ text comment.body ]
         ]
+
+
+moderationReportCard : LoggedInModel -> Html Msg
+moderationReportCard state =
+    case state.detail of
+        Just detail ->
+            Ui.card
+                [ Ui.sectionTitle "Report task"
+                , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "moderation-reasons" ]
+                    (List.map (moderationReasonButton state.moderationReason) moderationReasonOptions)
+                , Ui.textarea_
+                    [ placeholder "Describe the issue"
+                    , value state.moderationDetails
+                    , onInput ModerationDetailsChanged
+                    , Html.Attributes.rows 4
+                    , testId "moderation-details"
+                    ]
+                , Ui.secondaryButton [ type_ "button", onClick (ReportTaskClicked detail.id), testId "report-task" ] "Submit report"
+                , maybeNote state.moderationMessage "moderation-message"
+                ]
+
+        Nothing ->
+            text ""
+
+
+moderationReasonOptions : List ( Moderation.ModerationReason, String )
+moderationReasonOptions =
+    [ ( Moderation.ModerationReasonPolicy, "Policy" )
+    , ( Moderation.ModerationReasonSpam, "Spam" )
+    , ( Moderation.ModerationReasonAbuse, "Abuse" )
+    , ( Moderation.ModerationReasonPII, "PII" )
+    , ( Moderation.ModerationReasonOther, "Other" )
+    ]
+
+
+moderationReasonButton : Moderation.ModerationReason -> ( Moderation.ModerationReason, String ) -> Html Msg
+moderationReasonButton selectedReason ( reason, labelText ) =
+    let
+        selectedClass =
+            if selectedReason == reason then
+                " ring-2 ring-slate-900"
+
+            else
+                ""
+    in
+    button [ type_ "button", onClick (ModerationReasonChanged reason), Html.Attributes.class (Ui.secondaryButtonClass ++ selectedClass), testId ("moderation-reason-" ++ String.toLower labelText) ] [ text labelText ]
 
 
 seriesLinkBlock : TaskDetail -> List (Html Msg)

@@ -1,0 +1,98 @@
+package wasmdemo
+
+import "strings"
+
+type Request struct {
+	Method Method
+	Path   string
+	Body   string
+}
+
+type Method struct {
+	value string
+}
+
+var (
+	MethodGet  = Method{value: "GET"}
+	MethodPost = Method{value: "POST"}
+)
+
+func (method Method) String() string {
+	return method.value
+}
+
+type RequestResult interface {
+	requestResult()
+}
+
+type RequestAccepted struct {
+	Value Request
+}
+
+type RequestRejected struct {
+	Reason string
+}
+
+func (RequestAccepted) requestResult() {}
+func (RequestRejected) requestResult() {}
+
+func NewRequest(method string, path string, body string) RequestResult {
+	cleanMethod := strings.TrimSpace(method)
+	cleanPath := strings.TrimSpace(path)
+	if cleanPath == "" || !strings.HasPrefix(cleanPath, "/") {
+		return RequestRejected{Reason: "request path is invalid"}
+	}
+	switch cleanMethod {
+	case MethodGet.String():
+		return RequestAccepted{Value: Request{Method: MethodGet, Path: cleanPath, Body: body}}
+	case MethodPost.String():
+		return RequestAccepted{Value: Request{Method: MethodPost, Path: cleanPath, Body: body}}
+	default:
+		return RequestRejected{Reason: "request method is unsupported"}
+	}
+}
+
+type Route struct {
+	value string
+}
+
+var (
+	RoutePrivacyRequests        = Route{value: "privacy_requests"}
+	RouteAdminPrivacyRequests   = Route{value: "admin_privacy_requests"}
+	RouteModerationReports      = Route{value: "moderation_reports"}
+	RouteAdminModerationReports = Route{value: "admin_moderation_reports"}
+)
+
+func (route Route) String() string {
+	return route.value
+}
+
+type AdaptResult interface {
+	adaptResult()
+}
+
+type RequestAdapted struct {
+	Route Route
+}
+
+type RequestUnsupported struct {
+	Reason string
+}
+
+func (RequestAdapted) adaptResult()     {}
+func (RequestUnsupported) adaptResult() {}
+
+func Adapt(request Request) AdaptResult {
+	switch {
+	case request.Method.String() == MethodPost.String() && request.Path == "/api/privacy-requests":
+		return RequestAdapted{Route: RoutePrivacyRequests}
+	case request.Method.String() == MethodGet.String() && request.Path == "/api/admin/privacy-requests":
+		return RequestAdapted{Route: RouteAdminPrivacyRequests}
+	case request.Method.String() == MethodPost.String() && request.Path == "/api/moderation/reports":
+		return RequestAdapted{Route: RouteModerationReports}
+	case request.Method.String() == MethodGet.String() && request.Path == "/api/admin/moderation/reports":
+		return RequestAdapted{Route: RouteAdminModerationReports}
+	default:
+		return RequestUnsupported{Reason: "request route is not implemented by the WASM demo adapter"}
+	}
+}

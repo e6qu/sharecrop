@@ -69,6 +69,21 @@ func TestPrivacyRequestsResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"requests":[{"id":"privacy-1","kind":"sensitive_field_deletion","status":"resolved","requested_by":"user-1","export_json":"","resolution_note":"done","created_at":"2026-01-02T03:04:05Z","resolved_at":"2026-01-02T03:05:05Z","redacted_field_count":2}]}`)
 }
 
+func TestModerationReportRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(moderationReportRequest{SubjectKind: "task", SubjectID: "task-1", Reason: "policy", Details: "Contains restricted content."})
+	assertWireShape(t, encoded, err, `{"subject_kind":"task","subject_id":"task-1","reason":"policy","details":"Contains restricted content."}`)
+}
+
+func TestModerationReportResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(moderationReportResponse{ID: "audit-1", SubjectKind: "task", SubjectID: "task-1", Reason: "policy", Details: "Contains restricted content.", ReporterUserID: "user-1", CreatedAt: "2026-01-02T03:04:05Z"})
+	assertWireShape(t, encoded, err, `{"id":"audit-1","subject_kind":"task","subject_id":"task-1","reason":"policy","details":"Contains restricted content.","reporter_user_id":"user-1","created_at":"2026-01-02T03:04:05Z"}`)
+}
+
+func TestModerationReportsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(moderationReportsResponse{Reports: []moderationReportResponse{{ID: "audit-1", SubjectKind: "submission", SubjectID: "submission-1", Reason: "pii", Details: "", ReporterUserID: "user-1", CreatedAt: "2026-01-02T03:04:05Z"}}})
+	assertWireShape(t, encoded, err, `{"reports":[{"id":"audit-1","subject_kind":"submission","subject_id":"submission-1","reason":"pii","details":"","reporter_user_id":"user-1","created_at":"2026-01-02T03:04:05Z"}]}`)
+}
+
 func TestUsersResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(usersResponse{Users: []userDirectoryEntryResponse{{ID: "user-1", Email: "person@example.com", Status: "active"}}})
 	assertWireShape(t, encoded, err, `{"users":[{"id":"user-1","email":"person@example.com","status":"active"}]}`)
