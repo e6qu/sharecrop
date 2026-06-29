@@ -461,7 +461,7 @@ test("a creator manages a first-class task series end to end", async ({ page, re
   );
 
   // Add the owner's task to the series, then publish it.
-  await page.getByTestId("series-add-task-id").fill(seriesTask.id);
+  await page.getByTestId("series-add-task-id").selectOption(seriesTask.id);
   await page.getByTestId("series-add-task").click();
   await expect(
     page.getByTestId("series-task-row").filter({ hasText: taskTitle }),

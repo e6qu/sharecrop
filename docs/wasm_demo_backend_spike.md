@@ -6,6 +6,8 @@ The backendless demo currently uses `site/demo/backend.js`, an in-browser fake b
 
 A Go/WASM demo backend is viable only after the application services can run against explicit browser storage adapters. The current production server wires domain services through Postgres-backed stores, auth/session stores, rate-limit buckets, audit stores, notification stores, and MCP stores. A browser build cannot reuse pgx, migrations, process-local server wiring, or `net/http` handlers directly.
 
+Current decision: keep `site/demo/backend.js` as the backendless demo backend. The shared scenario suite now covers multi-actor reservation approval, worker submission, owner acceptance, payouts/tips, and notifications. That coverage is a better next guardrail than starting a WASM replacement before browser storage adapters exist.
+
 ## Required Shape
 
 - A `js/wasm` request adapter receives method, path, headers, and body from `fetch` interception.
@@ -26,4 +28,4 @@ Do not replace `site/demo/backend.js` until the WASM path can satisfy these gate
 
 ## Next Spike Step
 
-Create a narrow WASM request adapter around one vertical slice: organization/team selectors plus task creation and task comments. If that slice requires broad store rewrites or hidden substitute behavior, keep the JavaScript demo backend and expand shared parity tests instead.
+Create a narrow WASM request adapter around one vertical slice only after explicit browser storage adapters exist for that slice. If the slice requires broad store rewrites or hidden substitute behavior, keep the JavaScript demo backend and expand shared parity tests instead.

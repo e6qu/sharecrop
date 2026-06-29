@@ -502,9 +502,9 @@ seriesCreatorControls series state =
             ]
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (seriesStateButtons series)
         , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit (AddSeriesTaskClicked series.id) ]
-            [ Ui.fieldLabel "Add task by ID"
-                [ Ui.textInput [ type_ "text", placeholder "task id", value state.addSeriesTaskId, onInput AddSeriesTaskIdChanged, testId "series-add-task-id" ] ]
-            , Ui.primaryButton [ type_ "submit", testId "series-add-task" ] "Add task"
+            [ Ui.fieldLabel "Add task"
+                [ taskPicker "series-add-task-id" state.addSeriesTaskId AddSeriesTaskIdChanged state.tasks ]
+            , Ui.primaryButton [ type_ "submit", disabled (state.addSeriesTaskId == ""), testId "series-add-task" ] "Add task"
             ]
         ]
 

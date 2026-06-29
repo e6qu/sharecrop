@@ -1,5 +1,14 @@
 # What We Did
 
+`task/multi-actor-parity-demo-contracts` combined multi-actor parity, demo actor semantics, fixture expansion, the WASM decision, and the remaining series selector cleanup:
+
+- **Multi-actor shared scenario parity.** The shared scenario runner now supports actor-specific clients. It registers distinct owner and worker actors, creates an approval-required funded task, requests and approves a reservation, submits as the worker, accepts as the owner with credit payout and tip, checks the worker balance, and verifies owner/worker notifications.
+- **Backendless demo actor semantics.** `site/demo/backend.js` now maps local demo bearer tokens to users, passes Authorization headers through the XHR shim and Deno test adapter, and rejects protected routes with missing or unknown tokens. Demo task creation, reservations, submissions, review, balances, collectibles, notifications, org/team creation, comments, and series mutations use the resolved actor where relevant.
+- **Contract fixtures.** Added HTTP wire-shape fixtures for organization and member wrappers, team-member request, task-series list response, collectible response, and collectibles response.
+- **Selector replacement.** The series add-task control now uses the existing task selector populated from loaded user tasks instead of a raw task-ID text field. The focused Playwright series flow was updated to use the selector.
+- **WASM decision.** The WASM demo-backend spike now records the current decision to keep `site/demo/backend.js` until explicit browser storage adapters can satisfy the adoption gates without fallbacks.
+- **Verification.** Passed: `go test ./...`; `go test ./internal/http`; `deno check tools/*.ts tests/**/*.ts`; `deno lint tools tests`; `deno run --allow-read tools/check_policy.ts`; `deno test --allow-read tests/deno`; `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; focused Playwright test for the first-class task-series management flow. Manual screenshot review passed for the series add-task selector on the backendless demo series detail page.
+
 `task/expand-parity-routing-fixtures-selectors` expanded the parity and selector work after PR #76:
 
 - **Shared scenario parity.** The shared scenario now covers admin operations, account-token issue shape, collectible catalog/mint/transfer, selector pagination/query, organization/team/task/task-comment creation, submission creation/listing/comments, and notification read shape. The real-API runner documentation now states that an explicit platform-admin token is required for the full scenario.

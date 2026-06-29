@@ -15,6 +15,7 @@ export interface ScenarioClient {
     path: string,
     body: ScenarioBody,
   ): Promise<ScenarioResponse>;
+  withAccessToken(accessToken: string): ScenarioClient;
 }
 
 export function assertScenario(
@@ -120,6 +121,28 @@ function assertNotificationShape(notification: JsonRecord): void {
   ].forEach((key) => requireString(notification, key));
 }
 
+interface ScenarioActor {
+  subjectID: string;
+  client: ScenarioClient;
+}
+
+async function registerScenarioActor(
+  client: ScenarioClient,
+  label: string,
+): Promise<ScenarioActor> {
+  const registered = await client.request("POST", "/api/auth/register", {
+    email: `scenario-${label}-${Date.now()}@example.com`,
+    password: "correct horse battery staple",
+  });
+  assertStatus(registered, 201, `register ${label}`);
+  const subjectID = requireString(registered.json, "subject_id");
+  const accessToken = requireString(registered.json, "access_token");
+  return {
+    subjectID,
+    client: client.withAccessToken(accessToken),
+  };
+}
+
 export async function runSharedScenarioParity(
   client: ScenarioClient,
 ): Promise<void> {
@@ -130,6 +153,7 @@ export async function runSharedScenarioParity(
   );
   assertStatus(auth, 200, "refresh");
   const subjectID = requireString(auth.json, "subject_id");
+  client = client.withAccessToken(requireString(auth.json, "access_token"));
 
   const operations = await client.request(
     "GET",
@@ -176,16 +200,10 @@ export async function runSharedScenarioParity(
     requireString(user, "status");
   }
 
-  const registeredRecipient = await client.request(
-    "POST",
-    "/api/auth/register",
-    {
-      email: `scenario-${Date.now()}@example.com`,
-      password: "correct horse battery staple",
-    },
+  const transferRecipient = await registerScenarioActor(
+    client,
+    "transfer-recipient",
   );
-  assertStatus(registeredRecipient, 201, "register transfer recipient");
-  const recipientID = requireString(registeredRecipient.json, "subject_id");
 
   const catalog = await client.request(
     "GET",
@@ -224,12 +242,13 @@ export async function runSharedScenarioParity(
   const transferredCollectible = await client.request(
     "POST",
     `/api/collectibles/${collectibleID}/transfer`,
-    { recipient_id: recipientID },
+    { recipient_id: transferRecipient.subjectID },
   );
   assertStatus(transferredCollectible, 200, "transfer collectible");
   assertCollectibleShape(transferredCollectible.json);
   assertScenario(
-    requireString(transferredCollectible.json, "owner_id") === recipientID,
+    requireString(transferredCollectible.json, "owner_id") ===
+      transferRecipient.subjectID,
     "transferred collectible owner must be the recipient",
   );
 
@@ -463,6 +482,225 @@ export async function runSharedScenarioParity(
         submissionCommentBody
     ),
     "listed submission comments must include created comment",
+  );
+
+  const owner = await registerScenarioActor(client, "owner");
+  const worker = await registerScenarioActor(client, "worker");
+  const multiActorTitle = uniqueName("Scenario parity multi actor task");
+  const multiActorTask = await owner.client.request("POST", "/api/tasks", {
+    owner: { kind: "user", user_id: owner.subjectID },
+    title: multiActorTitle,
+    description: "Created for multi-actor reservation and payout parity.",
+    visibility: { kind: "public" },
+    participation: {
+      policy: "approval_required",
+      assignee_scope: "user",
+      reservation_expiry_hours: 48,
+    },
+    reward: {
+      kind: "credit",
+      credit_amount: 30,
+      collectible_ids: [],
+    },
+    response_schema_json: '{"kind":"freeform"}',
+    payload: { kind: "none", json: "" },
+  });
+  assertStatus(multiActorTask, 201, "create multi-actor task");
+  const multiActorTaskID = requireString(multiActorTask.json, "id");
+  assertScenario(
+    requireString(multiActorTask.json, "created_by") === owner.subjectID,
+    "multi-actor task must be created by owner actor",
+  );
+
+  const funded = await owner.client.request(
+    "POST",
+    `/api/tasks/${multiActorTaskID}/funding`,
+    {
+      amount: 30,
+      idempotency_key: `scenario-fund-${multiActorTaskID}`,
+    },
+  );
+  assertStatus(funded, 201, "fund multi-actor task");
+  requireNumber(funded.json, "amount");
+
+  const opened = await owner.client.request(
+    "POST",
+    `/api/tasks/${multiActorTaskID}/open`,
+    {},
+  );
+  assertStatus(opened, 200, "open multi-actor task");
+
+  const requestedReservation = await worker.client.request(
+    "POST",
+    `/api/tasks/${multiActorTaskID}/reservations`,
+    {},
+  );
+  assertStatus(requestedReservation, 201, "request reservation approval");
+  const reservationID = requireString(requestedReservation.json, "id");
+  assertScenario(
+    requireString(requestedReservation.json, "state") === "requested",
+    "approval-required reservation must start requested",
+  );
+  assertScenario(
+    requireString(requestedReservation.json, "requested_by") ===
+      worker.subjectID,
+    "reservation requester must be the worker actor",
+  );
+
+  const ownerReservations = await owner.client.request(
+    "GET",
+    `/api/tasks/${multiActorTaskID}/reservations`,
+    noScenarioBody,
+  );
+  assertStatus(ownerReservations, 200, "owner list reservations");
+  const reservationList = requireArray(ownerReservations.json, "reservations");
+  assertScenario(
+    reservationList.some((item) =>
+      requireString(requireRecord(item, "reservations[]"), "id") ===
+        reservationID
+    ),
+    "owner reservation list must include worker request",
+  );
+
+  const approvedReservation = await owner.client.request(
+    "POST",
+    `/api/tasks/${multiActorTaskID}/reservations/${reservationID}/approve`,
+    {},
+  );
+  assertStatus(approvedReservation, 200, "approve reservation");
+  assertScenario(
+    requireString(approvedReservation.json, "state") === "active",
+    "approved reservation must become active",
+  );
+
+  const workerSubmission = await worker.client.request(
+    "POST",
+    `/api/tasks/${multiActorTaskID}/submissions`,
+    { response_json: '{"multi_actor":"complete"}' },
+  );
+  assertStatus(workerSubmission, 201, "worker submit approved reservation");
+  const multiActorSubmission = requireRecord(
+    workerSubmission.json["submission"],
+    "multiActorSubmission",
+  );
+  const multiActorSubmissionID = requireString(multiActorSubmission, "id");
+  assertScenario(
+    requireString(multiActorSubmission, "submitter_id") === worker.subjectID,
+    "multi-actor submission must be owned by worker actor",
+  );
+
+  const ownerSubmissionList = await owner.client.request(
+    "GET",
+    `/api/tasks/${multiActorTaskID}/submissions`,
+    noScenarioBody,
+  );
+  assertStatus(ownerSubmissionList, 200, "owner list multi-actor submissions");
+  const ownerSubmissions = requireArray(
+    ownerSubmissionList.json,
+    "submissions",
+  );
+  assertScenario(
+    ownerSubmissions.some((item) =>
+      requireString(requireRecord(item, "multiActorSubmissions[]"), "id") ===
+        multiActorSubmissionID
+    ),
+    "owner submission list must include worker submission",
+  );
+
+  const acceptedSubmission = await owner.client.request(
+    "POST",
+    `/api/tasks/${multiActorTaskID}/submissions/${multiActorSubmissionID}/accept`,
+    {
+      idempotency_key: `scenario-accept-${multiActorSubmissionID}`,
+      payout_amount: 30,
+      tip_amount: 5,
+    },
+  );
+  assertStatus(acceptedSubmission, 200, "accept worker submission");
+  assertScenario(
+    requireString(acceptedSubmission.json, "payout_kind") === "credit",
+    "accepted submission payout must be credit",
+  );
+  assertScenario(
+    requireNumber(acceptedSubmission.json, "payout_amount") === 30,
+    "accepted submission payout amount must match funded reward",
+  );
+  assertScenario(
+    requireNumber(acceptedSubmission.json, "tip_amount") === 5,
+    "accepted submission tip amount must round trip",
+  );
+  assertScenario(
+    requireString(acceptedSubmission.json, "worker_user_id") ===
+      worker.subjectID,
+    "accepted submission worker must be the worker actor",
+  );
+
+  const workerBalance = await worker.client.request(
+    "GET",
+    "/api/credits/balance",
+    noScenarioBody,
+  );
+  assertStatus(workerBalance, 200, "worker balance after accept");
+  assertScenario(
+    requireNumber(workerBalance.json, "amount") === 135,
+    "worker balance must include payout and tip",
+  );
+
+  const ownerNotifications = await owner.client.request(
+    "GET",
+    "/api/notifications",
+    noScenarioBody,
+  );
+  assertStatus(ownerNotifications, 200, "owner notifications");
+  const ownerNotificationList = requireArray(
+    ownerNotifications.json,
+    "notifications",
+  );
+  assertScenario(
+    ownerNotificationList.some((item) => {
+      const notification = requireRecord(item, "ownerNotifications[]");
+      return requireString(notification, "kind") === "submission_created" &&
+        requireString(notification, "actor_user_id") === worker.subjectID &&
+        requireString(notification, "recipient_user_id") === owner.subjectID;
+    }),
+    "owner inbox must include worker submission notification",
+  );
+
+  const workerNotifications = await worker.client.request(
+    "GET",
+    "/api/notifications",
+    noScenarioBody,
+  );
+  assertStatus(workerNotifications, 200, "worker notifications");
+  const workerNotificationList = requireArray(
+    workerNotifications.json,
+    "notifications",
+  );
+  const acceptedNotification = workerNotificationList.find((item) => {
+    const notification = requireRecord(item, "workerNotifications[]");
+    return requireString(notification, "kind") === "submission_accepted" &&
+      requireString(notification, "actor_user_id") === owner.subjectID &&
+      requireString(notification, "recipient_user_id") === worker.subjectID;
+  });
+  assertScenario(
+    acceptedNotification !== undefined,
+    "worker inbox must include owner acceptance notification",
+  );
+  const readAcceptedNotification = await worker.client.request(
+    "POST",
+    `/api/notifications/${
+      requireString(
+        requireRecord(acceptedNotification, "acceptedNotification"),
+        "id",
+      )
+    }/read`,
+    noScenarioBody,
+  );
+  assertStatus(readAcceptedNotification, 200, "worker mark acceptance read");
+  assertNotificationShape(readAcceptedNotification.json);
+  assertScenario(
+    requireString(readAcceptedNotification.json, "state") === "read",
+    "worker acceptance notification state must change to read",
   );
 
   const notifications = await client.request(

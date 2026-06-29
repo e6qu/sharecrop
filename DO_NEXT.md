@@ -4,12 +4,18 @@ Current priority from [docs/application_readiness_review.md](./docs/application_
 
 Next recommended work:
 
-1. Add a true multi-actor shared scenario parity suite for reservation approval, worker submission, owner review, payouts/tips, and notifications. This needs scenario clients that can carry more than one actor token.
-2. Use the WASM spike result to decide whether a narrow browser-storage-backed WASM demo slice is worth building; do not replace `site/demo/backend.js` until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
-3. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
-4. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
+1. Keep expanding shared scenario parity as new user-visible API surfaces are added. The current suite covers multi-actor reservation approval, worker submission, owner acceptance, payouts/tips, and notifications.
+2. Keep expanding generated/fixture-level HTTP contract coverage as the API surface grows.
+3. Add provider email delivery only if the product direction changes; current account/org setup stays admin-driven.
+4. Do not replace `site/demo/backend.js` with WASM until the adoption gates in [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The multi-actor parity branch added scenario clients that carry distinct actor tokens and a shared scenario for approval-required reservation, owner approval, worker submission, owner acceptance with payout/tip, worker balance, and owner/worker notifications.
+2. The branch made the backendless demo token-aware for local demo bearer tokens, so protected demo routes fail on missing/unknown tokens instead of silently acting as the seeded user.
+3. The branch replaced the series add-task raw task-ID field with the existing task selector.
+4. The branch added HTTP wire-shape fixtures for organization, organization-member, team-member, task-series-list, collectible, and collectibles wrappers.
+5. The branch recorded the current WASM decision: keep the JavaScript demo backend until explicit browser storage adapters can satisfy the documented adoption gates without fallbacks.
 
 1. The expanded-parity branch added admin operations, account-token issue shape, collectible catalog/mint/transfer, submission creation/comments, and notification read shape to the shared scenario parity suite.
 2. The branch ran `deno task check:pages-routing -- --origin https://e6qu.github.io/sharecrop` successfully against the deployed GitHub Pages site.

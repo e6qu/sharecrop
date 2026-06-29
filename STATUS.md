@@ -1,8 +1,8 @@
 # Status
 
-The repository contains pull request 1 through pull request 76 work, merged into `main`.
+The repository contains pull request 1 through pull request 77 work, merged into `main`.
 
-Active task: expanded shared scenario parity, deployed GitHub Pages routing verification, continued HTTP contract fixture coverage, and selector replacements for feasible raw-ID browser flows are implemented locally and ready for PR. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
+Active task: multi-actor shared scenario parity, backendless demo actor semantics, continued HTTP contract fixture coverage, and the series add-task selector are implemented locally. Email/provider delivery, anonymous worker identity, per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -17,7 +17,7 @@ Current implemented surface:
 - Collectible and bundle task creation can escrow selected collectibles immediately and task responses show the held collectible count.
 - Backendless demo routes now cover current real API routes except the documented real-only health/MCP/root routes.
 - Users have a persisted notification inbox for submission-created and submission-review events. The browser has an Inbox page with mark-read support, and the backendless demo mirrors the routes and seeded unread state.
-- Backendless demo account lifecycle, user directory, organization/team member provisioning, selector pagination/query, create-time collectible rewards, and shared scenario parity flows mirror the current real-app flows closely enough for browser demo coverage.
+- Backendless demo account lifecycle, user directory, organization/team member provisioning, selector pagination/query, create-time collectible rewards, token-aware actor flows, and shared scenario parity flows mirror the current real-app flows closely enough for browser demo coverage.
 - Admin operations status is available to platform admins at `/api/admin/operations`.
 - Production `serve` wires Postgres-backed rate-limit buckets, audit events, notification inbox rows, persisted MCP HTTP session identity, and persisted MCP HTTP replay events. MCP live SSE subscribers remain process-local.
 - Platform admins can view audit events at `#/admin`; audit writes cover admin default collectible awards, account deactivation, organization member provisioning/role/deactivation actions, submission review outcomes, and task refunds.
@@ -26,9 +26,10 @@ Current implemented surface:
 - Account verification/reset token issue supports API-visible local/test mode and log-delivery mode.
 - Account deactivation anonymizes email, removes password credentials, and revokes active refresh/account tokens.
 - Selector APIs support `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams where those lists are exposed.
-- A shared scenario parity runner covers selector pagination/query, admin operations, account-token issue shape, collectible catalog/mint/transfer, organization/team/task/task-comment creation, submission creation/comments, and notification read shape against the backendless demo and can be run against a real API with an explicit admin origin/token.
+- A shared scenario parity runner covers selector pagination/query, admin operations, account-token issue shape, collectible catalog/mint/transfer, organization/team/task/task-comment creation, submission creation/comments, notification read shape, and a multi-actor reservation approval/submission acceptance/payout/notification flow against the backendless demo. It can be run against a real API with an explicit admin origin/token.
 - A GitHub Pages routing check script verifies deployed root/docs/demo entry paths and demo assets after deployment.
 - Admin default-collectible award and collectible transfer flows use user/team/organization selectors where selector data exists.
+- Series add-task management uses the loaded task selector instead of a raw task-ID text field.
 - The WASM demo backend spike is documented with explicit storage-adapter gates and no fallback path.
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles only; user/org/per-project tokens, external wallets, and crypto integrations are out of scope.
 
@@ -41,8 +42,8 @@ Current verification:
 - `deno run --allow-read tools/check_policy.ts` passed.
 - `deno test --allow-read tests/deno` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
-- `deno task check:pages-routing -- --origin https://e6qu.github.io/sharecrop` passed against the deployed GitHub Pages site.
-- Manual screenshot review passed for default-collectible award selectors and collectible transfer selectors on desktop/mobile demo viewports.
+- Focused Playwright coverage passed for the first-class task-series management flow.
+- Manual screenshot review passed for the series add-task selector on the backendless demo series detail page.
 
 Blocking issues:
 
