@@ -60,13 +60,13 @@ func TestPrivacyRequestWireShape(t *testing.T) {
 }
 
 func TestPrivacyRequestResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(privacyRequestResponse{ID: "privacy-1", Kind: "data_export", Status: "queued", RequestedBy: "user-1", ExportJSON: "", ResolutionNote: ""})
-	assertWireShape(t, encoded, err, `{"id":"privacy-1","kind":"data_export","status":"queued","requested_by":"user-1","export_json":"","resolution_note":""}`)
+	encoded, err := json.Marshal(privacyRequestResponse{ID: "privacy-1", Kind: "data_export", Status: "queued", RequestedBy: "user-1", ExportJSON: "", ResolutionNote: "", CreatedAt: "2026-01-02T03:04:05Z", ResolvedAt: "", RedactedFieldCount: 0})
+	assertWireShape(t, encoded, err, `{"id":"privacy-1","kind":"data_export","status":"queued","requested_by":"user-1","export_json":"","resolution_note":"","created_at":"2026-01-02T03:04:05Z","resolved_at":"","redacted_field_count":0}`)
 }
 
 func TestPrivacyRequestsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(privacyRequestsResponse{Requests: []privacyRequestResponse{{ID: "privacy-1", Kind: "sensitive_field_deletion", Status: "resolved", RequestedBy: "user-1", ExportJSON: "", ResolutionNote: "done"}}})
-	assertWireShape(t, encoded, err, `{"requests":[{"id":"privacy-1","kind":"sensitive_field_deletion","status":"resolved","requested_by":"user-1","export_json":"","resolution_note":"done"}]}`)
+	encoded, err := json.Marshal(privacyRequestsResponse{Requests: []privacyRequestResponse{{ID: "privacy-1", Kind: "sensitive_field_deletion", Status: "resolved", RequestedBy: "user-1", ExportJSON: "", ResolutionNote: "done", CreatedAt: "2026-01-02T03:04:05Z", ResolvedAt: "2026-01-02T03:05:05Z", RedactedFieldCount: 2}}})
+	assertWireShape(t, encoded, err, `{"requests":[{"id":"privacy-1","kind":"sensitive_field_deletion","status":"resolved","requested_by":"user-1","export_json":"","resolution_note":"done","created_at":"2026-01-02T03:04:05Z","resolved_at":"2026-01-02T03:05:05Z","redacted_field_count":2}]}`)
 }
 
 func TestUsersResponseWireShape(t *testing.T) {
@@ -271,8 +271,8 @@ func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
 }
 
 func TestSubmissionResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{{Path: "email", Category: "pii", Retention: "delete_on_request", Redaction: "replace"}}})
-	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","validation_errors":[],"sensitive_fields":[{"path":"email","category":"pii","retention":"delete_on_request","redaction":"replace"}]}`)
+	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{{Path: "email", Category: "pii", Retention: "delete_on_request", Redaction: "replace", State: "redacted", RedactedAt: "2026-01-02T03:05:05Z"}}})
+	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","validation_errors":[],"sensitive_fields":[{"path":"email","category":"pii","retention":"delete_on_request","redaction":"replace","state":"redacted","redacted_at":"2026-01-02T03:05:05Z"}]}`)
 }
 
 func TestSubmissionsResponseWireShape(t *testing.T) {

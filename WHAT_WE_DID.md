@@ -1,5 +1,44 @@
 # What We Did
 
+`task/privacy-ops-demo-wasm-parity` deepened privacy/operator handling and demo
+parity:
+
+- **Privacy lifecycle.** Privacy request responses now include timestamps and
+  redacted-field counts. Data-export resolution stores a JSON document with
+  account, submission, sensitive-field, notification, ledger, and privacy
+  request data. Sensitive-field deletion resolution marks delete-on-request
+  sensitive-field metadata as redacted, stores affected counts, and records
+  per-field redaction events.
+- **Admin UI.** The browser Admin page lists privacy requests, accepts a
+  resolution note, resolves queued requests, and shows export JSON and redaction
+  counts.
+- **Sensitive-field visibility.** Submission sensitive-field responses include
+  lifecycle state and redaction time, and the browser shows those values in
+  submission privacy summaries.
+- **Contracts and parity.** Generated Elm contracts, HTTP wire-shape fixtures,
+  shared scenario parity, backendless demo behavior, and Deno demo tests were
+  updated for privacy resolution and redaction effects.
+- **Demo fixes.** The frontend build now copies generated CSS into the static
+  demo, preventing stale demo styling. Shared code blocks wrap long JSON/token
+  lines, and a focused screenshot confirmed the admin privacy export no longer
+  causes horizontal page overflow.
+- **Queue polish.** Saved queue-view chips now include their filter/type/sort
+  context.
+- **WASM investigation.** Go `js/wasm` compile-only checks passed for
+  representative packages and the main command. The documented blocker remains
+  explicit browser storage/request adapters, deterministic reset, startup
+  measurement, and a JS/WASM scenario runner. No fallback stores were added.
+- **Docs.** API, readiness, demo semantic parity, WASM spike, and continuity
+  docs were refreshed. Hard deletes remained prohibited.
+- **Verification.** Passed: `go test ./...`; `deno check tools/*.ts
+  tests/**/*.ts`; `deno lint tools tests`; `deno run --allow-read
+  tools/check_policy.ts`; `deno test --allow-read tests/deno`; `make
+  check-format`; `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`;
+  `go vet ./...`; `go tool deadcode -test ./...`; `deno run -A
+  npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests`;
+  CI-style local `make db-checks`; and focused Playwright
+  `tests/playwright/demo.spec.ts`.
+
 `task/persisted-ops-privacy-lifecycle` added persisted operations and privacy
 lifecycle work:
 

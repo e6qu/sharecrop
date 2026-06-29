@@ -25,24 +25,19 @@ Test gaps:
   rows reference users.
 - Submission responses expose indexed sensitive-field metadata for authorized
   submission viewers. Privacy requests are persisted and can be resolved by
-  platform admins. Resolution stores basic export JSON or marks
-  delete-on-request sensitive-field metadata as redacted. Deeper export content
-  coverage, browser admin request handling, and retention automation remain open
-  product work.
+  platform admins through the API and browser admin page. Resolution stores
+  export JSON or marks delete-on-request sensitive-field metadata as redacted.
+  Retention automation remains open product work, and sensitive-field access
+  events are not recorded yet.
 - The asset economy is intentionally internal-only: rewards are Sharecrop
   credits and admin-minted Sharecrop collectibles. User-issued tokens,
   organization-issued tokens, per-project tokens, crypto rewards, and external
   wallets are out of scope.
 - Request/command contracts and HTTP contract fixture tests should keep
   expanding as the API grows.
-- Local database-backed integration verification through `make db-checks`
-  requires `DATABASE_URL` and `SHARECROP_MIGRATIONS_DIR`;
-  local `make db-checks` was not run on this branch because `DATABASE_URL` was
-  not set.
-- Focused Playwright demo/mobile/screens coverage for the current branch could
-  not run locally because the sandbox blocked local port binding and escalation
-  was blocked by the approval system usage limit. Frontend build, Deno checks,
-  demo route-surface checks, and shared demo scenario parity passed.
+- Full Playwright mobile/screens coverage was not run locally for this branch.
+  Focused demo Playwright coverage passed, including admin privacy request
+  resolution, and a focused admin privacy screenshot was inspected.
 
 Known risks:
 
@@ -58,10 +53,14 @@ Known risks:
   re-implements API behavior in JS and can drift from the Go backend's actual
   semantics. Deno tests compare its route surface with the real HTTP router,
   validate representative response shapes, and run shared scenario parity flows
-  for selectors, admin operations, privacy request/audit shape, collectibles,
-  tasks, comments, submissions, notifications, and a multi-actor
-  reservation/submission-review/payout flow, but they do not prove every handler
-  has identical domain semantics.
+  for selectors, admin operations, privacy request/audit/resolution shape,
+  sensitive-field redaction state, collectibles, tasks, comments, submissions,
+  notifications, and a multi-actor reservation/submission-review/payout flow,
+  but they do not prove every handler has identical domain semantics.
+- Go code compiles to `js/wasm` for representative packages and the main
+  command, but a WASM demo backend still lacks explicit browser storage
+  adapters, a request adapter, deterministic reset, startup measurements, and a
+  JS/WASM scenario test runner.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

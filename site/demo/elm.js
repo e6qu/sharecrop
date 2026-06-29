@@ -8019,7 +8019,7 @@ var $author$project$Main$enterPage = F2(
 			case 'AdminPage':
 				return _Utils_update(
 					state,
-					{adminMessage: $elm$core$Maybe$Nothing, auditActionFilter: '', auditEvents: _List_Nil, auditSubjectIDFilter: '', auditSubjectKindFilter: '', operations: $elm$core$Maybe$Nothing, page: page});
+					{adminMessage: $elm$core$Maybe$Nothing, adminPrivacyRequests: _List_Nil, adminPrivacyResolutionNote: '', auditActionFilter: '', auditEvents: _List_Nil, auditSubjectIDFilter: '', auditSubjectKindFilter: '', operations: $elm$core$Maybe$Nothing, page: page});
 			case 'InboxPage':
 				return _Utils_update(
 					state,
@@ -8741,6 +8741,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		activeSubmissionCommentsID: $elm$core$Maybe$Nothing,
 		addSeriesTaskId: '',
 		adminMessage: $elm$core$Maybe$Nothing,
+		adminPrivacyRequests: _List_Nil,
+		adminPrivacyResolutionNote: '',
 		agentLabel: '',
 		agentMessage: $elm$core$Maybe$Nothing,
 		agentScopes: _List_fromArray(
@@ -9554,17 +9556,19 @@ var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F8(
 	function (id, taskID, submitterID, state, responseJSON, reviewNote, validationErrors, sensitiveFields) {
 		return {id: id, responseJSON: responseJSON, reviewNote: reviewNote, sensitiveFields: sensitiveFields, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
 	});
-var $author$project$Sharecrop$Generated$Submission$SubmissionSensitiveFieldResponse = F4(
-	function (path, category, retention, redaction) {
-		return {category: category, path: path, redaction: redaction, retention: retention};
+var $author$project$Sharecrop$Generated$Submission$SubmissionSensitiveFieldResponse = F6(
+	function (path, category, retention, redaction, state, redactedAt) {
+		return {category: category, path: path, redactedAt: redactedAt, redaction: redaction, retention: retention, state: state};
 	});
-var $author$project$Sharecrop$Generated$Submission$submissionSensitiveFieldResponseDecoder = A5(
-	$elm$json$Json$Decode$map4,
+var $author$project$Sharecrop$Generated$Submission$submissionSensitiveFieldResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
 	$author$project$Sharecrop$Generated$Submission$SubmissionSensitiveFieldResponse,
 	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'category', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'retention', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'redaction', $elm$json$Json$Decode$string));
+	A2($elm$json$Json$Decode$field, 'redaction', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'redacted_at', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
 var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
@@ -9858,6 +9862,15 @@ var $author$project$Main$replaceNotification = F2(
 			},
 			notifications);
 	});
+var $author$project$Main$replacePrivacyRequest = F2(
+	function (replacement, requests) {
+		return A2(
+			$elm$core$List$map,
+			function (request) {
+				return _Utils_eq(request.id, replacement.id) ? replacement : request;
+			},
+			requests);
+	});
 var $author$project$Sharecrop$Api$requestChangesBody = function (reviewNote) {
 	return $elm$json$Json$Encode$object(
 		_List_fromArray(
@@ -9951,19 +9964,29 @@ var $author$project$Sharecrop$Generated$Privacy$privacyRequestKindEncoder = func
 		return $elm$json$Json$Encode$string('sensitive_field_deletion');
 	}
 };
-var $author$project$Sharecrop$Generated$Privacy$PrivacyRequestResponse = F6(
-	function (id, kind, status, requestedBy, exportJSON, resolutionNote) {
-		return {exportJSON: exportJSON, id: id, kind: kind, requestedBy: requestedBy, resolutionNote: resolutionNote, status: status};
+var $author$project$Sharecrop$Generated$Privacy$PrivacyRequestResponse = F9(
+	function (id, kind, status, requestedBy, exportJSON, resolutionNote, createdAt, resolvedAt, redactedFieldCount) {
+		return {createdAt: createdAt, exportJSON: exportJSON, id: id, kind: kind, redactedFieldCount: redactedFieldCount, requestedBy: requestedBy, resolutionNote: resolutionNote, resolvedAt: resolvedAt, status: status};
 	});
-var $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder = A7(
-	$elm$json$Json$Decode$map6,
-	$author$project$Sharecrop$Generated$Privacy$PrivacyRequestResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'kind', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'requested_by', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'export_json', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'resolution_note', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (finish) {
+		return A2(
+			$elm$json$Json$Decode$map,
+			finish,
+			A2($elm$json$Json$Decode$field, 'redacted_field_count', $elm$json$Json$Decode$int));
+	},
+	A9(
+		$elm$json$Json$Decode$map8,
+		$author$project$Sharecrop$Generated$Privacy$PrivacyRequestResponse,
+		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'requested_by', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'export_json', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'resolution_note', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'resolved_at', $elm$json$Json$Decode$string)));
 var $author$project$Sharecrop$Api$requestPrivacy = F2(
 	function (token, kind) {
 		return A5(
@@ -10035,6 +10058,26 @@ var $author$project$Sharecrop$Labels$reservationStateLabel = function (state) {
 var $author$project$Sharecrop$View$reservationSuccessLabel = function (reservation) {
 	return 'Reservation ' + ($author$project$Sharecrop$Labels$reservationStateLabel(reservation.state) + '.');
 };
+var $author$project$Sharecrop$Types$AdminPrivacyRequestResolved = function (a) {
+	return {$: 'AdminPrivacyRequestResolved', a: a};
+};
+var $author$project$Sharecrop$Api$resolveAdminPrivacyRequest = F3(
+	function (token, requestId, resolutionNote) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/admin/privacy-requests/' + (requestId + '/resolve'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'resolution_note',
+							$elm$json$Json$Encode$string(resolutionNote))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminPrivacyRequestResolved, $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$AgentRevoked = function (a) {
 	return {$: 'AgentRevoked', a: a};
 };
@@ -10057,6 +10100,28 @@ var $author$project$Sharecrop$Types$TeamDetailReceived = function (a) {
 };
 var $author$project$Sharecrop$Types$UserWorkReceived = function (a) {
 	return {$: 'UserWorkReceived', a: a};
+};
+var $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived = function (a) {
+	return {$: 'AdminPrivacyRequestsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Privacy$PrivacyRequestsResponse = function (requests) {
+	return {requests: requests};
+};
+var $author$project$Sharecrop$Generated$Privacy$privacyRequestsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Privacy$PrivacyRequestsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'requests',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchAdminPrivacyRequests = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'GET',
+		token,
+		'/api/admin/privacy-requests?limit=25&offset=0',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived, $author$project$Sharecrop$Generated$Privacy$privacyRequestsResponseDecoder));
 };
 var $author$project$Sharecrop$Types$CollectibleCatalogReceived = function (a) {
 	return {$: 'CollectibleCatalogReceived', a: a};
@@ -10396,7 +10461,8 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 							'/api/admin/operations',
 							$elm$http$Http$emptyBody,
 							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OperationsReceived, $author$project$Sharecrop$Generated$Admin$operationsResponseDecoder)),
-							A4($author$project$Sharecrop$Api$fetchAuditEvents, token, '', '', '')
+							A4($author$project$Sharecrop$Api$fetchAuditEvents, token, '', '', ''),
+							$author$project$Sharecrop$Api$fetchAdminPrivacyRequests(token)
 						]));
 			case 'InboxPage':
 				return $author$project$Sharecrop$Api$fetchNotifications(token);
@@ -15314,6 +15380,98 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'AdminPrivacyRequestsReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{adminMessage: $elm$core$Maybe$Nothing, adminPrivacyRequests: response.requests});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error)),
+										adminPrivacyRequests: _List_Nil
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AdminPrivacyResolutionNoteChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{adminPrivacyResolutionNote: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ResolveAdminPrivacyRequestClicked':
+				var requestId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminMessage: $elm$core$Maybe$Nothing});
+								}),
+							A3($author$project$Sharecrop$Api$resolveAdminPrivacyRequest, state.accessToken, requestId, state.adminPrivacyResolutionNote));
+					});
+			case 'AdminPrivacyRequestResolved':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just('Privacy request resolved.'),
+										adminPrivacyRequests: A2($author$project$Main$replacePrivacyRequest, response, state.adminPrivacyRequests),
+										adminPrivacyResolutionNote: ''
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'AuditActionFilterChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -15954,6 +16112,9 @@ var $author$project$Sharecrop$View$navBar = F4(
 					'Reset demo') : $elm$html$Html$text('')
 				]));
 	});
+var $author$project$Sharecrop$Types$AdminPrivacyResolutionNoteChanged = function (a) {
+	return {$: 'AdminPrivacyResolutionNoteChanged', a: a};
+};
 var $author$project$Sharecrop$Types$AuditActionFilterChanged = function (a) {
 	return {$: 'AuditActionFilterChanged', a: a};
 };
@@ -15964,7 +16125,23 @@ var $author$project$Sharecrop$Types$AuditSubjectKindFilterChanged = function (a)
 	return {$: 'AuditSubjectKindFilterChanged', a: a};
 };
 var $author$project$Sharecrop$Types$SearchAuditEventsClicked = {$: 'SearchAuditEventsClicked'};
-var $author$project$Sharecrop$Ui$codeBlockClass = 'overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100';
+var $author$project$Sharecrop$Types$ResolveAdminPrivacyRequestClicked = function (a) {
+	return {$: 'ResolveAdminPrivacyRequestClicked', a: a};
+};
+var $elm$html$Html$span = _VirtualDom_node('span');
+var $author$project$Sharecrop$Ui$badge = function (value) {
+	return A2(
+		$elm$html$Html$span,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(value)
+			]));
+};
+var $author$project$Sharecrop$Ui$codeBlockClass = 'whitespace-pre-wrap break-words rounded-md bg-slate-900 p-3 text-xs text-slate-100';
 var $elm$html$Html$pre = _VirtualDom_node('pre');
 var $author$project$Sharecrop$Ui$codeBlock = F2(
 	function (attrs, value) {
@@ -15977,6 +16154,144 @@ var $author$project$Sharecrop$Ui$codeBlock = F2(
 			_List_fromArray(
 				[
 					$elm$html$Html$text(value)
+				]));
+	});
+var $elm$html$Html$Attributes$boolProperty = F2(
+	function (key, bool) {
+		return A2(
+			_VirtualDom_property,
+			key,
+			$elm$json$Json$Encode$bool(bool));
+	});
+var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
+var $elm$html$Html$dl = _VirtualDom_node('dl');
+var $author$project$Sharecrop$View$emptyLabel = function (value) {
+	return ($elm$core$String$trim(value) === '') ? 'none' : value;
+};
+var $elm$html$Html$dd = _VirtualDom_node('dd');
+var $elm$html$Html$dt = _VirtualDom_node('dt');
+var $author$project$Sharecrop$View$operationFact = F2(
+	function (labelText, valueText) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('rounded border border-slate-200 p-2')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$dt,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-xs font-semibold text-slate-500')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(labelText)
+						])),
+					A2(
+					$elm$html$Html$dd,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('break-words text-slate-900')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(valueText)
+						]))
+				]));
+	});
+var $author$project$Sharecrop$View$adminPrivacyRequestRow = F2(
+	function (resolutionNote, request) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2 py-3 text-sm'),
+					$author$project$Sharecrop$Ui$testId('admin-privacy-request')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$badge(request.status),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('font-medium text-slate-900')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(request.kind)
+								])),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('break-all text-xs text-slate-500')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(request.id)
+								]))
+						])),
+					A2(
+					$elm$html$Html$dl,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('grid gap-2 sm:grid-cols-2')
+						]),
+					_List_fromArray(
+						[
+							A2($author$project$Sharecrop$View$operationFact, 'Requested by', request.requestedBy),
+							A2($author$project$Sharecrop$View$operationFact, 'Created', request.createdAt),
+							A2(
+							$author$project$Sharecrop$View$operationFact,
+							'Resolved',
+							$author$project$Sharecrop$View$emptyLabel(request.resolvedAt)),
+							A2(
+							$author$project$Sharecrop$View$operationFact,
+							'Redacted fields',
+							$elm$core$String$fromInt(request.redactedFieldCount))
+						])),
+					(request.resolutionNote === '') ? $elm$html$Html$text('') : A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-xs text-slate-600'),
+							$author$project$Sharecrop$Ui$testId('admin-privacy-resolution-note')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(request.resolutionNote)
+						])),
+					(request.exportJSON === '') ? $elm$html$Html$text('') : A2(
+					$author$project$Sharecrop$Ui$codeBlock,
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$testId('admin-privacy-export')
+						]),
+					request.exportJSON),
+					(request.status === 'queued') ? A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick(
+							$author$project$Sharecrop$Types$ResolveAdminPrivacyRequestClicked(request.id)),
+							$elm$html$Html$Attributes$disabled(
+							$elm$core$String$trim(resolutionNote) === ''),
+							$author$project$Sharecrop$Ui$testId('admin-resolve-privacy')
+						]),
+					'Resolve') : $elm$html$Html$text('')
 				]));
 	});
 var $author$project$Sharecrop$View$auditEventRow = function (event) {
@@ -16027,9 +16342,7 @@ var $author$project$Sharecrop$Ui$card = function (children) {
 			]),
 		children);
 };
-var $elm$html$Html$dl = _VirtualDom_node('dl');
 var $elm$html$Html$label = _VirtualDom_node('label');
-var $elm$html$Html$span = _VirtualDom_node('span');
 var $author$project$Sharecrop$Ui$fieldLabel = F2(
 	function (labelText, controls) {
 		return A2(
@@ -16071,40 +16384,6 @@ var $author$project$Sharecrop$View$maybeNote = F2(
 		} else {
 			return $elm$html$Html$text('');
 		}
-	});
-var $elm$html$Html$dd = _VirtualDom_node('dd');
-var $elm$html$Html$dt = _VirtualDom_node('dt');
-var $author$project$Sharecrop$View$operationFact = F2(
-	function (labelText, valueText) {
-		return A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('rounded border border-slate-200 p-2')
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$dt,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('text-xs font-semibold text-slate-500')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(labelText)
-						])),
-					A2(
-					$elm$html$Html$dd,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('break-words text-slate-900')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(valueText)
-						]))
-				]));
 	});
 var $elm$html$Html$h2 = _VirtualDom_node('h2');
 var $author$project$Sharecrop$Ui$sectionTitle = function (title) {
@@ -16257,6 +16536,42 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 						$author$project$Sharecrop$Ui$testId('admin-audit-events')
 					]),
 				A2($elm$core$List$map, $author$project$Sharecrop$View$auditEventRow, state.auditEvents)),
+				$author$project$Sharecrop$Ui$sectionTitle('Privacy requests'),
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Resolution note',
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$Ui$textInput(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$placeholder('Export generated or fields redacted'),
+								$elm$html$Html$Attributes$value(state.adminPrivacyResolutionNote),
+								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AdminPrivacyResolutionNoteChanged),
+								$author$project$Sharecrop$Ui$testId('admin-privacy-note')
+							]))
+					])),
+				$elm$core$List$isEmpty(state.adminPrivacyRequests) ? A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+						$author$project$Sharecrop$Ui$testId('admin-privacy-empty')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('No privacy requests.')
+					])) : A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+						$author$project$Sharecrop$Ui$testId('admin-privacy-requests')
+					]),
+				A2(
+					$elm$core$List$map,
+					$author$project$Sharecrop$View$adminPrivacyRequestRow(state.adminPrivacyResolutionNote),
+					state.adminPrivacyRequests)),
 				A2($author$project$Sharecrop$View$maybeNote, state.adminMessage, 'admin-message')
 			]));
 };
@@ -16409,13 +16724,6 @@ var $author$project$Sharecrop$Types$ToggleScope = function (a) {
 	return {$: 'ToggleScope', a: a};
 };
 var $author$project$Sharecrop$Ui$checkboxClass = 'h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-2 focus:ring-slate-500';
-var $elm$html$Html$Attributes$boolProperty = F2(
-	function (key, bool) {
-		return A2(
-			_VirtualDom_property,
-			key,
-			$elm$json$Json$Encode$bool(bool));
-	});
 var $elm$html$Html$Attributes$checked = $elm$html$Html$Attributes$boolProperty('checked');
 var $elm$html$Html$Events$targetChecked = A2(
 	$elm$json$Json$Decode$at,
@@ -17309,7 +17617,6 @@ var $author$project$Sharecrop$Types$UserDirectoryQueryChanged = function (a) {
 var $elm$html$Html$option = _VirtualDom_node('option');
 var $elm$html$Html$select = _VirtualDom_node('select');
 var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
-var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
 var $author$project$Sharecrop$View$selectorSearchControls = F8(
 	function (identifier, placeholderText, query, queryChange, search, previous, next, offset) {
 		return A2(
@@ -17897,18 +18204,6 @@ var $author$project$Sharecrop$View$awardRecipientControl = function (state) {
 };
 var $author$project$Sharecrop$Types$AwardDefaultClicked = function (a) {
 	return {$: 'AwardDefaultClicked', a: a};
-};
-var $author$project$Sharecrop$Ui$badge = function (value) {
-	return A2(
-		$elm$html$Html$span,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700')
-			]),
-		_List_fromArray(
-			[
-				$elm$html$Html$text(value)
-			]));
 };
 var $author$project$Sharecrop$View$catalogEntry = F3(
 	function (isAdmin, recipientId, entry) {
@@ -19598,12 +19893,65 @@ var $author$project$Sharecrop$View$orgTaskFilterOptions = _List_fromArray(
 		_Utils_Tuple2('draft', 'Draft'),
 		_Utils_Tuple2('closed', 'Closed')
 	]);
-var $author$project$Sharecrop$View$queuePart = F2(
-	function (name, valueText) {
-		return ($elm$core$String$trim(valueText) === '') ? (name + ': any') : (name + (': ' + valueText));
-	});
+var $author$project$Sharecrop$View$queueViewStateLabel = function (value) {
+	switch (value) {
+		case 'review':
+			return 'Review';
+		case 'ready':
+			return 'Ready';
+		case 'assigned':
+			return 'Assigned';
+		case 'draft':
+			return 'Draft';
+		case 'open':
+			return 'Open';
+		case 'closed':
+			return 'Closed';
+		case 'cancelled':
+			return 'Cancelled';
+		default:
+			return '';
+	}
+};
+var $author$project$Sharecrop$View$queueViewTypeLabel = function (value) {
+	return ($elm$core$String$trim(value) === '') ? '' : $author$project$Sharecrop$View$taskTypeLabel(value);
+};
+var $author$project$Sharecrop$View$sortLabel = function (value) {
+	switch (value) {
+		case 'newest':
+			return 'Newest';
+		case 'oldest':
+			return 'Oldest';
+		case 'title_asc':
+			return 'Title A-Z';
+		case 'title_desc':
+			return 'Title Z-A';
+		case 'reward_desc':
+			return 'Reward high';
+		case 'reward_asc':
+			return 'Reward low';
+		default:
+			return '';
+	}
+};
 var $author$project$Sharecrop$View$queueViewLabel = function (savedView) {
-	return savedView.name + (' · ' + (A2($author$project$Sharecrop$View$queuePart, 'query', savedView.query) + (' · ' + (A2($author$project$Sharecrop$View$queuePart, 'state', savedView.stateFilter) + (' · ' + (A2($author$project$Sharecrop$View$queuePart, 'type', savedView.typeFilter) + (' · ' + savedView.sort)))))));
+	return A2(
+		$elm$core$String$join,
+		' · ',
+		A2(
+			$elm$core$List$cons,
+			savedView.name,
+			A2(
+				$elm$core$List$filter,
+				function (part) {
+					return $elm$core$String$trim(part) !== '';
+				},
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$View$queueViewStateLabel(savedView.stateFilter),
+						$author$project$Sharecrop$View$queueViewTypeLabel(savedView.typeFilter),
+						$author$project$Sharecrop$View$sortLabel(savedView.sort)
+					]))));
 };
 var $author$project$Sharecrop$View$queueSavedViews = function (config) {
 	return A2(
@@ -21618,6 +21966,9 @@ var $author$project$Sharecrop$View$reviewNoteView = function (note) {
 				$elm$html$Html$text(note)
 			]));
 };
+var $author$project$Sharecrop$View$redactedAtSuffix = function (value) {
+	return ($elm$core$String$trim(value) === '') ? '' : (' at ' + value);
+};
 var $author$project$Sharecrop$View$sensitiveFieldView = function (field) {
 	return A2(
 		$elm$html$Html$p,
@@ -21628,7 +21979,8 @@ var $author$project$Sharecrop$View$sensitiveFieldView = function (field) {
 			]),
 		_List_fromArray(
 			[
-				$elm$html$Html$text(field.path + (' · ' + (field.category + (' · ' + (field.retention + (' · ' + field.redaction))))))
+				$elm$html$Html$text(
+				field.path + (' · ' + (field.category + (' · ' + (field.retention + (' · ' + (field.redaction + (' · ' + (field.state + $author$project$Sharecrop$View$redactedAtSuffix(field.redactedAt))))))))))
 			]));
 };
 var $author$project$Sharecrop$View$sensitiveFieldsView = function (fields) {

@@ -13,10 +13,12 @@ type validationErrorDTO struct {
 }
 
 type sensitiveFieldDTO struct {
-	Path      string `json:"path"`
-	Category  string `json:"category"`
-	Retention string `json:"retention"`
-	Redaction string `json:"redaction"`
+	Path       string `json:"path"`
+	Category   string `json:"category"`
+	Retention  string `json:"retention"`
+	Redaction  string `json:"redaction"`
+	State      string `json:"state"`
+	RedactedAt string `json:"redacted_at"`
 }
 
 func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawReviewNote string, rawValidationErrors string, rawSensitiveFields string) submissionRowResult {
@@ -145,10 +147,12 @@ func parseSensitiveFields(raw string) sensitiveFieldsResult {
 	for valueIndex := range values {
 		value := values[valueIndex]
 		fields = append(fields, submission.SensitiveField{
-			Path:      value.Path,
-			Category:  value.Category,
-			Retention: value.Retention,
-			Redaction: value.Redaction,
+			Path:       value.Path,
+			Category:   value.Category,
+			Retention:  value.Retention,
+			Redaction:  value.Redaction,
+			State:      value.State,
+			RedactedAt: value.RedactedAt,
 		})
 	}
 	return sensitiveFieldsAccepted{values: fields}

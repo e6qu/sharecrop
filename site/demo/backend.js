@@ -243,6 +243,44 @@
     return Object.assign({ sensitive_fields: [] }, submission);
   }
 
+  function nowISO() {
+    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  }
+
+  function collectSensitiveFields(schema, path) {
+    if (!schema || typeof schema !== "object") return [];
+    if (schema.sensitivity && typeof schema.sensitivity === "object") {
+      return [{
+        path: path || "response",
+        category: String(schema.sensitivity.category || ""),
+        retention: String(schema.sensitivity.retention || ""),
+        redaction: String(schema.sensitivity.redaction || ""),
+        state: "active",
+        redacted_at: "",
+      }];
+    }
+    if (schema.kind === "object") {
+      const fields = schema.fields || [];
+      if (Array.isArray(fields)) {
+        return fields.flatMap((field) =>
+          collectSensitiveFields(
+            field.schema,
+            path ? `${path}.${field.name}` : String(field.name || ""),
+          )
+        );
+      }
+      if (fields && typeof fields === "object") {
+        return Object.keys(fields).flatMap((name) =>
+          collectSensitiveFields(fields[name], path ? `${path}.${name}` : name)
+        );
+      }
+    }
+    if (schema.kind === "array" && schema.items) {
+      return collectSensitiveFields(schema.items, path ? `${path}[]` : "[]");
+    }
+    return [];
+  }
+
   function task(overrides) {
     return Object.assign({
       id: nextId("task"),
@@ -1071,6 +1109,9 @@
       requested_by: actorId,
       export_json: "",
       resolution_note: "",
+      created_at: nowISO(),
+      resolved_at: "",
+      redacted_field_count: 0,
     };
     db.privacyRequests.unshift(request);
     recordAudit(actorId, "privacy_request_created", "privacy_request", actorId, {
@@ -1591,7 +1632,7 @@
       response_json: raw || "{}",
       review_note: "",
       validation_errors: errors,
-      sensitive_fields: [],
+      sensitive_fields: collectSensitiveFields(schema, ""),
     };
     t.submissions.push(s);
     if (state === "submitted") {
@@ -2028,8 +2069,60 @@
       request.resolution_note = String(
         (body && body.resolution_note) || "",
       ).trim();
+      request.resolved_at = nowISO();
       if (request.kind === "data_export") {
-        request.export_json = JSON.stringify({ user_id: request.requested_by });
+        request.export_json = JSON.stringify({
+          user_id: request.requested_by,
+          email: (db.users.find((user) => user.id === request.requested_by) ||
+            { email: "" }).email,
+          generated_at: nowISO(),
+          submissions: db.tasks.flatMap((task) =>
+            task.submissions
+              .filter((submission) => submission.submitter_id === request.requested_by)
+              .map((submission) => ({
+                id: submission.id,
+                task_id: submission.task_id,
+                state: submission.state,
+                response_json: submission.response_json,
+              }))
+          ),
+          sensitive_fields: db.tasks.flatMap((task) =>
+            task.submissions
+              .filter((submission) => submission.submitter_id === request.requested_by)
+              .flatMap((submission) =>
+                (submission.sensitive_fields || []).map((field) =>
+                  Object.assign({ submission_id: submission.id }, field)
+                )
+              )
+          ),
+          notifications: db.notifications.filter((notification) =>
+            notification.recipient_user_id === request.requested_by
+          ),
+          ledger_entries: db.ledger,
+          privacy_requests: db.privacyRequests.filter((candidate) =>
+            candidate.requested_by === request.requested_by
+          ),
+        });
+      }
+      if (request.kind === "sensitive_field_deletion") {
+        let redactedCount = 0;
+        db.tasks.forEach((task) => {
+          task.submissions
+            .filter((submission) => submission.submitter_id === request.requested_by)
+            .forEach((submission) => {
+              (submission.sensitive_fields || []).forEach((field) => {
+                if (
+                  field.state === "active" &&
+                  field.retention === "delete_on_request"
+                ) {
+                  field.state = "redacted";
+                  field.redacted_at = request.resolved_at;
+                  redactedCount += 1;
+                }
+              });
+            });
+        });
+        request.redacted_field_count = redactedCount;
       }
       recordAudit(
         actorId,

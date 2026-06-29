@@ -1,14 +1,17 @@
 # Status
 
-The repository contains pull request 1 through pull request 85 work, merged into
-`main`, plus the current `task/persisted-ops-privacy-lifecycle` branch.
+The repository contains pull request 1 through pull request 86 work, merged into
+`main`, plus the current `task/privacy-ops-demo-wasm-parity` branch.
 
-Active task: persisted saved queue views, organization ledger and org-scoped
-audit dashboard panels, privacy request persistence/resolution/export/redaction,
-standalone-team assignee support, and MCP live subscriber fan-out groundwork are
-implemented on `task/persisted-ops-privacy-lifecycle`. Hard deletes remain out
-of scope; use soft deletes, explicit lifecycle states, redaction, and
-tombstone/audit records.
+Active task: deepen privacy lifecycle coverage and admin/operator handling,
+expand shared scenario parity and HTTP contract fixtures, polish queue/dashboard
+workflows, refresh stale readiness docs, investigate a WASM demo backend path,
+and fix demo website issues found during the work. The branch now implements
+admin privacy request resolution UI, richer privacy exports, sensitive-field
+redaction state/counts/events, expanded parity and contract coverage, saved-view
+label polish, demo CSS build copying, and WASM compile-check findings. Hard
+deletes remain out of scope; use soft lifecycle states, anonymization,
+redaction, tombstones, and audit records.
 Email/provider delivery, anonymous worker identity, per-project tokens, external
 wallets, and crypto integrations are out of scope.
 
@@ -75,8 +78,12 @@ Current implemented surface:
   state, review-note, validation-error, and sensitive-field history.
 - Users can create persisted audited privacy requests for data export or
   sensitive-field deletion. Platform admins can list and resolve requests.
-  Resolution stores data-export JSON or marks delete-on-request sensitive-field
-  metadata as redacted without removing core rows.
+  Resolution stores data-export JSON with owned account/submission/sensitive
+  metadata, or marks delete-on-request sensitive-field metadata as redacted
+  without removing core rows.
+- Sensitive-field response metadata includes lifecycle state and redaction time.
+  Privacy sensitive-field resolution records affected counts and per-field
+  redaction events.
 - Requester task lists and discovery lists have loaded-list search/filter
   controls.
 - Worker submission profile pages include a revision inbox for submissions in
@@ -93,7 +100,7 @@ Current implemented surface:
 - Selector APIs support `query`, `limit`, and `offset` for users, organizations,
   standalone teams, and organization teams where those lists are exposed.
 - A shared scenario parity runner covers selector pagination/query, admin
-  operations, account-token issue shape, privacy request/audit shape,
+  operations, account-token issue shape, privacy request/audit/resolution shape,
   collectible catalog/mint/transfer, organization/team/task/task-comment
   creation, submission creation/comments, notification read shape, and a
   multi-actor reservation approval/submission acceptance/payout/notification
@@ -130,8 +137,8 @@ Current implemented surface:
 - Lifecycle and redaction semantics are documented in
   [docs/deletion_semantics.md](./docs/deletion_semantics.md); core-row removal
   is not part of the project direction.
-- The WASM demo backend spike is documented with explicit storage-adapter gates
-  and no fallback path.
+- The WASM demo backend spike is documented with explicit storage-adapter gates,
+  local compile-check results, bundle-size observations, and no fallback path.
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
   only; user/org/per-project tokens, external wallets, and crypto integrations
   are out of scope.
@@ -148,29 +155,27 @@ Current verification:
 - `deno run --allow-read tools/check_policy.ts` passed.
 - `deno test --allow-read tests/deno` passed.
 - `make check-format` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
-  check-contracts` regenerated the expected changed Elm contracts; it exits
-  nonzero until the generated files are committed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go vet ./...`
-  passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode
-  -test ./...` passed.
+- `go vet ./...` passed.
+- `go tool deadcode -test ./...` passed.
 - `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests`
   passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build deno run
-  --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys
-  npm:@playwright/test@1.61.0 test -c
-  tests/playwright/playwright.config.ts --no-deps
-  --output=/Users/zardoz/projects/sharecrop/test-results
-  tests/playwright/demo.spec.ts tests/playwright/mobile.spec.ts
-  tests/playwright/screens.spec.ts` could not run in the sandbox because local
-  port binding was blocked; escalation was blocked by the approval system usage
-  limit.
-- PR 85 CI passed, including `db-checks` and Playwright.
-- PR 84 CI passed before merge.
+- `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
+  SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations
+  SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901
+  SHARECROP_HTTP_ADDR=:18080 make db-checks` passed.
+- `deno run -A npm:@playwright/test@1.61.0 test -c
+  tests/playwright/playwright.config.ts --no-deps tests/playwright/demo.spec.ts`
+  passed.
+- A focused admin privacy screenshot was captured at
+  `/private/tmp/sharecrop-admin-privacy.png` and inspected for layout overflow;
+  export JSON wrapped inside the admin panel after the code-block and demo CSS
+  build-copy fixes.
+- `GOOS=js GOARCH=wasm go test -c` compile checks passed for
+  `./internal/submission` and `./internal/http`; `GOOS=js GOARCH=wasm go build`
+  passed for `./cmd/sharecrop`.
+- PR 86 CI passed, including `db-checks` and Playwright.
 
 Blocking issues:
 
-- Local database-backed `make db-checks` was not run because `DATABASE_URL` was
-  not set. PR CI is expected to run database-backed checks.
+- None known.

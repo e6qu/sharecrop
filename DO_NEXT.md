@@ -5,28 +5,40 @@ Current priority from
 
 Next recommended work:
 
-1. Add deeper privacy lifecycle coverage for export contents, sensitive-field
-   redaction effects, and privacy request admin resolution UI if operators need
-   browser-based request handling.
-2. Keep expanding shared scenario parity as new user-visible API surfaces are
+1. Add retention automation for delete-on-request sensitive fields and decide
+   whether it should be an operator-triggered job, scheduled job, or both.
+2. Add sensitive-field access event recording if operators need evidence of
+   sensitive metadata reads, not only redaction events.
+3. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    team/organization queue search/type/sort, organization reviewer acceptance,
-   sensitive-field response metadata, privacy request/audit shape, and
-   multi-actor reservation/submission acceptance.
-3. Keep expanding generated/fixture-level HTTP contract coverage as the API
+   sensitive-field response metadata/redaction state, privacy
+   request/audit/resolution shape, and multi-actor reservation/submission
+   acceptance.
+4. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-4. Audit remaining raw-ID browser flows and replace high-traffic fields with
+5. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit.
-5. Keep improving backendless demo semantic parity through shared scenarios
-   before any WASM replacement.
-6. Add provider email delivery only if the product direction changes; current
+6. Create a narrow WASM request-adapter spike only after explicit browser
+   storage adapters exist for one vertical slice. Privacy requests are the best
+   first candidate. Do not add fallback stores or unimplemented-handler
+   substitutes.
+7. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+8. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The privacy-ops-demo-wasm-parity branch added admin browser resolution for
+   privacy requests, richer persisted data-export JSON, sensitive-field
+   redaction state/counts/events, generated contract and HTTP fixture updates,
+   shared scenario parity for privacy resolution and redaction effects,
+   backendless demo parity, focused Playwright demo coverage, saved-view label
+   polish, demo CSS build copying, readiness/API/WASM docs refresh, and WASM
+   compile-check findings. Hard deletes remained prohibited.
 
 1. The persisted-ops-privacy-lifecycle branch added persisted saved queue
    views, organization ledger and org-scoped audit dashboard panels, persisted

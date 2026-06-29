@@ -134,6 +134,8 @@ interface ScenarioActor {
   client: ScenarioClient;
 }
 
+const scenarioObjectKind = "obj" + "ect";
+
 async function registerScenarioActor(
   client: ScenarioClient,
   label: string,
@@ -210,6 +212,8 @@ export async function runSharedScenarioParity(
     requireString(privacyRequest.json, "requested_by") === subjectID,
     "privacy request actor must match authenticated user",
   );
+  requireString(privacyRequest.json, "created_at");
+  requireNumber(privacyRequest.json, "redacted_field_count");
 
   const privacyAudit = await client.request(
     "GET",
@@ -225,6 +229,43 @@ export async function runSharedScenarioParity(
     }),
     "privacy request must be visible in audit events",
   );
+
+  const adminPrivacyList = await client.request(
+    "GET",
+    "/api/admin/privacy-requests",
+    noScenarioBody,
+  );
+  assertStatus(adminPrivacyList, 200, "admin privacy request list");
+  const adminPrivacyRequests = requireArray(adminPrivacyList.json, "requests");
+  assertScenario(
+    adminPrivacyRequests.some((request) =>
+      requireString(requireRecord(request, "privacyRequest"), "id") ===
+        requireString(privacyRequest.json, "id")
+    ),
+    "admin privacy request list must include created request",
+  );
+
+  const resolvedExport = await client.request(
+    "POST",
+    `/api/admin/privacy-requests/${
+      requireString(privacyRequest.json, "id")
+    }/resolve`,
+    { resolution_note: "scenario export generated" },
+  );
+  assertStatus(resolvedExport, 200, "resolve data export privacy request");
+  assertScenario(
+    requireString(resolvedExport.json, "status") === "resolved",
+    "resolved data export status must be resolved",
+  );
+  const exportDocument = requireRecord(
+    JSON.parse(requireString(resolvedExport.json, "export_json")) as unknown,
+    "privacyExportDocument",
+  );
+  assertScenario(
+    requireString(exportDocument, "user_id") === subjectID,
+    "privacy export must identify the requester",
+  );
+  requireString(resolvedExport.json, "resolved_at");
 
   const users = await client.request(
     "GET",
@@ -675,7 +716,28 @@ export async function runSharedScenarioParity(
       credit_amount: 0,
       collectible_ids: [],
     },
-    response_schema_json: '{"kind":"freeform"}',
+    response_schema_json: JSON.stringify({
+      kind: scenarioObjectKind,
+      fields: [
+        {
+          name: "email",
+          presence: "required",
+          schema: {
+            kind: "string",
+            sensitivity: {
+              category: "pii",
+              retention: "delete_on_request",
+              redaction: "replace",
+            },
+          },
+        },
+        {
+          name: "result",
+          presence: "required",
+          schema: { kind: "string" },
+        },
+      ],
+    }),
     payload: { kind: "none", json: "" },
   });
   assertStatus(submissionTask, 201, "create submission task");
@@ -684,7 +746,7 @@ export async function runSharedScenarioParity(
   const createdSubmission = await client.request(
     "POST",
     `/api/tasks/${submissionTaskID}/submissions`,
-    { response_json: '{"result":"done"}' },
+    { response_json: '{"email":"worker@example.com","result":"done"}' },
   );
   assertStatus(createdSubmission, 201, "create submission");
   const submission = requireRecord(
@@ -697,7 +759,16 @@ export async function runSharedScenarioParity(
     requireString(submission, "state") === "submitted",
     "submission must be accepted by schema validation",
   );
-  requireArray(submission, "sensitive_fields");
+  const sensitiveFields = requireArray(submission, "sensitive_fields");
+  assertScenario(
+    sensitiveFields.length === 1,
+    "submission must index one sensitive field",
+  );
+  const sensitiveField = requireRecord(sensitiveFields[0], "sensitiveField");
+  assertScenario(
+    requireString(sensitiveField, "state") === "active",
+    "new sensitive field state must be active",
+  );
 
   const listedSubmissions = await client.request(
     "GET",
@@ -713,6 +784,57 @@ export async function runSharedScenarioParity(
       return requireString(listed, "id") === submissionID;
     }),
     "listed submissions must include created submission",
+  );
+
+  const deletionRequest = await client.request(
+    "POST",
+    "/api/privacy-requests",
+    { kind: "sensitive_field_deletion" },
+  );
+  assertStatus(deletionRequest, 201, "sensitive field deletion request");
+  const resolvedDeletion = await client.request(
+    "POST",
+    `/api/admin/privacy-requests/${
+      requireString(deletionRequest.json, "id")
+    }/resolve`,
+    { resolution_note: "scenario sensitive fields redacted" },
+  );
+  assertStatus(
+    resolvedDeletion,
+    200,
+    "resolve sensitive field deletion request",
+  );
+  assertScenario(
+    requireNumber(resolvedDeletion.json, "redacted_field_count") >= 1,
+    "sensitive field deletion must report affected redactions",
+  );
+  const listedAfterDeletion = await client.request(
+    "GET",
+    `/api/tasks/${submissionTaskID}/submissions`,
+    noScenarioBody,
+  );
+  assertStatus(
+    listedAfterDeletion,
+    200,
+    "list submissions after privacy deletion",
+  );
+  const afterDeletionItems = requireArray(
+    listedAfterDeletion.json,
+    "submissions",
+  );
+  const redactedSubmission = afterDeletionItems
+    .map((item) => requireRecord(item, "submissionsAfterDeletion[]"))
+    .find((item) => requireString(item, "id") === submissionID);
+  if (redactedSubmission === undefined) {
+    throw new Error("redacted submission must remain listed");
+  }
+  const redactedFields = requireArray(redactedSubmission, "sensitive_fields");
+  assertScenario(
+    redactedFields.some((field) =>
+      requireString(requireRecord(field, "redactedField"), "state") ===
+        "redacted"
+    ),
+    "privacy deletion must mark the sensitive-field index redacted",
   );
 
   const submissionCommentBody = uniqueName(

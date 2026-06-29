@@ -79,15 +79,19 @@ type alias SubmissionSensitiveFieldResponse =
     , category : String
     , retention : String
     , redaction : String
+    , state : String
+    , redactedAt : String
     }
 
 submissionSensitiveFieldResponseDecoder : Decoder SubmissionSensitiveFieldResponse
 submissionSensitiveFieldResponseDecoder =
-    Decode.map4 SubmissionSensitiveFieldResponse
+    Decode.map6 SubmissionSensitiveFieldResponse
         (Decode.field "path" Decode.string)
         (Decode.field "category" Decode.string)
         (Decode.field "retention" Decode.string)
         (Decode.field "redaction" Decode.string)
+        (Decode.field "state" Decode.string)
+        (Decode.field "redacted_at" Decode.string)
 
 submissionSensitiveFieldResponseEncoder : SubmissionSensitiveFieldResponse -> Encode.Value
 submissionSensitiveFieldResponseEncoder submissionSensitiveFieldResponse =
@@ -96,6 +100,8 @@ submissionSensitiveFieldResponseEncoder submissionSensitiveFieldResponse =
         , ( "category", Encode.string submissionSensitiveFieldResponse.category )
         , ( "retention", Encode.string submissionSensitiveFieldResponse.retention )
         , ( "redaction", Encode.string submissionSensitiveFieldResponse.redaction )
+        , ( "state", Encode.string submissionSensitiveFieldResponse.state )
+        , ( "redacted_at", Encode.string submissionSensitiveFieldResponse.redactedAt )
         ]
 
 type alias SubmissionResponse =

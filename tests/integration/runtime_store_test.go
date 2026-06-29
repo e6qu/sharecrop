@@ -4,12 +4,14 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/notification"
 )
 
@@ -87,6 +89,98 @@ func TestAuditStoreListsPersistedEvents(t *testing.T) {
 	}
 	if len(filtered.Values) == 0 {
 		t.Fatalf("expected filtered audit event")
+	}
+}
+
+func TestPrivacyStoreResolvesExportAndSensitiveRedaction(t *testing.T) {
+	pool := newPool(t)
+	requester := createUser(t, pool, "privacy-requester")
+	taskID := insertTask(t, pool, requester, "open", 1)
+	submissionID := insertSubmission(t, pool, taskID, requester)
+	if _, err := pool.Exec(context.Background(), `
+		insert into submission_sensitive_fields (submission_id, field_index, path, category, retention, redaction)
+		values ($1, 0, 'email', 'pii', 'delete_on_request', 'replace')
+	`, submissionID.String()); err != nil {
+		t.Fatalf("insert sensitive field: %v", err)
+	}
+
+	store := db.NewPrivacyStore(pool)
+	exportResult := store.Create(context.Background(), requester, "data_export")
+	exportCreated, exportMatched := exportResult.(httpserver.PrivacyRequestSaved)
+	if !exportMatched {
+		t.Fatalf("create export rejected: %T", exportResult)
+	}
+	resolvedExportResult := store.Resolve(context.Background(), exportCreated.Value.ID, "export generated")
+	resolvedExport, resolvedExportMatched := resolvedExportResult.(httpserver.PrivacyRequestSaved)
+	if !resolvedExportMatched {
+		if rejected, rejectedMatched := resolvedExportResult.(httpserver.PrivacyRequestMutationRejected); rejectedMatched {
+			t.Fatalf("resolve export rejected: %s", rejected.Reason.Description())
+		}
+		t.Fatalf("resolve export rejected: %T", resolvedExportResult)
+	}
+	var exportBody struct {
+		UserID      string `json:"user_id"`
+		Submissions []struct {
+			ID string `json:"id"`
+		} `json:"submissions"`
+		SensitiveFields []struct {
+			State string `json:"state"`
+		} `json:"sensitive_fields"`
+	}
+	if err := json.Unmarshal([]byte(resolvedExport.Value.ExportJSON), &exportBody); err != nil {
+		t.Fatalf("decode export json: %v", err)
+	}
+	if exportBody.UserID != requester.String() {
+		t.Fatalf("export user_id = %q, want %s", exportBody.UserID, requester.String())
+	}
+	if len(exportBody.Submissions) != 1 {
+		t.Fatalf("export submissions = %d, want 1", len(exportBody.Submissions))
+	}
+	if len(exportBody.SensitiveFields) != 1 || exportBody.SensitiveFields[0].State != "active" {
+		t.Fatalf("export sensitive fields = %#v, want one active field", exportBody.SensitiveFields)
+	}
+
+	deletionResult := store.Create(context.Background(), requester, "sensitive_field_deletion")
+	deletionCreated, deletionMatched := deletionResult.(httpserver.PrivacyRequestSaved)
+	if !deletionMatched {
+		t.Fatalf("create deletion rejected: %T", deletionResult)
+	}
+	resolvedDeletionResult := store.Resolve(context.Background(), deletionCreated.Value.ID, "fields redacted")
+	resolvedDeletion, resolvedDeletionMatched := resolvedDeletionResult.(httpserver.PrivacyRequestSaved)
+	if !resolvedDeletionMatched {
+		if rejected, rejectedMatched := resolvedDeletionResult.(httpserver.PrivacyRequestMutationRejected); rejectedMatched {
+			t.Fatalf("resolve deletion rejected: %s", rejected.Reason.Description())
+		}
+		t.Fatalf("resolve deletion rejected: %T", resolvedDeletionResult)
+	}
+	if resolvedDeletion.Value.RedactedFieldCount != 1 {
+		t.Fatalf("redacted count = %d, want 1", resolvedDeletion.Value.RedactedFieldCount)
+	}
+	var fieldState string
+	var redactedAt time.Time
+	if err := pool.QueryRow(context.Background(), `
+		select state, redacted_at
+		from submission_sensitive_fields
+		where submission_id = $1 and path = 'email'
+	`, submissionID.String()).Scan(&fieldState, &redactedAt); err != nil {
+		t.Fatalf("read sensitive field: %v", err)
+	}
+	if fieldState != "redacted" {
+		t.Fatalf("field state = %q, want redacted", fieldState)
+	}
+	if redactedAt.IsZero() {
+		t.Fatalf("redacted_at is zero")
+	}
+	var eventCount int
+	if err := pool.QueryRow(context.Background(), `
+		select count(*)
+		from submission_sensitive_field_events
+		where submission_id = $1 and action = 'sensitive_field_redacted'
+	`, submissionID.String()).Scan(&eventCount); err != nil {
+		t.Fatalf("count sensitive field events: %v", err)
+	}
+	if eventCount != 1 {
+		t.Fatalf("redaction event count = %d, want 1", eventCount)
 	}
 }
 

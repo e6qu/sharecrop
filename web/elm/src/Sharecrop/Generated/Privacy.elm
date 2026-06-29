@@ -42,17 +42,27 @@ type alias PrivacyRequestResponse =
     , requestedBy : String
     , exportJSON : String
     , resolutionNote : String
+    , createdAt : String
+    , resolvedAt : String
+    , redactedFieldCount : Int
     }
 
 privacyRequestResponseDecoder : Decoder PrivacyRequestResponse
 privacyRequestResponseDecoder =
-    Decode.map6 PrivacyRequestResponse
+    Decode.map8 PrivacyRequestResponse
         (Decode.field "id" Decode.string)
         (Decode.field "kind" Decode.string)
         (Decode.field "status" Decode.string)
         (Decode.field "requested_by" Decode.string)
         (Decode.field "export_json" Decode.string)
         (Decode.field "resolution_note" Decode.string)
+        (Decode.field "created_at" Decode.string)
+        (Decode.field "resolved_at" Decode.string)
+        |> Decode.andThen
+            (\finish ->
+                Decode.map finish
+                    (Decode.field "redacted_field_count" Decode.int)
+            )
 
 privacyRequestResponseEncoder : PrivacyRequestResponse -> Encode.Value
 privacyRequestResponseEncoder privacyRequestResponse =
@@ -63,6 +73,9 @@ privacyRequestResponseEncoder privacyRequestResponse =
         , ( "requested_by", Encode.string privacyRequestResponse.requestedBy )
         , ( "export_json", Encode.string privacyRequestResponse.exportJSON )
         , ( "resolution_note", Encode.string privacyRequestResponse.resolutionNote )
+        , ( "created_at", Encode.string privacyRequestResponse.createdAt )
+        , ( "resolved_at", Encode.string privacyRequestResponse.resolvedAt )
+        , ( "redacted_field_count", Encode.int privacyRequestResponse.redactedFieldCount )
         ]
 
 type alias PrivacyRequestsResponse =

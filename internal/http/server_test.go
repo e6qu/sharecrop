@@ -216,6 +216,15 @@ func TestPrivacyRequestEndpointReturnsQueuedResponse(t *testing.T) {
 	if body.RequestedBy == "" {
 		t.Fatalf("requested_by is empty")
 	}
+	if body.CreatedAt == "" {
+		t.Fatalf("created_at is empty")
+	}
+	if body.ResolvedAt != "" {
+		t.Fatalf("resolved_at = %q, want empty", body.ResolvedAt)
+	}
+	if body.RedactedFieldCount != 0 {
+		t.Fatalf("redacted_field_count = %d, want 0", body.RedactedFieldCount)
+	}
 }
 
 func TestPrivacyRequestEndpointRejectsInvalidKind(t *testing.T) {
@@ -227,6 +236,63 @@ func TestPrivacyRequestEndpointRejectsInvalidKind(t *testing.T) {
 
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
+func TestAdminPrivacyRequestListAndResolve(t *testing.T) {
+	t.Setenv("SHARECROP_ADMIN_USER_IDS", stableTestUserID.String())
+	handler := testHandler()
+
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/privacy-requests", strings.NewReader(`{"kind":"data_export"}`))
+	createRequest.Header.Set("Authorization", "Bearer test-access-token")
+	createResponse := httptest.NewRecorder()
+	handler.ServeHTTP(createResponse, createRequest)
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d", createResponse.Code, http.StatusCreated)
+	}
+	var created privacyRequestResponse
+	if err := json.NewDecoder(createResponse.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/admin/privacy-requests", nil)
+	listRequest.Header.Set("Authorization", "Bearer test-access-token")
+	listResponse := httptest.NewRecorder()
+	handler.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listResponse.Code, http.StatusOK)
+	}
+	var listed privacyRequestsResponse
+	if err := json.NewDecoder(listResponse.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listed.Requests) != 1 {
+		t.Fatalf("privacy request count = %d, want 1", len(listed.Requests))
+	}
+
+	resolveRequest := httptest.NewRequest(http.MethodPost, "/api/admin/privacy-requests/"+created.ID+"/resolve", strings.NewReader(`{"resolution_note":"export generated"}`))
+	resolveRequest.SetPathValue("privacy_request_id", created.ID)
+	resolveRequest.Header.Set("Authorization", "Bearer test-access-token")
+	resolveResponse := httptest.NewRecorder()
+	handler.ServeHTTP(resolveResponse, resolveRequest)
+	if resolveResponse.Code != http.StatusOK {
+		t.Fatalf("resolve status = %d, want %d", resolveResponse.Code, http.StatusOK)
+	}
+	var resolved privacyRequestResponse
+	if err := json.NewDecoder(resolveResponse.Body).Decode(&resolved); err != nil {
+		t.Fatalf("decode resolve response: %v", err)
+	}
+	if resolved.Status != "resolved" {
+		t.Fatalf("status = %q, want resolved", resolved.Status)
+	}
+	if resolved.ResolutionNote != "export generated" {
+		t.Fatalf("resolution_note = %q, want export generated", resolved.ResolutionNote)
+	}
+	if resolved.ResolvedAt == "" {
+		t.Fatalf("resolved_at is empty")
+	}
+	if !strings.Contains(resolved.ExportJSON, stableTestUserID.String()) {
+		t.Fatalf("export_json = %q, want user id", resolved.ExportJSON)
 	}
 }
 

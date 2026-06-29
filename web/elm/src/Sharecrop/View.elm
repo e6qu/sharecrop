@@ -158,6 +158,15 @@ adminView state =
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-audit-events" ]
                 (List.map auditEventRow state.auditEvents)
+        , Ui.sectionTitle "Privacy requests"
+        , Ui.fieldLabel "Resolution note"
+            [ Ui.textInput [ placeholder "Export generated or fields redacted", value state.adminPrivacyResolutionNote, onInput AdminPrivacyResolutionNoteChanged, testId "admin-privacy-note" ] ]
+        , if List.isEmpty state.adminPrivacyRequests then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-privacy-empty" ] [ text "No privacy requests." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-privacy-requests" ]
+                (List.map (adminPrivacyRequestRow state.adminPrivacyResolutionNote) state.adminPrivacyRequests)
         , maybeNote state.adminMessage "admin-message"
         ]
 
@@ -181,6 +190,47 @@ auditEventRow event =
           else
             Ui.codeBlock [ testId "admin-audit-metadata" ] event.metadataJSON
         ]
+
+
+adminPrivacyRequestRow : String -> Privacy.PrivacyRequestResponse -> Html Msg
+adminPrivacyRequestRow resolutionNote request =
+    div [ Html.Attributes.class "space-y-2 py-3 text-sm", testId "admin-privacy-request" ]
+        [ div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+            [ Ui.badge request.status
+            , span [ Html.Attributes.class "font-medium text-slate-900" ] [ text request.kind ]
+            , span [ Html.Attributes.class "break-all text-xs text-slate-500" ] [ text request.id ]
+            ]
+        , Html.dl [ Html.Attributes.class "grid gap-2 sm:grid-cols-2" ]
+            [ operationFact "Requested by" request.requestedBy
+            , operationFact "Created" request.createdAt
+            , operationFact "Resolved" (emptyLabel request.resolvedAt)
+            , operationFact "Redacted fields" (String.fromInt request.redactedFieldCount)
+            ]
+        , if request.resolutionNote == "" then
+            text ""
+
+          else
+            p [ Html.Attributes.class "text-xs text-slate-600", testId "admin-privacy-resolution-note" ] [ text request.resolutionNote ]
+        , if request.exportJSON == "" then
+            text ""
+
+          else
+            Ui.codeBlock [ testId "admin-privacy-export" ] request.exportJSON
+        , if request.status == "queued" then
+            Ui.secondaryButton [ type_ "button", onClick (ResolveAdminPrivacyRequestClicked request.id), disabled (String.trim resolutionNote == ""), testId "admin-resolve-privacy" ] "Resolve"
+
+          else
+            text ""
+        ]
+
+
+emptyLabel : String -> String
+emptyLabel value =
+    if String.trim value == "" then
+        "none"
+
+    else
+        value
 
 
 inboxView : LoggedInModel -> Html Msg
@@ -437,24 +487,77 @@ queueSavedViews config =
 
 queueViewLabel : QueueView -> String
 queueViewLabel savedView =
-    savedView.name
-        ++ " · "
-        ++ queuePart "query" savedView.query
-        ++ " · "
-        ++ queuePart "state" savedView.stateFilter
-        ++ " · "
-        ++ queuePart "type" savedView.typeFilter
-        ++ " · "
-        ++ savedView.sort
+    String.join " · "
+        (savedView.name
+            :: List.filter
+                (\part -> String.trim part /= "")
+                [ queueViewStateLabel savedView.stateFilter
+                , queueViewTypeLabel savedView.typeFilter
+                , sortLabel savedView.sort
+                ]
+        )
 
 
-queuePart : String -> String -> String
-queuePart name valueText =
-    if String.trim valueText == "" then
-        name ++ ": any"
+queueViewStateLabel : String -> String
+queueViewStateLabel value =
+    case value of
+        "review" ->
+            "Review"
+
+        "ready" ->
+            "Ready"
+
+        "assigned" ->
+            "Assigned"
+
+        "draft" ->
+            "Draft"
+
+        "open" ->
+            "Open"
+
+        "closed" ->
+            "Closed"
+
+        "cancelled" ->
+            "Cancelled"
+
+        _ ->
+            ""
+
+
+sortLabel : String -> String
+sortLabel value =
+    case value of
+        "newest" ->
+            "Newest"
+
+        "oldest" ->
+            "Oldest"
+
+        "title_asc" ->
+            "Title A-Z"
+
+        "title_desc" ->
+            "Title Z-A"
+
+        "reward_desc" ->
+            "Reward high"
+
+        "reward_asc" ->
+            "Reward low"
+
+        _ ->
+            ""
+
+
+queueViewTypeLabel : String -> String
+queueViewTypeLabel value =
+    if String.trim value == "" then
+        ""
 
     else
-        name ++ ": " ++ valueText
+        taskTypeLabel value
 
 
 filterTeamWork : String -> String -> List Task.TaskListItemResponse -> List Task.TaskListItemResponse
@@ -2758,7 +2861,16 @@ sensitiveFieldsView fields =
 sensitiveFieldView : Submission.SubmissionSensitiveFieldResponse -> Html Msg
 sensitiveFieldView field =
     p [ Html.Attributes.class "text-xs text-slate-600", testId "submission-sensitive-field" ]
-        [ text (field.path ++ " · " ++ field.category ++ " · " ++ field.retention ++ " · " ++ field.redaction) ]
+        [ text (field.path ++ " · " ++ field.category ++ " · " ++ field.retention ++ " · " ++ field.redaction ++ " · " ++ field.state ++ redactedAtSuffix field.redactedAt) ]
+
+
+redactedAtSuffix : String -> String
+redactedAtSuffix value =
+    if String.trim value == "" then
+        ""
+
+    else
+        " at " ++ value
 
 
 

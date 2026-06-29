@@ -66,6 +66,9 @@ func privacyModule() Module {
 					{Name: NewElmValueName("requestedBy"), JSONName: NewJSONFieldName("requested_by"), Type: StringRef{}},
 					{Name: NewElmValueName("exportJSON"), JSONName: NewJSONFieldName("export_json"), Type: StringRef{}},
 					{Name: NewElmValueName("resolutionNote"), JSONName: NewJSONFieldName("resolution_note"), Type: StringRef{}},
+					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+					{Name: NewElmValueName("resolvedAt"), JSONName: NewJSONFieldName("resolved_at"), Type: StringRef{}},
+					{Name: NewElmValueName("redactedFieldCount"), JSONName: NewJSONFieldName("redacted_field_count"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -620,6 +623,8 @@ func submissionModule() Module {
 					{Name: NewElmValueName("category"), JSONName: NewJSONFieldName("category"), Type: StringRef{}},
 					{Name: NewElmValueName("retention"), JSONName: NewJSONFieldName("retention"), Type: StringRef{}},
 					{Name: NewElmValueName("redaction"), JSONName: NewJSONFieldName("redaction"), Type: StringRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: StringRef{}},
+					{Name: NewElmValueName("redactedAt"), JSONName: NewJSONFieldName("redacted_at"), Type: StringRef{}},
 				},
 			},
 			Product{
