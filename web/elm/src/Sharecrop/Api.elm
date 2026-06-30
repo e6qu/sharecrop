@@ -365,11 +365,11 @@ routeLoadCmd token subjectId page =
         AdminPage ->
             Cmd.batch
                 [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (Http.expectJson OperationsReceived Admin.operationsResponseDecoder)
-                , fetchAuditEvents token "" "" ""
-                , fetchPlatformAdmins token
+                , fetchAuditEvents token "" "" "" 0
+                , fetchPlatformAdmins token 0
                 , fetchUserDirectory token
-                , fetchAdminModerationReports token "open"
-                , fetchAdminPrivacyRequests token
+                , fetchAdminModerationReports token "open" 0
+                , fetchAdminPrivacyRequests token 0
                 ]
 
         InboxPage ->
@@ -972,8 +972,8 @@ fetchOrgTasksPage token organizationId queryText stateFilter typeFilter sortOrde
     authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId ++ "&" ++ taskSearchParams queryText typeFilter sortOrder offset ++ stateQuery) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
 
 
-fetchAuditEvents : String -> String -> String -> String -> Cmd Msg
-fetchAuditEvents token actionFilter subjectKindFilter subjectIDFilter =
+fetchAuditEvents : String -> String -> String -> String -> Int -> Cmd Msg
+fetchAuditEvents token actionFilter subjectKindFilter subjectIDFilter offset =
     let
         actionQuery =
             if String.trim actionFilter == "" then
@@ -996,17 +996,17 @@ fetchAuditEvents token actionFilter subjectKindFilter subjectIDFilter =
             else
                 "&subject_id=" ++ Url.percentEncode (String.trim subjectIDFilter)
     in
-    authorizedRequest "GET" token ("/api/admin/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0" ++ actionQuery ++ subjectKindQuery ++ subjectIDQuery) Http.emptyBody (Http.expectJson AuditEventsReceived Admin.auditEventsResponseDecoder)
+    authorizedRequest "GET" token ("/api/admin/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset ++ actionQuery ++ subjectKindQuery ++ subjectIDQuery) Http.emptyBody (Http.expectJson AuditEventsReceived Admin.auditEventsResponseDecoder)
 
 
-fetchAdminPrivacyRequests : String -> Cmd Msg
-fetchAdminPrivacyRequests token =
-    authorizedRequest "GET" token "/api/admin/privacy-requests?limit=25&offset=0" Http.emptyBody (Http.expectJson AdminPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
+fetchAdminPrivacyRequests : String -> Int -> Cmd Msg
+fetchAdminPrivacyRequests token offset =
+    authorizedRequest "GET" token ("/api/admin/privacy-requests?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson AdminPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
 
 
-fetchPlatformAdmins : String -> Cmd Msg
-fetchPlatformAdmins token =
-    authorizedRequest "GET" token "/api/admin/platform-admins?limit=25&offset=0" Http.emptyBody (Http.expectJson PlatformAdminsReceived Admin.platformAdminsResponseDecoder)
+fetchPlatformAdmins : String -> Int -> Cmd Msg
+fetchPlatformAdmins token offset =
+    authorizedRequest "GET" token ("/api/admin/platform-admins?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson PlatformAdminsReceived Admin.platformAdminsResponseDecoder)
 
 
 grantPlatformAdmin : String -> String -> Cmd Msg
@@ -1027,8 +1027,8 @@ revokePlatformAdmin token userID =
         (Http.expectJson PlatformAdminRevoked Admin.platformAdminResponseDecoder)
 
 
-fetchAdminModerationReports : String -> String -> Cmd Msg
-fetchAdminModerationReports token stateFilter =
+fetchAdminModerationReports : String -> String -> Int -> Cmd Msg
+fetchAdminModerationReports token stateFilter offset =
     let
         stateQuery =
             if String.trim stateFilter == "" then
@@ -1037,7 +1037,7 @@ fetchAdminModerationReports token stateFilter =
             else
                 "&state=" ++ Url.percentEncode (String.trim stateFilter)
     in
-    authorizedRequest "GET" token ("/api/admin/moderation/reports?limit=25&offset=0" ++ stateQuery) Http.emptyBody (Http.expectJson AdminModerationReportsReceived Moderation.moderationReportsResponseDecoder)
+    authorizedRequest "GET" token ("/api/admin/moderation/reports?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset ++ stateQuery) Http.emptyBody (Http.expectJson AdminModerationReportsReceived Moderation.moderationReportsResponseDecoder)
 
 
 triageModerationReport : String -> String -> String -> String -> Cmd Msg

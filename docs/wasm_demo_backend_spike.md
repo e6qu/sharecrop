@@ -16,34 +16,39 @@ browser storage adapters exist.
 ## Request Adapter And Storage Spike
 
 `internal/wasmdemo` contains a narrow request-adapter spike. It classifies only
-the privacy and moderation route pairs:
+the privacy, moderation, and saved-queue-view route pairs:
 
 - `POST /api/privacy-requests`
 - `GET /api/admin/privacy-requests`
 - `POST /api/moderation/reports`
 - `GET /api/admin/moderation/reports`
+- `POST /api/saved-queue-views`
+- `GET /api/saved-queue-views`
 
 Unsupported methods and routes return explicit rejection results. The package
 does not execute domain services or replace `site/demo/backend.js`.
 
 The package now also contains explicit browser-storage boundaries for privacy
-requests and moderation triage records. The storage boundary is caller-provided;
-no in-memory store is selected by default. Missing records, invalid keys,
-invalid states, invalid privacy request kinds, and storage read/write failures
-return explicit rejected results. This is enough to prove the next WASM path can
-persist two classified slices without adding hidden fallback behavior.
+requests, moderation triage records, and saved queue views. The storage boundary
+is caller-provided; no in-memory store is selected by default. Missing records,
+invalid keys, invalid states, invalid scopes, invalid privacy request kinds, and
+storage read/write failures return explicit rejected results. This is enough to
+prove the next WASM path can persist three classified slices without adding
+hidden fallback behavior.
 
 The current request-handler steps use those storage boundaries for:
 
 - `POST /api/privacy-requests`
 - `GET /api/admin/privacy-requests`
 - `POST /api/admin/moderation/reports/{report_id}/triage`
+- `POST /api/saved-queue-views`
+- `GET /api/saved-queue-views`
 
 The handlers reject missing storage, missing clocks, missing actor identity,
 missing ID sources, unsupported routes, unsupported methods, invalid request
-bodies, invalid privacy request kinds, and invalid triage states. They do not
-replace the backendless JavaScript demo and do not provide substitute stores for
-unimplemented routes.
+bodies, invalid privacy request kinds, invalid saved-queue scopes, and invalid
+triage states. They do not replace the backendless JavaScript demo and do not
+provide substitute stores for unimplemented routes.
 
 ## Compile Check
 
@@ -85,6 +90,8 @@ Do not replace `site/demo/backend.js` until the WASM path can satisfy these gate
 ## Next Spike Step
 
 The next WASM step is to add enough explicit browser-backed stores and request
-handlers to run the shared scenario parity suite against the WASM handler. If
-that requires broad store rewrites or hidden substitute behavior, keep the
-JavaScript demo backend and expand shared parity tests instead.
+handlers for task creation, organizations, teams, submissions, ledgers,
+collectibles, notifications, and account-token flows to run the shared scenario
+parity suite against the WASM handler. If that requires broad store rewrites or
+hidden substitute behavior, keep the JavaScript demo backend and expand shared
+parity tests instead.

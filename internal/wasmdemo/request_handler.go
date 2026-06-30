@@ -43,6 +43,10 @@ type PrivacyRequestIDSource interface {
 	NextPrivacyRequestID() string
 }
 
+type SavedQueueViewIDSource interface {
+	NextSavedQueueViewID() string
+}
+
 func NewModerationTriageHandler(storage BrowserStorage, clock HandlerClock) ModerationTriageHandler {
 	return ModerationTriageHandler{storage: storage, clock: clock}
 }
@@ -126,9 +130,6 @@ func (handler PrivacyRequestHandler) Handle(request Request) HandleResult {
 	if handler.actor == nil {
 		return RequestHandleRejected{Reason: "handler actor is required"}
 	}
-	if handler.ids == nil {
-		return RequestHandleRejected{Reason: "privacy request id source is required"}
-	}
 	if request.Path == "/api/privacy-requests" {
 		return handler.handleCreate(request)
 	}
@@ -141,6 +142,9 @@ func (handler PrivacyRequestHandler) Handle(request Request) HandleResult {
 func (handler PrivacyRequestHandler) handleCreate(request Request) HandleResult {
 	if request.Method.String() != MethodPost.String() {
 		return RequestHandleRejected{Reason: "request method is unsupported for privacy request creation"}
+	}
+	if handler.ids == nil {
+		return RequestHandleRejected{Reason: "privacy request id source is required"}
 	}
 	var body privacyRequestBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
@@ -191,4 +195,109 @@ type privacyRequestBody struct {
 
 type privacyRequestsBody struct {
 	Requests []StoredPrivacyRequest `json:"requests"`
+}
+
+type SavedQueueViewHandler struct {
+	storage BrowserStorage
+	actor   HandlerActor
+	ids     SavedQueueViewIDSource
+}
+
+func NewSavedQueueViewHandler(storage BrowserStorage, actor HandlerActor, ids SavedQueueViewIDSource) SavedQueueViewHandler {
+	return SavedQueueViewHandler{storage: storage, actor: actor, ids: ids}
+}
+
+func (handler SavedQueueViewHandler) Handle(request Request) HandleResult {
+	if handler.storage == nil {
+		return RequestHandleRejected{Reason: "browser storage is required"}
+	}
+	if handler.actor == nil {
+		return RequestHandleRejected{Reason: "handler actor is required"}
+	}
+	if savedQueueViewPathOnly(request.Path) != "/api/saved-queue-views" {
+		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	}
+	switch request.Method.String() {
+	case MethodPost.String():
+		if handler.ids == nil {
+			return RequestHandleRejected{Reason: "saved queue view id source is required"}
+		}
+		return handler.handleUpsert(request)
+	case MethodGet.String():
+		return handler.handleList(request)
+	default:
+		return RequestHandleRejected{Reason: "request method is unsupported for saved queue views"}
+	}
+}
+
+func (handler SavedQueueViewHandler) handleUpsert(request Request) HandleResult {
+	var body savedQueueViewBody
+	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+		return RequestHandleRejected{Reason: "saved queue view body is invalid"}
+	}
+	view := StoredSavedQueueView{
+		ID:          strings.TrimSpace(handler.ids.NextSavedQueueViewID()),
+		UserID:      strings.TrimSpace(handler.actor.UserID()),
+		Scope:       strings.TrimSpace(body.Scope),
+		Name:        strings.TrimSpace(body.Name),
+		Query:       strings.TrimSpace(body.Query),
+		StateFilter: strings.TrimSpace(body.StateFilter),
+		TypeFilter:  strings.TrimSpace(body.TypeFilter),
+		Sort:        strings.TrimSpace(body.Sort),
+	}
+	saveResult := SaveSavedQueueView(handler.storage, view)
+	saved, savedMatched := saveResult.(SavedQueueViewStored)
+	if !savedMatched {
+		return RequestHandleRejected{Reason: saveResult.(SavedQueueViewStorageRejected).Reason}
+	}
+	encoded, err := json.Marshal(saved.Value)
+	if err != nil {
+		return RequestHandleRejected{Reason: "saved queue view response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func (handler SavedQueueViewHandler) handleList(request Request) HandleResult {
+	scope := savedQueueViewScopeFromPath(request.Path)
+	listResult := ListSavedQueueViews(handler.storage, handler.actor.UserID(), scope)
+	listed, listedMatched := listResult.(SavedQueueViewsStored)
+	if !listedMatched {
+		return RequestHandleRejected{Reason: listResult.(SavedQueueViewStorageRejected).Reason}
+	}
+	encoded, err := json.Marshal(savedQueueViewsBody{Views: listed.Values})
+	if err != nil {
+		return RequestHandleRejected{Reason: "saved queue views response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+type savedQueueViewBody struct {
+	Scope       string `json:"scope"`
+	Name        string `json:"name"`
+	Query       string `json:"query"`
+	StateFilter string `json:"state_filter"`
+	TypeFilter  string `json:"type_filter"`
+	Sort        string `json:"sort"`
+}
+
+type savedQueueViewsBody struct {
+	Views []StoredSavedQueueView `json:"views"`
+}
+
+func savedQueueViewScopeFromPath(path string) string {
+	parts := strings.SplitN(path, "?", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	for _, part := range strings.Split(parts[1], "&") {
+		keyValue := strings.SplitN(part, "=", 2)
+		if len(keyValue) == 2 && keyValue[0] == "scope" {
+			return strings.TrimSpace(keyValue[1])
+		}
+	}
+	return ""
+}
+
+func savedQueueViewPathOnly(path string) string {
+	return strings.SplitN(path, "?", 2)[0]
 }

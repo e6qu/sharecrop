@@ -64,6 +64,11 @@ func TestPrivacyRequestResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"id":"privacy-1","kind":"data_export","status":"queued","requested_by":"user-1","export_json":"","resolution_note":"","created_at":"2026-01-02T03:04:05Z","resolved_at":"","redacted_field_count":0}`)
 }
 
+func TestPrivacyDataExportResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(privacyRequestResponse{ID: "privacy-1", Kind: "data_export", Status: "resolved", RequestedBy: "user-1", ExportJSON: `{"account":{"id":"user-1"}}`, ResolutionNote: "exported", CreatedAt: "2026-01-02T03:04:05Z", ResolvedAt: "2026-01-02T03:05:05Z", RedactedFieldCount: 0})
+	assertWireShape(t, encoded, err, `{"id":"privacy-1","kind":"data_export","status":"resolved","requested_by":"user-1","export_json":"{\"account\":{\"id\":\"user-1\"}}","resolution_note":"exported","created_at":"2026-01-02T03:04:05Z","resolved_at":"2026-01-02T03:05:05Z","redacted_field_count":0}`)
+}
+
 func TestPrivacyRequestsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(privacyRequestsResponse{Requests: []privacyRequestResponse{{ID: "privacy-1", Kind: "sensitive_field_deletion", Status: "resolved", RequestedBy: "user-1", ExportJSON: "", ResolutionNote: "done", CreatedAt: "2026-01-02T03:04:05Z", ResolvedAt: "2026-01-02T03:05:05Z", RedactedFieldCount: 2}}})
 	assertWireShape(t, encoded, err, `{"requests":[{"id":"privacy-1","kind":"sensitive_field_deletion","status":"resolved","requested_by":"user-1","export_json":"","resolution_note":"done","created_at":"2026-01-02T03:04:05Z","resolved_at":"2026-01-02T03:05:05Z","redacted_field_count":2}]}`)

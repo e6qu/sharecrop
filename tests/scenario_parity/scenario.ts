@@ -303,6 +303,37 @@ export async function runSharedScenarioParity(
     "privacy retention run must be visible in audit events",
   );
 
+  const firstAuditPage = await client.request(
+    "GET",
+    "/api/admin/audit-events?limit=1&offset=0",
+    noScenarioBody,
+  );
+  assertStatus(firstAuditPage, 200, "admin audit first page");
+  const firstAuditEvents = requireArray(firstAuditPage.json, "events");
+  assertScenario(
+    firstAuditEvents.length <= 1,
+    "admin audit first page must honor limit",
+  );
+  const secondAuditPage = await client.request(
+    "GET",
+    "/api/admin/audit-events?limit=1&offset=1",
+    noScenarioBody,
+  );
+  assertStatus(secondAuditPage, 200, "admin audit second page");
+  const secondAuditEvents = requireArray(secondAuditPage.json, "events");
+  assertScenario(
+    secondAuditEvents.length <= 1,
+    "admin audit second page must honor limit",
+  );
+  if (firstAuditEvents.length === 1 && secondAuditEvents.length === 1) {
+    const firstEvent = requireRecord(firstAuditEvents[0], "firstAuditEvent");
+    const secondEvent = requireRecord(secondAuditEvents[0], "secondAuditEvent");
+    assertScenario(
+      requireString(firstEvent, "id") !== requireString(secondEvent, "id"),
+      "admin audit pagination offsets must return distinct rows when both pages are populated",
+    );
+  }
+
   const users = await client.request(
     "GET",
     "/api/users?query=user&limit=2&offset=0",

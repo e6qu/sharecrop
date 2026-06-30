@@ -153,6 +153,7 @@ adminView state =
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             [ Ui.secondaryButton [ type_ "button", onClick SearchAuditEventsClicked, testId "admin-audit-search" ] "Search"
             ]
+        , paginationControls "admin-audit-page" PreviousAuditEventsPageClicked NextAuditEventsPageClicked state.auditEventsOffset
         , if List.isEmpty state.auditEvents then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-audit-empty" ] [ text "No audit events." ]
 
@@ -165,6 +166,7 @@ adminView state =
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             [ Ui.secondaryButton [ type_ "button", onClick GrantPlatformAdminClicked, disabled (String.trim state.adminSelectedUserId == ""), testId "admin-grant-platform-admin" ] "Grant"
             ]
+        , paginationControls "admin-platform-admins-page" PreviousPlatformAdminsPageClicked NextPlatformAdminsPageClicked state.platformAdminsOffset
         , if List.isEmpty state.platformAdmins then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-platform-admins-empty" ] [ text "No platform admins." ]
 
@@ -183,6 +185,7 @@ adminView state =
                 Nothing ->
                     text ""
             ]
+        , paginationControls "admin-privacy-page" PreviousAdminPrivacyPageClicked NextAdminPrivacyPageClicked state.adminPrivacyOffset
         , if List.isEmpty state.adminPrivacyRequests then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-privacy-empty" ] [ text "No privacy requests." ]
 
@@ -202,6 +205,7 @@ adminView state =
             , Ui.fieldLabel "Triage note"
                 [ Ui.textInput [ placeholder "Decision note", value state.adminModerationResolutionNote, onInput AdminModerationResolutionNoteChanged, testId "admin-moderation-note" ] ]
             ]
+        , paginationControls "admin-moderation-page" PreviousAdminModerationPageClicked NextAdminModerationPageClicked state.adminModerationOffset
         , if List.isEmpty state.adminModerationReports then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-moderation-empty" ] [ text "No moderation reports." ]
 

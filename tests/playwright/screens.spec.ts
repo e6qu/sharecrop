@@ -21,7 +21,12 @@ async function registerViaApi(
     post: (
       url: string,
       opts: { data: unknown },
-    ) => Promise<{ ok: () => boolean; json: () => Promise<unknown> }>;
+    ) => Promise<{
+      ok: () => boolean;
+      json: () => Promise<unknown>;
+      status: () => number;
+      text: () => Promise<string>;
+    }>;
   },
   prefix: string,
 ): Promise<{ email: string; body: AuthBody }> {
@@ -29,8 +34,12 @@ async function registerViaApi(
   const response = await request.post("/api/auth/register", {
     data: { email, password },
   });
-  expect(response.ok()).toBeTruthy();
-  return { email, body: (await response.json()) as AuthBody };
+  const responseText = await response.text();
+  expect(
+    response.ok(),
+    `register ${email} failed with ${response.status()}: ${responseText}`,
+  ).toBeTruthy();
+  return { email, body: JSON.parse(responseText) as AuthBody };
 }
 
 async function loginViaUi(page: Page, email: string): Promise<void> {

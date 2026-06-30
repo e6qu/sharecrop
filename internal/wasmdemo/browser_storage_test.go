@@ -118,3 +118,80 @@ func TestPrivacyRequestBrowserStorageRejectsInvalidKind(t *testing.T) {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }
+
+func TestSavedQueueViewBrowserStorageUpsertsAndListsByScope(t *testing.T) {
+	storage := newTestBrowserStorage()
+	first := StoredSavedQueueView{
+		ID:          "saved-view-1",
+		UserID:      "user-1",
+		Scope:       "team_work",
+		Name:        "Ready work",
+		Query:       "review",
+		StateFilter: "ready",
+		TypeFilter:  "code_review",
+		Sort:        "title_asc",
+	}
+	if _, matched := SaveSavedQueueView(storage, first).(SavedQueueViewStored); !matched {
+		t.Fatalf("first save was rejected")
+	}
+	second := first
+	second.ID = "saved-view-2"
+	second.Query = "updated"
+	saveResult := SaveSavedQueueView(storage, second)
+	saved, matched := saveResult.(SavedQueueViewStored)
+	if !matched {
+		t.Fatalf("second save result = %T, want SavedQueueViewStored", saveResult)
+	}
+	if saved.Value.ID != "saved-view-1" {
+		t.Fatalf("upsert id = %q, want saved-view-1", saved.Value.ID)
+	}
+
+	listResult := ListSavedQueueViews(storage, "user-1", "team_work")
+	listed, listedMatched := listResult.(SavedQueueViewsStored)
+	if !listedMatched {
+		t.Fatalf("list result = %T, want SavedQueueViewsStored", listResult)
+	}
+	if len(listed.Values) != 1 || listed.Values[0].Query != "updated" {
+		t.Fatalf("listed views = %#v", listed.Values)
+	}
+}
+
+func TestSavedQueueViewBrowserStorageRejectsInvalidScope(t *testing.T) {
+	result := SaveSavedQueueView(newTestBrowserStorage(), StoredSavedQueueView{
+		ID:     "saved-view-1",
+		UserID: "user-1",
+		Scope:  "unknown",
+		Name:   "Ready work",
+	})
+	rejected, matched := result.(SavedQueueViewStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want SavedQueueViewStorageRejected", result)
+	}
+	if rejected.Reason != "saved queue view scope is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestSavedQueueViewBrowserStorageRejectsCorruptStoredRecord(t *testing.T) {
+	storage := newTestBrowserStorage()
+	keyResult := savedQueueViewKey("user-1", "team_work", "Ready work")
+	key, matched := keyResult.(StorageKeyAccepted)
+	if !matched {
+		t.Fatalf("key result = %T, want StorageKeyAccepted", keyResult)
+	}
+	storage.values[key.Value.String()] = `{"id":"saved-view-1","user_id":"other-user","scope":"team_work","name":"Ready work"}`
+
+	result := SaveSavedQueueView(storage, StoredSavedQueueView{
+		ID:     "saved-view-2",
+		UserID: "user-1",
+		Scope:  "team_work",
+		Name:   "Ready work",
+	})
+	rejected, rejectedMatched := result.(SavedQueueViewStorageRejected)
+	if !rejectedMatched {
+		t.Fatalf("result = %T, want SavedQueueViewStorageRejected", result)
+	}
+	if rejected.Reason != "saved queue view storage key contains mismatched record" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
