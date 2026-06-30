@@ -114,9 +114,24 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 
 	response := submissionsResponse{Submissions: make([]submissionResponse, 0, len(listed.Values))}
 	for _, value := range listed.Values {
+		if !server.recordSensitiveFieldAccess(w, r, actor.subject.ID, value) {
+			return
+		}
 		response.Submissions = append(response.Submissions, submissionToResponse(value))
 	}
 	writeSubmissionsResponse(w, http.StatusOK, response)
+}
+
+func (server Server) recordSensitiveFieldAccess(w http.ResponseWriter, r *http.Request, actor core.UserID, value submission.Submission) bool {
+	if len(value.SensitiveFields) == 0 {
+		return true
+	}
+	result := server.privacyService.RecordSensitiveFieldAccess(r.Context(), actor, value)
+	if rejected, matched := result.(PrivacyRequestMutationRejected); matched {
+		writeDomainError(w, rejected.Reason)
+		return false
+	}
+	return true
 }
 func decodeAuthenticatedSubmissionRequest(r *http.Request, actor auth.UserSubject, taskID core.TaskID) submissionRequestResult {
 	var request submissionRequest

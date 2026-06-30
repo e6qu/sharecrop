@@ -4,6 +4,7 @@ import Browser
 import Browser.Navigation as Nav
 import Http
 import Sharecrop.Api as Api
+import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
@@ -218,9 +219,14 @@ emptyLoggedIn response =
     , orgTeamOffset = 0
     , operations = Nothing
     , auditEvents = []
+    , platformAdmins = []
+    , adminSelectedUserId = ""
     , adminModerationReports = []
+    , adminModerationStateFilter = "open"
+    , adminModerationResolutionNote = ""
     , adminPrivacyRequests = []
     , adminPrivacyResolutionNote = ""
+    , adminRetentionRedactedFieldCount = Nothing
     , auditActionFilter = ""
     , auditSubjectKindFilter = ""
     , auditSubjectIDFilter = ""
@@ -281,6 +287,41 @@ replacePrivacyRequest replacement requests =
         requests
 
 
+replaceModerationReport : Moderation.ModerationReportResponse -> List Moderation.ModerationReportResponse -> List Moderation.ModerationReportResponse
+replaceModerationReport replacement reports =
+    List.map
+        (\report ->
+            if report.id == replacement.id then
+                replacement
+
+            else
+                report
+        )
+        reports
+
+
+replacePlatformAdmin : Admin.PlatformAdminResponse -> List Admin.PlatformAdminResponse -> List Admin.PlatformAdminResponse
+replacePlatformAdmin replacement admins =
+    if List.any (\admin -> admin.userID == replacement.userID) admins then
+        List.map
+            (\admin ->
+                if admin.userID == replacement.userID then
+                    replacement
+
+                else
+                    admin
+            )
+            admins
+
+    else
+        replacement :: admins
+
+
+removePlatformAdmin : String -> List Admin.PlatformAdminResponse -> List Admin.PlatformAdminResponse
+removePlatformAdmin userID admins =
+    List.filter (\admin -> admin.userID /= userID) admins
+
+
 teamWorkSavedViewScope : String
 teamWorkSavedViewScope =
     "team_work"
@@ -328,7 +369,7 @@ loggedInForPage response page =
         state =
             emptyLoggedIn response
     in
-    { state | page = page }
+    enterPage page { state | page = page }
 
 
 pageFromUrl : Url -> Page
@@ -432,7 +473,7 @@ enterPage page state =
             { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkTypeFilter = "", teamWorkSort = "newest", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
-            { state | page = page, operations = Nothing, auditEvents = [], adminModerationReports = [], adminPrivacyRequests = [], adminPrivacyResolutionNote = "", auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
+            { state | page = page, operations = Nothing, auditEvents = [], platformAdmins = [], adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         InboxPage ->
             { state | page = page, notifications = [], inboxMessage = Nothing }
@@ -2011,11 +2052,53 @@ update msg model =
         AuditEventsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
 
+        PlatformAdminsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = response.admins, adminMessage = Nothing }), Cmd.none )
+
+        PlatformAdminsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AdminSelectedUserChanged userId ->
+            ( Api.updateLoggedIn model (\state -> { state | adminSelectedUserId = userId }), Cmd.none )
+
+        GrantPlatformAdminClicked ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.grantPlatformAdmin state.accessToken state.adminSelectedUserId ))
+
+        PlatformAdminGranted (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = replacePlatformAdmin response state.platformAdmins, adminSelectedUserId = "", adminMessage = Just "Platform admin granted." }), Cmd.none )
+
+        PlatformAdminGranted (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        RevokePlatformAdminClicked userID ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.revokePlatformAdmin state.accessToken userID ))
+
+        PlatformAdminRevoked (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = removePlatformAdmin response.userID state.platformAdmins, adminMessage = Just "Platform admin revoked." }), Cmd.none )
+
+        PlatformAdminRevoked (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
         AdminModerationReportsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = response.reports, adminMessage = Nothing }), Cmd.none )
 
         AdminModerationReportsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AdminModerationStateFilterChanged value ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminModerationStateFilter = value }), Api.fetchAdminModerationReports state.accessToken value ))
+
+        AdminModerationResolutionNoteChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationResolutionNote = value }), Cmd.none )
+
+        TriageModerationReportClicked reportID stateValue ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.triageModerationReport state.accessToken reportID stateValue state.adminModerationResolutionNote ))
+
+        AdminModerationReportTriaged (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = replaceModerationReport response state.adminModerationReports, adminModerationResolutionNote = "", adminMessage = Just "Moderation report updated." }), Cmd.none )
+
+        AdminModerationReportTriaged (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         AdminPrivacyRequestsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = response.requests, adminMessage = Nothing }), Cmd.none )
@@ -2025,6 +2108,15 @@ update msg model =
 
         AdminPrivacyResolutionNoteChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | adminPrivacyResolutionNote = value }), Cmd.none )
+
+        RunPrivacyRetentionClicked ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.runPrivacyRetention state.accessToken ))
+
+        PrivacyRetentionRunReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminRetentionRedactedFieldCount = Just response.redactedFieldCount, adminMessage = Just "Privacy retention run finished." }), Cmd.none )
+
+        PrivacyRetentionRunReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         ResolveAdminPrivacyRequestClicked requestId ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.resolveAdminPrivacyRequest state.accessToken requestId state.adminPrivacyResolutionNote ))

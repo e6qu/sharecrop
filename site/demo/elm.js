@@ -8020,7 +8020,7 @@ var $author$project$Main$enterPage = F2(
 			case 'AdminPage':
 				return _Utils_update(
 					state,
-					{adminMessage: $elm$core$Maybe$Nothing, adminModerationReports: _List_Nil, adminPrivacyRequests: _List_Nil, adminPrivacyResolutionNote: '', auditActionFilter: '', auditEvents: _List_Nil, auditSubjectIDFilter: '', auditSubjectKindFilter: '', operations: $elm$core$Maybe$Nothing, page: page});
+					{adminMessage: $elm$core$Maybe$Nothing, adminModerationReports: _List_Nil, adminModerationResolutionNote: '', adminModerationStateFilter: 'open', adminPrivacyRequests: _List_Nil, adminPrivacyResolutionNote: '', adminRetentionRedactedFieldCount: $elm$core$Maybe$Nothing, adminSelectedUserId: '', auditActionFilter: '', auditEvents: _List_Nil, auditSubjectIDFilter: '', auditSubjectKindFilter: '', operations: $elm$core$Maybe$Nothing, page: page, platformAdmins: _List_Nil});
 			case 'InboxPage':
 				return _Utils_update(
 					state,
@@ -8107,6 +8107,79 @@ var $author$project$Sharecrop$Api$entriesFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Sharecrop$Types$AdminModerationReportsReceived = function (a) {
+	return {$: 'AdminModerationReportsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Moderation$ModerationReportsResponse = function (reports) {
+	return {reports: reports};
+};
+var $author$project$Sharecrop$Generated$Moderation$ModerationReportResponse = function (id) {
+	return function (subjectKind) {
+		return function (subjectID) {
+			return function (subjectHref) {
+				return function (reason) {
+					return function (details) {
+						return function (reporterUserID) {
+							return function (createdAt) {
+								return function (state) {
+									return function (resolutionNote) {
+										return function (updatedBy) {
+											return function (updatedAt) {
+												return {createdAt: createdAt, details: details, id: id, reason: reason, reporterUserID: reporterUserID, resolutionNote: resolutionNote, state: state, subjectHref: subjectHref, subjectID: subjectID, subjectKind: subjectKind, updatedAt: updatedAt, updatedBy: updatedBy};
+											};
+										};
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};
+var $author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (finish) {
+		return A5(
+			$elm$json$Json$Decode$map4,
+			finish,
+			A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
+			A2($elm$json$Json$Decode$field, 'resolution_note', $elm$json$Json$Decode$string),
+			A2($elm$json$Json$Decode$field, 'updated_by', $elm$json$Json$Decode$string),
+			A2($elm$json$Json$Decode$field, 'updated_at', $elm$json$Json$Decode$string));
+	},
+	A9(
+		$elm$json$Json$Decode$map8,
+		$author$project$Sharecrop$Generated$Moderation$ModerationReportResponse,
+		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'subject_kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'subject_href', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'reason', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'details', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'reporter_user_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string)));
+var $author$project$Sharecrop$Generated$Moderation$moderationReportsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Moderation$ModerationReportsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'reports',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder)));
+var $elm$url$Url$percentEncode = _Url_percentEncode;
+var $author$project$Sharecrop$Api$fetchAdminModerationReports = F2(
+	function (token, stateFilter) {
+		var stateQuery = ($elm$core$String$trim(stateFilter) === '') ? '' : ('&state=' + $elm$url$Url$percentEncode(
+			$elm$core$String$trim(stateFilter)));
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/admin/moderation/reports?limit=25&offset=0' + stateQuery,
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminModerationReportsReceived, $author$project$Sharecrop$Generated$Moderation$moderationReportsResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$AuditEventsReceived = function (a) {
 	return {$: 'AuditEventsReceived', a: a};
 };
@@ -8135,7 +8208,6 @@ var $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder = A2(
 		$elm$json$Json$Decode$field,
 		'events',
 		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Admin$auditEventResponseDecoder)));
-var $elm$url$Url$percentEncode = _Url_percentEncode;
 var $author$project$Sharecrop$Api$selectorPageSize = 20;
 var $author$project$Sharecrop$Api$fetchAuditEvents = F4(
 	function (token, actionFilter, subjectKindFilter, subjectIDFilter) {
@@ -8556,6 +8628,36 @@ var $author$project$Sharecrop$Api$fundTaskCommand = F2(
 				$elm$core$Platform$Cmd$none);
 		}
 	});
+var $author$project$Sharecrop$Types$PlatformAdminGranted = function (a) {
+	return {$: 'PlatformAdminGranted', a: a};
+};
+var $author$project$Sharecrop$Generated$Admin$PlatformAdminResponse = F3(
+	function (userID, source, createdAt) {
+		return {createdAt: createdAt, source: source, userID: userID};
+	});
+var $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Generated$Admin$PlatformAdminResponse,
+	A2($elm$json$Json$Decode$field, 'user_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'source', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Api$grantPlatformAdmin = F2(
+	function (token, userID) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/admin/platform-admins',
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'user_id',
+							$elm$json$Json$Encode$string(userID))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminGranted, $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder));
+	});
 var $author$project$Sharecrop$Labels$httpErrorLabel = function (error) {
 	switch (error.$) {
 		case 'BadUrl':
@@ -8746,8 +8848,12 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		addSeriesTaskId: '',
 		adminMessage: $elm$core$Maybe$Nothing,
 		adminModerationReports: _List_Nil,
+		adminModerationResolutionNote: '',
+		adminModerationStateFilter: 'open',
 		adminPrivacyRequests: _List_Nil,
 		adminPrivacyResolutionNote: '',
+		adminRetentionRedactedFieldCount: $elm$core$Maybe$Nothing,
+		adminSelectedUserId: '',
 		agentLabel: '',
 		agentMessage: $elm$core$Maybe$Nothing,
 		agentScopes: _List_fromArray(
@@ -8842,6 +8948,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		page: $author$project$Sharecrop$Types$OverviewPage,
 		pendingRevisionResponse: '',
 		pendingRevisionTaskID: $elm$core$Maybe$Nothing,
+		platformAdmins: _List_Nil,
 		provisionMemberEmail: '',
 		provisionMemberMessage: $elm$core$Maybe$Nothing,
 		provisionMemberRoles: _List_fromArray(
@@ -8915,9 +9022,12 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 var $author$project$Main$loggedInForPage = F2(
 	function (response, page) {
 		var state = $author$project$Main$emptyLoggedIn(response);
-		return _Utils_update(
-			state,
-			{page: page});
+		return A2(
+			$author$project$Main$enterPage,
+			page,
+			_Utils_update(
+				state,
+				{page: page}));
 	});
 var $elm$core$Maybe$map = F2(
 	function (f, maybe) {
@@ -9851,6 +9961,15 @@ var $author$project$Main$reloadDemo = _Platform_outgoingPort(
 	function ($) {
 		return $elm$json$Json$Encode$null;
 	});
+var $author$project$Main$removePlatformAdmin = F2(
+	function (userID, admins) {
+		return A2(
+			$elm$core$List$filter,
+			function (admin) {
+				return !_Utils_eq(admin.userID, userID);
+			},
+			admins);
+	});
 var $author$project$Sharecrop$Api$removeSeriesTaskCommand = F3(
 	function (token, seriesId, taskId) {
 		return A5(
@@ -9861,6 +9980,15 @@ var $author$project$Sharecrop$Api$removeSeriesTaskCommand = F3(
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
 	});
+var $author$project$Main$replaceModerationReport = F2(
+	function (replacement, reports) {
+		return A2(
+			$elm$core$List$map,
+			function (report) {
+				return _Utils_eq(report.id, replacement.id) ? replacement : report;
+			},
+			reports);
+	});
 var $author$project$Main$replaceNotification = F2(
 	function (replacement, notifications) {
 		return A2(
@@ -9869,6 +9997,41 @@ var $author$project$Main$replaceNotification = F2(
 				return _Utils_eq(notification.id, replacement.id) ? replacement : notification;
 			},
 			notifications);
+	});
+var $elm$core$List$any = F2(
+	function (isOkay, list) {
+		any:
+		while (true) {
+			if (!list.b) {
+				return false;
+			} else {
+				var x = list.a;
+				var xs = list.b;
+				if (isOkay(x)) {
+					return true;
+				} else {
+					var $temp$isOkay = isOkay,
+						$temp$list = xs;
+					isOkay = $temp$isOkay;
+					list = $temp$list;
+					continue any;
+				}
+			}
+		}
+	});
+var $author$project$Main$replacePlatformAdmin = F2(
+	function (replacement, admins) {
+		return A2(
+			$elm$core$List$any,
+			function (admin) {
+				return _Utils_eq(admin.userID, replacement.userID);
+			},
+			admins) ? A2(
+			$elm$core$List$map,
+			function (admin) {
+				return _Utils_eq(admin.userID, replacement.userID) ? replacement : admin;
+			},
+			admins) : A2($elm$core$List$cons, replacement, admins);
 	});
 var $author$project$Main$replacePrivacyRequest = F2(
 	function (replacement, requests) {
@@ -9896,20 +10059,6 @@ var $author$project$Sharecrop$Generated$Moderation$moderationReasonEncoder = fun
 			return $elm$json$Json$Encode$string('other');
 	}
 };
-var $author$project$Sharecrop$Generated$Moderation$ModerationReportResponse = F7(
-	function (id, subjectKind, subjectID, reason, details, reporterUserID, createdAt) {
-		return {createdAt: createdAt, details: details, id: id, reason: reason, reporterUserID: reporterUserID, subjectID: subjectID, subjectKind: subjectKind};
-	});
-var $author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder = A8(
-	$elm$json$Json$Decode$map7,
-	$author$project$Sharecrop$Generated$Moderation$ModerationReportResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'subject_kind', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'reason', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'details', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'reporter_user_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$reportTask = F4(
 	function (token, taskId, reason, details) {
 		return A5(
@@ -10157,6 +10306,19 @@ var $author$project$Sharecrop$Api$revokeAgent = F2(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AgentRevoked, $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder));
 	});
+var $author$project$Sharecrop$Types$PlatformAdminRevoked = function (a) {
+	return {$: 'PlatformAdminRevoked', a: a};
+};
+var $author$project$Sharecrop$Api$revokePlatformAdmin = F2(
+	function (token, userID) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/admin/platform-admins/' + (userID + '/revoke'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminRevoked, $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$OperationsReceived = function (a) {
 	return {$: 'OperationsReceived', a: a};
 };
@@ -10165,28 +10327,6 @@ var $author$project$Sharecrop$Types$TeamDetailReceived = function (a) {
 };
 var $author$project$Sharecrop$Types$UserWorkReceived = function (a) {
 	return {$: 'UserWorkReceived', a: a};
-};
-var $author$project$Sharecrop$Types$AdminModerationReportsReceived = function (a) {
-	return {$: 'AdminModerationReportsReceived', a: a};
-};
-var $author$project$Sharecrop$Generated$Moderation$ModerationReportsResponse = function (reports) {
-	return {reports: reports};
-};
-var $author$project$Sharecrop$Generated$Moderation$moderationReportsResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Moderation$ModerationReportsResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'reports',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder)));
-var $author$project$Sharecrop$Api$fetchAdminModerationReports = function (token) {
-	return A5(
-		$author$project$Sharecrop$Api$authorizedRequest,
-		'GET',
-		token,
-		'/api/admin/moderation/reports?limit=25&offset=0',
-		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminModerationReportsReceived, $author$project$Sharecrop$Generated$Moderation$moderationReportsResponseDecoder));
 };
 var $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived = function (a) {
 	return {$: 'AdminPrivacyRequestsReceived', a: a};
@@ -10311,6 +10451,28 @@ var $author$project$Sharecrop$Api$fetchOrganizationCollectibles = F2(
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 	});
+var $author$project$Sharecrop$Types$PlatformAdminsReceived = function (a) {
+	return {$: 'PlatformAdminsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Admin$PlatformAdminsResponse = function (admins) {
+	return {admins: admins};
+};
+var $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Admin$PlatformAdminsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'admins',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchPlatformAdmins = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'GET',
+		token,
+		'/api/admin/platform-admins?limit=25&offset=0',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminsReceived, $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder));
+};
 var $author$project$Sharecrop$Types$SeriesDetailReceived = function (a) {
 	return {$: 'SeriesDetailReceived', a: a};
 };
@@ -10549,7 +10711,9 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 							$elm$http$Http$emptyBody,
 							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OperationsReceived, $author$project$Sharecrop$Generated$Admin$operationsResponseDecoder)),
 							A4($author$project$Sharecrop$Api$fetchAuditEvents, token, '', '', ''),
-							$author$project$Sharecrop$Api$fetchAdminModerationReports(token),
+							$author$project$Sharecrop$Api$fetchPlatformAdmins(token),
+							$author$project$Sharecrop$Api$fetchUserDirectory(token),
+							A2($author$project$Sharecrop$Api$fetchAdminModerationReports, token, 'open'),
 							$author$project$Sharecrop$Api$fetchAdminPrivacyRequests(token)
 						]));
 			case 'InboxPage':
@@ -10558,6 +10722,25 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 				return $elm$core$Platform$Cmd$none;
 		}
 	});
+var $author$project$Sharecrop$Types$PrivacyRetentionRunReceived = function (a) {
+	return {$: 'PrivacyRetentionRunReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Privacy$PrivacyRetentionRunResponse = function (redactedFieldCount) {
+	return {redactedFieldCount: redactedFieldCount};
+};
+var $author$project$Sharecrop$Generated$Privacy$privacyRetentionRunResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Privacy$PrivacyRetentionRunResponse,
+	A2($elm$json$Json$Decode$field, 'redacted_field_count', $elm$json$Json$Decode$int));
+var $author$project$Sharecrop$Api$runPrivacyRetention = function (token) {
+	return A5(
+		$author$project$Sharecrop$Api$authorizedRequest,
+		'POST',
+		token,
+		'/api/admin/privacy-retention/run',
+		$elm$http$Http$emptyBody,
+		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PrivacyRetentionRunReceived, $author$project$Sharecrop$Generated$Privacy$privacyRetentionRunResponseDecoder));
+};
 var $author$project$Main$saveQueueView = F2(
 	function (view, views) {
 		return A2(
@@ -10969,27 +11152,6 @@ var $elm$url$Url$toString = function (url) {
 					_Utils_ap(http, url.host)),
 				url.path)));
 };
-var $elm$core$List$any = F2(
-	function (isOkay, list) {
-		any:
-		while (true) {
-			if (!list.b) {
-				return false;
-			} else {
-				var x = list.a;
-				var xs = list.b;
-				if (isOkay(x)) {
-					return true;
-				} else {
-					var $temp$isOkay = isOkay,
-						$temp$list = xs;
-					isOkay = $temp$isOkay;
-					list = $temp$list;
-					continue any;
-				}
-			}
-		}
-	});
 var $elm$core$List$member = F2(
 	function (x, xs) {
 		return A2(
@@ -11036,6 +11198,29 @@ var $author$project$Sharecrop$Api$transferCollectible = F3(
 							$elm$json$Json$Encode$string(recipientId))
 						]))),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TransferCollectibleReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
+	});
+var $author$project$Sharecrop$Types$AdminModerationReportTriaged = function (a) {
+	return {$: 'AdminModerationReportTriaged', a: a};
+};
+var $author$project$Sharecrop$Api$triageModerationReport = F4(
+	function (token, reportID, stateValue, resolutionNote) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/admin/moderation/reports/' + (reportID + '/triage'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'state',
+							$elm$json$Json$Encode$string(stateValue)),
+							_Utils_Tuple2(
+							'resolution_note',
+							$elm$json$Json$Encode$string(resolutionNote))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminModerationReportTriaged, $author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder));
 	});
 var $author$project$Main$updateFieldAt = F3(
 	function (index, transform, fields) {
@@ -15541,6 +15726,146 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'PlatformAdminsReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{adminMessage: $elm$core$Maybe$Nothing, platformAdmins: response.admins});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error)),
+										platformAdmins: _List_Nil
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AdminSelectedUserChanged':
+				var userId = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{adminSelectedUserId: userId});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'GrantPlatformAdminClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminMessage: $elm$core$Maybe$Nothing});
+								}),
+							A2($author$project$Sharecrop$Api$grantPlatformAdmin, state.accessToken, state.adminSelectedUserId));
+					});
+			case 'PlatformAdminGranted':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just('Platform admin granted.'),
+										adminSelectedUserId: '',
+										platformAdmins: A2($author$project$Main$replacePlatformAdmin, response, state.platformAdmins)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'RevokePlatformAdminClicked':
+				var userID = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminMessage: $elm$core$Maybe$Nothing});
+								}),
+							A2($author$project$Sharecrop$Api$revokePlatformAdmin, state.accessToken, userID));
+					});
+			case 'PlatformAdminRevoked':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just('Platform admin revoked.'),
+										platformAdmins: A2($author$project$Main$removePlatformAdmin, response.userID, state.platformAdmins)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'AdminModerationReportsReceived':
 				if (msg.a.$ === 'Ok') {
 					var response = msg.a.a;
@@ -15567,6 +15892,86 @@ var $author$project$Main$update = F2(
 										adminMessage: $elm$core$Maybe$Just(
 											$author$project$Sharecrop$Labels$httpErrorLabel(error)),
 										adminModerationReports: _List_Nil
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AdminModerationStateFilterChanged':
+				var value = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminModerationStateFilter: value});
+								}),
+							A2($author$project$Sharecrop$Api$fetchAdminModerationReports, state.accessToken, value));
+					});
+			case 'AdminModerationResolutionNoteChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{adminModerationResolutionNote: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'TriageModerationReportClicked':
+				var reportID = msg.a;
+				var stateValue = msg.b;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminMessage: $elm$core$Maybe$Nothing});
+								}),
+							A4($author$project$Sharecrop$Api$triageModerationReport, state.accessToken, reportID, stateValue, state.adminModerationResolutionNote));
+					});
+			case 'AdminModerationReportTriaged':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just('Moderation report updated.'),
+										adminModerationReports: A2($author$project$Main$replaceModerationReport, response, state.adminModerationReports),
+										adminModerationResolutionNote: ''
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
 									});
 							}),
 						$elm$core$Platform$Cmd$none);
@@ -15613,6 +16018,54 @@ var $author$project$Main$update = F2(
 								{adminPrivacyResolutionNote: value});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'RunPrivacyRetentionClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminMessage: $elm$core$Maybe$Nothing});
+								}),
+							$author$project$Sharecrop$Api$runPrivacyRetention(state.accessToken));
+					});
+			case 'PrivacyRetentionRunReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just('Privacy retention run finished.'),
+										adminRetentionRedactedFieldCount: $elm$core$Maybe$Just(response.redactedFieldCount)
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										adminMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'ResolveAdminPrivacyRequestClicked':
 				var requestId = msg.a;
 				return A2(
@@ -16303,8 +16756,17 @@ var $author$project$Sharecrop$View$navBar = F4(
 					'Reset demo') : $elm$html$Html$text('')
 				]));
 	});
+var $author$project$Sharecrop$Types$AdminModerationResolutionNoteChanged = function (a) {
+	return {$: 'AdminModerationResolutionNoteChanged', a: a};
+};
+var $author$project$Sharecrop$Types$AdminModerationStateFilterChanged = function (a) {
+	return {$: 'AdminModerationStateFilterChanged', a: a};
+};
 var $author$project$Sharecrop$Types$AdminPrivacyResolutionNoteChanged = function (a) {
 	return {$: 'AdminPrivacyResolutionNoteChanged', a: a};
+};
+var $author$project$Sharecrop$Types$AdminSelectedUserChanged = function (a) {
+	return {$: 'AdminSelectedUserChanged', a: a};
 };
 var $author$project$Sharecrop$Types$AuditActionFilterChanged = function (a) {
 	return {$: 'AuditActionFilterChanged', a: a};
@@ -16315,7 +16777,13 @@ var $author$project$Sharecrop$Types$AuditSubjectIDFilterChanged = function (a) {
 var $author$project$Sharecrop$Types$AuditSubjectKindFilterChanged = function (a) {
 	return {$: 'AuditSubjectKindFilterChanged', a: a};
 };
+var $author$project$Sharecrop$Types$GrantPlatformAdminClicked = {$: 'GrantPlatformAdminClicked'};
+var $author$project$Sharecrop$Types$RunPrivacyRetentionClicked = {$: 'RunPrivacyRetentionClicked'};
 var $author$project$Sharecrop$Types$SearchAuditEventsClicked = {$: 'SearchAuditEventsClicked'};
+var $author$project$Sharecrop$Types$TriageModerationReportClicked = F2(
+	function (a, b) {
+		return {$: 'TriageModerationReportClicked', a: a, b: b};
+	});
 var $elm$html$Html$span = _VirtualDom_node('span');
 var $author$project$Sharecrop$Ui$badge = function (value) {
 	return A2(
@@ -16329,7 +16797,18 @@ var $author$project$Sharecrop$Ui$badge = function (value) {
 				$elm$html$Html$text(value)
 			]));
 };
+var $elm$html$Html$Attributes$boolProperty = F2(
+	function (key, bool) {
+		return A2(
+			_VirtualDom_property,
+			key,
+			$elm$json$Json$Encode$bool(bool));
+	});
+var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
 var $elm$html$Html$dl = _VirtualDom_node('dl');
+var $author$project$Sharecrop$View$emptyLabel = function (value) {
+	return ($elm$core$String$trim(value) === '') ? 'none' : value;
+};
 var $elm$html$Html$dd = _VirtualDom_node('dd');
 var $elm$html$Html$dt = _VirtualDom_node('dt');
 var $author$project$Sharecrop$View$operationFact = F2(
@@ -16364,70 +16843,145 @@ var $author$project$Sharecrop$View$operationFact = F2(
 						]))
 				]));
 	});
-var $author$project$Sharecrop$View$adminModerationReportRow = function (report) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('space-y-2 py-3 text-sm'),
-				$author$project$Sharecrop$Ui$testId('admin-moderation-report')
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
-					]),
-				_List_fromArray(
-					[
-						$author$project$Sharecrop$Ui$badge(report.reason),
-						A2(
-						$elm$html$Html$span,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('font-medium text-slate-900')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(report.subjectKind)
-							])),
-						A2(
-						$elm$html$Html$span,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('break-all text-xs text-slate-500')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(report.subjectID)
-							]))
-					])),
-				A2(
-				$elm$html$Html$dl,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('grid gap-2 sm:grid-cols-2')
-					]),
-				_List_fromArray(
-					[
-						A2($author$project$Sharecrop$View$operationFact, 'Reporter', report.reporterUserID),
-						A2($author$project$Sharecrop$View$operationFact, 'Created', report.createdAt)
-					])),
-				(report.details === '') ? $elm$html$Html$text('') : A2(
-				$elm$html$Html$p,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('text-sm text-slate-700 break-words'),
-						$author$project$Sharecrop$Ui$testId('admin-moderation-details')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text(report.details)
-					]))
-			]));
-};
+var $author$project$Sharecrop$View$adminModerationReportRow = F2(
+	function (resolutionNote, report) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2 py-3 text-sm'),
+					$author$project$Sharecrop$Ui$testId('admin-moderation-report')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$badge(report.state),
+							$author$project$Sharecrop$Ui$badge(report.reason),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('font-medium text-slate-900')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(report.subjectKind)
+								])),
+							(report.subjectHref === '') ? A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('break-all text-xs text-slate-500')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(report.subjectID)
+								])) : A2(
+							$elm$html$Html$a,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$href(report.subjectHref),
+									$elm$html$Html$Attributes$class('break-all text-xs font-medium text-emerald-700'),
+									$author$project$Sharecrop$Ui$testId('admin-moderation-subject-link')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(report.subjectID)
+								]))
+						])),
+					A2(
+					$elm$html$Html$dl,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('grid gap-2 sm:grid-cols-2')
+						]),
+					_List_fromArray(
+						[
+							A2($author$project$Sharecrop$View$operationFact, 'Reporter', report.reporterUserID),
+							A2($author$project$Sharecrop$View$operationFact, 'Created', report.createdAt),
+							A2(
+							$author$project$Sharecrop$View$operationFact,
+							'Updated by',
+							$author$project$Sharecrop$View$emptyLabel(report.updatedBy)),
+							A2(
+							$author$project$Sharecrop$View$operationFact,
+							'Updated',
+							$author$project$Sharecrop$View$emptyLabel(report.updatedAt))
+						])),
+					(report.resolutionNote === '') ? $elm$html$Html$text('') : A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-xs text-slate-600'),
+							$author$project$Sharecrop$Ui$testId('admin-moderation-resolution-note')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(report.resolutionNote)
+						])),
+					(report.details === '') ? $elm$html$Html$text('') : A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-700 break-words'),
+							$author$project$Sharecrop$Ui$testId('admin-moderation-details')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(report.details)
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									A2($author$project$Sharecrop$Types$TriageModerationReportClicked, report.id, 'open')),
+									$author$project$Sharecrop$Ui$testId('admin-moderation-open')
+								]),
+							'Reopen'),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									A2($author$project$Sharecrop$Types$TriageModerationReportClicked, report.id, 'resolved')),
+									$elm$html$Html$Attributes$disabled(
+									$elm$core$String$trim(resolutionNote) === ''),
+									$author$project$Sharecrop$Ui$testId('admin-moderation-resolve')
+								]),
+							'Resolve'),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									A2($author$project$Sharecrop$Types$TriageModerationReportClicked, report.id, 'dismissed')),
+									$elm$html$Html$Attributes$disabled(
+									$elm$core$String$trim(resolutionNote) === ''),
+									$author$project$Sharecrop$Ui$testId('admin-moderation-dismiss')
+								]),
+							'Dismiss')
+						]))
+				]));
+	});
 var $author$project$Sharecrop$Types$ResolveAdminPrivacyRequestClicked = function (a) {
 	return {$: 'ResolveAdminPrivacyRequestClicked', a: a};
 };
@@ -16446,17 +17000,6 @@ var $author$project$Sharecrop$Ui$codeBlock = F2(
 					$elm$html$Html$text(value)
 				]));
 	});
-var $elm$html$Html$Attributes$boolProperty = F2(
-	function (key, bool) {
-		return A2(
-			_VirtualDom_property,
-			key,
-			$elm$json$Json$Encode$bool(bool));
-	});
-var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
-var $author$project$Sharecrop$View$emptyLabel = function (value) {
-	return ($elm$core$String$trim(value) === '') ? 'none' : value;
-};
 var $author$project$Sharecrop$View$adminPrivacyRequestRow = F2(
 	function (resolutionNote, request) {
 		return A2(
@@ -16588,6 +17131,19 @@ var $author$project$Sharecrop$View$auditEventRow = function (event) {
 				event.metadataJSON)
 			]));
 };
+var $elm$html$Html$option = _VirtualDom_node('option');
+var $author$project$Sharecrop$View$blankOption = function (labelText) {
+	return A2(
+		$elm$html$Html$option,
+		_List_fromArray(
+			[
+				A2($elm$html$Html$Attributes$attribute, 'value', '')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(labelText)
+			]));
+};
 var $author$project$Sharecrop$Ui$card = function (children) {
 	return A2(
 		$elm$html$Html$div,
@@ -16640,6 +17196,60 @@ var $author$project$Sharecrop$View$maybeNote = F2(
 			return $elm$html$Html$text('');
 		}
 	});
+var $author$project$Sharecrop$Types$RevokePlatformAdminClicked = function (a) {
+	return {$: 'RevokePlatformAdminClicked', a: a};
+};
+var $author$project$Sharecrop$View$platformAdminRow = function (admin) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex flex-wrap items-center justify-between gap-3 py-3 text-sm'),
+				$author$project$Sharecrop$Ui$testId('admin-platform-admin')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-1')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('font-medium text-slate-900 break-all')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(admin.userID)
+							])),
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-xs text-slate-500')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(admin.source + (' · ' + admin.createdAt))
+							]))
+					])),
+				(admin.source === 'bootstrap') ? $author$project$Sharecrop$Ui$badge('bootstrap') : A2(
+				$author$project$Sharecrop$Ui$secondaryButton,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('button'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Sharecrop$Types$RevokePlatformAdminClicked(admin.userID)),
+						$author$project$Sharecrop$Ui$testId('admin-revoke-platform-admin')
+					]),
+				'Revoke')
+			]));
+};
 var $elm$html$Html$h2 = _VirtualDom_node('h2');
 var $author$project$Sharecrop$Ui$sectionTitle = function (title) {
 	return A2(
@@ -16653,6 +17263,151 @@ var $author$project$Sharecrop$Ui$sectionTitle = function (title) {
 				$elm$html$Html$text(title)
 			]));
 };
+var $elm$html$Html$select = _VirtualDom_node('select');
+var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
+var $author$project$Sharecrop$View$stringOption = F2(
+	function (selectedValue, _v0) {
+		var optionValue = _v0.a;
+		var labelText = _v0.b;
+		return A2(
+			$elm$html$Html$option,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$value(optionValue),
+					$elm$html$Html$Attributes$selected(
+					_Utils_eq(selectedValue, optionValue))
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(labelText)
+				]));
+	});
+var $author$project$Sharecrop$Types$NextUserDirectoryPageClicked = {$: 'NextUserDirectoryPageClicked'};
+var $author$project$Sharecrop$Types$PreviousUserDirectoryPageClicked = {$: 'PreviousUserDirectoryPageClicked'};
+var $author$project$Sharecrop$Types$SearchUserDirectoryClicked = {$: 'SearchUserDirectoryClicked'};
+var $author$project$Sharecrop$Types$UserDirectoryQueryChanged = function (a) {
+	return {$: 'UserDirectoryQueryChanged', a: a};
+};
+var $author$project$Sharecrop$View$selectorSearchControls = F8(
+	function (identifier, placeholderText, query, queryChange, search, previous, next, offset) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$textInput(
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('search'),
+									$elm$html$Html$Attributes$placeholder(placeholderText),
+									$elm$html$Html$Attributes$value(query),
+									$elm$html$Html$Events$onInput(queryChange),
+									$author$project$Sharecrop$Ui$testId(identifier + '-query')
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(search),
+									$author$project$Sharecrop$Ui$testId(identifier + '-search')
+								]),
+							'Search')
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2 text-xs text-slate-500')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Attributes$disabled(!offset),
+									$elm$html$Html$Events$onClick(previous),
+									$author$project$Sharecrop$Ui$testId(identifier + '-previous')
+								]),
+							'Previous'),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$testId(identifier + '-offset')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									'Offset ' + $elm$core$String$fromInt(offset))
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(next),
+									$author$project$Sharecrop$Ui$testId(identifier + '-next')
+								]),
+							'Next')
+						]))
+				]));
+	});
+var $author$project$Sharecrop$View$userPicker = F7(
+	function (identifier, selectedUserId, query, change, blankLabel, users, offset) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2')
+				]),
+			_List_fromArray(
+				[
+					A8($author$project$Sharecrop$View$selectorSearchControls, identifier, 'Search users', query, $author$project$Sharecrop$Types$UserDirectoryQueryChanged, $author$project$Sharecrop$Types$SearchUserDirectoryClicked, $author$project$Sharecrop$Types$PreviousUserDirectoryPageClicked, $author$project$Sharecrop$Types$NextUserDirectoryPageClicked, offset),
+					A2(
+					$elm$html$Html$select,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+							$elm$html$Html$Attributes$value(selectedUserId),
+							$elm$html$Html$Events$onInput(change),
+							$author$project$Sharecrop$Ui$testId(identifier)
+						]),
+					A2(
+						$elm$core$List$cons,
+						$author$project$Sharecrop$View$blankOption(blankLabel),
+						A2(
+							$elm$core$List$map,
+							function (user) {
+								return A2(
+									$elm$html$Html$option,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$value(user.id),
+											$elm$html$Html$Attributes$selected(
+											_Utils_eq(selectedUserId, user.id))
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(user.email)
+										]));
+							},
+							users)))
+				]));
+	});
 var $author$project$Sharecrop$View$adminView = function (state) {
 	return $author$project$Sharecrop$Ui$card(
 		_List_fromArray(
@@ -16791,6 +17546,52 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 						$author$project$Sharecrop$Ui$testId('admin-audit-events')
 					]),
 				A2($elm$core$List$map, $author$project$Sharecrop$View$auditEventRow, state.auditEvents)),
+				$author$project$Sharecrop$Ui$sectionTitle('Platform admins'),
+				A2(
+				$author$project$Sharecrop$Ui$fieldLabel,
+				'Grant user',
+				_List_fromArray(
+					[
+						A7($author$project$Sharecrop$View$userPicker, 'admin-platform-user', state.adminSelectedUserId, state.userDirectoryQuery, $author$project$Sharecrop$Types$AdminSelectedUserChanged, 'Choose user', state.userDirectory, state.userDirectoryOffset)
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$GrantPlatformAdminClicked),
+								$elm$html$Html$Attributes$disabled(
+								$elm$core$String$trim(state.adminSelectedUserId) === ''),
+								$author$project$Sharecrop$Ui$testId('admin-grant-platform-admin')
+							]),
+						'Grant')
+					])),
+				$elm$core$List$isEmpty(state.platformAdmins) ? A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+						$author$project$Sharecrop$Ui$testId('admin-platform-admins-empty')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('No platform admins.')
+					])) : A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+						$author$project$Sharecrop$Ui$testId('admin-platform-admins')
+					]),
+				A2($elm$core$List$map, $author$project$Sharecrop$View$platformAdminRow, state.platformAdmins)),
 				$author$project$Sharecrop$Ui$sectionTitle('Privacy requests'),
 				A2(
 				$author$project$Sharecrop$Ui$fieldLabel,
@@ -16805,6 +17606,44 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 								$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AdminPrivacyResolutionNoteChanged),
 								$author$project$Sharecrop$Ui$testId('admin-privacy-note')
 							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$RunPrivacyRetentionClicked),
+								$author$project$Sharecrop$Ui$testId('admin-run-privacy-retention')
+							]),
+						'Run retention'),
+						function () {
+						var _v1 = state.adminRetentionRedactedFieldCount;
+						if (_v1.$ === 'Just') {
+							var count = _v1.a;
+							return A2(
+								$elm$html$Html$span,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-xs text-slate-600'),
+										$author$project$Sharecrop$Ui$testId('admin-retention-count')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text(
+										'Redacted fields: ' + $elm$core$String$fromInt(count))
+									]));
+						} else {
+							return $elm$html$Html$text('');
+						}
+					}()
 					])),
 				$elm$core$List$isEmpty(state.adminPrivacyRequests) ? A2(
 				$elm$html$Html$p,
@@ -16828,6 +17667,60 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 					$author$project$Sharecrop$View$adminPrivacyRequestRow(state.adminPrivacyResolutionNote),
 					state.adminPrivacyRequests)),
 				$author$project$Sharecrop$Ui$sectionTitle('Moderation reports'),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('grid gap-3 sm:grid-cols-2')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'State',
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$select,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+										$elm$html$Html$Attributes$value(state.adminModerationStateFilter),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AdminModerationStateFilterChanged),
+										$author$project$Sharecrop$Ui$testId('admin-moderation-state')
+									]),
+								_List_fromArray(
+									[
+										$author$project$Sharecrop$View$blankOption('All states'),
+										A2(
+										$author$project$Sharecrop$View$stringOption,
+										state.adminModerationStateFilter,
+										_Utils_Tuple2('open', 'Open')),
+										A2(
+										$author$project$Sharecrop$View$stringOption,
+										state.adminModerationStateFilter,
+										_Utils_Tuple2('resolved', 'Resolved')),
+										A2(
+										$author$project$Sharecrop$View$stringOption,
+										state.adminModerationStateFilter,
+										_Utils_Tuple2('dismissed', 'Dismissed'))
+									]))
+							])),
+						A2(
+						$author$project$Sharecrop$Ui$fieldLabel,
+						'Triage note',
+						_List_fromArray(
+							[
+								$author$project$Sharecrop$Ui$textInput(
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$placeholder('Decision note'),
+										$elm$html$Html$Attributes$value(state.adminModerationResolutionNote),
+										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AdminModerationResolutionNoteChanged),
+										$author$project$Sharecrop$Ui$testId('admin-moderation-note')
+									]))
+							]))
+					])),
 				$elm$core$List$isEmpty(state.adminModerationReports) ? A2(
 				$elm$html$Html$p,
 				_List_fromArray(
@@ -16845,7 +17738,10 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 						$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
 						$author$project$Sharecrop$Ui$testId('admin-moderation-reports')
 					]),
-				A2($elm$core$List$map, $author$project$Sharecrop$View$adminModerationReportRow, state.adminModerationReports)),
+				A2(
+					$elm$core$List$map,
+					$author$project$Sharecrop$View$adminModerationReportRow(state.adminModerationResolutionNote),
+					state.adminModerationReports)),
 				A2($author$project$Sharecrop$View$maybeNote, state.adminMessage, 'admin-message')
 			]));
 };
@@ -17882,144 +18778,6 @@ var $author$project$Sharecrop$Sprites$pixel = F2(
 				$elm$core$Dict$fromList($author$project$Sharecrop$Sprites$placeholderPalette));
 		}
 	});
-var $author$project$Sharecrop$Types$NextUserDirectoryPageClicked = {$: 'NextUserDirectoryPageClicked'};
-var $author$project$Sharecrop$Types$PreviousUserDirectoryPageClicked = {$: 'PreviousUserDirectoryPageClicked'};
-var $author$project$Sharecrop$Types$SearchUserDirectoryClicked = {$: 'SearchUserDirectoryClicked'};
-var $author$project$Sharecrop$Types$UserDirectoryQueryChanged = function (a) {
-	return {$: 'UserDirectoryQueryChanged', a: a};
-};
-var $elm$html$Html$option = _VirtualDom_node('option');
-var $elm$html$Html$select = _VirtualDom_node('select');
-var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
-var $author$project$Sharecrop$View$selectorSearchControls = F8(
-	function (identifier, placeholderText, query, queryChange, search, previous, next, offset) {
-		return A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('space-y-2')
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
-						]),
-					_List_fromArray(
-						[
-							$author$project$Sharecrop$Ui$textInput(
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('search'),
-									$elm$html$Html$Attributes$placeholder(placeholderText),
-									$elm$html$Html$Attributes$value(query),
-									$elm$html$Html$Events$onInput(queryChange),
-									$author$project$Sharecrop$Ui$testId(identifier + '-query')
-								])),
-							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Events$onClick(search),
-									$author$project$Sharecrop$Ui$testId(identifier + '-search')
-								]),
-							'Search')
-						])),
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2 text-xs text-slate-500')
-						]),
-					_List_fromArray(
-						[
-							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Attributes$disabled(!offset),
-									$elm$html$Html$Events$onClick(previous),
-									$author$project$Sharecrop$Ui$testId(identifier + '-previous')
-								]),
-							'Previous'),
-							A2(
-							$elm$html$Html$span,
-							_List_fromArray(
-								[
-									$author$project$Sharecrop$Ui$testId(identifier + '-offset')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(
-									'Offset ' + $elm$core$String$fromInt(offset))
-								])),
-							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Events$onClick(next),
-									$author$project$Sharecrop$Ui$testId(identifier + '-next')
-								]),
-							'Next')
-						]))
-				]));
-	});
-var $author$project$Sharecrop$View$userPicker = F7(
-	function (identifier, selectedUserId, query, change, blankLabel, users, offset) {
-		return A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('space-y-2')
-				]),
-			_List_fromArray(
-				[
-					A8($author$project$Sharecrop$View$selectorSearchControls, identifier, 'Search users', query, $author$project$Sharecrop$Types$UserDirectoryQueryChanged, $author$project$Sharecrop$Types$SearchUserDirectoryClicked, $author$project$Sharecrop$Types$PreviousUserDirectoryPageClicked, $author$project$Sharecrop$Types$NextUserDirectoryPageClicked, offset),
-					A2(
-					$elm$html$Html$select,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
-							$elm$html$Html$Attributes$value(selectedUserId),
-							$elm$html$Html$Events$onInput(change),
-							$author$project$Sharecrop$Ui$testId(identifier)
-						]),
-					A2(
-						$elm$core$List$cons,
-						A2(
-							$elm$html$Html$option,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$value('')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(blankLabel)
-								])),
-						A2(
-							$elm$core$List$map,
-							function (user) {
-								return A2(
-									$elm$html$Html$option,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$value(user.id),
-											$elm$html$Html$Attributes$selected(
-											_Utils_eq(selectedUserId, user.id))
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text(user.email)
-										]));
-							},
-							users)))
-				]));
-	});
 var $author$project$Sharecrop$View$collectibleDetailView = F2(
 	function (collectibleId, state) {
 		return $author$project$Sharecrop$Ui$card(
@@ -18202,16 +18960,7 @@ var $author$project$Sharecrop$View$taskPicker = F4(
 				]),
 			A2(
 				$elm$core$List$cons,
-				A2(
-					$elm$html$Html$option,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$value('')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text('Select task')
-						])),
+				$author$project$Sharecrop$View$blankOption('Select task'),
 				A2(
 					$elm$core$List$map,
 					$author$project$Sharecrop$View$taskOption(selectedTaskId),
@@ -18290,16 +19039,7 @@ var $author$project$Sharecrop$View$organizationPicker = function (identifier) {
 															]),
 														A2(
 															$elm$core$List$cons,
-															A2(
-																$elm$html$Html$option,
-																_List_fromArray(
-																	[
-																		$elm$html$Html$Attributes$value('')
-																	]),
-																_List_fromArray(
-																	[
-																		$elm$html$Html$text(blankLabel)
-																	])),
+															$author$project$Sharecrop$View$blankOption(blankLabel),
 															A2(
 																$elm$core$List$map,
 																function (organization) {
@@ -18360,16 +19100,7 @@ var $author$project$Sharecrop$View$teamPicker = function (identifier) {
 															]),
 														A2(
 															$elm$core$List$cons,
-															A2(
-																$elm$html$Html$option,
-																_List_fromArray(
-																	[
-																		$elm$html$Html$Attributes$value('')
-																	]),
-																_List_fromArray(
-																	[
-																		$elm$html$Html$text(blankLabel)
-																	])),
+															$author$project$Sharecrop$View$blankOption(blankLabel),
 															A2(
 																$elm$core$List$map,
 																function (team) {
@@ -20304,23 +21035,6 @@ var $author$project$Sharecrop$View$queueSavedViews = function (config) {
 					config.views))
 			]));
 };
-var $author$project$Sharecrop$View$stringOption = F2(
-	function (selectedValue, _v0) {
-		var optionValue = _v0.a;
-		var labelText = _v0.b;
-		return A2(
-			$elm$html$Html$option,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$value(optionValue),
-					$elm$html$Html$Attributes$selected(
-					_Utils_eq(selectedValue, optionValue))
-				]),
-			_List_fromArray(
-				[
-					$elm$html$Html$text(labelText)
-				]));
-	});
 var $author$project$Sharecrop$View$taskSortOptions = _List_fromArray(
 	[
 		_Utils_Tuple2('newest', 'Newest'),
@@ -23096,16 +23810,7 @@ var $author$project$Sharecrop$View$reviewControls = function (state) {
 							]),
 						A2(
 							$elm$core$List$cons,
-							A2(
-								$elm$html$Html$option,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$value('')
-									]),
-								_List_fromArray(
-									[
-										$elm$html$Html$text('No collectible tip')
-									])),
+							$author$project$Sharecrop$View$blankOption('No collectible tip'),
 							A2(
 								$elm$core$List$map,
 								function (c) {

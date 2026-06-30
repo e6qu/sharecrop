@@ -119,6 +119,9 @@ func (server Server) getUserSubmissions(w http.ResponseWriter, r *http.Request) 
 
 	response := submissionsResponse{Submissions: make([]submissionResponse, 0, len(listed.Values))}
 	for _, value := range listed.Values {
+		if !server.recordSensitiveFieldAccess(w, r, actor.subject.ID, value) {
+			return
+		}
 		response.Submissions = append(response.Submissions, submissionToResponse(value))
 	}
 	writeSubmissionsResponse(w, http.StatusOK, response)

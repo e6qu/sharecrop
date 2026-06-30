@@ -55,10 +55,15 @@ func moderationModule() Module {
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("subjectKind"), JSONName: NewJSONFieldName("subject_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("subjectID"), JSONName: NewJSONFieldName("subject_id"), Type: StringRef{}},
+					{Name: NewElmValueName("subjectHref"), JSONName: NewJSONFieldName("subject_href"), Type: StringRef{}},
 					{Name: NewElmValueName("reason"), JSONName: NewJSONFieldName("reason"), Type: StringRef{}},
 					{Name: NewElmValueName("details"), JSONName: NewJSONFieldName("details"), Type: StringRef{}},
 					{Name: NewElmValueName("reporterUserID"), JSONName: NewJSONFieldName("reporter_user_id"), Type: StringRef{}},
 					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: StringRef{}},
+					{Name: NewElmValueName("resolutionNote"), JSONName: NewJSONFieldName("resolution_note"), Type: StringRef{}},
+					{Name: NewElmValueName("updatedBy"), JSONName: NewJSONFieldName("updated_by"), Type: StringRef{}},
+					{Name: NewElmValueName("updatedAt"), JSONName: NewJSONFieldName("updated_at"), Type: StringRef{}},
 				},
 			},
 			Product{
@@ -128,6 +133,12 @@ func privacyModule() Module {
 					{Name: NewElmValueName("requests"), JSONName: NewJSONFieldName("requests"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("PrivacyRequestResponse")}}},
 				},
 			},
+			Product{
+				Name: NewElmTypeName("PrivacyRetentionRunResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("redactedFieldCount"), JSONName: NewJSONFieldName("redacted_field_count"), Type: IntRef{}},
+				},
+			},
 		},
 	}
 }
@@ -193,6 +204,20 @@ func adminModule() Module {
 				Name: NewElmTypeName("AuditEventsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("events"), JSONName: NewJSONFieldName("events"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("AuditEventResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("PlatformAdminResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("userID"), JSONName: NewJSONFieldName("user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("source"), JSONName: NewJSONFieldName("source"), Type: StringRef{}},
+					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("PlatformAdminsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("admins"), JSONName: NewJSONFieldName("admins"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("PlatformAdminResponse")}}},
 				},
 			},
 		},

@@ -180,6 +180,19 @@ export async function runSharedScenarioParity(
   requireString(operations.json, "secure_cookies");
   requireNumber(operations.json, "active_mcp_sessions");
 
+  const platformAdmins = await client.request(
+    "GET",
+    "/api/admin/platform-admins",
+    noScenarioBody,
+  );
+  assertStatus(platformAdmins, 200, "platform admin list");
+  requireArray(platformAdmins.json, "admins").forEach((admin, index) => {
+    const record = requireRecord(admin, `platformAdmins[${index}]`);
+    requireString(record, "user_id");
+    requireString(record, "source");
+    requireString(record, "created_at");
+  });
+
   const verification = await client.request(
     "POST",
     "/api/account/email-verification",
@@ -267,6 +280,14 @@ export async function runSharedScenarioParity(
   );
   requireString(resolvedExport.json, "resolved_at");
 
+  const retentionRun = await client.request(
+    "POST",
+    "/api/admin/privacy-retention/run",
+    {},
+  );
+  assertStatus(retentionRun, 200, "privacy retention run");
+  requireNumber(retentionRun.json, "redacted_field_count");
+
   const users = await client.request(
     "GET",
     "/api/users?query=user&limit=2&offset=0",
@@ -288,6 +309,33 @@ export async function runSharedScenarioParity(
   const transferRecipient = await registerScenarioActor(
     client,
     "transfer-recipient",
+  );
+
+  const grantedAdmin = await client.request(
+    "POST",
+    "/api/admin/platform-admins",
+    { user_id: transferRecipient.subjectID },
+  );
+  assertStatus(grantedAdmin, 201, "grant platform admin");
+  assertScenario(
+    requireString(grantedAdmin.json, "user_id") === transferRecipient.subjectID,
+    "granted platform admin must match selected user",
+  );
+  assertScenario(
+    requireString(grantedAdmin.json, "source") === "granted",
+    "granted platform admin source must be granted",
+  );
+  requireString(grantedAdmin.json, "created_at");
+
+  const revokedAdmin = await client.request(
+    "POST",
+    `/api/admin/platform-admins/${transferRecipient.subjectID}/revoke`,
+    {},
+  );
+  assertStatus(revokedAdmin, 200, "revoke platform admin");
+  assertScenario(
+    requireString(revokedAdmin.json, "user_id") === transferRecipient.subjectID,
+    "revoked platform admin must match selected user",
   );
 
   const catalog = await client.request(
@@ -612,11 +660,23 @@ export async function runSharedScenarioParity(
     requireString(moderationReport.json, "reporter_user_id") === subjectID,
     "moderation report reporter must match authenticated user",
   );
+  assertScenario(
+    requireString(moderationReport.json, "subject_href") ===
+      `#/tasks/${taskID}`,
+    "task moderation report must include a direct subject href",
+  );
+  assertScenario(
+    requireString(moderationReport.json, "state") === "open",
+    "new moderation report triage state must be open",
+  );
+  requireString(moderationReport.json, "resolution_note");
+  requireString(moderationReport.json, "updated_by");
+  requireString(moderationReport.json, "updated_at");
   requireString(moderationReport.json, "created_at");
 
   const adminModerationList = await client.request(
     "GET",
-    "/api/admin/moderation/reports",
+    "/api/admin/moderation/reports?state=open",
     noScenarioBody,
   );
   assertStatus(adminModerationList, 200, "admin moderation report list");
@@ -630,6 +690,31 @@ export async function runSharedScenarioParity(
       return requireString(record, "subject_id") === taskID;
     }),
     "admin moderation report list must include created report",
+  );
+
+  const triagedModerationReport = await client.request(
+    "POST",
+    `/api/admin/moderation/reports/${
+      requireString(moderationReport.json, "id")
+    }/triage`,
+    {
+      state: "resolved",
+      resolution_note: "scenario moderation resolved",
+    },
+  );
+  assertStatus(triagedModerationReport, 200, "triage moderation report");
+  assertScenario(
+    requireString(triagedModerationReport.json, "state") === "resolved",
+    "triaged moderation report state must be resolved",
+  );
+  assertScenario(
+    requireString(triagedModerationReport.json, "resolution_note") ===
+      "scenario moderation resolved",
+    "triaged moderation report note must round trip",
+  );
+  assertScenario(
+    requireString(triagedModerationReport.json, "updated_by") === subjectID,
+    "triaged moderation report updater must match admin actor",
   );
 
   const moderationAudit = await client.request(

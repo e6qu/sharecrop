@@ -3,39 +3,49 @@
 Current priority from
 [docs/application_readiness_review.md](./docs/application_readiness_review.md):
 
+Active branch:
+
+1. `task/admin-moderation-retention-wasm` is ready for review.
+
 Next recommended work:
 
-1. Add moderation triage actions for platform admins: resolve, dismiss,
-   annotate, and filter moderation reports without deleting underlying task,
-   submission, comment, or audit rows.
-2. Add direct subject links from moderation report rows where the reported
-   subject has a browser route.
-3. Add retention automation for delete-on-request sensitive fields and decide
-   whether it should be an operator-triggered job, scheduled job, or both.
-4. Add sensitive-field access event recording if operators need evidence of
-   sensitive metadata reads, not only redaction events.
-5. Keep expanding shared scenario parity as new user-visible API surfaces are
+1. Run database-backed integration and HTTP E2E checks with a configured
+   `DATABASE_URL`, then fix any migration/store issues found by Postgres.
+2. Add focused integration tests for platform-admin lifecycle, moderation
+   triage persistence, privacy retention runs, and sensitive-field access
+   events.
+3. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    team/organization queue search/type/sort, organization reviewer acceptance,
    sensitive-field response metadata/redaction state, privacy
-   request/audit/resolution shape, moderation report/admin-list/audit shape, and
-   multi-actor reservation/submission acceptance.
-6. Keep expanding generated/fixture-level HTTP contract coverage as the API
+   request/audit/resolution/retention shape, moderation report/admin-list/audit
+   triage shape, platform-admin grant/revoke shape, and multi-actor
+   reservation/submission acceptance.
+4. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-7. Audit remaining raw-ID browser flows and replace high-traffic fields with
+5. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
-8. Add an explicit browser storage adapter for one WASM demo slice only after
-   the adapter can run without fallback stores or hidden substitute behavior.
-   Privacy requests and moderation reports are the current candidate slices.
-9. Add provider email delivery only if the product direction changes; current
+6. Build a WASM request handler that uses the explicit moderation-triage browser
+   storage boundary, then run shared scenario parity against that handler.
+7. Run broader Playwright mobile/screens coverage for the admin configuration
+   and moderation triage surfaces.
+8. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-10. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+9. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The admin-moderation-retention-wasm branch added platform-admin lifecycle
+   configuration, shared admin authorization gates, moderation report
+   triage/filtering/subject links, privacy retention execution, sensitive-field
+   access event recording, expanded contracts and scenario parity, backendless
+   demo parity, explicit WASM moderation-triage browser storage, admin UI
+   controls, and a blank-select value fix for selector-backed flows. Hard
+   deletes remained prohibited.
 
 1. The moderation-parity-contract-wasm branch added task reporting, admin
    moderation report listing, moderation audit projection, generated Moderation

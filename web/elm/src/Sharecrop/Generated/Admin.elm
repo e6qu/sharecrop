@@ -88,3 +88,39 @@ auditEventsResponseEncoder auditEventsResponse =
     Encode.object
         [ ( "events", Encode.list auditEventResponseEncoder auditEventsResponse.events )
         ]
+
+type alias PlatformAdminResponse =
+    { userID : String
+    , source : String
+    , createdAt : String
+    }
+
+platformAdminResponseDecoder : Decoder PlatformAdminResponse
+platformAdminResponseDecoder =
+    Decode.map3 PlatformAdminResponse
+        (Decode.field "user_id" Decode.string)
+        (Decode.field "source" Decode.string)
+        (Decode.field "created_at" Decode.string)
+
+platformAdminResponseEncoder : PlatformAdminResponse -> Encode.Value
+platformAdminResponseEncoder platformAdminResponse =
+    Encode.object
+        [ ( "user_id", Encode.string platformAdminResponse.userID )
+        , ( "source", Encode.string platformAdminResponse.source )
+        , ( "created_at", Encode.string platformAdminResponse.createdAt )
+        ]
+
+type alias PlatformAdminsResponse =
+    { admins : List PlatformAdminResponse
+    }
+
+platformAdminsResponseDecoder : Decoder PlatformAdminsResponse
+platformAdminsResponseDecoder =
+    Decode.map PlatformAdminsResponse
+        (Decode.field "admins" (Decode.list platformAdminResponseDecoder))
+
+platformAdminsResponseEncoder : PlatformAdminsResponse -> Encode.Value
+platformAdminsResponseEncoder platformAdminsResponse =
+    Encode.object
+        [ ( "admins", Encode.list platformAdminResponseEncoder platformAdminsResponse.admins )
+        ]

@@ -456,6 +456,13 @@
     }],
     savedQueueViews: [],
     privacyRequests: [],
+    platformAdmins: [{
+      user_id: ME,
+      source: "bootstrap",
+      state: "active",
+      created_at: "2026-06-22T08:00:00Z",
+    }],
+    moderationTriage: {},
     auditEvents: [],
     tasks: [],
   };
@@ -1042,14 +1049,53 @@
     ) {
       throw new Error("moderation reason is invalid");
     }
+    const triage = triageForReport(event);
     return {
       id: event.id,
       subject_kind: event.subject_kind,
       subject_id: event.subject_id,
+      subject_href: moderationSubjectHref(event.subject_kind, event.subject_id),
       reason: metadata.reason,
       details: metadata.details,
       reporter_user_id: event.actor_user_id,
       created_at: event.created_at,
+      state: triage.state,
+      resolution_note: triage.resolution_note,
+      updated_by: triage.updated_by,
+      updated_at: triage.updated_at,
+    };
+  }
+
+  function moderationSubjectHref(kind, id) {
+    switch (kind) {
+      case "task":
+        return "#/tasks/" + id;
+      case "user":
+        return "#/users/" + id;
+      case "organization":
+        return "#/organizations/" + id;
+      case "team":
+        return "#/teams/" + id;
+      case "collectible":
+        return "#/collectibles/" + id;
+      default:
+        return "";
+    }
+  }
+
+  function triageForReport(event) {
+    const triage = db.moderationTriage[event.id];
+    if (!triage) {
+      throw new Error("moderation report triage state is missing");
+    }
+    return triage;
+  }
+
+  function platformAdminResponse(admin) {
+    return {
+      user_id: admin.user_id,
+      source: admin.source,
+      created_at: admin.created_at,
     };
   }
 
@@ -1154,9 +1200,15 @@
       redacted_field_count: 0,
     };
     db.privacyRequests.unshift(request);
-    recordAudit(actorId, "privacy_request_created", "privacy_request", actorId, {
-      kind,
-    });
+    recordAudit(
+      actorId,
+      "privacy_request_created",
+      "privacy_request",
+      actorId,
+      {
+        kind,
+      },
+    );
     return ok(request, 201);
   });
   on("GET", "/api/privacy-requests", (_p, _url, _body, actorId) =>
@@ -1199,6 +1251,13 @@
       subjectId,
       { reason, details },
     );
+    db.moderationTriage[event.id] = {
+      state: "open",
+      resolution_note: "",
+      updated_by: "",
+      created_at: event.created_at,
+      updated_at: event.created_at,
+    };
     return ok(moderationReportFromAuditEvent(event), 201);
   });
 
@@ -2128,14 +2187,118 @@
     }
     return ok({ events });
   });
-  on("GET", "/api/admin/moderation/reports", () =>
+  on("GET", "/api/admin/platform-admins", () =>
     ok({
-      reports: db.auditEvents
-        .filter((event) => event.action === "moderation_report_created")
-        .map(moderationReportFromAuditEvent),
+      admins: db.platformAdmins
+        .filter((admin) => admin.state === "active")
+        .map(platformAdminResponse),
     }));
-  on("GET", "/api/admin/privacy-requests", () =>
-    ok({ requests: db.privacyRequests }));
+  on("POST", "/api/admin/platform-admins", (_p, _url, body, actorId) => {
+    const userId = String((body && body.user_id) || "").trim();
+    if (userId === "") return err(400, "user id is required");
+    if (!db.users.some((user) => user.id === userId)) {
+      return err(404, "user was not found");
+    }
+    let admin = db.platformAdmins.find((candidate) =>
+      candidate.user_id === userId
+    );
+    if (!admin) {
+      admin = {
+        user_id: userId,
+        source: "granted",
+        state: "active",
+        created_at: nowISO(),
+      };
+      db.platformAdmins.unshift(admin);
+    } else {
+      admin.state = "active";
+    }
+    recordAudit(actorId, "platform_admin_granted", "user", userId, {
+      source: admin.source,
+    });
+    return ok(platformAdminResponse(admin), 201);
+  });
+  on(
+    "POST",
+    "/api/admin/platform-admins/:id/revoke",
+    (p, _url, _body, actorId) => {
+      const admin = db.platformAdmins.find((candidate) =>
+        candidate.user_id === p.id
+      );
+      if (!admin || admin.state !== "active") {
+        return err(404, "platform admin was not found");
+      }
+      if (admin.source === "bootstrap") {
+        return err(409, "bootstrap platform admins cannot be revoked");
+      }
+      admin.state = "revoked";
+      recordAudit(actorId, "platform_admin_revoked", "user", admin.user_id, {
+        source: admin.source,
+      });
+      return ok(platformAdminResponse(admin));
+    },
+  );
+  on("GET", "/api/admin/moderation/reports", (_p, url) => {
+    const state = new URL(url).searchParams.get("state") || "";
+    let reports = db.auditEvents
+      .filter((event) => event.action === "moderation_report_created")
+      .map(moderationReportFromAuditEvent);
+    if (state !== "") {
+      reports = reports.filter((report) => report.state === state);
+    }
+    return ok({ reports });
+  });
+  on(
+    "POST",
+    "/api/admin/moderation/reports/:id/triage",
+    (p, _url, body, actorId) => {
+      const event = db.auditEvents.find((candidate) =>
+        candidate.id === p.id &&
+        candidate.action === "moderation_report_created"
+      );
+      if (!event) return err(404, "moderation report was not found");
+      const state = String((body && body.state) || "").trim();
+      if (!["open", "resolved", "dismissed"].includes(state)) {
+        return err(400, "moderation triage state is invalid");
+      }
+      const note = String((body && body.resolution_note) || "").trim();
+      db.moderationTriage[event.id] = {
+        state,
+        resolution_note: note,
+        updated_by: actorId,
+        created_at: db.moderationTriage[event.id].created_at,
+        updated_at: nowISO(),
+      };
+      recordAudit(
+        actorId,
+        "moderation_report_triaged",
+        "moderation_report",
+        event.id,
+        {
+          state,
+          resolution_note: note,
+        },
+      );
+      return ok(moderationReportFromAuditEvent(event));
+    },
+  );
+  on(
+    "GET",
+    "/api/admin/privacy-requests",
+    () => ok({ requests: db.privacyRequests }),
+  );
+  on("POST", "/api/admin/privacy-retention/run", (_p, _url, _body, actorId) => {
+    recordAudit(
+      actorId,
+      "privacy_retention_run",
+      "privacy_retention",
+      actorId,
+      {
+        redacted_field_count: "0",
+      },
+    );
+    return ok({ redacted_field_count: 0 });
+  });
   on(
     "POST",
     "/api/admin/privacy-requests/:id/resolve",
@@ -2160,7 +2323,9 @@
           generated_at: nowISO(),
           submissions: db.tasks.flatMap((task) =>
             task.submissions
-              .filter((submission) => submission.submitter_id === request.requested_by)
+              .filter((submission) =>
+                submission.submitter_id === request.requested_by
+              )
               .map((submission) => ({
                 id: submission.id,
                 task_id: submission.task_id,
@@ -2170,7 +2335,9 @@
           ),
           sensitive_fields: db.tasks.flatMap((task) =>
             task.submissions
-              .filter((submission) => submission.submitter_id === request.requested_by)
+              .filter((submission) =>
+                submission.submitter_id === request.requested_by
+              )
               .flatMap((submission) =>
                 (submission.sensitive_fields || []).map((field) =>
                   Object.assign({ submission_id: submission.id }, field)
@@ -2190,7 +2357,9 @@
         let redactedCount = 0;
         db.tasks.forEach((task) => {
           task.submissions
-            .filter((submission) => submission.submitter_id === request.requested_by)
+            .filter((submission) =>
+              submission.submitter_id === request.requested_by
+            )
             .forEach((submission) => {
               (submission.sensitive_fields || []).forEach((field) => {
                 if (
@@ -2338,11 +2507,11 @@
     "PATCH",
     "/api/organizations/:id/members/:userId/deactivate",
     (p, _url, _body, actorId) => {
-    const member = (db.members[p.id] || []).find((m) =>
-      m.user_id === p.userId && m.status === "active"
-    );
-    if (!member) return err(404, "member not found");
-    member.status = "inactive";
+      const member = (db.members[p.id] || []).find((m) =>
+        m.user_id === p.userId && m.status === "active"
+      );
+      if (!member) return err(404, "member not found");
+      member.status = "inactive";
       recordAudit(
         actorId,
         "organization_member_deactivated",
@@ -2350,7 +2519,7 @@
         p.id,
         { member_id: member.id },
       );
-    return empty();
+      return empty();
     },
   );
   on(

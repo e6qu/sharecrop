@@ -27,8 +27,9 @@ Test gaps:
   submission viewers. Privacy requests are persisted and can be resolved by
   platform admins through the API and browser admin page. Resolution stores
   export JSON or marks delete-on-request sensitive-field metadata as redacted.
-  Retention automation remains open product work, and sensitive-field access
-  events are not recorded yet.
+  Platform admins can run retention for delete-on-request sensitive-field
+  metadata, and authorized submission-list/profile reads record sensitive-field
+  access events.
 - The asset economy is intentionally internal-only: rewards are Sharecrop
   credits and admin-minted Sharecrop collectibles. User-issued tokens,
   organization-issued tokens, per-project tokens, crypto rewards, and external
@@ -37,11 +38,11 @@ Test gaps:
   expanding as the API grows.
 - Full Playwright mobile/screens coverage was not run locally for this branch.
   Focused demo Playwright coverage passed, including admin privacy request
-  resolution and task moderation reporting. Focused task moderation and admin
-  moderation screenshots were inspected.
-- Moderation reports can be created and listed by platform admins, but
-  moderation triage states/actions such as resolve, dismiss, annotate, and
-  subject-specific links are still follow-up work.
+  resolution and task moderation reporting. Focused admin desktop/mobile
+  screenshots were inspected.
+- Database-backed integration and HTTP E2E checks were not completed locally for
+  this branch because `DATABASE_URL` is not set in the current environment.
+  Postgres-backed coverage should be run before merge or by CI.
 
 Known risks:
 
@@ -64,9 +65,10 @@ Known risks:
   has identical domain semantics.
 - Go code compiles to `js/wasm` for representative packages and the main
   command. A narrow `internal/wasmdemo` request-adapter spike exists for privacy
-  and moderation route classification, but a WASM demo backend still lacks
-  explicit browser storage adapters, domain-service execution, deterministic
-  reset, startup measurements, and a JS/WASM scenario test runner.
+  and moderation route classification, and an explicit moderation-triage browser
+  storage boundary exists. A WASM demo backend still lacks a request handler
+  wired to domain-service execution, deterministic reset, startup measurements,
+  and a JS/WASM scenario test runner.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

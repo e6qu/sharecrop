@@ -29,6 +29,32 @@ func (store AuditStore) Record(ctx context.Context, event audit.Event) audit.Rec
 	return audit.EventRecorded{Value: event}
 }
 
+func (store AuditStore) Get(ctx context.Context, id core.AuditEventID) audit.GetResult {
+	var rawID string
+	var rawActorID string
+	var action string
+	var subjectKind string
+	var subjectID string
+	var metadataJSON string
+	var createdAt time.Time
+	if err := store.pool.QueryRow(ctx, `
+		select id::text, actor_user_id::text, action, subject_kind, subject_id, metadata_json::text, created_at
+		from audit_events
+		where id = $1
+	`, id.String()).Scan(&rawID, &rawActorID, &action, &subjectKind, &subjectID, &metadataJSON, &createdAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return audit.GetRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "audit event was not found")}
+		}
+		return audit.GetRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "get audit event failed")}
+	}
+	result := parseAuditEvent(rawID, rawActorID, action, subjectKind, subjectID, metadataJSON, createdAt)
+	event, matched := result.(auditEventAccepted)
+	if !matched {
+		return audit.GetRejected{Reason: result.(auditEventRejected).reason}
+	}
+	return audit.EventFound{Value: event.value}
+}
+
 func (store AuditStore) List(ctx context.Context, filters audit.ListFilters, page core.Page) audit.ListResult {
 	where := ""
 	arguments := pgx.NamedArgs{"limit": page.Limit(), "offset": page.Offset()}
@@ -119,6 +145,10 @@ func scanAuditEvent(rows pgx.Rows) auditEventResult {
 	if err := rows.Scan(&rawID, &rawActorID, &action, &subjectKind, &subjectID, &metadataJSON, &createdAt); err != nil {
 		return auditEventRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan audit event failed")}
 	}
+	return parseAuditEvent(rawID, rawActorID, action, subjectKind, subjectID, metadataJSON, createdAt)
+}
+
+func parseAuditEvent(rawID string, rawActorID string, action string, subjectKind string, subjectID string, metadataJSON string, createdAt time.Time) auditEventResult {
 	idResult := core.ParseAuditEventID(rawID)
 	id, idMatched := idResult.(core.AuditEventIDCreated)
 	if !idMatched {

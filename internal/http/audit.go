@@ -56,6 +56,17 @@ func (service *memoryAuditService) Record(_ context.Context, actor core.UserID, 
 	return audit.EventRecorded{Value: service.events[len(service.events)-1]}
 }
 
+func (service *memoryAuditService) Get(_ context.Context, id core.AuditEventID) audit.GetResult {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	for _, event := range service.events {
+		if event.ID.String() == id.String() {
+			return audit.EventFound{Value: event}
+		}
+	}
+	return audit.GetRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "audit event was not found")}
+}
+
 func (service *memoryAuditService) List(_ context.Context, filters audit.ListFilters, page core.Page) audit.ListResult {
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -114,14 +125,7 @@ func auditEventMatchesFilters(event audit.Event, filters audit.ListFilters) bool
 }
 
 func (server Server) listAuditEvents(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, matched := actorResult.(userSubjectAccepted)
-	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
-		return
-	}
-	if !server.adminUserIDs[actor.subject.ID.String()] {
-		writeError(w, http.StatusForbidden, "platform admin access is required")
+	if _, ok := server.requireAdminSubject(w, r); !ok {
 		return
 	}
 

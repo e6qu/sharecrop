@@ -74,6 +74,12 @@ type privacyResolveRequest struct {
 	ResolutionNote string `json:"resolution_note"`
 }
 
+type privacyRetentionRunResponse struct {
+	RedactedFieldCount int `json:"redacted_field_count"`
+}
+
+func (privacyRetentionRunResponse) writableResponse() {}
+
 type moderationReportRequest struct {
 	SubjectKind string `json:"subject_kind"`
 	SubjectID   string `json:"subject_id"`
@@ -85,10 +91,15 @@ type moderationReportResponse struct {
 	ID             string `json:"id"`
 	SubjectKind    string `json:"subject_kind"`
 	SubjectID      string `json:"subject_id"`
+	SubjectHref    string `json:"subject_href"`
 	Reason         string `json:"reason"`
 	Details        string `json:"details"`
 	ReporterUserID string `json:"reporter_user_id"`
+	State          string `json:"state"`
+	ResolutionNote string `json:"resolution_note"`
+	UpdatedBy      string `json:"updated_by"`
 	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
 
 func (moderationReportResponse) writableResponse() {}
@@ -98,6 +109,29 @@ type moderationReportsResponse struct {
 }
 
 func (moderationReportsResponse) writableResponse() {}
+
+type moderationTriageRequest struct {
+	State          string `json:"state"`
+	ResolutionNote string `json:"resolution_note"`
+}
+
+type platformAdminRequest struct {
+	UserID string `json:"user_id"`
+}
+
+type platformAdminResponse struct {
+	UserID    string `json:"user_id"`
+	Source    string `json:"source"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (platformAdminResponse) writableResponse() {}
+
+type platformAdminsResponse struct {
+	Admins []platformAdminResponse `json:"admins"`
+}
+
+func (platformAdminsResponse) writableResponse() {}
 
 type savedQueueViewRequest struct {
 	Scope       string `json:"scope"`

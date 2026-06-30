@@ -58,6 +58,7 @@ func EmptyMetadata() Metadata {
 
 type Store interface {
 	Record(context.Context, Event) RecordResult
+	Get(context.Context, core.AuditEventID) GetResult
 	List(context.Context, ListFilters, core.Page) ListResult
 }
 
@@ -100,6 +101,26 @@ func (service Service) Record(ctx context.Context, actor core.UserID, action Act
 		CreatedAt:   time.Now().UTC(),
 	}
 	return service.store.Record(ctx, event)
+}
+
+type GetResult interface {
+	getResult()
+}
+
+type EventFound struct {
+	Value Event
+}
+
+type GetRejected struct {
+	Reason core.DomainError
+}
+
+func (EventFound) getResult() {}
+
+func (GetRejected) getResult() {}
+
+func (service Service) Get(ctx context.Context, id core.AuditEventID) GetResult {
+	return service.store.Get(ctx, id)
 }
 
 type ListResult interface {

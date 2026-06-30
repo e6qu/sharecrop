@@ -69,19 +69,29 @@ func TestPrivacyRequestsResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"requests":[{"id":"privacy-1","kind":"sensitive_field_deletion","status":"resolved","requested_by":"user-1","export_json":"","resolution_note":"done","created_at":"2026-01-02T03:04:05Z","resolved_at":"2026-01-02T03:05:05Z","redacted_field_count":2}]}`)
 }
 
+func TestPrivacyRetentionRunResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(privacyRetentionRunResponse{RedactedFieldCount: 2})
+	assertWireShape(t, encoded, err, `{"redacted_field_count":2}`)
+}
+
 func TestModerationReportRequestWireShape(t *testing.T) {
 	encoded, err := json.Marshal(moderationReportRequest{SubjectKind: "task", SubjectID: "task-1", Reason: "policy", Details: "Contains restricted content."})
 	assertWireShape(t, encoded, err, `{"subject_kind":"task","subject_id":"task-1","reason":"policy","details":"Contains restricted content."}`)
 }
 
 func TestModerationReportResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(moderationReportResponse{ID: "audit-1", SubjectKind: "task", SubjectID: "task-1", Reason: "policy", Details: "Contains restricted content.", ReporterUserID: "user-1", CreatedAt: "2026-01-02T03:04:05Z"})
-	assertWireShape(t, encoded, err, `{"id":"audit-1","subject_kind":"task","subject_id":"task-1","reason":"policy","details":"Contains restricted content.","reporter_user_id":"user-1","created_at":"2026-01-02T03:04:05Z"}`)
+	encoded, err := json.Marshal(moderationReportResponse{ID: "audit-1", SubjectKind: "task", SubjectID: "task-1", SubjectHref: "#/tasks/task-1", Reason: "policy", Details: "Contains restricted content.", ReporterUserID: "user-1", State: "resolved", ResolutionNote: "handled", UpdatedBy: "admin-1", CreatedAt: "2026-01-02T03:04:05Z", UpdatedAt: "2026-01-02T03:05:05Z"})
+	assertWireShape(t, encoded, err, `{"id":"audit-1","subject_kind":"task","subject_id":"task-1","subject_href":"#/tasks/task-1","reason":"policy","details":"Contains restricted content.","reporter_user_id":"user-1","state":"resolved","resolution_note":"handled","updated_by":"admin-1","created_at":"2026-01-02T03:04:05Z","updated_at":"2026-01-02T03:05:05Z"}`)
 }
 
 func TestModerationReportsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(moderationReportsResponse{Reports: []moderationReportResponse{{ID: "audit-1", SubjectKind: "submission", SubjectID: "submission-1", Reason: "pii", Details: "", ReporterUserID: "user-1", CreatedAt: "2026-01-02T03:04:05Z"}}})
-	assertWireShape(t, encoded, err, `{"reports":[{"id":"audit-1","subject_kind":"submission","subject_id":"submission-1","reason":"pii","details":"","reporter_user_id":"user-1","created_at":"2026-01-02T03:04:05Z"}]}`)
+	encoded, err := json.Marshal(moderationReportsResponse{Reports: []moderationReportResponse{{ID: "audit-1", SubjectKind: "submission", SubjectID: "submission-1", SubjectHref: "", Reason: "pii", Details: "", ReporterUserID: "user-1", State: "open", ResolutionNote: "", UpdatedBy: "", CreatedAt: "2026-01-02T03:04:05Z", UpdatedAt: "2026-01-02T03:04:05Z"}}})
+	assertWireShape(t, encoded, err, `{"reports":[{"id":"audit-1","subject_kind":"submission","subject_id":"submission-1","subject_href":"","reason":"pii","details":"","reporter_user_id":"user-1","state":"open","resolution_note":"","updated_by":"","created_at":"2026-01-02T03:04:05Z","updated_at":"2026-01-02T03:04:05Z"}]}`)
+}
+
+func TestModerationTriageRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(moderationTriageRequest{State: "dismissed", ResolutionNote: "duplicate"})
+	assertWireShape(t, encoded, err, `{"state":"dismissed","resolution_note":"duplicate"}`)
 }
 
 func TestUsersResponseWireShape(t *testing.T) {
@@ -420,6 +430,21 @@ func TestAuditEventsResponseWireShape(t *testing.T) {
 		CreatedAt:    "2026-06-29T00:00:00Z",
 	}}})
 	assertWireShape(t, encoded, err, `{"events":[{"id":"event-1","actor_user_id":"user-1","action":"submission_accepted","subject_kind":"submission","subject_id":"submission-1","metadata_json":"{}","created_at":"2026-06-29T00:00:00Z"}]}`)
+}
+
+func TestPlatformAdminRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(platformAdminRequest{UserID: "user-1"})
+	assertWireShape(t, encoded, err, `{"user_id":"user-1"}`)
+}
+
+func TestPlatformAdminResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(platformAdminResponse{UserID: "user-1", Source: "granted", CreatedAt: "2026-06-29T00:00:00Z"})
+	assertWireShape(t, encoded, err, `{"user_id":"user-1","source":"granted","created_at":"2026-06-29T00:00:00Z"}`)
+}
+
+func TestPlatformAdminsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(platformAdminsResponse{Admins: []platformAdminResponse{{UserID: "user-1", Source: "bootstrap", CreatedAt: "2026-06-29T00:00:00Z"}}})
+	assertWireShape(t, encoded, err, `{"admins":[{"user_id":"user-1","source":"bootstrap","created_at":"2026-06-29T00:00:00Z"}]}`)
 }
 
 func TestNotificationResponseWireShape(t *testing.T) {

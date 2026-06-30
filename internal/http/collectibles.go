@@ -135,14 +135,8 @@ func (server Server) collectibleCatalog(w http.ResponseWriter, r *http.Request) 
 // awardCollectible mints a fresh copy of a default-catalog collectible owned by
 // the recipient. Trading then lets the recipient move it on.
 func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, matched := actorResult.(userSubjectAccepted)
-	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
-		return
-	}
-	if !server.adminUserIDs[actor.subject.ID.String()] {
-		writeError(w, http.StatusForbidden, "awarding default collectibles requires a platform administrator")
+	actor, ok := server.requireAdminSubject(w, r)
+	if !ok {
 		return
 	}
 

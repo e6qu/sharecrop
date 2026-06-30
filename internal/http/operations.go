@@ -16,14 +16,8 @@ type operationsResponse struct {
 func (operationsResponse) writableResponse() {}
 
 func (server Server) operationsStatus(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, matched := actorResult.(userSubjectAccepted)
-	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
-		return
-	}
-	if !server.adminUserIDs[actor.subject.ID.String()] {
-		writeError(w, http.StatusForbidden, "platform admin access is required")
+	_, ok := server.requireAdminSubject(w, r)
+	if !ok {
 		return
 	}
 	secureCookies := "enabled"

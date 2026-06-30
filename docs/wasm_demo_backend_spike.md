@@ -13,7 +13,7 @@ resolution, sensitive-field redaction state, and moderation report projection.
 That coverage is a better guardrail than starting a WASM replacement before
 browser storage adapters exist.
 
-## Request Adapter Spike
+## Request Adapter And Storage Spike
 
 `internal/wasmdemo` contains a narrow request-adapter spike. It classifies only
 the privacy and moderation route pairs:
@@ -24,8 +24,14 @@ the privacy and moderation route pairs:
 - `GET /api/admin/moderation/reports`
 
 Unsupported methods and routes return explicit rejection results. The package
-does not execute domain services, provide browser storage, or replace
-`site/demo/backend.js`.
+does not execute domain services or replace `site/demo/backend.js`.
+
+The package now also contains an explicit browser-storage boundary for
+moderation triage records. The storage boundary is caller-provided; no in-memory
+store is selected by default. Missing records, invalid keys, invalid states, and
+storage read/write failures return explicit rejected results. This is enough to
+prove the next WASM path can persist one classified slice without adding hidden
+fallback behavior.
 
 ## Compile Check
 
@@ -66,9 +72,8 @@ Do not replace `site/demo/backend.js` until the WASM path can satisfy these gate
 
 ## Next Spike Step
 
-The next WASM step is an explicit browser storage adapter for one of the
-classified slices. Privacy requests and moderation reports are the current
-candidate slices because both have compact route surfaces and shared scenario
-coverage. If a slice requires broad store rewrites or hidden substitute
+The next WASM step is a request handler that uses the explicit storage boundary
+for moderation triage and runs the shared scenario parity suite against that
+handler. If the handler requires broad store rewrites or hidden substitute
 behavior, keep the JavaScript demo backend and expand shared parity tests
 instead.

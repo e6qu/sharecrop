@@ -1,12 +1,13 @@
 # Status
 
-The repository contains pull request 1 through pull request 87 work, merged into
-`main`, plus the current `task/moderation-parity-contract-wasm` branch.
+The repository contains pull request 1 through pull request 88 work, merged into
+`main`, plus the current `task/admin-moderation-retention-wasm` branch.
 
-Active task: `task/moderation-parity-contract-wasm` implements shared
-moderation scenario parity, moderation HTTP contract fixtures, a raw-ID browser
-flow audit, a narrow no-fallback WASM request-adapter spike, and operator
-moderation workflow foundations. Hard deletes remain out of scope; use soft
+Active task: `task/admin-moderation-retention-wasm` is ready for review. It
+adds moderation triage, moderation subject links, admin configuration UI,
+sensitive-field retention automation, sensitive-field access audit events,
+expanded parity/contract coverage, a no-fallback WASM browser-storage slice,
+and raw-ID fixes where needed. Hard deletes remain out of scope; use soft
 lifecycle states, anonymization, redaction, tombstones, and audit records.
 Email/provider delivery, anonymous worker identity, per-project tokens, external
 wallets, and crypto integrations are out of scope.
@@ -74,6 +75,13 @@ Current implemented surface:
   counts.
 - Admin audit event listing supports action, subject-kind, subject-id, and page
   filters through the API and browser controls.
+- Platform admins are stored through explicit runtime services. Bootstrap
+  admins come from `SHARECROP_ADMIN_USER_IDS`; admin-granted platform admins are
+  persisted and revoked through a lifecycle state instead of row deletion.
+- The admin page includes platform-admin configuration backed by the paginated
+  user selector, privacy retention execution, moderation state filtering,
+  direct moderation subject links where routes exist, and moderation triage
+  actions for open/resolved/dismissed states with notes.
 - Submission responses include indexed sensitive-field metadata, and browser
   submission history views show response bodies, validation errors, review
   notes, sensitive-field summaries, and revision shortcuts where available.
@@ -84,6 +92,12 @@ Current implemented surface:
   Resolution stores data-export JSON with owned account/submission/sensitive
   metadata, or marks delete-on-request sensitive-field metadata as redacted
   without removing core rows.
+- Platform admins can run sensitive-field retention. The Postgres store redacts
+  active delete-on-request sensitive-field metadata, records per-field
+  redaction events, records the retention run, and writes a privacy retention
+  audit event.
+- Authorized submission-list/profile reads record sensitive-field access events
+  when returned submissions include sensitive-field metadata.
 - Sensitive-field response metadata includes lifecycle state and redaction time.
   Privacy sensitive-field resolution records affected counts and per-field
   redaction events.
@@ -143,7 +157,8 @@ Current implemented surface:
   is not part of the project direction.
 - The WASM demo backend spike is documented with explicit storage-adapter gates,
   local compile-check results, bundle-size observations, a narrow
-  `internal/wasmdemo` request-adapter package, and no fallback path.
+  `internal/wasmdemo` request-adapter package, an explicit moderation-triage
+  browser-storage boundary, and no fallback path.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -157,41 +172,27 @@ Current implemented surface:
 Current verification:
 
 - `go test ./...` passed.
-- `go test ./internal/audit ./internal/db ./internal/http ./internal/wasmdemo`
-  passed.
-- `deno check tools/*.ts tests/**/*.ts` passed.
+- `deno task check:ts` passed.
 - `deno lint tools tests` passed.
-- `deno run --allow-read tools/check_policy.ts` passed.
-- `deno test --allow-read tests/deno` passed.
-- `make check-format` passed.
-- `make check-contracts` passed.
+- `deno task check:policy` passed.
+- `deno task test` passed.
+- `deno fmt --check deno.json tools tests` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
-- `go vet ./...` passed.
 - `go tool deadcode -test ./...` passed.
-- `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests`
-  passed.
-- `env DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
-  SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations go test
-  -tags integration ./tests/integration` passed.
-- `env DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
-  SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations
-  SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test
-  -tags http_e2e ./tests/http_e2e` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
   --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0
   test -c tests/playwright/playwright.config.ts tests/playwright/demo.spec.ts`
   passed.
-- Focused task moderation and admin moderation screenshots were captured at
-  `/private/tmp/sharecrop-task-moderation.png` and
-  `/private/tmp/sharecrop-admin-moderation.png` and inspected for layout
-  overflow/overlap.
-- `GOOS=js GOARCH=wasm go test -c` compile checks passed for
-  `./internal/submission` and `./internal/http`; `GOOS=js GOARCH=wasm go build`
-  passed for `./cmd/sharecrop`.
-- `GOOS=js GOARCH=wasm go test -c -o
-  /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo` passed.
-- PR 87 CI passed, including `db-checks` and Playwright.
+- Local admin screenshots were captured at `/tmp/sharecrop-admin-check` for
+  desktop and mobile. The check verified no horizontal overflow, expected admin
+  sections, `open` moderation filter state, and an empty blank user-selector
+  value.
+- `go test -tags integration ./tests/integration` was attempted and failed
+  because `DATABASE_URL` is not set in this environment.
+- `make check-contracts` was attempted before commit and stopped at the expected
+  generated Elm diff. The contract generator ran successfully; the check should
+  pass after committing generated files.
 
 Blocking issues:
 
-- None known.
+- Integration/HTTP E2E checks need a configured `DATABASE_URL`.

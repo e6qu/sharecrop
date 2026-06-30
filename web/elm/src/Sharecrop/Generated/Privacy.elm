@@ -92,3 +92,18 @@ privacyRequestsResponseEncoder privacyRequestsResponse =
     Encode.object
         [ ( "requests", Encode.list privacyRequestResponseEncoder privacyRequestsResponse.requests )
         ]
+
+type alias PrivacyRetentionRunResponse =
+    { redactedFieldCount : Int
+    }
+
+privacyRetentionRunResponseDecoder : Decoder PrivacyRetentionRunResponse
+privacyRetentionRunResponseDecoder =
+    Decode.map PrivacyRetentionRunResponse
+        (Decode.field "redacted_field_count" Decode.int)
+
+privacyRetentionRunResponseEncoder : PrivacyRetentionRunResponse -> Encode.Value
+privacyRetentionRunResponseEncoder privacyRetentionRunResponse =
+    Encode.object
+        [ ( "redacted_field_count", Encode.int privacyRetentionRunResponse.redactedFieldCount )
+        ]
