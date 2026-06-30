@@ -1,6 +1,9 @@
 package task
 
-import "github.com/e6qu/sharecrop/internal/core"
+import (
+	"github.com/e6qu/sharecrop/internal/attachment"
+	"github.com/e6qu/sharecrop/internal/core"
+)
 
 type Task struct {
 	ID             core.TaskID
@@ -18,6 +21,7 @@ type Task struct {
 	Placement      SeriesPlacement
 	ResponseSchema ResponseSchemaSource
 	Payload        DataPayload
+	Attachments    []attachment.Attachment
 	CreatedBy      core.UserID
 }
 

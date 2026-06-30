@@ -588,6 +588,15 @@ func taskModule() Module {
 				},
 			},
 			Product{
+				Name: NewElmTypeName("TaskAttachmentResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("name"), JSONName: NewJSONFieldName("name"), Type: StringRef{}},
+					{Name: NewElmValueName("contentType"), JSONName: NewJSONFieldName("content_type"), Type: StringRef{}},
+					{Name: NewElmValueName("sizeBytes"), JSONName: NewJSONFieldName("size_bytes"), Type: IntRef{}},
+					{Name: NewElmValueName("dataURL"), JSONName: NewJSONFieldName("data_url"), Type: StringRef{}},
+				},
+			},
+			Product{
 				Name: NewElmTypeName("TaskResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
@@ -615,6 +624,7 @@ func taskModule() Module {
 					{Name: NewElmValueName("responseSchemaJSON"), JSONName: NewJSONFieldName("response_schema_json"), Type: StringRef{}},
 					{Name: NewElmValueName("payloadKind"), JSONName: NewJSONFieldName("payload_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("payloadJSON"), JSONName: NewJSONFieldName("payload_json"), Type: StringRef{}},
+					{Name: NewElmValueName("attachments"), JSONName: NewJSONFieldName("attachments"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskAttachmentResponse")}}},
 					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
 				},
 			},
@@ -704,6 +714,15 @@ func submissionModule() Module {
 				},
 			},
 			Product{
+				Name: NewElmTypeName("SubmissionAttachmentResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("name"), JSONName: NewJSONFieldName("name"), Type: StringRef{}},
+					{Name: NewElmValueName("contentType"), JSONName: NewJSONFieldName("content_type"), Type: StringRef{}},
+					{Name: NewElmValueName("sizeBytes"), JSONName: NewJSONFieldName("size_bytes"), Type: IntRef{}},
+					{Name: NewElmValueName("dataURL"), JSONName: NewJSONFieldName("data_url"), Type: StringRef{}},
+				},
+			},
+			Product{
 				Name: NewElmTypeName("SubmissionResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
@@ -712,6 +731,7 @@ func submissionModule() Module {
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("SubmissionState")}},
 					{Name: NewElmValueName("responseJSON"), JSONName: NewJSONFieldName("response_json"), Type: StringRef{}},
 					{Name: NewElmValueName("reviewNote"), JSONName: NewJSONFieldName("review_note"), Type: StringRef{}},
+					{Name: NewElmValueName("attachments"), JSONName: NewJSONFieldName("attachments"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionAttachmentResponse")}}},
 					{Name: NewElmValueName("validationErrors"), JSONName: NewJSONFieldName("validation_errors"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionValidationErrorResponse")}}},
 					{Name: NewElmValueName("sensitiveFields"), JSONName: NewJSONFieldName("sensitive_fields"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionSensitiveFieldResponse")}}},
 				},

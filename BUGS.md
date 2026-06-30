@@ -36,10 +36,9 @@ Test gaps:
   wallets are out of scope.
 - Request/command contracts and HTTP contract fixture tests should keep
   expanding as the API grows.
-- Docker/Podman did not stay reachable through `/var/run/docker.sock` in the
-  local environment. DB-backed checks still passed against an isolated local
-  PostgreSQL 15 data directory under `.cache`; demo/mobile Playwright coverage
-  passed through the backendless-demo config.
+- DB-backed checks passed against an isolated local PostgreSQL 15 data directory
+  under `.cache`; demo/mobile Playwright coverage passed through the
+  backendless-demo config.
 
 Known risks:
 
@@ -57,17 +56,17 @@ Known risks:
   validate representative response shapes, and run shared scenario parity flows
   for selectors, admin operations, privacy request/audit/resolution shape,
   moderation report/admin-list/audit shape, sensitive-field redaction state,
-  collectibles, tasks, comments, submissions, notifications, and a multi-actor
-  reservation/submission-review/payout flow, but they do not prove every handler
-  has identical domain semantics.
+  collectibles, tasks, small attachments, comments, submissions, notifications,
+  and a multi-actor reservation/submission-review/payout flow, but they do not
+  prove every handler has identical domain semantics.
 - Go code compiles to `js/wasm` for representative packages and the main
   command. A narrow `internal/wasmdemo` request-adapter spike exists for
   privacy, moderation, and saved-queue-view route classification, and explicit
-  privacy-request, moderation-triage, and saved-queue-view browser storage plus
-  request-handler boundaries exist. A WASM demo backend still lacks enough
-  explicit browser-backed stores and handlers to run the shared scenario parity
-  suite, deterministic reset, startup measurements, and a JS/WASM scenario test
-  runner.
+  privacy-request, moderation-triage, saved-queue-view, and attachment browser
+  storage plus request-handler boundaries exist. A WASM demo backend still lacks
+  enough explicit browser-backed stores and handlers to run the shared scenario
+  parity suite, deterministic reset, startup measurements, and a JS/WASM
+  scenario test runner.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

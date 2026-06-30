@@ -1,5 +1,36 @@
 # What We Did
 
+`task/parity-contract-wasm-pagination-uploads` added small attachments,
+pagination polish, parity coverage, and the next WASM storage slice:
+
+- **Small attachments.** Task creation and submission creation now accept small
+  PNG, JPEG, GIF, WebP, plain-text, JSON, or PDF attachments under 500 KiB. The
+  backend validates names, content types, data URLs, and decoded size, stores
+  bytes inline in Postgres, and returns attachment metadata plus data URLs.
+- **Browser and demo.** The Elm app can pick/remove attachments on task and
+  submission forms, shows task/submission attachment links, and includes
+  Playwright demo coverage for both upload paths. The backendless demo validates
+  the same small attachment shape and now normalizes default visibility before
+  returning task responses.
+- **Contracts and parity.** Generated Elm contracts, HTTP wire-shape fixtures,
+  and shared scenario parity now cover attachment request/response surfaces.
+- **Pagination.** User submission history now supports `limit`/`offset` through
+  the API, backendless demo, and browser previous/next controls.
+- **WASM spike.** `internal/wasmdemo` gained explicit attachment browser storage
+  for task/submission parents with fail-loud validation and no fallback store.
+- **Docs and audits.** API, readiness, raw-ID audit, demo parity, WASM spike,
+  status, bugs, and next-task docs were refreshed. Object storage remains out
+  of scope; small inline attachments are the current file path.
+- **Verification.** Passed: `go test ./...`; focused Go tests for
+  attachment/db/http/submission/task/wasmdemo packages; `deno task check:ts`;
+  `deno task lint`; `deno task check:policy`; `deno task test`;
+  `deno fmt --check deno.json tools tests site/demo/backend.js`;
+  `go tool deadcode -test ./...`; `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`; Playwright demo/mobile specs; DB-backed migrations,
+  integration tests, HTTP E2E tests, and DB-backed Playwright screens against
+  isolated local PostgreSQL 15; deployed Pages routing check; and `git diff
+  --check`.
+
 `task/postmerge-db-parity-wasm-pagination-coverage` cleaned post-PR-91 state
 and expanded parity, pagination, WASM-demo groundwork, and testability:
 

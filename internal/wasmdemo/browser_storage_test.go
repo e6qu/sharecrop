@@ -195,3 +195,77 @@ func TestSavedQueueViewBrowserStorageRejectsCorruptStoredRecord(t *testing.T) {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }
+
+func TestAttachmentBrowserStorageRoundTrip(t *testing.T) {
+	storage := newTestBrowserStorage()
+	attachment := StoredAttachment{
+		Name:        "brief.txt",
+		ContentType: "text/plain",
+		SizeBytes:   5,
+		DataURL:     "data:text/plain;base64,aGVsbG8=",
+	}
+
+	saveResult := SaveAttachments(storage, "task", "task-1", []StoredAttachment{attachment})
+	saved, savedMatched := saveResult.(AttachmentsStored)
+	if !savedMatched {
+		t.Fatalf("save result = %T, want AttachmentsStored", saveResult)
+	}
+	if saved.Values[0].ParentKind != "task" || saved.Values[0].ParentID != "task-1" {
+		t.Fatalf("saved parent = %s/%s", saved.Values[0].ParentKind, saved.Values[0].ParentID)
+	}
+
+	listResult := ListAttachments(storage, "task", "task-1")
+	listed, listedMatched := listResult.(AttachmentsStored)
+	if !listedMatched {
+		t.Fatalf("list result = %T, want AttachmentsStored", listResult)
+	}
+	if len(listed.Values) != 1 {
+		t.Fatalf("listed attachment count = %d, want 1", len(listed.Values))
+	}
+	if listed.Values[0].Name != "brief.txt" {
+		t.Fatalf("attachment name = %q", listed.Values[0].Name)
+	}
+}
+
+func TestAttachmentBrowserStorageRejectsInvalidParentKind(t *testing.T) {
+	result := SaveAttachments(newTestBrowserStorage(), "comment", "comment-1", nil)
+	rejected, matched := result.(AttachmentStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want AttachmentStorageRejected", result)
+	}
+	if rejected.Reason != "attachment parent kind is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestAttachmentBrowserStorageRejectsOversizedAttachment(t *testing.T) {
+	result := SaveAttachments(newTestBrowserStorage(), "submission", "submission-1", []StoredAttachment{{
+		Name:        "large.txt",
+		ContentType: "text/plain",
+		SizeBytes:   500*1024 + 1,
+		DataURL:     "data:text/plain;base64,aGVsbG8=",
+	}})
+	rejected, matched := result.(AttachmentStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want AttachmentStorageRejected", result)
+	}
+	if rejected.Reason != "attachment size is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestAttachmentBrowserStorageRejectsMismatchedStoredRecord(t *testing.T) {
+	storage := newTestBrowserStorage()
+	keyResult := NewStorageKey("attachments:task:task-1")
+	key := keyResult.(StorageKeyAccepted)
+	storage.values[key.Value.String()] = `[{"parent_kind":"submission","parent_id":"submission-1","name":"brief.txt","content_type":"text/plain","size_bytes":5,"data_url":"data:text/plain;base64,aGVsbG8="}]`
+
+	result := ListAttachments(storage, "task", "task-1")
+	rejected, matched := result.(AttachmentStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want AttachmentStorageRejected", result)
+	}
+	if rejected.Reason != "attachment storage key contains mismatched record" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}

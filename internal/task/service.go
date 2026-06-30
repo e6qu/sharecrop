@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 
+	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -62,6 +63,7 @@ type CreateCommand struct {
 	Placement      SeriesPlacement
 	ResponseSchema ResponseSchemaSource
 	Payload        DataPayload
+	Attachments    []attachment.Attachment
 }
 
 type CreateResult interface {

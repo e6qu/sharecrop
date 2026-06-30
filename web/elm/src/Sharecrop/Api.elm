@@ -185,7 +185,7 @@ submitCommand model state =
                 case Decode.decodeString Decode.value trimmed of
                     Ok _ ->
                         ( updateLoggedIn model (\current -> { current | submitMessage = Nothing })
-                        , postSubmission state.accessToken taskId trimmed
+                        , postSubmission state.accessToken taskId trimmed state.submitAttachments
                         )
 
                     Err _ ->
@@ -344,7 +344,7 @@ routeLoadCmd token subjectId page =
             authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/work") Http.emptyBody (Http.expectJson UserWorkReceived Task.tasksResponseDecoder)
 
         UserSubmissionsPage userId ->
-            fetchUserSubmissions token userId
+            fetchUserSubmissionsPage token userId 0
 
         CollectibleDetailPage _ ->
             fetchCollectibles token
@@ -450,7 +450,12 @@ fetchDetailCommands token subjectId taskId =
 
 fetchUserSubmissions : String -> String -> Cmd Msg
 fetchUserSubmissions token userId =
-    authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions") Http.emptyBody (Http.expectJson UserSubmissionsReceived Submission.submissionsResponseDecoder)
+    fetchUserSubmissionsPage token userId 0
+
+
+fetchUserSubmissionsPage : String -> String -> Int -> Cmd Msg
+fetchUserSubmissionsPage token userId offset =
+    authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson UserSubmissionsReceived Submission.submissionsResponseDecoder)
 
 
 fetchTaskComments : String -> String -> Cmd Msg
@@ -819,12 +824,12 @@ mintUserToken token =
         (Http.expectJson UserTokenMinted Agent.agentCredentialCreatedResponseDecoder)
 
 
-postSubmission : String -> String -> String -> Cmd Msg
-postSubmission token taskId responseJson =
+postSubmission : String -> String -> String -> List SelectedAttachment -> Cmd Msg
+postSubmission token taskId responseJson attachments =
     authorizedRequest "POST"
         token
         ("/api/tasks/" ++ taskId ++ "/submissions")
-        (Http.jsonBody (submissionRequestBody responseJson))
+        (Http.jsonBody (submissionRequestBody responseJson attachments))
         (Http.expectJson SubmitReceived Submission.submissionCreatedResponseDecoder)
 
 
@@ -1320,6 +1325,7 @@ createTaskRequestBody state =
         , ( "payload", createPayloadBody state )
         , ( "task_type", Encode.string state.createTaskType )
         , ( "reference_url", Encode.string state.createReferenceURL )
+        , ( "attachments", Encode.list attachmentRequestBody state.createAttachments )
         ]
 
 
@@ -1435,10 +1441,20 @@ agentRequestBody agentLabel scopes =
         ]
 
 
-submissionRequestBody : String -> Encode.Value
-submissionRequestBody responseJson =
+submissionRequestBody : String -> List SelectedAttachment -> Encode.Value
+submissionRequestBody responseJson attachments =
     Encode.object
         [ ( "response_json", Encode.string responseJson )
+        , ( "attachments", Encode.list attachmentRequestBody attachments )
+        ]
+
+
+attachmentRequestBody : SelectedAttachment -> Encode.Value
+attachmentRequestBody attachment =
+    Encode.object
+        [ ( "name", Encode.string attachment.name )
+        , ( "content_type", Encode.string attachment.contentType )
+        , ( "data_url", Encode.string attachment.dataURL )
         ]
 
 
@@ -1522,6 +1538,7 @@ taskDetailFromResponse response =
     , responseSchemaJson = response.responseSchemaJSON
     , payloadKind = response.payloadKind
     , payloadJson = response.payloadJSON
+    , attachments = response.attachments
     , createdBy = response.createdBy
     , seriesID = response.seriesID
     , taskType = response.taskType

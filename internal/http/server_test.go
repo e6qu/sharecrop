@@ -779,6 +779,7 @@ func (testTaskService) Create(_ context.Context, command task.CreateCommand) tas
 		Placement:      command.Placement,
 		ResponseSchema: command.ResponseSchema,
 		Payload:        command.Payload,
+		Attachments:    command.Attachments,
 		CreatedBy:      command.Actor.ID,
 	}}
 }
@@ -927,6 +928,7 @@ func (testSubmissionService) Submit(_ context.Context, command submission.Submit
 			SubmitterID:    command.SubmitterID,
 			State:          submission.StateSubmitted,
 			ResponseSource: command.ResponseSource,
+			Attachments:    command.Attachments,
 			Validation:     submission.ValidationPassed{},
 		},
 		ReceiptToken: tokenCreated.Value,
@@ -955,7 +957,7 @@ func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
-func (testSubmissionService) ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult {
+func (testSubmissionService) ListForSubmitter(context.Context, auth.UserSubject, core.UserID, core.Page) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 

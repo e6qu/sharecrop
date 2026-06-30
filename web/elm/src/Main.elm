@@ -2,6 +2,8 @@ port module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Nav
+import File
+import File.Select as FileSelect
 import Http
 import Sharecrop.Api as Api
 import Sharecrop.Generated.Admin as Admin
@@ -17,6 +19,7 @@ import Sharecrop.Generated.Task as Task
 import Sharecrop.Labels exposing (httpErrorLabel, participationPolicyTag)
 import Sharecrop.Types exposing (..)
 import Sharecrop.View as View
+import Task as ElmTask
 import Url exposing (Url)
 
 
@@ -79,6 +82,7 @@ emptyLoggedIn response =
     , createAssigneeScope = Task.TaskAssigneeScopeUser
     , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
     , createReservationHours = "48"
+    , createAttachments = []
     , createMessage = Nothing
     , fundTaskId = ""
     , fundAmount = ""
@@ -108,6 +112,7 @@ emptyLoggedIn response =
     , reservationMessage = Nothing
     , submissions = []
     , submitInput = ""
+    , submitAttachments = []
     , submitMessage = Nothing
     , moderationReason = Moderation.ModerationReasonPolicy
     , moderationDetails = ""
@@ -158,6 +163,7 @@ emptyLoggedIn response =
     , userProfileError = Nothing
     , userWork = []
     , userSubmissions = []
+    , userSubmissionsOffset = 0
     , pendingRevisionTaskID = Nothing
     , pendingRevisionResponse = ""
     , seriesDetail = Nothing
@@ -326,6 +332,59 @@ removePlatformAdmin userID admins =
     List.filter (\admin -> admin.userID /= userID) admins
 
 
+attachmentMaxBytes : Int
+attachmentMaxBytes =
+    500 * 1024
+
+
+allowedAttachmentTypes : List String
+allowedAttachmentTypes =
+    [ "image/png", "image/jpeg", "image/gif", "image/webp", "text/plain", "application/json", "application/pdf" ]
+
+
+selectAttachment : (File.File -> Msg) -> Cmd Msg
+selectAttachment toMsg =
+    FileSelect.file allowedAttachmentTypes toMsg
+
+
+readCreateAttachment : File.File -> Cmd Msg
+readCreateAttachment file =
+    readAttachment file CreateAttachmentSelected CreateAttachmentRejected
+
+
+readSubmitAttachment : File.File -> Cmd Msg
+readSubmitAttachment file =
+    readAttachment file SubmitAttachmentSelected SubmitAttachmentRejected
+
+
+readAttachment : File.File -> (String -> String -> Int -> String -> Msg) -> (String -> Msg) -> Cmd Msg
+readAttachment file success rejected =
+    let
+        contentType =
+            File.mime file
+
+        sizeBytes =
+            File.size file
+    in
+    if sizeBytes > attachmentMaxBytes then
+        Cmd.batch [ ElmTask.perform identity (ElmTask.succeed (rejected "Attachment must be under 500 KiB.")) ]
+
+    else if not (List.member contentType allowedAttachmentTypes) then
+        Cmd.batch [ ElmTask.perform identity (ElmTask.succeed (rejected "Attachment type is not allowed.")) ]
+
+    else
+        File.toUrl file
+            |> ElmTask.perform (success (File.name file) contentType sizeBytes)
+
+
+removeAt : Int -> List a -> List a
+removeAt index values =
+    values
+        |> List.indexedMap Tuple.pair
+        |> List.filter (\( currentIndex, _ ) -> currentIndex /= index)
+        |> List.map Tuple.second
+
+
 teamWorkSavedViewScope : String
 teamWorkSavedViewScope =
     "team_work"
@@ -465,7 +524,7 @@ enterPage page state =
             { state | page = page, userWork = [] }
 
         UserSubmissionsPage _ ->
-            { state | page = page, userSubmissions = [] }
+            { state | page = page, userSubmissions = [], userSubmissionsOffset = 0 }
 
         SeriesListPage ->
             { state | page = page, seriesMessage = Nothing }
@@ -490,7 +549,7 @@ enterPage page state =
             -- not briefly show the prior task's badges, submissions, or comments.
             -- Review form fields are reset here too so the prior submission's
             -- note / partial credit / tip / ban does not carry over to the next.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "" }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "" }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -499,7 +558,7 @@ enterPage page state =
 
         CreateTaskPage ->
             -- Clear a half-finished draft and any stale create message on entry.
-            { state | page = page, createTitle = "", createDescription = "", createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardCollectibleIds = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
+            { state | page = page, createTitle = "", createDescription = "", createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardCollectibleIds = [], createAttachments = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
 
         FundingPage ->
             { state | page = page, fundMessage = Nothing }
@@ -731,6 +790,21 @@ update msg model =
         CreateReservationHoursChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createReservationHours = value }), Cmd.none )
 
+        PickCreateAttachmentClicked ->
+            ( model, selectAttachment CreateAttachmentFileChosen )
+
+        CreateAttachmentFileChosen file ->
+            ( model, readCreateAttachment file )
+
+        CreateAttachmentSelected name contentType sizeBytes dataURL ->
+            ( Api.updateLoggedIn model (\state -> { state | createAttachments = state.createAttachments ++ [ { name = name, contentType = contentType, sizeBytes = sizeBytes, dataURL = dataURL } ], createMessage = Nothing }), Cmd.none )
+
+        CreateAttachmentRejected message ->
+            ( Api.updateLoggedIn model (\state -> { state | createMessage = Just message }), Cmd.none )
+
+        RemoveCreateAttachmentClicked index ->
+            ( Api.updateLoggedIn model (\state -> { state | createAttachments = removeAt index state.createAttachments }), Cmd.none )
+
         CreateTaskClicked ->
             Api.withSession model (\state -> Api.createTaskCommand model state)
 
@@ -746,6 +820,7 @@ update msg model =
                         , createTaskType = "general"
                         , createReferenceURL = ""
                         , createRewardCollectibleIds = []
+                        , createAttachments = []
                         , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
                         , createReservationHours = "48"
                         , createMessage = Just ("Created task " ++ created.id)
@@ -1015,13 +1090,28 @@ update msg model =
         SubmitInputChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | submitInput = value }), Cmd.none )
 
+        PickSubmitAttachmentClicked ->
+            ( model, selectAttachment SubmitAttachmentFileChosen )
+
+        SubmitAttachmentFileChosen file ->
+            ( model, readSubmitAttachment file )
+
+        SubmitAttachmentSelected name contentType sizeBytes dataURL ->
+            ( Api.updateLoggedIn model (\state -> { state | submitAttachments = state.submitAttachments ++ [ { name = name, contentType = contentType, sizeBytes = sizeBytes, dataURL = dataURL } ], submitMessage = Nothing }), Cmd.none )
+
+        SubmitAttachmentRejected message ->
+            ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just message }), Cmd.none )
+
+        RemoveSubmitAttachmentClicked index ->
+            ( Api.updateLoggedIn model (\state -> { state | submitAttachments = removeAt index state.submitAttachments }), Cmd.none )
+
         SubmitClicked ->
             Api.withSession model (\state -> Api.submitCommand model state)
 
         SubmitReceived (Ok created) ->
             Api.withSession model
                 (\state ->
-                    ( Api.updateLoggedIn model (\current -> { current | submitMessage = Just (View.submitSuccessLabel created), activeSubmissionCommentsID = Just created.submission.id, submissionComments = [], submissionCommentMessage = Nothing })
+                    ( Api.updateLoggedIn model (\current -> { current | submitInput = "", submitAttachments = [], submitMessage = Just (View.submitSuccessLabel created), activeSubmissionCommentsID = Just created.submission.id, submissionComments = [], submissionCommentMessage = Nothing })
                     , Cmd.batch
                         [ Api.refreshDetailSubmissions model
                         , Api.fetchSubmissionComments state.accessToken created.submission.id
@@ -1387,6 +1477,36 @@ update msg model =
 
         UserSubmissionsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.submissionsFromResult result }), Cmd.none )
+
+        PreviousUserSubmissionsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    case state.page of
+                        UserSubmissionsPage userId ->
+                            let
+                                offset =
+                                    max 0 (state.userSubmissionsOffset - Api.selectorPageSize)
+                            in
+                            ( Api.updateLoggedIn model (\current -> { current | userSubmissionsOffset = offset }), Api.fetchUserSubmissionsPage state.accessToken userId offset )
+
+                        _ ->
+                            ( model, Cmd.none )
+                )
+
+        NextUserSubmissionsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    case state.page of
+                        UserSubmissionsPage userId ->
+                            let
+                                offset =
+                                    state.userSubmissionsOffset + Api.selectorPageSize
+                            in
+                            ( Api.updateLoggedIn model (\current -> { current | userSubmissionsOffset = offset }), Api.fetchUserSubmissionsPage state.accessToken userId offset )
+
+                        _ ->
+                            ( model, Cmd.none )
+                )
 
         StartRevisionClicked taskId responseJson ->
             ( Api.updateLoggedIn model (\state -> { state | pendingRevisionTaskID = Just taskId, pendingRevisionResponse = responseJson })

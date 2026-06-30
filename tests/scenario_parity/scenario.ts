@@ -94,6 +94,30 @@ function assertTaskSummaryShape(task: JsonRecord): void {
   requireNumber(task, "reservation_expiry_hours");
 }
 
+function assertAttachmentShape(
+  attachment: JsonRecord,
+  expectedName: string,
+  expectedContentType: string,
+  expectedDataURL: string,
+): void {
+  assertScenario(
+    requireString(attachment, "name") === expectedName,
+    "attachment name must round trip",
+  );
+  assertScenario(
+    requireString(attachment, "content_type") === expectedContentType,
+    "attachment content type must round trip",
+  );
+  assertScenario(
+    requireString(attachment, "data_url") === expectedDataURL,
+    "attachment data URL must round trip",
+  );
+  assertScenario(
+    requireNumber(attachment, "size_bytes") > 0,
+    "attachment size must be present",
+  );
+}
+
 function assertCollectibleShape(collectible: JsonRecord): void {
   [
     "id",
@@ -686,6 +710,11 @@ export async function runSharedScenarioParity(
   );
 
   const taskTitle = uniqueName("Scenario parity task");
+  const taskAttachment = {
+    name: "brief.txt",
+    content_type: "text/plain",
+    data_url: "data:text/plain;base64,c2NlbmFyaW8gYnJpZWY=",
+  };
   const createdTask = await client.request("POST", "/api/tasks", {
     owner: { kind: "user", user_id: subjectID },
     title: taskTitle,
@@ -705,10 +734,22 @@ export async function runSharedScenarioParity(
     },
     response_schema_json: '{"kind":"freeform"}',
     payload: { kind: "none", json: "" },
+    attachments: [taskAttachment],
   });
   assertStatus(createdTask, 201, "create task");
   const taskID = requireString(createdTask.json, "id");
   assertTaskSummaryShape(createdTask.json);
+  const createdTaskAttachments = requireArray(createdTask.json, "attachments");
+  assertScenario(
+    createdTaskAttachments.length === 1,
+    "created task must include one attachment",
+  );
+  assertAttachmentShape(
+    requireRecord(createdTaskAttachments[0], "createdTaskAttachment"),
+    taskAttachment.name,
+    taskAttachment.content_type,
+    taskAttachment.data_url,
+  );
 
   const moderationReport = await client.request(
     "POST",
@@ -981,6 +1022,17 @@ export async function runSharedScenarioParity(
     requireString(taskDetail.json, "title") === taskTitle,
     "task detail title must round trip",
   );
+  const detailAttachments = requireArray(taskDetail.json, "attachments");
+  assertScenario(
+    detailAttachments.length === 1,
+    "task detail must include one attachment",
+  );
+  assertAttachmentShape(
+    requireRecord(detailAttachments[0], "taskDetailAttachment"),
+    taskAttachment.name,
+    taskAttachment.content_type,
+    taskAttachment.data_url,
+  );
 
   const commentBody = uniqueName("Scenario parity comment");
   const createdComment = await client.request(
@@ -1052,10 +1104,18 @@ export async function runSharedScenarioParity(
   assertStatus(submissionTask, 201, "create submission task");
   const submissionTaskID = requireString(submissionTask.json, "id");
 
+  const submissionAttachment = {
+    name: "evidence.png",
+    content_type: "image/png",
+    data_url: "data:image/png;base64,iVBORw0KGgo=",
+  };
   const createdSubmission = await client.request(
     "POST",
     `/api/tasks/${submissionTaskID}/submissions`,
-    { response_json: '{"email":"worker@example.com","result":"done"}' },
+    {
+      response_json: '{"email":"worker@example.com","result":"done"}',
+      attachments: [submissionAttachment],
+    },
   );
   assertStatus(createdSubmission, 201, "create submission");
   const submission = requireRecord(
@@ -1069,6 +1129,17 @@ export async function runSharedScenarioParity(
     "submission must be accepted by schema validation",
   );
   const sensitiveFields = requireArray(submission, "sensitive_fields");
+  const submissionAttachments = requireArray(submission, "attachments");
+  assertScenario(
+    submissionAttachments.length === 1,
+    "created submission must include one attachment",
+  );
+  assertAttachmentShape(
+    requireRecord(submissionAttachments[0], "submissionAttachment"),
+    submissionAttachment.name,
+    submissionAttachment.content_type,
+    submissionAttachment.data_url,
+  );
   assertScenario(
     sensitiveFields.length === 1,
     "submission must index one sensitive field",
@@ -1090,6 +1161,7 @@ export async function runSharedScenarioParity(
     submissionList.some((item) => {
       const listed = requireRecord(item, "submissions[]");
       requireArray(listed, "sensitive_fields");
+      requireArray(listed, "attachments");
       return requireString(listed, "id") === submissionID;
     }),
     "listed submissions must include created submission",

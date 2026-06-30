@@ -1,6 +1,9 @@
 package submission
 
-import "github.com/e6qu/sharecrop/internal/core"
+import (
+	"github.com/e6qu/sharecrop/internal/attachment"
+	"github.com/e6qu/sharecrop/internal/core"
+)
 
 type Submission struct {
 	ID              core.SubmissionID
@@ -8,6 +11,7 @@ type Submission struct {
 	SubmitterID     core.UserID
 	State           State
 	ResponseSource  ResponseSource
+	Attachments     []attachment.Attachment
 	Validation      ValidationOutcome
 	SensitiveFields []SensitiveField
 	ReviewNote      ReviewNote

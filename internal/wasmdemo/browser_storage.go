@@ -94,6 +94,15 @@ type StoredSavedQueueView struct {
 	Sort        string `json:"sort"`
 }
 
+type StoredAttachment struct {
+	ParentKind  string `json:"parent_kind"`
+	ParentID    string `json:"parent_id"`
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	SizeBytes   int    `json:"size_bytes"`
+	DataURL     string `json:"data_url"`
+}
+
 type ModerationTriageStorageResult interface {
 	moderationTriageStorageResult()
 }
@@ -594,5 +603,136 @@ func validSavedQueueScope(value string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+type AttachmentStorageResult interface {
+	attachmentStorageResult()
+}
+
+type AttachmentsStored struct {
+	Values []StoredAttachment
+}
+
+type AttachmentStorageRejected struct {
+	Reason string
+}
+
+func (AttachmentsStored) attachmentStorageResult()         {}
+func (AttachmentStorageRejected) attachmentStorageResult() {}
+
+func SaveAttachments(storage BrowserStorage, parentKind string, parentID string, attachments []StoredAttachment) AttachmentStorageResult {
+	cleanKind := strings.TrimSpace(parentKind)
+	cleanID := strings.TrimSpace(parentID)
+	if !validAttachmentParentKind(cleanKind) {
+		return AttachmentStorageRejected{Reason: "attachment parent kind is invalid"}
+	}
+	if cleanID == "" {
+		return AttachmentStorageRejected{Reason: "attachment parent id is required"}
+	}
+	values := make([]StoredAttachment, 0, len(attachments))
+	for index := range attachments {
+		cleaned := StoredAttachment{
+			ParentKind:  cleanKind,
+			ParentID:    cleanID,
+			Name:        strings.TrimSpace(attachments[index].Name),
+			ContentType: strings.TrimSpace(attachments[index].ContentType),
+			SizeBytes:   attachments[index].SizeBytes,
+			DataURL:     strings.TrimSpace(attachments[index].DataURL),
+		}
+		if reason := validateStoredAttachment(cleaned); reason != "" {
+			return AttachmentStorageRejected{Reason: reason}
+		}
+		values = append(values, cleaned)
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return AttachmentStorageRejected{Reason: "attachments encoding failed"}
+	}
+	keyResult := NewStorageKey("attachments:" + cleanKind + ":" + cleanID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return AttachmentStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return AttachmentStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	return AttachmentsStored{Values: values}
+}
+
+func ListAttachments(storage BrowserStorage, parentKind string, parentID string) AttachmentStorageResult {
+	cleanKind := strings.TrimSpace(parentKind)
+	cleanID := strings.TrimSpace(parentID)
+	if !validAttachmentParentKind(cleanKind) {
+		return AttachmentStorageRejected{Reason: "attachment parent kind is invalid"}
+	}
+	if cleanID == "" {
+		return AttachmentStorageRejected{Reason: "attachment parent id is required"}
+	}
+	keyResult := NewStorageKey("attachments:" + cleanKind + ":" + cleanID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return AttachmentStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return AttachmentStorageRejected{Reason: attachmentReadReason(readResult)}
+	}
+	var attachments []StoredAttachment
+	if err := json.Unmarshal([]byte(read.Value), &attachments); err != nil {
+		return AttachmentStorageRejected{Reason: "attachments decoding failed"}
+	}
+	for index := range attachments {
+		if reason := validateStoredAttachment(attachments[index]); reason != "" {
+			return AttachmentStorageRejected{Reason: reason}
+		}
+		if attachments[index].ParentKind != cleanKind || attachments[index].ParentID != cleanID {
+			return AttachmentStorageRejected{Reason: "attachment storage key contains mismatched record"}
+		}
+	}
+	return AttachmentsStored{Values: attachments}
+}
+
+func validateStoredAttachment(attachment StoredAttachment) string {
+	if !validAttachmentParentKind(strings.TrimSpace(attachment.ParentKind)) {
+		return "attachment parent kind is invalid"
+	}
+	if strings.TrimSpace(attachment.ParentID) == "" {
+		return "attachment parent id is required"
+	}
+	if strings.TrimSpace(attachment.Name) == "" {
+		return "attachment name is required"
+	}
+	if strings.TrimSpace(attachment.ContentType) == "" {
+		return "attachment content type is required"
+	}
+	if attachment.SizeBytes <= 0 || attachment.SizeBytes > 500*1024 {
+		return "attachment size is invalid"
+	}
+	if strings.TrimSpace(attachment.DataURL) == "" {
+		return "attachment data URL is required"
+	}
+	return ""
+}
+
+func validAttachmentParentKind(value string) bool {
+	switch value {
+	case "task", "submission":
+		return true
+	default:
+		return false
+	}
+}
+
+func attachmentReadReason(result StorageReadResult) string {
+	switch rejected := result.(type) {
+	case StorageMissing:
+		return rejected.Reason
+	case StorageReadRejected:
+		return rejected.Reason
+	default:
+		return "attachments read failed"
 	}
 }

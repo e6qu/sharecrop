@@ -486,6 +486,30 @@ taskListItemResponseEncoder taskListItemResponse =
         , ( "active_assignee_id", Encode.string taskListItemResponse.activeAssigneeID )
         ]
 
+type alias TaskAttachmentResponse =
+    { name : String
+    , contentType : String
+    , sizeBytes : Int
+    , dataURL : String
+    }
+
+taskAttachmentResponseDecoder : Decoder TaskAttachmentResponse
+taskAttachmentResponseDecoder =
+    Decode.map4 TaskAttachmentResponse
+        (Decode.field "name" Decode.string)
+        (Decode.field "content_type" Decode.string)
+        (Decode.field "size_bytes" Decode.int)
+        (Decode.field "data_url" Decode.string)
+
+taskAttachmentResponseEncoder : TaskAttachmentResponse -> Encode.Value
+taskAttachmentResponseEncoder taskAttachmentResponse =
+    Encode.object
+        [ ( "name", Encode.string taskAttachmentResponse.name )
+        , ( "content_type", Encode.string taskAttachmentResponse.contentType )
+        , ( "size_bytes", Encode.int taskAttachmentResponse.sizeBytes )
+        , ( "data_url", Encode.string taskAttachmentResponse.dataURL )
+        ]
+
 type alias TaskResponse =
     { id : String
     , ownerKind : TaskOwnerKind
@@ -512,6 +536,7 @@ type alias TaskResponse =
     , responseSchemaJSON : String
     , payloadKind : String
     , payloadJSON : String
+    , attachments : List TaskAttachmentResponse
     , createdBy : String
     }
 
@@ -552,8 +577,9 @@ taskResponseDecoder =
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map2 finish
+                Decode.map3 finish
                     (Decode.field "payload_json" Decode.string)
+                    (Decode.field "attachments" (Decode.list taskAttachmentResponseDecoder))
                     (Decode.field "created_by" Decode.string)
             )
 
@@ -585,6 +611,7 @@ taskResponseEncoder taskResponse =
         , ( "response_schema_json", Encode.string taskResponse.responseSchemaJSON )
         , ( "payload_kind", Encode.string taskResponse.payloadKind )
         , ( "payload_json", Encode.string taskResponse.payloadJSON )
+        , ( "attachments", Encode.list taskAttachmentResponseEncoder taskResponse.attachments )
         , ( "created_by", Encode.string taskResponse.createdBy )
         ]
 

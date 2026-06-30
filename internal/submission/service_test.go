@@ -376,7 +376,7 @@ func (store *submissionMemoryStore) ListForTask(_ context.Context, taskID core.T
 	}
 }
 
-func (store *submissionMemoryStore) ListForSubmitter(_ context.Context, submitterID core.UserID) ListSubmissionsStoreResult {
+func (store *submissionMemoryStore) ListForSubmitter(_ context.Context, submitterID core.UserID, _ core.Page) ListSubmissionsStoreResult {
 	values := make([]Submission, 0)
 	for key := range store.valuesByID {
 		value := store.valuesByID[key]

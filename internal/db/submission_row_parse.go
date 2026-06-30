@@ -21,7 +21,7 @@ type sensitiveFieldDTO struct {
 	RedactedAt string `json:"redacted_at"`
 }
 
-func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawReviewNote string, rawValidationErrors string, rawSensitiveFields string) submissionRowResult {
+func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawReviewNote string, rawValidationErrors string, rawSensitiveFields string, rawAttachments string) submissionRowResult {
 	submissionIDResult := core.ParseSubmissionID(rawSubmissionID)
 	submissionID, submissionIDMatched := submissionIDResult.(core.SubmissionIDCreated)
 	if !submissionIDMatched {
@@ -78,12 +78,19 @@ func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID stri
 		return submissionRowRejected{reason: rejected.Reason}
 	}
 
+	attachmentsResult := parseStoredAttachments(rawAttachments)
+	attachments, attachmentsMatched := attachmentsResult.(attachmentsAccepted)
+	if !attachmentsMatched {
+		return submissionRowRejected{reason: attachmentsResult.(attachmentsRejected).reason}
+	}
+
 	return submissionRowAccepted{value: submission.Submission{
 		ID:              submissionID.Value,
 		TaskID:          taskID.Value,
 		SubmitterID:     submitterID.Value,
 		State:           state.Value,
 		ResponseSource:  source.Value,
+		Attachments:     attachments.values,
 		Validation:      outcome.value,
 		SensitiveFields: sensitiveFields.values,
 		ReviewNote:      note.Value,

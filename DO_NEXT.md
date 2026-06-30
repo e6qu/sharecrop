@@ -5,20 +5,20 @@ Current priority from
 
 Active branch:
 
-1. No next task is active until the current pull request is merged and local
-   `main` is synced.
+- None. The previous task branch is ready for pull request review.
 
 Next recommended work:
 
 1. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
-   team/organization queue search/type/sort, persisted saved queue views,
-   organization reviewer acceptance, sensitive-field response metadata/redaction
-   state, privacy
+   small task/submission attachments, team/organization queue search/type/sort,
+   persisted saved queue views, organization reviewer acceptance, sensitive-field
+   response metadata/redaction state, privacy
    request/audit/resolution/retention shape, moderation report/admin-list/audit
    triage shape, platform-admin grant/revoke/audit shape, admin audit
-   pagination, and multi-actor reservation/submission acceptance.
+   pagination, user-submission pagination, and multi-actor
+   reservation/submission acceptance.
 2. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
 3. Audit remaining raw-ID browser flows and replace high-traffic fields with
@@ -27,7 +27,7 @@ Next recommended work:
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 4. Add enough explicit browser-backed stores and request handlers for the WASM
    demo path to run the shared scenario parity suite without fallback stores.
-   Privacy-request, moderation-triage, and saved-queue-view storage/handler
+   Privacy-request, moderation-triage, saved-queue-view, and attachment storage
    slices now exist.
 5. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
@@ -35,6 +35,16 @@ Next recommended work:
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The parity-contract-wasm-pagination-uploads branch added small task and
+   submission attachments under 500 KiB, inline Postgres attachment storage,
+   generated Elm attachment contracts, browser upload controls and attachment
+   links, backendless-demo upload validation, shared scenario parity for task
+   and submission attachments, user-submission pagination, explicit WASM demo
+   attachment storage, a raw-ID audit refresh, and deployed Pages routing
+   verification.
+1. The branch also fixed a backendless-demo default-visibility response mismatch
+   found by the new browser upload flow.
 
 1. The postmerge-db-parity-wasm-pagination-coverage branch cleaned post-PR-91
    continuity, added admin pagination controls for audit events,
@@ -314,8 +324,8 @@ Smaller parity follow-ups noticed during the review (fold into the PR they fit,
 or a cleanup PR): the human accept flow cannot send a collectible tip though the
 API supports it [DONE in task/ui-cancel-collectible-tip]; no UI to cancel a task
 [DONE], create/list standalone teams, deactivate an org member, or refund a
-collectible reward [DONE]; no file/image attachment anywhere (only inline JSON
-payload + free-text).
+collectible reward [DONE]; no small file/image attachment support [DONE in
+task/parity-contract-wasm-pagination-uploads].
 
 Polish follow-ups from `task/polish-bugfix-uiux-review`:
 

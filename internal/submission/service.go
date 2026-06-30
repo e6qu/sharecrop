@@ -3,6 +3,7 @@ package submission
 import (
 	"context"
 
+	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -15,7 +16,7 @@ type Store interface {
 	FindByReceiptToken(context.Context, ReceiptTokenHash) FindReceiptStoreResult
 	FindSubmission(context.Context, core.SubmissionID) FindSubmissionStoreResult
 	ListForTask(context.Context, core.TaskID, core.Page) ListSubmissionsStoreResult
-	ListForSubmitter(context.Context, core.UserID) ListSubmissionsStoreResult
+	ListForSubmitter(context.Context, core.UserID, core.Page) ListSubmissionsStoreResult
 	CreateSubmissionComment(context.Context, SubmissionComment) CreateSubmissionCommentStoreResult
 	ListSubmissionComments(context.Context, core.SubmissionID) ListSubmissionCommentsStoreResult
 }
@@ -43,6 +44,7 @@ type SubmitCommand struct {
 	TaskID         core.TaskID
 	SubmitterID    core.UserID
 	ResponseSource ResponseSource
+	Attachments    []attachment.Attachment
 }
 
 type SubmitResult interface {
@@ -225,12 +227,12 @@ func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, 
 
 // ListForSubmitter returns a submitter's own submissions. Only the submitter may
 // read their submissions; another user is denied so submissions never leak.
-func (service Service) ListForSubmitter(ctx context.Context, actor auth.UserSubject, submitterID core.UserID) ListResult {
+func (service Service) ListForSubmitter(ctx context.Context, actor auth.UserSubject, submitterID core.UserID, page core.Page) ListResult {
 	if actor.ID != submitterID {
 		return ListRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submissions are visible only to their submitter")}
 	}
 
-	result := service.store.ListForSubmitter(ctx, submitterID)
+	result := service.store.ListForSubmitter(ctx, submitterID, page)
 	listed, matched := result.(ListSubmissionsStoreAccepted)
 	if !matched {
 		rejected := result.(ListSubmissionsStoreRejected)

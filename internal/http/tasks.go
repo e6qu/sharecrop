@@ -407,6 +407,12 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		return taskRequestRejected{reason: referenceResult.(task.ReferenceURLRejected).Reason.Description()}
 	}
 
+	attachmentsResult := attachmentsFromRequest(request.Attachments)
+	attachmentsAccepted, attachmentsMatched := attachmentsResult.(attachmentsRequestAccepted)
+	if !attachmentsMatched {
+		return taskRequestRejected{reason: attachmentsResult.(attachmentsRequestRejected).reason}
+	}
+
 	return taskRequestAccepted{command: task.CreateCommand{
 		Actor:          actor,
 		Owner:          ownerAccepted.value,
@@ -422,6 +428,7 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		Placement:      placementAccepted.value,
 		ResponseSchema: schemaSourceAccepted.Value,
 		Payload:        payloadAccepted.value,
+		Attachments:    attachmentsAccepted.values,
 	}, collectibleIDs: rewardAccepted.collectibleIDs}
 }
 func parseTaskParticipationRequest(request taskParticipationRequest) taskParticipationResult {
@@ -875,6 +882,7 @@ func taskToResponse(value task.Task) taskResponse {
 		ResponseSchemaJSON:     value.ResponseSchema.String(),
 		PayloadKind:            payload.kind,
 		PayloadJSON:            payload.source,
+		Attachments:            attachmentsToResponse(value.Attachments),
 		CreatedBy:              value.CreatedBy.String(),
 		AvailabilityKind:       taskAvailabilityKind(value).String(),
 		ViewerAction:           taskViewerAction(value).String(),

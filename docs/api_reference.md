@@ -26,7 +26,10 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 
 ## Tasks
 
-- `POST /api/tasks`: create a draft task.
+- `POST /api/tasks`: create a draft task. The request may include
+  `attachments`, a list of `{name, content_type, data_url}` entries. Allowed
+  content types are PNG, JPEG, GIF, WebP, plain text, JSON, and PDF. Each decoded
+  file must be under 500 KiB.
 - `GET /api/tasks`: list tasks visible to the requester. Supports pagination and task-state filters.
 - `GET /api/tasks/{task_id}`: read task detail.
 - `POST /api/tasks/{task_id}/open`: open a draft task.
@@ -45,9 +48,10 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/approve`: approve a requested reservation.
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/decline`: decline a requested reservation.
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel`: cancel a reservation as requester.
-- `POST /api/tasks/{task_id}/submissions`: submit a JSON response.
+- `POST /api/tasks/{task_id}/submissions`: submit a JSON response. The request
+  may include the same small `attachments` shape as task creation.
 - `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer.
-- `GET /api/users/{user_id}/submissions`: list the authenticated user's own submissions.
+- `GET /api/users/{user_id}/submissions`: list the authenticated user's own submissions. Supports `limit` and `offset`.
 - `GET /api/submission-receipts/{receipt_token}`: read receipt status by receipt token.
 - `POST /api/tasks/{task_id}/submissions/{submission_id}/accept`: accept a submission and settle reward/tips.
 - `POST /api/tasks/{task_id}/submissions/{submission_id}/request-changes`: request changes and keep the task active.
@@ -117,5 +121,8 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - Selector-backed browser flows use `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams.
 - Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
 - Submission responses include `sensitive_fields` metadata for indexed sensitive response paths. The metadata identifies path, category, retention, redaction policy, lifecycle state, and redaction time.
+- Task detail and submission responses include `attachments` as
+  `{name, content_type, size_bytes, data_url}`. Attachment bytes are stored
+  inline for the small-file path; object storage is not implemented.
 - Privacy requests are persisted. Requesters can list their own requests, and platform admins can list and resolve requests. Resolution stores basic export JSON for data-export requests or marks delete-on-request sensitive-field metadata as redacted. Platform admins can also run retention for active delete-on-request sensitive-field metadata. Core rows are not removed.
 - Rewards are Sharecrop credits and admin-minted Sharecrop collectibles only. External wallets, crypto integrations, and per-project tokens are out of scope.

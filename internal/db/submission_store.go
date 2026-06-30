@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 
+	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/jackc/pgx/v5"
@@ -62,6 +63,11 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 		return submission.CreateSubmissionStoreRejected{Reason: rejected.reason}
 	}
 
+	attachmentsResult := insertSubmissionAttachments(ctx, tx, submissionID, command.Attachments)
+	if rejected, matched := attachmentsResult.(insertAttachmentsRejected); matched {
+		return submission.CreateSubmissionStoreRejected{Reason: rejected.reason}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit create submission transaction failed")}
 	}
@@ -72,6 +78,7 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 		SubmitterID:     command.SubmitterID,
 		State:           state,
 		ResponseSource:  command.ResponseSource,
+		Attachments:     command.Attachments,
 		Validation:      outcome,
 		SensitiveFields: sensitiveFields,
 		ReviewNote:      submission.EmptyReviewNote(),
@@ -120,11 +127,12 @@ func (store SubmissionStore) FindSubmission(ctx context.Context, submissionID co
 	return submission.FindSubmissionStoreAccepted{Value: values.values[0]}
 }
 
-func (store SubmissionStore) ListForSubmitter(ctx context.Context, submitterID core.UserID) submission.ListSubmissionsStoreResult {
+func (store SubmissionStore) ListForSubmitter(ctx context.Context, submitterID core.UserID, page core.Page) submission.ListSubmissionsStoreResult {
 	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
 		where submissions.user_id = $1
 		order by submissions.created_at
-	`, submitterID.String())
+		limit $2 offset $3
+	`, submitterID.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return submission.ListSubmissionsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list submitter submissions failed")}
 	}
@@ -204,6 +212,20 @@ func insertSensitiveFields(ctx context.Context, tx pgx.Tx, submissionID core.Sub
 	return insertRowsAccepted{}
 }
 
+func insertSubmissionAttachments(ctx context.Context, tx pgx.Tx, submissionID core.SubmissionID, attachments []attachment.Attachment) insertAttachmentsResult {
+	for index := range attachments {
+		value := attachments[index]
+		_, err := tx.Exec(ctx, `
+			insert into submission_attachments (submission_id, attachment_index, filename, content_type, content)
+			values ($1, $2, $3, $4, $5)
+		`, submissionID.String(), index, value.Name.String(), value.ContentType.String(), value.Content.Bytes())
+		if err != nil {
+			return insertAttachmentsRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert submission attachment failed")}
+		}
+	}
+	return insertAttachmentsAccepted{}
+}
+
 func submissionSelectSQL() string {
 	return `
 		select submissions.id::text, submissions.task_id::text, submissions.user_id::text, submissions.state, submissions.response_json::text,
@@ -230,6 +252,18 @@ func submissionSelectSQL() string {
 				)
 				from submission_sensitive_fields
 				where submission_sensitive_fields.submission_id = submissions.id
+			), '[]'::jsonb)::text,
+			coalesce((
+				select jsonb_agg(
+					jsonb_build_object(
+						'name', submission_attachments.filename,
+						'content_type', submission_attachments.content_type,
+						'content', encode(submission_attachments.content, 'base64')
+					)
+					order by submission_attachments.attachment_index
+				)
+				from submission_attachments
+				where submission_attachments.submission_id = submissions.id
 			), '[]'::jsonb)::text
 		from submissions
 	`
@@ -293,8 +327,9 @@ func scanSubmissionRow(rows pgx.Rows) submissionRowResult {
 	var rawReviewNote string
 	var rawValidationErrors string
 	var rawSensitiveFields string
-	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawState, &rawResponse, &rawReviewNote, &rawValidationErrors, &rawSensitiveFields); err != nil {
+	var rawAttachments string
+	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawState, &rawResponse, &rawReviewNote, &rawValidationErrors, &rawSensitiveFields, &rawAttachments); err != nil {
 		return submissionRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan submission failed")}
 	}
-	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawState, rawResponse, rawReviewNote, rawValidationErrors, rawSensitiveFields)
+	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawState, rawResponse, rawReviewNote, rawValidationErrors, rawSensitiveFields, rawAttachments)
 }

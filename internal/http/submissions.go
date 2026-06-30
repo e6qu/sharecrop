@@ -146,10 +146,17 @@ func decodeAuthenticatedSubmissionRequest(r *http.Request, actor auth.UserSubjec
 		return submissionRequestRejected{reason: rejected.Reason.Description()}
 	}
 
+	attachmentsResult := attachmentsFromRequest(request.Attachments)
+	attachmentsAccepted, attachmentsMatched := attachmentsResult.(attachmentsRequestAccepted)
+	if !attachmentsMatched {
+		return submissionRequestRejected{reason: attachmentsResult.(attachmentsRequestRejected).reason}
+	}
+
 	return submissionRequestAccepted{command: submission.SubmitCommand{
 		TaskID:         taskID,
 		SubmitterID:    actor.ID,
 		ResponseSource: source.Value,
+		Attachments:    attachmentsAccepted.values,
 	}}
 }
 func submissionToResponse(value submission.Submission) submissionResponse {
@@ -161,6 +168,7 @@ func submissionToResponse(value submission.Submission) submissionResponse {
 		State:            value.State.String(),
 		ResponseJSON:     value.ResponseSource.String(),
 		ReviewNote:       value.ReviewNote.String(),
+		Attachments:      attachmentsToResponse(value.Attachments),
 		ValidationErrors: errors,
 		SensitiveFields:  submissionSensitiveFieldsToResponse(value.SensitiveFields),
 	}

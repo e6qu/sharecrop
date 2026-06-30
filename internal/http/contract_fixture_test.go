@@ -230,8 +230,8 @@ func TestTaskCapabilityTokenResponseWireShape(t *testing.T) {
 }
 
 func TestTaskResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(taskResponse{ID: "task-1", OwnerKind: "user", OwnerID: "user-1", Title: "Label receipts", Description: "Extract totals.", TaskType: "general", ReferenceURL: "https://example.com/pr/1", RewardKind: "credit", RewardCreditAmount: 25, RewardCollectibleCount: 1, ParticipationPolicy: "reservation_required", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", VisibilityID: "", SeriesKind: "standalone", SeriesID: "", SeriesPosition: 0, ResponseSchemaJSON: `{"kind":"freeform"}`, PayloadKind: "json", PayloadJSON: `{"batch":"A"}`, CreatedBy: "user-1", AvailabilityKind: "available", ViewerAction: "reserve", ReviewerAction: "none"})
-	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"https://example.com/pr/1","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":1,"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"standalone","series_id":"","series_position":0,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"json","payload_json":"{\"batch\":\"A\"}","created_by":"user-1","availability_kind":"available","viewer_action":"reserve","reviewer_action":"none"}`)
+	encoded, err := json.Marshal(taskResponse{ID: "task-1", OwnerKind: "user", OwnerID: "user-1", Title: "Label receipts", Description: "Extract totals.", TaskType: "general", ReferenceURL: "https://example.com/pr/1", RewardKind: "credit", RewardCreditAmount: 25, RewardCollectibleCount: 1, ParticipationPolicy: "reservation_required", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", VisibilityID: "", SeriesKind: "standalone", SeriesID: "", SeriesPosition: 0, ResponseSchemaJSON: `{"kind":"freeform"}`, PayloadKind: "json", PayloadJSON: `{"batch":"A"}`, Attachments: []attachmentResponse{{Name: "brief.txt", ContentType: "text/plain", SizeBytes: 5, DataURL: "data:text/plain;base64,aGVsbG8="}}, CreatedBy: "user-1", AvailabilityKind: "available", ViewerAction: "reserve", ReviewerAction: "none"})
+	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"https://example.com/pr/1","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":1,"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"standalone","series_id":"","series_position":0,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"json","payload_json":"{\"batch\":\"A\"}","attachments":[{"name":"brief.txt","content_type":"text/plain","size_bytes":5,"data_url":"data:text/plain;base64,aGVsbG8="}],"created_by":"user-1","availability_kind":"available","viewer_action":"reserve","reviewer_action":"none"}`)
 }
 
 func TestTasksResponseWireShape(t *testing.T) {
@@ -256,8 +256,9 @@ func TestTaskRequestWireShape(t *testing.T) {
 		Placement:          taskPlacementRequest{Kind: "existing_series", SeriesID: "series-1", SeriesPosition: 2},
 		ResponseSchemaJSON: `{"kind":"freeform"}`,
 		Payload:            taskPayloadRequest{Kind: "json", JSON: `{"batch":"A"}`},
+		Attachments:        []attachmentRequest{{Name: "brief.txt", ContentType: "text/plain", DataURL: "data:text/plain;base64,aGVsbG8="}},
 	})
-	assertWireShape(t, encoded, err, `{"owner":{"kind":"organization","user_id":"","team_id":"","organization_id":"org-1"},"title":"Label receipts","description":"Extract the receipt totals.","task_type":"qa_testing","reference_url":"https://example.com/pr/1","reward":{"kind":"bundle","credit_amount":25,"collectible_ids":["collectible-1"]},"participation":{"policy":"approval_required","assignee_scope":"organization_team","reservation_expiry_hours":72},"visibility":{"kind":"organization","user_id":"","team_id":"","organization_id":"org-1"},"placement":{"kind":"existing_series","series_id":"series-1","series_title":"","series_position":2},"response_schema_json":"{\"kind\":\"freeform\"}","payload":{"kind":"json","json":"{\"batch\":\"A\"}"}}`)
+	assertWireShape(t, encoded, err, `{"owner":{"kind":"organization","user_id":"","team_id":"","organization_id":"org-1"},"title":"Label receipts","description":"Extract the receipt totals.","task_type":"qa_testing","reference_url":"https://example.com/pr/1","reward":{"kind":"bundle","credit_amount":25,"collectible_ids":["collectible-1"]},"participation":{"policy":"approval_required","assignee_scope":"organization_team","reservation_expiry_hours":72},"visibility":{"kind":"organization","user_id":"","team_id":"","organization_id":"org-1"},"placement":{"kind":"existing_series","series_id":"series-1","series_title":"","series_position":2},"response_schema_json":"{\"kind\":\"freeform\"}","payload":{"kind":"json","json":"{\"batch\":\"A\"}"},"attachments":[{"name":"brief.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="}]}`)
 }
 
 func TestFundingRequestWireShape(t *testing.T) {
@@ -276,8 +277,8 @@ func TestReservationRequestWireShape(t *testing.T) {
 }
 
 func TestSubmissionRequestWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionRequest{ResponseJSON: `{"answer":42}`})
-	assertWireShape(t, encoded, err, `{"response_json":"{\"answer\":42}"}`)
+	encoded, err := json.Marshal(submissionRequest{ResponseJSON: `{"answer":42}`, Attachments: []attachmentRequest{{Name: "evidence.png", ContentType: "image/png", DataURL: "data:image/png;base64,iVBORw0KGgo="}}})
+	assertWireShape(t, encoded, err, `{"response_json":"{\"answer\":42}","attachments":[{"name":"evidence.png","content_type":"image/png","data_url":"data:image/png;base64,iVBORw0KGgo="}]}`)
 }
 
 func TestAcceptSubmissionRequestWireShape(t *testing.T) {
@@ -296,8 +297,8 @@ func TestRejectSubmissionRequestWireShape(t *testing.T) {
 }
 
 func TestSubmissionCreatedResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionCreatedResponse{Submission: submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}, ReceiptToken: "receipt-1"})
-	assertWireShape(t, encoded, err, `{"submission":{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","validation_errors":[],"sensitive_fields":[]},"receipt_token":"receipt-1"}`)
+	encoded, err := json.Marshal(submissionCreatedResponse{Submission: submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", Attachments: []attachmentResponse{}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}, ReceiptToken: "receipt-1"})
+	assertWireShape(t, encoded, err, `{"submission":{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","attachments":[],"validation_errors":[],"sensitive_fields":[]},"receipt_token":"receipt-1"}`)
 }
 
 func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
@@ -306,13 +307,13 @@ func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
 }
 
 func TestSubmissionResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{{Path: "email", Category: "pii", Retention: "delete_on_request", Redaction: "replace", State: "redacted", RedactedAt: "2026-01-02T03:05:05Z"}}})
-	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","validation_errors":[],"sensitive_fields":[{"path":"email","category":"pii","retention":"delete_on_request","redaction":"replace","state":"redacted","redacted_at":"2026-01-02T03:05:05Z"}]}`)
+	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", Attachments: []attachmentResponse{{Name: "evidence.png", ContentType: "image/png", SizeBytes: 8, DataURL: "data:image/png;base64,iVBORw0KGgo="}}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{{Path: "email", Category: "pii", Retention: "delete_on_request", Redaction: "replace", State: "redacted", RedactedAt: "2026-01-02T03:05:05Z"}}})
+	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","attachments":[{"name":"evidence.png","content_type":"image/png","size_bytes":8,"data_url":"data:image/png;base64,iVBORw0KGgo="}],"validation_errors":[],"sensitive_fields":[{"path":"email","category":"pii","retention":"delete_on_request","redaction":"replace","state":"redacted","redacted_at":"2026-01-02T03:05:05Z"}]}`)
 }
 
 func TestSubmissionsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionsResponse{Submissions: []submissionResponse{{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}}})
-	assertWireShape(t, encoded, err, `{"submissions":[{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","validation_errors":[],"sensitive_fields":[]}]}`)
+	encoded, err := json.Marshal(submissionsResponse{Submissions: []submissionResponse{{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", Attachments: []attachmentResponse{}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}}})
+	assertWireShape(t, encoded, err, `{"submissions":[{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","attachments":[],"validation_errors":[],"sensitive_fields":[]}]}`)
 }
 
 func TestSubmissionCommentsResponseWireShape(t *testing.T) {
@@ -358,10 +359,10 @@ func TestSeriesCommentRequestWireShape(t *testing.T) {
 func TestTaskSeriesDetailResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(taskSeriesDetailResponse{
 		Series:   taskSeriesResponse{ID: "series-1", OwnerKind: "user", Title: "Release checks", Description: "Grouped QA work.", State: "published", CreatedBy: "user-1"},
-		Tasks:    []taskResponse{{ID: "task-1", OwnerKind: "user", OwnerID: "user-1", Title: "Label receipts", Description: "Extract totals.", TaskType: "general", ReferenceURL: "", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", VisibilityID: "", SeriesKind: "existing_series", SeriesID: "series-1", SeriesPosition: 1, ResponseSchemaJSON: `{"kind":"freeform"}`, PayloadKind: "none", PayloadJSON: "", CreatedBy: "user-1", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none"}},
+		Tasks:    []taskResponse{{ID: "task-1", OwnerKind: "user", OwnerID: "user-1", Title: "Label receipts", Description: "Extract totals.", TaskType: "general", ReferenceURL: "", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", VisibilityID: "", SeriesKind: "existing_series", SeriesID: "series-1", SeriesPosition: 1, ResponseSchemaJSON: `{"kind":"freeform"}`, PayloadKind: "none", PayloadJSON: "", Attachments: []attachmentResponse{}, CreatedBy: "user-1", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none"}},
 		Comments: []seriesCommentResponse{{ID: "comment-1", SeriesID: "series-1", AuthorUserID: "user-1", Body: "Ready.", CreatedAt: "2026-06-29T00:00:00Z"}},
 	})
-	assertWireShape(t, encoded, err, `{"series":{"id":"series-1","owner_kind":"user","title":"Release checks","description":"Grouped QA work.","state":"published","created_by":"user-1"},"tasks":[{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"existing_series","series_id":"series-1","series_position":1,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"none","payload_json":"","created_by":"user-1","availability_kind":"available","viewer_action":"submit","reviewer_action":"none"}],"comments":[{"id":"comment-1","series_id":"series-1","author_user_id":"user-1","body":"Ready.","created_at":"2026-06-29T00:00:00Z"}]}`)
+	assertWireShape(t, encoded, err, `{"series":{"id":"series-1","owner_kind":"user","title":"Release checks","description":"Grouped QA work.","state":"published","created_by":"user-1"},"tasks":[{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"existing_series","series_id":"series-1","series_position":1,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"none","payload_json":"","attachments":[],"created_by":"user-1","availability_kind":"available","viewer_action":"submit","reviewer_action":"none"}],"comments":[{"id":"comment-1","series_id":"series-1","author_user_id":"user-1","body":"Ready.","created_at":"2026-06-29T00:00:00Z"}]}`)
 }
 
 func TestMintCollectibleRequestWireShape(t *testing.T) {

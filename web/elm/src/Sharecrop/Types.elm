@@ -2,6 +2,7 @@ module Sharecrop.Types exposing (..)
 
 import Browser
 import Browser.Navigation as Nav
+import File
 import Http
 import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
@@ -91,6 +92,14 @@ type alias QueueView =
     }
 
 
+type alias SelectedAttachment =
+    { name : String
+    , contentType : String
+    , sizeBytes : Int
+    , dataURL : String
+    }
+
+
 type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
@@ -113,6 +122,7 @@ type alias LoggedInModel =
     , createAssigneeScope : Task.TaskAssigneeScope
     , createParticipationPolicy : String
     , createReservationHours : String
+    , createAttachments : List SelectedAttachment
     , createMessage : Maybe String
     , fundTaskId : String
     , fundAmount : String
@@ -142,6 +152,7 @@ type alias LoggedInModel =
     , reservationMessage : Maybe String
     , submissions : List Submission.SubmissionResponse
     , submitInput : String
+    , submitAttachments : List SelectedAttachment
     , submitMessage : Maybe String
     , moderationReason : Moderation.ModerationReason
     , moderationDetails : String
@@ -192,6 +203,7 @@ type alias LoggedInModel =
     , userProfileError : Maybe String
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
+    , userSubmissionsOffset : Int
     , pendingRevisionTaskID : Maybe String
     , pendingRevisionResponse : String
     , seriesDetail : Maybe SeriesDetailData
@@ -291,6 +303,7 @@ type alias TaskDetail =
     , responseSchemaJson : String
     , payloadKind : String
     , payloadJson : String
+    , attachments : List Task.TaskAttachmentResponse
     , createdBy : String
     , seriesID : String
     , taskType : String
@@ -362,6 +375,11 @@ type Msg
     | CreateAssigneeScopeChosen Task.TaskAssigneeScope
     | CreateParticipationChanged String
     | CreateReservationHoursChanged String
+    | PickCreateAttachmentClicked
+    | CreateAttachmentFileChosen File.File
+    | CreateAttachmentSelected String String Int String
+    | CreateAttachmentRejected String
+    | RemoveCreateAttachmentClicked Int
     | CreateTaskClicked
     | CreateTaskReceived (Result Http.Error TaskDetail)
     | CredentialsReceived (Result Http.Error Agent.AgentCredentialsResponse)
@@ -410,6 +428,11 @@ type Msg
     | ReservationChangeReceived (Result Http.Error Task.TaskReservationResponse)
     | SubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
     | SubmitInputChanged String
+    | PickSubmitAttachmentClicked
+    | SubmitAttachmentFileChosen File.File
+    | SubmitAttachmentSelected String String Int String
+    | SubmitAttachmentRejected String
+    | RemoveSubmitAttachmentClicked Int
     | SubmitClicked
     | SubmitReceived (Result Http.Error Submission.SubmissionCreatedResponse)
     | ModerationReasonChanged Moderation.ModerationReason
@@ -472,6 +495,8 @@ type Msg
     | UserProfileReceived (Result Http.Error Task.UserProfileResponse)
     | UserWorkReceived (Result Http.Error Task.TasksResponse)
     | UserSubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
+    | PreviousUserSubmissionsPageClicked
+    | NextUserSubmissionsPageClicked
     | StartRevisionClicked String String
     | SeriesListReceived (Result Http.Error TaskSeries.TaskSeriesListResponse)
     | CreateSeriesTitleChanged String
