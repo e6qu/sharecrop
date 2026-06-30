@@ -104,6 +104,30 @@ submissionSensitiveFieldResponseEncoder submissionSensitiveFieldResponse =
         , ( "redacted_at", Encode.string submissionSensitiveFieldResponse.redactedAt )
         ]
 
+type alias SubmissionAttachmentResponse =
+    { name : String
+    , contentType : String
+    , sizeBytes : Int
+    , dataURL : String
+    }
+
+submissionAttachmentResponseDecoder : Decoder SubmissionAttachmentResponse
+submissionAttachmentResponseDecoder =
+    Decode.map4 SubmissionAttachmentResponse
+        (Decode.field "name" Decode.string)
+        (Decode.field "content_type" Decode.string)
+        (Decode.field "size_bytes" Decode.int)
+        (Decode.field "data_url" Decode.string)
+
+submissionAttachmentResponseEncoder : SubmissionAttachmentResponse -> Encode.Value
+submissionAttachmentResponseEncoder submissionAttachmentResponse =
+    Encode.object
+        [ ( "name", Encode.string submissionAttachmentResponse.name )
+        , ( "content_type", Encode.string submissionAttachmentResponse.contentType )
+        , ( "size_bytes", Encode.int submissionAttachmentResponse.sizeBytes )
+        , ( "data_url", Encode.string submissionAttachmentResponse.dataURL )
+        ]
+
 type alias SubmissionResponse =
     { id : String
     , taskID : String
@@ -111,6 +135,7 @@ type alias SubmissionResponse =
     , state : SubmissionState
     , responseJSON : String
     , reviewNote : String
+    , attachments : List SubmissionAttachmentResponse
     , validationErrors : List SubmissionValidationErrorResponse
     , sensitiveFields : List SubmissionSensitiveFieldResponse
     }
@@ -124,8 +149,13 @@ submissionResponseDecoder =
         (Decode.field "state" submissionStateDecoder)
         (Decode.field "response_json" Decode.string)
         (Decode.field "review_note" Decode.string)
+        (Decode.field "attachments" (Decode.list submissionAttachmentResponseDecoder))
         (Decode.field "validation_errors" (Decode.list submissionValidationErrorResponseDecoder))
-        (Decode.field "sensitive_fields" (Decode.list submissionSensitiveFieldResponseDecoder))
+        |> Decode.andThen
+            (\finish ->
+                Decode.map finish
+                    (Decode.field "sensitive_fields" (Decode.list submissionSensitiveFieldResponseDecoder))
+            )
 
 submissionResponseEncoder : SubmissionResponse -> Encode.Value
 submissionResponseEncoder submissionResponse =
@@ -136,6 +166,7 @@ submissionResponseEncoder submissionResponse =
         , ( "state", submissionStateEncoder submissionResponse.state )
         , ( "response_json", Encode.string submissionResponse.responseJSON )
         , ( "review_note", Encode.string submissionResponse.reviewNote )
+        , ( "attachments", Encode.list submissionAttachmentResponseEncoder submissionResponse.attachments )
         , ( "validation_errors", Encode.list submissionValidationErrorResponseEncoder submissionResponse.validationErrors )
         , ( "sensitive_fields", Encode.list submissionSensitiveFieldResponseEncoder submissionResponse.sensitiveFields )
         ]

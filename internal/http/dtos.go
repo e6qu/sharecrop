@@ -207,6 +207,12 @@ type taskPayloadRequest struct {
 	JSON string `json:"json"`
 }
 
+type attachmentRequest struct {
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	DataURL     string `json:"data_url"`
+}
+
 type taskRequest struct {
 	Owner              taskOwnerRequest         `json:"owner"`
 	Title              string                   `json:"title"`
@@ -219,6 +225,7 @@ type taskRequest struct {
 	Placement          taskPlacementRequest     `json:"placement"`
 	ResponseSchemaJSON string                   `json:"response_schema_json"`
 	Payload            taskPayloadRequest       `json:"payload"`
+	Attachments        []attachmentRequest      `json:"attachments"`
 }
 
 type taskRewardRequest struct {
@@ -234,7 +241,8 @@ type taskParticipationRequest struct {
 }
 
 type submissionRequest struct {
-	ResponseJSON string `json:"response_json"`
+	ResponseJSON string              `json:"response_json"`
+	Attachments  []attachmentRequest `json:"attachments"`
 }
 
 type reservationRequest struct {
@@ -289,32 +297,40 @@ type usersResponse struct {
 }
 
 type taskResponse struct {
-	ID                     string `json:"id"`
-	OwnerKind              string `json:"owner_kind"`
-	OwnerID                string `json:"owner_id"`
-	Title                  string `json:"title"`
-	Description            string `json:"description"`
-	TaskType               string `json:"task_type"`
-	ReferenceURL           string `json:"reference_url"`
-	RewardKind             string `json:"reward_kind"`
-	RewardCreditAmount     int64  `json:"reward_credit_amount"`
-	RewardCollectibleCount int    `json:"reward_collectible_count"`
-	ParticipationPolicy    string `json:"participation_policy"`
-	AssigneeScope          string `json:"assignee_scope"`
-	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
-	State                  string `json:"state"`
-	VisibilityKind         string `json:"visibility_kind"`
-	VisibilityID           string `json:"visibility_id"`
-	SeriesKind             string `json:"series_kind"`
-	SeriesID               string `json:"series_id"`
-	SeriesPosition         int    `json:"series_position"`
-	ResponseSchemaJSON     string `json:"response_schema_json"`
-	PayloadKind            string `json:"payload_kind"`
-	PayloadJSON            string `json:"payload_json"`
-	CreatedBy              string `json:"created_by"`
-	AvailabilityKind       string `json:"availability_kind"`
-	ViewerAction           string `json:"viewer_action"`
-	ReviewerAction         string `json:"reviewer_action"`
+	ID                     string               `json:"id"`
+	OwnerKind              string               `json:"owner_kind"`
+	OwnerID                string               `json:"owner_id"`
+	Title                  string               `json:"title"`
+	Description            string               `json:"description"`
+	TaskType               string               `json:"task_type"`
+	ReferenceURL           string               `json:"reference_url"`
+	RewardKind             string               `json:"reward_kind"`
+	RewardCreditAmount     int64                `json:"reward_credit_amount"`
+	RewardCollectibleCount int                  `json:"reward_collectible_count"`
+	ParticipationPolicy    string               `json:"participation_policy"`
+	AssigneeScope          string               `json:"assignee_scope"`
+	ReservationExpiryHours int                  `json:"reservation_expiry_hours"`
+	State                  string               `json:"state"`
+	VisibilityKind         string               `json:"visibility_kind"`
+	VisibilityID           string               `json:"visibility_id"`
+	SeriesKind             string               `json:"series_kind"`
+	SeriesID               string               `json:"series_id"`
+	SeriesPosition         int                  `json:"series_position"`
+	ResponseSchemaJSON     string               `json:"response_schema_json"`
+	PayloadKind            string               `json:"payload_kind"`
+	PayloadJSON            string               `json:"payload_json"`
+	Attachments            []attachmentResponse `json:"attachments"`
+	CreatedBy              string               `json:"created_by"`
+	AvailabilityKind       string               `json:"availability_kind"`
+	ViewerAction           string               `json:"viewer_action"`
+	ReviewerAction         string               `json:"reviewer_action"`
+}
+
+type attachmentResponse struct {
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	SizeBytes   int    `json:"size_bytes"`
+	DataURL     string `json:"data_url"`
 }
 
 type taskListItemResponse struct {
@@ -382,6 +398,7 @@ type submissionResponse struct {
 	State            string                              `json:"state"`
 	ResponseJSON     string                              `json:"response_json"`
 	ReviewNote       string                              `json:"review_note"`
+	Attachments      []attachmentResponse                `json:"attachments"`
 	ValidationErrors []submissionValidationErrorResponse `json:"validation_errors"`
 	SensitiveFields  []submissionSensitiveFieldResponse  `json:"sensitive_fields"`
 }

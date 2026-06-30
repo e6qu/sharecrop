@@ -20,6 +20,7 @@ task, and admin list selection:
 - collectible transfer recipient selection
 - platform-admin grant selection
 - admin audit, platform-admin, privacy-request, and moderation-report lists
+- user submission history pagination
 
 The current source scan still shows task-ID text in queue search placeholders,
 where IDs are an optional search term rather than the only way to complete the

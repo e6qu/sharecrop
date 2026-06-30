@@ -110,7 +110,14 @@ func (server Server) getUserSubmissions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	result := server.submissionService.ListForSubmitter(r.Context(), actor.subject, userIDCreated.Value)
+	pageResult := parsePageStrict(r)
+	page, pageMatched := pageResult.(pageParseAccepted)
+	if !pageMatched {
+		writeError(w, http.StatusBadRequest, pageResult.(pageParseRejected).reason)
+		return
+	}
+
+	result := server.submissionService.ListForSubmitter(r.Context(), actor.subject, userIDCreated.Value, page.value)
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		writeDomainError(w, result.(submission.ListRejected).Reason)

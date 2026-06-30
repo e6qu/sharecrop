@@ -113,7 +113,7 @@ type SubmissionService interface {
 	Get(context.Context, auth.UserSubject, core.SubmissionID) submission.GetResult
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
-	ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult
+	ListForSubmitter(context.Context, auth.UserSubject, core.UserID, core.Page) submission.ListResult
 	AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult
 	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult
 }

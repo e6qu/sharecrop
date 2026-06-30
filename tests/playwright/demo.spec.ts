@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { Buffer } from "node:buffer";
 
 // The demo serves the REAL compiled Elm client (site/demo) against an in-browser
 // fake backend (backend.js). It is hosted by the static webServer in
@@ -55,6 +56,66 @@ test("demo boots the real Elm client against the fake backend with seeded tasks"
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toContainText(
     "submitted",
+  );
+});
+
+test("demo uploads small task and submission attachments", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1250 credits")).toBeVisible();
+
+  await page.getByTestId("nav-create-task").click();
+  const taskTitle = `Attachment demo ${Date.now()}`;
+  await page.getByTestId("create-title").fill(taskTitle);
+  await page.getByTestId("create-description").fill("Task with a small brief.");
+  const createChooser = page.waitForEvent("filechooser");
+  await page.getByTestId("create-attachments-pick").click();
+  await (await createChooser).setFiles({
+    name: "brief.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("brief"),
+  });
+  await expect(page.getByTestId("selected-attachment")).toContainText(
+    "brief.txt",
+  );
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+  await page.getByTestId("nav-tasks").click();
+  await page
+    .getByTestId("task-row")
+    .filter({ hasText: taskTitle })
+    .getByTestId("view-task")
+    .click();
+  await expect(page.getByTestId("detail-attachments")).toContainText(
+    "brief.txt",
+  );
+
+  await page.getByRole("link", { name: "Discovery" }).click();
+  await page
+    .getByTestId("discovery-task-row")
+    .filter({ hasText: "Classify 8 support tickets by category" })
+    .getByTestId("discovery-view")
+    .click();
+  await page.getByTestId("detail-submit-input").fill(
+    '{"labels":["billing","bug","other","billing","account","feature_request","billing","other"]}',
+  );
+  const submitChooser = page.waitForEvent("filechooser");
+  await page.getByTestId("submit-attachments-pick").click();
+  await (await submitChooser).setFiles({
+    name: "evidence.png",
+    mimeType: "image/png",
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  });
+  await expect(page.getByTestId("selected-attachment")).toContainText(
+    "evidence.png",
+  );
+  await page.getByTestId("detail-submit").click();
+  await expect(page.getByTestId("detail-submit-message")).toContainText(
+    "submitted",
+  );
+  await expect(page.getByTestId("my-submissions")).toContainText(
+    "evidence.png",
   );
 });
 

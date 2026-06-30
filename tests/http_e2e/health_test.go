@@ -278,7 +278,7 @@ func (healthSubmissionService) ListForTask(context.Context, auth.UserSubject, co
 	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthSubmissionService) ListForSubmitter(context.Context, auth.UserSubject, core.UserID) submission.ListResult {
+func (healthSubmissionService) ListForSubmitter(context.Context, auth.UserSubject, core.UserID, core.Page) submission.ListResult {
 	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

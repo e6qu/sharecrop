@@ -245,8 +245,65 @@
     return items.slice(offset, offset + limit);
   }
 
+  const attachmentMaxBytes = 500 * 1024;
+  const attachmentTypes = new Set([
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "text/plain",
+    "application/json",
+    "application/pdf",
+  ]);
+
+  function validateAttachments(raw) {
+    if (raw === undefined || raw === null) return { ok: true, value: [] };
+    if (!Array.isArray(raw)) {
+      return { ok: false, reason: "attachments must be an array" };
+    }
+    const values = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") {
+        return { ok: false, reason: "attachment is invalid" };
+      }
+      const name = String(item.name || "").trim();
+      const contentType = String(item.content_type || "").trim().toLowerCase();
+      const dataURL = String(item.data_url || "").trim();
+      if (
+        name === "" || name.length > 160 || name.includes("/") ||
+        name.includes("\\") || name.includes("\0")
+      ) {
+        return { ok: false, reason: "attachment filename is invalid" };
+      }
+      if (!attachmentTypes.has(contentType)) {
+        return { ok: false, reason: "attachment content type is not allowed" };
+      }
+      const prefix = `data:${contentType};base64,`;
+      if (!dataURL.startsWith(prefix)) {
+        return { ok: false, reason: "attachment data URL is invalid" };
+      }
+      const encoded = dataURL.slice(prefix.length);
+      let decoded = "";
+      try {
+        decoded = atob(encoded);
+      } catch (_) {
+        return { ok: false, reason: "attachment content is invalid" };
+      }
+      if (decoded.length === 0 || decoded.length > attachmentMaxBytes) {
+        return { ok: false, reason: "attachment content is too large" };
+      }
+      values.push({
+        name,
+        content_type: contentType,
+        size_bytes: decoded.length,
+        data_url: dataURL,
+      });
+    }
+    return { ok: true, value: values };
+  }
+
   function submissionResponse(submission) {
-    return Object.assign({ sensitive_fields: [] }, submission);
+    return Object.assign({ attachments: [], sensitive_fields: [] }, submission);
   }
 
   function nowISO() {
@@ -313,6 +370,7 @@
       response_schema_json: '{"kind":"freeform"}',
       reservations: [],
       submissions: [],
+      attachments: [],
       escrow: 0,
     }, overrides);
   }
@@ -793,6 +851,7 @@
       response_schema_json: t.response_schema_json,
       payload_kind: t.payload_kind,
       payload_json: t.payload_json,
+      attachments: t.attachments || [],
       created_by: t.created_by,
       availability_kind: t.availability_kind,
       viewer_action: viewerAction(t),
@@ -1386,8 +1445,13 @@
       ? (owner.organization_id || "")
       : (owner.user_id || actorId);
     const visibility = (body && body.visibility) || {};
-    const visibilityKind = visibility.kind || "public";
-    const visibilityId = visibilityKind === "organization"
+    const requestedVisibilityKind = visibility.kind || "public";
+    const visibilityKind = requestedVisibilityKind === "default"
+      ? ownerKind
+      : requestedVisibilityKind;
+    const visibilityId = requestedVisibilityKind === "default"
+      ? ownerId
+      : visibilityKind === "organization"
       ? (visibility.organization_id || "")
       : visibilityKind === "organization_team"
       ? (visibility.team_id || "")
@@ -1396,12 +1460,20 @@
       : visibilityKind === "user"
       ? (visibility.user_id || "")
       : "";
-    const visibilityOrganizationId = visibilityKind === "organization"
+    const visibilityOrganizationId = requestedVisibilityKind === "default" &&
+        ownerKind === "organization"
+      ? ownerId
+      : requestedVisibilityKind === "default" &&
+          ownerKind === "organization_team"
+      ? owner.organization_id || ""
+      : visibilityKind === "organization"
       ? (visibility.organization_id || "")
       : visibilityKind === "organization_team"
       ? (visibility.organization_id || "")
       : "";
     const participation = (body && body.participation) || {};
+    const attachments = validateAttachments(body && body.attachments);
+    if (!attachments.ok) return err(400, attachments.reason);
     const t = task({
       title: body.title || "Untitled task",
       description: body.description || "",
@@ -1427,6 +1499,7 @@
         : "",
       state: "draft",
       availability_kind: "available",
+      attachments: attachments.value,
       created_by: actorId,
     });
     ((body.reward && body.reward.collectible_ids) || []).forEach((id) => {
@@ -1749,6 +1822,8 @@
     // submission is recorded with state "invalid" + validation_errors (the
     // designer's strict schemas are the whole point, so the demo enforces them).
     const raw = (body && body.response_json) || "";
+    const attachments = validateAttachments(body && body.attachments);
+    if (!attachments.ok) return err(400, attachments.reason);
     let parsed = null, parseFailed = false;
     try {
       parsed = JSON.parse(raw || "null");
@@ -1772,6 +1847,7 @@
       state,
       response_json: raw || "{}",
       review_note: "",
+      attachments: attachments.value,
       validation_errors: errors,
       sensitive_fields: collectSensitiveFields(schema, ""),
     };
@@ -2744,10 +2820,13 @@
   on(
     "GET",
     "/api/users/:id/submissions",
-    (p) =>
+    (p, url) =>
       ok({
-        submissions: db.tasks.flatMap((t) => t.submissions).filter((s) =>
-          s.submitter_id === p.id
+        submissions: listPage(
+          url,
+          db.tasks.flatMap((t) => t.submissions).filter((s) =>
+            s.submitter_id === p.id
+          ),
         ).map(submissionResponse),
       }),
   );
@@ -2763,6 +2842,7 @@
           state: "submitted",
           response_json: "{}",
           review_note: "",
+          attachments: [],
           validation_errors: [],
           sensitive_fields: [],
         },

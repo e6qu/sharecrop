@@ -29,12 +29,13 @@ Unsupported methods and routes return explicit rejection results. The package
 does not execute domain services or replace `site/demo/backend.js`.
 
 The package now also contains explicit browser-storage boundaries for privacy
-requests, moderation triage records, and saved queue views. The storage boundary
-is caller-provided; no in-memory store is selected by default. Missing records,
-invalid keys, invalid states, invalid scopes, invalid privacy request kinds, and
-storage read/write failures return explicit rejected results. This is enough to
-prove the next WASM path can persist three classified slices without adding
-hidden fallback behavior.
+requests, moderation triage records, saved queue views, and small task/submission
+attachment records. The storage boundary is caller-provided; no in-memory store
+is selected by default. Missing records, invalid keys, invalid states, invalid
+scopes, invalid privacy request kinds, invalid attachment parent kinds, invalid
+attachment sizes, and storage read/write failures return explicit rejected
+results. This is enough to prove the next WASM path can persist four classified
+slices without adding hidden fallback behavior.
 
 The current request-handler steps use those storage boundaries for:
 

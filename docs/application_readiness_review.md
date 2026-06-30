@@ -297,7 +297,8 @@ Missing or partial:
 
 - Retention automation remains operator-triggered rather than a background
   scheduler.
-- No attachment/object-storage model.
+- Small task and submission attachments exist for files/images under 500 KiB.
+  Object storage for larger attachments is not implemented.
 
 ### Lists, Search, And Navigation
 
@@ -311,10 +312,9 @@ Implemented:
 
 Missing or partial:
 
-- Browser task and discovery pages expose pagination controls. Some other list
-  pages still rely on their first page or selector-local paging. Admin audit,
-  platform-admin, privacy, and moderation lists expose explicit pagination
-  controls.
+- Browser task, discovery, user-submission, admin audit, platform-admin,
+  privacy, and moderation pages expose pagination controls. Some other list
+  pages still rely on selector-local paging.
 - Full-text search is not implemented.
 - Raw UUIDs remain visible in links, protocol surfaces, metadata, audit rows,
   and API/MCP examples. No confirmed high-traffic user-entered raw-ID flow is

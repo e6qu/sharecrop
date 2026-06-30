@@ -961,6 +961,7 @@ userSubmissionsView userId state =
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
                 (List.map userSubmissionRow submissions)
+        , paginationControls "user-submissions-page" PreviousUserSubmissionsPageClicked NextUserSubmissionsPageClicked state.userSubmissionsOffset
         , revisionTimelineView submissions
         ]
 
@@ -1514,6 +1515,7 @@ createTaskView state =
                 [ text ("The " ++ taskTypeLabel state.createTaskType ++ " template prefilled the description and response schema below — edit them if you need to.") ]
         , Ui.fieldLabel "Response schema (JSON, advanced)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
         , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
+        , selectedAttachmentsView "Attachments" state.createAttachments PickCreateAttachmentClicked RemoveCreateAttachmentClicked "create-attachments"
         , Ui.label_ "Reward"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (rewardKindButton state.createRewardKind) allRewardKinds)
         , rewardAmountField state
@@ -2589,6 +2591,73 @@ taskInputBlock detail =
         []
 
 
+taskAttachmentsBlock : TaskDetail -> List (Html Msg)
+taskAttachmentsBlock detail =
+    if List.isEmpty detail.attachments then
+        []
+
+    else
+        [ Ui.label_ "Attachments"
+        , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "detail-attachments" ]
+            (List.map taskAttachmentLink detail.attachments)
+        ]
+
+
+taskAttachmentLink : Task.TaskAttachmentResponse -> Html Msg
+taskAttachmentLink attachment =
+    attachmentLink attachment.name attachment.contentType attachment.sizeBytes attachment.dataURL
+
+
+submissionAttachmentsView : List Submission.SubmissionAttachmentResponse -> Html Msg
+submissionAttachmentsView attachments =
+    if List.isEmpty attachments then
+        text ""
+
+    else
+        div [ Html.Attributes.class "flex flex-wrap gap-2", testId "submission-attachments" ]
+            (List.map submissionAttachmentLink attachments)
+
+
+submissionAttachmentLink : Submission.SubmissionAttachmentResponse -> Html Msg
+submissionAttachmentLink attachment =
+    attachmentLink attachment.name attachment.contentType attachment.sizeBytes attachment.dataURL
+
+
+attachmentLink : String -> String -> Int -> String -> Html Msg
+attachmentLink name contentType sizeBytes dataURL =
+    a
+        [ href dataURL
+        , Html.Attributes.download name
+        , Html.Attributes.class "rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 underline"
+        , testId "attachment-link"
+        ]
+        [ text (name ++ " · " ++ contentType ++ " · " ++ String.fromInt sizeBytes ++ " bytes") ]
+
+
+selectedAttachmentsView : String -> List SelectedAttachment -> Msg -> (Int -> Msg) -> String -> Html Msg
+selectedAttachmentsView labelText attachments pickMsg removeMsg id =
+    div [ Html.Attributes.class "space-y-2", testId id ]
+        [ div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+            [ Ui.label_ labelText
+            , Ui.secondaryButton [ type_ "button", onClick pickMsg, testId (id ++ "-pick") ] "Add file"
+            ]
+        , if List.isEmpty attachments then
+            p [ Html.Attributes.class "text-xs text-slate-500" ] [ text "No files attached." ]
+
+          else
+            div [ Html.Attributes.class "space-y-1" ]
+                (List.indexedMap (selectedAttachmentRow removeMsg) attachments)
+        ]
+
+
+selectedAttachmentRow : (Int -> Msg) -> Int -> SelectedAttachment -> Html Msg
+selectedAttachmentRow removeMsg index attachment =
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2 text-sm", testId "selected-attachment" ]
+        [ span [ Html.Attributes.class "break-all text-slate-700" ] [ text (attachment.name ++ " · " ++ attachment.contentType ++ " · " ++ String.fromInt attachment.sizeBytes ++ " bytes") ]
+        , Ui.secondaryButton [ type_ "button", onClick (removeMsg index), testId "remove-attachment" ] "Remove"
+        ]
+
+
 ownerControlsCard : LoggedInModel -> Html Msg
 ownerControlsCard state =
     case state.detail of
@@ -2664,6 +2733,7 @@ detailCard origin state =
                     ++ referenceBlock detail
                     ++ seriesLinkBlock detail
                     ++ taskInputBlock detail
+                    ++ taskAttachmentsBlock detail
                     ++ [ Ui.label_ "Response schema"
                        , Ui.codeBlock [ testId "detail-schema" ] detail.responseSchemaJson
                        , taskIntegration origin detail.id state
@@ -2800,6 +2870,7 @@ submitCardForm state =
             , Html.Attributes.rows 6
             , testId "detail-submit-input"
             ]
+        , selectedAttachmentsView "Attachments" state.submitAttachments PickSubmitAttachmentClicked RemoveSubmitAttachmentClicked "submit-attachments"
         , Ui.primaryButton [ type_ "submit", testId "detail-submit" ] "Submit response"
         , maybeNote state.submitMessage "detail-submit-message"
         ]
@@ -2836,6 +2907,7 @@ mySubmissionRow state submission =
             ]
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "my-submission-response" ] submission.responseJSON
+        , submissionAttachmentsView submission.attachments
         , validationErrorsView submission.validationErrors
         , sensitiveFieldsView submission.sensitiveFields
         , submissionCommentsThread state submission
@@ -2921,6 +2993,7 @@ submissionRow state submission =
         , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text ("Submitter: " ++ submission.submitterID) ]
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "submission-response" ] submission.responseJSON
+        , submissionAttachmentsView submission.attachments
         , validationErrorsView submission.validationErrors
         , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "submission-comments-toggle" ] (discussionButtonLabel state submission.id)
         , submissionCommentsThread state submission

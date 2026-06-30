@@ -4562,7 +4562,185 @@ function _Url_percentDecode(string)
 	{
 		return $elm$core$Maybe$Nothing;
 	}
-}var $elm$core$Basics$EQ = {$: 'EQ'};
+}
+
+
+// DECODER
+
+var _File_decoder = _Json_decodePrim(function(value) {
+	// NOTE: checks if `File` exists in case this is run on node
+	return (typeof File !== 'undefined' && value instanceof File)
+		? $elm$core$Result$Ok(value)
+		: _Json_expecting('a FILE', value);
+});
+
+
+// METADATA
+
+function _File_name(file) { return file.name; }
+function _File_mime(file) { return file.type; }
+function _File_size(file) { return file.size; }
+
+function _File_lastModified(file)
+{
+	return $elm$time$Time$millisToPosix(file.lastModified);
+}
+
+
+// DOWNLOAD
+
+var _File_downloadNode;
+
+function _File_getDownloadNode()
+{
+	return _File_downloadNode || (_File_downloadNode = document.createElement('a'));
+}
+
+var _File_download = F3(function(name, mime, content)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		var blob = new Blob([content], {type: mime});
+
+		// for IE10+
+		if (navigator.msSaveOrOpenBlob)
+		{
+			navigator.msSaveOrOpenBlob(blob, name);
+			return;
+		}
+
+		// for HTML5
+		var node = _File_getDownloadNode();
+		var objectUrl = URL.createObjectURL(blob);
+		node.href = objectUrl;
+		node.download = name;
+		_File_click(node);
+		URL.revokeObjectURL(objectUrl);
+	});
+});
+
+function _File_downloadUrl(href)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		var node = _File_getDownloadNode();
+		node.href = href;
+		node.download = '';
+		node.origin === location.origin || (node.target = '_blank');
+		_File_click(node);
+	});
+}
+
+
+// IE COMPATIBILITY
+
+function _File_makeBytesSafeForInternetExplorer(bytes)
+{
+	// only needed by IE10 and IE11 to fix https://github.com/elm/file/issues/10
+	// all other browsers can just run `new Blob([bytes])` directly with no problem
+	//
+	return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
+function _File_click(node)
+{
+	// only needed by IE10 and IE11 to fix https://github.com/elm/file/issues/11
+	// all other browsers have MouseEvent and do not need this conditional stuff
+	//
+	if (typeof MouseEvent === 'function')
+	{
+		node.dispatchEvent(new MouseEvent('click'));
+	}
+	else
+	{
+		var event = document.createEvent('MouseEvents');
+		event.initMouseEvent('click', true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+		document.body.appendChild(node);
+		node.dispatchEvent(event);
+		document.body.removeChild(node);
+	}
+}
+
+
+// UPLOAD
+
+var _File_node;
+
+function _File_uploadOne(mimes)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		_File_node = document.createElement('input');
+		_File_node.type = 'file';
+		_File_node.accept = A2($elm$core$String$join, ',', mimes);
+		_File_node.addEventListener('change', function(event)
+		{
+			callback(_Scheduler_succeed(event.target.files[0]));
+		});
+		_File_click(_File_node);
+	});
+}
+
+function _File_uploadOneOrMore(mimes)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		_File_node = document.createElement('input');
+		_File_node.type = 'file';
+		_File_node.multiple = true;
+		_File_node.accept = A2($elm$core$String$join, ',', mimes);
+		_File_node.addEventListener('change', function(event)
+		{
+			var elmFiles = _List_fromArray(event.target.files);
+			callback(_Scheduler_succeed(_Utils_Tuple2(elmFiles.a, elmFiles.b)));
+		});
+		_File_click(_File_node);
+	});
+}
+
+
+// CONTENT
+
+function _File_toString(blob)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		var reader = new FileReader();
+		reader.addEventListener('loadend', function() {
+			callback(_Scheduler_succeed(reader.result));
+		});
+		reader.readAsText(blob);
+		return function() { reader.abort(); };
+	});
+}
+
+function _File_toBytes(blob)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		var reader = new FileReader();
+		reader.addEventListener('loadend', function() {
+			callback(_Scheduler_succeed(new DataView(reader.result)));
+		});
+		reader.readAsArrayBuffer(blob);
+		return function() { reader.abort(); };
+	});
+}
+
+function _File_toUrl(blob)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		var reader = new FileReader();
+		reader.addEventListener('loadend', function() {
+			callback(_Scheduler_succeed(reader.result));
+		});
+		reader.readAsDataURL(blob);
+		return function() { reader.abort(); };
+	});
+}
+
+var $elm$core$Basics$EQ = {$: 'EQ'};
 var $elm$core$Basics$LT = {$: 'LT'};
 var $elm$core$List$cons = _List_cons;
 var $elm$core$Elm$JsArray$foldr = _JsArray_foldr;
@@ -6345,11 +6523,17 @@ var $author$project$Sharecrop$Api$postRefresh = $elm$http$Http$post(
 		expect: A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$RefreshReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
 		url: '/api/auth/refresh'
 	});
+var $author$project$Sharecrop$Types$CreateAttachmentFileChosen = function (a) {
+	return {$: 'CreateAttachmentFileChosen', a: a};
+};
 var $author$project$Sharecrop$Types$LoggedIn = function (a) {
 	return {$: 'LoggedIn', a: a};
 };
 var $author$project$Sharecrop$Types$OrgMembersReceived = function (a) {
 	return {$: 'OrgMembersReceived', a: a};
+};
+var $author$project$Sharecrop$Types$SubmitAttachmentFileChosen = function (a) {
+	return {$: 'SubmitAttachmentFileChosen', a: a};
 };
 var $author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen = {$: 'TaskParticipationPolicyOpen'};
 var $elm$core$Platform$Cmd$batch = _Platform_batch;
@@ -7327,6 +7511,21 @@ var $author$project$Sharecrop$Labels$participationUsesReservation = function (ta
 var $author$project$Sharecrop$Types$CreateTaskReceived = function (a) {
 	return {$: 'CreateTaskReceived', a: a};
 };
+var $author$project$Sharecrop$Api$attachmentRequestBody = function (attachment) {
+	return $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'name',
+				$elm$json$Json$Encode$string(attachment.name)),
+				_Utils_Tuple2(
+				'content_type',
+				$elm$json$Json$Encode$string(attachment.contentType)),
+				_Utils_Tuple2(
+				'data_url',
+				$elm$json$Json$Encode$string(attachment.dataURL))
+			]));
+};
 var $author$project$Sharecrop$Api$createOwnerBody = function (state) {
 	return (state.createTaskOwner === '') ? $elm$json$Json$Encode$object(
 		_List_fromArray(
@@ -7578,11 +7777,14 @@ var $author$project$Sharecrop$Api$createTaskRequestBody = function (state) {
 				$elm$json$Json$Encode$string(state.createTaskType)),
 				_Utils_Tuple2(
 				'reference_url',
-				$elm$json$Json$Encode$string(state.createReferenceURL))
+				$elm$json$Json$Encode$string(state.createReferenceURL)),
+				_Utils_Tuple2(
+				'attachments',
+				A2($elm$json$Json$Encode$list, $author$project$Sharecrop$Api$attachmentRequestBody, state.createAttachments))
 			]));
 };
 var $author$project$Sharecrop$Api$taskDetailFromResponse = function (response) {
-	return {assigneeScope: response.assigneeScope, availabilityKind: response.availabilityKind, createdBy: response.createdBy, description: response.description, id: response.id, participationPolicy: response.participationPolicy, payloadJson: response.payloadJSON, payloadKind: response.payloadKind, referenceURL: response.referenceURL, reservationExpiryHours: response.reservationExpiryHours, responseSchemaJson: response.responseSchemaJSON, reviewerAction: response.reviewerAction, rewardCollectibleCount: response.rewardCollectibleCount, rewardCreditAmount: response.rewardCreditAmount, rewardKind: response.rewardKind, seriesID: response.seriesID, state: response.state, taskType: response.taskType, title: response.title, viewerAction: response.viewerAction};
+	return {assigneeScope: response.assigneeScope, attachments: response.attachments, availabilityKind: response.availabilityKind, createdBy: response.createdBy, description: response.description, id: response.id, participationPolicy: response.participationPolicy, payloadJson: response.payloadJSON, payloadKind: response.payloadKind, referenceURL: response.referenceURL, reservationExpiryHours: response.reservationExpiryHours, responseSchemaJson: response.responseSchemaJSON, reviewerAction: response.reviewerAction, rewardCollectibleCount: response.rewardCollectibleCount, rewardCreditAmount: response.rewardCreditAmount, rewardKind: response.rewardKind, seriesID: response.seriesID, state: response.state, taskType: response.taskType, title: response.title, viewerAction: response.viewerAction};
 };
 var $author$project$Sharecrop$Generated$Task$TaskResponse = function (id) {
 	return function (ownerKind) {
@@ -7609,8 +7811,10 @@ var $author$project$Sharecrop$Generated$Task$TaskResponse = function (id) {
 																						return function (responseSchemaJSON) {
 																							return function (payloadKind) {
 																								return function (payloadJSON) {
-																									return function (createdBy) {
-																										return {assigneeScope: assigneeScope, availabilityKind: availabilityKind, createdBy: createdBy, description: description, id: id, ownerID: ownerID, ownerKind: ownerKind, participationPolicy: participationPolicy, payloadJSON: payloadJSON, payloadKind: payloadKind, referenceURL: referenceURL, reservationExpiryHours: reservationExpiryHours, responseSchemaJSON: responseSchemaJSON, reviewerAction: reviewerAction, rewardCollectibleCount: rewardCollectibleCount, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, seriesID: seriesID, seriesKind: seriesKind, seriesPosition: seriesPosition, state: state, taskType: taskType, title: title, viewerAction: viewerAction, visibilityID: visibilityID, visibilityKind: visibilityKind};
+																									return function (attachments) {
+																										return function (createdBy) {
+																											return {assigneeScope: assigneeScope, attachments: attachments, availabilityKind: availabilityKind, createdBy: createdBy, description: description, id: id, ownerID: ownerID, ownerKind: ownerKind, participationPolicy: participationPolicy, payloadJSON: payloadJSON, payloadKind: payloadKind, referenceURL: referenceURL, reservationExpiryHours: reservationExpiryHours, responseSchemaJSON: responseSchemaJSON, reviewerAction: reviewerAction, rewardCollectibleCount: rewardCollectibleCount, rewardCreditAmount: rewardCreditAmount, rewardKind: rewardKind, seriesID: seriesID, seriesKind: seriesKind, seriesPosition: seriesPosition, state: state, taskType: taskType, title: title, viewerAction: viewerAction, visibilityID: visibilityID, visibilityKind: visibilityKind};
+																										};
 																									};
 																								};
 																							};
@@ -7656,6 +7860,17 @@ var $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Task$TaskAttachmentResponse = F4(
+	function (name, contentType, sizeBytes, dataURL) {
+		return {contentType: contentType, dataURL: dataURL, name: name, sizeBytes: sizeBytes};
+	});
+var $author$project$Sharecrop$Generated$Task$taskAttachmentResponseDecoder = A5(
+	$elm$json$Json$Decode$map4,
+	$author$project$Sharecrop$Generated$Task$TaskAttachmentResponse,
+	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'content_type', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'size_bytes', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'data_url', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Generated$Task$TaskAvailabilityKindAvailable = {$: 'TaskAvailabilityKindAvailable'};
 var $author$project$Sharecrop$Generated$Task$TaskAvailabilityKindAwaitingApproval = {$: 'TaskAvailabilityKindAwaitingApproval'};
 var $author$project$Sharecrop$Generated$Task$TaskAvailabilityKindClosed = {$: 'TaskAvailabilityKindClosed'};
@@ -7790,10 +8005,14 @@ var $author$project$Sharecrop$Generated$Task$taskVisibilityKindDecoder = A2(
 var $author$project$Sharecrop$Generated$Task$taskResponseDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (finish) {
-		return A3(
-			$elm$json$Json$Decode$map2,
+		return A4(
+			$elm$json$Json$Decode$map3,
 			finish,
 			A2($elm$json$Json$Decode$field, 'payload_json', $elm$json$Json$Decode$string),
+			A2(
+				$elm$json$Json$Decode$field,
+				'attachments',
+				$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Task$taskAttachmentResponseDecoder)),
 			A2($elm$json$Json$Decode$field, 'created_by', $elm$json$Json$Decode$string));
 	},
 	A2(
@@ -8004,7 +8223,7 @@ var $author$project$Main$enterPage = F2(
 			case 'UserSubmissionsPage':
 				return _Utils_update(
 					state,
-					{page: page, userSubmissions: _List_Nil});
+					{page: page, userSubmissions: _List_Nil, userSubmissionsOffset: 0});
 			case 'SeriesListPage':
 				return _Utils_update(
 					state,
@@ -8057,6 +8276,7 @@ var $author$project$Main$enterPage = F2(
 						submissionCommentMessage: $elm$core$Maybe$Nothing,
 						submissionComments: _List_Nil,
 						submissions: _List_Nil,
+						submitAttachments: _List_Nil,
 						submitInput: A2($author$project$Main$revisionDraftFor, taskId, state),
 						submitMessage: $elm$core$Maybe$Nothing,
 						taskActionMessage: $elm$core$Maybe$Nothing,
@@ -8074,6 +8294,7 @@ var $author$project$Main$enterPage = F2(
 				return _Utils_update(
 					state,
 					{
+						createAttachments: _List_Nil,
 						createDescription: '',
 						createMessage: $elm$core$Maybe$Nothing,
 						createParticipationPolicy: $author$project$Sharecrop$Labels$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
@@ -8594,6 +8815,118 @@ var $author$project$Sharecrop$Api$fetchUserDirectoryPage = F3(
 					'users',
 					$elm$json$Json$Decode$list($author$project$Sharecrop$Api$userDirectoryEntryDecoder))));
 	});
+var $author$project$Sharecrop$Types$UserSubmissionsReceived = function (a) {
+	return {$: 'UserSubmissionsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionsResponse = function (submissions) {
+	return {submissions: submissions};
+};
+var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F9(
+	function (id, taskID, submitterID, state, responseJSON, reviewNote, attachments, validationErrors, sensitiveFields) {
+		return {attachments: attachments, id: id, responseJSON: responseJSON, reviewNote: reviewNote, sensitiveFields: sensitiveFields, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
+	});
+var $author$project$Sharecrop$Generated$Submission$SubmissionAttachmentResponse = F4(
+	function (name, contentType, sizeBytes, dataURL) {
+		return {contentType: contentType, dataURL: dataURL, name: name, sizeBytes: sizeBytes};
+	});
+var $author$project$Sharecrop$Generated$Submission$submissionAttachmentResponseDecoder = A5(
+	$elm$json$Json$Decode$map4,
+	$author$project$Sharecrop$Generated$Submission$SubmissionAttachmentResponse,
+	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'content_type', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'size_bytes', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'data_url', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Submission$SubmissionSensitiveFieldResponse = F6(
+	function (path, category, retention, redaction, state, redactedAt) {
+		return {category: category, path: path, redactedAt: redactedAt, redaction: redaction, retention: retention, state: state};
+	});
+var $author$project$Sharecrop$Generated$Submission$submissionSensitiveFieldResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
+	$author$project$Sharecrop$Generated$Submission$SubmissionSensitiveFieldResponse,
+	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'category', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'retention', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'redaction', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'redacted_at', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateRejected = {$: 'SubmissionStateRejected'};
+var $author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted = {$: 'SubmissionStateSubmitted'};
+var $author$project$Sharecrop$Generated$Submission$submissionStateDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'submitted':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted);
+			case 'invalid':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid);
+			case 'accepted':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted);
+			case 'rejected':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateRejected);
+			case 'changes_requested':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested);
+			default:
+				return $elm$json$Json$Decode$fail('invalid SubmissionState');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse = F2(
+	function (path, message) {
+		return {message: message, path: path};
+	});
+var $author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse,
+	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (finish) {
+		return A2(
+			$elm$json$Json$Decode$map,
+			finish,
+			A2(
+				$elm$json$Json$Decode$field,
+				'sensitive_fields',
+				$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionSensitiveFieldResponseDecoder)));
+	},
+	A9(
+		$elm$json$Json$Decode$map8,
+		$author$project$Sharecrop$Generated$Submission$SubmissionResponse,
+		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'submitter_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Submission$submissionStateDecoder),
+		A2($elm$json$Json$Decode$field, 'response_json', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'review_note', $elm$json$Json$Decode$string),
+		A2(
+			$elm$json$Json$Decode$field,
+			'attachments',
+			$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionAttachmentResponseDecoder)),
+		A2(
+			$elm$json$Json$Decode$field,
+			'validation_errors',
+			$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder))));
+var $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Submission$SubmissionsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'submissions',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchUserSubmissionsPage = F3(
+	function (token, userId, offset) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/users/' + (userId + ('/submissions?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))))),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserSubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
+	});
 var $author$project$Sharecrop$Labels$escrowStateLabel = function (state) {
 	switch (state.$) {
 		case 'EscrowStateHeld':
@@ -8947,6 +9280,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		collectiblePolicy: $author$project$Sharecrop$Generated$Collectible$CollectibleTransferPolicyNonTransferableExceptPayout,
 		collectibles: _List_Nil,
 		createAssigneeScope: $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser,
+		createAttachments: _List_Nil,
 		createDescription: '',
 		createMessage: $elm$core$Maybe$Nothing,
 		createOrgName: '',
@@ -9051,6 +9385,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		submissionCommentMessage: $elm$core$Maybe$Nothing,
 		submissionComments: _List_Nil,
 		submissions: _List_Nil,
+		submitAttachments: _List_Nil,
 		submitInput: '',
 		submitMessage: $elm$core$Maybe$Nothing,
 		taskActionMessage: $elm$core$Maybe$Nothing,
@@ -9089,6 +9424,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		userProfile: $elm$core$Maybe$Nothing,
 		userProfileError: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
+		userSubmissionsOffset: 0,
 		userWork: _List_Nil
 	};
 };
@@ -9697,6 +10033,96 @@ var $author$project$Main$queueViewByName = F2(
 var $author$project$Main$queueViewFromResponse = function (response) {
 	return {name: response.name, query: response.query, sort: response.sort, stateFilter: response.stateFilter, typeFilter: response.typeFilter};
 };
+var $author$project$Sharecrop$Types$CreateAttachmentRejected = function (a) {
+	return {$: 'CreateAttachmentRejected', a: a};
+};
+var $author$project$Sharecrop$Types$CreateAttachmentSelected = F4(
+	function (a, b, c, d) {
+		return {$: 'CreateAttachmentSelected', a: a, b: b, c: c, d: d};
+	});
+var $author$project$Main$allowedAttachmentTypes = _List_fromArray(
+	['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain', 'application/json', 'application/pdf']);
+var $author$project$Main$attachmentMaxBytes = 500 * 1024;
+var $elm$core$List$any = F2(
+	function (isOkay, list) {
+		any:
+		while (true) {
+			if (!list.b) {
+				return false;
+			} else {
+				var x = list.a;
+				var xs = list.b;
+				if (isOkay(x)) {
+					return true;
+				} else {
+					var $temp$isOkay = isOkay,
+						$temp$list = xs;
+					isOkay = $temp$isOkay;
+					list = $temp$list;
+					continue any;
+				}
+			}
+		}
+	});
+var $elm$core$List$member = F2(
+	function (x, xs) {
+		return A2(
+			$elm$core$List$any,
+			function (a) {
+				return _Utils_eq(a, x);
+			},
+			xs);
+	});
+var $elm$time$Time$Posix = function (a) {
+	return {$: 'Posix', a: a};
+};
+var $elm$time$Time$millisToPosix = $elm$time$Time$Posix;
+var $elm$file$File$mime = _File_mime;
+var $elm$file$File$name = _File_name;
+var $elm$file$File$size = _File_size;
+var $elm$file$File$toUrl = _File_toUrl;
+var $author$project$Main$readAttachment = F3(
+	function (file, success, rejected) {
+		var sizeBytes = $elm$file$File$size(file);
+		var contentType = $elm$file$File$mime(file);
+		return (_Utils_cmp(sizeBytes, $author$project$Main$attachmentMaxBytes) > 0) ? $elm$core$Platform$Cmd$batch(
+			_List_fromArray(
+				[
+					A2(
+					$elm$core$Task$perform,
+					$elm$core$Basics$identity,
+					$elm$core$Task$succeed(
+						rejected('Attachment must be under 500 KiB.')))
+				])) : ((!A2($elm$core$List$member, contentType, $author$project$Main$allowedAttachmentTypes)) ? $elm$core$Platform$Cmd$batch(
+			_List_fromArray(
+				[
+					A2(
+					$elm$core$Task$perform,
+					$elm$core$Basics$identity,
+					$elm$core$Task$succeed(
+						rejected('Attachment type is not allowed.')))
+				])) : A2(
+			$elm$core$Task$perform,
+			A3(
+				success,
+				$elm$file$File$name(file),
+				contentType,
+				sizeBytes),
+			$elm$file$File$toUrl(file)));
+	});
+var $author$project$Main$readCreateAttachment = function (file) {
+	return A3($author$project$Main$readAttachment, file, $author$project$Sharecrop$Types$CreateAttachmentSelected, $author$project$Sharecrop$Types$CreateAttachmentRejected);
+};
+var $author$project$Sharecrop$Types$SubmitAttachmentRejected = function (a) {
+	return {$: 'SubmitAttachmentRejected', a: a};
+};
+var $author$project$Sharecrop$Types$SubmitAttachmentSelected = F4(
+	function (a, b, c, d) {
+		return {$: 'SubmitAttachmentSelected', a: a, b: b, c: c, d: d};
+	});
+var $author$project$Main$readSubmitAttachment = function (file) {
+	return A3($author$project$Main$readAttachment, file, $author$project$Sharecrop$Types$SubmitAttachmentSelected, $author$project$Sharecrop$Types$SubmitAttachmentRejected);
+};
 var $author$project$Sharecrop$Types$DetailReceived = function (a) {
 	return {$: 'DetailReceived', a: a};
 };
@@ -9740,83 +10166,6 @@ var $author$project$Sharecrop$Api$fetchReservations = F2(
 var $author$project$Sharecrop$Types$SubmissionsReceived = function (a) {
 	return {$: 'SubmissionsReceived', a: a};
 };
-var $author$project$Sharecrop$Generated$Submission$SubmissionsResponse = function (submissions) {
-	return {submissions: submissions};
-};
-var $author$project$Sharecrop$Generated$Submission$SubmissionResponse = F8(
-	function (id, taskID, submitterID, state, responseJSON, reviewNote, validationErrors, sensitiveFields) {
-		return {id: id, responseJSON: responseJSON, reviewNote: reviewNote, sensitiveFields: sensitiveFields, state: state, submitterID: submitterID, taskID: taskID, validationErrors: validationErrors};
-	});
-var $author$project$Sharecrop$Generated$Submission$SubmissionSensitiveFieldResponse = F6(
-	function (path, category, retention, redaction, state, redactedAt) {
-		return {category: category, path: path, redactedAt: redactedAt, redaction: redaction, retention: retention, state: state};
-	});
-var $author$project$Sharecrop$Generated$Submission$submissionSensitiveFieldResponseDecoder = A7(
-	$elm$json$Json$Decode$map6,
-	$author$project$Sharecrop$Generated$Submission$SubmissionSensitiveFieldResponse,
-	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'category', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'retention', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'redaction', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'redacted_at', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted = {$: 'SubmissionStateAccepted'};
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested = {$: 'SubmissionStateChangesRequested'};
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid = {$: 'SubmissionStateInvalid'};
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateRejected = {$: 'SubmissionStateRejected'};
-var $author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted = {$: 'SubmissionStateSubmitted'};
-var $author$project$Sharecrop$Generated$Submission$submissionStateDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'submitted':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateSubmitted);
-			case 'invalid':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateInvalid);
-			case 'accepted':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateAccepted);
-			case 'rejected':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateRejected);
-			case 'changes_requested':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested);
-			default:
-				return $elm$json$Json$Decode$fail('invalid SubmissionState');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse = F2(
-	function (path, message) {
-		return {message: message, path: path};
-	});
-var $author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder = A3(
-	$elm$json$Json$Decode$map2,
-	$author$project$Sharecrop$Generated$Submission$SubmissionValidationErrorResponse,
-	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder = A9(
-	$elm$json$Json$Decode$map8,
-	$author$project$Sharecrop$Generated$Submission$SubmissionResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'submitter_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Submission$submissionStateDecoder),
-	A2($elm$json$Json$Decode$field, 'response_json', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'review_note', $elm$json$Json$Decode$string),
-	A2(
-		$elm$json$Json$Decode$field,
-		'validation_errors',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionValidationErrorResponseDecoder)),
-	A2(
-		$elm$json$Json$Decode$field,
-		'sensitive_fields',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionSensitiveFieldResponseDecoder)));
-var $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Submission$SubmissionsResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'submissions',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Submission$submissionResponseDecoder)));
 var $author$project$Sharecrop$Api$fetchSubmissions = F2(
 	function (token, taskId) {
 		return A5(
@@ -9887,18 +10236,9 @@ var $author$project$Sharecrop$Api$refreshDetailReservations = function (model) {
 		return $elm$core$Platform$Cmd$none;
 	}
 };
-var $author$project$Sharecrop$Types$UserSubmissionsReceived = function (a) {
-	return {$: 'UserSubmissionsReceived', a: a};
-};
 var $author$project$Sharecrop$Api$fetchUserSubmissions = F2(
 	function (token, userId) {
-		return A5(
-			$author$project$Sharecrop$Api$authorizedRequest,
-			'GET',
-			token,
-			'/api/users/' + (userId + '/submissions'),
-			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserSubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
+		return A3($author$project$Sharecrop$Api$fetchUserSubmissionsPage, token, userId, 0);
 	});
 var $author$project$Sharecrop$Api$refreshDetailSubmissions = function (model) {
 	var _v0 = model.session;
@@ -10033,6 +10373,23 @@ var $author$project$Main$reloadDemo = _Platform_outgoingPort(
 	'reloadDemo',
 	function ($) {
 		return $elm$json$Json$Encode$null;
+	});
+var $elm$core$Tuple$second = function (_v0) {
+	var y = _v0.b;
+	return y;
+};
+var $author$project$Main$removeAt = F2(
+	function (index, values) {
+		return A2(
+			$elm$core$List$map,
+			$elm$core$Tuple$second,
+			A2(
+				$elm$core$List$filter,
+				function (_v0) {
+					var currentIndex = _v0.a;
+					return !_Utils_eq(currentIndex, index);
+				},
+				A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, values)));
 	});
 var $author$project$Main$removePlatformAdmin = F2(
 	function (userID, admins) {
@@ -10647,7 +11004,7 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserWorkReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 			case 'UserSubmissionsPage':
 				var userId = page.a;
-				return A2($author$project$Sharecrop$Api$fetchUserSubmissions, token, userId);
+				return A3($author$project$Sharecrop$Api$fetchUserSubmissionsPage, token, userId, 0);
 			case 'CollectibleDetailPage':
 				return $author$project$Sharecrop$Api$fetchCollectibles(token);
 			case 'SeriesListPage':
@@ -10759,9 +11116,15 @@ var $author$project$Sharecrop$Api$saveSavedQueueView = F3(
 						]))),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SavedQueueViewSaved, $author$project$Sharecrop$Generated$SavedQueueViews$savedQueueViewResponseDecoder));
 	});
-var $elm$core$Tuple$second = function (_v0) {
-	var y = _v0.b;
-	return y;
+var $elm$file$File$Select$file = F2(
+	function (mimes, toMsg) {
+		return A2(
+			$elm$core$Task$perform,
+			toMsg,
+			_File_uploadOne(mimes));
+	});
+var $author$project$Main$selectAttachment = function (toMsg) {
+	return A2($elm$file$File$Select$file, $author$project$Main$allowedAttachmentTypes, toMsg);
 };
 var $author$project$Sharecrop$Api$seriesFromResult = function (result) {
 	if (result.$ === 'Ok') {
@@ -10943,24 +11306,28 @@ var $author$project$Sharecrop$Generated$Submission$submissionCreatedResponseDeco
 	$author$project$Sharecrop$Generated$Submission$SubmissionCreatedResponse,
 	A2($elm$json$Json$Decode$field, 'submission', $author$project$Sharecrop$Generated$Submission$submissionResponseDecoder),
 	A2($elm$json$Json$Decode$field, 'receipt_token', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Api$submissionRequestBody = function (responseJson) {
-	return $elm$json$Json$Encode$object(
-		_List_fromArray(
-			[
-				_Utils_Tuple2(
-				'response_json',
-				$elm$json$Json$Encode$string(responseJson))
-			]));
-};
-var $author$project$Sharecrop$Api$postSubmission = F3(
-	function (token, taskId, responseJson) {
+var $author$project$Sharecrop$Api$submissionRequestBody = F2(
+	function (responseJson, attachments) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'response_json',
+					$elm$json$Json$Encode$string(responseJson)),
+					_Utils_Tuple2(
+					'attachments',
+					A2($elm$json$Json$Encode$list, $author$project$Sharecrop$Api$attachmentRequestBody, attachments))
+				]));
+	});
+var $author$project$Sharecrop$Api$postSubmission = F4(
+	function (token, taskId, responseJson, attachments) {
 		return A5(
 			$author$project$Sharecrop$Api$authorizedRequest,
 			'POST',
 			token,
 			'/api/tasks/' + (taskId + '/submissions'),
 			$elm$http$Http$jsonBody(
-				$author$project$Sharecrop$Api$submissionRequestBody(responseJson)),
+				A2($author$project$Sharecrop$Api$submissionRequestBody, responseJson, attachments)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SubmitReceived, $author$project$Sharecrop$Generated$Submission$submissionCreatedResponseDecoder));
 	});
 var $elm$json$Json$Decode$value = _Json_decodeValue;
@@ -10995,7 +11362,7 @@ var $author$project$Sharecrop$Api$submitCommand = F2(
 									current,
 									{submitMessage: $elm$core$Maybe$Nothing});
 							}),
-						A3($author$project$Sharecrop$Api$postSubmission, state.accessToken, taskId, trimmed));
+						A4($author$project$Sharecrop$Api$postSubmission, state.accessToken, taskId, trimmed, state.submitAttachments));
 				} else {
 					return _Utils_Tuple2(
 						A2(
@@ -11123,36 +11490,6 @@ var $elm$url$Url$toString = function (url) {
 					_Utils_ap(http, url.host)),
 				url.path)));
 };
-var $elm$core$List$any = F2(
-	function (isOkay, list) {
-		any:
-		while (true) {
-			if (!list.b) {
-				return false;
-			} else {
-				var x = list.a;
-				var xs = list.b;
-				if (isOkay(x)) {
-					return true;
-				} else {
-					var $temp$isOkay = isOkay,
-						$temp$list = xs;
-					isOkay = $temp$isOkay;
-					list = $temp$list;
-					continue any;
-				}
-			}
-		}
-	});
-var $elm$core$List$member = F2(
-	function (x, xs) {
-		return A2(
-			$elm$core$List$any,
-			function (a) {
-				return _Utils_eq(a, x);
-			},
-			xs);
-	});
 var $author$project$Sharecrop$Api$toggleScope = F2(
 	function (scope, scopes) {
 		return A2($elm$core$List$member, scope, scopes) ? A2(
@@ -11909,6 +12246,66 @@ var $author$project$Main$update = F2(
 								{createReservationHours: value});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'PickCreateAttachmentClicked':
+				return _Utils_Tuple2(
+					model,
+					$author$project$Main$selectAttachment($author$project$Sharecrop$Types$CreateAttachmentFileChosen));
+			case 'CreateAttachmentFileChosen':
+				var file = msg.a;
+				return _Utils_Tuple2(
+					model,
+					$author$project$Main$readCreateAttachment(file));
+			case 'CreateAttachmentSelected':
+				var name = msg.a;
+				var contentType = msg.b;
+				var sizeBytes = msg.c;
+				var dataURL = msg.d;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									createAttachments: _Utils_ap(
+										state.createAttachments,
+										_List_fromArray(
+											[
+												{contentType: contentType, dataURL: dataURL, name: name, sizeBytes: sizeBytes}
+											])),
+									createMessage: $elm$core$Maybe$Nothing
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateAttachmentRejected':
+				var message = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									createMessage: $elm$core$Maybe$Just(message)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'RemoveCreateAttachmentClicked':
+				var index = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									createAttachments: A2($author$project$Main$removeAt, index, state.createAttachments)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'CreateTaskClicked':
 				return A2(
 					$author$project$Sharecrop$Api$withSession,
@@ -11927,6 +12324,7 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
+										createAttachments: _List_Nil,
 										createDescription: '',
 										createMessage: $elm$core$Maybe$Just('Created task ' + created.id),
 										createParticipationPolicy: $author$project$Sharecrop$Labels$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
@@ -12741,6 +13139,66 @@ var $author$project$Main$update = F2(
 								{submitInput: value});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'PickSubmitAttachmentClicked':
+				return _Utils_Tuple2(
+					model,
+					$author$project$Main$selectAttachment($author$project$Sharecrop$Types$SubmitAttachmentFileChosen));
+			case 'SubmitAttachmentFileChosen':
+				var file = msg.a;
+				return _Utils_Tuple2(
+					model,
+					$author$project$Main$readSubmitAttachment(file));
+			case 'SubmitAttachmentSelected':
+				var name = msg.a;
+				var contentType = msg.b;
+				var sizeBytes = msg.c;
+				var dataURL = msg.d;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									submitAttachments: _Utils_ap(
+										state.submitAttachments,
+										_List_fromArray(
+											[
+												{contentType: contentType, dataURL: dataURL, name: name, sizeBytes: sizeBytes}
+											])),
+									submitMessage: $elm$core$Maybe$Nothing
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SubmitAttachmentRejected':
+				var message = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									submitMessage: $elm$core$Maybe$Just(message)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'RemoveSubmitAttachmentClicked':
+				var index = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									submitAttachments: A2($author$project$Main$removeAt, index, state.submitAttachments)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'SubmitClicked':
 				return A2(
 					$author$project$Sharecrop$Api$withSession,
@@ -12766,6 +13224,8 @@ var $author$project$Main$update = F2(
 												activeSubmissionCommentsID: $elm$core$Maybe$Just(created.submission.id),
 												submissionCommentMessage: $elm$core$Maybe$Nothing,
 												submissionComments: _List_Nil,
+												submitAttachments: _List_Nil,
+												submitInput: '',
 												submitMessage: $elm$core$Maybe$Just(
 													$author$project$Sharecrop$View$submitSuccessLabel(created))
 											});
@@ -13833,6 +14293,52 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'PreviousUserSubmissionsPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var _v5 = state.page;
+						if (_v5.$ === 'UserSubmissionsPage') {
+							var userId = _v5.a;
+							var offset = A2($elm$core$Basics$max, 0, state.userSubmissionsOffset - $author$project$Sharecrop$Api$selectorPageSize);
+							return _Utils_Tuple2(
+								A2(
+									$author$project$Sharecrop$Api$updateLoggedIn,
+									model,
+									function (current) {
+										return _Utils_update(
+											current,
+											{userSubmissionsOffset: offset});
+									}),
+								A3($author$project$Sharecrop$Api$fetchUserSubmissionsPage, state.accessToken, userId, offset));
+						} else {
+							return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+						}
+					});
+			case 'NextUserSubmissionsPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var _v6 = state.page;
+						if (_v6.$ === 'UserSubmissionsPage') {
+							var userId = _v6.a;
+							var offset = state.userSubmissionsOffset + $author$project$Sharecrop$Api$selectorPageSize;
+							return _Utils_Tuple2(
+								A2(
+									$author$project$Sharecrop$Api$updateLoggedIn,
+									model,
+									function (current) {
+										return _Utils_update(
+											current,
+											{userSubmissionsOffset: offset});
+									}),
+								A3($author$project$Sharecrop$Api$fetchUserSubmissionsPage, state.accessToken, userId, offset));
+						} else {
+							return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+						}
+					});
 			case 'StartRevisionClicked':
 				var taskId = msg.a;
 				var responseJson = msg.b;
@@ -14224,9 +14730,9 @@ var $author$project$Main$update = F2(
 					$author$project$Sharecrop$Api$withSession,
 					updated,
 					function (state) {
-						var _v8 = state.teamDetail;
-						if (_v8.$ === 'Just') {
-							var detail = _v8.a;
+						var _v10 = state.teamDetail;
+						if (_v10.$ === 'Just') {
+							var detail = _v10.a;
 							return _Utils_Tuple2(
 								updated,
 								A6($author$project$Sharecrop$Api$fetchTeamWork, state.accessToken, detail.team.id, state.teamWorkQuery, value, state.teamWorkSort, 0));
@@ -14248,9 +14754,9 @@ var $author$project$Main$update = F2(
 					$author$project$Sharecrop$Api$withSession,
 					updated,
 					function (state) {
-						var _v9 = state.teamDetail;
-						if (_v9.$ === 'Just') {
-							var detail = _v9.a;
+						var _v11 = state.teamDetail;
+						if (_v11.$ === 'Just') {
+							var detail = _v11.a;
 							return _Utils_Tuple2(
 								updated,
 								A6($author$project$Sharecrop$Api$fetchTeamWork, state.accessToken, detail.team.id, state.teamWorkQuery, state.teamWorkTypeFilter, value, 0));
@@ -14309,15 +14815,15 @@ var $author$project$Main$update = F2(
 					$author$project$Sharecrop$Api$withSession,
 					model,
 					function (state) {
-						var _v10 = _Utils_Tuple2(
+						var _v12 = _Utils_Tuple2(
 							state.teamDetail,
 							A2($author$project$Main$queueViewByName, name, state.teamWorkSavedViews));
-						_v10$1:
+						_v12$1:
 						while (true) {
-							if (_v10.a.$ === 'Just') {
-								if (_v10.b.$ === 'Just') {
-									var detail = _v10.a.a;
-									var view = _v10.b.a;
+							if (_v12.a.$ === 'Just') {
+								if (_v12.b.$ === 'Just') {
+									var detail = _v12.a.a;
+									var view = _v12.b.a;
 									return _Utils_Tuple2(
 										A2(
 											$author$project$Sharecrop$Api$updateLoggedIn,
@@ -14336,18 +14842,18 @@ var $author$project$Main$update = F2(
 											}),
 										A6($author$project$Sharecrop$Api$fetchTeamWork, state.accessToken, detail.team.id, view.query, view.typeFilter, view.sort, 0));
 								} else {
-									break _v10$1;
+									break _v12$1;
 								}
 							} else {
-								if (_v10.b.$ === 'Nothing') {
-									break _v10$1;
+								if (_v12.b.$ === 'Nothing') {
+									break _v12$1;
 								} else {
-									var _v12 = _v10.a;
+									var _v14 = _v12.a;
 									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 								}
 							}
 						}
-						var _v11 = _v10.b;
+						var _v13 = _v12.b;
 						return _Utils_Tuple2(
 							A2(
 								$author$project$Sharecrop$Api$updateLoggedIn,
@@ -14366,9 +14872,9 @@ var $author$project$Main$update = F2(
 					$author$project$Sharecrop$Api$withSession,
 					model,
 					function (state) {
-						var _v13 = state.teamDetail;
-						if (_v13.$ === 'Just') {
-							var detail = _v13.a;
+						var _v15 = state.teamDetail;
+						if (_v15.$ === 'Just') {
+							var detail = _v15.a;
 							var offset = 0;
 							return _Utils_Tuple2(
 								A2(
@@ -14389,9 +14895,9 @@ var $author$project$Main$update = F2(
 					$author$project$Sharecrop$Api$withSession,
 					model,
 					function (state) {
-						var _v14 = state.teamDetail;
-						if (_v14.$ === 'Just') {
-							var detail = _v14.a;
+						var _v16 = state.teamDetail;
+						if (_v16.$ === 'Just') {
+							var detail = _v16.a;
 							var offset = A2($elm$core$Basics$max, 0, state.teamWorkOffset - $author$project$Sharecrop$Api$selectorPageSize);
 							return _Utils_Tuple2(
 								A2(
@@ -14412,9 +14918,9 @@ var $author$project$Main$update = F2(
 					$author$project$Sharecrop$Api$withSession,
 					model,
 					function (state) {
-						var _v15 = state.teamDetail;
-						if (_v15.$ === 'Just') {
-							var detail = _v15.a;
+						var _v17 = state.teamDetail;
+						if (_v17.$ === 'Just') {
+							var detail = _v17.a;
 							var offset = state.teamWorkOffset + $author$project$Sharecrop$Api$selectorPageSize;
 							return _Utils_Tuple2(
 								A2(
@@ -14632,9 +15138,9 @@ var $author$project$Main$update = F2(
 					$author$project$Sharecrop$Api$withSession,
 					model,
 					function (state) {
-						var _v16 = A2($author$project$Main$queueViewByName, name, state.orgTaskSavedViews);
-						if (_v16.$ === 'Just') {
-							var view = _v16.a;
+						var _v18 = A2($author$project$Main$queueViewByName, name, state.orgTaskSavedViews);
+						if (_v18.$ === 'Just') {
+							var view = _v18.a;
 							return _Utils_Tuple2(
 								A2(
 									$author$project$Sharecrop$Api$updateLoggedIn,
@@ -15031,9 +15537,9 @@ var $author$project$Main$update = F2(
 						$author$project$Sharecrop$Api$updateLoggedIn,
 						model,
 						function (state) {
-							var _v17 = $author$project$Sharecrop$View$taskTemplate(value);
-							if (_v17.$ === 'Just') {
-								var template = _v17.a;
+							var _v19 = $author$project$Sharecrop$View$taskTemplate(value);
+							if (_v19.$ === 'Just') {
+								var template = _v19.a;
 								return _Utils_update(
 									state,
 									{createDescription: template.description, createResponseSchema: template.schema, createSchemaFields: _List_Nil, createTaskType: value});
@@ -15271,9 +15777,9 @@ var $author$project$Main$update = F2(
 											{submissionCommentBody: ''});
 									}),
 								function () {
-									var _v18 = state.activeSubmissionCommentsID;
-									if (_v18.$ === 'Just') {
-										var submissionId = _v18.a;
+									var _v20 = state.activeSubmissionCommentsID;
+									if (_v20.$ === 'Just') {
+										var submissionId = _v20.a;
 										return A2($author$project$Sharecrop$Api$fetchSubmissionComments, state.accessToken, submissionId);
 									} else {
 										return $elm$core$Platform$Cmd$none;
@@ -16392,9 +16898,9 @@ var $author$project$Main$update = F2(
 			case 'UrlChanged':
 				var url = msg.a;
 				var page = $author$project$Main$pageFromUrl(url);
-				var _v20 = model.session;
-				if (_v20.$ === 'LoggedIn') {
-					var state = _v20.a;
+				var _v22 = model.session;
+				if (_v22.$ === 'LoggedIn') {
+					var state = _v22.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -19697,6 +20203,10 @@ var $author$project$Sharecrop$Types$CreateTaskClicked = {$: 'CreateTaskClicked'}
 var $author$project$Sharecrop$Types$CreateTitleChanged = function (a) {
 	return {$: 'CreateTitleChanged', a: a};
 };
+var $author$project$Sharecrop$Types$PickCreateAttachmentClicked = {$: 'PickCreateAttachmentClicked'};
+var $author$project$Sharecrop$Types$RemoveCreateAttachmentClicked = function (a) {
+	return {$: 'RemoveCreateAttachmentClicked', a: a};
+};
 var $author$project$Sharecrop$View$allAssigneeScopes = _List_fromArray(
 	[$author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser, $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeOrganizationTeam, $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeTeam]);
 var $author$project$Sharecrop$View$allParticipationPolicies = _List_fromArray(
@@ -20185,6 +20695,91 @@ var $author$project$Sharecrop$View$schemaDesignerView = function (state) {
 				'Add field')
 			]));
 };
+var $author$project$Sharecrop$View$selectedAttachmentRow = F3(
+	function (removeMsg, index, attachment) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2 text-sm'),
+					$author$project$Sharecrop$Ui$testId('selected-attachment')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$span,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('break-all text-slate-700')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							attachment.name + (' · ' + (attachment.contentType + (' · ' + ($elm$core$String$fromInt(attachment.sizeBytes) + ' bytes')))))
+						])),
+					A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick(
+							removeMsg(index)),
+							$author$project$Sharecrop$Ui$testId('remove-attachment')
+						]),
+					'Remove')
+				]));
+	});
+var $author$project$Sharecrop$View$selectedAttachmentsView = F5(
+	function (labelText, attachments, pickMsg, removeMsg, id) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2'),
+					$author$project$Sharecrop$Ui$testId(id)
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$label_(labelText),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(pickMsg),
+									$author$project$Sharecrop$Ui$testId(id + '-pick')
+								]),
+							'Add file')
+						])),
+					$elm$core$List$isEmpty(attachments) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-xs text-slate-500')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No files attached.')
+						])) : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('space-y-1')
+						]),
+					A2(
+						$elm$core$List$indexedMap,
+						$author$project$Sharecrop$View$selectedAttachmentRow(removeMsg),
+						attachments))
+				]));
+	});
 var $author$project$Sharecrop$View$taskTypeLabel = function (tag) {
 	switch (tag) {
 		case 'code_review':
@@ -20398,6 +20993,7 @@ var $author$project$Sharecrop$View$createTaskView = function (state) {
 								$author$project$Sharecrop$Ui$testId('create-payload')
 							]))
 					])),
+				A5($author$project$Sharecrop$View$selectedAttachmentsView, 'Attachments', state.createAttachments, $author$project$Sharecrop$Types$PickCreateAttachmentClicked, $author$project$Sharecrop$Types$RemoveCreateAttachmentClicked, 'create-attachments'),
 				$author$project$Sharecrop$Ui$label_('Reward'),
 				A2(
 				$elm$html$Html$div,
@@ -22758,6 +23354,43 @@ var $author$project$Sharecrop$View$seriesLinkBlock = function (detail) {
 				]))
 		]);
 };
+var $elm$html$Html$Attributes$download = function (fileName) {
+	return A2($elm$html$Html$Attributes$stringProperty, 'download', fileName);
+};
+var $author$project$Sharecrop$View$attachmentLink = F4(
+	function (name, contentType, sizeBytes, dataURL) {
+		return A2(
+			$elm$html$Html$a,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$href(dataURL),
+					$elm$html$Html$Attributes$download(name),
+					$elm$html$Html$Attributes$class('rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 underline'),
+					$author$project$Sharecrop$Ui$testId('attachment-link')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(
+					name + (' · ' + (contentType + (' · ' + ($elm$core$String$fromInt(sizeBytes) + ' bytes')))))
+				]));
+	});
+var $author$project$Sharecrop$View$taskAttachmentLink = function (attachment) {
+	return A4($author$project$Sharecrop$View$attachmentLink, attachment.name, attachment.contentType, attachment.sizeBytes, attachment.dataURL);
+};
+var $author$project$Sharecrop$View$taskAttachmentsBlock = function (detail) {
+	return $elm$core$List$isEmpty(detail.attachments) ? _List_Nil : _List_fromArray(
+		[
+			$author$project$Sharecrop$Ui$label_('Attachments'),
+			A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
+					$author$project$Sharecrop$Ui$testId('detail-attachments')
+				]),
+			A2($elm$core$List$map, $author$project$Sharecrop$View$taskAttachmentLink, detail.attachments))
+		]);
+};
 var $author$project$Sharecrop$View$taskInputBlock = function (detail) {
 	return (((detail.payloadKind === 'inline') || (detail.payloadKind === 'json')) && (detail.payloadJson !== '')) ? _List_fromArray(
 		[
@@ -23053,18 +23686,20 @@ var $author$project$Sharecrop$View$detailCard = F2(
 							$author$project$Sharecrop$View$seriesLinkBlock(detail),
 							_Utils_ap(
 								$author$project$Sharecrop$View$taskInputBlock(detail),
-								_List_fromArray(
-									[
-										$author$project$Sharecrop$Ui$label_('Response schema'),
-										A2(
-										$author$project$Sharecrop$Ui$codeBlock,
-										_List_fromArray(
-											[
-												$author$project$Sharecrop$Ui$testId('detail-schema')
-											]),
-										detail.responseSchemaJson),
-										A3($author$project$Sharecrop$View$taskIntegration, origin, detail.id, state)
-									]))))));
+								_Utils_ap(
+									$author$project$Sharecrop$View$taskAttachmentsBlock(detail),
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$label_('Response schema'),
+											A2(
+											$author$project$Sharecrop$Ui$codeBlock,
+											_List_fromArray(
+												[
+													$author$project$Sharecrop$Ui$testId('detail-schema')
+												]),
+											detail.responseSchemaJson),
+											A3($author$project$Sharecrop$View$taskIntegration, origin, detail.id, state)
+										])))))));
 		} else {
 			var _v1 = state.detailError;
 			if (_v1.$ === 'Just') {
@@ -23251,6 +23886,19 @@ var $author$project$Sharecrop$View$sensitiveFieldsView = function (fields) {
 					])),
 			A2($elm$core$List$map, $author$project$Sharecrop$View$sensitiveFieldView, fields)));
 };
+var $author$project$Sharecrop$View$submissionAttachmentLink = function (attachment) {
+	return A4($author$project$Sharecrop$View$attachmentLink, attachment.name, attachment.contentType, attachment.sizeBytes, attachment.dataURL);
+};
+var $author$project$Sharecrop$View$submissionAttachmentsView = function (attachments) {
+	return $elm$core$List$isEmpty(attachments) ? $elm$html$Html$text('') : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
+				$author$project$Sharecrop$Ui$testId('submission-attachments')
+			]),
+		A2($elm$core$List$map, $author$project$Sharecrop$View$submissionAttachmentLink, attachments));
+};
 var $author$project$Sharecrop$Types$AddSubmissionCommentClicked = function (a) {
 	return {$: 'AddSubmissionCommentClicked', a: a};
 };
@@ -23412,6 +24060,7 @@ var $author$project$Sharecrop$View$mySubmissionRow = F2(
 							$author$project$Sharecrop$Ui$testId('my-submission-response')
 						]),
 					submission.responseJSON),
+					$author$project$Sharecrop$View$submissionAttachmentsView(submission.attachments),
 					$author$project$Sharecrop$View$validationErrorsView(submission.validationErrors),
 					$author$project$Sharecrop$View$sensitiveFieldsView(submission.sensitiveFields),
 					A2($author$project$Sharecrop$View$submissionCommentsThread, state, submission)
@@ -24101,6 +24750,7 @@ var $author$project$Sharecrop$View$submissionRow = F2(
 							$author$project$Sharecrop$Ui$testId('submission-response')
 						]),
 					submission.responseJSON),
+					$author$project$Sharecrop$View$submissionAttachmentsView(submission.attachments),
 					$author$project$Sharecrop$View$validationErrorsView(submission.validationErrors),
 					A2(
 					$author$project$Sharecrop$Ui$secondaryButton,
@@ -24148,6 +24798,10 @@ var $author$project$Sharecrop$View$submissionsCard = function (state) {
 				A2($author$project$Sharecrop$View$maybeNote, state.reviewMessage, 'review-message')
 			]));
 };
+var $author$project$Sharecrop$Types$PickSubmitAttachmentClicked = {$: 'PickSubmitAttachmentClicked'};
+var $author$project$Sharecrop$Types$RemoveSubmitAttachmentClicked = function (a) {
+	return {$: 'RemoveSubmitAttachmentClicked', a: a};
+};
 var $author$project$Sharecrop$Types$SubmitClicked = {$: 'SubmitClicked'};
 var $author$project$Sharecrop$Types$SubmitInputChanged = function (a) {
 	return {$: 'SubmitInputChanged', a: a};
@@ -24172,6 +24826,7 @@ var $author$project$Sharecrop$View$submitCardForm = function (state) {
 						$elm$html$Html$Attributes$rows(6),
 						$author$project$Sharecrop$Ui$testId('detail-submit-input')
 					])),
+				A5($author$project$Sharecrop$View$selectedAttachmentsView, 'Attachments', state.submitAttachments, $author$project$Sharecrop$Types$PickSubmitAttachmentClicked, $author$project$Sharecrop$Types$RemoveSubmitAttachmentClicked, 'submit-attachments'),
 				A2(
 				$author$project$Sharecrop$Ui$primaryButton,
 				_List_fromArray(
@@ -25271,6 +25926,8 @@ var $author$project$Sharecrop$View$userDetailView = F3(
 						A2($author$project$Sharecrop$View$userAgentAccessCard, origin, state)
 					]) : _List_Nil));
 	});
+var $author$project$Sharecrop$Types$NextUserSubmissionsPageClicked = {$: 'NextUserSubmissionsPageClicked'};
+var $author$project$Sharecrop$Types$PreviousUserSubmissionsPageClicked = {$: 'PreviousUserSubmissionsPageClicked'};
 var $author$project$Sharecrop$View$isRevisionSubmission = function (submission) {
 	return _Utils_eq(submission.state, $author$project$Sharecrop$Generated$Submission$SubmissionStateChangesRequested);
 };
@@ -25479,6 +26136,7 @@ var $author$project$Sharecrop$View$userSubmissionsView = F2(
 							$author$project$Sharecrop$Ui$testId('user-submissions')
 						]),
 					A2($elm$core$List$map, $author$project$Sharecrop$View$userSubmissionRow, submissions)),
+					A4($author$project$Sharecrop$View$paginationControls, 'user-submissions-page', $author$project$Sharecrop$Types$PreviousUserSubmissionsPageClicked, $author$project$Sharecrop$Types$NextUserSubmissionsPageClicked, state.userSubmissionsOffset),
 					$author$project$Sharecrop$View$revisionTimelineView(submissions)
 				]));
 	});
