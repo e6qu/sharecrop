@@ -93,6 +93,47 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
   );
 });
 
+test("demo admin config grants and revokes platform admins", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1250 credits")).toBeVisible();
+
+  await page.getByTestId("nav-admin").click();
+  await page.getByTestId("admin-platform-user").selectOption("user-jules");
+  await page.getByTestId("admin-grant-platform-admin").click();
+  await expect(page.getByTestId("admin-message")).toContainText(
+    "Platform admin granted.",
+  );
+  await expect(page.getByTestId("admin-platform-admins")).toContainText(
+    "user-jules",
+  );
+
+  await page
+    .getByTestId("admin-platform-admin")
+    .filter({ hasText: "user-jules" })
+    .getByTestId("admin-revoke-platform-admin")
+    .click();
+  await expect(page.getByTestId("admin-message")).toContainText(
+    "Platform admin revoked.",
+  );
+  await expect(page.getByTestId("admin-platform-admins")).not.toContainText(
+    "user-jules",
+  );
+});
+
+test("demo admin runs privacy retention from the browser", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1250 credits")).toBeVisible();
+
+  await page.getByTestId("nav-admin").click();
+  await page.getByTestId("admin-run-privacy-retention").click();
+  await expect(page.getByTestId("admin-message")).toContainText(
+    "Privacy retention run finished.",
+  );
+  await expect(page.getByTestId("admin-retention-count")).toContainText(
+    "Redacted fields:",
+  );
+});
+
 test("demo task reports appear in the admin moderation panel", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
@@ -114,6 +155,43 @@ test("demo task reports appear in the admin moderation panel", async ({ page }) 
   await expect(page.getByTestId("admin-moderation-details")).toContainText(
     "Contains invoice PII.",
   );
+});
+
+test("demo admin triages moderation reports from the browser", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1250 credits")).toBeVisible();
+
+  await page.getByRole("link", { name: "Discovery" }).click();
+  await page.getByTestId("discovery-view").first().click();
+  await page.getByTestId("moderation-reason-policy").click();
+  await page.getByTestId("moderation-details").fill("Needs admin decision.");
+  await page.getByTestId("report-task").click();
+  await expect(page.getByTestId("moderation-message")).toContainText(
+    "Report submitted: policy",
+  );
+
+  await page.getByTestId("nav-admin").click();
+  await expect(page.getByTestId("admin-moderation-report")).toHaveCount(1);
+  await expect(page.getByTestId("admin-moderation-subject-link")).toHaveCount(
+    1,
+  );
+  await page.getByTestId("admin-moderation-note").fill("Handled by admin");
+  await page.getByTestId("admin-moderation-resolve").click();
+  await expect(page.getByTestId("admin-message")).toContainText(
+    "Moderation report updated.",
+  );
+  await expect(page.getByTestId("admin-moderation-report")).toContainText(
+    "resolved",
+  );
+  await expect(page.getByTestId("admin-moderation-resolution-note"))
+    .toContainText(
+      "Handled by admin",
+    );
+
+  await page.getByTestId("admin-moderation-state").selectOption("dismissed");
+  await expect(page.getByTestId("admin-moderation-empty")).toBeVisible();
+  await page.getByTestId("admin-moderation-state").selectOption("resolved");
+  await expect(page.getByTestId("admin-moderation-report")).toHaveCount(1);
 });
 
 test("demo owner can refund a funded task they own", async ({ page }) => {

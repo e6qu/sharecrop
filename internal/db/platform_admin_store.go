@@ -33,7 +33,7 @@ func (store PlatformAdminStore) IsAdmin(ctx context.Context, userID core.UserID)
 		return httpserver.PlatformAdminAllowed{}
 	}
 	var exists bool
-	if err := store.pool.QueryRow(ctx, `select exists(select 1 from platform_admins where user_id = $1)`, userID.String()).Scan(&exists); err != nil {
+	if err := store.pool.QueryRow(ctx, `select exists(select 1 from platform_admins where user_id = $1 and state = 'active')`, userID.String()).Scan(&exists); err != nil {
 		return httpserver.PlatformAdminDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check platform admin failed")}
 	}
 	if exists {

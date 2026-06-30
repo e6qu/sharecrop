@@ -33,6 +33,13 @@ storage read/write failures return explicit rejected results. This is enough to
 prove the next WASM path can persist one classified slice without adding hidden
 fallback behavior.
 
+The first request-handler step uses that storage boundary for
+`POST /api/admin/moderation/reports/{report_id}/triage`. The handler rejects
+missing storage, missing clocks, unsupported routes, unsupported methods,
+invalid request bodies, and invalid triage states. It does not replace the
+backendless JavaScript demo and does not provide substitute stores for
+unimplemented routes.
+
 ## Compile Check
 
 The current Go codebase compiles to `js/wasm` for representative packages and
@@ -72,8 +79,7 @@ Do not replace `site/demo/backend.js` until the WASM path can satisfy these gate
 
 ## Next Spike Step
 
-The next WASM step is a request handler that uses the explicit storage boundary
-for moderation triage and runs the shared scenario parity suite against that
-handler. If the handler requires broad store rewrites or hidden substitute
-behavior, keep the JavaScript demo backend and expand shared parity tests
-instead.
+The next WASM step is to add enough explicit browser-backed stores and request
+handlers to run the shared scenario parity suite against the WASM handler. If
+that requires broad store rewrites or hidden substitute behavior, keep the
+JavaScript demo backend and expand shared parity tests instead.

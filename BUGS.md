@@ -38,11 +38,8 @@ Test gaps:
   expanding as the API grows.
 - Full Playwright mobile/screens coverage was not run locally for this branch.
   Focused demo Playwright coverage passed, including admin privacy request
-  resolution and task moderation reporting. Focused admin desktop/mobile
-  screenshots were inspected.
-- Database-backed integration and HTTP E2E checks were not completed locally for
-  this branch because `DATABASE_URL` is not set in the current environment.
-  Postgres-backed coverage should be run before merge or by CI.
+  resolution, task moderation reporting, admin platform-admin configuration,
+  privacy retention execution, and moderation triage.
 
 Known risks:
 
@@ -65,10 +62,11 @@ Known risks:
   has identical domain semantics.
 - Go code compiles to `js/wasm` for representative packages and the main
   command. A narrow `internal/wasmdemo` request-adapter spike exists for privacy
-  and moderation route classification, and an explicit moderation-triage browser
-  storage boundary exists. A WASM demo backend still lacks a request handler
-  wired to domain-service execution, deterministic reset, startup measurements,
-  and a JS/WASM scenario test runner.
+  and moderation route classification, and explicit moderation-triage browser
+  storage plus request-handler boundaries exist. A WASM demo backend still lacks
+  enough explicit browser-backed stores and handlers to run the shared scenario
+  parity suite, deterministic reset, startup measurements, and a JS/WASM
+  scenario test runner.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

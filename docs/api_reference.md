@@ -99,9 +99,15 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `GET /api/notifications`: list authenticated-user notifications.
 - `POST /api/notifications/{notification_id}/read`: mark a notification read.
 - `GET /api/admin/operations`: platform-admin runtime status.
+- `GET /api/admin/platform-admins`: platform-admin configuration list.
+- `POST /api/admin/platform-admins`: grant platform-admin access to a user with `user_id`.
+- `POST /api/admin/platform-admins/{user_id}/revoke`: revoke a granted platform-admin role by lifecycle state.
 - `GET /api/admin/audit-events`: platform-admin audit event list. Supports `action`, `subject_kind`, `subject_id`, `limit`, and `offset`.
+- `GET /api/admin/moderation/reports`: platform-admin moderation report list. Supports `state`, `limit`, and `offset`.
+- `POST /api/admin/moderation/reports/{report_id}/triage`: update moderation report `state` and `resolution_note`. Accepted states are `open`, `resolved`, and `dismissed`.
 - `GET /api/admin/privacy-requests`: platform-admin privacy request queue.
 - `POST /api/admin/privacy-requests/{privacy_request_id}/resolve`: resolve a queued privacy request with a `resolution_note`. Data-export requests store export JSON. Sensitive-field deletion requests mark delete-on-request sensitive-field metadata as redacted and record affected counts.
+- `POST /api/admin/privacy-retention/run`: run delete-on-request sensitive-field retention and return the redacted-field count.
 
 ## Notes
 
@@ -109,5 +115,5 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - Selector-backed browser flows use `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams.
 - Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
 - Submission responses include `sensitive_fields` metadata for indexed sensitive response paths. The metadata identifies path, category, retention, redaction policy, lifecycle state, and redaction time.
-- Privacy requests are persisted. Requesters can list their own requests, and platform admins can list and resolve requests. Resolution stores basic export JSON for data-export requests or marks delete-on-request sensitive-field metadata as redacted. Core rows are not removed.
+- Privacy requests are persisted. Requesters can list their own requests, and platform admins can list and resolve requests. Resolution stores basic export JSON for data-export requests or marks delete-on-request sensitive-field metadata as redacted. Platform admins can also run retention for active delete-on-request sensitive-field metadata. Core rows are not removed.
 - Rewards are Sharecrop credits and admin-minted Sharecrop collectibles only. External wallets, crypto integrations, and per-project tokens are out of scope.

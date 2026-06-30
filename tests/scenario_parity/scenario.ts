@@ -288,6 +288,21 @@ export async function runSharedScenarioParity(
   assertStatus(retentionRun, 200, "privacy retention run");
   requireNumber(retentionRun.json, "redacted_field_count");
 
+  const retentionAudit = await client.request(
+    "GET",
+    "/api/admin/audit-events?action=privacy_retention_run&subject_kind=privacy_retention",
+    noScenarioBody,
+  );
+  assertStatus(retentionAudit, 200, "privacy retention audit events");
+  const retentionAuditEvents = requireArray(retentionAudit.json, "events");
+  assertScenario(
+    retentionAuditEvents.some((event) => {
+      const record = requireRecord(event, "retentionAuditEvent");
+      return requireString(record, "subject_id") === subjectID;
+    }),
+    "privacy retention run must be visible in audit events",
+  );
+
   const users = await client.request(
     "GET",
     "/api/users?query=user&limit=2&offset=0",
@@ -336,6 +351,37 @@ export async function runSharedScenarioParity(
   assertScenario(
     requireString(revokedAdmin.json, "user_id") === transferRecipient.subjectID,
     "revoked platform admin must match selected user",
+  );
+
+  const platformAdminAudit = await client.request(
+    "GET",
+    `/api/admin/audit-events?subject_kind=user&subject_id=${transferRecipient.subjectID}`,
+    noScenarioBody,
+  );
+  assertStatus(platformAdminAudit, 200, "platform admin audit events");
+  const platformAdminAuditEvents = requireArray(
+    platformAdminAudit.json,
+    "events",
+  );
+  assertScenario(
+    platformAdminAuditEvents.some((event) =>
+      requireString(
+        requireRecord(event, "platformAdminAuditEvent"),
+        "action",
+      ) ===
+        "platform_admin_granted"
+    ),
+    "platform admin grant must be visible in audit events",
+  );
+  assertScenario(
+    platformAdminAuditEvents.some((event) =>
+      requireString(
+        requireRecord(event, "platformAdminAuditEvent"),
+        "action",
+      ) ===
+        "platform_admin_revoked"
+    ),
+    "platform admin revoke must be visible in audit events",
   );
 
   const catalog = await client.request(
@@ -715,6 +761,19 @@ export async function runSharedScenarioParity(
   assertScenario(
     requireString(triagedModerationReport.json, "updated_by") === subjectID,
     "triaged moderation report updater must match admin actor",
+  );
+
+  const triageAudit = await client.request(
+    "GET",
+    `/api/admin/audit-events?action=moderation_report_triaged&subject_kind=moderation_report&subject_id=${
+      requireString(moderationReport.json, "id")
+    }`,
+    noScenarioBody,
+  );
+  assertStatus(triageAudit, 200, "moderation triage audit events");
+  assertScenario(
+    requireArray(triageAudit.json, "events").length > 0,
+    "moderation triage must be visible in audit events",
   );
 
   const moderationAudit = await client.request(

@@ -248,7 +248,9 @@ Missing or partial:
 
 Implemented:
 
-- Platform admins are configured through `SHARECROP_ADMIN_USER_IDS`.
+- Bootstrap platform admins are configured through `SHARECROP_ADMIN_USER_IDS`.
+- Platform admins can grant and revoke additional platform admins from the
+  browser admin page. Revocation uses lifecycle state, not row deletion.
 - Admins can award catalog collectibles.
 - Admins can inspect operations status, audit events, and privacy requests from
   the browser admin page.
@@ -256,14 +258,14 @@ Implemented:
   resolution stores export JSON; sensitive-field deletion resolution marks
   delete-on-request sensitive-field metadata as redacted and records affected
   counts.
-- Admins can list task moderation reports created by authenticated users. The
-  current implementation persists reports as audit events.
+- Admins can run delete-on-request sensitive-field retention from the browser.
+- Admins can list, filter, resolve, dismiss, reopen, and annotate task
+  moderation reports created by authenticated users. Reports are persisted as
+  audit events with separate triage state and direct subject links where a
+  browser route exists.
 
 Missing or partial:
 
-- No browser/admin page for configuring admins.
-- Moderation triage states/actions such as resolve, dismiss, annotate, and
-  subject-specific links are not implemented yet.
 - No platform fee, billing, payout, or external wallet model.
 
 ### Data, Privacy, And Compliance
@@ -281,12 +283,15 @@ Implemented:
   metadata as redacted without removing core rows.
 - Sensitive-field redaction records affected counts and per-field redaction
   events.
+- Platform admins can run retention for active delete-on-request sensitive-field
+  metadata.
+- Authorized submission-list and profile reads record sensitive-field access
+  events when returned submissions include sensitive-field metadata.
 
 Missing or partial:
 
-- Retention automation remains a product job surface rather than a background
+- Retention automation remains operator-triggered rather than a background
   scheduler.
-- Sensitive-field access events are not recorded.
 - No attachment/object-storage model.
 
 ### Lists, Search, And Navigation

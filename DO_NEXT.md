@@ -5,39 +5,42 @@ Current priority from
 
 Active branch:
 
-1. `task/admin-moderation-retention-wasm` is ready for review.
+1. `task/db-admin-wasm-parity-hardening` is ready for review.
 
 Next recommended work:
 
-1. Run database-backed integration and HTTP E2E checks with a configured
-   `DATABASE_URL`, then fix any migration/store issues found by Postgres.
-2. Add focused integration tests for platform-admin lifecycle, moderation
-   triage persistence, privacy retention runs, and sensitive-field access
-   events.
-3. Keep expanding shared scenario parity as new user-visible API surfaces are
+1. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    team/organization queue search/type/sort, organization reviewer acceptance,
    sensitive-field response metadata/redaction state, privacy
    request/audit/resolution/retention shape, moderation report/admin-list/audit
-   triage shape, platform-admin grant/revoke shape, and multi-actor
+   triage shape, platform-admin grant/revoke/audit shape, and multi-actor
    reservation/submission acceptance.
-4. Keep expanding generated/fixture-level HTTP contract coverage as the API
+2. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-5. Audit remaining raw-ID browser flows and replace high-traffic fields with
+3. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
-6. Build a WASM request handler that uses the explicit moderation-triage browser
-   storage boundary, then run shared scenario parity against that handler.
-7. Run broader Playwright mobile/screens coverage for the admin configuration
-   and moderation triage surfaces.
-8. Add provider email delivery only if the product direction changes; current
+4. Add enough explicit browser-backed stores and request handlers for the WASM
+   demo path to run the shared scenario parity suite without fallback stores.
+5. Run broader Playwright mobile/screens coverage beyond the focused demo admin
+   coverage.
+6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-9. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The db-admin-wasm-parity-hardening branch ran database-backed checks,
+   fixed revoked platform-admin authorization, added focused integration tests
+   for platform-admin lifecycle, moderation triage, privacy retention, and
+   sensitive-field access events, expanded demo admin Playwright coverage,
+   added a no-fallback WASM moderation-triage request handler, expanded shared
+   scenario parity for admin audit events, and refreshed raw-ID/readiness/API
+   docs.
 
 1. The admin-moderation-retention-wasm branch added platform-admin lifecycle
    configuration, shared admin authorization gates, moderation report
