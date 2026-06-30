@@ -1,5 +1,36 @@
 # What We Did
 
+`task/db-admin-wasm-parity-hardening` hardened the PR 89 admin/privacy/
+moderation work with database-backed checks, integration tests, browser
+coverage, parity coverage, and the next WASM demo step:
+
+- **Database-backed validation.** Local Postgres migrations, tagged integration
+  tests, and HTTP E2E checks passed through `tools/run_db_checks.sh`.
+- **Platform admin lifecycle.** Revoked persisted platform admins are no longer
+  authorized by `IsAdmin`. Integration coverage now verifies bootstrap admin
+  protection, grant/list/revoke behavior, revoked state persistence, and
+  post-revoke authorization denial.
+- **Moderation and privacy persistence.** Integration coverage now verifies
+  moderation triage state transitions, invalid triage rejection, privacy
+  retention runs, sensitive-field redaction persistence, retention-run rows,
+  and sensitive-field access audit events.
+- **Admin browser coverage.** Focused Playwright demo coverage now exercises
+  platform-admin grants/revokes, privacy retention execution, moderation report
+  subject links, triage resolution, and moderation state filtering.
+- **WASM spike.** `internal/wasmdemo` gained a no-fallback moderation-triage
+  request handler over explicit browser storage and explicit clock boundaries.
+  Missing storage, missing clocks, unsupported routes, invalid methods, invalid
+  bodies, and invalid states are rejected explicitly.
+- **Parity and contracts.** Shared scenario parity now checks admin audit event
+  shapes for privacy retention, platform-admin grant/revoke, and moderation
+  triage. API, readiness, raw-ID audit, demo parity, and WASM spike docs were
+  refreshed.
+- **Verification.** Passed: `go test ./...`; `deno task check:ts`;
+  `deno task lint`; `deno task test`; `deno task check:policy`;
+  `deno fmt --check deno.json tools tests`; `make check-contracts`;
+  `go tool deadcode -test ./...`; local `tools/run_db_checks.sh` against
+  Postgres; and focused Playwright `tests/playwright/demo.spec.ts`.
+
 `task/admin-moderation-retention-wasm` added admin moderation, retention, and
 WASM storage work:
 

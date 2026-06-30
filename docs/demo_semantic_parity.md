@@ -32,6 +32,6 @@
 
 ## Recommendation
 
-Keep expanding shared scenario parity before replacing the fake backend. The suite covers selector pagination/query behavior, team/organization queue search/type/sort behavior, org/team/task/comment creation, admin operations, account-token issue shape, privacy request resolution, sensitive-field redaction state, collectible catalog/mint/transfer, submission creation/comments with sensitive-field response metadata, notification read shape, and a multi-actor reservation/submission-review/payout flow.
+Keep expanding shared scenario parity before replacing the fake backend. The suite covers selector pagination/query behavior, team/organization queue search/type/sort behavior, org/team/task/comment creation, admin operations, platform-admin grant/revoke, account-token issue shape, privacy request resolution, privacy retention audit shape, moderation triage audit shape, sensitive-field redaction state, collectible catalog/mint/transfer, submission creation/comments with sensitive-field response metadata, notification read shape, and a multi-actor reservation/submission-review/payout flow.
 
 Use [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md) for the current WASM finding. Adopt WASM only if it can use explicit browser storage adapters without fallbacks or dead paths.

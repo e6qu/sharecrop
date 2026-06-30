@@ -13,6 +13,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/notification"
+	"github.com/e6qu/sharecrop/internal/submission"
 )
 
 func TestNotificationStorePersistsInboxLifecycle(t *testing.T) {
@@ -89,6 +90,102 @@ func TestAuditStoreListsPersistedEvents(t *testing.T) {
 	}
 	if len(filtered.Values) == 0 {
 		t.Fatalf("expected filtered audit event")
+	}
+}
+
+func TestPlatformAdminStorePersistsLifecycle(t *testing.T) {
+	pool := newPool(t)
+	actor := createUser(t, pool, "platform-admin-actor")
+	target := createUser(t, pool, "platform-admin-target")
+	bootstrap := createUser(t, pool, "platform-admin-bootstrap")
+	store := db.NewPlatformAdminStore(pool, map[string]bool{bootstrap.String(): true})
+
+	if _, allowed := store.IsAdmin(context.Background(), bootstrap).(httpserver.PlatformAdminAllowed); !allowed {
+		t.Fatalf("bootstrap admin was denied")
+	}
+
+	grantResult := store.Grant(context.Background(), target, actor)
+	granted, grantedMatched := grantResult.(httpserver.PlatformAdminSaved)
+	if !grantedMatched {
+		t.Fatalf("grant platform admin rejected: %T", grantResult)
+	}
+	if granted.Value.Source != "granted" {
+		t.Fatalf("source = %q, want granted", granted.Value.Source)
+	}
+	if _, allowed := store.IsAdmin(context.Background(), target).(httpserver.PlatformAdminAllowed); !allowed {
+		t.Fatalf("granted admin was denied")
+	}
+
+	listResult := store.List(context.Background(), core.DefaultPage())
+	listed, listedMatched := listResult.(httpserver.PlatformAdminsListed)
+	if !listedMatched {
+		t.Fatalf("list platform admins rejected: %T", listResult)
+	}
+	if len(listed.Values) != 2 {
+		t.Fatalf("platform admin count = %d, want 2", len(listed.Values))
+	}
+
+	revokeResult := store.Revoke(context.Background(), target)
+	if _, revoked := revokeResult.(httpserver.PlatformAdminSaved); !revoked {
+		t.Fatalf("revoke platform admin rejected: %T", revokeResult)
+	}
+	if _, denied := store.IsAdmin(context.Background(), target).(httpserver.PlatformAdminDenied); !denied {
+		t.Fatalf("revoked admin was still allowed")
+	}
+
+	var state string
+	if err := pool.QueryRow(context.Background(), `
+		select state from platform_admins where user_id = $1
+	`, target.String()).Scan(&state); err != nil {
+		t.Fatalf("read platform admin state: %v", err)
+	}
+	if state != "revoked" {
+		t.Fatalf("state = %q, want revoked", state)
+	}
+
+	bootstrapRevoke := store.Revoke(context.Background(), bootstrap)
+	if _, rejected := bootstrapRevoke.(httpserver.PlatformAdminMutationRejected); !rejected {
+		t.Fatalf("bootstrap revoke should be rejected, got %T", bootstrapRevoke)
+	}
+}
+
+func TestModerationTriageStorePersistsTransitions(t *testing.T) {
+	pool := newPool(t)
+	actor := createUser(t, pool, "moderation-triage-actor")
+	service := audit.NewService(db.NewAuditStore(pool))
+	recordResult := service.Record(context.Background(), actor, audit.ActionModerationReportCreated, audit.Subject{Kind: "task", ID: newTaskID(t).String()}, audit.Metadata{JSON: `{"reason":"policy","details":"integration report"}`})
+	recorded, recordedMatched := recordResult.(audit.EventRecorded)
+	if !recordedMatched {
+		t.Fatalf("record moderation audit rejected: %T", recordResult)
+	}
+
+	store := db.NewModerationTriageStore(pool)
+	openResult := store.RecordOpen(context.Background(), recorded.Value)
+	if _, opened := openResult.(httpserver.ModerationTriageSaved); !opened {
+		t.Fatalf("record open triage rejected: %T", openResult)
+	}
+
+	listResult := store.List(context.Background(), []core.AuditEventID{recorded.Value.ID})
+	listed, listedMatched := listResult.(httpserver.ModerationTriageListed)
+	if !listedMatched {
+		t.Fatalf("list moderation triage rejected: %T", listResult)
+	}
+	if len(listed.Values) != 1 || listed.Values[0].State != "open" {
+		t.Fatalf("triage list = %#v, want one open record", listed.Values)
+	}
+
+	updateResult := store.Update(context.Background(), actor, recorded.Value.ID, "resolved", "handled")
+	updated, updatedMatched := updateResult.(httpserver.ModerationTriageSaved)
+	if !updatedMatched {
+		t.Fatalf("update moderation triage rejected: %T", updateResult)
+	}
+	if updated.Value.State != "resolved" || updated.Value.ResolutionNote != "handled" || updated.Value.UpdatedBy != actor.String() {
+		t.Fatalf("updated triage = %#v", updated.Value)
+	}
+
+	invalidResult := store.Update(context.Background(), actor, recorded.Value.ID, "deleted", "bad")
+	if _, rejected := invalidResult.(httpserver.ModerationTriageMutationRejected); !rejected {
+		t.Fatalf("invalid triage state should be rejected, got %T", invalidResult)
 	}
 }
 
@@ -181,6 +278,82 @@ func TestPrivacyStoreResolvesExportAndSensitiveRedaction(t *testing.T) {
 	}
 	if eventCount != 1 {
 		t.Fatalf("redaction event count = %d, want 1", eventCount)
+	}
+}
+
+func TestPrivacyStoreRetentionRunAndSensitiveAccessEvents(t *testing.T) {
+	pool := newPool(t)
+	actor := createUser(t, pool, "privacy-retention-actor")
+	taskID := insertTask(t, pool, actor, "open", 1)
+	submissionID := insertSubmission(t, pool, taskID, actor)
+	var activeBefore int
+	if err := pool.QueryRow(context.Background(), `
+		select count(*) from submission_sensitive_fields
+		where state = 'active' and retention = 'delete_on_request'
+	`).Scan(&activeBefore); err != nil {
+		t.Fatalf("count active sensitive fields: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(), `
+		insert into submission_sensitive_fields (submission_id, field_index, path, category, retention, redaction)
+		values ($1, 0, 'email', 'pii', 'delete_on_request', 'replace')
+	`, submissionID.String()); err != nil {
+		t.Fatalf("insert sensitive field: %v", err)
+	}
+
+	store := db.NewPrivacyStore(pool)
+	accessResult := store.RecordSensitiveFieldAccess(context.Background(), actor, submission.Submission{
+		ID: submissionID,
+		SensitiveFields: []submission.SensitiveField{{
+			Path:      "email",
+			Category:  "pii",
+			Retention: "delete_on_request",
+			Redaction: "replace",
+			State:     "active",
+		}},
+	})
+	if _, saved := accessResult.(httpserver.PrivacyRequestSaved); !saved {
+		t.Fatalf("record sensitive access rejected: %T", accessResult)
+	}
+	var accessCount int
+	if err := pool.QueryRow(context.Background(), `
+		select count(*) from submission_sensitive_field_events
+		where submission_id = $1 and action = 'sensitive_field_accessed'
+	`, submissionID.String()).Scan(&accessCount); err != nil {
+		t.Fatalf("count sensitive access events: %v", err)
+	}
+	if accessCount != 1 {
+		t.Fatalf("access event count = %d, want 1", accessCount)
+	}
+
+	retentionResult := store.RunRetention(context.Background(), actor)
+	retention, retentionMatched := retentionResult.(httpserver.PrivacyRetentionRun)
+	if !retentionMatched {
+		t.Fatalf("run retention rejected: %T", retentionResult)
+	}
+	if retention.RedactedFieldCount != activeBefore+1 {
+		t.Fatalf("redacted field count = %d, want %d", retention.RedactedFieldCount, activeBefore+1)
+	}
+
+	var fieldState string
+	if err := pool.QueryRow(context.Background(), `
+		select state from submission_sensitive_fields
+		where submission_id = $1 and path = 'email'
+	`, submissionID.String()).Scan(&fieldState); err != nil {
+		t.Fatalf("read sensitive field state: %v", err)
+	}
+	if fieldState != "redacted" {
+		t.Fatalf("field state = %q, want redacted", fieldState)
+	}
+
+	var runCount int
+	if err := pool.QueryRow(context.Background(), `
+		select count(*) from privacy_retention_runs
+		where actor_user_id = $1 and redacted_field_count = $2
+	`, actor.String(), activeBefore+1).Scan(&runCount); err != nil {
+		t.Fatalf("count retention runs: %v", err)
+	}
+	if runCount != 1 {
+		t.Fatalf("retention run count = %d, want 1", runCount)
 	}
 }
 

@@ -1,14 +1,14 @@
 # Status
 
-The repository contains pull request 1 through pull request 88 work, merged into
-`main`, plus the current `task/admin-moderation-retention-wasm` branch.
+The repository contains pull request 1 through pull request 89 work, merged into
+`main`, plus the current `task/db-admin-wasm-parity-hardening` branch.
 
-Active task: `task/admin-moderation-retention-wasm` is ready for review. It
-adds moderation triage, moderation subject links, admin configuration UI,
-sensitive-field retention automation, sensitive-field access audit events,
-expanded parity/contract coverage, a no-fallback WASM browser-storage slice,
-and raw-ID fixes where needed. Hard deletes remain out of scope; use soft
-lifecycle states, anonymization, redaction, tombstones, and audit records.
+Active task: `task/db-admin-wasm-parity-hardening` is ready for review. It
+bundles database-backed validation, focused integration coverage for the PR 89
+admin/privacy/moderation stores, broader admin browser coverage, the next
+no-fallback WASM demo handler step, expanded parity/docs, and another raw-ID
+browser-flow audit. Hard deletes remain out of scope; use soft lifecycle
+states, anonymization, redaction, tombstones, and audit records.
 Email/provider delivery, anonymous worker identity, per-project tokens, external
 wallets, and crypto integrations are out of scope.
 
@@ -158,7 +158,8 @@ Current implemented surface:
 - The WASM demo backend spike is documented with explicit storage-adapter gates,
   local compile-check results, bundle-size observations, a narrow
   `internal/wasmdemo` request-adapter package, an explicit moderation-triage
-  browser-storage boundary, and no fallback path.
+  browser-storage boundary, a narrow moderation-triage request handler, and no
+  fallback path.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -177,22 +178,17 @@ Current verification:
 - `deno task check:policy` passed.
 - `deno task test` passed.
 - `deno fmt --check deno.json tools tests` passed.
-- `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
+- `make check-contracts` passed.
 - `go tool deadcode -test ./...` passed.
+- `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
+  SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations
+  SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901
+  SHARECROP_HTTP_ADDR=:18080 ./tools/run_db_checks.sh` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
   --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0
   test -c tests/playwright/playwright.config.ts tests/playwright/demo.spec.ts`
   passed.
-- Local admin screenshots were captured at `/tmp/sharecrop-admin-check` for
-  desktop and mobile. The check verified no horizontal overflow, expected admin
-  sections, `open` moderation filter state, and an empty blank user-selector
-  value.
-- `go test -tags integration ./tests/integration` was attempted and failed
-  because `DATABASE_URL` is not set in this environment.
-- `make check-contracts` was attempted before commit and stopped at the expected
-  generated Elm diff. The contract generator ran successfully; the check should
-  pass after committing generated files.
 
 Blocking issues:
 
-- Integration/HTTP E2E checks need a configured `DATABASE_URL`.
+- None known.

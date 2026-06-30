@@ -15,13 +15,15 @@ selection:
 - series task selection
 - collectible award recipient selection
 - collectible transfer recipient selection
+- platform-admin grant selection
 
 ## Remaining ID Surfaces
 
 Raw IDs still appear where they are protocol or operator data:
 
 - audit event filters and audit rows
-- admin moderation report rows
+- admin moderation report rows, with direct subject links where a browser route
+  exists
 - API/MCP examples and copyable integration payloads
 - links and route fragments
 - stored event metadata
