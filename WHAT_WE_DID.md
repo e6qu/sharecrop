@@ -1,5 +1,36 @@
 # What We Did
 
+`task/parity-wasm-dashboard-revision-polish` expanded parity coverage, WASM
+demo groundwork, queue/revision polish, browser coverage, and docs:
+
+- **Scenario parity and demo parity.** Shared scenario parity now covers
+  persisted saved queue views. That scenario caught a backendless-demo saved
+  queue view status-code mismatch, and `site/demo/backend.js` now returns the
+  real API's `200` status for saved-view upserts.
+- **HTTP contracts.** Wire-shape fixtures now cover privacy resolution requests
+  and saved queue view commands.
+- **WASM spike.** `internal/wasmdemo` gained explicit privacy-request browser
+  storage plus create/list request handlers. Missing storage, clocks, actors,
+  ID sources, invalid kinds, invalid states, unsupported methods, and
+  unsupported routes reject explicitly without fallback stores.
+- **Browser polish.** Organization task queues, team work sections, revision
+  inboxes, and revision timelines now show loaded item counts. Saved-view labels
+  continue to expose state/type/sort context, and browser coverage verifies
+  those labels.
+- **Revision flow coverage.** Browser coverage now verifies that a requested
+  revision can be opened from the inbox, resubmitted, and shown as another
+  timeline row.
+- **Raw-ID audit and docs.** The raw-ID audit, readiness review, demo parity,
+  WASM spike, status, bugs, and next-task queue were refreshed.
+- **Verification.** Passed: `go test ./...`; focused Go tests for
+  `internal/http` and `internal/wasmdemo`; `deno task check:ts`;
+  `deno task lint`; `deno task test`; `deno task check:policy`;
+  `deno fmt --check deno.json tools tests`; `make check-contracts`;
+  `go tool deadcode -test ./...`; `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`; and Playwright demo/mobile specs. DB-backed Playwright
+  screens and local DB checks could not complete because Docker/Postgres was not
+  reachable in the local environment.
+
 `task/db-admin-wasm-parity-hardening` hardened the PR 89 admin/privacy/
 moderation work with database-backed checks, integration tests, browser
 coverage, parity coverage, and the next WASM demo step:

@@ -36,10 +36,11 @@ Test gaps:
   wallets are out of scope.
 - Request/command contracts and HTTP contract fixture tests should keep
   expanding as the API grows.
-- Full Playwright mobile/screens coverage was not run locally for this branch.
-  Focused demo Playwright coverage passed, including admin privacy request
-  resolution, task moderation reporting, admin platform-admin configuration,
-  privacy retention execution, and moderation triage.
+- DB-backed Playwright `screens.spec.ts` and local `tools/run_db_checks.sh`
+  could not complete for the current branch because Docker/Postgres is not
+  reachable in the local environment. The attempted screens run failed during
+  registration with `begin create user transaction failed`. Demo/mobile
+  Playwright coverage passed.
 
 Known risks:
 
@@ -62,11 +63,11 @@ Known risks:
   has identical domain semantics.
 - Go code compiles to `js/wasm` for representative packages and the main
   command. A narrow `internal/wasmdemo` request-adapter spike exists for privacy
-  and moderation route classification, and explicit moderation-triage browser
-  storage plus request-handler boundaries exist. A WASM demo backend still lacks
-  enough explicit browser-backed stores and handlers to run the shared scenario
-  parity suite, deterministic reset, startup measurements, and a JS/WASM
-  scenario test runner.
+  and moderation route classification, and explicit privacy-request and
+  moderation-triage browser storage plus request-handler boundaries exist. A
+  WASM demo backend still lacks enough explicit browser-backed stores and
+  handlers to run the shared scenario parity suite, deterministic reset, startup
+  measurements, and a JS/WASM scenario test runner.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

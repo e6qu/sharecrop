@@ -83,6 +83,8 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `GET /api/teams/{team_id}`: team detail.
 - `POST /api/teams/{team_id}/members`: add a standalone-team member by email.
 - `GET /api/teams/{team_id}/work`: list tasks visible or assigned to the team.
+- `GET /api/saved-queue-views`: list authenticated-user saved queue views. Supports optional `scope`.
+- `POST /api/saved-queue-views`: upsert an authenticated-user saved queue view. Accepted scopes are `team_work` and `organization_tasks`.
 
 ## Collectibles, Ledger, Notifications, Admin
 

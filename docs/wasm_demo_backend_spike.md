@@ -26,18 +26,23 @@ the privacy and moderation route pairs:
 Unsupported methods and routes return explicit rejection results. The package
 does not execute domain services or replace `site/demo/backend.js`.
 
-The package now also contains an explicit browser-storage boundary for
-moderation triage records. The storage boundary is caller-provided; no in-memory
-store is selected by default. Missing records, invalid keys, invalid states, and
-storage read/write failures return explicit rejected results. This is enough to
-prove the next WASM path can persist one classified slice without adding hidden
-fallback behavior.
+The package now also contains explicit browser-storage boundaries for privacy
+requests and moderation triage records. The storage boundary is caller-provided;
+no in-memory store is selected by default. Missing records, invalid keys,
+invalid states, invalid privacy request kinds, and storage read/write failures
+return explicit rejected results. This is enough to prove the next WASM path can
+persist two classified slices without adding hidden fallback behavior.
 
-The first request-handler step uses that storage boundary for
-`POST /api/admin/moderation/reports/{report_id}/triage`. The handler rejects
-missing storage, missing clocks, unsupported routes, unsupported methods,
-invalid request bodies, and invalid triage states. It does not replace the
-backendless JavaScript demo and does not provide substitute stores for
+The current request-handler steps use those storage boundaries for:
+
+- `POST /api/privacy-requests`
+- `GET /api/admin/privacy-requests`
+- `POST /api/admin/moderation/reports/{report_id}/triage`
+
+The handlers reject missing storage, missing clocks, missing actor identity,
+missing ID sources, unsupported routes, unsupported methods, invalid request
+bodies, invalid privacy request kinds, and invalid triage states. They do not
+replace the backendless JavaScript demo and do not provide substitute stores for
 unimplemented routes.
 
 ## Compile Check
@@ -55,9 +60,9 @@ Plain `go test` produced WASM test binaries but could not execute them natively;
 running those tests requires a JS/WASM test runner.
 
 The compile check means basic Go/WASM compatibility is not the blocker. The
-blockers are request adaptation, browser storage adapters, deterministic seed
-and reset, startup size, and running the shared scenario parity suite against a
-WASM request handler.
+blockers are broader request adaptation, enough browser storage adapters,
+deterministic seed and reset, startup size, and running the shared scenario
+parity suite against a WASM request handler.
 
 ## Required Shape
 

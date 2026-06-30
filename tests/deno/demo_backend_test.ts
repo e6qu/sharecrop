@@ -271,7 +271,7 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     },
     accessToken,
   );
-  assertEquals(savedView.status, 201, "saved queue view status");
+  assertEquals(savedView.status, 200, "saved queue view status");
   requireString(savedView.json, "id");
   assertEquals(
     requireString(savedView.json, "scope"),

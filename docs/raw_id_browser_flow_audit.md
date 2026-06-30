@@ -17,6 +17,10 @@ selection:
 - collectible transfer recipient selection
 - platform-admin grant selection
 
+The current source scan still shows task-ID text in queue search placeholders,
+where IDs are an optional search term rather than the only way to complete the
+flow. Series task management remains picker-backed.
+
 ## Remaining ID Surfaces
 
 Raw IDs still appear where they are protocol or operator data:
@@ -27,6 +31,8 @@ Raw IDs still appear where they are protocol or operator data:
 - API/MCP examples and copyable integration payloads
 - links and route fragments
 - stored event metadata
+- profile pages and submission/revision timeline rows that link to specific
+  users or tasks
 
 These are not currently classified as replacement candidates because they expose
 identifiers for inspection or integration rather than asking a normal workflow

@@ -1,14 +1,15 @@
 # Status
 
-The repository contains pull request 1 through pull request 89 work, merged into
-`main`, plus the current `task/db-admin-wasm-parity-hardening` branch.
+The repository contains pull request 1 through pull request 90 work, merged into
+`main`, plus the current
+`task/parity-wasm-dashboard-revision-polish` branch.
 
-Active task: `task/db-admin-wasm-parity-hardening` is ready for review. It
-bundles database-backed validation, focused integration coverage for the PR 89
-admin/privacy/moderation stores, broader admin browser coverage, the next
-no-fallback WASM demo handler step, expanded parity/docs, and another raw-ID
-browser-flow audit. Hard deletes remain out of scope; use soft lifecycle
-states, anonymization, redaction, tombstones, and audit records.
+Active task: `task/parity-wasm-dashboard-revision-polish` is ready for review.
+It bundles shared scenario parity growth, fixture-level HTTP contract coverage,
+a raw-ID browser-flow audit refresh, the next no-fallback WASM demo
+handler/store step, broader Playwright coverage, team/organization dashboard
+polish, and worker revision flow polish. Hard deletes remain out of scope; use
+soft lifecycle states, anonymization, redaction, tombstones, and audit records.
 Email/provider delivery, anonymous worker identity, per-project tokens, external
 wallets, and crypto integrations are out of scope.
 
@@ -126,9 +127,9 @@ Current implemented surface:
   origin/token.
 - The shared scenario parity runner also covers organization reviewer acceptance
   of an organization-owned task funded from the organization balance.
-- The shared scenario parity runner covers submission-comment notifications and
-  team/organization queue search/type/sort behavior plus sensitive-field
-  response metadata.
+- The shared scenario parity runner covers submission-comment notifications,
+  team/organization queue search/type/sort behavior, persisted saved queue
+  views, and sensitive-field response metadata.
 - A GitHub Pages routing check script verifies deployed root/docs/demo entry
   paths and demo assets after deployment.
 - The Pages workflow runs the deployed routing check after GitHub Pages
@@ -157,9 +158,9 @@ Current implemented surface:
   is not part of the project direction.
 - The WASM demo backend spike is documented with explicit storage-adapter gates,
   local compile-check results, bundle-size observations, a narrow
-  `internal/wasmdemo` request-adapter package, an explicit moderation-triage
-  browser-storage boundary, a narrow moderation-triage request handler, and no
-  fallback path.
+  `internal/wasmdemo` request-adapter package, explicit privacy-request and
+  moderation-triage browser-storage boundaries, narrow privacy-request and
+  moderation-triage request handlers, and no fallback path.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -180,15 +181,16 @@ Current verification:
 - `deno fmt --check deno.json tools tests` passed.
 - `make check-contracts` passed.
 - `go tool deadcode -test ./...` passed.
-- `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
-  SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations
-  SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901
-  SHARECROP_HTTP_ADDR=:18080 ./tools/run_db_checks.sh` passed.
+- `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
   --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0
-  test -c tests/playwright/playwright.config.ts tests/playwright/demo.spec.ts`
-  passed.
+  test -c tests/playwright/playwright.config.ts tests/playwright/demo.spec.ts
+  tests/playwright/mobile.spec.ts` passed.
 
 Blocking issues:
 
-- None known.
+- Docker is not reachable in the current local environment, so DB-backed
+  `tools/run_db_checks.sh` and DB-backed Playwright `screens.spec.ts` could not
+  complete locally for this branch. The attempted Playwright screens run failed
+  during registration with `begin create user transaction failed` while Docker
+  was unavailable.

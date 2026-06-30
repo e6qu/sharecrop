@@ -1330,7 +1330,7 @@
     }
     view.id = nextId("saved-view");
     db.savedQueueViews.unshift(view);
-    return ok(savedQueueViewResponse(view), 201);
+    return ok(savedQueueViewResponse(view));
   });
 
   on(
