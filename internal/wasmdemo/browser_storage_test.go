@@ -73,3 +73,48 @@ func TestModerationTriageBrowserStorageRejectsInvalidState(t *testing.T) {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }
+
+func TestPrivacyRequestBrowserStorageListRoundTrip(t *testing.T) {
+	storage := newTestBrowserStorage()
+	request := StoredPrivacyRequest{
+		ID:                 "privacy-1",
+		Kind:               "data_export",
+		Status:             "queued",
+		RequestedBy:        "user-1",
+		CreatedAt:          "2026-06-30T10:00:00Z",
+		RedactedFieldCount: 0,
+	}
+
+	saveResult := SavePrivacyRequest(storage, request)
+	if _, matched := saveResult.(PrivacyRequestStored); !matched {
+		t.Fatalf("save result = %T, want PrivacyRequestStored", saveResult)
+	}
+
+	listResult := ListPrivacyRequests(storage)
+	listed, matched := listResult.(PrivacyRequestsStored)
+	if !matched {
+		t.Fatalf("list result = %T, want PrivacyRequestsStored", listResult)
+	}
+	if len(listed.Values) != 1 {
+		t.Fatalf("privacy request count = %d, want 1", len(listed.Values))
+	}
+	if listed.Values[0].ID != "privacy-1" || listed.Values[0].Kind != "data_export" || listed.Values[0].RequestedBy != "user-1" {
+		t.Fatalf("listed request = %#v", listed.Values[0])
+	}
+}
+
+func TestPrivacyRequestBrowserStorageRejectsInvalidKind(t *testing.T) {
+	result := SavePrivacyRequest(newTestBrowserStorage(), StoredPrivacyRequest{
+		ID:          "privacy-1",
+		Kind:        "unknown",
+		Status:      "queued",
+		RequestedBy: "user-1",
+	})
+	rejected, matched := result.(PrivacyRequestStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want PrivacyRequestStorageRejected", result)
+	}
+	if rejected.Reason != "privacy request kind is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}

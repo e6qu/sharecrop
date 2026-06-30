@@ -867,6 +867,78 @@ export async function runSharedScenarioParity(
     "team work queue search must return the created organization-team task",
   );
 
+  const savedOrgViewName = uniqueName("Scenario org view");
+  const savedOrgView = await client.request(
+    "POST",
+    "/api/saved-queue-views",
+    {
+      scope: "organization_tasks",
+      name: savedOrgViewName,
+      query: taskTitle,
+      state_filter: "open",
+      type_filter: "code_review",
+      sort: "title_asc",
+    },
+  );
+  assertStatus(savedOrgView, 200, "save organization task view");
+  assertScenario(
+    requireString(savedOrgView.json, "name") === savedOrgViewName,
+    "saved organization view name must round trip",
+  );
+  assertScenario(
+    requireString(savedOrgView.json, "scope") === "organization_tasks",
+    "saved organization view scope must round trip",
+  );
+  const listedOrgViews = await client.request(
+    "GET",
+    "/api/saved-queue-views?scope=organization_tasks",
+    noScenarioBody,
+  );
+  assertStatus(listedOrgViews, 200, "list organization saved views");
+  assertScenario(
+    requireArray(listedOrgViews.json, "views").some((view) => {
+      const record = requireRecord(view, "organizationSavedView");
+      return requireString(record, "name") === savedOrgViewName &&
+        requireString(record, "type_filter") === "code_review" &&
+        requireString(record, "sort") === "title_asc";
+    }),
+    "listed organization saved views must include created view",
+  );
+
+  const savedTeamViewName = uniqueName("Scenario team view");
+  const savedTeamView = await client.request(
+    "POST",
+    "/api/saved-queue-views",
+    {
+      scope: "team_work",
+      name: savedTeamViewName,
+      query: organizationTeamTaskTitle,
+      state_filter: "ready",
+      type_filter: "qa_testing",
+      sort: "reward_desc",
+    },
+  );
+  assertStatus(savedTeamView, 200, "save team work view");
+  assertScenario(
+    requireString(savedTeamView.json, "scope") === "team_work",
+    "saved team view scope must round trip",
+  );
+  const listedTeamViews = await client.request(
+    "GET",
+    "/api/saved-queue-views?scope=team_work",
+    noScenarioBody,
+  );
+  assertStatus(listedTeamViews, 200, "list team saved views");
+  assertScenario(
+    requireArray(listedTeamViews.json, "views").some((view) => {
+      const record = requireRecord(view, "teamSavedView");
+      return requireString(record, "name") === savedTeamViewName &&
+        requireString(record, "state_filter") === "ready" &&
+        requireString(record, "type_filter") === "qa_testing";
+    }),
+    "listed team saved views must include created view",
+  );
+
   const taskDetail = await client.request(
     "GET",
     `/api/tasks/${taskID}`,

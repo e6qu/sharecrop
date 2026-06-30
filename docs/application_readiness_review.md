@@ -60,8 +60,10 @@ support surfaces are absent.
      are server-backed.
    - Team and organization queues have persisted saved views for repeated
      query/filter/sort combinations.
-   - Result: the core organization-team task path works, but richer queue
-     persistence and operator-specific queue defaults still need product polish.
+   - Queue headings show loaded item counts, and saved view labels include
+     their state/type/sort context.
+   - Result: the core organization-team task path works, but
+     operator-specific queue defaults still need product polish.
 
 2. **Worker revision and submission-discussion flows still need polish.**
    - Workers can submit and can list their own submissions from the profile
@@ -75,9 +77,12 @@ support surfaces are absent.
      changes.
    - The revision inbox can open the task detail with the previous response
      prefilled for editing.
-   - Result: "request changes" is implemented, and the submissions page now
-     exposes the basic revision history. Higher-volume timeline grouping still
-     needs product polish if repeated rounds become common.
+   - Revision inbox and timeline headings show counts, and browser coverage
+     verifies a requested revision can be resubmitted and appears as another
+     timeline row.
+   - Result: "request changes" is implemented, and the submissions page exposes
+     repeated revision rounds. Higher-volume grouping still needs product polish
+     if repeated rounds become common.
 
 3. **The reward economy is internal only by product decision.**
    - Credits are signup grants and internal ledger entries.
@@ -301,7 +306,8 @@ Implemented:
 - API pagination exists for many list endpoints.
 - Browser has filters for task state and discovery reserved inclusion.
 - Team and organization task queues expose search, task-type filters, sort,
-  pagination, and persisted saved views.
+  pagination, persisted saved views, contextual saved-view labels, and loaded
+  item counts.
 
 Missing or partial:
 
@@ -330,6 +336,8 @@ Missing or partial:
 3. Add Playwright coverage when browser workflows change materially.
 4. Continue moving first-page-only lists to explicit pagination where
    high-volume use is expected.
-5. Add provider email delivery only if account setup stops being admin-driven.
-6. Do not replace the JavaScript backendless demo with WASM until the documented
+5. Keep adding explicit WASM browser-storage boundaries and handlers only where
+   they can fail loudly without fallback stores.
+6. Add provider email delivery only if account setup stops being admin-driven.
+7. Do not replace the JavaScript backendless demo with WASM until the documented
    storage-adapter gates are met without fallbacks.

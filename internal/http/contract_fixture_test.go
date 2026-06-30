@@ -69,6 +69,11 @@ func TestPrivacyRequestsResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"requests":[{"id":"privacy-1","kind":"sensitive_field_deletion","status":"resolved","requested_by":"user-1","export_json":"","resolution_note":"done","created_at":"2026-01-02T03:04:05Z","resolved_at":"2026-01-02T03:05:05Z","redacted_field_count":2}]}`)
 }
 
+func TestPrivacyResolveRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(privacyResolveRequest{ResolutionNote: "Export generated."})
+	assertWireShape(t, encoded, err, `{"resolution_note":"Export generated."}`)
+}
+
 func TestPrivacyRetentionRunResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(privacyRetentionRunResponse{RedactedFieldCount: 2})
 	assertWireShape(t, encoded, err, `{"redacted_field_count":2}`)
@@ -475,6 +480,11 @@ func TestSavedQueueViewResponseWireShape(t *testing.T) {
 func TestSavedQueueViewsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(savedQueueViewsResponse{Views: []savedQueueViewResponse{{ID: "saved-view-1", Scope: "organization_tasks", Name: "Open org", Query: "field", StateFilter: "open", TypeFilter: "", Sort: "newest"}}})
 	assertWireShape(t, encoded, err, `{"views":[{"id":"saved-view-1","scope":"organization_tasks","name":"Open org","query":"field","state_filter":"open","type_filter":"","sort":"newest"}]}`)
+}
+
+func TestSavedQueueViewRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(savedQueueViewRequest{Scope: "organization_tasks", Name: "Open org", Query: "field", StateFilter: "open", TypeFilter: "qa_testing", Sort: "oldest"})
+	assertWireShape(t, encoded, err, `{"scope":"organization_tasks","name":"Open org","query":"field","state_filter":"open","type_filter":"qa_testing","sort":"oldest"}`)
 }
 
 func TestTaskListItemResponseWireShape(t *testing.T) {

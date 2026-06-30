@@ -21537,6 +21537,21 @@ var $author$project$Sharecrop$View$provisionRolePicker = function (selected) {
 			$author$project$Sharecrop$View$roleCheckbox(selected),
 			$author$project$Sharecrop$View$provisionableRoles));
 };
+var $author$project$Sharecrop$View$sectionTitleWithCount = F3(
+	function (title, count, identifier) {
+		return A2(
+			$elm$html$Html$h3,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-lg font-medium'),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(
+					title + (' (' + ($elm$core$String$fromInt(count) + ')')))
+				]));
+	});
 var $author$project$Sharecrop$View$tasksListSimple = F2(
 	function (identifier, tasks) {
 		return $elm$core$List$isEmpty(tasks) ? A2(
@@ -21587,7 +21602,11 @@ var $author$project$Sharecrop$View$activeOrganizationView = function (state) {
 				$author$project$Sharecrop$Ui$label_(
 				'Balance: ' + $author$project$Sharecrop$View$balanceLabel(state.orgBalance)),
 				$author$project$Sharecrop$View$organizationOperationsDashboard(state),
-				$author$project$Sharecrop$Ui$sectionTitle('Organization tasks'),
+				A3(
+				$author$project$Sharecrop$View$sectionTitleWithCount,
+				'Organization tasks',
+				$elm$core$List$length(state.orgTasks),
+				'org-tasks-heading'),
 				$author$project$Sharecrop$View$orgTaskControls(state),
 				A2($author$project$Sharecrop$View$tasksListSimple, 'org-tasks', state.orgTasks),
 				A2($author$project$Sharecrop$View$maybeNote, state.orgTaskMessage, 'org-task-message'),
@@ -24424,7 +24443,11 @@ var $author$project$Sharecrop$View$teamWorkSection = F4(
 				]),
 			_List_fromArray(
 				[
-					$author$project$Sharecrop$Ui$sectionTitle(title),
+					A3(
+					$author$project$Sharecrop$View$sectionTitleWithCount,
+					title,
+					$elm$core$List$length(tasks),
+					identifier + '-heading'),
 					$elm$core$List$isEmpty(tasks) ? A2(
 					$elm$html$Html$p,
 					_List_fromArray(
@@ -25219,7 +25242,11 @@ var $author$project$Sharecrop$View$revisionTimelineView = function (submissions)
 			]),
 		_List_fromArray(
 			[
-				$author$project$Sharecrop$Ui$sectionTitle('Revision timeline'),
+				A3(
+				$author$project$Sharecrop$View$sectionTitleWithCount,
+				'Revision timeline',
+				$elm$core$List$length(submissions),
+				'revision-timeline-heading'),
 				$elm$core$List$isEmpty(submissions) ? A2(
 				$elm$html$Html$p,
 				_List_fromArray(
@@ -25259,7 +25286,11 @@ var $author$project$Sharecrop$View$userSubmissionsView = F2(
 							$elm$html$Html$text('Back to profile')
 						])),
 					$author$project$Sharecrop$Ui$sectionTitle('Submissions'),
-					$author$project$Sharecrop$Ui$sectionTitle('Revision inbox'),
+					A3(
+					$author$project$Sharecrop$View$sectionTitleWithCount,
+					'Revision inbox',
+					$elm$core$List$length(revisionItems),
+					'revision-inbox-heading'),
 					$elm$core$List$isEmpty(revisionItems) ? A2(
 					$elm$html$Html$p,
 					_List_fromArray(

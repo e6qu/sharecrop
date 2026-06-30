@@ -691,13 +691,19 @@ teamCanActOnTask item =
 teamWorkSection : String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
 teamWorkSection title identifier emptyMessage tasks =
     div [ Html.Attributes.class "space-y-2", testId identifier ]
-        [ Ui.sectionTitle title
+        [ sectionTitleWithCount title (List.length tasks) (identifier ++ "-heading")
         , if List.isEmpty tasks then
             p [ Html.Attributes.class "text-sm text-slate-500", testId (identifier ++ "-empty") ] [ text emptyMessage ]
 
           else
             div [ Html.Attributes.class "divide-y divide-slate-100" ] (List.map taskRow tasks)
         ]
+
+
+sectionTitleWithCount : String -> Int -> String -> Html msg
+sectionTitleWithCount title count identifier =
+    h3 [ Html.Attributes.class "text-lg font-medium", testId identifier ]
+        [ text (title ++ " (" ++ String.fromInt count ++ ")") ]
 
 
 collectiblesHoldingsList : String -> List Collectible.CollectibleResponse -> Html Msg
@@ -938,7 +944,7 @@ userSubmissionsView userId state =
     Ui.card
         [ a [ href ("#/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
         , Ui.sectionTitle "Submissions"
-        , Ui.sectionTitle "Revision inbox"
+        , sectionTitleWithCount "Revision inbox" (List.length revisionItems) "revision-inbox-heading"
         , if List.isEmpty revisionItems then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "revision-inbox-empty" ] [ text "No requested revisions." ]
 
@@ -978,7 +984,7 @@ userSubmissionRow item =
 revisionTimelineView : List Submission.SubmissionResponse -> Html Msg
 revisionTimelineView submissions =
     div [ Html.Attributes.class "space-y-2", testId "revision-timeline" ]
-        [ Ui.sectionTitle "Revision timeline"
+        [ sectionTitleWithCount "Revision timeline" (List.length submissions) "revision-timeline-heading"
         , if List.isEmpty submissions then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "revision-timeline-empty" ] [ text "No submission history." ]
 
@@ -1195,7 +1201,7 @@ activeOrganizationView state =
         div [ Html.Attributes.class "mt-4 space-y-4 rounded-md bg-slate-50 p-4", testId "active-organization" ]
             [ Ui.label_ ("Balance: " ++ balanceLabel state.orgBalance)
             , organizationOperationsDashboard state
-            , Ui.sectionTitle "Organization tasks"
+            , sectionTitleWithCount "Organization tasks" (List.length state.orgTasks) "org-tasks-heading"
             , orgTaskControls state
             , tasksListSimple "org-tasks" state.orgTasks
             , maybeNote state.orgTaskMessage "org-task-message"

@@ -220,6 +220,9 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page.getByTestId("active-organization")).toBeVisible();
   await expect(page.getByTestId("org-operations-dashboard")).toBeVisible();
   await expect(page.getByTestId("org-ops-members-active")).toContainText("1");
+  await expect(page.getByTestId("org-tasks-heading")).toContainText(
+    "Organization tasks (0)",
+  );
   await expect(page.getByTestId("org-task-query")).toBeVisible();
   await page.getByTestId("org-task-query").fill("missing task");
   await page.getByTestId("org-task-search").click();
@@ -232,6 +235,10 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("org-task-save-view").click();
   await expect(page.getByTestId("org-task-saved-view")).toContainText(
     "Open tasks",
+  );
+  await expect(page.getByTestId("org-task-saved-view")).toContainText("Open");
+  await expect(page.getByTestId("org-task-saved-view")).toContainText(
+    "Newest",
   );
   await page.getByTestId("org-task-query").fill("");
   await page.getByTestId("org-task-saved-view").click();
@@ -258,6 +265,15 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page).toHaveURL(/\/teams\/[0-9a-f-]+$/);
   await expect(page.getByTestId("team-detail-name")).toContainText(teamName);
   await expect(page.getByTestId("team-work-dashboard")).toBeVisible();
+  await expect(page.getByTestId("team-review-queue-heading")).toContainText(
+    "Review queue (0)",
+  );
+  await expect(page.getByTestId("team-ready-work-heading")).toContainText(
+    "Ready for team (0)",
+  );
+  await expect(page.getByTestId("team-assigned-work-heading")).toContainText(
+    "Assigned to team (0)",
+  );
   await expect(page.getByTestId("team-work-query")).toBeVisible();
   await page.getByTestId("team-work-query").fill("missing task");
   await page.getByTestId("team-work-search").click();
@@ -269,6 +285,12 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("team-work-save-view").click();
   await expect(page.getByTestId("team-work-saved-view")).toContainText(
     "Ready work",
+  );
+  await expect(page.getByTestId("team-work-saved-view")).toContainText(
+    "Ready",
+  );
+  await expect(page.getByTestId("team-work-saved-view")).toContainText(
+    "Newest",
   );
   await page.getByTestId("team-work-query").fill("");
   await page.getByTestId("team-work-saved-view").click();
@@ -382,10 +404,16 @@ test("workers see requested revisions in their submission inbox", async ({ page,
   await loginViaUi(page, worker.email);
   await expect(page.getByTestId("balance")).toBeVisible();
   await page.goto(`/#/users/${worker.body.subject_id}/submissions`);
+  await expect(page.getByTestId("revision-inbox-heading")).toContainText(
+    "Revision inbox (1)",
+  );
   await expect(page.getByTestId("revision-inbox")).toBeVisible();
   await expect(page.getByTestId("revision-inbox")).toContainText(task.id);
   await expect(page.getByTestId("revision-inbox")).toContainText(reviewNote);
   await expect(page.getByTestId("revision-timeline")).toBeVisible();
+  await expect(page.getByTestId("revision-timeline-heading")).toContainText(
+    "Revision timeline (1)",
+  );
   await expect(page.getByTestId("revision-timeline-row")).toContainText(
     reviewNote,
   );
@@ -396,6 +424,20 @@ test("workers see requested revisions in their submission inbox", async ({ page,
       JSON.parse(await page.getByTestId("detail-submit-input").inputValue())
     )
     .toEqual({ answer: "revise me" });
+  await page.getByTestId("detail-submit-input").fill(
+    '{"answer":"revised from inbox"}',
+  );
+  await page.getByTestId("detail-submit").click();
+  await expect(page.getByTestId("detail-submit-message")).toBeVisible();
+
+  await page.goto(`/#/users/${worker.body.subject_id}/submissions`);
+  await expect(page.getByTestId("revision-timeline-row")).toHaveCount(2);
+  await expect(page.getByTestId("revision-timeline-heading")).toContainText(
+    "Revision timeline (2)",
+  );
+  await expect(page.getByTestId("user-submissions")).toContainText(
+    "revised from inbox",
+  );
 });
 
 test("requesters scope a task to a standalone team", async ({ page, request }) => {

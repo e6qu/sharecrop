@@ -5,15 +5,20 @@ Current priority from
 
 Active branch:
 
-1. `task/db-admin-wasm-parity-hardening` is ready for review.
+1. `task/parity-wasm-dashboard-revision-polish` is ready for review. It bundles
+   shared scenario parity growth, fixture-level HTTP contract coverage, a raw-ID
+   browser-flow audit refresh, the next no-fallback WASM demo handler/store
+   step, broader Playwright coverage, team/organization dashboard polish, and
+   worker revision flow polish.
 
 Next recommended work:
 
 1. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
-   team/organization queue search/type/sort, organization reviewer acceptance,
-   sensitive-field response metadata/redaction state, privacy
+   team/organization queue search/type/sort, persisted saved queue views,
+   organization reviewer acceptance, sensitive-field response metadata/redaction
+   state, privacy
    request/audit/resolution/retention shape, moderation report/admin-list/audit
    triage shape, platform-admin grant/revoke/audit shape, and multi-actor
    reservation/submission acceptance.
@@ -25,14 +30,22 @@ Next recommended work:
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 4. Add enough explicit browser-backed stores and request handlers for the WASM
    demo path to run the shared scenario parity suite without fallback stores.
-5. Run broader Playwright mobile/screens coverage beyond the focused demo admin
-   coverage.
+   Privacy-request and moderation-triage storage/handler slices now exist.
+5. Run DB-backed Playwright `screens.spec.ts` and `tools/run_db_checks.sh` when
+   Docker/Postgres is available locally; CI should also cover these paths.
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
 7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The parity-wasm-dashboard-revision-polish branch added shared scenario
+   parity for persisted saved queue views, request fixture coverage for privacy
+   resolution and saved queue view commands, a raw-ID browser-flow audit
+   refresh, no-fallback WASM privacy-request storage and request handlers,
+   saved-view/demo status parity fixes, queue/revision count headings, broader
+   demo/mobile Playwright coverage, and continuity updates.
 
 1. The db-admin-wasm-parity-hardening branch ran database-backed checks,
    fixed revoked platform-admin authorization, added focused integration tests
