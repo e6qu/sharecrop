@@ -30,6 +30,14 @@ func (ids fixedPrivacyRequestIDs) NextPrivacyRequestID() string {
 	return ids.value
 }
 
+type fixedSavedQueueViewIDs struct {
+	value string
+}
+
+func (ids fixedSavedQueueViewIDs) NextSavedQueueViewID() string {
+	return ids.value
+}
+
 func TestModerationTriageHandlerPersistsThroughBrowserStorage(t *testing.T) {
 	storage := newTestBrowserStorage()
 	handler := NewModerationTriageHandler(storage, fixedHandlerClock{value: time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)})
@@ -150,6 +158,23 @@ func TestPrivacyRequestHandlerRejectsMissingIDSource(t *testing.T) {
 	}
 }
 
+func TestPrivacyRequestHandlerListsWithoutIDSource(t *testing.T) {
+	handler := NewPrivacyRequestHandler(
+		newTestBrowserStorage(),
+		fixedHandlerClock{value: time.Now().UTC()},
+		fixedHandlerActor{userID: "user-admin"},
+		nil,
+	)
+	result := handler.Handle(Request{Method: MethodGet, Path: "/api/admin/privacy-requests", Body: ""})
+	handled, matched := result.(RequestHandled)
+	if !matched {
+		t.Fatalf("result = %T, want RequestHandled", result)
+	}
+	if handled.Value.Status != 200 {
+		t.Fatalf("status = %d, want 200", handled.Value.Status)
+	}
+}
+
 func TestPrivacyRequestHandlerRejectsInvalidKind(t *testing.T) {
 	handler := NewPrivacyRequestHandler(
 		newTestBrowserStorage(),
@@ -163,6 +188,59 @@ func TestPrivacyRequestHandlerRejectsInvalidKind(t *testing.T) {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
 	if rejected.Reason != "privacy request kind is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestSavedQueueViewHandlerUpsertsAndListsThroughBrowserStorage(t *testing.T) {
+	storage := newTestBrowserStorage()
+	handler := NewSavedQueueViewHandler(
+		storage,
+		fixedHandlerActor{userID: "user-admin"},
+		fixedSavedQueueViewIDs{value: "saved-view-1"},
+	)
+	createResult := handler.Handle(Request{
+		Method: MethodPost,
+		Path:   "/api/saved-queue-views",
+		Body:   `{"scope":"team_work","name":"Ready work","query":"review","state_filter":"ready","type_filter":"code_review","sort":"title_asc"}`,
+	})
+	created, createdMatched := createResult.(RequestHandled)
+	if !createdMatched {
+		t.Fatalf("create result = %T, want RequestHandled", createResult)
+	}
+	if created.Value.Status != 200 {
+		t.Fatalf("create status = %d, want 200", created.Value.Status)
+	}
+	var createdBody StoredSavedQueueView
+	if err := json.Unmarshal([]byte(created.Value.Body), &createdBody); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if createdBody.ID != "saved-view-1" || createdBody.UserID != "user-admin" || createdBody.Scope != "team_work" {
+		t.Fatalf("created body = %#v", createdBody)
+	}
+
+	listResult := handler.Handle(Request{Method: MethodGet, Path: "/api/saved-queue-views?scope=team_work", Body: ""})
+	listed, listedMatched := listResult.(RequestHandled)
+	if !listedMatched {
+		t.Fatalf("list result = %T, want RequestHandled", listResult)
+	}
+	var listBody savedQueueViewsBody
+	if err := json.Unmarshal([]byte(listed.Value.Body), &listBody); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listBody.Views) != 1 || listBody.Views[0].Name != "Ready work" {
+		t.Fatalf("list body = %#v", listBody)
+	}
+}
+
+func TestSavedQueueViewHandlerRejectsMissingIDSourceForUpsert(t *testing.T) {
+	handler := NewSavedQueueViewHandler(newTestBrowserStorage(), fixedHandlerActor{userID: "user-admin"}, nil)
+	result := handler.Handle(Request{Method: MethodPost, Path: "/api/saved-queue-views", Body: `{"scope":"team_work","name":"Ready work"}`})
+	rejected, matched := result.(RequestHandleRejected)
+	if !matched {
+		t.Fatalf("result = %T, want RequestHandleRejected", result)
+	}
+	if rejected.Reason != "saved queue view id source is required" {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }

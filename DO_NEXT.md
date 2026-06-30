@@ -5,11 +5,8 @@ Current priority from
 
 Active branch:
 
-1. `task/parity-wasm-dashboard-revision-polish` is ready for review. It bundles
-   shared scenario parity growth, fixture-level HTTP contract coverage, a raw-ID
-   browser-flow audit refresh, the next no-fallback WASM demo handler/store
-   step, broader Playwright coverage, team/organization dashboard polish, and
-   worker revision flow polish.
+1. No next task is active until the current pull request is merged and local
+   `main` is synced.
 
 Next recommended work:
 
@@ -20,8 +17,8 @@ Next recommended work:
    organization reviewer acceptance, sensitive-field response metadata/redaction
    state, privacy
    request/audit/resolution/retention shape, moderation report/admin-list/audit
-   triage shape, platform-admin grant/revoke/audit shape, and multi-actor
-   reservation/submission acceptance.
+   triage shape, platform-admin grant/revoke/audit shape, admin audit
+   pagination, and multi-actor reservation/submission acceptance.
 2. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
 3. Audit remaining raw-ID browser flows and replace high-traffic fields with
@@ -30,15 +27,28 @@ Next recommended work:
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 4. Add enough explicit browser-backed stores and request handlers for the WASM
    demo path to run the shared scenario parity suite without fallback stores.
-   Privacy-request and moderation-triage storage/handler slices now exist.
-5. Run DB-backed Playwright `screens.spec.ts` and `tools/run_db_checks.sh` when
-   Docker/Postgres is available locally; CI should also cover these paths.
-6. Add provider email delivery only if the product direction changes; current
+   Privacy-request, moderation-triage, and saved-queue-view storage/handler
+   slices now exist.
+5. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+6. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The postmerge-db-parity-wasm-pagination-coverage branch cleaned post-PR-91
+   continuity, added admin pagination controls for audit events,
+   platform-admins, privacy requests, and moderation reports, fixed
+   backendless-demo pagination for those list routes, expanded shared scenario
+   parity for admin audit pagination, added data-export response fixture
+   coverage, added a demo-only Playwright config, and hardened DB-backed
+   Playwright registration failure messages.
+1. The branch added explicit WASM demo saved-queue-view browser storage,
+   route classification, and request handlers with fail-loud validation and no
+   fallback stores.
+1. The branch refreshed raw-ID, readiness, demo-parity, WASM-spike, status,
+   bugs, and next-task docs. DB-backed checks and DB-backed Playwright screens
+   passed against isolated local PostgreSQL 15.
 
 1. The parity-wasm-dashboard-revision-polish branch added shared scenario
    parity for persisted saved queue views, request fixture coverage for privacy

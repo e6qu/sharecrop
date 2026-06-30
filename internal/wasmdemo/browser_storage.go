@@ -83,6 +83,17 @@ type StoredPrivacyRequest struct {
 	RedactedFieldCount int    `json:"redacted_field_count"`
 }
 
+type StoredSavedQueueView struct {
+	ID          string `json:"id"`
+	UserID      string `json:"user_id"`
+	Scope       string `json:"scope"`
+	Name        string `json:"name"`
+	Query       string `json:"query"`
+	StateFilter string `json:"state_filter"`
+	TypeFilter  string `json:"type_filter"`
+	Sort        string `json:"sort"`
+}
+
 type ModerationTriageStorageResult interface {
 	moderationTriageStorageResult()
 }
@@ -331,6 +342,255 @@ func validStoredPrivacyKind(value string) bool {
 func validStoredPrivacyStatus(value string) bool {
 	switch value {
 	case "queued", "resolved":
+		return true
+	default:
+		return false
+	}
+}
+
+type SavedQueueViewStorageResult interface {
+	savedQueueViewStorageResult()
+}
+
+type SavedQueueViewStored struct {
+	Value StoredSavedQueueView
+}
+
+type SavedQueueViewsStored struct {
+	Values []StoredSavedQueueView
+}
+
+type SavedQueueViewStorageRejected struct {
+	Reason string
+}
+
+func (SavedQueueViewStored) savedQueueViewStorageResult()          {}
+func (SavedQueueViewsStored) savedQueueViewStorageResult()         {}
+func (SavedQueueViewStorageRejected) savedQueueViewStorageResult() {}
+
+func SaveSavedQueueView(storage BrowserStorage, view StoredSavedQueueView) SavedQueueViewStorageResult {
+	cleaned := StoredSavedQueueView{
+		ID:          strings.TrimSpace(view.ID),
+		UserID:      strings.TrimSpace(view.UserID),
+		Scope:       strings.TrimSpace(view.Scope),
+		Name:        strings.TrimSpace(view.Name),
+		Query:       strings.TrimSpace(view.Query),
+		StateFilter: strings.TrimSpace(view.StateFilter),
+		TypeFilter:  strings.TrimSpace(view.TypeFilter),
+		Sort:        strings.TrimSpace(view.Sort),
+	}
+	if cleaned.ID == "" {
+		return SavedQueueViewStorageRejected{Reason: "saved queue view id is required"}
+	}
+	if cleaned.UserID == "" {
+		return SavedQueueViewStorageRejected{Reason: "saved queue view actor is required"}
+	}
+	if cleaned.Name == "" {
+		return SavedQueueViewStorageRejected{Reason: "saved queue view name is required"}
+	}
+	if !validSavedQueueScope(cleaned.Scope) {
+		return SavedQueueViewStorageRejected{Reason: "saved queue view scope is invalid"}
+	}
+	keyResult := savedQueueViewKey(cleaned.UserID, cleaned.Scope, cleaned.Name)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return SavedQueueViewStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	existingResult := storage.Get(key.Value)
+	if read, matched := existingResult.(StorageRead); matched {
+		var existing StoredSavedQueueView
+		if err := json.Unmarshal([]byte(read.Value), &existing); err != nil {
+			return SavedQueueViewStorageRejected{Reason: "saved queue view decoding failed"}
+		}
+		if rejectedReason := validateStoredSavedQueueView(existing); rejectedReason != "" {
+			return SavedQueueViewStorageRejected{Reason: rejectedReason}
+		}
+		if strings.TrimSpace(existing.UserID) != cleaned.UserID || strings.TrimSpace(existing.Scope) != cleaned.Scope || strings.TrimSpace(existing.Name) != cleaned.Name {
+			return SavedQueueViewStorageRejected{Reason: "saved queue view storage key contains mismatched record"}
+		}
+		cleaned.ID = strings.TrimSpace(existing.ID)
+	} else if _, missing := existingResult.(StorageMissing); !missing {
+		return SavedQueueViewStorageRejected{Reason: savedQueueViewReadReason(existingResult)}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return SavedQueueViewStorageRejected{Reason: "saved queue view encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return SavedQueueViewStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	indexResult := appendSavedQueueViewIndex(storage, cleaned.UserID, cleaned.Scope, key.Value.String())
+	if _, matched := indexResult.(SavedQueueViewsStored); !matched {
+		return indexResult
+	}
+	return SavedQueueViewStored{Value: cleaned}
+}
+
+func ListSavedQueueViews(storage BrowserStorage, userID string, scope string) SavedQueueViewStorageResult {
+	cleanUserID := strings.TrimSpace(userID)
+	cleanScope := strings.TrimSpace(scope)
+	if cleanUserID == "" {
+		return SavedQueueViewStorageRejected{Reason: "saved queue view actor is required"}
+	}
+	if cleanScope == "" {
+		teamResult := ListSavedQueueViews(storage, cleanUserID, "team_work")
+		teamViews, teamMatched := teamResult.(SavedQueueViewsStored)
+		if !teamMatched {
+			return teamResult
+		}
+		orgResult := ListSavedQueueViews(storage, cleanUserID, "organization_tasks")
+		orgViews, orgMatched := orgResult.(SavedQueueViewsStored)
+		if !orgMatched {
+			return orgResult
+		}
+		values := make([]StoredSavedQueueView, 0, len(teamViews.Values)+len(orgViews.Values))
+		values = append(values, teamViews.Values...)
+		values = append(values, orgViews.Values...)
+		return SavedQueueViewsStored{Values: values}
+	}
+	if !validSavedQueueScope(cleanScope) {
+		return SavedQueueViewStorageRejected{Reason: "saved queue view scope is invalid"}
+	}
+	keysResult := loadSavedQueueViewIndex(storage, cleanUserID, cleanScope)
+	keys, keysMatched := keysResult.(savedQueueViewKeysLoaded)
+	if !keysMatched {
+		return SavedQueueViewStorageRejected{Reason: keysResult.(savedQueueViewKeysRejected).Reason}
+	}
+	values := make([]StoredSavedQueueView, 0, len(keys.Values))
+	for index := range keys.Values {
+		keyResult := NewStorageKey(keys.Values[index])
+		key, keyMatched := keyResult.(StorageKeyAccepted)
+		if !keyMatched {
+			return SavedQueueViewStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+		}
+		readResult := storage.Get(key.Value)
+		read, readMatched := readResult.(StorageRead)
+		if !readMatched {
+			return SavedQueueViewStorageRejected{Reason: savedQueueViewReadReason(readResult)}
+		}
+		var view StoredSavedQueueView
+		if err := json.Unmarshal([]byte(read.Value), &view); err != nil {
+			return SavedQueueViewStorageRejected{Reason: "saved queue view decoding failed"}
+		}
+		if rejectedReason := validateStoredSavedQueueView(view); rejectedReason != "" {
+			return SavedQueueViewStorageRejected{Reason: rejectedReason}
+		}
+		if strings.TrimSpace(view.UserID) != cleanUserID || strings.TrimSpace(view.Scope) != cleanScope {
+			return SavedQueueViewStorageRejected{Reason: "saved queue view index contains mismatched record"}
+		}
+		values = append(values, view)
+	}
+	return SavedQueueViewsStored{Values: values}
+}
+
+type savedQueueViewKeysResult interface {
+	savedQueueViewKeysResult()
+}
+
+type savedQueueViewKeysLoaded struct {
+	Values []string
+}
+
+type savedQueueViewKeysRejected struct {
+	Reason string
+}
+
+func (savedQueueViewKeysLoaded) savedQueueViewKeysResult()   {}
+func (savedQueueViewKeysRejected) savedQueueViewKeysResult() {}
+
+func savedQueueViewKey(userID string, scope string, name string) StorageKeyResult {
+	return NewStorageKey("saved_queue_view:" + userID + ":" + scope + ":" + name)
+}
+
+func savedQueueViewIndexKey(userID string, scope string) StorageKeyResult {
+	return NewStorageKey("saved_queue_view:index:" + userID + ":" + scope)
+}
+
+func loadSavedQueueViewIndex(storage BrowserStorage, userID string, scope string) savedQueueViewKeysResult {
+	keyResult := savedQueueViewIndexKey(userID, scope)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return savedQueueViewKeysRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	if _, missing := readResult.(StorageMissing); missing {
+		return savedQueueViewKeysLoaded{Values: []string{}}
+	}
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return savedQueueViewKeysRejected{Reason: savedQueueViewReadReason(readResult)}
+	}
+	var keys []string
+	if err := json.Unmarshal([]byte(read.Value), &keys); err != nil {
+		return savedQueueViewKeysRejected{Reason: "saved queue view index decoding failed"}
+	}
+	for index := range keys {
+		if strings.TrimSpace(keys[index]) == "" {
+			return savedQueueViewKeysRejected{Reason: "saved queue view index contains an invalid key"}
+		}
+	}
+	return savedQueueViewKeysLoaded{Values: keys}
+}
+
+func appendSavedQueueViewIndex(storage BrowserStorage, userID string, scope string, viewKey string) SavedQueueViewStorageResult {
+	keysResult := loadSavedQueueViewIndex(storage, userID, scope)
+	keys, keysMatched := keysResult.(savedQueueViewKeysLoaded)
+	if !keysMatched {
+		return SavedQueueViewStorageRejected{Reason: keysResult.(savedQueueViewKeysRejected).Reason}
+	}
+	for index := range keys.Values {
+		if keys.Values[index] == viewKey {
+			return SavedQueueViewsStored{Values: []StoredSavedQueueView{}}
+		}
+	}
+	keys.Values = append(keys.Values, viewKey)
+	encoded, err := json.Marshal(keys.Values)
+	if err != nil {
+		return SavedQueueViewStorageRejected{Reason: "saved queue view index encoding failed"}
+	}
+	keyResult := savedQueueViewIndexKey(userID, scope)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return SavedQueueViewStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return SavedQueueViewStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	return SavedQueueViewsStored{Values: []StoredSavedQueueView{}}
+}
+
+func savedQueueViewReadReason(result StorageReadResult) string {
+	switch rejected := result.(type) {
+	case StorageMissing:
+		return rejected.Reason
+	case StorageReadRejected:
+		return rejected.Reason
+	default:
+		return "saved queue view read failed"
+	}
+}
+
+func validateStoredSavedQueueView(view StoredSavedQueueView) string {
+	if strings.TrimSpace(view.ID) == "" {
+		return "saved queue view id is required"
+	}
+	if strings.TrimSpace(view.UserID) == "" {
+		return "saved queue view actor is required"
+	}
+	if strings.TrimSpace(view.Name) == "" {
+		return "saved queue view name is required"
+	}
+	if !validSavedQueueScope(strings.TrimSpace(view.Scope)) {
+		return "saved queue view scope is invalid"
+	}
+	return ""
+}
+
+func validSavedQueueScope(value string) bool {
+	switch value {
+	case "team_work", "organization_tasks":
 		return true
 	default:
 		return false

@@ -24,6 +24,8 @@ func TestAdaptRecognizesPrivacyAndModerationRoutes(t *testing.T) {
 		{name: "list admin privacy requests", method: MethodGet, path: "/api/admin/privacy-requests", route: RouteAdminPrivacyRequests},
 		{name: "create moderation report", method: MethodPost, path: "/api/moderation/reports", route: RouteModerationReports},
 		{name: "list admin moderation reports", method: MethodGet, path: "/api/admin/moderation/reports", route: RouteAdminModerationReports},
+		{name: "list saved queue views", method: MethodGet, path: "/api/saved-queue-views", route: RouteSavedQueueViews},
+		{name: "upsert saved queue view", method: MethodPost, path: "/api/saved-queue-views", route: RouteSavedQueueViews},
 	}
 
 	for _, tc := range cases {

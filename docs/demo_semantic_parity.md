@@ -34,4 +34,12 @@
 
 Keep expanding shared scenario parity before replacing the fake backend. The suite covers selector pagination/query behavior, team/organization queue search/type/sort behavior, persisted saved queue views, org/team/task/comment creation, admin operations, platform-admin grant/revoke, account-token issue shape, privacy request resolution, privacy retention audit shape, moderation triage audit shape, sensitive-field redaction state, collectible catalog/mint/transfer, submission creation/comments with sensitive-field response metadata, notification read shape, and a multi-actor reservation/submission-review/payout flow. The suite also caught and fixed a backendless-demo saved queue view status-code mismatch with the real API.
 
-Use [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md) for the current WASM finding. Adopt WASM only if it can use explicit browser storage adapters without fallbacks or dead paths.
+Recent parity coverage also checks admin audit pagination by requesting adjacent
+one-row pages and asserting they do not collapse onto the same event when both
+pages are populated. The browser admin page now exposes pagination controls for
+audit events, platform-admin records, privacy requests, and moderation reports,
+so the demo and real UI can exercise more than first-page-only admin lists.
+
+Use [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md) for the current
+WASM finding. Adopt WASM only if it can use explicit browser storage adapters
+without fallbacks or dead paths.

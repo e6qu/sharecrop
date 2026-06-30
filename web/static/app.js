@@ -8020,7 +8020,7 @@ var $author$project$Main$enterPage = F2(
 			case 'AdminPage':
 				return _Utils_update(
 					state,
-					{adminMessage: $elm$core$Maybe$Nothing, adminModerationReports: _List_Nil, adminModerationResolutionNote: '', adminModerationStateFilter: 'open', adminPrivacyRequests: _List_Nil, adminPrivacyResolutionNote: '', adminRetentionRedactedFieldCount: $elm$core$Maybe$Nothing, adminSelectedUserId: '', auditActionFilter: '', auditEvents: _List_Nil, auditSubjectIDFilter: '', auditSubjectKindFilter: '', operations: $elm$core$Maybe$Nothing, page: page, platformAdmins: _List_Nil});
+					{adminMessage: $elm$core$Maybe$Nothing, adminModerationOffset: 0, adminModerationReports: _List_Nil, adminModerationResolutionNote: '', adminModerationStateFilter: 'open', adminPrivacyOffset: 0, adminPrivacyRequests: _List_Nil, adminPrivacyResolutionNote: '', adminRetentionRedactedFieldCount: $elm$core$Maybe$Nothing, adminSelectedUserId: '', auditActionFilter: '', auditEvents: _List_Nil, auditEventsOffset: 0, auditSubjectIDFilter: '', auditSubjectKindFilter: '', operations: $elm$core$Maybe$Nothing, page: page, platformAdmins: _List_Nil, platformAdminsOffset: 0});
 			case 'InboxPage':
 				return _Utils_update(
 					state,
@@ -8168,17 +8168,64 @@ var $author$project$Sharecrop$Generated$Moderation$moderationReportsResponseDeco
 		'reports',
 		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder)));
 var $elm$url$Url$percentEncode = _Url_percentEncode;
-var $author$project$Sharecrop$Api$fetchAdminModerationReports = F2(
-	function (token, stateFilter) {
+var $author$project$Sharecrop$Api$selectorPageSize = 20;
+var $author$project$Sharecrop$Api$fetchAdminModerationReports = F3(
+	function (token, stateFilter, offset) {
 		var stateQuery = ($elm$core$String$trim(stateFilter) === '') ? '' : ('&state=' + $elm$url$Url$percentEncode(
 			$elm$core$String$trim(stateFilter)));
 		return A5(
 			$author$project$Sharecrop$Api$authorizedRequest,
 			'GET',
 			token,
-			'/api/admin/moderation/reports?limit=25&offset=0' + stateQuery,
+			'/api/admin/moderation/reports?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + ($elm$core$String$fromInt(offset) + stateQuery))),
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminModerationReportsReceived, $author$project$Sharecrop$Generated$Moderation$moderationReportsResponseDecoder));
+	});
+var $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived = function (a) {
+	return {$: 'AdminPrivacyRequestsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Privacy$PrivacyRequestsResponse = function (requests) {
+	return {requests: requests};
+};
+var $author$project$Sharecrop$Generated$Privacy$PrivacyRequestResponse = F9(
+	function (id, kind, status, requestedBy, exportJSON, resolutionNote, createdAt, resolvedAt, redactedFieldCount) {
+		return {createdAt: createdAt, exportJSON: exportJSON, id: id, kind: kind, redactedFieldCount: redactedFieldCount, requestedBy: requestedBy, resolutionNote: resolutionNote, resolvedAt: resolvedAt, status: status};
+	});
+var $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (finish) {
+		return A2(
+			$elm$json$Json$Decode$map,
+			finish,
+			A2($elm$json$Json$Decode$field, 'redacted_field_count', $elm$json$Json$Decode$int));
+	},
+	A9(
+		$elm$json$Json$Decode$map8,
+		$author$project$Sharecrop$Generated$Privacy$PrivacyRequestResponse,
+		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'requested_by', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'export_json', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'resolution_note', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'resolved_at', $elm$json$Json$Decode$string)));
+var $author$project$Sharecrop$Generated$Privacy$privacyRequestsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Privacy$PrivacyRequestsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'requests',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchAdminPrivacyRequests = F2(
+	function (token, offset) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/admin/privacy-requests?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived, $author$project$Sharecrop$Generated$Privacy$privacyRequestsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$AuditEventsReceived = function (a) {
 	return {$: 'AuditEventsReceived', a: a};
@@ -8208,9 +8255,8 @@ var $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder = A2(
 		$elm$json$Json$Decode$field,
 		'events',
 		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Admin$auditEventResponseDecoder)));
-var $author$project$Sharecrop$Api$selectorPageSize = 20;
-var $author$project$Sharecrop$Api$fetchAuditEvents = F4(
-	function (token, actionFilter, subjectKindFilter, subjectIDFilter) {
+var $author$project$Sharecrop$Api$fetchAuditEvents = F5(
+	function (token, actionFilter, subjectKindFilter, subjectIDFilter, offset) {
 		var subjectKindQuery = ($elm$core$String$trim(subjectKindFilter) === '') ? '' : ('&subject_kind=' + $elm$url$Url$percentEncode(
 			$elm$core$String$trim(subjectKindFilter)));
 		var subjectIDQuery = ($elm$core$String$trim(subjectIDFilter) === '') ? '' : ('&subject_id=' + $elm$url$Url$percentEncode(
@@ -8221,7 +8267,7 @@ var $author$project$Sharecrop$Api$fetchAuditEvents = F4(
 			$author$project$Sharecrop$Api$authorizedRequest,
 			'GET',
 			token,
-			'/api/admin/audit-events?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=0' + (actionQuery + (subjectKindQuery + subjectIDQuery)))),
+			'/api/admin/audit-events?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + ($elm$core$String$fromInt(offset) + (actionQuery + (subjectKindQuery + subjectIDQuery))))),
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AuditEventsReceived, $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder));
 	});
@@ -8419,6 +8465,39 @@ var $author$project$Sharecrop$Api$fetchOrganizationsPage = F3(
 			A3($author$project$Sharecrop$Api$selectorQuery, queryText, offset, '/api/organizations'),
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrganizationsReceived, $author$project$Sharecrop$Generated$Organization$organizationsResponseDecoder));
+	});
+var $author$project$Sharecrop$Types$PlatformAdminsReceived = function (a) {
+	return {$: 'PlatformAdminsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Admin$PlatformAdminsResponse = function (admins) {
+	return {admins: admins};
+};
+var $author$project$Sharecrop$Generated$Admin$PlatformAdminResponse = F3(
+	function (userID, source, createdAt) {
+		return {createdAt: createdAt, source: source, userID: userID};
+	});
+var $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	$author$project$Sharecrop$Generated$Admin$PlatformAdminResponse,
+	A2($elm$json$Json$Decode$field, 'user_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'source', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Admin$PlatformAdminsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'admins',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchPlatformAdmins = F2(
+	function (token, offset) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/admin/platform-admins?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminsReceived, $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$StandaloneTeamsReceived = function (a) {
 	return {$: 'StandaloneTeamsReceived', a: a};
@@ -8631,16 +8710,6 @@ var $author$project$Sharecrop$Api$fundTaskCommand = F2(
 var $author$project$Sharecrop$Types$PlatformAdminGranted = function (a) {
 	return {$: 'PlatformAdminGranted', a: a};
 };
-var $author$project$Sharecrop$Generated$Admin$PlatformAdminResponse = F3(
-	function (userID, source, createdAt) {
-		return {createdAt: createdAt, source: source, userID: userID};
-	});
-var $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder = A4(
-	$elm$json$Json$Decode$map3,
-	$author$project$Sharecrop$Generated$Admin$PlatformAdminResponse,
-	A2($elm$json$Json$Decode$field, 'user_id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'source', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$grantPlatformAdmin = F2(
 	function (token, userID) {
 		return A5(
@@ -8847,9 +8916,11 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		activeSubmissionCommentsID: $elm$core$Maybe$Nothing,
 		addSeriesTaskId: '',
 		adminMessage: $elm$core$Maybe$Nothing,
+		adminModerationOffset: 0,
 		adminModerationReports: _List_Nil,
 		adminModerationResolutionNote: '',
 		adminModerationStateFilter: 'open',
+		adminPrivacyOffset: 0,
 		adminPrivacyRequests: _List_Nil,
 		adminPrivacyResolutionNote: '',
 		adminRetentionRedactedFieldCount: $elm$core$Maybe$Nothing,
@@ -8860,6 +8931,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 			[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite]),
 		auditActionFilter: '',
 		auditEvents: _List_Nil,
+		auditEventsOffset: 0,
 		auditSubjectIDFilter: '',
 		auditSubjectKindFilter: '',
 		awardDefaultMessage: $elm$core$Maybe$Nothing,
@@ -8949,6 +9021,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		pendingRevisionResponse: '',
 		pendingRevisionTaskID: $elm$core$Maybe$Nothing,
 		platformAdmins: _List_Nil,
+		platformAdminsOffset: 0,
 		provisionMemberEmail: '',
 		provisionMemberMessage: $elm$core$Maybe$Nothing,
 		provisionMemberRoles: _List_fromArray(
@@ -9998,41 +10071,6 @@ var $author$project$Main$replaceNotification = F2(
 			},
 			notifications);
 	});
-var $elm$core$List$any = F2(
-	function (isOkay, list) {
-		any:
-		while (true) {
-			if (!list.b) {
-				return false;
-			} else {
-				var x = list.a;
-				var xs = list.b;
-				if (isOkay(x)) {
-					return true;
-				} else {
-					var $temp$isOkay = isOkay,
-						$temp$list = xs;
-					isOkay = $temp$isOkay;
-					list = $temp$list;
-					continue any;
-				}
-			}
-		}
-	});
-var $author$project$Main$replacePlatformAdmin = F2(
-	function (replacement, admins) {
-		return A2(
-			$elm$core$List$any,
-			function (admin) {
-				return _Utils_eq(admin.userID, replacement.userID);
-			},
-			admins) ? A2(
-			$elm$core$List$map,
-			function (admin) {
-				return _Utils_eq(admin.userID, replacement.userID) ? replacement : admin;
-			},
-			admins) : A2($elm$core$List$cons, replacement, admins);
-	});
 var $author$project$Main$replacePrivacyRequest = F2(
 	function (replacement, requests) {
 		return A2(
@@ -10178,29 +10216,6 @@ var $author$project$Sharecrop$Generated$Privacy$privacyRequestKindEncoder = func
 		return $elm$json$Json$Encode$string('sensitive_field_deletion');
 	}
 };
-var $author$project$Sharecrop$Generated$Privacy$PrivacyRequestResponse = F9(
-	function (id, kind, status, requestedBy, exportJSON, resolutionNote, createdAt, resolvedAt, redactedFieldCount) {
-		return {createdAt: createdAt, exportJSON: exportJSON, id: id, kind: kind, redactedFieldCount: redactedFieldCount, requestedBy: requestedBy, resolutionNote: resolutionNote, resolvedAt: resolvedAt, status: status};
-	});
-var $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (finish) {
-		return A2(
-			$elm$json$Json$Decode$map,
-			finish,
-			A2($elm$json$Json$Decode$field, 'redacted_field_count', $elm$json$Json$Decode$int));
-	},
-	A9(
-		$elm$json$Json$Decode$map8,
-		$author$project$Sharecrop$Generated$Privacy$PrivacyRequestResponse,
-		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'kind', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'requested_by', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'export_json', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'resolution_note', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'resolved_at', $elm$json$Json$Decode$string)));
 var $author$project$Sharecrop$Api$requestPrivacy = F2(
 	function (token, kind) {
 		return A5(
@@ -10328,28 +10343,6 @@ var $author$project$Sharecrop$Types$TeamDetailReceived = function (a) {
 var $author$project$Sharecrop$Types$UserWorkReceived = function (a) {
 	return {$: 'UserWorkReceived', a: a};
 };
-var $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived = function (a) {
-	return {$: 'AdminPrivacyRequestsReceived', a: a};
-};
-var $author$project$Sharecrop$Generated$Privacy$PrivacyRequestsResponse = function (requests) {
-	return {requests: requests};
-};
-var $author$project$Sharecrop$Generated$Privacy$privacyRequestsResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Privacy$PrivacyRequestsResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'requests',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder)));
-var $author$project$Sharecrop$Api$fetchAdminPrivacyRequests = function (token) {
-	return A5(
-		$author$project$Sharecrop$Api$authorizedRequest,
-		'GET',
-		token,
-		'/api/admin/privacy-requests?limit=25&offset=0',
-		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived, $author$project$Sharecrop$Generated$Privacy$privacyRequestsResponseDecoder));
-};
 var $author$project$Sharecrop$Types$CollectibleCatalogReceived = function (a) {
 	return {$: 'CollectibleCatalogReceived', a: a};
 };
@@ -10451,28 +10444,6 @@ var $author$project$Sharecrop$Api$fetchOrganizationCollectibles = F2(
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 	});
-var $author$project$Sharecrop$Types$PlatformAdminsReceived = function (a) {
-	return {$: 'PlatformAdminsReceived', a: a};
-};
-var $author$project$Sharecrop$Generated$Admin$PlatformAdminsResponse = function (admins) {
-	return {admins: admins};
-};
-var $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Admin$PlatformAdminsResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'admins',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder)));
-var $author$project$Sharecrop$Api$fetchPlatformAdmins = function (token) {
-	return A5(
-		$author$project$Sharecrop$Api$authorizedRequest,
-		'GET',
-		token,
-		'/api/admin/platform-admins?limit=25&offset=0',
-		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminsReceived, $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder));
-};
 var $author$project$Sharecrop$Types$SeriesDetailReceived = function (a) {
 	return {$: 'SeriesDetailReceived', a: a};
 };
@@ -10710,11 +10681,11 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 							'/api/admin/operations',
 							$elm$http$Http$emptyBody,
 							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OperationsReceived, $author$project$Sharecrop$Generated$Admin$operationsResponseDecoder)),
-							A4($author$project$Sharecrop$Api$fetchAuditEvents, token, '', '', ''),
-							$author$project$Sharecrop$Api$fetchPlatformAdmins(token),
+							A5($author$project$Sharecrop$Api$fetchAuditEvents, token, '', '', '', 0),
+							A2($author$project$Sharecrop$Api$fetchPlatformAdmins, token, 0),
 							$author$project$Sharecrop$Api$fetchUserDirectory(token),
-							A2($author$project$Sharecrop$Api$fetchAdminModerationReports, token, 'open'),
-							$author$project$Sharecrop$Api$fetchAdminPrivacyRequests(token)
+							A3($author$project$Sharecrop$Api$fetchAdminModerationReports, token, 'open', 0),
+							A2($author$project$Sharecrop$Api$fetchAdminPrivacyRequests, token, 0)
 						]));
 			case 'InboxPage':
 				return $author$project$Sharecrop$Api$fetchNotifications(token);
@@ -11152,6 +11123,27 @@ var $elm$url$Url$toString = function (url) {
 					_Utils_ap(http, url.host)),
 				url.path)));
 };
+var $elm$core$List$any = F2(
+	function (isOkay, list) {
+		any:
+		while (true) {
+			if (!list.b) {
+				return false;
+			} else {
+				var x = list.a;
+				var xs = list.b;
+				if (isOkay(x)) {
+					return true;
+				} else {
+					var $temp$isOkay = isOkay,
+						$temp$list = xs;
+					isOkay = $temp$isOkay;
+					list = $temp$list;
+					continue any;
+				}
+			}
+		}
+	});
 var $elm$core$List$member = F2(
 	function (x, xs) {
 		return A2(
@@ -15736,7 +15728,7 @@ var $author$project$Main$update = F2(
 							function (state) {
 								return _Utils_update(
 									state,
-									{adminMessage: $elm$core$Maybe$Nothing, platformAdmins: response.admins});
+									{platformAdmins: response.admins});
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
@@ -15787,20 +15779,25 @@ var $author$project$Main$update = F2(
 			case 'PlatformAdminGranted':
 				if (msg.a.$ === 'Ok') {
 					var response = msg.a.a;
-					return _Utils_Tuple2(
-						A2(
-							$author$project$Sharecrop$Api$updateLoggedIn,
-							model,
-							function (state) {
-								return _Utils_update(
-									state,
-									{
-										adminMessage: $elm$core$Maybe$Just('Platform admin granted.'),
-										adminSelectedUserId: '',
-										platformAdmins: A2($author$project$Main$replacePlatformAdmin, response, state.platformAdmins)
-									});
-							}),
-						$elm$core$Platform$Cmd$none);
+					return A2(
+						$author$project$Sharecrop$Api$withSession,
+						model,
+						function (state) {
+							return _Utils_Tuple2(
+								A2(
+									$author$project$Sharecrop$Api$updateLoggedIn,
+									model,
+									function (current) {
+										return _Utils_update(
+											current,
+											{
+												adminMessage: $elm$core$Maybe$Just('Platform admin granted.'),
+												adminSelectedUserId: '',
+												platformAdminsOffset: 0
+											});
+									}),
+								A2($author$project$Sharecrop$Api$fetchPlatformAdmins, state.accessToken, 0));
+						});
 				} else {
 					var error = msg.a.a;
 					return _Utils_Tuple2(
@@ -15909,9 +15906,43 @@ var $author$project$Main$update = F2(
 								function (current) {
 									return _Utils_update(
 										current,
-										{adminModerationStateFilter: value});
+										{adminModerationOffset: 0, adminModerationStateFilter: value});
 								}),
-							A2($author$project$Sharecrop$Api$fetchAdminModerationReports, state.accessToken, value));
+							A3($author$project$Sharecrop$Api$fetchAdminModerationReports, state.accessToken, value, 0));
+					});
+			case 'PreviousAdminModerationPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = A2($elm$core$Basics$max, 0, state.adminModerationOffset - $author$project$Sharecrop$Api$selectorPageSize);
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminModerationOffset: offset});
+								}),
+							A3($author$project$Sharecrop$Api$fetchAdminModerationReports, state.accessToken, state.adminModerationStateFilter, offset));
+					});
+			case 'NextAdminModerationPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = state.adminModerationOffset + $author$project$Sharecrop$Api$selectorPageSize;
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminModerationOffset: offset});
+								}),
+							A3($author$project$Sharecrop$Api$fetchAdminModerationReports, state.accessToken, state.adminModerationStateFilter, offset));
 					});
 			case 'AdminModerationResolutionNoteChanged':
 				var value = msg.a;
@@ -16006,6 +16037,40 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'PreviousAdminPrivacyPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = A2($elm$core$Basics$max, 0, state.adminPrivacyOffset - $author$project$Sharecrop$Api$selectorPageSize);
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminPrivacyOffset: offset});
+								}),
+							A2($author$project$Sharecrop$Api$fetchAdminPrivacyRequests, state.accessToken, offset));
+					});
+			case 'NextAdminPrivacyPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = state.adminPrivacyOffset + $author$project$Sharecrop$Api$selectorPageSize;
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{adminPrivacyOffset: offset});
+								}),
+							A2($author$project$Sharecrop$Api$fetchAdminPrivacyRequests, state.accessToken, offset));
+					});
 			case 'AdminPrivacyResolutionNoteChanged':
 				var value = msg.a;
 				return _Utils_Tuple2(
@@ -16158,8 +16223,83 @@ var $author$project$Main$update = F2(
 					model,
 					function (state) {
 						return _Utils_Tuple2(
-							model,
-							A4($author$project$Sharecrop$Api$fetchAuditEvents, state.accessToken, state.auditActionFilter, state.auditSubjectKindFilter, state.auditSubjectIDFilter));
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{auditEventsOffset: 0});
+								}),
+							A5($author$project$Sharecrop$Api$fetchAuditEvents, state.accessToken, state.auditActionFilter, state.auditSubjectKindFilter, state.auditSubjectIDFilter, 0));
+					});
+			case 'PreviousAuditEventsPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = A2($elm$core$Basics$max, 0, state.auditEventsOffset - $author$project$Sharecrop$Api$selectorPageSize);
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{auditEventsOffset: offset});
+								}),
+							A5($author$project$Sharecrop$Api$fetchAuditEvents, state.accessToken, state.auditActionFilter, state.auditSubjectKindFilter, state.auditSubjectIDFilter, offset));
+					});
+			case 'NextAuditEventsPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = state.auditEventsOffset + $author$project$Sharecrop$Api$selectorPageSize;
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{auditEventsOffset: offset});
+								}),
+							A5($author$project$Sharecrop$Api$fetchAuditEvents, state.accessToken, state.auditActionFilter, state.auditSubjectKindFilter, state.auditSubjectIDFilter, offset));
+					});
+			case 'PreviousPlatformAdminsPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = A2($elm$core$Basics$max, 0, state.platformAdminsOffset - $author$project$Sharecrop$Api$selectorPageSize);
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{platformAdminsOffset: offset});
+								}),
+							A2($author$project$Sharecrop$Api$fetchPlatformAdmins, state.accessToken, offset));
+					});
+			case 'NextPlatformAdminsPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = state.platformAdminsOffset + $author$project$Sharecrop$Api$selectorPageSize;
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{platformAdminsOffset: offset});
+								}),
+							A2($author$project$Sharecrop$Api$fetchPlatformAdmins, state.accessToken, offset));
 					});
 			case 'NotificationsReceived':
 				if (msg.a.$ === 'Ok') {
@@ -16778,6 +16918,14 @@ var $author$project$Sharecrop$Types$AuditSubjectKindFilterChanged = function (a)
 	return {$: 'AuditSubjectKindFilterChanged', a: a};
 };
 var $author$project$Sharecrop$Types$GrantPlatformAdminClicked = {$: 'GrantPlatformAdminClicked'};
+var $author$project$Sharecrop$Types$NextAdminModerationPageClicked = {$: 'NextAdminModerationPageClicked'};
+var $author$project$Sharecrop$Types$NextAdminPrivacyPageClicked = {$: 'NextAdminPrivacyPageClicked'};
+var $author$project$Sharecrop$Types$NextAuditEventsPageClicked = {$: 'NextAuditEventsPageClicked'};
+var $author$project$Sharecrop$Types$NextPlatformAdminsPageClicked = {$: 'NextPlatformAdminsPageClicked'};
+var $author$project$Sharecrop$Types$PreviousAdminModerationPageClicked = {$: 'PreviousAdminModerationPageClicked'};
+var $author$project$Sharecrop$Types$PreviousAdminPrivacyPageClicked = {$: 'PreviousAdminPrivacyPageClicked'};
+var $author$project$Sharecrop$Types$PreviousAuditEventsPageClicked = {$: 'PreviousAuditEventsPageClicked'};
+var $author$project$Sharecrop$Types$PreviousPlatformAdminsPageClicked = {$: 'PreviousPlatformAdminsPageClicked'};
 var $author$project$Sharecrop$Types$RunPrivacyRetentionClicked = {$: 'RunPrivacyRetentionClicked'};
 var $author$project$Sharecrop$Types$SearchAuditEventsClicked = {$: 'SearchAuditEventsClicked'};
 var $author$project$Sharecrop$Types$TriageModerationReportClicked = F2(
@@ -17196,6 +17344,49 @@ var $author$project$Sharecrop$View$maybeNote = F2(
 			return $elm$html$Html$text('');
 		}
 	});
+var $author$project$Sharecrop$View$paginationControls = F4(
+	function (identifier, previous, next, offset) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2 text-xs text-slate-600'),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Attributes$disabled(!offset),
+							$elm$html$Html$Events$onClick(previous),
+							$author$project$Sharecrop$Ui$testId(identifier + '-previous')
+						]),
+					'Previous'),
+					A2(
+					$elm$html$Html$span,
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$testId(identifier + '-offset')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							'Offset ' + $elm$core$String$fromInt(offset))
+						])),
+					A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick(next),
+							$author$project$Sharecrop$Ui$testId(identifier + '-next')
+						]),
+					'Next')
+				]));
+	});
 var $author$project$Sharecrop$Types$RevokePlatformAdminClicked = function (a) {
 	return {$: 'RevokePlatformAdminClicked', a: a};
 };
@@ -17528,6 +17719,7 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 							]),
 						'Search')
 					])),
+				A4($author$project$Sharecrop$View$paginationControls, 'admin-audit-page', $author$project$Sharecrop$Types$PreviousAuditEventsPageClicked, $author$project$Sharecrop$Types$NextAuditEventsPageClicked, state.auditEventsOffset),
 				$elm$core$List$isEmpty(state.auditEvents) ? A2(
 				$elm$html$Html$p,
 				_List_fromArray(
@@ -17574,6 +17766,7 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 							]),
 						'Grant')
 					])),
+				A4($author$project$Sharecrop$View$paginationControls, 'admin-platform-admins-page', $author$project$Sharecrop$Types$PreviousPlatformAdminsPageClicked, $author$project$Sharecrop$Types$NextPlatformAdminsPageClicked, state.platformAdminsOffset),
 				$elm$core$List$isEmpty(state.platformAdmins) ? A2(
 				$elm$html$Html$p,
 				_List_fromArray(
@@ -17645,6 +17838,7 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 						}
 					}()
 					])),
+				A4($author$project$Sharecrop$View$paginationControls, 'admin-privacy-page', $author$project$Sharecrop$Types$PreviousAdminPrivacyPageClicked, $author$project$Sharecrop$Types$NextAdminPrivacyPageClicked, state.adminPrivacyOffset),
 				$elm$core$List$isEmpty(state.adminPrivacyRequests) ? A2(
 				$elm$html$Html$p,
 				_List_fromArray(
@@ -17721,6 +17915,7 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 									]))
 							]))
 					])),
+				A4($author$project$Sharecrop$View$paginationControls, 'admin-moderation-page', $author$project$Sharecrop$Types$PreviousAdminModerationPageClicked, $author$project$Sharecrop$Types$NextAdminModerationPageClicked, state.adminModerationOffset),
 				$elm$core$List$isEmpty(state.adminModerationReports) ? A2(
 				$elm$html$Html$p,
 				_List_fromArray(
@@ -20388,49 +20583,6 @@ var $author$project$Sharecrop$View$filterTasksByQuery = F2(
 					$elm$core$String$toLower(item.id));
 			},
 			tasks);
-	});
-var $author$project$Sharecrop$View$paginationControls = F4(
-	function (identifier, previous, next, offset) {
-		return A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2 text-xs text-slate-600'),
-					$author$project$Sharecrop$Ui$testId(identifier)
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$author$project$Sharecrop$Ui$secondaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$type_('button'),
-							$elm$html$Html$Attributes$disabled(!offset),
-							$elm$html$Html$Events$onClick(previous),
-							$author$project$Sharecrop$Ui$testId(identifier + '-previous')
-						]),
-					'Previous'),
-					A2(
-					$elm$html$Html$span,
-					_List_fromArray(
-						[
-							$author$project$Sharecrop$Ui$testId(identifier + '-offset')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(
-							'Offset ' + $elm$core$String$fromInt(offset))
-						])),
-					A2(
-					$author$project$Sharecrop$Ui$secondaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$type_('button'),
-							$elm$html$Html$Events$onClick(next),
-							$author$project$Sharecrop$Ui$testId(identifier + '-next')
-						]),
-					'Next')
-				]));
 	});
 var $author$project$Sharecrop$View$discoveryView = function (state) {
 	var visibleTasks = A2($author$project$Sharecrop$View$filterTasksByQuery, state.discoveryQuery, state.discoveryTasks);

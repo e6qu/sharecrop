@@ -239,6 +239,12 @@
     return sorted.slice(offset, offset + limit);
   }
 
+  function listPage(url, items) {
+    const limit = Math.min(100, positiveIntParam(url, "limit", 50));
+    const offset = nonNegativeIntParam(url, "offset");
+    return items.slice(offset, offset + limit);
+  }
+
   function submissionResponse(submission) {
     return Object.assign({ sensitive_fields: [] }, submission);
   }
@@ -2171,7 +2177,8 @@
       secure_cookies: "disabled",
     }));
   on("GET", "/api/admin/audit-events", (_p, url) => {
-    const params = new URL(url).searchParams;
+    const parsed = new URL(url);
+    const params = parsed.searchParams;
     let events = db.auditEvents.slice();
     const action = params.get("action") || "";
     const subjectKind = params.get("subject_kind") || "";
@@ -2185,13 +2192,16 @@
     if (subjectId !== "") {
       events = events.filter((event) => event.subject_id === subjectId);
     }
-    return ok({ events });
+    return ok({ events: listPage(parsed, events) });
   });
-  on("GET", "/api/admin/platform-admins", () =>
+  on("GET", "/api/admin/platform-admins", (_p, url) =>
     ok({
-      admins: db.platformAdmins
-        .filter((admin) => admin.state === "active")
-        .map(platformAdminResponse),
+      admins: listPage(
+        new URL(url),
+        db.platformAdmins
+          .filter((admin) => admin.state === "active")
+          .map(platformAdminResponse),
+      ),
     }));
   on("POST", "/api/admin/platform-admins", (_p, _url, body, actorId) => {
     const userId = String((body && body.user_id) || "").trim();
@@ -2239,14 +2249,15 @@
     },
   );
   on("GET", "/api/admin/moderation/reports", (_p, url) => {
-    const state = new URL(url).searchParams.get("state") || "";
+    const parsed = new URL(url);
+    const state = parsed.searchParams.get("state") || "";
     let reports = db.auditEvents
       .filter((event) => event.action === "moderation_report_created")
       .map(moderationReportFromAuditEvent);
     if (state !== "") {
       reports = reports.filter((report) => report.state === state);
     }
-    return ok({ reports });
+    return ok({ reports: listPage(parsed, reports) });
   });
   on(
     "POST",
@@ -2285,7 +2296,7 @@
   on(
     "GET",
     "/api/admin/privacy-requests",
-    () => ok({ requests: db.privacyRequests }),
+    (_p, url) => ok({ requests: listPage(new URL(url), db.privacyRequests) }),
   );
   on("POST", "/api/admin/privacy-retention/run", (_p, _url, _body, actorId) => {
     recordAudit(
@@ -2454,9 +2465,12 @@
     ok({
       entries: db.ledger.filter((entry) => entry.organization_id === p.id),
     }));
-  on("GET", "/api/organizations/:id/audit-events", (p) =>
+  on("GET", "/api/organizations/:id/audit-events", (p, url) =>
     ok({
-      events: db.auditEvents.filter((event) => event.subject_id === p.id),
+      events: listPage(
+        new URL(url),
+        db.auditEvents.filter((event) => event.subject_id === p.id),
+      ),
     }));
   on(
     "GET",

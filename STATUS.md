@@ -1,17 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 90 work, merged into
+The repository contains pull request 1 through pull request 91 work, merged into
 `main`, plus the current
-`task/parity-wasm-dashboard-revision-polish` branch.
+`task/postmerge-db-parity-wasm-pagination-coverage` branch.
 
-Active task: `task/parity-wasm-dashboard-revision-polish` is ready for review.
-It bundles shared scenario parity growth, fixture-level HTTP contract coverage,
-a raw-ID browser-flow audit refresh, the next no-fallback WASM demo
-handler/store step, broader Playwright coverage, team/organization dashboard
-polish, and worker revision flow polish. Hard deletes remain out of scope; use
-soft lifecycle states, anonymization, redaction, tombstones, and audit records.
-Email/provider delivery, anonymous worker identity, per-project tokens, external
-wallets, and crypto integrations are out of scope.
+Active task: `task/postmerge-db-parity-wasm-pagination-coverage` bundles
+post-PR-91 continuity cleanup, DB-backed verification hardening, shared
+scenario parity growth, fixture-level HTTP contract coverage, a raw-ID browser
+flow audit refresh, the next no-fallback WASM demo handler/store step,
+remaining high-volume pagination/list polish, and browser coverage for changed
+flows. Hard deletes remain out of scope; use soft lifecycle states,
+anonymization, redaction, tombstones, and audit records. Email/provider
+delivery, anonymous worker identity, per-project tokens, external wallets, and
+crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -76,6 +77,8 @@ Current implemented surface:
   counts.
 - Admin audit event listing supports action, subject-kind, subject-id, and page
   filters through the API and browser controls.
+- Admin audit, platform-admin, privacy-request, and moderation-report lists
+  have explicit browser pagination controls.
 - Platform admins are stored through explicit runtime services. Bootstrap
   admins come from `SHARECROP_ADMIN_USER_IDS`; admin-granted platform admins are
   persisted and revoked through a lifecycle state instead of row deletion.
@@ -159,8 +162,9 @@ Current implemented surface:
 - The WASM demo backend spike is documented with explicit storage-adapter gates,
   local compile-check results, bundle-size observations, a narrow
   `internal/wasmdemo` request-adapter package, explicit privacy-request and
-  moderation-triage browser-storage boundaries, narrow privacy-request and
-  moderation-triage request handlers, and no fallback path.
+  moderation-triage and saved-queue-view browser-storage boundaries, narrow
+  privacy-request, moderation-triage, and saved-queue-view request handlers,
+  and no fallback path.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -178,19 +182,33 @@ Current verification:
 - `deno lint tools tests` passed.
 - `deno task check:policy` passed.
 - `deno task test` passed.
-- `deno fmt --check deno.json tools tests` passed.
-- `make check-contracts` passed.
+- `deno fmt --check deno.json tools tests site/demo/backend.js` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
+  check-contracts` passed.
 - `go tool deadcode -test ./...` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
   --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0
-  test -c tests/playwright/playwright.config.ts tests/playwright/demo.spec.ts
-  tests/playwright/mobile.spec.ts` passed.
+  test -c tests/playwright/demo.config.ts tests/playwright/demo.spec.ts
+  tests/playwright/mobile.spec.ts --output=.cache/test-results` passed.
+- `DATABASE_URL='postgres://sharecrop@127.0.0.1:15432/sharecrop?sslmode=disable'
+  SHARECROP_MIGRATIONS_DIR='/Users/zardoz/projects/sharecrop/migrations'
+  SHARECROP_ACCESS_TOKEN_SECRET='01234567890123456789012345678901'
+  SHARECROP_HTTP_ADDR=':18080' GOCACHE=.cache/go-build
+  ./tools/run_db_checks.sh` passed against local PostgreSQL 15.
+- `DATABASE_URL='postgres://sharecrop@127.0.0.1:15432/sharecrop?sslmode=disable'
+  SHARECROP_MIGRATIONS_DIR='/Users/zardoz/projects/sharecrop/migrations'
+  SHARECROP_ACCESS_TOKEN_SECRET='01234567890123456789012345678901'
+  SHARECROP_HTTP_ADDR=':18080' GOCACHE=.cache/go-build
+  ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
+  --allow-write --allow-run --allow-net --allow-sys
+  npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts
+  tests/playwright/screens.spec.ts --output=.cache/test-results` passed against
+  local PostgreSQL 15.
+- `git diff --check` passed.
 
 Blocking issues:
 
-- Docker is not reachable in the current local environment, so DB-backed
-  `tools/run_db_checks.sh` and DB-backed Playwright `screens.spec.ts` could not
-  complete locally for this branch. The attempted Playwright screens run failed
-  during registration with `begin create user transaction failed` while Docker
-  was unavailable.
+- Docker/Podman did not stay reachable through `/var/run/docker.sock`, so the
+  branch used an isolated local PostgreSQL 15 data directory under `.cache` for
+  DB-backed verification.

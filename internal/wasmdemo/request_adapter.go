@@ -61,6 +61,7 @@ var (
 	RouteAdminPrivacyRequests   = Route{value: "admin_privacy_requests"}
 	RouteModerationReports      = Route{value: "moderation_reports"}
 	RouteAdminModerationReports = Route{value: "admin_moderation_reports"}
+	RouteSavedQueueViews        = Route{value: "saved_queue_views"}
 )
 
 func (route Route) String() string {
@@ -92,6 +93,10 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteModerationReports}
 	case request.Method.String() == MethodGet.String() && request.Path == "/api/admin/moderation/reports":
 		return RequestAdapted{Route: RouteAdminModerationReports}
+	case request.Method.String() == MethodGet.String() && request.Path == "/api/saved-queue-views":
+		return RequestAdapted{Route: RouteSavedQueueViews}
+	case request.Method.String() == MethodPost.String() && request.Path == "/api/saved-queue-views":
+		return RequestAdapted{Route: RouteSavedQueueViews}
 	default:
 		return RequestUnsupported{Reason: "request route is not implemented by the WASM demo adapter"}
 	}

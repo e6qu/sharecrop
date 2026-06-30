@@ -1,5 +1,41 @@
 # What We Did
 
+`task/postmerge-db-parity-wasm-pagination-coverage` cleaned post-PR-91 state
+and expanded parity, pagination, WASM-demo groundwork, and testability:
+
+- **Admin pagination.** The browser Admin page now has explicit pagination for
+  audit events, platform-admins, privacy requests, and moderation reports.
+  Platform-admin grants refetch page zero so the list stays page-consistent
+  while preserving the success message.
+- **Backendless demo parity.** `site/demo/backend.js` now honors `limit` and
+  `offset` on admin audit, platform-admin, moderation, privacy, and
+  organization audit list routes. Shared scenario parity now checks adjacent
+  one-row admin audit pages.
+- **HTTP contracts.** Wire-shape fixtures now include resolved data-export
+  privacy responses with embedded JSON.
+- **WASM spike.** `internal/wasmdemo` gained explicit saved-queue-view browser
+  storage, route classification, and create/list request handlers. Invalid
+  scopes, corrupt records, mismatched storage keys, missing actors, missing ID
+  sources for upserts, unsupported methods, and unsupported routes reject
+  explicitly without fallback stores.
+- **Browser testability.** `tests/playwright/demo.config.ts` runs backendless
+  demo/mobile specs without requiring the DB-backed API server. DB-backed
+  registration helper failures now include response status and body text.
+- **Docs.** Raw-ID audit, readiness review, demo semantic parity, WASM spike,
+  status, bugs, and next-task docs were refreshed.
+- **Verification.** Passed: `go test ./...`; focused Go tests for
+  `internal/http` and `internal/wasmdemo`; `deno task check:ts`;
+  `deno task lint`; `deno task test`; `deno task check:policy`;
+  `deno fmt --check deno.json tools tests site/demo/backend.js`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
+  check-contracts`; `go tool deadcode -test ./...`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; `git diff
+  --check`; and Playwright demo/mobile specs through
+  `tests/playwright/demo.config.ts`. DB-backed migrations, integration tests,
+  HTTP E2E tests, and DB-backed Playwright screens passed against isolated
+  local PostgreSQL 15 after the Podman machine failed to stay reachable through
+  Docker's socket.
+
 `task/parity-wasm-dashboard-revision-polish` expanded parity coverage, WASM
 demo groundwork, queue/revision polish, browser coverage, and docs:
 

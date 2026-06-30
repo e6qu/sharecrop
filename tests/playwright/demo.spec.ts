@@ -82,6 +82,17 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
   );
 
   await page.getByTestId("nav-admin").click();
+  await expect(page.getByTestId("admin-audit-page-offset")).toHaveText(
+    "Offset 0",
+  );
+  await expect(page.getByTestId("admin-platform-admins-page-offset"))
+    .toHaveText("Offset 0");
+  await expect(page.getByTestId("admin-privacy-page-offset")).toHaveText(
+    "Offset 0",
+  );
+  await expect(page.getByTestId("admin-moderation-page-offset")).toHaveText(
+    "Offset 0",
+  );
   await expect(page.getByTestId("admin-privacy-request")).toHaveCount(1);
   await page.getByTestId("admin-privacy-note").fill("Export generated");
   await page.getByTestId("admin-resolve-privacy").click();

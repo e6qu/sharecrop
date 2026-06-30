@@ -253,12 +253,16 @@ type alias LoggedInModel =
     , orgTeamOffset : Int
     , operations : Maybe Admin.OperationsResponse
     , auditEvents : List Admin.AuditEventResponse
+    , auditEventsOffset : Int
     , platformAdmins : List Admin.PlatformAdminResponse
+    , platformAdminsOffset : Int
     , adminSelectedUserId : String
     , adminModerationReports : List Moderation.ModerationReportResponse
     , adminModerationStateFilter : String
+    , adminModerationOffset : Int
     , adminModerationResolutionNote : String
     , adminPrivacyRequests : List Privacy.PrivacyRequestResponse
+    , adminPrivacyOffset : Int
     , adminPrivacyResolutionNote : String
     , adminRetentionRedactedFieldCount : Maybe Int
     , auditActionFilter : String
@@ -562,7 +566,11 @@ type Msg
     | PrivacyRequestReceived (Result Http.Error Privacy.PrivacyRequestResponse)
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
+    | PreviousAuditEventsPageClicked
+    | NextAuditEventsPageClicked
     | PlatformAdminsReceived (Result Http.Error Admin.PlatformAdminsResponse)
+    | PreviousPlatformAdminsPageClicked
+    | NextPlatformAdminsPageClicked
     | AdminSelectedUserChanged String
     | GrantPlatformAdminClicked
     | PlatformAdminGranted (Result Http.Error Admin.PlatformAdminResponse)
@@ -570,10 +578,14 @@ type Msg
     | PlatformAdminRevoked (Result Http.Error Admin.PlatformAdminResponse)
     | AdminModerationReportsReceived (Result Http.Error Moderation.ModerationReportsResponse)
     | AdminModerationStateFilterChanged String
+    | PreviousAdminModerationPageClicked
+    | NextAdminModerationPageClicked
     | AdminModerationResolutionNoteChanged String
     | TriageModerationReportClicked String String
     | AdminModerationReportTriaged (Result Http.Error Moderation.ModerationReportResponse)
     | AdminPrivacyRequestsReceived (Result Http.Error Privacy.PrivacyRequestsResponse)
+    | PreviousAdminPrivacyPageClicked
+    | NextAdminPrivacyPageClicked
     | AdminPrivacyResolutionNoteChanged String
     | RunPrivacyRetentionClicked
     | PrivacyRetentionRunReceived (Result Http.Error Privacy.PrivacyRetentionRunResponse)

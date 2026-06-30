@@ -312,7 +312,9 @@ Implemented:
 Missing or partial:
 
 - Browser task and discovery pages expose pagination controls. Some other list
-  pages still rely on their first page or selector-local paging.
+  pages still rely on their first page or selector-local paging. Admin audit,
+  platform-admin, privacy, and moderation lists expose explicit pagination
+  controls.
 - Full-text search is not implemented.
 - Raw UUIDs remain visible in links, protocol surfaces, metadata, audit rows,
   and API/MCP examples. No confirmed high-traffic user-entered raw-ID flow is

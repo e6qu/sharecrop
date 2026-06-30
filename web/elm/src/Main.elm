@@ -219,12 +219,16 @@ emptyLoggedIn response =
     , orgTeamOffset = 0
     , operations = Nothing
     , auditEvents = []
+    , auditEventsOffset = 0
     , platformAdmins = []
+    , platformAdminsOffset = 0
     , adminSelectedUserId = ""
     , adminModerationReports = []
     , adminModerationStateFilter = "open"
+    , adminModerationOffset = 0
     , adminModerationResolutionNote = ""
     , adminPrivacyRequests = []
+    , adminPrivacyOffset = 0
     , adminPrivacyResolutionNote = ""
     , adminRetentionRedactedFieldCount = Nothing
     , auditActionFilter = ""
@@ -473,7 +477,7 @@ enterPage page state =
             { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkTypeFilter = "", teamWorkSort = "newest", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
-            { state | page = page, operations = Nothing, auditEvents = [], platformAdmins = [], adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
+            { state | page = page, operations = Nothing, auditEvents = [], auditEventsOffset = 0, platformAdmins = [], platformAdminsOffset = 0, adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationOffset = 0, adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyOffset = 0, adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         InboxPage ->
             { state | page = page, notifications = [], inboxMessage = Nothing }
@@ -2053,7 +2057,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         PlatformAdminsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = response.admins, adminMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = response.admins }), Cmd.none )
 
         PlatformAdminsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | platformAdmins = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -2065,7 +2069,7 @@ update msg model =
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.grantPlatformAdmin state.accessToken state.adminSelectedUserId ))
 
         PlatformAdminGranted (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = replacePlatformAdmin response state.platformAdmins, adminSelectedUserId = "", adminMessage = Just "Platform admin granted." }), Cmd.none )
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminSelectedUserId = "", adminMessage = Just "Platform admin granted.", platformAdminsOffset = 0 }), Api.fetchPlatformAdmins state.accessToken 0 ))
 
         PlatformAdminGranted (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -2086,7 +2090,27 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         AdminModerationStateFilterChanged value ->
-            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminModerationStateFilter = value }), Api.fetchAdminModerationReports state.accessToken value ))
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminModerationStateFilter = value, adminModerationOffset = 0 }), Api.fetchAdminModerationReports state.accessToken value 0 ))
+
+        PreviousAdminModerationPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.adminModerationOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | adminModerationOffset = offset }), Api.fetchAdminModerationReports state.accessToken state.adminModerationStateFilter offset )
+                )
+
+        NextAdminModerationPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.adminModerationOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | adminModerationOffset = offset }), Api.fetchAdminModerationReports state.accessToken state.adminModerationStateFilter offset )
+                )
 
         AdminModerationResolutionNoteChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | adminModerationResolutionNote = value }), Cmd.none )
@@ -2105,6 +2129,26 @@ update msg model =
 
         AdminPrivacyRequestsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        PreviousAdminPrivacyPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.adminPrivacyOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | adminPrivacyOffset = offset }), Api.fetchAdminPrivacyRequests state.accessToken offset )
+                )
+
+        NextAdminPrivacyPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.adminPrivacyOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | adminPrivacyOffset = offset }), Api.fetchAdminPrivacyRequests state.accessToken offset )
+                )
 
         AdminPrivacyResolutionNoteChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | adminPrivacyResolutionNote = value }), Cmd.none )
@@ -2137,7 +2181,47 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | auditSubjectIDFilter = value }), Cmd.none )
 
         SearchAuditEventsClicked ->
-            Api.withSession model (\state -> ( model, Api.fetchAuditEvents state.accessToken state.auditActionFilter state.auditSubjectKindFilter state.auditSubjectIDFilter ))
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | auditEventsOffset = 0 }), Api.fetchAuditEvents state.accessToken state.auditActionFilter state.auditSubjectKindFilter state.auditSubjectIDFilter 0 ))
+
+        PreviousAuditEventsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.auditEventsOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | auditEventsOffset = offset }), Api.fetchAuditEvents state.accessToken state.auditActionFilter state.auditSubjectKindFilter state.auditSubjectIDFilter offset )
+                )
+
+        NextAuditEventsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.auditEventsOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | auditEventsOffset = offset }), Api.fetchAuditEvents state.accessToken state.auditActionFilter state.auditSubjectKindFilter state.auditSubjectIDFilter offset )
+                )
+
+        PreviousPlatformAdminsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.platformAdminsOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | platformAdminsOffset = offset }), Api.fetchPlatformAdmins state.accessToken offset )
+                )
+
+        NextPlatformAdminsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.platformAdminsOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | platformAdminsOffset = offset }), Api.fetchPlatformAdmins state.accessToken offset )
+                )
 
         NotificationsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | notifications = response.notifications, inboxMessage = Nothing }), Cmd.none )
