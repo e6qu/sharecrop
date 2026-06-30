@@ -10,6 +10,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/core/id"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -156,6 +157,85 @@ func (store PrivacyStore) Resolve(ctx context.Context, requestID string, note st
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit privacy request resolution failed")}
 	}
 	return httpserver.PrivacyRequestSaved{Value: resolved}
+}
+
+func (store PrivacyStore) RecordSensitiveFieldAccess(ctx context.Context, actor core.UserID, value submission.Submission) httpserver.PrivacyMutationResult {
+	if len(value.SensitiveFields) == 0 {
+		return httpserver.PrivacyRequestSaved{Value: httpserver.PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
+	}
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin sensitive-field access recording failed")}
+	}
+	defer tx.Rollback(ctx)
+	for fieldIndex := range value.SensitiveFields {
+		field := value.SensitiveFields[fieldIndex]
+		eventIDResult := id.New()
+		eventID, eventIDMatched := eventIDResult.(id.IDCreated)
+		if !eventIDMatched {
+			return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, eventIDResult.(id.IDRejected).Description)}
+		}
+		if _, err := tx.Exec(ctx, `
+			insert into submission_sensitive_field_events (id, submission_id, actor_user_id, action, field_path)
+			values ($1, $2, $3, 'sensitive_field_accessed', $4)
+		`, eventID.Value.String(), value.ID.String(), actor.String(), field.Path); err != nil {
+			return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record sensitive-field access event failed")}
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit sensitive-field access recording failed")}
+	}
+	return httpserver.PrivacyRequestSaved{Value: httpserver.PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
+}
+
+func (store PrivacyStore) RunRetention(ctx context.Context, actor core.UserID) httpserver.PrivacyRetentionResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin privacy retention run failed")}
+	}
+	defer tx.Rollback(ctx)
+	rows, err := tx.Query(ctx, `
+		update submission_sensitive_fields
+		set state = 'redacted', redacted_at = now()
+		where state = 'active'
+		and retention = 'delete_on_request'
+		returning submission_id::text, path
+	`)
+	if err != nil {
+		return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "run sensitive-field retention failed")}
+	}
+	redactedRows, readErr := scanRedactedSensitiveFieldRows(rows)
+	if readErr != nil {
+		return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, readErr.Error())}
+	}
+	for rowIndex := range redactedRows {
+		eventIDResult := id.New()
+		eventID, eventIDMatched := eventIDResult.(id.IDCreated)
+		if !eventIDMatched {
+			return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, eventIDResult.(id.IDRejected).Description)}
+		}
+		if _, err := tx.Exec(ctx, `
+			insert into submission_sensitive_field_events (id, submission_id, actor_user_id, action, field_path)
+			values ($1, $2, $3, 'sensitive_field_redacted', $4)
+		`, eventID.Value.String(), redactedRows[rowIndex].submissionID, actor.String(), redactedRows[rowIndex].path); err != nil {
+			return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record retention redaction event failed")}
+		}
+	}
+	runIDResult := id.New()
+	runID, runIDMatched := runIDResult.(id.IDCreated)
+	if !runIDMatched {
+		return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, runIDResult.(id.IDRejected).Description)}
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into privacy_retention_runs (id, actor_user_id, redacted_field_count)
+		values ($1, $2, $3)
+	`, runID.Value.String(), actor.String(), len(redactedRows)); err != nil {
+		return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record privacy retention run failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit privacy retention run failed")}
+	}
+	return httpserver.PrivacyRetentionRun{RedactedFieldCount: len(redactedRows)}
 }
 
 type privacyExportDocument struct {

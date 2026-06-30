@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/core/id"
+	"github.com/e6qu/sharecrop/internal/submission"
 )
 
 const (
@@ -65,6 +67,21 @@ type PrivacyRequestListRejected struct {
 func (PrivacyRequestsListed) privacyListResult() {}
 
 func (PrivacyRequestListRejected) privacyListResult() {}
+
+type PrivacyRetentionResult interface {
+	privacyRetentionResult()
+}
+
+type PrivacyRetentionRun struct {
+	RedactedFieldCount int
+}
+
+type PrivacyRetentionRejected struct {
+	Reason core.DomainError
+}
+
+func (PrivacyRetentionRun) privacyRetentionResult()      {}
+func (PrivacyRetentionRejected) privacyRetentionResult() {}
 
 type memoryPrivacyService struct {
 	mu       sync.Mutex
@@ -135,6 +152,16 @@ func (service *memoryPrivacyService) Resolve(_ context.Context, requestID string
 	return PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "privacy request was not found")}
 }
 
+func (service *memoryPrivacyService) RecordSensitiveFieldAccess(_ context.Context, _ core.UserID, _ submission.Submission) PrivacyMutationResult {
+	return PrivacyRequestSaved{Value: PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
+}
+
+func (service *memoryPrivacyService) RunRetention(_ context.Context, _ core.UserID) PrivacyRetentionResult {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	return PrivacyRetentionRun{RedactedFieldCount: 0}
+}
+
 func privacyPage(values []PrivacyRequestRecord, page core.Page) []PrivacyRequestRecord {
 	start := page.Offset()
 	if start > len(values) {
@@ -191,14 +218,7 @@ func (server Server) listPrivacyRequests(w http.ResponseWriter, r *http.Request)
 }
 
 func (server Server) listAdminPrivacyRequests(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, matched := actorResult.(userSubjectAccepted)
-	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
-		return
-	}
-	if !server.adminUserIDs[actor.subject.ID.String()] {
-		writeError(w, http.StatusForbidden, "platform admin access is required")
+	if _, ok := server.requireAdminSubject(w, r); !ok {
 		return
 	}
 	result := server.privacyService.ListAll(r.Context(), parsePage(r))
@@ -206,14 +226,8 @@ func (server Server) listAdminPrivacyRequests(w http.ResponseWriter, r *http.Req
 }
 
 func (server Server) resolveAdminPrivacyRequest(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, matched := actorResult.(userSubjectAccepted)
-	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
-		return
-	}
-	if !server.adminUserIDs[actor.subject.ID.String()] {
-		writeError(w, http.StatusForbidden, "platform admin access is required")
+	actor, ok := server.requireAdminSubject(w, r)
+	if !ok {
 		return
 	}
 	var request privacyResolveRequest
@@ -231,6 +245,29 @@ func (server Server) resolveAdminPrivacyRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, privacyRequestToResponse(saved.Value))
+}
+
+func (server Server) runPrivacyRetention(w http.ResponseWriter, r *http.Request) {
+	actor, ok := server.requireAdminSubject(w, r)
+	if !ok {
+		return
+	}
+	result := server.privacyService.RunRetention(r.Context(), actor.subject.ID)
+	run, matched := result.(PrivacyRetentionRun)
+	if !matched {
+		writeDomainError(w, result.(PrivacyRetentionRejected).Reason)
+		return
+	}
+	metadataResult := encodeJSONMetadata(map[string]string{"redacted_field_count": strconv.Itoa(run.RedactedFieldCount)})
+	metadata, metadataMatched := metadataResult.(jsonMetadataEncoded)
+	if !metadataMatched {
+		writeDomainError(w, metadataResult.(jsonMetadataRejected).reason)
+		return
+	}
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionFromString("privacy_retention_run"), audit.Subject{Kind: "privacy_retention", ID: actor.subject.ID.String()}, audit.Metadata{JSON: metadata.value}) {
+		return
+	}
+	writeJSON(w, http.StatusOK, privacyRetentionRunResponse{RedactedFieldCount: run.RedactedFieldCount})
 }
 
 func (server Server) writePrivacyListResult(w http.ResponseWriter, result PrivacyListResult) {

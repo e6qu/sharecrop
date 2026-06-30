@@ -139,22 +139,36 @@ type alias ModerationReportResponse =
     { id : String
     , subjectKind : String
     , subjectID : String
+    , subjectHref : String
     , reason : String
     , details : String
     , reporterUserID : String
     , createdAt : String
+    , state : String
+    , resolutionNote : String
+    , updatedBy : String
+    , updatedAt : String
     }
 
 moderationReportResponseDecoder : Decoder ModerationReportResponse
 moderationReportResponseDecoder =
-    Decode.map7 ModerationReportResponse
+    Decode.map8 ModerationReportResponse
         (Decode.field "id" Decode.string)
         (Decode.field "subject_kind" Decode.string)
         (Decode.field "subject_id" Decode.string)
+        (Decode.field "subject_href" Decode.string)
         (Decode.field "reason" Decode.string)
         (Decode.field "details" Decode.string)
         (Decode.field "reporter_user_id" Decode.string)
         (Decode.field "created_at" Decode.string)
+        |> Decode.andThen
+            (\finish ->
+                Decode.map4 finish
+                    (Decode.field "state" Decode.string)
+                    (Decode.field "resolution_note" Decode.string)
+                    (Decode.field "updated_by" Decode.string)
+                    (Decode.field "updated_at" Decode.string)
+            )
 
 moderationReportResponseEncoder : ModerationReportResponse -> Encode.Value
 moderationReportResponseEncoder moderationReportResponse =
@@ -162,10 +176,15 @@ moderationReportResponseEncoder moderationReportResponse =
         [ ( "id", Encode.string moderationReportResponse.id )
         , ( "subject_kind", Encode.string moderationReportResponse.subjectKind )
         , ( "subject_id", Encode.string moderationReportResponse.subjectID )
+        , ( "subject_href", Encode.string moderationReportResponse.subjectHref )
         , ( "reason", Encode.string moderationReportResponse.reason )
         , ( "details", Encode.string moderationReportResponse.details )
         , ( "reporter_user_id", Encode.string moderationReportResponse.reporterUserID )
         , ( "created_at", Encode.string moderationReportResponse.createdAt )
+        , ( "state", Encode.string moderationReportResponse.state )
+        , ( "resolution_note", Encode.string moderationReportResponse.resolutionNote )
+        , ( "updated_by", Encode.string moderationReportResponse.updatedBy )
+        , ( "updated_at", Encode.string moderationReportResponse.updatedAt )
         ]
 
 type alias ModerationReportsResponse =

@@ -159,9 +159,30 @@ adminView state =
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-audit-events" ]
                 (List.map auditEventRow state.auditEvents)
+        , Ui.sectionTitle "Platform admins"
+        , Ui.fieldLabel "Grant user"
+            [ userPicker "admin-platform-user" state.adminSelectedUserId state.userDirectoryQuery AdminSelectedUserChanged "Choose user" state.userDirectory state.userDirectoryOffset ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.secondaryButton [ type_ "button", onClick GrantPlatformAdminClicked, disabled (String.trim state.adminSelectedUserId == ""), testId "admin-grant-platform-admin" ] "Grant"
+            ]
+        , if List.isEmpty state.platformAdmins then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-platform-admins-empty" ] [ text "No platform admins." ]
+
+          else
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-platform-admins" ]
+                (List.map platformAdminRow state.platformAdmins)
         , Ui.sectionTitle "Privacy requests"
         , Ui.fieldLabel "Resolution note"
             [ Ui.textInput [ placeholder "Export generated or fields redacted", value state.adminPrivacyResolutionNote, onInput AdminPrivacyResolutionNoteChanged, testId "admin-privacy-note" ] ]
+        , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+            [ Ui.secondaryButton [ type_ "button", onClick RunPrivacyRetentionClicked, testId "admin-run-privacy-retention" ] "Run retention"
+            , case state.adminRetentionRedactedFieldCount of
+                Just count ->
+                    span [ Html.Attributes.class "text-xs text-slate-600", testId "admin-retention-count" ] [ text ("Redacted fields: " ++ String.fromInt count) ]
+
+                Nothing ->
+                    text ""
+            ]
         , if List.isEmpty state.adminPrivacyRequests then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-privacy-empty" ] [ text "No privacy requests." ]
 
@@ -169,12 +190,24 @@ adminView state =
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-privacy-requests" ]
                 (List.map (adminPrivacyRequestRow state.adminPrivacyResolutionNote) state.adminPrivacyRequests)
         , Ui.sectionTitle "Moderation reports"
+        , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
+            [ Ui.fieldLabel "State"
+                [ select [ Html.Attributes.class Ui.fieldClass, value state.adminModerationStateFilter, onInput AdminModerationStateFilterChanged, testId "admin-moderation-state" ]
+                    [ blankOption "All states"
+                    , stringOption state.adminModerationStateFilter ( "open", "Open" )
+                    , stringOption state.adminModerationStateFilter ( "resolved", "Resolved" )
+                    , stringOption state.adminModerationStateFilter ( "dismissed", "Dismissed" )
+                    ]
+                ]
+            , Ui.fieldLabel "Triage note"
+                [ Ui.textInput [ placeholder "Decision note", value state.adminModerationResolutionNote, onInput AdminModerationResolutionNoteChanged, testId "admin-moderation-note" ] ]
+            ]
         , if List.isEmpty state.adminModerationReports then
             p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-moderation-empty" ] [ text "No moderation reports." ]
 
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-moderation-reports" ]
-                (List.map adminModerationReportRow state.adminModerationReports)
+                (List.map (adminModerationReportRow state.adminModerationResolutionNote) state.adminModerationReports)
         , maybeNote state.adminMessage "admin-message"
         ]
 
@@ -197,6 +230,21 @@ auditEventRow event =
 
           else
             Ui.codeBlock [ testId "admin-audit-metadata" ] event.metadataJSON
+        ]
+
+
+platformAdminRow : Admin.PlatformAdminResponse -> Html Msg
+platformAdminRow admin =
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-3 py-3 text-sm", testId "admin-platform-admin" ]
+        [ div [ Html.Attributes.class "space-y-1" ]
+            [ p [ Html.Attributes.class "font-medium text-slate-900 break-all" ] [ text admin.userID ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (admin.source ++ " · " ++ admin.createdAt) ]
+            ]
+        , if admin.source == "bootstrap" then
+            Ui.badge "bootstrap"
+
+          else
+            Ui.secondaryButton [ type_ "button", onClick (RevokePlatformAdminClicked admin.userID), testId "admin-revoke-platform-admin" ] "Revoke"
         ]
 
 
@@ -232,23 +280,40 @@ adminPrivacyRequestRow resolutionNote request =
         ]
 
 
-adminModerationReportRow : Moderation.ModerationReportResponse -> Html Msg
-adminModerationReportRow report =
+adminModerationReportRow : String -> Moderation.ModerationReportResponse -> Html Msg
+adminModerationReportRow resolutionNote report =
     div [ Html.Attributes.class "space-y-2 py-3 text-sm", testId "admin-moderation-report" ]
         [ div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
-            [ Ui.badge report.reason
+            [ Ui.badge report.state
+            , Ui.badge report.reason
             , span [ Html.Attributes.class "font-medium text-slate-900" ] [ text report.subjectKind ]
-            , span [ Html.Attributes.class "break-all text-xs text-slate-500" ] [ text report.subjectID ]
+            , if report.subjectHref == "" then
+                span [ Html.Attributes.class "break-all text-xs text-slate-500" ] [ text report.subjectID ]
+
+              else
+                a [ href report.subjectHref, Html.Attributes.class "break-all text-xs font-medium text-emerald-700", testId "admin-moderation-subject-link" ] [ text report.subjectID ]
             ]
         , Html.dl [ Html.Attributes.class "grid gap-2 sm:grid-cols-2" ]
             [ operationFact "Reporter" report.reporterUserID
             , operationFact "Created" report.createdAt
+            , operationFact "Updated by" (emptyLabel report.updatedBy)
+            , operationFact "Updated" (emptyLabel report.updatedAt)
             ]
+        , if report.resolutionNote == "" then
+            text ""
+
+          else
+            p [ Html.Attributes.class "text-xs text-slate-600", testId "admin-moderation-resolution-note" ] [ text report.resolutionNote ]
         , if report.details == "" then
             text ""
 
           else
             p [ Html.Attributes.class "text-sm text-slate-700 break-words", testId "admin-moderation-details" ] [ text report.details ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.secondaryButton [ type_ "button", onClick (TriageModerationReportClicked report.id "open"), testId "admin-moderation-open" ] "Reopen"
+            , Ui.secondaryButton [ type_ "button", onClick (TriageModerationReportClicked report.id "resolved"), disabled (String.trim resolutionNote == ""), testId "admin-moderation-resolve" ] "Resolve"
+            , Ui.secondaryButton [ type_ "button", onClick (TriageModerationReportClicked report.id "dismissed"), disabled (String.trim resolutionNote == ""), testId "admin-moderation-dismiss" ] "Dismiss"
+            ]
         ]
 
 
@@ -1891,7 +1956,7 @@ taskPicker identifier selectedTaskId change tasks =
         , onInput change
         , testId identifier
         ]
-        (option [ value "" ] [ text "Select task" ] :: List.map (taskOption selectedTaskId) tasks)
+        (blankOption "Select task" :: List.map (taskOption selectedTaskId) tasks)
 
 
 taskOption : String -> Task.TaskListItemResponse -> Html Msg
@@ -1987,13 +2052,18 @@ stringOption selectedValue ( optionValue, labelText ) =
     option [ value optionValue, selected (selectedValue == optionValue) ] [ text labelText ]
 
 
+blankOption : String -> Html Msg
+blankOption labelText =
+    option [ Html.Attributes.attribute "value" "" ] [ text labelText ]
+
+
 organizationPicker : String -> String -> String -> (String -> Msg) -> (String -> Msg) -> Msg -> Msg -> Msg -> String -> List Organization.OrganizationResponse -> Int -> Html Msg
 organizationPicker identifier selectedOrganizationId query change queryChange search previous next blankLabel organizations offset =
     div [ Html.Attributes.class "space-y-2" ]
         [ selectorSearchControls identifier "Search organizations" query queryChange search previous next offset
         , select
             [ Html.Attributes.class Ui.fieldClass, value selectedOrganizationId, onInput change, testId identifier ]
-            (option [ value "" ] [ text blankLabel ]
+            (blankOption blankLabel
                 :: List.map (\organization -> option [ value organization.id, selected (selectedOrganizationId == organization.id) ] [ text organization.name ]) organizations
             )
         ]
@@ -2005,7 +2075,7 @@ userPicker identifier selectedUserId query change blankLabel users offset =
         [ selectorSearchControls identifier "Search users" query UserDirectoryQueryChanged SearchUserDirectoryClicked PreviousUserDirectoryPageClicked NextUserDirectoryPageClicked offset
         , select
             [ Html.Attributes.class Ui.fieldClass, value selectedUserId, onInput change, testId identifier ]
-            (option [ value "" ] [ text blankLabel ]
+            (blankOption blankLabel
                 :: List.map (\user -> option [ value user.id, selected (selectedUserId == user.id) ] [ text user.email ]) users
             )
         ]
@@ -2017,7 +2087,7 @@ teamPicker identifier selectedTeamId query change queryChange search previous ne
         [ selectorSearchControls identifier "Search teams" query queryChange search previous next offset
         , select
             [ Html.Attributes.class Ui.fieldClass, value selectedTeamId, onInput change, testId identifier ]
-            (option [ value "" ] [ text blankLabel ]
+            (blankOption blankLabel
                 :: List.map (\team -> option [ value team.id, selected (selectedTeamId == team.id) ] [ text team.name ]) teams
             )
         ]
@@ -2810,7 +2880,7 @@ reviewControls state =
                 , onInput ReviewTipCollectibleChanged
                 , testId "review-tip-collectible"
                 ]
-                (option [ value "" ] [ text "No collectible tip" ]
+                (blankOption "No collectible tip"
                     :: List.map
                         (\c -> option [ value c.id, selected (state.reviewTipCollectibleId == c.id) ]
                             [ text (c.name ++ " · " ++ collectibleKindLabel c.kind) ]

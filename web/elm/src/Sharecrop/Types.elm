@@ -253,9 +253,14 @@ type alias LoggedInModel =
     , orgTeamOffset : Int
     , operations : Maybe Admin.OperationsResponse
     , auditEvents : List Admin.AuditEventResponse
+    , platformAdmins : List Admin.PlatformAdminResponse
+    , adminSelectedUserId : String
     , adminModerationReports : List Moderation.ModerationReportResponse
+    , adminModerationStateFilter : String
+    , adminModerationResolutionNote : String
     , adminPrivacyRequests : List Privacy.PrivacyRequestResponse
     , adminPrivacyResolutionNote : String
+    , adminRetentionRedactedFieldCount : Maybe Int
     , auditActionFilter : String
     , auditSubjectKindFilter : String
     , auditSubjectIDFilter : String
@@ -557,9 +562,21 @@ type Msg
     | PrivacyRequestReceived (Result Http.Error Privacy.PrivacyRequestResponse)
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
+    | PlatformAdminsReceived (Result Http.Error Admin.PlatformAdminsResponse)
+    | AdminSelectedUserChanged String
+    | GrantPlatformAdminClicked
+    | PlatformAdminGranted (Result Http.Error Admin.PlatformAdminResponse)
+    | RevokePlatformAdminClicked String
+    | PlatformAdminRevoked (Result Http.Error Admin.PlatformAdminResponse)
     | AdminModerationReportsReceived (Result Http.Error Moderation.ModerationReportsResponse)
+    | AdminModerationStateFilterChanged String
+    | AdminModerationResolutionNoteChanged String
+    | TriageModerationReportClicked String String
+    | AdminModerationReportTriaged (Result Http.Error Moderation.ModerationReportResponse)
     | AdminPrivacyRequestsReceived (Result Http.Error Privacy.PrivacyRequestsResponse)
     | AdminPrivacyResolutionNoteChanged String
+    | RunPrivacyRetentionClicked
+    | PrivacyRetentionRunReceived (Result Http.Error Privacy.PrivacyRetentionRunResponse)
     | ResolveAdminPrivacyRequestClicked String
     | AdminPrivacyRequestResolved (Result Http.Error Privacy.PrivacyRequestResponse)
     | AuditActionFilterChanged String

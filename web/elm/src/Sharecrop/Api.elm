@@ -366,7 +366,9 @@ routeLoadCmd token subjectId page =
             Cmd.batch
                 [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (Http.expectJson OperationsReceived Admin.operationsResponseDecoder)
                 , fetchAuditEvents token "" "" ""
-                , fetchAdminModerationReports token
+                , fetchPlatformAdmins token
+                , fetchUserDirectory token
+                , fetchAdminModerationReports token "open"
                 , fetchAdminPrivacyRequests token
                 ]
 
@@ -1002,9 +1004,58 @@ fetchAdminPrivacyRequests token =
     authorizedRequest "GET" token "/api/admin/privacy-requests?limit=25&offset=0" Http.emptyBody (Http.expectJson AdminPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
 
 
-fetchAdminModerationReports : String -> Cmd Msg
-fetchAdminModerationReports token =
-    authorizedRequest "GET" token "/api/admin/moderation/reports?limit=25&offset=0" Http.emptyBody (Http.expectJson AdminModerationReportsReceived Moderation.moderationReportsResponseDecoder)
+fetchPlatformAdmins : String -> Cmd Msg
+fetchPlatformAdmins token =
+    authorizedRequest "GET" token "/api/admin/platform-admins?limit=25&offset=0" Http.emptyBody (Http.expectJson PlatformAdminsReceived Admin.platformAdminsResponseDecoder)
+
+
+grantPlatformAdmin : String -> String -> Cmd Msg
+grantPlatformAdmin token userID =
+    authorizedRequest "POST"
+        token
+        "/api/admin/platform-admins"
+        (Http.jsonBody (Encode.object [ ( "user_id", Encode.string userID ) ]))
+        (Http.expectJson PlatformAdminGranted Admin.platformAdminResponseDecoder)
+
+
+revokePlatformAdmin : String -> String -> Cmd Msg
+revokePlatformAdmin token userID =
+    authorizedRequest "POST"
+        token
+        ("/api/admin/platform-admins/" ++ userID ++ "/revoke")
+        Http.emptyBody
+        (Http.expectJson PlatformAdminRevoked Admin.platformAdminResponseDecoder)
+
+
+fetchAdminModerationReports : String -> String -> Cmd Msg
+fetchAdminModerationReports token stateFilter =
+    let
+        stateQuery =
+            if String.trim stateFilter == "" then
+                ""
+
+            else
+                "&state=" ++ Url.percentEncode (String.trim stateFilter)
+    in
+    authorizedRequest "GET" token ("/api/admin/moderation/reports?limit=25&offset=0" ++ stateQuery) Http.emptyBody (Http.expectJson AdminModerationReportsReceived Moderation.moderationReportsResponseDecoder)
+
+
+triageModerationReport : String -> String -> String -> String -> Cmd Msg
+triageModerationReport token reportID stateValue resolutionNote =
+    authorizedRequest "POST"
+        token
+        ("/api/admin/moderation/reports/" ++ reportID ++ "/triage")
+        (Http.jsonBody (Encode.object [ ( "state", Encode.string stateValue ), ( "resolution_note", Encode.string resolutionNote ) ]))
+        (Http.expectJson AdminModerationReportTriaged Moderation.moderationReportResponseDecoder)
+
+
+runPrivacyRetention : String -> Cmd Msg
+runPrivacyRetention token =
+    authorizedRequest "POST"
+        token
+        "/api/admin/privacy-retention/run"
+        Http.emptyBody
+        (Http.expectJson PrivacyRetentionRunReceived Privacy.privacyRetentionRunResponseDecoder)
 
 
 resolveAdminPrivacyRequest : String -> String -> String -> Cmd Msg

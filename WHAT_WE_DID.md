@@ -1,5 +1,35 @@
 # What We Did
 
+`task/admin-moderation-retention-wasm` added admin moderation, retention, and
+WASM storage work:
+
+- **Platform admin configuration.** Bootstrap admins still come from
+  `SHARECROP_ADMIN_USER_IDS`. Admin-granted platform admins are persisted,
+  listed, and revoked by lifecycle state instead of row deletion.
+- **Moderation triage.** Moderation reports now carry triage state, resolution
+  notes, updater metadata, state filtering, and direct subject links where a
+  browser route exists. Platform admins can reopen, resolve, or dismiss reports.
+- **Privacy retention and access events.** Platform admins can run
+  delete-on-request sensitive-field retention. The Postgres store records
+  retention runs, per-field redaction events, and sensitive-field access events
+  for authorized submission-list/profile reads.
+- **Admin UI and raw-ID fixes.** The Admin page gained selector-backed platform
+  admin grants, revoke controls, retention execution, moderation filters,
+  direct subject links, and triage controls. Blank select options now submit
+  explicit empty values instead of placeholder text.
+- **Contracts, parity, and demo.** Generated Elm contracts, HTTP wire-shape
+  fixtures, shared scenario parity, and `site/demo/backend.js` now cover
+  platform-admin grant/revoke, privacy retention, and moderation triage shapes.
+- **WASM spike.** `internal/wasmdemo` gained an explicit moderation-triage
+  browser storage boundary. Missing records, invalid keys, invalid states, and
+  storage failures are rejected explicitly; no fallback store is selected.
+- **Verification.** Passed: `go test ./...`; `deno task check:policy`;
+  `deno task check:ts`; `deno task lint`; `deno task test`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; `go tool deadcode
+  -test ./...`; focused Playwright `tests/playwright/demo.spec.ts`; and local
+  admin desktop/mobile screenshot overflow checks. Tagged integration tests were
+  attempted but require `DATABASE_URL`.
+
 `task/moderation-parity-contract-wasm` added moderation foundations, parity
 coverage, contract coverage, and a bounded WASM adapter spike:
 

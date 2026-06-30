@@ -189,6 +189,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	agentService := agent.NewService(db.NewAgentStore(pool))
 	assetService := assets.NewService(db.NewCollectibleStore(pool))
 	notificationService := notification.NewService(db.NewNotificationStore(pool))
+	bootstrapAdmins := httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress(),
@@ -200,6 +201,8 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 			NotificationService: notificationService,
 			SavedQueueViews:     db.NewSavedQueueViewStore(pool),
 			PrivacyService:      db.NewPrivacyStore(pool),
+			PlatformAdmins:      db.NewPlatformAdminStore(pool, bootstrapAdmins),
+			ModerationTriage:    db.NewModerationTriageStore(pool),
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

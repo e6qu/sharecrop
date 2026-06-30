@@ -134,6 +134,7 @@ type LedgerService interface {
 
 type AuditService interface {
 	Record(context.Context, core.UserID, audit.Action, audit.Subject, audit.Metadata) audit.RecordResult
+	Get(context.Context, core.AuditEventID) audit.GetResult
 	List(context.Context, audit.ListFilters, core.Page) audit.ListResult
 }
 
@@ -148,6 +149,14 @@ type PrivacyService interface {
 	ListForRequester(context.Context, core.UserID, core.Page) PrivacyListResult
 	ListAll(context.Context, core.Page) PrivacyListResult
 	Resolve(context.Context, string, string) PrivacyMutationResult
+	RecordSensitiveFieldAccess(context.Context, core.UserID, submission.Submission) PrivacyMutationResult
+	RunRetention(context.Context, core.UserID) PrivacyRetentionResult
+}
+
+type ModerationTriageService interface {
+	RecordOpen(context.Context, audit.Event) ModerationTriageMutationResult
+	List(context.Context, []core.AuditEventID) ModerationTriageListResult
+	Update(context.Context, core.UserID, core.AuditEventID, string, string) ModerationTriageMutationResult
 }
 
 type Server struct {
@@ -165,12 +174,13 @@ type Server struct {
 	secureCookies       bool
 	ipRateLimiter       RateLimiter
 	subjectRateLimiter  RateLimiter
-	adminUserIDs        map[string]bool
+	platformAdmins      PlatformAdminService
 	accountTokens       accountTokenDelivery
 	auditService        AuditService
 	notificationService NotificationService
 	savedQueueViews     SavedQueueViewService
 	privacyService      PrivacyService
+	moderationTriage    ModerationTriageService
 }
 
 type RuntimeState struct {
@@ -181,6 +191,8 @@ type RuntimeState struct {
 	NotificationService NotificationService
 	SavedQueueViews     SavedQueueViewService
 	PrivacyService      PrivacyService
+	PlatformAdmins      PlatformAdminService
+	ModerationTriage    ModerationTriageService
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
@@ -194,6 +206,7 @@ const (
 )
 
 func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService) http.Handler {
+	bootstrapAdmins := parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, RuntimeState{
 		IPRateLimiter:       newRateLimiter(IPRateCapacity, IPRateRefillPerSec),
 		SubjectRateLimiter:  newRateLimiter(MCPRateCapacity, MCPRateRefillPerSec),
@@ -202,12 +215,14 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		NotificationService: notification.NewService(notification.NewMemoryStore()),
 		SavedQueueViews:     newMemorySavedQueueViewService(),
 		PrivacyService:      newMemoryPrivacyService(),
+		PlatformAdmins:      newMemoryPlatformAdminService(bootstrapAdmins),
+		ModerationTriage:    newMemoryModerationTriageService(),
 	})
 }
 
 func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService, runtime RuntimeState) http.Handler {
-	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil {
-		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, saved queue views, and privacy service")
+	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil {
+		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, saved queue views, privacy service, platform admin service, and moderation triage service")
 	}
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, runtime)
 }
@@ -235,9 +250,8 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		notificationService: runtime.NotificationService,
 		savedQueueViews:     runtime.SavedQueueViews,
 		privacyService:      runtime.PrivacyService,
-		// Platform admins (e.g. for awarding default collectibles) are bootstrapped
-		// from a comma-separated env list of user ids.
-		adminUserIDs: parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS")),
+		platformAdmins:      runtime.PlatformAdmins,
+		moderationTriage:    runtime.ModerationTriage,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
@@ -323,10 +337,15 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/collectibles/award", server.awardCollectible)
 	mux.HandleFunc("POST /api/collectibles/{id}/transfer", server.transferCollectible)
 	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
+	mux.HandleFunc("GET /api/admin/platform-admins", server.listPlatformAdmins)
+	mux.HandleFunc("POST /api/admin/platform-admins", server.grantPlatformAdmin)
+	mux.HandleFunc("POST /api/admin/platform-admins/{user_id}/revoke", server.revokePlatformAdmin)
 	mux.HandleFunc("GET /api/admin/audit-events", server.listAuditEvents)
 	mux.HandleFunc("GET /api/admin/moderation/reports", server.listAdminModerationReports)
+	mux.HandleFunc("POST /api/admin/moderation/reports/{report_id}/triage", server.triageModerationReport)
 	mux.HandleFunc("GET /api/admin/privacy-requests", server.listAdminPrivacyRequests)
 	mux.HandleFunc("POST /api/admin/privacy-requests/{privacy_request_id}/resolve", server.resolveAdminPrivacyRequest)
+	mux.HandleFunc("POST /api/admin/privacy-retention/run", server.runPrivacyRetention)
 	mux.HandleFunc("GET /api/notifications", server.listNotifications)
 	mux.HandleFunc("POST /api/notifications/{notification_id}/read", server.markNotificationRead)
 	mux.HandleFunc("GET /api/organizations/{id}/collectibles", server.listOrganizationCollectibles)
@@ -529,6 +548,10 @@ func parseAdminUserIDs(raw string) map[string]bool {
 		}
 	}
 	return admins
+}
+
+func ParseAdminUserIDsForRuntime(raw string) map[string]bool {
+	return parseAdminUserIDs(raw)
 }
 
 // requireWorkerSubject resolves a request to an acting user subject from either
@@ -1075,7 +1098,9 @@ type responseParts struct {
 func (server Server) writeAuthResponse(w http.ResponseWriter, status int, response authResponse) {
 	// Stamp the platform role from the bootstrap admin allowlist so the client can
 	// gate admin-only UI without a separate request.
-	if server.adminUserIDs[response.SubjectID] {
+	userIDResult := core.ParseUserID(response.SubjectID)
+	userID, matched := userIDResult.(core.UserIDCreated)
+	if matched && server.isPlatformAdmin(context.Background(), userID.Value) {
 		response.Role = "admin"
 	} else {
 		response.Role = "member"
