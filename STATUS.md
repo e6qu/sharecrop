@@ -1,16 +1,16 @@
 # Status
 
-The repository contains pull request 1 through pull request 95 work, merged into
+The repository contains pull request 1 through pull request 96 work, merged into
 `main`, plus the current
-`task/wasm-org-team-parity-contracts-rawid` branch.
+`task/wasm-submission-parity-host-adapters` branch.
 
-Active task: `task/wasm-org-team-parity-contracts-rawid` bundles post-merge
-continuity cleanup, the next explicit no-fallback WASM demo organization/team
-storage and handler slice, shared scenario parity for the added org/team
-surfaces, org/team HTTP contract fixtures, local real API parity verification,
-DB-backed browser coverage for organization/team admin flows, a raw-ID audit
-refresh, final continuity updates, and non-default local test port
-configuration. The branch is ready for commit, push, and pull request creation.
+Active task: `task/wasm-submission-parity-host-adapters` adds explicit
+host-backed Go/WASM backend slices for submissions, comments, reservations, and
+ledger surfaces; a Go `js/wasm` command; a Deno WASM runner that loads a
+compiled Go `.wasm` backend and checks required exports; and host adapter shape
+documentation. Deployed Pages routing verification remains a post-merge check.
+The branch must keep fail-loud behavior and must not add fallback stores or
+JavaScript backend reimplementations as the target.
 Hard deletes remain out of scope; use soft lifecycle states, anonymization,
 redaction, tombstones, and audit records. Email/provider delivery, anonymous
 worker identity, per-project tokens, external wallets, and crypto integrations
@@ -193,15 +193,23 @@ Current implemented surface:
   local compile-check results, bundle-size observations, a narrow
   `internal/wasmdemo` request-adapter package, explicit privacy-request,
   moderation-triage, saved-queue-view, task, attachment, notification,
-  organization, organization-member, and team browser-storage boundaries,
+  organization, organization-member, team, comment, reservation, submission,
+  and ledger browser-storage boundaries,
   narrow privacy-request, moderation-triage, saved-queue-view, task,
-  notification, organization, organization-member, and team request handlers,
-  and no fallback path.
+  notification, organization, organization-member, team, comment, reservation,
+  submission, and ledger request handlers, and no fallback path.
 - Go/WASM is a first-class backend execution target, not only a demo mechanism.
   The target artifact is a `.wasm` binary compiled from Go with explicit host
   adapters for storage, clock, identity/session, request handling, randomness,
   and networking. JavaScript reimplementations, generated fake backends, and
   fallback stores are out of scope.
+- `cmd/sharecrop-wasm` builds a Go `js/wasm` artifact that exposes
+  `sharecropWasmBackendStatus` and `sharecropHandleRequest`. The current export
+  classifies routes and fails with a host-adapter-required error until explicit
+  host runtime adapters are wired.
+- `deno task check:scenario-parity:wasm -- --wasm <compiled.wasm>` loads the
+  compiled Go WASM artifact through Go's `wasm_exec.js` and verifies those
+  exports without calling `site/demo/backend.js`.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -219,42 +227,16 @@ Current verification:
 
 - `go test ./...` passed.
 - `deno task check:ts` passed.
-- `deno lint tools tests` passed.
+- `deno task lint` passed.
 - `deno task check:policy` passed.
 - `deno task test` passed.
 - `deno fmt --check deno.json tools tests site/demo/backend.js` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
-  check-contracts` passed.
-- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode
-  -test ./...` passed.
-- `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
-- `GOOS=js GOARCH=wasm
-  GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test -c -o
-  /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo` passed.
-- `DATABASE_URL='postgres://sharecrop@127.0.0.1:25432/sharecrop?sslmode=disable'
-  SHARECROP_MIGRATIONS_DIR='/Users/zardoz/projects/sharecrop/migrations'
-  SHARECROP_ACCESS_TOKEN_SECRET='01234567890123456789012345678901'
-  SHARECROP_HTTP_ADDR=':29180'
-  GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
-  ./tools/run_db_checks.sh` passed against local PostgreSQL 15 after the
-  organization member lifecycle-list fix.
-- `DATABASE_URL='postgres://sharecrop@127.0.0.1:25432/sharecrop?sslmode=disable'
-  deno task check:scenario-parity:local-real -- --origin
-  http://127.0.0.1:29180` passed against the local real API after the
-  organization member lifecycle-list fix.
-- `DATABASE_URL='postgres://sharecrop@127.0.0.1:25432/sharecrop?sslmode=disable'
-  SHARECROP_MIGRATIONS_DIR='/Users/zardoz/projects/sharecrop/migrations'
-  SHARECROP_ACCESS_TOKEN_SECRET='01234567890123456789012345678901'
-  SHARECROP_HTTP_ADDR=':29180'
-  SHARECROP_PLAYWRIGHT_API_PORT=29180
-  SHARECROP_PLAYWRIGHT_DEMO_PORT=29181
-  SHARECROP_PLAYWRIGHT_DEMO_ORIGIN='http://127.0.0.1:29181'
-  GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
-  ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
-  --allow-write --allow-run --allow-net --allow-sys
-  npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts
-  tests/playwright/screens.spec.ts --output=.cache/test-results` passed against
-  local PostgreSQL 15 after the organization member lifecycle-list fix.
+- `make check-contracts` passed.
+- `go tool deadcode -test ./...` passed.
+- `GOOS=js GOARCH=wasm go build -o
+  /private/tmp/sharecrop-wasm-backend.wasm ./cmd/sharecrop-wasm` passed.
+- `deno task check:scenario-parity:wasm -- --wasm
+  /private/tmp/sharecrop-wasm-backend.wasm` passed.
 - `git diff --check` passed.
 
 Blocking issues:

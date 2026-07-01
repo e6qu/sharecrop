@@ -78,6 +78,29 @@ func (resolver fixedOrganizationUserResolver) UserIDForEmail(email string) (stri
 	return value, ok
 }
 
+type fixedInteractionIDs struct {
+	submissionID  string
+	commentID     string
+	reservationID string
+	ledgerID      string
+}
+
+func (ids fixedInteractionIDs) NextSubmissionID() string {
+	return ids.submissionID
+}
+
+func (ids fixedInteractionIDs) NextCommentID() string {
+	return ids.commentID
+}
+
+func (ids fixedInteractionIDs) NextReservationID() string {
+	return ids.reservationID
+}
+
+func (ids fixedInteractionIDs) NextLedgerEntryID() string {
+	return ids.ledgerID
+}
+
 func TestModerationTriageHandlerPersistsThroughBrowserStorage(t *testing.T) {
 	storage := newTestBrowserStorage()
 	handler := NewModerationTriageHandler(storage, fixedHandlerClock{value: time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)})
@@ -320,6 +343,148 @@ func TestTaskHandlerCreatesAndLoadsTaskWithAttachments(t *testing.T) {
 	}
 	if loadedBody.Attachments[0].SizeBytes != 5 {
 		t.Fatalf("loaded attachment size = %d, want 5", loadedBody.Attachments[0].SizeBytes)
+	}
+}
+
+func TestInteractionHandlerCreatesCommentsReservationsSubmissionAndLedger(t *testing.T) {
+	storage := newTestBrowserStorage()
+	task := StoredTask{
+		ID:                     "task-1",
+		OwnerKind:              "user",
+		OwnerID:                "user-requester",
+		Title:                  "Label receipts",
+		Description:            "Extract totals.",
+		TaskType:               "general",
+		RewardKind:             "credit",
+		RewardCreditAmount:     25,
+		ParticipationPolicy:    "approval_required",
+		AssigneeScope:          "user",
+		ReservationExpiryHours: 48,
+		State:                  "draft",
+		VisibilityKind:         "public",
+		SeriesKind:             "standalone",
+		ResponseSchemaJSON:     `{"kind":"freeform"}`,
+		PayloadKind:            "none",
+		CreatedBy:              "user-requester",
+	}
+	if _, matched := SaveTask(storage, task).(TaskStored); !matched {
+		t.Fatalf("task save was rejected")
+	}
+	handler := NewInteractionHandler(
+		storage,
+		fixedHandlerClock{value: time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)},
+		fixedHandlerActor{userID: "user-worker"},
+		fixedInteractionIDs{submissionID: "submission-1", commentID: "comment-1", reservationID: "reservation-1", ledgerID: "ledger-1"},
+	)
+
+	commentResult := handler.Handle(Request{Method: MethodPost, Path: "/api/tasks/task-1/comments", Body: `{"body":"I can do this."}`})
+	commentHandled, commentMatched := commentResult.(RequestHandled)
+	if !commentMatched {
+		t.Fatalf("comment result = %T, want RequestHandled", commentResult)
+	}
+	if commentHandled.Value.Status != 201 {
+		t.Fatalf("comment status = %d, want 201", commentHandled.Value.Status)
+	}
+	commentsResult := handler.Handle(Request{Method: MethodGet, Path: "/api/tasks/task-1/comments", Body: ""})
+	commentsHandled, commentsMatched := commentsResult.(RequestHandled)
+	if !commentsMatched {
+		t.Fatalf("comments result = %T, want RequestHandled", commentsResult)
+	}
+	var comments taskCommentsBody
+	if err := json.Unmarshal([]byte(commentsHandled.Value.Body), &comments); err != nil {
+		t.Fatalf("decode comments: %v", err)
+	}
+	if len(comments.Comments) != 1 || comments.Comments[0].Body != "I can do this." {
+		t.Fatalf("comments = %#v", comments)
+	}
+
+	reservationResult := handler.Handle(Request{Method: MethodPost, Path: "/api/tasks/task-1/reservations", Body: `{"assignee_kind":"user","assignee_id":"user-worker"}`})
+	reservationHandled, reservationMatched := reservationResult.(RequestHandled)
+	if !reservationMatched {
+		t.Fatalf("reservation result = %T, want RequestHandled", reservationResult)
+	}
+	var reservation StoredReservation
+	if err := json.Unmarshal([]byte(reservationHandled.Value.Body), &reservation); err != nil {
+		t.Fatalf("decode reservation: %v", err)
+	}
+	if reservation.State != "requested" {
+		t.Fatalf("reservation state = %q, want requested", reservation.State)
+	}
+	approveResult := handler.Handle(Request{Method: MethodPost, Path: "/api/tasks/task-1/reservations/reservation-1/approve", Body: `{}`})
+	approved, approvedMatched := approveResult.(RequestHandled)
+	if !approvedMatched {
+		t.Fatalf("approve result = %T, want RequestHandled", approveResult)
+	}
+	var approvedReservation StoredReservation
+	if err := json.Unmarshal([]byte(approved.Value.Body), &approvedReservation); err != nil {
+		t.Fatalf("decode approved reservation: %v", err)
+	}
+	if approvedReservation.State != "active" {
+		t.Fatalf("approved state = %q, want active", approvedReservation.State)
+	}
+
+	submissionResult := handler.Handle(Request{Method: MethodPost, Path: "/api/tasks/task-1/submissions", Body: `{"response_json":"{\"answer\":\"done\"}","attachments":[{"name":"proof.txt","content_type":"text/plain","data_url":"data:text/plain;base64,ZG9uZQ=="}]}`})
+	submissionHandled, submissionMatched := submissionResult.(RequestHandled)
+	if !submissionMatched {
+		t.Fatalf("submission result = %T, want RequestHandled", submissionResult)
+	}
+	if submissionHandled.Value.Status != 201 {
+		t.Fatalf("submission status = %d, want 201", submissionHandled.Value.Status)
+	}
+	var createdSubmission submissionCreatedBody
+	if err := json.Unmarshal([]byte(submissionHandled.Value.Body), &createdSubmission); err != nil {
+		t.Fatalf("decode submission: %v", err)
+	}
+	if createdSubmission.Submission.ID != "submission-1" || len(createdSubmission.Submission.Attachments) != 1 {
+		t.Fatalf("submission = %#v", createdSubmission)
+	}
+
+	submissionCommentResult := handler.Handle(Request{Method: MethodPost, Path: "/api/submissions/submission-1/comments", Body: `{"body":"Submitted proof."}`})
+	if _, matched := submissionCommentResult.(RequestHandled); !matched {
+		t.Fatalf("submission comment result = %T, want RequestHandled", submissionCommentResult)
+	}
+
+	acceptResult := handler.Handle(Request{Method: MethodPost, Path: "/api/tasks/task-1/submissions/submission-1/accept", Body: `{"idempotency_key":"review-1","tip_amount":5}`})
+	accepted, acceptedMatched := acceptResult.(RequestHandled)
+	if !acceptedMatched {
+		t.Fatalf("accept result = %T, want RequestHandled", acceptResult)
+	}
+	var acceptBody acceptSubmissionResultBody
+	if err := json.Unmarshal([]byte(accepted.Value.Body), &acceptBody); err != nil {
+		t.Fatalf("decode accept: %v", err)
+	}
+	if acceptBody.PayoutAmount != 25 || acceptBody.TipAmount != 5 || acceptBody.WorkerUserID != "user-worker" {
+		t.Fatalf("accept body = %#v", acceptBody)
+	}
+
+	balanceResult := handler.Handle(Request{Method: MethodGet, Path: "/api/credits/balance", Body: ""})
+	balanceHandled, balanceMatched := balanceResult.(RequestHandled)
+	if !balanceMatched {
+		t.Fatalf("balance result = %T, want RequestHandled", balanceResult)
+	}
+	var balance balanceBody
+	if err := json.Unmarshal([]byte(balanceHandled.Value.Body), &balance); err != nil {
+		t.Fatalf("decode balance: %v", err)
+	}
+	if balance.Amount != 30 {
+		t.Fatalf("balance = %d, want 30", balance.Amount)
+	}
+}
+
+func TestInteractionHandlerRejectsMissingIDSourceForMutation(t *testing.T) {
+	handler := NewInteractionHandler(
+		newTestBrowserStorage(),
+		fixedHandlerClock{value: time.Now().UTC()},
+		fixedHandlerActor{userID: "user-worker"},
+		nil,
+	)
+	result := handler.Handle(Request{Method: MethodPost, Path: "/api/tasks/task-1/comments", Body: `{"body":"hello"}`})
+	rejected, matched := result.(RequestHandleRejected)
+	if !matched {
+		t.Fatalf("result = %T, want RequestHandleRejected", result)
+	}
+	if rejected.Reason != "interaction id source is required" {
+		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }
 

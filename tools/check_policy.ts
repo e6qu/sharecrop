@@ -8,6 +8,9 @@ const generatedSuffixes: string[] = [
   "/web/static/app.js",
   "/web/static/app.css",
 ];
+const boundarySuffixes: string[] = [
+  "/cmd/sharecrop-wasm/main_js_wasm.go",
+];
 
 const weakWildcardToken = "a" + "ny";
 const weakStructuralToken = "obj" + "ect";
@@ -29,6 +32,11 @@ async function collectFiles(directory: string, files: string[]): Promise<void> {
 
 function isSkipped(path: string): boolean {
   for (const suffix of generatedSuffixes) {
+    if (path.endsWith(suffix.slice(1))) {
+      return true;
+    }
+  }
+  for (const suffix of boundarySuffixes) {
     if (path.endsWith(suffix.slice(1))) {
       return true;
     }

@@ -40,6 +40,21 @@ func TestAdaptRecognizesPrivacyAndModerationRoutes(t *testing.T) {
 		{name: "list organization teams", method: MethodGet, path: "/api/organizations/org-1/teams?query=crew", route: RouteOrganizationTeams},
 		{name: "create standalone team", method: MethodPost, path: "/api/teams", route: RouteStandaloneTeams},
 		{name: "list standalone teams", method: MethodGet, path: "/api/teams?query=crew", route: RouteStandaloneTeams},
+		{name: "create task comment", method: MethodPost, path: "/api/tasks/task-1/comments", route: RouteTaskComments},
+		{name: "list task comments", method: MethodGet, path: "/api/tasks/task-1/comments", route: RouteTaskComments},
+		{name: "create submission comment", method: MethodPost, path: "/api/submissions/submission-1/comments", route: RouteSubmissionComments},
+		{name: "list submission comments", method: MethodGet, path: "/api/submissions/submission-1/comments", route: RouteSubmissionComments},
+		{name: "create reservation", method: MethodPost, path: "/api/tasks/task-1/reservations", route: RouteTaskReservations},
+		{name: "list reservations", method: MethodGet, path: "/api/tasks/task-1/reservations?limit=1&offset=0", route: RouteTaskReservations},
+		{name: "approve reservation", method: MethodPost, path: "/api/tasks/task-1/reservations/reservation-1/approve", route: RouteTaskReservations},
+		{name: "create submission", method: MethodPost, path: "/api/tasks/task-1/submissions", route: RouteSubmissions},
+		{name: "list task submissions", method: MethodGet, path: "/api/tasks/task-1/submissions", route: RouteSubmissions},
+		{name: "accept submission", method: MethodPost, path: "/api/tasks/task-1/submissions/submission-1/accept", route: RouteSubmissions},
+		{name: "list user submissions", method: MethodGet, path: "/api/users/user-1/submissions?limit=1&offset=0", route: RouteSubmissions},
+		{name: "user balance", method: MethodGet, path: "/api/credits/balance", route: RouteLedger},
+		{name: "user ledger", method: MethodGet, path: "/api/credits/ledger?limit=1&offset=0", route: RouteLedger},
+		{name: "organization balance", method: MethodGet, path: "/api/organizations/org-1/credits/balance", route: RouteLedger},
+		{name: "organization ledger", method: MethodGet, path: "/api/organizations/org-1/credits/ledger?limit=1&offset=0", route: RouteLedger},
 	}
 
 	for _, tc := range cases {
