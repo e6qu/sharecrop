@@ -1,18 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 93 work, merged into
+The repository contains pull request 1 through pull request 94 work, merged into
 `main`, plus the current
-`task/real-parity-wasm-contracts-pagination-hardening` branch.
+`task/real-parity-wasm-submission-contracts-rawid-attachments` branch.
 
-Active task: `task/real-parity-wasm-contracts-pagination-hardening` added real
-API shared-scenario parity runner hardening, a no-fallback WASM demo
-task-handler/storage slice, expanded HTTP contract fixtures for attachments,
-browser/demo pagination fixes for ledger and notification lists, attachment
-count hardening, DB-backed upload browser coverage, and deployed Pages routing
-verification. Hard deletes remain out of scope; use soft lifecycle states,
-anonymization, redaction, tombstones, and audit records. Email/provider
-delivery, anonymous worker identity, per-project tokens, external wallets, and
-crypto integrations are out of scope.
+Active task: `task/real-parity-wasm-submission-contracts-rawid-attachments`
+is ready for review. It cleaned post-merge continuity, added local real API
+shared-scenario parity execution support, added the next no-fallback WASM demo
+notification slice, expanded shared scenario pagination coverage, expanded HTTP
+contract fixtures, refreshed the raw-ID browser-flow audit, added DB-backed
+attachment edge-case browser coverage, and updated continuity docs. Hard
+deletes remain out of scope; use soft lifecycle states, anonymization,
+redaction, tombstones, and audit records. Email/provider delivery, anonymous
+worker identity, per-project tokens, external wallets, and crypto integrations
+are out of scope.
 
 Current implemented surface:
 
@@ -127,7 +128,7 @@ Current implemented surface:
   notification read shape, and a multi-actor reservation
   approval/submission acceptance/payout/notification flow against the
   backendless demo. It can be run against a real API with an explicit admin
-  origin/token.
+  origin/token/refresh-token session.
 - The shared scenario parity runner also covers organization reviewer acceptance
   of an organization-owned task funded from the organization balance.
 - The shared scenario parity runner covers submission-comment notifications,
@@ -135,8 +136,13 @@ Current implemented surface:
   views, small task/submission attachments, and sensitive-field response
   metadata.
 - The real API shared scenario parity runner probes `/healthz`, accepts
-  `--token-file`, and reports invalid JSON with request context before running
-  the shared scenario suite.
+  token and refresh-token file inputs, carries refresh-cookie rotation, and
+  reports invalid JSON and status errors with request context before running the
+  shared scenario suite.
+- A local real API shared scenario parity runner registers a scenario admin,
+  grants platform-admin state through `DATABASE_URL` and `psql`, and runs the
+  same shared scenario suite against a real local API without a fallback admin
+  path.
 - A GitHub Pages routing check script verifies deployed root/docs/demo entry
   paths and demo assets after deployment.
 - The Pages workflow runs the deployed routing check after GitHub Pages
@@ -151,10 +157,15 @@ Current implemented surface:
 - Browser ledger, organization ledger, and notification inbox lists use
   explicit `limit`/`offset` requests with previous/next controls. The
   backendless demo honors the same pagination for those routes.
+- Shared scenario parity covers adjacent one-row pages for personal ledger,
+  organization ledger, and notification inbox routes.
 - Task creation and submission creation support up to five small attachments
   under 500 KiB each for PNG, JPEG, GIF, WebP, plain text, JSON, and PDF.
   Attachment bytes are stored inline for this small-file path and returned as
   data URLs with metadata.
+- DB-backed browser coverage verifies task attachment happy-path upload plus
+  rejected type, oversized file, and five-file limit guardrails through the real
+  UI.
 - Inbox notification rows link to the task when notification metadata includes
   `task_id`.
 - Submission comments notify the other side of the private submission discussion
@@ -175,9 +186,10 @@ Current implemented surface:
 - The WASM demo backend spike is documented with explicit storage-adapter gates,
   local compile-check results, bundle-size observations, a narrow
   `internal/wasmdemo` request-adapter package, explicit privacy-request,
-  moderation-triage, saved-queue-view, task, and attachment browser-storage
-  boundaries, narrow privacy-request, moderation-triage, saved-queue-view, and
-  task request handlers, and no fallback path.
+  moderation-triage, saved-queue-view, task, attachment, and notification
+  browser-storage boundaries, narrow privacy-request, moderation-triage,
+  saved-queue-view, task, and notification request handlers, and no fallback
+  path.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -204,21 +216,20 @@ Current verification:
 - `GOOS=js GOARCH=wasm
   GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test -c -o
   /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo` passed.
-- `deno task check:pages-routing -- --origin https://e6qu.github.io/sharecrop`
-  passed.
-- `ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
-  --allow-write --allow-run --allow-net --allow-sys npm:@playwright/test@1.61.0
-  test -c tests/playwright/demo.config.ts tests/playwright/demo.spec.ts
-  tests/playwright/mobile.spec.ts --output=.cache/test-results` passed.
 - `DATABASE_URL='postgres://sharecrop@127.0.0.1:15432/sharecrop?sslmode=disable'
   SHARECROP_MIGRATIONS_DIR='/Users/zardoz/projects/sharecrop/migrations'
   SHARECROP_ACCESS_TOKEN_SECRET='01234567890123456789012345678901'
-  SHARECROP_HTTP_ADDR=':18080' GOCACHE=.cache/go-build
+  SHARECROP_HTTP_ADDR=':18080'
+  GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
   ./tools/run_db_checks.sh` passed against local PostgreSQL 15.
 - `DATABASE_URL='postgres://sharecrop@127.0.0.1:15432/sharecrop?sslmode=disable'
+  deno task check:scenario-parity:local-real -- --origin
+  http://127.0.0.1:18080` passed against the local real API.
+- `DATABASE_URL='postgres://sharecrop@127.0.0.1:15432/sharecrop?sslmode=disable'
   SHARECROP_MIGRATIONS_DIR='/Users/zardoz/projects/sharecrop/migrations'
   SHARECROP_ACCESS_TOKEN_SECRET='01234567890123456789012345678901'
-  SHARECROP_HTTP_ADDR=':18080' GOCACHE=.cache/go-build
+  SHARECROP_HTTP_ADDR=':18080'
+  GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
   ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
   --allow-write --allow-run --allow-net --allow-sys
   npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts

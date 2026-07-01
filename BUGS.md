@@ -36,13 +36,14 @@ Test gaps:
   wallets are out of scope.
 - Request/command contracts and HTTP contract fixture tests should keep
   expanding as the API grows.
-- Real API shared scenario parity requires an explicit admin access token. The
-  runner can use `--token` or `--token-file`; local branch verification covered
-  the backendless shared scenario suite and DB-backed runtime checks, not a
-  long-lived deployed real API with an admin token.
-- DB-backed checks passed against an isolated local PostgreSQL 15 data directory
-  under `.cache`; demo/mobile Playwright coverage passed through the
-  backendless-demo config.
+- Real API shared scenario parity can run with an explicit platform-admin
+  access-token plus refresh-token session, or locally through
+  `check:scenario-parity:local-real` when `DATABASE_URL`, `psql`, and a local
+  API are available. A long-lived deployed real API with an admin session still
+  requires operator-supplied credentials.
+- DB-backed checks, local real API shared scenario parity, and DB-backed
+  Playwright screens passed against an isolated local PostgreSQL 15 data
+  directory under `.cache`.
 
 Known risks:
 
@@ -65,12 +66,13 @@ Known risks:
   prove every handler has identical domain semantics.
 - Go code compiles to `js/wasm` for representative packages and the main
   command. A narrow `internal/wasmdemo` request-adapter spike exists for
-  privacy, moderation, saved-queue-view, and task route classification, and
-  explicit privacy-request, moderation-triage, saved-queue-view, task, and
-  attachment browser storage plus request-handler boundaries exist. A WASM demo
-  backend still lacks enough explicit browser-backed stores and handlers to run
-  the shared scenario parity suite, deterministic reset, startup measurements,
-  and a JS/WASM scenario test runner.
+  privacy, moderation, saved-queue-view, task, and notification route
+  classification, and explicit privacy-request, moderation-triage,
+  saved-queue-view, task, attachment, and notification browser storage plus
+  request-handler boundaries exist. A WASM demo backend still lacks enough
+  explicit browser-backed stores and handlers to run the shared scenario parity
+  suite, deterministic reset, startup measurements, and a JS/WASM scenario test
+  runner.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

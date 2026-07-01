@@ -131,6 +131,18 @@ type StoredTask struct {
 	PayloadJSON            string `json:"payload_json"`
 }
 
+type StoredNotification struct {
+	ID              string `json:"id"`
+	RecipientUserID string `json:"recipient_user_id"`
+	ActorUserID     string `json:"actor_user_id"`
+	Kind            string `json:"kind"`
+	SubjectKind     string `json:"subject_kind"`
+	SubjectID       string `json:"subject_id"`
+	State           string `json:"state"`
+	MetadataJSON    string `json:"metadata_json"`
+	CreatedAt       string `json:"created_at"`
+}
+
 type ModerationTriageStorageResult interface {
 	moderationTriageStorageResult()
 }
@@ -850,6 +862,306 @@ func validStoredTaskPayloadKind(value string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+type NotificationPage struct {
+	limit  int
+	offset int
+}
+
+type NotificationPageResult interface {
+	notificationPageResult()
+}
+
+type NotificationPageAccepted struct {
+	Value NotificationPage
+}
+
+type NotificationPageRejected struct {
+	Reason string
+}
+
+func (NotificationPageAccepted) notificationPageResult() {}
+func (NotificationPageRejected) notificationPageResult() {}
+
+func NewNotificationPage(limit int, offset int) NotificationPageResult {
+	if limit < 1 {
+		return NotificationPageRejected{Reason: "notification page limit is invalid"}
+	}
+	if offset < 0 {
+		return NotificationPageRejected{Reason: "notification page offset is invalid"}
+	}
+	return NotificationPageAccepted{Value: NotificationPage{limit: limit, offset: offset}}
+}
+
+func DefaultNotificationPage() NotificationPage {
+	return NotificationPage{limit: 20, offset: 0}
+}
+
+type NotificationStorageResult interface {
+	notificationStorageResult()
+}
+
+type NotificationStored struct {
+	Value StoredNotification
+}
+
+type NotificationsStored struct {
+	Values []StoredNotification
+}
+
+type NotificationStorageRejected struct {
+	Reason string
+}
+
+func (NotificationStored) notificationStorageResult()          {}
+func (NotificationsStored) notificationStorageResult()         {}
+func (NotificationStorageRejected) notificationStorageResult() {}
+
+func SaveNotification(storage BrowserStorage, notification StoredNotification) NotificationStorageResult {
+	cleaned := cleanStoredNotification(notification)
+	if reason := validateStoredNotification(cleaned); reason != "" {
+		return NotificationStorageRejected{Reason: reason}
+	}
+	keyResult := notificationKey(cleaned.ID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return NotificationStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return NotificationStorageRejected{Reason: "notification encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return NotificationStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	indexResult := appendNotificationIndex(storage, cleaned.RecipientUserID, cleaned.ID)
+	if _, matched := indexResult.(NotificationsStored); !matched {
+		return indexResult
+	}
+	return NotificationStored{Value: cleaned}
+}
+
+func ListNotifications(storage BrowserStorage, recipientUserID string, page NotificationPage) NotificationStorageResult {
+	cleanRecipientID := strings.TrimSpace(recipientUserID)
+	if cleanRecipientID == "" {
+		return NotificationStorageRejected{Reason: "notification recipient is required"}
+	}
+	idsResult := loadNotificationIndex(storage, cleanRecipientID)
+	ids, idsMatched := idsResult.(notificationIDsLoaded)
+	if !idsMatched {
+		return NotificationStorageRejected{Reason: idsResult.(notificationIDsRejected).Reason}
+	}
+	start := page.offset
+	if start > len(ids.Values) {
+		start = len(ids.Values)
+	}
+	end := start + page.limit
+	if end > len(ids.Values) {
+		end = len(ids.Values)
+	}
+	values := make([]StoredNotification, 0, end-start)
+	for index := start; index < end; index++ {
+		loadResult := LoadNotification(storage, ids.Values[index])
+		loaded, loadedMatched := loadResult.(NotificationStored)
+		if !loadedMatched {
+			return loadResult
+		}
+		if loaded.Value.RecipientUserID != cleanRecipientID {
+			return NotificationStorageRejected{Reason: "notification index contains mismatched record"}
+		}
+		values = append(values, loaded.Value)
+	}
+	return NotificationsStored{Values: values}
+}
+
+func MarkNotificationRead(storage BrowserStorage, notificationID string, recipientUserID string) NotificationStorageResult {
+	loadResult := LoadNotification(storage, notificationID)
+	loaded, loadedMatched := loadResult.(NotificationStored)
+	if !loadedMatched {
+		return loadResult
+	}
+	cleanRecipientID := strings.TrimSpace(recipientUserID)
+	if cleanRecipientID == "" {
+		return NotificationStorageRejected{Reason: "notification recipient is required"}
+	}
+	if loaded.Value.RecipientUserID != cleanRecipientID {
+		return NotificationStorageRejected{Reason: "notification does not belong to actor"}
+	}
+	loaded.Value.State = "read"
+	return SaveNotification(storage, loaded.Value)
+}
+
+func LoadNotification(storage BrowserStorage, notificationID string) NotificationStorageResult {
+	cleanID := strings.TrimSpace(notificationID)
+	if cleanID == "" {
+		return NotificationStorageRejected{Reason: "notification id is required"}
+	}
+	keyResult := notificationKey(cleanID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return NotificationStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return NotificationStorageRejected{Reason: notificationReadReason(readResult)}
+	}
+	var notification StoredNotification
+	if err := json.Unmarshal([]byte(read.Value), &notification); err != nil {
+		return NotificationStorageRejected{Reason: "notification decoding failed"}
+	}
+	cleaned := cleanStoredNotification(notification)
+	if cleaned.ID != cleanID {
+		return NotificationStorageRejected{Reason: "notification storage key contains mismatched record"}
+	}
+	if reason := validateStoredNotification(cleaned); reason != "" {
+		return NotificationStorageRejected{Reason: reason}
+	}
+	return NotificationStored{Value: cleaned}
+}
+
+func cleanStoredNotification(notification StoredNotification) StoredNotification {
+	return StoredNotification{
+		ID:              strings.TrimSpace(notification.ID),
+		RecipientUserID: strings.TrimSpace(notification.RecipientUserID),
+		ActorUserID:     strings.TrimSpace(notification.ActorUserID),
+		Kind:            strings.TrimSpace(notification.Kind),
+		SubjectKind:     strings.TrimSpace(notification.SubjectKind),
+		SubjectID:       strings.TrimSpace(notification.SubjectID),
+		State:           strings.TrimSpace(notification.State),
+		MetadataJSON:    strings.TrimSpace(notification.MetadataJSON),
+		CreatedAt:       strings.TrimSpace(notification.CreatedAt),
+	}
+}
+
+func validateStoredNotification(notification StoredNotification) string {
+	if notification.ID == "" {
+		return "notification id is required"
+	}
+	if notification.RecipientUserID == "" {
+		return "notification recipient is required"
+	}
+	if notification.ActorUserID == "" {
+		return "notification actor is required"
+	}
+	if notification.Kind == "" {
+		return "notification kind is required"
+	}
+	if notification.SubjectKind == "" {
+		return "notification subject kind is required"
+	}
+	if notification.SubjectID == "" {
+		return "notification subject id is required"
+	}
+	if !validStoredNotificationState(notification.State) {
+		return "notification state is invalid"
+	}
+	if notification.MetadataJSON == "" {
+		return "notification metadata is required"
+	}
+	if notification.CreatedAt == "" {
+		return "notification created time is required"
+	}
+	return ""
+}
+
+func validStoredNotificationState(value string) bool {
+	switch value {
+	case "unread", "read":
+		return true
+	default:
+		return false
+	}
+}
+
+type notificationIDsResult interface {
+	notificationIDsResult()
+}
+
+type notificationIDsLoaded struct {
+	Values []string
+}
+
+type notificationIDsRejected struct {
+	Reason string
+}
+
+func (notificationIDsLoaded) notificationIDsResult()   {}
+func (notificationIDsRejected) notificationIDsResult() {}
+
+func notificationKey(id string) StorageKeyResult {
+	return NewStorageKey("notification:" + strings.TrimSpace(id))
+}
+
+func notificationIndexKey(recipientUserID string) StorageKeyResult {
+	return NewStorageKey("notification:index:" + strings.TrimSpace(recipientUserID))
+}
+
+func loadNotificationIndex(storage BrowserStorage, recipientUserID string) notificationIDsResult {
+	keyResult := notificationIndexKey(recipientUserID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return notificationIDsRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	if _, missing := readResult.(StorageMissing); missing {
+		return notificationIDsLoaded{Values: []string{}}
+	}
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return notificationIDsRejected{Reason: notificationReadReason(readResult)}
+	}
+	var ids []string
+	if err := json.Unmarshal([]byte(read.Value), &ids); err != nil {
+		return notificationIDsRejected{Reason: "notification index decoding failed"}
+	}
+	for index := range ids {
+		if strings.TrimSpace(ids[index]) == "" {
+			return notificationIDsRejected{Reason: "notification index contains an invalid id"}
+		}
+	}
+	return notificationIDsLoaded{Values: ids}
+}
+
+func appendNotificationIndex(storage BrowserStorage, recipientUserID string, id string) NotificationStorageResult {
+	idsResult := loadNotificationIndex(storage, recipientUserID)
+	ids, idsMatched := idsResult.(notificationIDsLoaded)
+	if !idsMatched {
+		return NotificationStorageRejected{Reason: idsResult.(notificationIDsRejected).Reason}
+	}
+	for index := range ids.Values {
+		if ids.Values[index] == id {
+			return NotificationsStored{Values: []StoredNotification{}}
+		}
+	}
+	ids.Values = append([]string{id}, ids.Values...)
+	encoded, err := json.Marshal(ids.Values)
+	if err != nil {
+		return NotificationStorageRejected{Reason: "notification index encoding failed"}
+	}
+	keyResult := notificationIndexKey(recipientUserID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return NotificationStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return NotificationStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	return NotificationsStored{Values: []StoredNotification{}}
+}
+
+func notificationReadReason(result StorageReadResult) string {
+	switch rejected := result.(type) {
+	case StorageMissing:
+		return rejected.Reason
+	case StorageReadRejected:
+		return rejected.Reason
+	default:
+		return "notification read failed"
 	}
 }
 

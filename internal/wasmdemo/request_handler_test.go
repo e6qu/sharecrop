@@ -318,3 +318,62 @@ func TestTaskHandlerRejectsTooManyAttachments(t *testing.T) {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }
+
+func TestNotificationHandlerListsAndMarksReadThroughBrowserStorage(t *testing.T) {
+	storage := newTestBrowserStorage()
+	if _, matched := SaveNotification(storage, StoredNotification{
+		ID:              "notification-1",
+		RecipientUserID: "user-2",
+		ActorUserID:     "user-1",
+		Kind:            "submission_created",
+		SubjectKind:     "submission",
+		SubjectID:       "submission-1",
+		State:           "unread",
+		MetadataJSON:    `{"task_id":"task-1"}`,
+		CreatedAt:       "2026-07-01T10:00:00Z",
+	}).(NotificationStored); !matched {
+		t.Fatalf("notification save was rejected")
+	}
+
+	handler := NewNotificationHandler(storage, fixedHandlerActor{userID: "user-2"})
+	listResult := handler.Handle(Request{Method: MethodGet, Path: "/api/notifications?limit=1&offset=0", Body: ""})
+	listed, listedMatched := listResult.(RequestHandled)
+	if !listedMatched {
+		t.Fatalf("list result = %T, want RequestHandled", listResult)
+	}
+	if listed.Value.Status != 200 {
+		t.Fatalf("list status = %d, want 200", listed.Value.Status)
+	}
+	var listBody notificationsBody
+	if err := json.Unmarshal([]byte(listed.Value.Body), &listBody); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listBody.Notifications) != 1 || listBody.Notifications[0].ID != "notification-1" {
+		t.Fatalf("list body = %#v", listBody)
+	}
+
+	markResult := handler.Handle(Request{Method: MethodPost, Path: "/api/notifications/notification-1/read", Body: ""})
+	marked, markedMatched := markResult.(RequestHandled)
+	if !markedMatched {
+		t.Fatalf("mark result = %T, want RequestHandled", markResult)
+	}
+	var markedBody StoredNotification
+	if err := json.Unmarshal([]byte(marked.Value.Body), &markedBody); err != nil {
+		t.Fatalf("decode mark response: %v", err)
+	}
+	if markedBody.State != "read" {
+		t.Fatalf("marked state = %q, want read", markedBody.State)
+	}
+}
+
+func TestNotificationHandlerRejectsInvalidPagination(t *testing.T) {
+	handler := NewNotificationHandler(newTestBrowserStorage(), fixedHandlerActor{userID: "user-2"})
+	result := handler.Handle(Request{Method: MethodGet, Path: "/api/notifications?limit=not-a-number", Body: ""})
+	rejected, matched := result.(RequestHandleRejected)
+	if !matched {
+		t.Fatalf("result = %T, want RequestHandleRejected", result)
+	}
+	if rejected.Reason != "notification limit is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}

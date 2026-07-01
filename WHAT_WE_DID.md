@@ -1,5 +1,45 @@
 # What We Did
 
+`task/real-parity-wasm-submission-contracts-rawid-attachments` expanded real
+parity execution, WASM demo groundwork, contracts, pagination coverage, and
+attachment browser coverage:
+
+- **Local real API parity.** Added
+  `tools/run_local_real_scenario_parity.ts` and a Deno task that probes
+  `/healthz`, registers a scenario admin, grants platform-admin state through
+  `DATABASE_URL` and `psql`, and runs the shared scenario suite against a real
+  local API. The explicit real runner now carries refresh-token cookies,
+  accepts refresh-token file input, and reports response error context in status
+  failures.
+- **Shared scenario parity.** The shared suite now satisfies the real
+  task-create and submission lifecycle contract by sending explicit task
+  placement and opening the submission task before submission. It also verifies
+  adjacent one-row pages for personal ledger, organization ledger, and
+  notification inbox routes.
+- **WASM demo spike.** `internal/wasmdemo` gained explicit notification browser
+  storage, notification route classification, and list/mark-read request
+  handlers with actor-scoped validation and no fallback store.
+- **Contracts and raw-ID audit.** HTTP fixtures now pin task owner, visibility,
+  placement, and payload request subshapes. The raw-ID browser-flow audit and
+  demo/WASM parity docs were refreshed.
+- **Attachment browser edge cases.** DB-backed Playwright coverage now verifies
+  rejected task attachment type, oversized file, and five-file limit guardrails
+  through the real UI.
+- **Verification.** Passed: `go test ./...`; focused Go tests for
+  `internal/wasmdemo` and `internal/http`; `deno task check:ts`;
+  `deno task lint`; `deno task check:policy`; `deno task test`;
+  `deno fmt --check deno.json tools tests site/demo/backend.js`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
+  check-contracts`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
+  go tool deadcode -test ./...`; `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`; `GOOS=js GOARCH=wasm
+  GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test -c -o
+  /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo`;
+  `tools/run_db_checks.sh` against local PostgreSQL 15;
+  `deno task check:scenario-parity:local-real -- --origin
+  http://127.0.0.1:18080` against the local real API; and DB-backed
+  Playwright `tests/playwright/screens.spec.ts` against local PostgreSQL 15.
+
 `task/real-parity-wasm-contracts-pagination-hardening` hardened parity,
 pagination, attachments, and the WASM demo spike:
 
@@ -910,9 +950,9 @@ QA boyscout review (one background review agent):
 - **Deferred (noted):** id-picker dropdowns for free-text scope ids;
   org-reviewer review controls in the browser (needs a `viewer_action` "manage"
   value); per-page loading-vs-error states (a forbidden deep-link still shows a
-  perpetual "Loading…"); plus the three large standalone initiatives
-  (out-of-process Postgres session/rate-limiter store, anonymous-worker
-  identity, crypto reward metadata) kept in DO_NEXT. The QA review found **no
+  perpetual "Loading…"); plus the large standalone initiatives for
+  out-of-process Postgres session/rate-limiter storage and anonymous-worker
+  identity. Crypto reward metadata is out of scope. The QA review found **no
   WCAG contrast failures** and confirmed full demo route/decoder parity.
 
 `task/demo-fidelity` minimized the in-browser demo's "fakes" so

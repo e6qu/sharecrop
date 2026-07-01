@@ -3,6 +3,8 @@ package wasmdemo
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -650,4 +652,123 @@ func attachmentsFromTaskBody(values []taskAttachmentRequestBody, taskID string) 
 		})
 	}
 	return taskAttachmentsAccepted{values: attachments}
+}
+
+type NotificationHandler struct {
+	storage BrowserStorage
+	actor   HandlerActor
+}
+
+func NewNotificationHandler(storage BrowserStorage, actor HandlerActor) NotificationHandler {
+	return NotificationHandler{storage: storage, actor: actor}
+}
+
+func (handler NotificationHandler) Handle(request Request) HandleResult {
+	if handler.storage == nil {
+		return RequestHandleRejected{Reason: "browser storage is required"}
+	}
+	if handler.actor == nil {
+		return RequestHandleRejected{Reason: "handler actor is required"}
+	}
+	if notificationsPathOnly(request.Path) == "/api/notifications" {
+		if request.Method.String() != MethodGet.String() {
+			return RequestHandleRejected{Reason: "request method is unsupported for notification listing"}
+		}
+		return handler.handleList(request)
+	}
+	notificationID := notificationReadPathID(request.Path)
+	if notificationID == "" {
+		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	}
+	if request.Method.String() != MethodPost.String() {
+		return RequestHandleRejected{Reason: "request method is unsupported for notification mark-read"}
+	}
+	return handler.handleMarkRead(notificationID)
+}
+
+func (handler NotificationHandler) handleList(request Request) HandleResult {
+	pageResult := notificationPageFromPath(request.Path)
+	page, pageMatched := pageResult.(notificationPageAccepted)
+	if !pageMatched {
+		return RequestHandleRejected{Reason: pageResult.(notificationPageRejected).reason}
+	}
+	listResult := ListNotifications(handler.storage, handler.actor.UserID(), page.value)
+	listed, listedMatched := listResult.(NotificationsStored)
+	if !listedMatched {
+		return RequestHandleRejected{Reason: listResult.(NotificationStorageRejected).Reason}
+	}
+	encoded, err := json.Marshal(notificationsBody{Notifications: listed.Values})
+	if err != nil {
+		return RequestHandleRejected{Reason: "notifications response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func (handler NotificationHandler) handleMarkRead(notificationID string) HandleResult {
+	markResult := MarkNotificationRead(handler.storage, notificationID, handler.actor.UserID())
+	marked, markedMatched := markResult.(NotificationStored)
+	if !markedMatched {
+		return RequestHandleRejected{Reason: markResult.(NotificationStorageRejected).Reason}
+	}
+	encoded, err := json.Marshal(marked.Value)
+	if err != nil {
+		return RequestHandleRejected{Reason: "notification response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+type notificationsBody struct {
+	Notifications []StoredNotification `json:"notifications"`
+}
+
+type notificationPageResult interface {
+	notificationPageResult()
+}
+
+type notificationPageAccepted struct {
+	value NotificationPage
+}
+
+type notificationPageRejected struct {
+	reason string
+}
+
+func (notificationPageAccepted) notificationPageResult() {}
+func (notificationPageRejected) notificationPageResult() {}
+
+func notificationPageFromPath(path string) notificationPageResult {
+	parts := strings.SplitN(path, "?", 2)
+	if len(parts) != 2 {
+		return notificationPageAccepted{value: DefaultNotificationPage()}
+	}
+	values, err := url.ParseQuery(parts[1])
+	if err != nil {
+		return notificationPageRejected{reason: "notification pagination query is invalid"}
+	}
+	limit, limitMatched := notificationQueryInt(values, "limit", 20)
+	if !limitMatched {
+		return notificationPageRejected{reason: "notification limit is invalid"}
+	}
+	offset, offsetMatched := notificationQueryInt(values, "offset", 0)
+	if !offsetMatched {
+		return notificationPageRejected{reason: "notification offset is invalid"}
+	}
+	pageResult := NewNotificationPage(limit, offset)
+	page, pageMatched := pageResult.(NotificationPageAccepted)
+	if !pageMatched {
+		return notificationPageRejected{reason: pageResult.(NotificationPageRejected).Reason}
+	}
+	return notificationPageAccepted{value: page.Value}
+}
+
+func notificationQueryInt(values url.Values, key string, defaultValue int) (int, bool) {
+	raw := strings.TrimSpace(values.Get(key))
+	if raw == "" {
+		return defaultValue, true
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
 }

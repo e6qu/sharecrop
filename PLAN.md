@@ -428,7 +428,7 @@ A worker may be:
 
 ### Organizations And Teams
 
-Organizations own users, organization teams, wallets, credit balances, tasks, task series, and policy settings.
+Organizations own users, organization teams, credit balances, tasks, task series, and policy settings.
 
 Teams group users. A team may be standalone or owned by an organization.
 
@@ -436,7 +436,7 @@ Teams group users. A team may be standalone or owned by an organization.
 
 ### Users
 
-Users can authenticate, create tasks, submit work, join teams and organizations, hold wallets, and hold a Sharecrop credit account.
+Users can authenticate, create tasks, submit work, join teams and organizations, and hold a Sharecrop credit account.
 
 Signup behavior:
 
@@ -452,9 +452,7 @@ Organizations can own:
 - Organization teams.
 - Tasks.
 - Task series.
-- Wallets.
 - Credit accounts.
-- Organization-issued tokens.
 - Collectibles.
 - Agent credentials.
 - Policy settings.
@@ -475,7 +473,6 @@ Organization permissions should include:
 - Create organization task.
 - Review organization submissions.
 - Manage organization billing/credits.
-- Manage organization wallets.
 - Publish organization task publicly.
 - Switch organization task visibility.
 
@@ -484,16 +481,6 @@ Organization permissions should include:
 Teams can be standalone or organization-owned.
 
 Organization teams are teams whose owner is an organization. They should still be modeled explicitly because permissions and task ownership depend on whether the team belongs to an organization.
-
-### Wallets
-
-Wallets can be owned by:
-
-- Users.
-- Organizations.
-- Deferred anonymous submissions.
-
-Anonymous wallet privacy rules are deferred until anonymous submission is redesigned.
 
 ### Credit Accounts And Ledger
 
@@ -556,7 +543,7 @@ Collectible rules:
 - Collectibles can be hoarded, traded, or attached as task rewards depending on policy.
 - Collectible policy is explicit and strongly typed.
 - The platform tracks ownership and transfer history.
-- Collectibles can later be sold by Sharecrop for credits, crypto, or other supported payment methods.
+- Collectibles can later be sold by Sharecrop for credits or other non-crypto platform payment methods.
 
 Collectible states:
 
@@ -844,21 +831,13 @@ Cancellation:
 
 - If an escrowed task is cancelled before acceptance, insert refund ledger entries.
 
-### Crypto Rewards
-
-Crypto rewards are in product scope but should not be automated in the MVP.
-
-MVP-compatible behavior:
-
-- External wallet and crypto payout metadata is out of scope.
-
 ### Sharecrop Collectibles As Rewards
 
 Sharecrop platform collectibles and Sharecrop credits are the product-scope reward assets. Collectibles are minted by platform admins only.
 
 Reward flow should mirror credits:
 
-1. Requester selects a token or collectible reward item as part of the reward bundle.
+1. Requester selects a Sharecrop credit or collectible reward item as part of the reward bundle.
 2. Platform verifies ownership, transfer policy, and requester permission.
 3. Platform escrows the asset.
 4. Task becomes open.
@@ -871,7 +850,7 @@ Collectible rewards may be:
 - One edition from a fungible collection.
 - A bundle of collectibles.
 
-Token and collectible transfers must be ledger/event-backed and auditable.
+Collectible transfers must be ledger/event-backed and auditable.
 
 ### Auto-Accept
 
@@ -883,8 +862,6 @@ Auto-accept should require:
 - Maximum reward threshold.
 - Optional delay window.
 
-Auto-accept should not be enabled by default for crypto payouts.
-
 ## Anonymous Access
 
 Anonymous workers are deferred.
@@ -892,12 +869,10 @@ Anonymous workers are deferred.
 Before anonymous submission returns, Sharecrop needs a design for:
 
 - Anonymous worker identity.
-- Anonymous payout targets.
-- Privacy boundaries between anonymous payout addresses and registered users.
 - Receipt-token status access.
 - Abuse controls such as rate limits and optional CAPTCHA.
 
-Guest visitors may later receive an opaque browser token for non-account continuity. That guest token is not a wallet identity and must not be used to link anonymous payout targets to registered accounts.
+Guest visitors may later receive an opaque browser token for non-account continuity. That guest token is not a wallet or payout identity.
 
 ## API Surface
 
@@ -1107,8 +1082,6 @@ Important later:
 - CAPTCHA for public web submissions.
 - Abuse reporting.
 - Organization policy controls.
-- Crypto payout risk controls.
-- Wallet screening if automated real crypto payouts are added.
 
 ## Testing Strategy
 
@@ -1268,37 +1241,28 @@ Package intent:
 ### Milestone 7: Organization Workflows
 
 - Organization-owned credit accounts.
-- Organization-owned wallets.
 - Organization teams.
 - Organization task filters.
 - Reviewer/billing/admin permissions.
 
-### Milestone 8: Advanced Acceptance And Crypto Metadata
+### Milestone 8: Advanced Acceptance
 
 - Auto-accept policies.
 - Schema builder UI.
 - Schema builder support for sensitive/PII fields.
 - Submission caps.
-- Crypto reward metadata.
-- Manual crypto payout tracking.
 
-### Milestone 9: User/Organization Tokens And Collectibles
+### Milestone 9: Platform Collectibles
 
-- User-issued token model.
-- Organization-issued token model.
-- Token minting policy.
-- Token ownership ledger.
 - Platform collectible catalog.
 - Collectible ownership and trade history.
-- Attach tokens or collectibles as task rewards.
-- Escrow and award token/collectible rewards.
+- Attach Sharecrop collectibles as task rewards.
+- Escrow and award collectible rewards.
 
 ## Open Questions
 
 - Should first-version organization-scoped tasks be visible to all organization members by default, or only selected organization users/teams?
-- Which crypto networks/assets should be supported first as metadata?
 - What anonymous worker identity and payout model should be used before anonymous submissions return?
-- Should user/org token minting be open to all users/orgs or gated by credits, collectibles, permissions, or platform policy?
 - Should platform collectibles be transferable immediately, or should some collectibles be account-bound?
 
 ## Chosen Implementation Defaults

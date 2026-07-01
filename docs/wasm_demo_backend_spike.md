@@ -16,7 +16,7 @@ browser storage adapters exist.
 ## Request Adapter And Storage Spike
 
 `internal/wasmdemo` contains a narrow request-adapter spike. It classifies only
-the privacy, moderation, and saved-queue-view route pairs:
+the privacy, moderation, saved-queue-view, task, and notification route pairs:
 
 - `POST /api/privacy-requests`
 - `GET /api/admin/privacy-requests`
@@ -26,19 +26,22 @@ the privacy, moderation, and saved-queue-view route pairs:
 - `GET /api/saved-queue-views`
 - `POST /api/tasks`
 - `GET /api/tasks/{task_id}`
+- `GET /api/notifications`
+- `POST /api/notifications/{notification_id}/read`
 
 Unsupported methods and routes return explicit rejection results. The package
 does not execute domain services or replace `site/demo/backend.js`.
 
 The package now also contains explicit browser-storage boundaries for privacy
 requests, moderation triage records, saved queue views, tasks, and small
-task/submission attachment records. The storage boundary is caller-provided; no
-in-memory store is selected by default. Missing records, invalid keys, invalid
-states, invalid scopes, invalid privacy request kinds, invalid task lifecycle
-values, invalid attachment parent kinds, invalid attachment counts, invalid
-attachment sizes, and storage read/write failures return explicit rejected
-results. This is enough to prove the next WASM path can persist five classified
-slices without adding hidden fallback behavior.
+task/submission attachment records, plus actor-scoped notifications. The
+storage boundary is caller-provided; no in-memory store is selected by default.
+Missing records, invalid keys, invalid states, invalid scopes, invalid privacy
+request kinds, invalid task lifecycle values, invalid notification ownership,
+invalid attachment parent kinds, invalid attachment counts, invalid attachment
+sizes, and storage read/write failures return explicit rejected results. This
+is enough to prove the next WASM path can persist six classified slices without
+adding hidden fallback behavior.
 
 The current request-handler steps use those storage boundaries for:
 
@@ -49,12 +52,15 @@ The current request-handler steps use those storage boundaries for:
 - `GET /api/saved-queue-views`
 - `POST /api/tasks`
 - `GET /api/tasks/{task_id}`
+- `GET /api/notifications`
+- `POST /api/notifications/{notification_id}/read`
 
 The handlers reject missing storage, missing clocks, missing actor identity,
 missing ID sources, unsupported routes, unsupported methods, invalid request
 bodies, invalid privacy request kinds, invalid saved-queue scopes, and invalid
-triage states. They do not replace the backendless JavaScript demo and do not
-provide substitute stores for unimplemented routes.
+triage states. Notification handlers also reject invalid pagination and
+actor/recipient mismatches. They do not replace the backendless JavaScript demo
+and do not provide substitute stores for unimplemented routes.
 
 ## Compile Check
 

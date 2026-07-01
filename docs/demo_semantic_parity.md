@@ -5,7 +5,8 @@
 ## Current Checks
 
 - `deno test --allow-read tests/deno` runs demo route/shape checks and the shared scenario parity suite against `site/demo/backend.js`.
-- `deno task check:scenario-parity -- --origin <api-origin> --token <access-token>` runs the same shared scenario against a real API. The supplied token must be a platform admin token that can refresh auth, read operations status, issue account tokens, mint/transfer collectibles, create organizations, create teams, create tasks, create submissions, create task/submission comments, and register additional scenario actors.
+- `deno task check:scenario-parity -- --origin <api-origin> --token <access-token> --refresh-token <refresh-token>` runs the same shared scenario against a real API. The supplied session must belong to a platform admin that can refresh auth, read operations status, issue account tokens, mint/transfer collectibles, create organizations, create teams, create tasks, create submissions, create task/submission comments, and register additional scenario actors.
+- `deno task check:scenario-parity:local-real -- --origin <api-origin>` runs the shared scenario against a local real API by registering a scenario admin and granting platform-admin state through the configured `DATABASE_URL`. It fails if `/healthz`, registration, `psql`, the admin grant, or any scenario request fails.
 - `deno task check:pages-routing -- --origin <pages-origin>` checks deployed GitHub Pages root, docs, demo entry paths, and demo assets after deployment.
 
 ## Options
@@ -32,7 +33,7 @@
 
 ## Recommendation
 
-Keep expanding shared scenario parity before replacing the fake backend. The suite covers selector pagination/query behavior, team/organization queue search/type/sort behavior, persisted saved queue views, org/team/task/comment creation, small task/submission attachments, admin operations, platform-admin grant/revoke, account-token issue shape, privacy request resolution, privacy retention audit shape, moderation triage audit shape, sensitive-field redaction state, collectible catalog/mint/transfer, submission creation/comments with sensitive-field response metadata, notification read shape, and a multi-actor reservation/submission-review/payout flow. The suite also caught and fixed backendless-demo saved queue view status-code, default-visibility response, and task payload-kind mismatches with the real API.
+Keep expanding shared scenario parity before replacing the fake backend. The suite covers selector pagination/query behavior, ledger and notification pagination behavior, team/organization queue search/type/sort behavior, persisted saved queue views, org/team/task/comment creation, small task/submission attachments, admin operations, platform-admin grant/revoke, account-token issue shape, privacy request resolution, privacy retention audit shape, moderation triage audit shape, sensitive-field redaction state, collectible catalog/mint/transfer, submission creation/comments with sensitive-field response metadata, notification read shape, and a multi-actor reservation/submission-review/payout flow. The suite also caught and fixed backendless-demo saved queue view status-code, default-visibility response, and task payload-kind mismatches with the real API.
 
 Recent parity coverage also checks admin audit pagination by requesting adjacent
 one-row pages and asserting they do not collapse onto the same event when both

@@ -63,6 +63,7 @@ var (
 	RouteAdminModerationReports = Route{value: "admin_moderation_reports"}
 	RouteSavedQueueViews        = Route{value: "saved_queue_views"}
 	RouteTasks                  = Route{value: "tasks"}
+	RouteNotifications          = Route{value: "notifications"}
 )
 
 func (route Route) String() string {
@@ -102,6 +103,10 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteTasks}
 	case request.Method.String() == MethodGet.String() && taskDetailPathID(request.Path) != "":
 		return RequestAdapted{Route: RouteTasks}
+	case request.Method.String() == MethodGet.String() && notificationsPathOnly(request.Path) == "/api/notifications":
+		return RequestAdapted{Route: RouteNotifications}
+	case request.Method.String() == MethodPost.String() && notificationReadPathID(request.Path) != "":
+		return RequestAdapted{Route: RouteNotifications}
 	default:
 		return RequestUnsupported{Reason: "request route is not implemented by the WASM demo adapter"}
 	}
@@ -110,6 +115,18 @@ func Adapt(request Request) AdaptResult {
 func taskDetailPathID(path string) string {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 3 || parts[0] != "api" || parts[1] != "tasks" {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
+}
+
+func notificationsPathOnly(path string) string {
+	return strings.SplitN(path, "?", 2)[0]
+}
+
+func notificationReadPathID(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "api" || parts[1] != "notifications" || parts[3] != "read" {
 		return ""
 	}
 	return strings.TrimSpace(parts[2])
