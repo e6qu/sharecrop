@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { Buffer } from "node:buffer";
 import {
   type AuthBody,
   password,
@@ -190,6 +191,42 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await expect(
     page.getByTestId("discovery-task-row").filter({ hasText: title }),
   ).toHaveCount(1);
+});
+
+test("requesters upload small task attachments through the real backend", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "upload-ui-owner");
+  const title = `Attached task ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill(
+    "Task attachment through the DB-backed UI.",
+  );
+  await page.getByTestId("create-visibility-public").click();
+
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByTestId("create-attachments-pick").click();
+  await (await chooser).setFiles({
+    name: "brief.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("hello"),
+  });
+  await expect(page.getByTestId("selected-attachment")).toContainText(
+    "brief.txt",
+  );
+
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+  await page.getByTestId("nav-tasks").click();
+  const row = page.getByTestId("task-row").filter({ hasText: title });
+  await expect(row).toHaveCount(1);
+  await row.getByTestId("view-task").click();
+  await expect(page.getByTestId("detail-attachments")).toContainText(
+    "brief.txt",
+  );
 });
 
 test("users create and see their organizations", async ({ page, request }) => {

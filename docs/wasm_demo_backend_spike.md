@@ -24,17 +24,20 @@ the privacy, moderation, and saved-queue-view route pairs:
 - `GET /api/admin/moderation/reports`
 - `POST /api/saved-queue-views`
 - `GET /api/saved-queue-views`
+- `POST /api/tasks`
+- `GET /api/tasks/{task_id}`
 
 Unsupported methods and routes return explicit rejection results. The package
 does not execute domain services or replace `site/demo/backend.js`.
 
 The package now also contains explicit browser-storage boundaries for privacy
-requests, moderation triage records, saved queue views, and small task/submission
-attachment records. The storage boundary is caller-provided; no in-memory store
-is selected by default. Missing records, invalid keys, invalid states, invalid
-scopes, invalid privacy request kinds, invalid attachment parent kinds, invalid
+requests, moderation triage records, saved queue views, tasks, and small
+task/submission attachment records. The storage boundary is caller-provided; no
+in-memory store is selected by default. Missing records, invalid keys, invalid
+states, invalid scopes, invalid privacy request kinds, invalid task lifecycle
+values, invalid attachment parent kinds, invalid attachment counts, invalid
 attachment sizes, and storage read/write failures return explicit rejected
-results. This is enough to prove the next WASM path can persist four classified
+results. This is enough to prove the next WASM path can persist five classified
 slices without adding hidden fallback behavior.
 
 The current request-handler steps use those storage boundaries for:
@@ -44,6 +47,8 @@ The current request-handler steps use those storage boundaries for:
 - `POST /api/admin/moderation/reports/{report_id}/triage`
 - `POST /api/saved-queue-views`
 - `GET /api/saved-queue-views`
+- `POST /api/tasks`
+- `GET /api/tasks/{task_id}`
 
 The handlers reject missing storage, missing clocks, missing actor identity,
 missing ID sources, unsupported routes, unsupported methods, invalid request

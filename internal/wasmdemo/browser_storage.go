@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const maxStoredAttachments = 5
+
 type BrowserStorage interface {
 	Put(StorageKey, string) StorageWriteResult
 	Get(StorageKey) StorageReadResult
@@ -101,6 +103,32 @@ type StoredAttachment struct {
 	ContentType string `json:"content_type"`
 	SizeBytes   int    `json:"size_bytes"`
 	DataURL     string `json:"data_url"`
+}
+
+type StoredTask struct {
+	ID                     string `json:"id"`
+	CreatedBy              string `json:"created_by"`
+	OwnerKind              string `json:"owner_kind"`
+	OwnerID                string `json:"owner_id"`
+	Title                  string `json:"title"`
+	State                  string `json:"state"`
+	Description            string `json:"description"`
+	TaskType               string `json:"task_type"`
+	RewardKind             string `json:"reward_kind"`
+	RewardCollectibleCount int    `json:"reward_collectible_count"`
+	RewardCreditAmount     int64  `json:"reward_credit_amount"`
+	ParticipationPolicy    string `json:"participation_policy"`
+	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
+	AssigneeScope          string `json:"assignee_scope"`
+	VisibilityKind         string `json:"visibility_kind"`
+	VisibilityID           string `json:"visibility_id"`
+	SeriesKind             string `json:"series_kind"`
+	SeriesPosition         int    `json:"series_position"`
+	SeriesID               string `json:"series_id"`
+	ReferenceURL           string `json:"reference_url"`
+	ResponseSchemaJSON     string `json:"response_schema_json"`
+	PayloadKind            string `json:"payload_kind"`
+	PayloadJSON            string `json:"payload_json"`
 }
 
 type ModerationTriageStorageResult interface {
@@ -606,6 +634,225 @@ func validSavedQueueScope(value string) bool {
 	}
 }
 
+type TaskStorageResult interface {
+	taskStorageResult()
+}
+
+type TaskStored struct {
+	Value StoredTask
+}
+
+type TaskStorageRejected struct {
+	Reason string
+}
+
+func (TaskStored) taskStorageResult()          {}
+func (TaskStorageRejected) taskStorageResult() {}
+
+func SaveTask(storage BrowserStorage, task StoredTask) TaskStorageResult {
+	cleaned := cleanStoredTask(task)
+	if reason := validateStoredTask(cleaned); reason != "" {
+		return TaskStorageRejected{Reason: reason}
+	}
+	keyResult := NewStorageKey("task:" + cleaned.ID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return TaskStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return TaskStorageRejected{Reason: "task encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return TaskStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	return TaskStored{Value: cleaned}
+}
+
+func LoadTask(storage BrowserStorage, taskID string) TaskStorageResult {
+	cleanID := strings.TrimSpace(taskID)
+	if cleanID == "" {
+		return TaskStorageRejected{Reason: "task id is required"}
+	}
+	keyResult := NewStorageKey("task:" + cleanID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return TaskStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return TaskStorageRejected{Reason: taskReadReason(readResult)}
+	}
+	var task StoredTask
+	if err := json.Unmarshal([]byte(read.Value), &task); err != nil {
+		return TaskStorageRejected{Reason: "task decoding failed"}
+	}
+	cleaned := cleanStoredTask(task)
+	if cleaned.ID != cleanID {
+		return TaskStorageRejected{Reason: "task storage key contains mismatched record"}
+	}
+	if reason := validateStoredTask(cleaned); reason != "" {
+		return TaskStorageRejected{Reason: reason}
+	}
+	return TaskStored{Value: cleaned}
+}
+
+func cleanStoredTask(task StoredTask) StoredTask {
+	return StoredTask{
+		ID:                     strings.TrimSpace(task.ID),
+		OwnerKind:              strings.TrimSpace(task.OwnerKind),
+		OwnerID:                strings.TrimSpace(task.OwnerID),
+		Title:                  strings.TrimSpace(task.Title),
+		Description:            strings.TrimSpace(task.Description),
+		TaskType:               strings.TrimSpace(task.TaskType),
+		ReferenceURL:           strings.TrimSpace(task.ReferenceURL),
+		RewardKind:             strings.TrimSpace(task.RewardKind),
+		RewardCreditAmount:     task.RewardCreditAmount,
+		RewardCollectibleCount: task.RewardCollectibleCount,
+		ParticipationPolicy:    strings.TrimSpace(task.ParticipationPolicy),
+		AssigneeScope:          strings.TrimSpace(task.AssigneeScope),
+		ReservationExpiryHours: task.ReservationExpiryHours,
+		State:                  strings.TrimSpace(task.State),
+		VisibilityKind:         strings.TrimSpace(task.VisibilityKind),
+		VisibilityID:           strings.TrimSpace(task.VisibilityID),
+		SeriesKind:             strings.TrimSpace(task.SeriesKind),
+		SeriesID:               strings.TrimSpace(task.SeriesID),
+		SeriesPosition:         task.SeriesPosition,
+		ResponseSchemaJSON:     strings.TrimSpace(task.ResponseSchemaJSON),
+		PayloadKind:            strings.TrimSpace(task.PayloadKind),
+		PayloadJSON:            strings.TrimSpace(task.PayloadJSON),
+		CreatedBy:              strings.TrimSpace(task.CreatedBy),
+	}
+}
+
+func validateStoredTask(task StoredTask) string {
+	if task.ID == "" {
+		return "task id is required"
+	}
+	if !validStoredTaskOwnerKind(task.OwnerKind) {
+		return "task owner kind is invalid"
+	}
+	if task.OwnerID == "" {
+		return "task owner id is required"
+	}
+	if task.Title == "" {
+		return "task title is required"
+	}
+	if task.Description == "" {
+		return "task description is required"
+	}
+	if task.TaskType == "" {
+		return "task type is required"
+	}
+	if !validStoredTaskRewardKind(task.RewardKind) {
+		return "task reward kind is invalid"
+	}
+	if !validStoredTaskParticipation(task.ParticipationPolicy) {
+		return "task participation policy is invalid"
+	}
+	if !validStoredTaskAssigneeScope(task.AssigneeScope) {
+		return "task assignee scope is invalid"
+	}
+	if task.ReservationExpiryHours < 1 {
+		return "task reservation expiry is invalid"
+	}
+	if !validStoredTaskState(task.State) {
+		return "task state is invalid"
+	}
+	if !validStoredTaskVisibilityKind(task.VisibilityKind) {
+		return "task visibility kind is invalid"
+	}
+	if task.SeriesKind == "" {
+		return "task series kind is required"
+	}
+	if task.ResponseSchemaJSON == "" {
+		return "task response schema is required"
+	}
+	if !validStoredTaskPayloadKind(task.PayloadKind) {
+		return "task payload kind is invalid"
+	}
+	if task.CreatedBy == "" {
+		return "task creator is required"
+	}
+	return ""
+}
+
+func taskReadReason(result StorageReadResult) string {
+	switch rejected := result.(type) {
+	case StorageMissing:
+		return rejected.Reason
+	case StorageReadRejected:
+		return rejected.Reason
+	default:
+		return "task read failed"
+	}
+}
+
+func validStoredTaskOwnerKind(value string) bool {
+	switch value {
+	case "user", "team", "organization", "organization_team":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStoredTaskRewardKind(value string) bool {
+	switch value {
+	case "none", "credit", "collectible", "bundle":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStoredTaskParticipation(value string) bool {
+	switch value {
+	case "open", "reservation_required", "approval_required":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStoredTaskAssigneeScope(value string) bool {
+	switch value {
+	case "user", "team", "organization_team":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStoredTaskState(value string) bool {
+	switch value {
+	case "draft", "open", "cancelled", "refunded":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStoredTaskVisibilityKind(value string) bool {
+	switch value {
+	case "public", "user", "team", "organization", "default":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStoredTaskPayloadKind(value string) bool {
+	switch value {
+	case "none", "json":
+		return true
+	default:
+		return false
+	}
+}
+
 type AttachmentStorageResult interface {
 	attachmentStorageResult()
 }
@@ -629,6 +876,9 @@ func SaveAttachments(storage BrowserStorage, parentKind string, parentID string,
 	}
 	if cleanID == "" {
 		return AttachmentStorageRejected{Reason: "attachment parent id is required"}
+	}
+	if len(attachments) > maxStoredAttachments {
+		return AttachmentStorageRejected{Reason: "too many attachments"}
 	}
 	values := make([]StoredAttachment, 0, len(attachments))
 	for index := range attachments {

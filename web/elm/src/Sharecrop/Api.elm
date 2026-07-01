@@ -261,7 +261,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token, fetchTasks token "" "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token, fetchSavedQueueViews token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchTasks token "" "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token, fetchSavedQueueViews token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -278,7 +278,7 @@ refreshLedger : Model -> Cmd Msg
 refreshLedger model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchBalance state.accessToken, fetchLedger state.accessToken ]
+            Cmd.batch [ fetchBalance state.accessToken, fetchLedger state.accessToken state.ledgerOffset ]
 
         LoggedOut ->
             Cmd.none
@@ -288,7 +288,7 @@ refreshTasksAndLedger : Model -> Cmd Msg
 refreshTasksAndLedger model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset, fetchBalance state.accessToken, fetchLedger state.accessToken ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset, fetchBalance state.accessToken, fetchLedger state.accessToken state.ledgerOffset ]
 
         LoggedOut ->
             Cmd.none
@@ -308,7 +308,7 @@ routeLoadCmd : String -> String -> Page -> Cmd Msg
 routeLoadCmd token subjectId page =
     case page of
         OverviewPage ->
-            Cmd.batch [ fetchBalance token, fetchLedger token ]
+            Cmd.batch [ fetchBalance token, fetchLedger token 0 ]
 
         TasksPage ->
             fetchTasks token "" "" "newest" 0
@@ -373,7 +373,7 @@ routeLoadCmd token subjectId page =
                 ]
 
         InboxPage ->
-            fetchNotifications token
+            fetchNotifications token 0
 
         NotFoundPage ->
             Cmd.none
@@ -589,9 +589,9 @@ fetchBalance token =
     authorizedRequest "GET" token "/api/credits/balance" Http.emptyBody (Http.expectJson BalanceReceived Ledger.balanceResponseDecoder)
 
 
-fetchLedger : String -> Cmd Msg
-fetchLedger token =
-    authorizedRequest "GET" token "/api/credits/ledger" Http.emptyBody (Http.expectJson LedgerReceived Ledger.ledgerResponseDecoder)
+fetchLedger : String -> Int -> Cmd Msg
+fetchLedger token offset =
+    authorizedRequest "GET" token ("/api/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson LedgerReceived Ledger.ledgerResponseDecoder)
 
 
 fetchTasks : String -> String -> String -> String -> Int -> Cmd Msg
@@ -956,7 +956,7 @@ loadOrganization token organizationId =
     else
         Cmd.batch
             [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (Http.expectJson OrgBalanceReceived Ledger.balanceResponseDecoder)
-            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0") Http.emptyBody (Http.expectJson OrgLedgerReceived Ledger.ledgerResponseDecoder)
+            , fetchOrganizationLedgerPage token organizationId 0
             , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0") Http.emptyBody (Http.expectJson OrgAuditEventsReceived Admin.auditEventsResponseDecoder)
             , fetchOrgTeams token organizationId
             , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder)
@@ -1674,9 +1674,14 @@ addSeriesCommentCommand model state seriesId =
         )
 
 
-fetchNotifications : String -> Cmd Msg
-fetchNotifications token =
-    authorizedRequest "GET" token "/api/notifications" Http.emptyBody (Http.expectJson NotificationsReceived Notification.notificationsResponseDecoder)
+fetchOrganizationLedgerPage : String -> String -> Int -> Cmd Msg
+fetchOrganizationLedgerPage token organizationId offset =
+    authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson OrgLedgerReceived Ledger.ledgerResponseDecoder)
+
+
+fetchNotifications : String -> Int -> Cmd Msg
+fetchNotifications token offset =
+    authorizedRequest "GET" token ("/api/notifications?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson NotificationsReceived Notification.notificationsResponseDecoder)
 
 
 markNotificationRead : String -> String -> Cmd Msg

@@ -29,7 +29,8 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/tasks`: create a draft task. The request may include
   `attachments`, a list of `{name, content_type, data_url}` entries. Allowed
   content types are PNG, JPEG, GIF, WebP, plain text, JSON, and PDF. Each decoded
-  file must be under 500 KiB.
+  file must be under 500 KiB, and each request may include up to five
+  attachments.
 - `GET /api/tasks`: list tasks visible to the requester. Supports pagination and task-state filters.
 - `GET /api/tasks/{task_id}`: read task detail.
 - `POST /api/tasks/{task_id}/open`: open a draft task.
@@ -49,7 +50,7 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/decline`: decline a requested reservation.
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel`: cancel a reservation as requester.
 - `POST /api/tasks/{task_id}/submissions`: submit a JSON response. The request
-  may include the same small `attachments` shape as task creation.
+  may include the same small `attachments` shape and limits as task creation.
 - `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer.
 - `GET /api/users/{user_id}/submissions`: list the authenticated user's own submissions. Supports `limit` and `offset`.
 - `GET /api/submission-receipts/{receipt_token}`: read receipt status by receipt token.

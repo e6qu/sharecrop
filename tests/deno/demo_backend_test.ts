@@ -358,6 +358,32 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
   );
   assertTaskDetailShape(detail.json);
 
+  const ledgerPage = await request(
+    backend,
+    "GET",
+    "/api/credits/ledger?limit=1&offset=0",
+    undefined,
+    accessToken,
+  );
+  const ledgerPageItems = requireArray(ledgerPage.json, "entries");
+  assertEquals(ledgerPageItems.length, 1, "ledger page size");
+  const nextLedgerPage = await request(
+    backend,
+    "GET",
+    "/api/credits/ledger?limit=1&offset=1",
+    undefined,
+    accessToken,
+  );
+  const nextLedgerPageItems = requireArray(nextLedgerPage.json, "entries");
+  if (nextLedgerPageItems.length > 0) {
+    const firstEntry = requireRecord(ledgerPageItems[0], "ledger[0]");
+    const nextEntry = requireRecord(nextLedgerPageItems[0], "ledger[1]");
+    assert(
+      requireString(firstEntry, "id") !== requireString(nextEntry, "id"),
+      "ledger offset should move to a different entry",
+    );
+  }
+
   const notifications = await request(
     backend,
     "GET",
@@ -383,6 +409,18 @@ Deno.test("backendless demo returns client-decodable shapes for account, directo
     requireString(notification, "state"),
     "unread",
     "seed notification state",
+  );
+  const notificationPage = await request(
+    backend,
+    "GET",
+    "/api/notifications?limit=1&offset=0",
+    undefined,
+    accessToken,
+  );
+  assertEquals(
+    requireArray(notificationPage.json, "notifications").length,
+    1,
+    "notification page size",
   );
   const readNotification = await request(
     backend,

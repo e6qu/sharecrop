@@ -6979,6 +6979,7 @@ var $author$project$Main$applySchemaFields = F2(
 				createSchemaFields: nextFields
 			});
 	});
+var $author$project$Main$attachmentMaxCount = 5;
 var $author$project$Sharecrop$Types$AwardReceived = function (a) {
 	return {$: 'AwardReceived', a: a};
 };
@@ -8197,6 +8198,7 @@ var $author$project$Main$enterPage = F2(
 						orgCollectibles: _List_Nil,
 						orgCollectiblesMessage: $elm$core$Maybe$Nothing,
 						orgLedger: _List_Nil,
+						orgLedgerOffset: 0,
 						orgMembers: _List_Nil,
 						orgTaskFilter: '',
 						orgTaskMessage: $elm$core$Maybe$Nothing,
@@ -8243,7 +8245,7 @@ var $author$project$Main$enterPage = F2(
 			case 'InboxPage':
 				return _Utils_update(
 					state,
-					{inboxMessage: $elm$core$Maybe$Nothing, notifications: _List_Nil, page: page});
+					{inboxMessage: $elm$core$Maybe$Nothing, notifications: _List_Nil, notificationsOffset: 0, page: page});
 			case 'CollectibleDetailPage':
 				return _Utils_update(
 					state,
@@ -8609,6 +8611,113 @@ var $author$project$Sharecrop$Api$fetchDiscovery = F3(
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$DiscoveryReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
+var $author$project$Sharecrop$Types$LedgerReceived = function (a) {
+	return {$: 'LedgerReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Ledger$LedgerResponse = function (entries) {
+	return {entries: entries};
+};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryResponse = F4(
+	function (id, kind, amount, taskID) {
+		return {amount: amount, id: id, kind: kind, taskID: taskID};
+	});
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindManualAdjustment = {$: 'LedgerEntryKindManualAdjustment'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindSignupGrant = {$: 'LedgerEntryKindSignupGrant'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskEscrow = {$: 'LedgerEntryKindTaskEscrow'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskPayout = {$: 'LedgerEntryKindTaskPayout'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskRefund = {$: 'LedgerEntryKindTaskRefund'};
+var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskTip = {$: 'LedgerEntryKindTaskTip'};
+var $author$project$Sharecrop$Generated$Ledger$ledgerEntryKindDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'signup_grant':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindSignupGrant);
+			case 'task_escrow':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskEscrow);
+			case 'task_refund':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskRefund);
+			case 'task_payout':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskPayout);
+			case 'task_tip':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskTip);
+			case 'manual_adjustment':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindManualAdjustment);
+			default:
+				return $elm$json$Json$Decode$fail('invalid LedgerEntryKind');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Ledger$ledgerEntryResponseDecoder = A5(
+	$elm$json$Json$Decode$map4,
+	$author$project$Sharecrop$Generated$Ledger$LedgerEntryResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'kind', $author$project$Sharecrop$Generated$Ledger$ledgerEntryKindDecoder),
+	A2($elm$json$Json$Decode$field, 'amount', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Ledger$LedgerResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'entries',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Ledger$ledgerEntryResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchLedger = F2(
+	function (token, offset) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/credits/ledger?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$LedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
+	});
+var $author$project$Sharecrop$Types$NotificationsReceived = function (a) {
+	return {$: 'NotificationsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Notification$NotificationsResponse = function (notifications) {
+	return {notifications: notifications};
+};
+var $author$project$Sharecrop$Generated$Notification$NotificationResponse = F9(
+	function (id, recipientUserID, actorUserID, kind, subjectKind, subjectID, state, metadataJSON, createdAt) {
+		return {actorUserID: actorUserID, createdAt: createdAt, id: id, kind: kind, metadataJSON: metadataJSON, recipientUserID: recipientUserID, state: state, subjectID: subjectID, subjectKind: subjectKind};
+	});
+var $author$project$Sharecrop$Generated$Notification$notificationResponseDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (finish) {
+		return A2(
+			$elm$json$Json$Decode$map,
+			finish,
+			A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
+	},
+	A9(
+		$elm$json$Json$Decode$map8,
+		$author$project$Sharecrop$Generated$Notification$NotificationResponse,
+		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'recipient_user_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'actor_user_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'subject_kind', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
+		A2($elm$json$Json$Decode$field, 'metadata_json', $elm$json$Json$Decode$string)));
+var $author$project$Sharecrop$Generated$Notification$notificationsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Notification$NotificationsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'notifications',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Notification$notificationResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchNotifications = F2(
+	function (token, offset) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/notifications?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$NotificationsReceived, $author$project$Sharecrop$Generated$Notification$notificationsResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$OrgTasksReceived = function (a) {
 	return {$: 'OrgTasksReceived', a: a};
 };
@@ -8663,6 +8772,19 @@ var $author$project$Sharecrop$Api$fetchOrgTeamsPage = F4(
 var $author$project$Sharecrop$Api$fetchOrgTeams = F2(
 	function (token, organizationId) {
 		return A4($author$project$Sharecrop$Api$fetchOrgTeamsPage, token, organizationId, '', 0);
+	});
+var $author$project$Sharecrop$Types$OrgLedgerReceived = function (a) {
+	return {$: 'OrgLedgerReceived', a: a};
+};
+var $author$project$Sharecrop$Api$fetchOrganizationLedgerPage = F3(
+	function (token, organizationId, offset) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/organizations/' + (organizationId + ('/credits/ledger?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))))),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgLedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$OrganizationsReceived = function (a) {
 	return {$: 'OrganizationsReceived', a: a};
@@ -9040,6 +9162,7 @@ var $author$project$Sharecrop$Api$fundTaskCommand = F2(
 				$elm$core$Platform$Cmd$none);
 		}
 	});
+var $elm$core$Basics$ge = _Utils_ge;
 var $author$project$Sharecrop$Types$PlatformAdminGranted = function (a) {
 	return {$: 'PlatformAdminGranted', a: a};
 };
@@ -9119,66 +9242,6 @@ var $author$project$Sharecrop$Api$fetchCredentials = function (token) {
 		$elm$http$Http$emptyBody,
 		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CredentialsReceived, $author$project$Sharecrop$Generated$Agent$agentCredentialsResponseDecoder));
 };
-var $author$project$Sharecrop$Types$LedgerReceived = function (a) {
-	return {$: 'LedgerReceived', a: a};
-};
-var $author$project$Sharecrop$Generated$Ledger$LedgerResponse = function (entries) {
-	return {entries: entries};
-};
-var $author$project$Sharecrop$Generated$Ledger$LedgerEntryResponse = F4(
-	function (id, kind, amount, taskID) {
-		return {amount: amount, id: id, kind: kind, taskID: taskID};
-	});
-var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindManualAdjustment = {$: 'LedgerEntryKindManualAdjustment'};
-var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindSignupGrant = {$: 'LedgerEntryKindSignupGrant'};
-var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskEscrow = {$: 'LedgerEntryKindTaskEscrow'};
-var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskPayout = {$: 'LedgerEntryKindTaskPayout'};
-var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskRefund = {$: 'LedgerEntryKindTaskRefund'};
-var $author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskTip = {$: 'LedgerEntryKindTaskTip'};
-var $author$project$Sharecrop$Generated$Ledger$ledgerEntryKindDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'signup_grant':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindSignupGrant);
-			case 'task_escrow':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskEscrow);
-			case 'task_refund':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskRefund);
-			case 'task_payout':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskPayout);
-			case 'task_tip':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindTaskTip);
-			case 'manual_adjustment':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Ledger$LedgerEntryKindManualAdjustment);
-			default:
-				return $elm$json$Json$Decode$fail('invalid LedgerEntryKind');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Ledger$ledgerEntryResponseDecoder = A5(
-	$elm$json$Json$Decode$map4,
-	$author$project$Sharecrop$Generated$Ledger$LedgerEntryResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'kind', $author$project$Sharecrop$Generated$Ledger$ledgerEntryKindDecoder),
-	A2($elm$json$Json$Decode$field, 'amount', $elm$json$Json$Decode$int),
-	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Ledger$LedgerResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'entries',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Ledger$ledgerEntryResponseDecoder)));
-var $author$project$Sharecrop$Api$fetchLedger = function (token) {
-	return A5(
-		$author$project$Sharecrop$Api$authorizedRequest,
-		'GET',
-		token,
-		'/api/credits/ledger',
-		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$LedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
-};
 var $author$project$Sharecrop$Api$fetchOrganizations = function (token) {
 	return A3($author$project$Sharecrop$Api$fetchOrganizationsPage, token, '', 0);
 };
@@ -9229,7 +9292,7 @@ var $author$project$Sharecrop$Api$loadAfterAuth = function (token) {
 		_List_fromArray(
 			[
 				$author$project$Sharecrop$Api$fetchBalance(token),
-				$author$project$Sharecrop$Api$fetchLedger(token),
+				A2($author$project$Sharecrop$Api$fetchLedger, token, 0),
 				A5($author$project$Sharecrop$Api$fetchTasks, token, '', '', 'newest', 0),
 				$author$project$Sharecrop$Api$fetchCredentials(token),
 				$author$project$Sharecrop$Api$fetchCollectibles(token),
@@ -9321,18 +9384,21 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		fundTaskId: '',
 		inboxMessage: $elm$core$Maybe$Nothing,
 		isAdmin: response.role === 'admin',
+		ledgerOffset: 0,
 		moderationDetails: '',
 		moderationMessage: $elm$core$Maybe$Nothing,
 		moderationReason: $author$project$Sharecrop$Generated$Moderation$ModerationReasonPolicy,
 		newCredential: $elm$core$Maybe$Nothing,
 		newPassword: '',
 		notifications: _List_Nil,
+		notificationsOffset: 0,
 		operations: $elm$core$Maybe$Nothing,
 		orgAuditEvents: _List_Nil,
 		orgBalance: $elm$core$Maybe$Nothing,
 		orgCollectibles: _List_Nil,
 		orgCollectiblesMessage: $elm$core$Maybe$Nothing,
 		orgLedger: _List_Nil,
+		orgLedgerOffset: 0,
 		orgMembers: _List_Nil,
 		orgMessage: $elm$core$Maybe$Nothing,
 		orgTaskFilter: '',
@@ -9451,29 +9517,6 @@ var $elm$core$Maybe$map = F2(
 var $author$project$Sharecrop$Types$NotificationReadReceived = function (a) {
 	return {$: 'NotificationReadReceived', a: a};
 };
-var $author$project$Sharecrop$Generated$Notification$NotificationResponse = F9(
-	function (id, recipientUserID, actorUserID, kind, subjectKind, subjectID, state, metadataJSON, createdAt) {
-		return {actorUserID: actorUserID, createdAt: createdAt, id: id, kind: kind, metadataJSON: metadataJSON, recipientUserID: recipientUserID, state: state, subjectID: subjectID, subjectKind: subjectKind};
-	});
-var $author$project$Sharecrop$Generated$Notification$notificationResponseDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (finish) {
-		return A2(
-			$elm$json$Json$Decode$map,
-			finish,
-			A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string));
-	},
-	A9(
-		$elm$json$Json$Decode$map8,
-		$author$project$Sharecrop$Generated$Notification$NotificationResponse,
-		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'recipient_user_id', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'actor_user_id', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'kind', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'subject_kind', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'state', $elm$json$Json$Decode$string),
-		A2($elm$json$Json$Decode$field, 'metadata_json', $elm$json$Json$Decode$string)));
 var $author$project$Sharecrop$Api$markNotificationRead = F2(
 	function (token, notificationId) {
 		return A5(
@@ -10268,7 +10311,7 @@ var $author$project$Sharecrop$Api$refreshLedger = function (model) {
 			_List_fromArray(
 				[
 					$author$project$Sharecrop$Api$fetchBalance(state.accessToken),
-					$author$project$Sharecrop$Api$fetchLedger(state.accessToken)
+					A2($author$project$Sharecrop$Api$fetchLedger, state.accessToken, state.ledgerOffset)
 				]));
 	} else {
 		return $elm$core$Platform$Cmd$none;
@@ -10306,7 +10349,7 @@ var $author$project$Sharecrop$Api$refreshTasksAndLedger = function (model) {
 				[
 					A5($author$project$Sharecrop$Api$fetchTasks, state.accessToken, state.taskStateFilter, state.taskListTypeFilter, state.taskListSort, state.taskListOffset),
 					$author$project$Sharecrop$Api$fetchBalance(state.accessToken),
-					$author$project$Sharecrop$Api$fetchLedger(state.accessToken)
+					A2($author$project$Sharecrop$Api$fetchLedger, state.accessToken, state.ledgerOffset)
 				]));
 	} else {
 		return $elm$core$Platform$Cmd$none;
@@ -10766,28 +10809,6 @@ var $author$project$Sharecrop$Api$fetchDetailCommands = F3(
 					$author$project$Sharecrop$Api$fetchOrganizations(token)
 				]));
 	});
-var $author$project$Sharecrop$Types$NotificationsReceived = function (a) {
-	return {$: 'NotificationsReceived', a: a};
-};
-var $author$project$Sharecrop$Generated$Notification$NotificationsResponse = function (notifications) {
-	return {notifications: notifications};
-};
-var $author$project$Sharecrop$Generated$Notification$notificationsResponseDecoder = A2(
-	$elm$json$Json$Decode$map,
-	$author$project$Sharecrop$Generated$Notification$NotificationsResponse,
-	A2(
-		$elm$json$Json$Decode$field,
-		'notifications',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Notification$notificationResponseDecoder)));
-var $author$project$Sharecrop$Api$fetchNotifications = function (token) {
-	return A5(
-		$author$project$Sharecrop$Api$authorizedRequest,
-		'GET',
-		token,
-		'/api/notifications',
-		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$NotificationsReceived, $author$project$Sharecrop$Generated$Notification$notificationsResponseDecoder));
-};
 var $author$project$Sharecrop$Types$OrgCollectiblesReceived = function (a) {
 	return {$: 'OrgCollectiblesReceived', a: a};
 };
@@ -10880,9 +10901,6 @@ var $author$project$Sharecrop$Types$OrgAuditEventsReceived = function (a) {
 var $author$project$Sharecrop$Types$OrgBalanceReceived = function (a) {
 	return {$: 'OrgBalanceReceived', a: a};
 };
-var $author$project$Sharecrop$Types$OrgLedgerReceived = function (a) {
-	return {$: 'OrgLedgerReceived', a: a};
-};
 var $author$project$Sharecrop$Api$loadOrganization = F2(
 	function (token, organizationId) {
 		return (organizationId === '') ? $elm$core$Platform$Cmd$none : $elm$core$Platform$Cmd$batch(
@@ -10895,13 +10913,7 @@ var $author$project$Sharecrop$Api$loadOrganization = F2(
 					'/api/organizations/' + (organizationId + '/credits/balance'),
 					$elm$http$Http$emptyBody,
 					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgBalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder)),
-					A5(
-					$author$project$Sharecrop$Api$authorizedRequest,
-					'GET',
-					token,
-					'/api/organizations/' + (organizationId + ('/credits/ledger?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + '&offset=0'))),
-					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgLedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder)),
+					A3($author$project$Sharecrop$Api$fetchOrganizationLedgerPage, token, organizationId, 0),
 					A5(
 					$author$project$Sharecrop$Api$authorizedRequest,
 					'GET',
@@ -10943,7 +10955,7 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 					_List_fromArray(
 						[
 							$author$project$Sharecrop$Api$fetchBalance(token),
-							$author$project$Sharecrop$Api$fetchLedger(token)
+							A2($author$project$Sharecrop$Api$fetchLedger, token, 0)
 						]));
 			case 'TasksPage':
 				return A5($author$project$Sharecrop$Api$fetchTasks, token, '', '', 'newest', 0);
@@ -11045,7 +11057,7 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 							A2($author$project$Sharecrop$Api$fetchAdminPrivacyRequests, token, 0)
 						]));
 			case 'InboxPage':
-				return $author$project$Sharecrop$Api$fetchNotifications(token);
+				return A2($author$project$Sharecrop$Api$fetchNotifications, token, 0);
 			default:
 				return $elm$core$Platform$Cmd$none;
 		}
@@ -11143,7 +11155,6 @@ var $author$project$Main$seriesListRefresh = function (model) {
 		return $elm$core$Platform$Cmd$none;
 	}
 };
-var $elm$core$Basics$ge = _Utils_ge;
 var $author$project$Sharecrop$Api$indexOf = F2(
 	function (value, items) {
 		return A2(
@@ -11842,6 +11853,40 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'PreviousLedgerPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = A2($elm$core$Basics$max, 0, state.ledgerOffset - $author$project$Sharecrop$Api$selectorPageSize);
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{ledgerOffset: offset});
+								}),
+							A2($author$project$Sharecrop$Api$fetchLedger, state.accessToken, offset));
+					});
+			case 'NextLedgerPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = state.ledgerOffset + $author$project$Sharecrop$Api$selectorPageSize;
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{ledgerOffset: offset});
+								}),
+							A2($author$project$Sharecrop$Api$fetchLedger, state.accessToken, offset));
+					});
 			case 'TasksReceived':
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -12247,9 +12292,27 @@ var $author$project$Main$update = F2(
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'PickCreateAttachmentClicked':
-				return _Utils_Tuple2(
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
 					model,
-					$author$project$Main$selectAttachment($author$project$Sharecrop$Types$CreateAttachmentFileChosen));
+					function (state) {
+						return (_Utils_cmp(
+							$elm$core$List$length(state.createAttachments),
+							$author$project$Main$attachmentMaxCount) > -1) ? _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{
+											createMessage: $elm$core$Maybe$Just('Attach up to 5 files.')
+										});
+								}),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+							model,
+							$author$project$Main$selectAttachment($author$project$Sharecrop$Types$CreateAttachmentFileChosen));
+					});
 			case 'CreateAttachmentFileChosen':
 				var file = msg.a;
 				return _Utils_Tuple2(
@@ -13140,9 +13203,27 @@ var $author$project$Main$update = F2(
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'PickSubmitAttachmentClicked':
-				return _Utils_Tuple2(
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
 					model,
-					$author$project$Main$selectAttachment($author$project$Sharecrop$Types$SubmitAttachmentFileChosen));
+					function (state) {
+						return (_Utils_cmp(
+							$elm$core$List$length(state.submitAttachments),
+							$author$project$Main$attachmentMaxCount) > -1) ? _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{
+											submitMessage: $elm$core$Maybe$Just('Attach up to 5 files.')
+										});
+								}),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+							model,
+							$author$project$Main$selectAttachment($author$project$Sharecrop$Types$SubmitAttachmentFileChosen));
+					});
 			case 'SubmitAttachmentFileChosen':
 				var file = msg.a;
 				return _Utils_Tuple2(
@@ -13859,6 +13940,40 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'PreviousOrgLedgerPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = A2($elm$core$Basics$max, 0, state.orgLedgerOffset - $author$project$Sharecrop$Api$selectorPageSize);
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{orgLedgerOffset: offset});
+								}),
+							A3($author$project$Sharecrop$Api$fetchOrganizationLedgerPage, state.accessToken, state.activeOrgId, offset));
+					});
+			case 'NextOrgLedgerPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = state.orgLedgerOffset + $author$project$Sharecrop$Api$selectorPageSize;
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{orgLedgerOffset: offset});
+								}),
+							A3($author$project$Sharecrop$Api$fetchOrganizationLedgerPage, state.accessToken, state.activeOrgId, offset));
+					});
 			case 'OrgAuditEventsReceived':
 				if (msg.a.$ === 'Ok') {
 					var response = msg.a.a;
@@ -16837,6 +16952,40 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'PreviousNotificationsPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = A2($elm$core$Basics$max, 0, state.notificationsOffset - $author$project$Sharecrop$Api$selectorPageSize);
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{notificationsOffset: offset});
+								}),
+							A2($author$project$Sharecrop$Api$fetchNotifications, state.accessToken, offset));
+					});
+			case 'NextNotificationsPageClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						var offset = state.notificationsOffset + $author$project$Sharecrop$Api$selectorPageSize;
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{notificationsOffset: offset});
+								}),
+							A2($author$project$Sharecrop$Api$fetchNotifications, state.accessToken, offset));
+					});
 			case 'MarkNotificationReadClicked':
 				var notificationId = msg.a;
 				return A2(
@@ -21259,6 +21408,8 @@ var $author$project$Sharecrop$View$fundingView = function (state) {
 				A2($author$project$Sharecrop$View$maybeNote, state.fundMessage, 'fund-message')
 			]));
 };
+var $author$project$Sharecrop$Types$NextNotificationsPageClicked = {$: 'NextNotificationsPageClicked'};
+var $author$project$Sharecrop$Types$PreviousNotificationsPageClicked = {$: 'PreviousNotificationsPageClicked'};
 var $author$project$Sharecrop$Types$MarkNotificationReadClicked = function (a) {
 	return {$: 'MarkNotificationReadClicked', a: a};
 };
@@ -21382,6 +21533,7 @@ var $author$project$Sharecrop$View$inboxView = function (state) {
 						$author$project$Sharecrop$Ui$testId('inbox-list')
 					]),
 				A2($elm$core$List$map, $author$project$Sharecrop$View$notificationRow, state.notifications)),
+				A4($author$project$Sharecrop$View$paginationControls, 'inbox-page', $author$project$Sharecrop$Types$PreviousNotificationsPageClicked, $author$project$Sharecrop$Types$NextNotificationsPageClicked, state.notificationsOffset),
 				A2($author$project$Sharecrop$View$maybeNote, state.inboxMessage, 'inbox-message')
 			]));
 };
@@ -22071,6 +22223,8 @@ var $author$project$Sharecrop$View$orgAuditPanel = function (events) {
 				A2($elm$core$List$map, $author$project$Sharecrop$View$orgAuditEventRow, events))
 			]));
 };
+var $author$project$Sharecrop$Types$NextOrgLedgerPageClicked = {$: 'NextOrgLedgerPageClicked'};
+var $author$project$Sharecrop$Types$PreviousOrgLedgerPageClicked = {$: 'PreviousOrgLedgerPageClicked'};
 var $author$project$Sharecrop$Labels$kindLabel = function (kind) {
 	switch (kind.$) {
 		case 'LedgerEntryKindSignupGrant':
@@ -22126,54 +22280,56 @@ var $author$project$Sharecrop$View$ledgerRow = function (entry) {
 };
 var $elm$html$Html$table = _VirtualDom_node('table');
 var $elm$html$Html$tbody = _VirtualDom_node('tbody');
-var $author$project$Sharecrop$View$orgLedgerPanel = function (entries) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('space-y-2'),
-				$author$project$Sharecrop$Ui$testId('org-ledger-panel')
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$h3,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('text-sm font-semibold text-slate-900')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Organization ledger')
-					])),
-				$elm$core$List$isEmpty(entries) ? A2(
-				$elm$html$Html$p,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('text-sm text-slate-500'),
-						$author$project$Sharecrop$Ui$testId('org-ledger-empty')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('No ledger entries.')
-					])) : A2(
-				$elm$html$Html$table,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('w-full text-left text-sm')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$tbody,
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Ui$testId('org-ledger')
-							]),
-						A2($elm$core$List$map, $author$project$Sharecrop$View$ledgerRow, entries))
-					]))
-			]));
-};
+var $author$project$Sharecrop$View$orgLedgerPanel = F2(
+	function (entries, offset) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2'),
+					$author$project$Sharecrop$Ui$testId('org-ledger-panel')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$h3,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm font-semibold text-slate-900')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Organization ledger')
+						])),
+					$elm$core$List$isEmpty(entries) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+							$author$project$Sharecrop$Ui$testId('org-ledger-empty')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No ledger entries.')
+						])) : A2(
+					$elm$html$Html$table,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('w-full text-left text-sm')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$tbody,
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$testId('org-ledger')
+								]),
+							A2($elm$core$List$map, $author$project$Sharecrop$View$ledgerRow, entries))
+						])),
+					A4($author$project$Sharecrop$View$paginationControls, 'org-ledger-page', $author$project$Sharecrop$Types$PreviousOrgLedgerPageClicked, $author$project$Sharecrop$Types$NextOrgLedgerPageClicked, offset)
+				]));
+	});
 var $author$project$Sharecrop$View$organizationOperationsDashboard = function (state) {
 	return A2(
 		$elm$html$Html$div,
@@ -22241,7 +22397,7 @@ var $author$project$Sharecrop$View$organizationOperationsDashboard = function (s
 							A2($author$project$Sharecrop$View$countTasks, $author$project$Sharecrop$Generated$Task$TaskStateClosed, state.orgTasks)),
 						'org-ops-tasks-closed')
 					])),
-				$author$project$Sharecrop$View$orgLedgerPanel(state.orgLedger),
+				A2($author$project$Sharecrop$View$orgLedgerPanel, state.orgLedger, state.orgLedgerOffset),
 				$author$project$Sharecrop$View$orgAuditPanel(state.orgAuditEvents)
 			]));
 };
@@ -22601,66 +22757,70 @@ var $author$project$Sharecrop$View$balanceView = function (balance) {
 					]))
 			]));
 };
+var $author$project$Sharecrop$Types$NextLedgerPageClicked = {$: 'NextLedgerPageClicked'};
+var $author$project$Sharecrop$Types$PreviousLedgerPageClicked = {$: 'PreviousLedgerPageClicked'};
 var $elm$html$Html$th = _VirtualDom_node('th');
 var $elm$html$Html$thead = _VirtualDom_node('thead');
-var $author$project$Sharecrop$View$ledgerView = function (entries) {
-	return $author$project$Sharecrop$Ui$card(
-		_List_fromArray(
-			[
-				$author$project$Sharecrop$Ui$sectionTitle('Ledger'),
-				A2(
-				$elm$html$Html$table,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('w-full text-left text-sm')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$thead,
-						_List_Nil,
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$tr,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('text-slate-500')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$th,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$class('pb-2')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Entry')
-											])),
-										A2(
-										$elm$html$Html$th,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$class('pb-2 text-right')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Amount')
-											]))
-									]))
-							])),
-						A2(
-						$elm$html$Html$tbody,
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Ui$testId('ledger')
-							]),
-						A2($elm$core$List$map, $author$project$Sharecrop$View$ledgerRow, entries))
-					]))
-			]));
-};
+var $author$project$Sharecrop$View$ledgerView = F2(
+	function (entries, offset) {
+		return $author$project$Sharecrop$Ui$card(
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$sectionTitle('Ledger'),
+					A2(
+					$elm$html$Html$table,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('w-full text-left text-sm')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$thead,
+							_List_Nil,
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$tr,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('text-slate-500')
+										]),
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$th,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('pb-2')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text('Entry')
+												])),
+											A2(
+											$elm$html$Html$th,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('pb-2 text-right')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text('Amount')
+												]))
+										]))
+								])),
+							A2(
+							$elm$html$Html$tbody,
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$testId('ledger')
+								]),
+							A2($elm$core$List$map, $author$project$Sharecrop$View$ledgerRow, entries))
+						])),
+					A4($author$project$Sharecrop$View$paginationControls, 'ledger-page', $author$project$Sharecrop$Types$PreviousLedgerPageClicked, $author$project$Sharecrop$Types$NextLedgerPageClicked, offset)
+				]));
+	});
 var $author$project$Sharecrop$View$overviewView = function (state) {
 	return A2(
 		$elm$html$Html$div,
@@ -22673,7 +22833,7 @@ var $author$project$Sharecrop$View$overviewView = function (state) {
 			[
 				$author$project$Sharecrop$Ui$sectionTitle('Credit account'),
 				$author$project$Sharecrop$View$balanceView(state.balance),
-				$author$project$Sharecrop$View$ledgerView(state.entries)
+				A2($author$project$Sharecrop$View$ledgerView, state.entries, state.ledgerOffset)
 			]));
 };
 var $author$project$Sharecrop$Types$AddSeriesCommentClicked = function (a) {
@@ -23392,7 +23552,7 @@ var $author$project$Sharecrop$View$taskAttachmentsBlock = function (detail) {
 		]);
 };
 var $author$project$Sharecrop$View$taskInputBlock = function (detail) {
-	return (((detail.payloadKind === 'inline') || (detail.payloadKind === 'json')) && (detail.payloadJson !== '')) ? _List_fromArray(
+	return ((detail.payloadKind === 'json') && (detail.payloadJson !== '')) ? _List_fromArray(
 		[
 			$author$project$Sharecrop$Ui$label_('Task input'),
 			A2(

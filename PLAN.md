@@ -172,7 +172,7 @@ Schema parser rules:
 
 - No Redis until Postgres-backed jobs/rate limits are insufficient.
 - No object storage in the MVP. Small task/submission attachments are stored
-  inline with a 500 KiB per-file limit.
+  inline with a five-file request limit and a 500 KiB per-file limit.
 - No external search service; use Postgres full-text search first.
 - No hosted auth library.
 - External wallets and crypto payouts are out of scope.

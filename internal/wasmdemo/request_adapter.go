@@ -62,6 +62,7 @@ var (
 	RouteModerationReports      = Route{value: "moderation_reports"}
 	RouteAdminModerationReports = Route{value: "admin_moderation_reports"}
 	RouteSavedQueueViews        = Route{value: "saved_queue_views"}
+	RouteTasks                  = Route{value: "tasks"}
 )
 
 func (route Route) String() string {
@@ -97,7 +98,19 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteSavedQueueViews}
 	case request.Method.String() == MethodPost.String() && request.Path == "/api/saved-queue-views":
 		return RequestAdapted{Route: RouteSavedQueueViews}
+	case request.Method.String() == MethodPost.String() && request.Path == "/api/tasks":
+		return RequestAdapted{Route: RouteTasks}
+	case request.Method.String() == MethodGet.String() && taskDetailPathID(request.Path) != "":
+		return RequestAdapted{Route: RouteTasks}
 	default:
 		return RequestUnsupported{Reason: "request route is not implemented by the WASM demo adapter"}
 	}
+}
+
+func taskDetailPathID(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 3 || parts[0] != "api" || parts[1] != "tasks" {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
 }

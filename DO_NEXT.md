@@ -5,7 +5,8 @@ Current priority from
 
 Active branch:
 
-- None. The previous task branch is ready for pull request review.
+1. `task/real-parity-wasm-contracts-pagination-hardening` is ready for pull
+   request review.
 
 Next recommended work:
 
@@ -19,22 +20,44 @@ Next recommended work:
    triage shape, platform-admin grant/revoke/audit shape, admin audit
    pagination, user-submission pagination, and multi-actor
    reservation/submission acceptance.
-2. Keep expanding generated/fixture-level HTTP contract coverage as the API
+2. Run the shared scenario parity suite against a real API when an admin token
+   is available. The runner accepts `--origin` plus `--token` or
+   `--token-file` and probes `/healthz` before executing the scenarios.
+3. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-3. Audit remaining raw-ID browser flows and replace high-traffic fields with
+4. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
-4. Add enough explicit browser-backed stores and request handlers for the WASM
+5. Add enough explicit browser-backed stores and request handlers for the WASM
    demo path to run the shared scenario parity suite without fallback stores.
-   Privacy-request, moderation-triage, saved-queue-view, and attachment storage
-   slices now exist.
-5. Add provider email delivery only if the product direction changes; current
+   Privacy-request, moderation-triage, saved-queue-view, task, and attachment
+   storage/handler slices now exist.
+6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-6. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The real-parity-wasm-contracts-pagination-hardening branch hardened the real
+   shared scenario parity runner with `/healthz` probing, `--token-file`, and
+   contextual invalid-JSON errors.
+1. The branch added a no-fallback WASM demo task browser store, task
+   create/detail route classification, and task create/detail request handler
+   with explicit actor, ID-source, task, and attachment validation.
+1. The branch added a five-attachment request limit across the Go API,
+   backendless demo, browser guards, and WASM attachment storage.
+1. The branch expanded HTTP contract fixtures for standalone attachment request
+   and response shapes.
+1. The branch added browser and backendless-demo pagination for personal ledger,
+   organization ledger, and inbox notification lists.
+1. The branch added DB-backed Playwright coverage for creating a task with a
+   small attachment through the real backend.
+1. The branch fixed backendless-demo task payload kind drift from `inline` to
+   `json` and removed the dead browser display branch for `inline`.
+1. The branch refreshed API/readiness/demo-parity/WASM/continuity docs and
+   passed deployed GitHub Pages routing verification.
 
 1. The parity-contract-wasm-pagination-uploads branch added small task and
    submission attachments under 500 KiB, inline Postgres attachment storage,

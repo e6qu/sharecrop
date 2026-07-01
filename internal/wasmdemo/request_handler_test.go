@@ -38,6 +38,14 @@ func (ids fixedSavedQueueViewIDs) NextSavedQueueViewID() string {
 	return ids.value
 }
 
+type fixedTaskIDs struct {
+	value string
+}
+
+func (ids fixedTaskIDs) NextTaskID() string {
+	return ids.value
+}
+
 func TestModerationTriageHandlerPersistsThroughBrowserStorage(t *testing.T) {
 	storage := newTestBrowserStorage()
 	handler := NewModerationTriageHandler(storage, fixedHandlerClock{value: time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)})
@@ -241,6 +249,72 @@ func TestSavedQueueViewHandlerRejectsMissingIDSourceForUpsert(t *testing.T) {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
 	if rejected.Reason != "saved queue view id source is required" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestTaskHandlerCreatesAndLoadsTaskWithAttachments(t *testing.T) {
+	storage := newTestBrowserStorage()
+	handler := NewTaskHandler(storage, fixedHandlerActor{userID: "user-1"}, fixedTaskIDs{value: "task-1"})
+
+	createResult := handler.Handle(Request{
+		Method: MethodPost,
+		Path:   "/api/tasks",
+		Body:   `{"owner":{"kind":"user","user_id":"user-1"},"title":"Label receipts","description":"Extract totals.","reward":{"kind":"none","credit_amount":0,"collectible_ids":[]},"participation":{"policy":"open","assignee_scope":"user","reservation_expiry_hours":48},"visibility":{"kind":"public"},"placement":{"kind":"standalone"},"response_schema_json":"{\"kind\":\"freeform\"}","payload":{"kind":"none","json":""},"task_type":"general","attachments":[{"name":"brief.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="}]}`,
+	})
+	created, createdMatched := createResult.(RequestHandled)
+	if !createdMatched {
+		t.Fatalf("create result = %T, want RequestHandled", createResult)
+	}
+	if created.Value.Status != 201 {
+		t.Fatalf("create status = %d, want 201", created.Value.Status)
+	}
+	var createdBody taskResponseBody
+	if err := json.Unmarshal([]byte(created.Value.Body), &createdBody); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if createdBody.ID != "task-1" || createdBody.Title != "Label receipts" || len(createdBody.Attachments) != 1 {
+		t.Fatalf("created body = %#v", createdBody)
+	}
+
+	loadResult := handler.Handle(Request{Method: MethodGet, Path: "/api/tasks/task-1", Body: ""})
+	loaded, loadedMatched := loadResult.(RequestHandled)
+	if !loadedMatched {
+		t.Fatalf("load result = %T, want RequestHandled", loadResult)
+	}
+	var loadedBody taskResponseBody
+	if err := json.Unmarshal([]byte(loaded.Value.Body), &loadedBody); err != nil {
+		t.Fatalf("decode load response: %v", err)
+	}
+	if loadedBody.Attachments[0].SizeBytes != 5 {
+		t.Fatalf("loaded attachment size = %d, want 5", loadedBody.Attachments[0].SizeBytes)
+	}
+}
+
+func TestTaskHandlerRejectsMissingIDSourceForCreate(t *testing.T) {
+	handler := NewTaskHandler(newTestBrowserStorage(), fixedHandlerActor{userID: "user-1"}, nil)
+	result := handler.Handle(Request{Method: MethodPost, Path: "/api/tasks", Body: `{}`})
+	rejected, matched := result.(RequestHandleRejected)
+	if !matched {
+		t.Fatalf("result = %T, want RequestHandleRejected", result)
+	}
+	if rejected.Reason != "task id source is required" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestTaskHandlerRejectsTooManyAttachments(t *testing.T) {
+	handler := NewTaskHandler(newTestBrowserStorage(), fixedHandlerActor{userID: "user-1"}, fixedTaskIDs{value: "task-1"})
+	result := handler.Handle(Request{
+		Method: MethodPost,
+		Path:   "/api/tasks",
+		Body:   `{"owner":{"kind":"user","user_id":"user-1"},"title":"Label receipts","description":"Extract totals.","reward":{"kind":"none"},"participation":{"policy":"open","assignee_scope":"user","reservation_expiry_hours":48},"visibility":{"kind":"public"},"placement":{"kind":"standalone"},"response_schema_json":"{\"kind\":\"freeform\"}","payload":{"kind":"none"},"task_type":"general","attachments":[{"name":"1.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="},{"name":"2.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="},{"name":"3.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="},{"name":"4.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="},{"name":"5.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="},{"name":"6.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="}]}`,
+	})
+	rejected, matched := result.(RequestHandleRejected)
+	if !matched {
+		t.Fatalf("result = %T, want RequestHandleRejected", result)
+	}
+	if rejected.Reason != "too many attachments" {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }

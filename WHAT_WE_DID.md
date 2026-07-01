@@ -1,5 +1,41 @@
 # What We Did
 
+`task/real-parity-wasm-contracts-pagination-hardening` hardened parity,
+pagination, attachments, and the WASM demo spike:
+
+- **Real scenario runner.** `tools/run_scenario_parity.ts` now probes
+  `/healthz`, accepts `--token-file`, and reports invalid JSON with request
+  context before running the shared scenario suite against a real API.
+- **WASM demo spike.** `internal/wasmdemo` now classifies `POST /api/tasks` and
+  `GET /api/tasks/{task_id}`, persists task records through an explicit browser
+  storage boundary, and handles task create/detail requests with explicit actor,
+  ID-source, task, and attachment validation. Invalid routes, methods, missing
+  dependencies, invalid bodies, and invalid records reject loudly.
+- **Attachment hardening.** Task and submission creation now allow up to five
+  attachments per request. The Go API, backendless demo, browser upload guards,
+  and WASM attachment storage enforce the limit; each file still remains under
+  500 KiB.
+- **Contracts and demo parity.** HTTP fixtures now include standalone
+  attachment request/response shapes. The backendless demo now paginates
+  personal ledger, organization ledger, and inbox notification routes, and its
+  task payload kind now matches the real API's `json` value instead of the stale
+  `inline` value.
+- **Browser pagination and upload coverage.** The browser now has explicit
+  previous/next controls for personal ledger, organization ledger, and inbox
+  notifications. DB-backed Playwright coverage verifies creating a task with a
+  small attachment through the real backend.
+- **Docs and verification.** API, readiness, demo-parity, WASM-spike, plan,
+  status, bugs, and next-task docs were refreshed. Passed: `go test ./...`;
+  `deno task check:ts`; `deno task lint`; `deno task check:policy`;
+  `deno task test`; `deno fmt --check deno.json tools tests
+  site/demo/backend.js`; `make check-contracts` with repo-local `GOCACHE`;
+  `go tool deadcode -test ./...` with repo-local `GOCACHE`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; Playwright
+  demo/mobile specs; DB-backed migrations, integration tests, HTTP E2E tests,
+  and DB-backed Playwright screens against local PostgreSQL 15; `GOOS=js
+  GOARCH=wasm go test -c ./internal/wasmdemo`; deployed Pages routing check;
+  and `git diff --check`.
+
 `task/parity-contract-wasm-pagination-uploads` added small attachments,
 pagination polish, parity coverage, and the next WASM storage slice:
 

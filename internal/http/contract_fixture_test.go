@@ -234,6 +234,16 @@ func TestTaskResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"https://example.com/pr/1","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":1,"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"standalone","series_id":"","series_position":0,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"json","payload_json":"{\"batch\":\"A\"}","attachments":[{"name":"brief.txt","content_type":"text/plain","size_bytes":5,"data_url":"data:text/plain;base64,aGVsbG8="}],"created_by":"user-1","availability_kind":"available","viewer_action":"reserve","reviewer_action":"none"}`)
 }
 
+func TestAttachmentRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(attachmentRequest{Name: "brief.txt", ContentType: "text/plain", DataURL: "data:text/plain;base64,aGVsbG8="})
+	assertWireShape(t, encoded, err, `{"name":"brief.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="}`)
+}
+
+func TestAttachmentResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(attachmentResponse{Name: "brief.txt", ContentType: "text/plain", SizeBytes: 5, DataURL: "data:text/plain;base64,aGVsbG8="})
+	assertWireShape(t, encoded, err, `{"name":"brief.txt","content_type":"text/plain","size_bytes":5,"data_url":"data:text/plain;base64,aGVsbG8="}`)
+}
+
 func TestTasksResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(tasksResponse{Tasks: []taskListItemResponse{{ID: "task-1", OwnerKind: "user", Title: "Label receipts", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none", CreatedBy: "user-1", ActiveAssigneeKind: "", ActiveAssigneeID: ""}}})
 	assertWireShape(t, encoded, err, `{"tasks":[{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"","active_assignee_id":""}]}`)

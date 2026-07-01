@@ -1,6 +1,7 @@
 package wasmdemo
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"time"
@@ -45,6 +46,10 @@ type PrivacyRequestIDSource interface {
 
 type SavedQueueViewIDSource interface {
 	NextSavedQueueViewID() string
+}
+
+type TaskIDSource interface {
+	NextTaskID() string
 }
 
 func NewModerationTriageHandler(storage BrowserStorage, clock HandlerClock) ModerationTriageHandler {
@@ -300,4 +305,349 @@ func savedQueueViewScopeFromPath(path string) string {
 
 func savedQueueViewPathOnly(path string) string {
 	return strings.SplitN(path, "?", 2)[0]
+}
+
+type TaskHandler struct {
+	storage BrowserStorage
+	actor   HandlerActor
+	ids     TaskIDSource
+}
+
+func NewTaskHandler(storage BrowserStorage, actor HandlerActor, ids TaskIDSource) TaskHandler {
+	return TaskHandler{storage: storage, actor: actor, ids: ids}
+}
+
+func (handler TaskHandler) Handle(request Request) HandleResult {
+	if handler.storage == nil {
+		return RequestHandleRejected{Reason: "browser storage is required"}
+	}
+	if handler.actor == nil {
+		return RequestHandleRejected{Reason: "handler actor is required"}
+	}
+	if request.Path == "/api/tasks" {
+		if request.Method.String() != MethodPost.String() {
+			return RequestHandleRejected{Reason: "request method is unsupported for task creation"}
+		}
+		if handler.ids == nil {
+			return RequestHandleRejected{Reason: "task id source is required"}
+		}
+		return handler.handleCreateTask(request)
+	}
+	taskID := taskDetailPathID(request.Path)
+	if taskID == "" {
+		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	}
+	if request.Method.String() != MethodGet.String() {
+		return RequestHandleRejected{Reason: "request method is unsupported for task detail"}
+	}
+	return handler.handleGetTask(taskID)
+}
+
+func (handler TaskHandler) handleCreateTask(request Request) HandleResult {
+	var body taskBody
+	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+		return RequestHandleRejected{Reason: "task request body is invalid"}
+	}
+	taskID := strings.TrimSpace(handler.ids.NextTaskID())
+	owner := taskOwnerFromBody(body.Owner, handler.actor.UserID())
+	visibility := taskVisibilityFromBody(body.Visibility, owner)
+	reward := taskRewardFromBody(body.Reward)
+	participation := taskParticipationFromBody(body.Participation)
+	placement := taskPlacementFromBody(body.Placement)
+	payload := taskPayloadFromBody(body.Payload)
+	task := StoredTask{
+		ID:                     taskID,
+		OwnerKind:              owner.kind,
+		OwnerID:                owner.id,
+		Title:                  strings.TrimSpace(body.Title),
+		Description:            strings.TrimSpace(body.Description),
+		TaskType:               strings.TrimSpace(body.TaskType),
+		ReferenceURL:           strings.TrimSpace(body.ReferenceURL),
+		RewardKind:             reward.kind,
+		RewardCreditAmount:     reward.creditAmount,
+		RewardCollectibleCount: len(reward.collectibleIDs),
+		ParticipationPolicy:    participation.policy,
+		AssigneeScope:          participation.assigneeScope,
+		ReservationExpiryHours: participation.reservationHours,
+		State:                  "draft",
+		VisibilityKind:         visibility.kind,
+		VisibilityID:           visibility.id,
+		SeriesKind:             placement.kind,
+		SeriesID:               placement.id,
+		SeriesPosition:         placement.position,
+		ResponseSchemaJSON:     strings.TrimSpace(body.ResponseSchemaJSON),
+		PayloadKind:            payload.kind,
+		PayloadJSON:            payload.source,
+		CreatedBy:              strings.TrimSpace(handler.actor.UserID()),
+	}
+	if task.TaskType == "" {
+		task.TaskType = "general"
+	}
+	if task.ResponseSchemaJSON == "" {
+		task.ResponseSchemaJSON = `{"kind":"freeform"}`
+	}
+	attachmentsResult := attachmentsFromTaskBody(body.Attachments, task.ID)
+	attachments, attachmentsMatched := attachmentsResult.(taskAttachmentsAccepted)
+	if !attachmentsMatched {
+		return RequestHandleRejected{Reason: attachmentsResult.(taskAttachmentsRejected).reason}
+	}
+	saveResult := SaveTask(handler.storage, task)
+	saved, savedMatched := saveResult.(TaskStored)
+	if !savedMatched {
+		return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
+	}
+	saveAttachmentsResult := SaveAttachments(handler.storage, "task", saved.Value.ID, attachments.values)
+	savedAttachments, savedAttachmentsMatched := saveAttachmentsResult.(AttachmentsStored)
+	if !savedAttachmentsMatched {
+		return RequestHandleRejected{Reason: saveAttachmentsResult.(AttachmentStorageRejected).Reason}
+	}
+	return taskResponseResult(saved.Value, savedAttachments.Values, 201)
+}
+
+func (handler TaskHandler) handleGetTask(taskID string) HandleResult {
+	loadResult := LoadTask(handler.storage, taskID)
+	loaded, loadedMatched := loadResult.(TaskStored)
+	if !loadedMatched {
+		return RequestHandleRejected{Reason: loadResult.(TaskStorageRejected).Reason}
+	}
+	attachmentsResult := ListAttachments(handler.storage, "task", taskID)
+	attachments, attachmentsMatched := attachmentsResult.(AttachmentsStored)
+	if !attachmentsMatched {
+		return RequestHandleRejected{Reason: attachmentsResult.(AttachmentStorageRejected).Reason}
+	}
+	return taskResponseResult(loaded.Value, attachments.Values, 200)
+}
+
+func taskResponseResult(task StoredTask, attachments []StoredAttachment, status int) HandleResult {
+	encoded, err := json.Marshal(taskResponseBody{
+		StoredTask:       task,
+		Attachments:      attachments,
+		AvailabilityKind: "available",
+		ViewerAction:     "submit",
+		ReviewerAction:   "none",
+	})
+	if err != nil {
+		return RequestHandleRejected{Reason: "task response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
+}
+
+type taskBody struct {
+	Owner              taskOwnerBody               `json:"owner"`
+	Title              string                      `json:"title"`
+	Description        string                      `json:"description"`
+	TaskType           string                      `json:"task_type"`
+	ReferenceURL       string                      `json:"reference_url"`
+	Reward             taskRewardBody              `json:"reward"`
+	Participation      taskParticipationBody       `json:"participation"`
+	Visibility         taskVisibilityBody          `json:"visibility"`
+	Placement          taskPlacementBody           `json:"placement"`
+	ResponseSchemaJSON string                      `json:"response_schema_json"`
+	Payload            taskPayloadBody             `json:"payload"`
+	Attachments        []taskAttachmentRequestBody `json:"attachments"`
+}
+
+type taskOwnerBody struct {
+	Kind           string `json:"kind"`
+	UserID         string `json:"user_id"`
+	TeamID         string `json:"team_id"`
+	OrganizationID string `json:"organization_id"`
+}
+
+type taskRewardBody struct {
+	Kind           string   `json:"kind"`
+	CreditAmount   int64    `json:"credit_amount"`
+	CollectibleIDs []string `json:"collectible_ids"`
+}
+
+type taskParticipationBody struct {
+	Policy                 string `json:"policy"`
+	AssigneeScope          string `json:"assignee_scope"`
+	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
+}
+
+type taskVisibilityBody struct {
+	Kind           string `json:"kind"`
+	UserID         string `json:"user_id"`
+	TeamID         string `json:"team_id"`
+	OrganizationID string `json:"organization_id"`
+}
+
+type taskPlacementBody struct {
+	Kind           string `json:"kind"`
+	SeriesID       string `json:"series_id"`
+	SeriesPosition int    `json:"series_position"`
+}
+
+type taskPayloadBody struct {
+	Kind string `json:"kind"`
+	JSON string `json:"json"`
+}
+
+type taskAttachmentRequestBody struct {
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	DataURL     string `json:"data_url"`
+}
+
+type taskResponseBody struct {
+	StoredTask
+	Attachments      []StoredAttachment `json:"attachments"`
+	AvailabilityKind string             `json:"availability_kind"`
+	ViewerAction     string             `json:"viewer_action"`
+	ReviewerAction   string             `json:"reviewer_action"`
+}
+
+type taskOwnerParts struct {
+	kind string
+	id   string
+}
+
+func taskOwnerFromBody(body taskOwnerBody, actorID string) taskOwnerParts {
+	kind := strings.TrimSpace(body.Kind)
+	switch kind {
+	case "team":
+		return taskOwnerParts{kind: kind, id: strings.TrimSpace(body.TeamID)}
+	case "organization":
+		return taskOwnerParts{kind: kind, id: strings.TrimSpace(body.OrganizationID)}
+	case "organization_team":
+		return taskOwnerParts{kind: kind, id: strings.TrimSpace(body.OrganizationID)}
+	default:
+		return taskOwnerParts{kind: "user", id: strings.TrimSpace(actorID)}
+	}
+}
+
+type taskRewardParts struct {
+	kind           string
+	creditAmount   int64
+	collectibleIDs []string
+}
+
+func taskRewardFromBody(body taskRewardBody) taskRewardParts {
+	kind := strings.TrimSpace(body.Kind)
+	if kind == "" {
+		kind = "none"
+	}
+	if len(body.CollectibleIDs) > 0 && body.CreditAmount > 0 {
+		kind = "bundle"
+	} else if len(body.CollectibleIDs) > 0 {
+		kind = "collectible"
+	}
+	return taskRewardParts{kind: kind, creditAmount: body.CreditAmount, collectibleIDs: body.CollectibleIDs}
+}
+
+type taskParticipationParts struct {
+	policy           string
+	assigneeScope    string
+	reservationHours int
+}
+
+func taskParticipationFromBody(body taskParticipationBody) taskParticipationParts {
+	policy := strings.TrimSpace(body.Policy)
+	if policy == "" {
+		policy = "open"
+	}
+	scope := strings.TrimSpace(body.AssigneeScope)
+	if scope == "" {
+		scope = "user"
+	}
+	hours := body.ReservationExpiryHours
+	if hours == 0 {
+		hours = 48
+	}
+	return taskParticipationParts{policy: policy, assigneeScope: scope, reservationHours: hours}
+}
+
+type taskVisibilityParts struct {
+	kind string
+	id   string
+}
+
+func taskVisibilityFromBody(body taskVisibilityBody, owner taskOwnerParts) taskVisibilityParts {
+	kind := strings.TrimSpace(body.Kind)
+	if kind == "" || kind == "default" {
+		if owner.kind == "organization" || owner.kind == "organization_team" {
+			return taskVisibilityParts{kind: "organization", id: owner.id}
+		}
+		return taskVisibilityParts{kind: "public", id: ""}
+	}
+	switch kind {
+	case "user":
+		return taskVisibilityParts{kind: kind, id: strings.TrimSpace(body.UserID)}
+	case "team":
+		return taskVisibilityParts{kind: kind, id: strings.TrimSpace(body.TeamID)}
+	case "organization":
+		return taskVisibilityParts{kind: kind, id: strings.TrimSpace(body.OrganizationID)}
+	default:
+		return taskVisibilityParts{kind: kind, id: ""}
+	}
+}
+
+type taskPlacementParts struct {
+	kind     string
+	id       string
+	position int
+}
+
+func taskPlacementFromBody(body taskPlacementBody) taskPlacementParts {
+	kind := strings.TrimSpace(body.Kind)
+	if kind == "" {
+		kind = "standalone"
+	}
+	return taskPlacementParts{kind: kind, id: strings.TrimSpace(body.SeriesID), position: body.SeriesPosition}
+}
+
+type taskPayloadParts struct {
+	kind   string
+	source string
+}
+
+func taskPayloadFromBody(body taskPayloadBody) taskPayloadParts {
+	if strings.TrimSpace(body.Kind) == "json" {
+		return taskPayloadParts{kind: "json", source: strings.TrimSpace(body.JSON)}
+	}
+	return taskPayloadParts{kind: "none", source: ""}
+}
+
+type taskAttachmentsResult interface {
+	taskAttachmentsResult()
+}
+
+type taskAttachmentsAccepted struct {
+	values []StoredAttachment
+}
+
+type taskAttachmentsRejected struct {
+	reason string
+}
+
+func (taskAttachmentsAccepted) taskAttachmentsResult() {}
+func (taskAttachmentsRejected) taskAttachmentsResult() {}
+
+func attachmentsFromTaskBody(values []taskAttachmentRequestBody, taskID string) taskAttachmentsResult {
+	if len(values) > maxStoredAttachments {
+		return taskAttachmentsRejected{reason: "too many attachments"}
+	}
+	attachments := make([]StoredAttachment, 0, len(values))
+	for index := range values {
+		contentType := strings.ToLower(strings.TrimSpace(values[index].ContentType))
+		prefix := "data:" + contentType + ";base64,"
+		dataURL := strings.TrimSpace(values[index].DataURL)
+		if !strings.HasPrefix(dataURL, prefix) {
+			return taskAttachmentsRejected{reason: "attachment data URL is invalid"}
+		}
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(dataURL, prefix))
+		if err != nil {
+			return taskAttachmentsRejected{reason: "attachment content is invalid"}
+		}
+		attachments = append(attachments, StoredAttachment{
+			ParentKind:  "task",
+			ParentID:    taskID,
+			Name:        strings.TrimSpace(values[index].Name),
+			ContentType: contentType,
+			SizeBytes:   len(decoded),
+			DataURL:     dataURL,
+		})
+	}
+	return taskAttachmentsAccepted{values: attachments}
 }

@@ -67,6 +67,7 @@ emptyLoggedIn response =
     , page = OverviewPage
     , balance = Nothing
     , entries = []
+    , ledgerOffset = 0
     , createTitle = ""
     , createDescription = ""
     , createResponseSchema = "{\"kind\":\"freeform\"}"
@@ -142,6 +143,7 @@ emptyLoggedIn response =
     , activeOrgId = ""
     , orgBalance = Nothing
     , orgLedger = []
+    , orgLedgerOffset = 0
     , orgAuditEvents = []
     , orgTeams = []
     , standaloneTeams = []
@@ -242,6 +244,7 @@ emptyLoggedIn response =
     , auditSubjectIDFilter = ""
     , adminMessage = Nothing
     , notifications = []
+    , notificationsOffset = 0
     , inboxMessage = Nothing
     }
 
@@ -335,6 +338,11 @@ removePlatformAdmin userID admins =
 attachmentMaxBytes : Int
 attachmentMaxBytes =
     500 * 1024
+
+
+attachmentMaxCount : Int
+attachmentMaxCount =
+    5
 
 
 allowedAttachmentTypes : List String
@@ -515,7 +523,7 @@ enterPage page state =
             { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0, discoveryQuery = "" }
 
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgAuditEvents = [], orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgLedgerOffset = 0, orgAuditEvents = [], orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing }
@@ -539,7 +547,7 @@ enterPage page state =
             { state | page = page, operations = Nothing, auditEvents = [], auditEventsOffset = 0, platformAdmins = [], platformAdminsOffset = 0, adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationOffset = 0, adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyOffset = 0, adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         InboxPage ->
-            { state | page = page, notifications = [], inboxMessage = Nothing }
+            { state | page = page, notifications = [], notificationsOffset = 0, inboxMessage = Nothing }
 
         CollectibleDetailPage _ ->
             { state | page = page, transferMessage = Nothing, transferRecipientId = "" }
@@ -650,6 +658,26 @@ update msg model =
 
         LedgerReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | entries = Api.entriesFromResult result }), Cmd.none )
+
+        PreviousLedgerPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.ledgerOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | ledgerOffset = offset }), Api.fetchLedger state.accessToken offset )
+                )
+
+        NextLedgerPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.ledgerOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | ledgerOffset = offset }), Api.fetchLedger state.accessToken offset )
+                )
 
         TasksReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | tasks = Api.tasksFromResult result }), Cmd.none )
@@ -791,7 +819,14 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | createReservationHours = value }), Cmd.none )
 
         PickCreateAttachmentClicked ->
-            ( model, selectAttachment CreateAttachmentFileChosen )
+            Api.withSession model
+                (\state ->
+                    if List.length state.createAttachments >= attachmentMaxCount then
+                        ( Api.updateLoggedIn model (\current -> { current | createMessage = Just "Attach up to 5 files." }), Cmd.none )
+
+                    else
+                        ( model, selectAttachment CreateAttachmentFileChosen )
+                )
 
         CreateAttachmentFileChosen file ->
             ( model, readCreateAttachment file )
@@ -1091,7 +1126,14 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | submitInput = value }), Cmd.none )
 
         PickSubmitAttachmentClicked ->
-            ( model, selectAttachment SubmitAttachmentFileChosen )
+            Api.withSession model
+                (\state ->
+                    if List.length state.submitAttachments >= attachmentMaxCount then
+                        ( Api.updateLoggedIn model (\current -> { current | submitMessage = Just "Attach up to 5 files." }), Cmd.none )
+
+                    else
+                        ( model, selectAttachment SubmitAttachmentFileChosen )
+                )
 
         SubmitAttachmentFileChosen file ->
             ( model, readSubmitAttachment file )
@@ -1302,6 +1344,26 @@ update msg model =
 
         OrgLedgerReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgLedger = Api.entriesFromResult result }), Cmd.none )
+
+        PreviousOrgLedgerPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.orgLedgerOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgLedgerOffset = offset }), Api.fetchOrganizationLedgerPage state.accessToken state.activeOrgId offset )
+                )
+
+        NextOrgLedgerPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.orgLedgerOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | orgLedgerOffset = offset }), Api.fetchOrganizationLedgerPage state.accessToken state.activeOrgId offset )
+                )
 
         OrgAuditEventsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = response.events }), Cmd.none )
@@ -2348,6 +2410,26 @@ update msg model =
 
         NotificationsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | notifications = [], inboxMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        PreviousNotificationsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            max 0 (state.notificationsOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | notificationsOffset = offset }), Api.fetchNotifications state.accessToken offset )
+                )
+
+        NextNotificationsPageClicked ->
+            Api.withSession model
+                (\state ->
+                    let
+                        offset =
+                            state.notificationsOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | notificationsOffset = offset }), Api.fetchNotifications state.accessToken offset )
+                )
 
         MarkNotificationReadClicked notificationId ->
             Api.withSession model (\state -> ( model, Api.markNotificationRead state.accessToken notificationId ))
