@@ -5,12 +5,11 @@ Current priority from
 
 Active branch:
 
-1. `task/wasm-host-adapters-scenario-parity` is in progress. It wires explicit
-   host configuration into the Go `js/wasm` command, runs request execution
-   through the configured WASM host for the existing task/comment/reservation/
-   submission/ledger slices, updates the WASM scenario runner to exercise that
-   path, records remaining WASM behavior slices, and includes deployed Pages
-   routing verification.
+1. `task/wasm-browser-host-full-parity-gates` is in progress. It bundles
+   post-PR-98 continuity cleanup, browser-facing WASM host adapter groundwork,
+   demo fetch integration for the compiled Go WASM backend, deterministic
+   WASM seed/reset, remaining explicit WASM behavior slices where practical,
+   broader WASM scenario parity, and WASM production gate measurement docs.
 
 Next recommended work:
 
@@ -42,7 +41,9 @@ Next recommended work:
    notification, organization, organization-member, team, comment, reservation,
    submission, and ledger storage/handler slices now exist. The Go `js/wasm`
    command can be built, loaded, explicitly configured with host adapters, and
-   used for the current interaction scenario.
+   used for the current expanded WASM scenario. The demo has an opt-in
+   `?backend=wasm` path that requires compiled WASM artifacts and configured
+   browser host functions.
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
 7. Replace `site/demo/backend.js` with the compiled Go/WASM backend only after
@@ -51,6 +52,12 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 98 was merged into `main`.
+1. The `task/wasm-host-adapters-scenario-parity` branch wired explicit host
+   configuration into the Go `js/wasm` command, ran request execution through
+   the configured WASM host for task/comment/reservation/submission/ledger
+   slices, updated the WASM scenario runner to exercise that path, recorded
+   remaining WASM behavior slices, and verified deployed Pages routing.
 1. PR 97 was merged into `main`.
 1. The `task/wasm-submission-parity-host-adapters` branch added explicit
    host-backed Go/WASM backend slices for submissions, comments, reservations,

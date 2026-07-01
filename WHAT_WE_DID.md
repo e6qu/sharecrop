@@ -1,5 +1,36 @@
 # What We Did
 
+`task/wasm-browser-host-full-parity-gates` expanded the browser-facing Go/WASM
+backend path:
+
+- **Browser WASM host path.** The demo now supports an explicit
+  `?backend=wasm` mode. It loads `wasm-host.js`, requires `wasm_exec.js` and
+  `sharecrop-wasm-backend.wasm`, configures explicit browser host functions,
+  and routes `/api/*` XHR requests through `sharecropHandleRequest`. Unknown
+  backend modes, missing artifacts, missing host functions, invalid host values,
+  and missing storage keys fail loudly.
+- **Demo WASM artifact build.** `deno task wasm:demo:build` builds the Go
+  `cmd/sharecrop-wasm` artifact into `site/demo/sharecrop-wasm-backend.wasm`
+  and copies Go's `wasm_exec.js`. The Pages workflow runs this task before
+  uploading the static site, and the generated artifacts are ignored rather
+  than committed.
+- **Expanded WASM dispatch and scenario.** The WASM command now dispatches
+  existing explicit privacy request, saved queue view, notification,
+  organization/member/team, task, comment, reservation, submission, and ledger
+  route families where handlers exist. The WASM scenario runner now covers
+  privacy request, saved queue view, organization/member/team, task/comment/
+  reservation/submission acceptance, ledger, and unsupported-route failure
+  checks through the compiled Go WASM binary.
+- **Docs and continuity.** WASM target docs, status, next-task queue, and risk
+  notes were refreshed to record the opt-in browser path and remaining slices.
+- **Verification.** Passed: `go test ./...`; `deno task check:ts`;
+  `deno task lint`; `deno task check:policy`; `deno task test`;
+  `deno fmt --check deno.json tools tests site/demo/index.html
+  site/demo/wasm-host.js site/demo/backend.js`; `make check-contracts`;
+  `go tool deadcode -test ./...`; `deno task wasm:demo:build`;
+  `deno task check:scenario-parity:wasm -- --wasm
+  site/demo/sharecrop-wasm-backend.wasm`; and `git diff --check`.
+
 `task/wasm-host-adapters-scenario-parity` wired the first configured Go/WASM
 request execution path:
 

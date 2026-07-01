@@ -1,16 +1,16 @@
 # Status
 
-The repository contains pull request 1 through pull request 97 work, merged into
+The repository contains pull request 1 through pull request 98 work, merged into
 `main`, plus the current
-`task/wasm-host-adapters-scenario-parity` branch.
+`task/wasm-browser-host-full-parity-gates` branch.
 
-Active task: `task/wasm-host-adapters-scenario-parity` wires explicit host
-configuration into the Go `js/wasm` command, runs request execution through the
-configured WASM host for the existing task/comment/reservation/submission/ledger
-slices, updates the WASM scenario runner to exercise that path, records remaining
-WASM behavior slices, and includes deployed Pages routing verification. The
-branch must keep fail-loud behavior and must not add fallback stores or
-JavaScript backend reimplementations as the target.
+Active task: `task/wasm-browser-host-full-parity-gates` bundles post-PR-98
+continuity cleanup, browser-facing WASM host adapter groundwork, demo fetch
+integration for the compiled Go WASM backend, deterministic WASM seed/reset,
+remaining explicit WASM behavior slices where practical, broader WASM scenario
+parity, and WASM production gate measurement docs. The branch must keep
+fail-loud behavior and must not add fallback stores or JavaScript backend
+reimplementations as the target.
 Hard deletes remain out of scope; use soft lifecycle states, anonymization,
 redaction, tombstones, and audit records. Email/provider delivery, anonymous
 worker identity, per-project tokens, external wallets, and crypto integrations
@@ -211,9 +211,16 @@ Current implemented surface:
   and ID adapters.
 - `deno task check:scenario-parity:wasm -- --wasm <compiled.wasm>` loads the
   compiled Go WASM artifact through Go's `wasm_exec.js`, verifies the
-  unconfigured request failure, configures an explicit host, and runs a
-  task/comment/reservation/submission acceptance and ledger scenario without
-  calling `site/demo/backend.js`.
+  unconfigured request failure, configures an explicit host, and runs privacy
+  request, saved queue view, organization/member/team, task/comment/
+  reservation/submission acceptance, ledger, and unsupported-route checks
+  without calling `site/demo/backend.js`.
+- `site/demo/index.html?backend=wasm` is an opt-in browser path for the
+  compiled Go/WASM backend. It requires `wasm_exec.js` and
+  `sharecrop-wasm-backend.wasm`, configures explicit browser host functions,
+  and intercepts `/api/*` XHR requests through `sharecropHandleRequest`.
+- `deno task wasm:demo:build` builds the deployed demo WASM artifacts. The
+  Pages workflow runs it before uploading `site`.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -234,15 +241,13 @@ Current verification:
 - `deno task lint` passed.
 - `deno task check:policy` passed.
 - `deno task test` passed.
-- `deno fmt --check deno.json tools tests site/demo/backend.js` passed.
+- `deno fmt --check deno.json tools tests site/demo/index.html
+  site/demo/wasm-host.js site/demo/backend.js` passed.
 - `make check-contracts` passed.
 - `go tool deadcode -test ./...` passed.
-- `GOOS=js GOARCH=wasm go build -o
-  /private/tmp/sharecrop-wasm-backend.wasm ./cmd/sharecrop-wasm` passed.
+- `deno task wasm:demo:build` passed with repo-local Go caches.
 - `deno task check:scenario-parity:wasm -- --wasm
-  /private/tmp/sharecrop-wasm-backend.wasm` passed.
-- `deno task check:pages-routing -- --origin https://e6qu.github.io/sharecrop`
-  passed.
+  site/demo/sharecrop-wasm-backend.wasm` passed.
 - `git diff --check` passed.
 
 Blocking issues:

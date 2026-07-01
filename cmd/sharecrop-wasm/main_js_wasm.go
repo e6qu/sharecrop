@@ -110,6 +110,33 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 		return handler.Handle(request)
 	}
 	switch route.String() {
+	case wasmdemo.RoutePrivacyRequests.String(), wasmdemo.RouteAdminPrivacyRequests.String():
+		privacyIDs, privacyIDMatched := runtime.InteractionIDs.(wasmdemo.PrivacyRequestIDSource)
+		if !privacyIDMatched {
+			return wasmdemo.RequestHandleRejected{Reason: "host privacy request id adapter is required"}
+		}
+		handler := wasmdemo.NewPrivacyRequestHandler(runtime.Storage, runtime.Clock, runtime.Actor, privacyIDs)
+		return handler.Handle(request)
+	case wasmdemo.RouteSavedQueueViews.String():
+		savedQueueIDs, savedQueueIDMatched := runtime.InteractionIDs.(wasmdemo.SavedQueueViewIDSource)
+		if !savedQueueIDMatched {
+			return wasmdemo.RequestHandleRejected{Reason: "host saved queue view id adapter is required"}
+		}
+		handler := wasmdemo.NewSavedQueueViewHandler(runtime.Storage, runtime.Actor, savedQueueIDs)
+		return handler.Handle(request)
+	case wasmdemo.RouteNotifications.String():
+		handler := wasmdemo.NewNotificationHandler(runtime.Storage, runtime.Actor)
+		return handler.Handle(request)
+	case wasmdemo.RouteOrganizations.String(),
+		wasmdemo.RouteOrganizationMembers.String(),
+		wasmdemo.RouteOrganizationTeams.String(),
+		wasmdemo.RouteStandaloneTeams.String():
+		organizationIDs, organizationIDMatched := runtime.InteractionIDs.(wasmdemo.OrganizationIDSource)
+		if !organizationIDMatched {
+			return wasmdemo.RequestHandleRejected{Reason: "host organization id adapter is required"}
+		}
+		handler := wasmdemo.NewOrganizationHandler(runtime.Storage, runtime.Actor, organizationIDs, configuredHost)
+		return handler.Handle(request)
 	case wasmdemo.RouteTaskComments.String(),
 		wasmdemo.RouteSubmissionComments.String(),
 		wasmdemo.RouteTaskReservations.String(),
@@ -136,6 +163,18 @@ func (host jsHost) Actor() wasmdemo.HandlerActor {
 
 func (host jsHost) InteractionIDs() wasmdemo.InteractionIDSource {
 	return jsHostIDs{host: host.value}
+}
+
+func (host jsHost) UserIDForEmail(email string) (string, bool) {
+	result := host.value.Get("userIDForEmail").Invoke(email)
+	if result.Type() != js.TypeString {
+		return "", false
+	}
+	userID := strings.TrimSpace(result.String())
+	if userID == "" {
+		return "", false
+	}
+	return userID, true
 }
 
 func (storage jsHostStorage) Put(key wasmdemo.StorageKey, value string) wasmdemo.StorageWriteResult {
@@ -194,6 +233,26 @@ func (ids jsHostIDs) NextTaskID() string {
 	return ids.next("task")
 }
 
+func (ids jsHostIDs) NextPrivacyRequestID() string {
+	return ids.next("privacy")
+}
+
+func (ids jsHostIDs) NextSavedQueueViewID() string {
+	return ids.next("saved_view")
+}
+
+func (ids jsHostIDs) NextOrganizationID() string {
+	return ids.next("organization")
+}
+
+func (ids jsHostIDs) NextOrganizationMemberID() string {
+	return ids.next("organization_member")
+}
+
+func (ids jsHostIDs) NextTeamID() string {
+	return ids.next("team")
+}
+
 func (ids jsHostIDs) next(kind string) string {
 	return strings.TrimSpace(ids.host.Get("nextID").Invoke(kind).String())
 }
@@ -202,7 +261,7 @@ func validateJSHost(host js.Value) string {
 	if host.Type() != js.TypeObject {
 		return "host configuration must be an object"
 	}
-	requiredFunctions := []string{"storageHas", "storageGet", "storagePut", "now", "actorID", "nextID"}
+	requiredFunctions := []string{"storageHas", "storageGet", "storagePut", "now", "actorID", "nextID", "userIDForEmail"}
 	for index := range requiredFunctions {
 		if host.Get(requiredFunctions[index]).Type() != js.TypeFunction {
 			return "host function is missing: " + requiredFunctions[index]
