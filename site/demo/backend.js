@@ -2621,7 +2621,7 @@
         p.id,
         { member_id: member.id },
       );
-      return empty();
+      return ok({ status: "deactivated" });
     },
   );
   on(

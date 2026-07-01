@@ -1,5 +1,51 @@
 # What We Did
 
+`task/wasm-org-team-parity-contracts-rawid` expanded WASM demo groundwork,
+organization/member/team parity, contracts, and lifecycle coverage:
+
+- **WASM demo organization/team slice.** `internal/wasmdemo` now classifies
+  organization, organization-member, organization-team, and standalone-team
+  routes. It has explicit browser storage for organizations, organization
+  members, organization-owned teams, and standalone teams, plus request
+  handlers for create/list/provision/role-update/deactivate flows. Missing
+  storage, actors, ID sources, user resolvers, invalid pages, invalid lifecycle
+  states, invalid roles, ownership mismatches, unsupported routes, and
+  unsupported methods reject explicitly without fallback stores.
+- **Scenario and demo parity.** Shared scenario parity now covers organization
+  member provisioning, listing, role update, and deactivation shape. The
+  backendless demo returns the real API's deactivation response body for
+  organization member deactivation.
+- **Contracts and browser coverage.** HTTP fixtures now pin organization-member
+  deactivation and organization-owned team response shapes. DB-backed
+  Playwright coverage was extended around organization member role and
+  deactivation controls.
+- **Lifecycle-list fix.** The real Postgres organization member list now
+  returns non-removed memberships, so managers can see deactivated members while
+  permission checks still require active membership. HTTP E2E coverage verifies
+  the deactivated member appears to the owner and no longer has roster access.
+- **Docs and raw-ID audit.** WASM spike, demo semantic parity, raw-ID audit,
+  status, bugs, next-task docs, local command docs, Docker Compose, CI, and
+  Playwright local port configuration were refreshed. Local testing now uses
+  non-default ports by convention: Postgres `25432`, app `29180`, and
+  backendless demo `29181`. The latest raw-ID scan still found no confirmed
+  high-traffic raw-ID browser workflow. The docs now record Go/WASM as a
+  first-class backend execution target, not only a demo mechanism; the target is
+  a `.wasm` binary compiled from Go with explicit host adapters and no
+  JavaScript reimplementation or fallback stores.
+- **Verification.** Passed after the lifecycle-list fix: `go test ./...`;
+  `deno task check:ts`; `deno task lint`; `deno task check:policy`;
+  `deno task test`; `deno fmt --check deno.json tools tests
+  site/demo/backend.js`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
+  make check-contracts`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
+  go tool deadcode -test ./...`; `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`; `GOOS=js GOARCH=wasm
+  GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test -c -o
+  /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo`; and
+  `tools/run_db_checks.sh` against local PostgreSQL 15 on port `25432`; local
+  real scenario parity against the app on port `29180`; DB-backed Playwright
+  screens against app port `29180`, demo port `29181`, and Postgres port
+  `25432`; and `git diff --check`.
+
 `task/real-parity-wasm-submission-contracts-rawid-attachments` expanded real
 parity execution, WASM demo groundwork, contracts, pagination coverage, and
 attachment browser coverage:

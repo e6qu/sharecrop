@@ -13,8 +13,9 @@ type Method struct {
 }
 
 var (
-	MethodGet  = Method{value: "GET"}
-	MethodPost = Method{value: "POST"}
+	MethodGet   = Method{value: "GET"}
+	MethodPost  = Method{value: "POST"}
+	MethodPatch = Method{value: "PATCH"}
 )
 
 func (method Method) String() string {
@@ -47,6 +48,8 @@ func NewRequest(method string, path string, body string) RequestResult {
 		return RequestAccepted{Value: Request{Method: MethodGet, Path: cleanPath, Body: body}}
 	case MethodPost.String():
 		return RequestAccepted{Value: Request{Method: MethodPost, Path: cleanPath, Body: body}}
+	case MethodPatch.String():
+		return RequestAccepted{Value: Request{Method: MethodPatch, Path: cleanPath, Body: body}}
 	default:
 		return RequestRejected{Reason: "request method is unsupported"}
 	}
@@ -64,6 +67,10 @@ var (
 	RouteSavedQueueViews        = Route{value: "saved_queue_views"}
 	RouteTasks                  = Route{value: "tasks"}
 	RouteNotifications          = Route{value: "notifications"}
+	RouteOrganizations          = Route{value: "organizations"}
+	RouteOrganizationMembers    = Route{value: "organization_members"}
+	RouteOrganizationTeams      = Route{value: "organization_teams"}
+	RouteStandaloneTeams        = Route{value: "standalone_teams"}
 )
 
 func (route Route) String() string {
@@ -107,6 +114,14 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteNotifications}
 	case request.Method.String() == MethodPost.String() && notificationReadPathID(request.Path) != "":
 		return RequestAdapted{Route: RouteNotifications}
+	case organizationCollectionPathOnly(request.Path) == "/api/organizations":
+		return RequestAdapted{Route: RouteOrganizations}
+	case organizationMemberRoute(request.Path) != "":
+		return RequestAdapted{Route: RouteOrganizationMembers}
+	case organizationTeamsRoute(request.Path) != "":
+		return RequestAdapted{Route: RouteOrganizationTeams}
+	case standaloneTeamsPathOnly(request.Path) == "/api/teams":
+		return RequestAdapted{Route: RouteStandaloneTeams}
 	default:
 		return RequestUnsupported{Reason: "request route is not implemented by the WASM demo adapter"}
 	}
@@ -130,4 +145,31 @@ func notificationReadPathID(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[2])
+}
+
+func organizationCollectionPathOnly(path string) string {
+	return strings.SplitN(path, "?", 2)[0]
+}
+
+func organizationTeamsRoute(path string) string {
+	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
+	if len(parts) != 4 || parts[0] != "api" || parts[1] != "organizations" || parts[3] != "teams" {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
+}
+
+func organizationMemberRoute(path string) string {
+	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "organizations" && parts[3] == "members" {
+		return strings.TrimSpace(parts[2])
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "organizations" && parts[3] == "members" {
+		return strings.TrimSpace(parts[2]) + ":" + strings.TrimSpace(parts[4]) + ":" + strings.TrimSpace(parts[5])
+	}
+	return ""
+}
+
+func standaloneTeamsPathOnly(path string) string {
+	return strings.SplitN(path, "?", 2)[0]
 }

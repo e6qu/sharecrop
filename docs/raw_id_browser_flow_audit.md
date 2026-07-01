@@ -23,11 +23,13 @@ task, and admin list selection:
 - user submission history pagination
 - browser ledger, organization ledger, and notification pagination
 - small task/submission attachment pickers
+- organization member role and deactivation controls
 
 The current source scan still shows task-ID text in queue search placeholders,
 where IDs are an optional search term rather than the only way to complete the
-flow. Series task management and collectible award task selection remain
-picker-backed.
+flow. Organization/member/team administration uses loaded rows, email-based
+member provisioning, and row controls rather than raw-ID entry. Series task
+management and collectible award task selection remain picker-backed.
 
 ## Remaining ID Surfaces
 

@@ -660,6 +660,68 @@ export async function runSharedScenarioParity(
     "standalone team selector must return the created team",
   );
 
+  const orgLifecycleMember = await registerScenarioActor(
+    client,
+    "org-lifecycle-member",
+  );
+  const provisionedLifecycleMember = await client.request(
+    "POST",
+    `/api/organizations/${organizationID}/members`,
+    {
+      email: orgLifecycleMember.email,
+      roles: ["member"],
+    },
+  );
+  assertStatus(
+    provisionedLifecycleMember,
+    201,
+    "provision lifecycle org member",
+  );
+  assertScenario(
+    requireString(provisionedLifecycleMember.json, "user_id") ===
+      orgLifecycleMember.subjectID,
+    "provisioned organization member must match registered user",
+  );
+  const organizationMembers = await client.request(
+    "GET",
+    `/api/organizations/${organizationID}/members?limit=10&offset=0`,
+    noScenarioBody,
+  );
+  assertStatus(organizationMembers, 200, "list organization members");
+  assertScenario(
+    requireArray(organizationMembers.json, "members").some((item) => {
+      const member = requireRecord(item, "organizationMember");
+      return requireString(member, "user_id") ===
+          orgLifecycleMember.subjectID &&
+        requireString(member, "status") === "active";
+    }),
+    "organization members list must include provisioned member",
+  );
+  const updatedLifecycleMember = await client.request(
+    "PATCH",
+    `/api/organizations/${organizationID}/members/${orgLifecycleMember.subjectID}/roles`,
+    { roles: ["member", "reviewer"] },
+  );
+  assertStatus(updatedLifecycleMember, 200, "update organization member roles");
+  assertScenario(
+    requireArray(updatedLifecycleMember.json, "roles").includes("reviewer"),
+    "organization member roles must include reviewer after update",
+  );
+  const deactivatedLifecycleMember = await client.request(
+    "PATCH",
+    `/api/organizations/${organizationID}/members/${orgLifecycleMember.subjectID}/deactivate`,
+    {},
+  );
+  assertStatus(
+    deactivatedLifecycleMember,
+    200,
+    "deactivate organization member",
+  );
+  assertScenario(
+    requireString(deactivatedLifecycleMember.json, "status") === "deactivated",
+    "organization member deactivation must return deactivated status",
+  );
+
   const orgReviewer = await registerScenarioActor(client, "org-reviewer");
   const orgWorker = await registerScenarioActor(client, "org-worker");
   const provisionedReviewer = await client.request(

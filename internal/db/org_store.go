@@ -184,11 +184,11 @@ func (store OrgStore) ListMembers(ctx context.Context, organizationID core.Organ
 			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')
 		from organization_memberships
 		left join organization_membership_roles on organization_membership_roles.membership_id = organization_memberships.id
-		where organization_memberships.organization_id = $1 and organization_memberships.status = $2
+		where organization_memberships.organization_id = $1 and organization_memberships.status <> $2
 		group by organization_memberships.id, organization_memberships.user_id, organization_memberships.status
 		order by organization_memberships.user_id
 		limit $3 offset $4
-	`, organizationID.String(), org.MembershipStatusActive.String(), page.Limit(), page.Offset())
+	`, organizationID.String(), org.MembershipStatusRemoved.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return org.ListMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list organization members failed")}
 	}

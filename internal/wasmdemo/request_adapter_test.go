@@ -3,7 +3,7 @@ package wasmdemo
 import "testing"
 
 func TestNewRequestRejectsUnsupportedMethod(t *testing.T) {
-	result := NewRequest("PATCH", "/api/privacy-requests", "")
+	result := NewRequest("DELETE", "/api/privacy-requests", "")
 	rejected, matched := result.(RequestRejected)
 	if !matched {
 		t.Fatalf("result = %T, want RequestRejected", result)
@@ -30,6 +30,16 @@ func TestAdaptRecognizesPrivacyAndModerationRoutes(t *testing.T) {
 		{name: "get task", method: MethodGet, path: "/api/tasks/task-1", route: RouteTasks},
 		{name: "list notifications", method: MethodGet, path: "/api/notifications?limit=1&offset=0", route: RouteNotifications},
 		{name: "mark notification read", method: MethodPost, path: "/api/notifications/notification-1/read", route: RouteNotifications},
+		{name: "create organization", method: MethodPost, path: "/api/organizations", route: RouteOrganizations},
+		{name: "list organizations", method: MethodGet, path: "/api/organizations?query=field&limit=1&offset=0", route: RouteOrganizations},
+		{name: "list organization members", method: MethodGet, path: "/api/organizations/org-1/members", route: RouteOrganizationMembers},
+		{name: "provision organization member", method: MethodPost, path: "/api/organizations/org-1/members", route: RouteOrganizationMembers},
+		{name: "update organization member roles", method: MethodPatch, path: "/api/organizations/org-1/members/user-1/roles", route: RouteOrganizationMembers},
+		{name: "deactivate organization member", method: MethodPatch, path: "/api/organizations/org-1/members/user-1/deactivate", route: RouteOrganizationMembers},
+		{name: "create organization team", method: MethodPost, path: "/api/organizations/org-1/teams", route: RouteOrganizationTeams},
+		{name: "list organization teams", method: MethodGet, path: "/api/organizations/org-1/teams?query=crew", route: RouteOrganizationTeams},
+		{name: "create standalone team", method: MethodPost, path: "/api/teams", route: RouteStandaloneTeams},
+		{name: "list standalone teams", method: MethodGet, path: "/api/teams?query=crew", route: RouteStandaloneTeams},
 	}
 
 	for _, tc := range cases {

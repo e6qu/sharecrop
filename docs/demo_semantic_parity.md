@@ -16,9 +16,10 @@
    - Catches behavior drift for task creation, reservations, submissions, reviews, notifications, collectibles, org/team flows, account tokens, and admin views.
    - Does not require replacing the demo backend immediately.
 
-2. Compile pure Go domain/application services to WASM and expose a browser-side request handler.
+2. Compile pure Go domain/application services to WASM and expose explicit host request handlers.
+   - This is the target direction for the deployed demo and a first-class production execution target.
    - Higher semantic parity for code paths moved behind storage interfaces.
-   - Requires browser storage adapters for auth, tasks, submissions, ledger, assets, orgs, audit, notifications, MCP sessions, and rate limits.
+   - Requires explicit host adapters for auth, tasks, submissions, ledger, assets, orgs, audit, notifications, MCP sessions, rate limits, clocks, identity/session, randomness, and networking.
    - Does not reuse PostgreSQL, pgx, net/http server wiring, process signals, or production migrations directly in the browser.
    - Build size, startup cost, JS interop, IndexedDB persistence, and deterministic test setup need a spike before adoption.
 
@@ -33,7 +34,7 @@
 
 ## Recommendation
 
-Keep expanding shared scenario parity before replacing the fake backend. The suite covers selector pagination/query behavior, ledger and notification pagination behavior, team/organization queue search/type/sort behavior, persisted saved queue views, org/team/task/comment creation, small task/submission attachments, admin operations, platform-admin grant/revoke, account-token issue shape, privacy request resolution, privacy retention audit shape, moderation triage audit shape, sensitive-field redaction state, collectible catalog/mint/transfer, submission creation/comments with sensitive-field response metadata, notification read shape, and a multi-actor reservation/submission-review/payout flow. The suite also caught and fixed backendless-demo saved queue view status-code, default-visibility response, and task payload-kind mismatches with the real API.
+Keep expanding shared scenario parity before replacing the fake backend. The suite covers selector pagination/query behavior, ledger and notification pagination behavior, team/organization queue search/type/sort behavior, persisted saved queue views, org/team/task/comment creation, organization member provisioning/listing/role/deactivation, small task/submission attachments, admin operations, platform-admin grant/revoke, account-token issue shape, privacy request resolution, privacy retention audit shape, moderation triage audit shape, sensitive-field redaction state, collectible catalog/mint/transfer, submission creation/comments with sensitive-field response metadata, notification read shape, and a multi-actor reservation/submission-review/payout flow. The suite also caught and fixed backendless-demo saved queue view status-code, default-visibility response, task payload-kind, and organization-member deactivation response mismatches with the real API.
 
 Recent parity coverage also checks admin audit pagination by requesting adjacent
 one-row pages and asserting they do not collapse onto the same event when both
@@ -42,5 +43,5 @@ audit events, platform-admin records, privacy requests, and moderation reports,
 so the demo and real UI can exercise more than first-page-only admin lists.
 
 Use [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md) for the current
-WASM finding. Adopt WASM only if it can use explicit browser storage adapters
-without fallbacks or dead paths.
+WASM backend-target finding. Adopt the Go/WASM backend target only through
+explicit host adapters without fallbacks or dead paths.

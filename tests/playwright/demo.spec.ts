@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { Buffer } from "node:buffer";
+import process from "node:process";
 
 // The demo serves the REAL compiled Elm client (site/demo) against an in-browser
 // fake backend (backend.js). It is hosted by the static webServer in
 // playwright.config.ts (Browser.application needs a real HTTP origin).
-const demoOrigin = "http://127.0.0.1:18081";
+const demoOrigin = process.env.SHARECROP_PLAYWRIGHT_DEMO_ORIGIN ??
+  "http://127.0.0.1:29181";
 
 test("demo boots the real Elm client against the fake backend with seeded tasks", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);

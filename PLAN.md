@@ -36,6 +36,11 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 
 - Go backend.
 - One deployable Go binary for the website, API, static assets, and, if practical, MCP server.
+- A Go/WASM backend build is a first-class production execution target. It must
+  be compiled from Go code with explicit host adapters for storage, clock,
+  identity/session, networking/request handling, and other runtime boundaries.
+  JavaScript reimplementations, generated fake backends, and fallback stores are
+  not acceptable substitutes.
 - Standard library `net/http`; no `chi` or larger web framework initially.
 - Go `embed` for compiled frontend assets and static files.
 - No type-ignore comments or intentional lint/type-safety escapes in application code.
@@ -1277,9 +1282,10 @@ Package intent:
 - Elm compiler and Tailwind are invoked through Deno-managed tooling or pinned local tooling without npm.
 - Integration tests use one resettable test database per test run at first.
 - Initial migration command is `sharecrop migrate up`.
-- Default app port is `18080`.
-- Default local PostgreSQL port is `15432`.
-- Avoid common development ports such as `3000`, `5432`, `8000`, and `8080`.
+- Local app examples use port `29180`.
+- Local PostgreSQL examples use port `25432`.
+- Avoid common development ports such as `3000`, `5432`, `8000`, `8080`,
+  `15432`, `18080`, and `18081`.
 - PR task branches use names such as `task/pr-01-skeleton`.
 - Create one pull request for each task.
 - Keep at most one pull request open at any time.

@@ -204,6 +204,11 @@ func TestOrganizationMembersResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"members":[{"id":"member-1","organization_id":"org-1","user_id":"user-1","status":"active","roles":["owner","reviewer"]}]}`)
 }
 
+func TestOrganizationMemberDeactivatedResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(emptyResponse{Status: "deactivated"})
+	assertWireShape(t, encoded, err, `{"status":"deactivated"}`)
+}
+
 func TestTeamRequestWireShape(t *testing.T) {
 	encoded, err := json.Marshal(teamRequest{Name: "Survey crew"})
 	assertWireShape(t, encoded, err, `{"name":"Survey crew"}`)
@@ -222,6 +227,11 @@ func TestTeamDetailResponseWireShape(t *testing.T) {
 func TestTeamsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(teamsResponse{Teams: []teamResponse{{ID: "team-1", OwnerKind: "user", OrganizationID: "", OwnerUserID: "user-1", Name: "Field hands", CreatedBy: "user-1"}}})
 	assertWireShape(t, encoded, err, `{"teams":[{"id":"team-1","owner_kind":"user","organization_id":"","owner_user_id":"user-1","name":"Field hands","created_by":"user-1"}]}`)
+}
+
+func TestOrganizationTeamsResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(teamsResponse{Teams: []teamResponse{{ID: "team-1", OwnerKind: "organization", OrganizationID: "org-1", OwnerUserID: "", Name: "Review crew", CreatedBy: "user-1"}}})
+	assertWireShape(t, encoded, err, `{"teams":[{"id":"team-1","owner_kind":"organization","organization_id":"org-1","owner_user_id":"","name":"Review crew","created_by":"user-1"}]}`)
 }
 
 func TestTaskCapabilityTokenResponseWireShape(t *testing.T) {

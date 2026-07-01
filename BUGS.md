@@ -43,7 +43,8 @@ Test gaps:
   requires operator-supplied credentials.
 - DB-backed checks, local real API shared scenario parity, and DB-backed
   Playwright screens passed against an isolated local PostgreSQL 15 data
-  directory under `.cache`.
+  directory under `.cache` on non-default local ports: Postgres `25432`, app
+  `29180`, and backendless demo `29181`.
 
 Known risks:
 
@@ -64,15 +65,19 @@ Known risks:
   collectibles, tasks, small attachments, comments, submissions, notifications,
   and a multi-actor reservation/submission-review/payout flow, but they do not
   prove every handler has identical domain semantics.
-- Go code compiles to `js/wasm` for representative packages and the main
+- Go/WASM is a first-class backend execution target, not only a demo mechanism.
+  Go code compiles to `js/wasm` for representative packages and the main
   command. A narrow `internal/wasmdemo` request-adapter spike exists for
-  privacy, moderation, saved-queue-view, task, and notification route
+  privacy, moderation, saved-queue-view, task, notification, organization,
+  organization-member, and team route
   classification, and explicit privacy-request, moderation-triage,
-  saved-queue-view, task, attachment, and notification browser storage plus
-  request-handler boundaries exist. A WASM demo backend still lacks enough
-  explicit browser-backed stores and handlers to run the shared scenario parity
-  suite, deterministic reset, startup measurements, and a JS/WASM scenario test
-  runner.
+  saved-queue-view, task, attachment, notification, organization,
+  organization-member, and team browser storage plus request-handler boundaries
+  exist. The WASM backend target still lacks enough explicit host-backed stores
+  and handlers to run the shared scenario parity suite, deterministic reset,
+  startup measurements, and a JS/WASM scenario test runner. JavaScript
+  reimplementations, generated fake backends, and fallback stores are not valid
+  substitutes for the compiled Go WASM binary.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

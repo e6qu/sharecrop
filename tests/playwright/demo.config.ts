@@ -1,15 +1,19 @@
 import { defineConfig } from "@playwright/test";
+import process from "node:process";
+
+const demoPort = process.env.SHARECROP_PLAYWRIGHT_DEMO_PORT ?? "29181";
+const demoOrigin = `http://127.0.0.1:${demoPort}`;
 
 export default defineConfig({
   testDir: ".",
   use: {
-    baseURL: "http://127.0.0.1:18081",
+    baseURL: demoOrigin,
   },
   webServer: {
     command:
-      "deno run --allow-net --allow-read jsr:@std/http@1/file-server -p 18081 site/demo",
+      `deno run --allow-net --allow-read jsr:@std/http@1/file-server -p ${demoPort} site/demo`,
     cwd: "../..",
-    url: "http://127.0.0.1:18081/index.html",
+    url: `${demoOrigin}/index.html`,
     reuseExistingServer: true,
     timeout: 30_000,
   },

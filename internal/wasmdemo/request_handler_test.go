@@ -46,6 +46,38 @@ func (ids fixedTaskIDs) NextTaskID() string {
 	return ids.value
 }
 
+type fixedOrganizationIDs struct {
+	organizationID string
+	memberIDs      []string
+	teamID         string
+}
+
+func (ids *fixedOrganizationIDs) NextOrganizationID() string {
+	return ids.organizationID
+}
+
+func (ids *fixedOrganizationIDs) NextOrganizationMemberID() string {
+	if len(ids.memberIDs) == 0 {
+		return ""
+	}
+	value := ids.memberIDs[0]
+	ids.memberIDs = ids.memberIDs[1:]
+	return value
+}
+
+func (ids *fixedOrganizationIDs) NextTeamID() string {
+	return ids.teamID
+}
+
+type fixedOrganizationUserResolver struct {
+	usersByEmail map[string]string
+}
+
+func (resolver fixedOrganizationUserResolver) UserIDForEmail(email string) (string, bool) {
+	value, ok := resolver.usersByEmail[email]
+	return value, ok
+}
+
 func TestModerationTriageHandlerPersistsThroughBrowserStorage(t *testing.T) {
 	storage := newTestBrowserStorage()
 	handler := NewModerationTriageHandler(storage, fixedHandlerClock{value: time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)})
@@ -374,6 +406,131 @@ func TestNotificationHandlerRejectsInvalidPagination(t *testing.T) {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
 	if rejected.Reason != "notification limit is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestOrganizationHandlerCreatesListsAndManagesMembers(t *testing.T) {
+	storage := newTestBrowserStorage()
+	ids := &fixedOrganizationIDs{
+		organizationID: "org-1",
+		memberIDs:      []string{"member-owner", "member-2"},
+		teamID:         "team-1",
+	}
+	handler := NewOrganizationHandler(
+		storage,
+		fixedHandlerActor{userID: "user-owner"},
+		ids,
+		fixedOrganizationUserResolver{usersByEmail: map[string]string{"member@example.com": "user-member"}},
+	)
+
+	createOrg := handler.Handle(Request{Method: MethodPost, Path: "/api/organizations", Body: `{"name":"Field Ops"}`})
+	createdOrg, createdOrgMatched := createOrg.(RequestHandled)
+	if !createdOrgMatched {
+		t.Fatalf("create organization = %T, want RequestHandled", createOrg)
+	}
+	if createdOrg.Value.Status != 201 {
+		t.Fatalf("create organization status = %d, want 201", createdOrg.Value.Status)
+	}
+	var orgBody StoredOrganization
+	if err := json.Unmarshal([]byte(createdOrg.Value.Body), &orgBody); err != nil {
+		t.Fatalf("decode organization: %v", err)
+	}
+	if orgBody.ID != "org-1" || orgBody.CreatedBy != "user-owner" {
+		t.Fatalf("organization body = %#v", orgBody)
+	}
+
+	listOrg := handler.Handle(Request{Method: MethodGet, Path: "/api/organizations?query=field&limit=1&offset=0", Body: ""})
+	listedOrg, listedOrgMatched := listOrg.(RequestHandled)
+	if !listedOrgMatched {
+		t.Fatalf("list organizations = %T, want RequestHandled", listOrg)
+	}
+	var orgs organizationsBody
+	if err := json.Unmarshal([]byte(listedOrg.Value.Body), &orgs); err != nil {
+		t.Fatalf("decode organizations: %v", err)
+	}
+	if len(orgs.Organizations) != 1 || orgs.Organizations[0].ID != "org-1" {
+		t.Fatalf("organizations = %#v", orgs)
+	}
+
+	createTeam := handler.Handle(Request{Method: MethodPost, Path: "/api/organizations/org-1/teams", Body: `{"name":"North crew"}`})
+	createdTeam, createdTeamMatched := createTeam.(RequestHandled)
+	if !createdTeamMatched {
+		t.Fatalf("create team = %T, want RequestHandled", createTeam)
+	}
+	if createdTeam.Value.Status != 201 {
+		t.Fatalf("create team status = %d, want 201", createdTeam.Value.Status)
+	}
+	listTeam := handler.Handle(Request{Method: MethodGet, Path: "/api/organizations/org-1/teams?query=north&limit=1&offset=0", Body: ""})
+	listedTeam, listedTeamMatched := listTeam.(RequestHandled)
+	if !listedTeamMatched {
+		t.Fatalf("list teams = %T, want RequestHandled", listTeam)
+	}
+	var teams teamsBody
+	if err := json.Unmarshal([]byte(listedTeam.Value.Body), &teams); err != nil {
+		t.Fatalf("decode teams: %v", err)
+	}
+	if len(teams.Teams) != 1 || teams.Teams[0].OrganizationID != "org-1" {
+		t.Fatalf("teams = %#v", teams)
+	}
+
+	provision := handler.Handle(Request{
+		Method: MethodPost,
+		Path:   "/api/organizations/org-1/members",
+		Body:   `{"email":"member@example.com","roles":["member"]}`,
+	})
+	provisioned, provisionedMatched := provision.(RequestHandled)
+	if !provisionedMatched {
+		t.Fatalf("provision member = %T, want RequestHandled", provision)
+	}
+	var member organizationMemberBody
+	if err := json.Unmarshal([]byte(provisioned.Value.Body), &member); err != nil {
+		t.Fatalf("decode member: %v", err)
+	}
+	if member.UserID != "user-member" || member.OrganizationID != "org-1" {
+		t.Fatalf("member = %#v", member)
+	}
+
+	update := handler.Handle(Request{
+		Method: MethodPatch,
+		Path:   "/api/organizations/org-1/members/user-member/roles",
+		Body:   `{"roles":["member","reviewer"]}`,
+	})
+	updated, updatedMatched := update.(RequestHandled)
+	if !updatedMatched {
+		t.Fatalf("update roles = %T, want RequestHandled", update)
+	}
+	var updatedMember organizationMemberBody
+	if err := json.Unmarshal([]byte(updated.Value.Body), &updatedMember); err != nil {
+		t.Fatalf("decode updated member: %v", err)
+	}
+	if len(updatedMember.Roles) != 2 || updatedMember.Roles[1] != "reviewer" {
+		t.Fatalf("updated member = %#v", updatedMember)
+	}
+
+	deactivate := handler.Handle(Request{Method: MethodPatch, Path: "/api/organizations/org-1/members/user-member/deactivate", Body: `{}`})
+	deactivated, deactivatedMatched := deactivate.(RequestHandled)
+	if !deactivatedMatched {
+		t.Fatalf("deactivate member = %T, want RequestHandled", deactivate)
+	}
+	if deactivated.Value.Status != 200 {
+		t.Fatalf("deactivate status = %d, want 200", deactivated.Value.Status)
+	}
+}
+
+func TestOrganizationHandlerRejectsMissingResolverForProvision(t *testing.T) {
+	handler := NewOrganizationHandler(
+		newTestBrowserStorage(),
+		fixedHandlerActor{userID: "user-owner"},
+		&fixedOrganizationIDs{organizationID: "org-1", memberIDs: []string{"member-1"}},
+		nil,
+	)
+	result := handler.Handle(Request{Method: MethodPost, Path: "/api/organizations/org-1/members", Body: `{"email":"member@example.com","roles":["member"]}`})
+	rejected, matched := result.(RequestHandleRejected)
+	if !matched {
+		t.Fatalf("result = %T, want RequestHandleRejected", result)
+	}
+	if rejected.Reason != "organization user resolver is required" {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }
