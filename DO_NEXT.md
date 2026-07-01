@@ -5,12 +5,12 @@ Current priority from
 
 Active branch:
 
-1. `task/wasm-submission-parity-host-adapters` is in progress. It bundles
-   explicit host-backed Go/WASM backend slices for submissions, comments,
-   reservations, and ledger surfaces; a Go `js/wasm` command; a Deno runner
-   that loads a compiled Go `.wasm` backend and checks required exports; and
-   host adapter shape documentation. Deployed Pages routing verification remains
-   a post-merge check.
+1. `task/wasm-host-adapters-scenario-parity` is in progress. It wires explicit
+   host configuration into the Go `js/wasm` command, runs request execution
+   through the configured WASM host for the existing task/comment/reservation/
+   submission/ledger slices, updates the WASM scenario runner to exercise that
+   path, records remaining WASM behavior slices, and includes deployed Pages
+   routing verification.
 
 Next recommended work:
 
@@ -41,8 +41,8 @@ Next recommended work:
    Privacy-request, moderation-triage, saved-queue-view, task, attachment,
    notification, organization, organization-member, team, comment, reservation,
    submission, and ledger storage/handler slices now exist. The Go `js/wasm`
-   command can be built and loaded, but request execution still needs explicit
-   host runtime adapters.
+   command can be built, loaded, explicitly configured with host adapters, and
+   used for the current interaction scenario.
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
 7. Replace `site/demo/backend.js` with the compiled Go/WASM backend only after
@@ -51,6 +51,12 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 97 was merged into `main`.
+1. The `task/wasm-submission-parity-host-adapters` branch added explicit
+   host-backed Go/WASM backend slices for submissions, comments, reservations,
+   and ledger surfaces; a Go `js/wasm` command; a Deno WASM runner that loads a
+   compiled Go `.wasm` backend and checks required exports; and host adapter
+   shape documentation.
 1. PR 96 was merged into `main`.
 1. The `task/wasm-org-team-parity-contracts-rawid` working tree added
    no-fallback WASM demo organization, organization-member, organization-team,

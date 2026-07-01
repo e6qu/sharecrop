@@ -71,12 +71,15 @@ Known risks:
   saved-queue-view, task, notification, organization, organization-member, team,
   comment, reservation, submission, and ledger routes. It has explicit
   browser-storage and request-handler boundaries for those slices. A Deno WASM
-  runner loads a compiled Go `.wasm` artifact and verifies required exports.
-  The WASM backend target still lacks wired host runtime adapters, enough
-  behavior slices to run the shared scenario parity suite through the exported
-  request handler, deterministic reset, and startup measurements. JavaScript
-  reimplementations, generated fake backends, and fallback stores are not valid
-  substitutes for the compiled Go WASM binary.
+  runner loads a compiled Go `.wasm` artifact, verifies required exports,
+  configures explicit host adapters, and runs the current task/comment/
+  reservation/submission/ledger scenario through the exported request handler.
+  The WASM backend target still lacks browser IndexedDB host adapters, remaining
+  behavior slices for collectibles, account-token flows, admin operations,
+  privacy resolution/redaction jobs, moderation projection writes, deterministic
+  demo seeding/reset, the full shared scenario parity suite, and startup
+  measurements. JavaScript reimplementations, generated fake backends, and
+  fallback stores are not valid substitutes for the compiled Go WASM binary.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

@@ -1,15 +1,15 @@
 # Status
 
-The repository contains pull request 1 through pull request 96 work, merged into
+The repository contains pull request 1 through pull request 97 work, merged into
 `main`, plus the current
-`task/wasm-submission-parity-host-adapters` branch.
+`task/wasm-host-adapters-scenario-parity` branch.
 
-Active task: `task/wasm-submission-parity-host-adapters` adds explicit
-host-backed Go/WASM backend slices for submissions, comments, reservations, and
-ledger surfaces; a Go `js/wasm` command; a Deno WASM runner that loads a
-compiled Go `.wasm` backend and checks required exports; and host adapter shape
-documentation. Deployed Pages routing verification remains a post-merge check.
-The branch must keep fail-loud behavior and must not add fallback stores or
+Active task: `task/wasm-host-adapters-scenario-parity` wires explicit host
+configuration into the Go `js/wasm` command, runs request execution through the
+configured WASM host for the existing task/comment/reservation/submission/ledger
+slices, updates the WASM scenario runner to exercise that path, records remaining
+WASM behavior slices, and includes deployed Pages routing verification. The
+branch must keep fail-loud behavior and must not add fallback stores or
 JavaScript backend reimplementations as the target.
 Hard deletes remain out of scope; use soft lifecycle states, anonymization,
 redaction, tombstones, and audit records. Email/provider delivery, anonymous
@@ -204,12 +204,16 @@ Current implemented surface:
   and networking. JavaScript reimplementations, generated fake backends, and
   fallback stores are out of scope.
 - `cmd/sharecrop-wasm` builds a Go `js/wasm` artifact that exposes
-  `sharecropWasmBackendStatus` and `sharecropHandleRequest`. The current export
-  classifies routes and fails with a host-adapter-required error until explicit
-  host runtime adapters are wired.
+  `sharecropWasmBackendStatus`, `sharecropConfigureHost`, and
+  `sharecropHandleRequest`. Requests fail loudly until an explicit host is
+  configured. A configured host executes task/comment/reservation/submission and
+  ledger requests through Go handlers and caller-provided storage, clock, actor,
+  and ID adapters.
 - `deno task check:scenario-parity:wasm -- --wasm <compiled.wasm>` loads the
-  compiled Go WASM artifact through Go's `wasm_exec.js` and verifies those
-  exports without calling `site/demo/backend.js`.
+  compiled Go WASM artifact through Go's `wasm_exec.js`, verifies the
+  unconfigured request failure, configures an explicit host, and runs a
+  task/comment/reservation/submission acceptance and ledger scenario without
+  calling `site/demo/backend.js`.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -237,6 +241,8 @@ Current verification:
   /private/tmp/sharecrop-wasm-backend.wasm ./cmd/sharecrop-wasm` passed.
 - `deno task check:scenario-parity:wasm -- --wasm
   /private/tmp/sharecrop-wasm-backend.wasm` passed.
+- `deno task check:pages-routing -- --origin https://e6qu.github.io/sharecrop`
+  passed.
 - `git diff --check` passed.
 
 Blocking issues:
