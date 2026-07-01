@@ -1,5 +1,34 @@
 # What We Did
 
+`task/wasm-host-adapters-scenario-parity` wired the first configured Go/WASM
+request execution path:
+
+- **Configured WASM host.** `cmd/sharecrop-wasm` now exports
+  `sharecropConfigureHost` alongside status and request handling. Requests fail
+  before host configuration. A configured host must provide explicit storage,
+  clock, actor, and ID adapters.
+- **Request execution.** The WASM bridge dispatches task routes through
+  `TaskHandler` and task-comment, submission-comment, reservation, submission,
+  and ledger routes through `InteractionHandler`. Missing host capabilities,
+  unsupported routes, and handler errors return explicit error responses.
+- **WASM scenario runner.** `tools/run_wasm_scenario_parity.ts` now loads the
+  compiled Go WASM artifact, verifies the unconfigured failure, configures an
+  explicit host storage adapter, and runs task creation, task comments,
+  reservation approval, submission creation, submission comments, acceptance,
+  worker balance, and worker ledger checks through `sharecropHandleRequest`
+  without calling `site/demo/backend.js`.
+- **Docs and deployment check.** WASM target docs, status, next-task queue, and
+  risk notes were refreshed. Deployed GitHub Pages routing passed for
+  `https://e6qu.github.io/sharecrop`.
+- **Verification.** Passed: `go test ./...`; `deno task check:ts`;
+  `deno task lint`; `deno task check:policy`; `deno task test`;
+  `deno fmt --check deno.json tools tests site/demo/backend.js`; `make
+  check-contracts`; `go tool deadcode -test ./...`; `GOOS=js GOARCH=wasm go
+  build -o /private/tmp/sharecrop-wasm-backend.wasm ./cmd/sharecrop-wasm`;
+  `deno task check:scenario-parity:wasm -- --wasm
+  /private/tmp/sharecrop-wasm-backend.wasm`; `deno task check:pages-routing --
+  --origin https://e6qu.github.io/sharecrop`; and `git diff --check`.
+
 `task/wasm-submission-parity-host-adapters` expanded the Go/WASM backend target
 and interaction parity groundwork:
 

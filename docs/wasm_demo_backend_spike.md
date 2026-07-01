@@ -154,10 +154,12 @@ running those tests requires a JS/WASM test runner.
 
 `deno task check:scenario-parity:wasm -- --wasm /private/tmp/sharecrop-wasm-backend.wasm`
 loads the compiled Go WASM binary through Go's `wasm_exec.js`, verifies the
-`sharecropWasmBackendStatus` and `sharecropHandleRequest` exports, and verifies
-that a classified submission route fails with the explicit "host runtime
-adapters are required" error until the host adapters are wired. The runner does
-not call `site/demo/backend.js` and does not emulate missing backend behavior.
+`sharecropWasmBackendStatus`, `sharecropConfigureHost`, and
+`sharecropHandleRequest` exports, verifies that requests fail before host
+configuration, configures explicit host storage/clock/actor/ID adapters, and
+runs a task/comment/reservation/submission acceptance and ledger scenario
+through the exported request handler. The runner does not call
+`site/demo/backend.js` and does not emulate missing backend behavior.
 
 The compile check means basic Go/WASM compatibility is not the blocker. The
 blockers are broader request adaptation, enough browser storage adapters,
@@ -189,10 +191,10 @@ Replace `site/demo/backend.js` only after the WASM path can satisfy these gates:
 
 ## Next Spike Step
 
-The next WASM step is to wire real host adapters into the Go `js/wasm` command
-and run shared scenario parity against the exported request handler. Remaining
-behavior slices include collectibles, account-token flows, admin operations,
-privacy resolution/redaction jobs, moderation projection writes, deterministic
-demo seeding/reset, and request execution through browser storage adapters. If a
-missing slice is discovered, it should fail loudly until that slice has an
-explicit browser storage adapter and handler.
+The next WASM step is to replace the runner's test host with browser host
+adapters and then run the full shared scenario parity suite against the exported
+request handler. Remaining behavior slices include collectibles, account-token
+flows, admin operations, privacy resolution/redaction jobs, moderation
+projection writes, deterministic demo seeding/reset, and persistent browser
+storage adapters. If a missing slice is discovered, it should fail loudly until
+that slice has an explicit browser storage adapter and handler.

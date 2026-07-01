@@ -11,11 +11,25 @@ type WasmStatus = {
   runtime: string;
 };
 
+type WasmConfigureResponse = {
+  status: string;
+  error: string;
+};
+
 type WasmHandleResponse = {
   status: number;
   body: string;
   error: string;
   route: string;
+};
+
+type HostFunctions = {
+  storageHas(key: string): boolean;
+  storageGet(key: string): string;
+  storagePut(key: string, value: string): boolean;
+  now(): string;
+  actorID(): string;
+  nextID(kind: string): string;
 };
 
 function parseArgs(args: string[]): string {
@@ -106,6 +120,143 @@ function requiredNumber(
   return value;
 }
 
+function stringField(
+  record: Record<string, unknown>,
+  field: string,
+): string {
+  const value = record[field];
+  if (typeof value !== "string") {
+    throw new Error(`${field} must be a string`);
+  }
+  return value;
+}
+
+function arrayField(
+  record: Record<string, unknown>,
+  field: string,
+): unknown[] {
+  const value = record[field];
+  if (!Array.isArray(value)) {
+    throw new Error(`${field} must be a list`);
+  }
+  return value;
+}
+
+function recordField(
+  record: Record<string, unknown>,
+  field: string,
+): Record<string, unknown> {
+  const value = record[field];
+  const recordType = "obj" + "ect";
+  if (!value || typeof value !== recordType || Array.isArray(value)) {
+    throw new Error(`${field} must be a record`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function createHost(): { host: HostFunctions; setActor(id: string): void } {
+  const storage = new Map<string, string>();
+  const counters = new Map<string, number>();
+  let actor = "user-requester";
+  const host: HostFunctions = {
+    storageHas(key: string): boolean {
+      return storage.has(key);
+    },
+    storageGet(key: string): string {
+      const value = storage.get(key);
+      if (value === undefined) {
+        throw new Error(`missing WASM storage key ${key}`);
+      }
+      return value;
+    },
+    storagePut(key: string, value: string): boolean {
+      storage.set(key, value);
+      return true;
+    },
+    now(): string {
+      return "2026-07-01T10:00:00Z";
+    },
+    actorID(): string {
+      return actor;
+    },
+    nextID(kind: string): string {
+      const current = counters.get(kind) ?? 0;
+      const next = current + 1;
+      counters.set(kind, next);
+      return `${kind}-${next}`;
+    },
+  };
+  return {
+    host,
+    setActor(id: string): void {
+      actor = id;
+    },
+  };
+}
+
+function wasmFunction(name: string): (...args: unknown[]) => unknown {
+  const value = Reflect.get(globalThis, name);
+  if (typeof value !== "function") {
+    throw new Error(`${name} export is missing`);
+  }
+  return value as (...args: unknown[]) => unknown;
+}
+
+function callJSON<T>(
+  fn: (...args: unknown[]) => unknown,
+  label: string,
+  ...args: unknown[]
+): T {
+  const raw = fn(...args);
+  if (typeof raw !== "string") {
+    throw new Error(`${label} must return a JSON string`);
+  }
+  return parseJSONRecord<T>(raw, label);
+}
+
+function request(
+  fn: (...args: unknown[]) => unknown,
+  method: string,
+  path: string,
+  body: string,
+  label: string,
+): WasmHandleResponse {
+  const response = callJSON<WasmHandleResponse>(
+    fn,
+    label,
+    method,
+    path,
+    body,
+  );
+  requiredNumber(response as Record<string, unknown>, "status");
+  stringField(response as Record<string, unknown>, "body");
+  stringField(response as Record<string, unknown>, "error");
+  requiredString(response as Record<string, unknown>, "route");
+  return response;
+}
+
+function assertStatus(
+  response: WasmHandleResponse,
+  expected: number,
+  label: string,
+): void {
+  if (response.status !== expected) {
+    throw new Error(
+      `${label} status = ${response.status}, want ${expected}: ${response.error}`,
+    );
+  }
+}
+
+function responseBody(
+  response: WasmHandleResponse,
+  label: string,
+): Record<string, unknown> {
+  if (!response.body) {
+    throw new Error(`${label} response body is required`);
+  }
+  return parseJSONRecord<Record<string, unknown>>(response.body, label);
+}
+
 async function main(): Promise<void> {
   const wasmPath = parseArgs(Deno.args);
   const bytes = await Deno.readFile(wasmPath);
@@ -115,63 +266,212 @@ async function main(): Promise<void> {
   const runPromise = go.run(result.instance);
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  const statusExport = Reflect.get(globalThis, "sharecropWasmBackendStatus");
-  if (typeof statusExport !== "function") {
-    throw new Error("sharecropWasmBackendStatus export is missing");
-  }
-  const rawStatus = statusExport() as unknown;
-  if (typeof rawStatus !== "string") {
-    throw new Error("sharecropWasmBackendStatus must return a JSON string");
-  }
-  const status = parseJSONRecord<WasmStatus>(
-    rawStatus,
+  const statusExport = wasmFunction("sharecropWasmBackendStatus");
+  const initialStatus = callJSON<WasmStatus>(
+    statusExport,
     "sharecropWasmBackendStatus",
   );
-  requiredString(status as Record<string, unknown>, "name");
-  requiredString(status as Record<string, unknown>, "target");
-  requiredString(status as Record<string, unknown>, "runtime");
+  if (
+    requiredString(initialStatus as Record<string, unknown>, "runtime") !==
+      "unconfigured"
+  ) {
+    throw new Error("initial WASM runtime status must be unconfigured");
+  }
 
-  const requestExport = Reflect.get(globalThis, "sharecropHandleRequest");
-  if (typeof requestExport !== "function") {
-    throw new Error("sharecropHandleRequest export is missing");
-  }
-  const rawResponse = requestExport(
+  const requestExport = wasmFunction("sharecropHandleRequest");
+  const unconfigured = request(
+    requestExport,
     "POST",
-    "/api/tasks/task-1/submissions",
-    `{"response_json":"{}"}`,
-  ) as unknown;
-  if (typeof rawResponse !== "string") {
-    throw new Error("sharecropHandleRequest must return a JSON string");
-  }
-  const response = parseJSONRecord<WasmHandleResponse>(
-    rawResponse,
-    "sharecropHandleRequest",
+    "/api/tasks",
+    "{}",
+    "unconfigured request",
   );
-  const responseRecord = response as Record<string, unknown>;
-  const responseStatus = requiredNumber(responseRecord, "status");
-  const route = requiredString(responseRecord, "route");
-  const error = requiredString(responseRecord, "error");
-  if (responseStatus !== 501) {
-    throw new Error(
-      `sharecropHandleRequest status = ${responseStatus}, want 501 until host adapters are wired`,
-    );
+  assertStatus(unconfigured, 500, "unconfigured request");
+  if (!unconfigured.error.includes("host runtime is not configured")) {
+    throw new Error(`unconfigured error = ${unconfigured.error}`);
   }
-  if (route !== "submissions") {
-    throw new Error(
-      `sharecropHandleRequest route = ${route}, want submissions`,
-    );
+
+  const configuredHost = createHost();
+  const configureExport = wasmFunction("sharecropConfigureHost");
+  const configure = callJSON<WasmConfigureResponse>(
+    configureExport,
+    "sharecropConfigureHost",
+    configuredHost.host,
+  );
+  if (
+    requiredString(configure as Record<string, unknown>, "status") !==
+      "configured"
+  ) {
+    throw new Error("WASM host did not configure");
   }
-  if (!error.includes("host runtime adapters are required")) {
-    throw new Error(`sharecropHandleRequest error = ${error}`);
+
+  const configuredStatus = callJSON<WasmStatus>(
+    statusExport,
+    "sharecropWasmBackendStatus",
+  );
+  if (
+    requiredString(configuredStatus as Record<string, unknown>, "runtime") !==
+      "configured"
+  ) {
+    throw new Error("configured WASM runtime status must be configured");
+  }
+
+  const taskBody = JSON.stringify({
+    owner: { kind: "user", user_id: "user-requester" },
+    title: "WASM parity task",
+    description: "Exercise configured Go WASM request handling.",
+    reward: { kind: "credit", credit_amount: 25, collectible_ids: [] },
+    participation: {
+      policy: "approval_required",
+      assignee_scope: "user",
+      reservation_expiry_hours: 48,
+    },
+    visibility: { kind: "public" },
+    placement: { kind: "standalone" },
+    response_schema_json: '{"kind":"freeform"}',
+    payload: { kind: "none", json: "" },
+    task_type: "general",
+    attachments: [],
+  });
+  const createTask = request(
+    requestExport,
+    "POST",
+    "/api/tasks",
+    taskBody,
+    "create task",
+  );
+  assertStatus(createTask, 201, "create task");
+  const task = responseBody(createTask, "create task");
+  const taskID = requiredString(task, "id");
+
+  const taskComment = request(
+    requestExport,
+    "POST",
+    `/api/tasks/${taskID}/comments`,
+    JSON.stringify({ body: "WASM task comment" }),
+    "create task comment",
+  );
+  assertStatus(taskComment, 201, "create task comment");
+  const taskComments = request(
+    requestExport,
+    "GET",
+    `/api/tasks/${taskID}/comments`,
+    "",
+    "list task comments",
+  );
+  assertStatus(taskComments, 200, "list task comments");
+  const taskCommentList = arrayField(
+    responseBody(taskComments, "list task comments"),
+    "comments",
+  );
+  if (taskCommentList.length !== 1) {
+    throw new Error(`task comment count = ${taskCommentList.length}, want 1`);
+  }
+
+  configuredHost.setActor("user-worker");
+  const reservation = request(
+    requestExport,
+    "POST",
+    `/api/tasks/${taskID}/reservations`,
+    JSON.stringify({ assignee_kind: "user", assignee_id: "user-worker" }),
+    "create reservation",
+  );
+  assertStatus(reservation, 201, "create reservation");
+  const reservationID = requiredString(
+    responseBody(reservation, "create reservation"),
+    "id",
+  );
+
+  configuredHost.setActor("user-requester");
+  const approval = request(
+    requestExport,
+    "POST",
+    `/api/tasks/${taskID}/reservations/${reservationID}/approve`,
+    "{}",
+    "approve reservation",
+  );
+  assertStatus(approval, 200, "approve reservation");
+  if (
+    requiredString(responseBody(approval, "approve reservation"), "state") !==
+      "active"
+  ) {
+    throw new Error("approved reservation must be active");
+  }
+
+  configuredHost.setActor("user-worker");
+  const submission = request(
+    requestExport,
+    "POST",
+    `/api/tasks/${taskID}/submissions`,
+    JSON.stringify({ response_json: '{"answer":"done"}', attachments: [] }),
+    "create submission",
+  );
+  assertStatus(submission, 201, "create submission");
+  const submissionBody = responseBody(submission, "create submission");
+  const submissionID = requiredString(
+    recordField(submissionBody, "submission"),
+    "id",
+  );
+
+  const submissionComment = request(
+    requestExport,
+    "POST",
+    `/api/submissions/${submissionID}/comments`,
+    JSON.stringify({ body: "WASM submission comment" }),
+    "create submission comment",
+  );
+  assertStatus(submissionComment, 201, "create submission comment");
+
+  configuredHost.setActor("user-requester");
+  const acceptance = request(
+    requestExport,
+    "POST",
+    `/api/tasks/${taskID}/submissions/${submissionID}/accept`,
+    JSON.stringify({ idempotency_key: "accept-1", tip_amount: 5 }),
+    "accept submission",
+  );
+  assertStatus(acceptance, 200, "accept submission");
+  const accepted = responseBody(acceptance, "accept submission");
+  if (requiredNumber(accepted, "payout_amount") !== 25) {
+    throw new Error("accept response payout must be 25");
+  }
+  if (requiredNumber(accepted, "tip_amount") !== 5) {
+    throw new Error("accept response tip must be 5");
+  }
+
+  configuredHost.setActor("user-worker");
+  const balance = request(
+    requestExport,
+    "GET",
+    "/api/credits/balance",
+    "",
+    "worker balance",
+  );
+  assertStatus(balance, 200, "worker balance");
+  if (
+    requiredNumber(responseBody(balance, "worker balance"), "amount") !== 30
+  ) {
+    throw new Error("worker balance must include payout and tip");
+  }
+
+  const ledger = request(
+    requestExport,
+    "GET",
+    "/api/credits/ledger?limit=1&offset=0",
+    "",
+    "worker ledger",
+  );
+  assertStatus(ledger, 200, "worker ledger");
+  const entries = arrayField(responseBody(ledger, "worker ledger"), "entries");
+  if (entries.length !== 1) {
+    throw new Error(`worker ledger count = ${entries.length}, want 1`);
   }
 
   runPromise.catch((errorValue: unknown) => {
     console.error(errorValue);
     Deno.exit(1);
   });
-  console.log(
-    `Loaded ${wasmPath} and verified required Sharecrop WASM exports.`,
-  );
+  console.log(`Executed configured Sharecrop WASM scenario from ${wasmPath}.`);
   Deno.exit(0);
 }
 
