@@ -8,6 +8,7 @@
   "tasks": {
     "elm:build": "deno run --allow-run --allow-read --allow-write --allow-env tools/elm_build.ts",
     "css:build": "deno run --allow-env --allow-read --allow-write --allow-ffi npm:@tailwindcss/cli@4.3.1 --cwd . -i web/styles/input.css -o web/static/app.css",
+    "wasm:demo:build": "deno run --allow-run --allow-read --allow-write tools/build_wasm_demo.ts",
     "frontend:build": "deno task elm:build && deno task css:build && deno run --allow-read --allow-write tools/copy_static_to_demo.ts",
     "check:policy": "deno run --allow-read tools/check_policy.ts",
     "check:pages-routing": "deno run --allow-net tools/check_pages_routing.ts",

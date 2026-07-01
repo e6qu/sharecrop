@@ -157,9 +157,23 @@ loads the compiled Go WASM binary through Go's `wasm_exec.js`, verifies the
 `sharecropWasmBackendStatus`, `sharecropConfigureHost`, and
 `sharecropHandleRequest` exports, verifies that requests fail before host
 configuration, configures explicit host storage/clock/actor/ID adapters, and
-runs a task/comment/reservation/submission acceptance and ledger scenario
-through the exported request handler. The runner does not call
+runs privacy request, saved queue view, organization/member/team,
+task/comment/reservation/submission acceptance, ledger, and unsupported-route
+checks through the exported request handler. The runner does not call
 `site/demo/backend.js` and does not emulate missing backend behavior.
+
+`deno task wasm:demo:build` builds `cmd/sharecrop-wasm` into
+`site/demo/sharecrop-wasm-backend.wasm` and copies Go's `wasm_exec.js` into the
+demo directory. The Pages workflow runs that task before uploading the static
+site. The generated `.wasm` and `wasm_exec.js` files are not committed.
+
+The deployed demo keeps the JavaScript backend as the default while the WASM
+target is still behind adoption gates. `site/demo/index.html?backend=wasm`
+selects the compiled Go/WASM backend path. That mode loads `wasm-host.js`,
+requires the generated WASM artifacts, configures explicit browser host
+functions, and intercepts `/api/*` XHR requests through
+`sharecropHandleRequest`. Missing artifacts, unknown backend modes, missing host
+functions, missing storage keys, and invalid host values fail loudly.
 
 The compile check means basic Go/WASM compatibility is not the blocker. The
 blockers are broader request adaptation, enough browser storage adapters,
@@ -191,10 +205,9 @@ Replace `site/demo/backend.js` only after the WASM path can satisfy these gates:
 
 ## Next Spike Step
 
-The next WASM step is to replace the runner's test host with browser host
-adapters and then run the full shared scenario parity suite against the exported
-request handler. Remaining behavior slices include collectibles, account-token
-flows, admin operations, privacy resolution/redaction jobs, moderation
-projection writes, deterministic demo seeding/reset, and persistent browser
-storage adapters. If a missing slice is discovered, it should fail loudly until
-that slice has an explicit browser storage adapter and handler.
+The next WASM step is to expand the browser-hosted path to the full shared
+scenario parity suite. Remaining behavior slices include collectibles,
+account-token flows, admin operations, privacy resolution/redaction jobs,
+moderation projection writes, and richer deterministic demo seeding. If a
+missing slice is discovered, it should fail loudly until that slice has an
+explicit browser storage adapter and handler.

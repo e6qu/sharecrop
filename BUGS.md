@@ -72,12 +72,14 @@ Known risks:
   comment, reservation, submission, and ledger routes. It has explicit
   browser-storage and request-handler boundaries for those slices. A Deno WASM
   runner loads a compiled Go `.wasm` artifact, verifies required exports,
-  configures explicit host adapters, and runs the current task/comment/
-  reservation/submission/ledger scenario through the exported request handler.
-  The WASM backend target still lacks browser IndexedDB host adapters, remaining
-  behavior slices for collectibles, account-token flows, admin operations,
-  privacy resolution/redaction jobs, moderation projection writes, deterministic
-  demo seeding/reset, the full shared scenario parity suite, and startup
+  configures explicit host adapters, and runs privacy request, saved queue view,
+  organization/member/team, task/comment/reservation/submission/ledger, and
+  unsupported-route checks through the exported request handler. The demo has an
+  opt-in `?backend=wasm` browser host path built from the compiled Go artifact.
+  The WASM backend target still lacks remaining behavior slices for
+  collectibles, account-token flows, admin operations, privacy
+  resolution/redaction jobs, moderation projection writes, richer deterministic
+  demo seeding, the full shared scenario parity suite, and startup
   measurements. JavaScript reimplementations, generated fake backends, and
   fallback stores are not valid substitutes for the compiled Go WASM binary.
 

@@ -107,7 +107,7 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteModerationReports}
 	case request.Method.String() == MethodGet.String() && request.Path == "/api/admin/moderation/reports":
 		return RequestAdapted{Route: RouteAdminModerationReports}
-	case request.Method.String() == MethodGet.String() && request.Path == "/api/saved-queue-views":
+	case request.Method.String() == MethodGet.String() && savedQueueViewPathOnly(request.Path) == "/api/saved-queue-views":
 		return RequestAdapted{Route: RouteSavedQueueViews}
 	case request.Method.String() == MethodPost.String() && request.Path == "/api/saved-queue-views":
 		return RequestAdapted{Route: RouteSavedQueueViews}

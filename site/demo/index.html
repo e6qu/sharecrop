@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -17,29 +17,58 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap"
+    >
     <link rel="stylesheet" href="./app.css">
     <link rel="stylesheet" href="./arcade.css">
   </head>
   <body>
     <main id="app"></main>
-    <script src="./backend.js"></script>
     <script src="./elm.js"></script>
+    <script src="./wasm-host.js"></script>
     <script>
-      const pageOrigin = window.location.origin;
-      const app = Elm.Main.init({
-        node: document.getElementById("app"),
-        flags: {
-          origin: pageOrigin && pageOrigin !== "null"
-            ? pageOrigin
-            : "https://sharecrop.example",
-          demo: true,
-        },
+      const boot = async () => {
+        const params = new URLSearchParams(window.location.search);
+        const backend = params.get("backend") || "demo";
+        if (backend === "wasm") {
+          await window.SharecropWasmDemo.install({
+            wasmExecURL: "./wasm_exec.js",
+            wasmURL: "./sharecrop-wasm-backend.wasm",
+          });
+        } else if (backend === "demo") {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "./backend.js";
+            script.onload = resolve;
+            script.onerror = () =>
+              reject(new Error("failed to load backend.js"));
+            document.head.appendChild(script);
+          });
+        } else {
+          throw new Error("unknown Sharecrop demo backend: " + backend);
+        }
+
+        const pageOrigin = window.location.origin;
+        const app = Elm.Main.init({
+          node: document.getElementById("app"),
+          flags: {
+            origin: pageOrigin && pageOrigin !== "null"
+              ? pageOrigin
+              : "https://sharecrop.example",
+            demo: true,
+          },
+        });
+        app.ports.copyToClipboard.subscribe((t) => {
+          if (navigator.clipboard) navigator.clipboard.writeText(t);
+        });
+        app.ports.reloadDemo.subscribe(() => window.location.reload());
+      };
+      boot().catch((error) => {
+        console.error(error);
+        document.getElementById("app").textContent = error.message;
       });
-      app.ports.copyToClipboard.subscribe((t) => {
-        if (navigator.clipboard) navigator.clipboard.writeText(t);
-      });
-      app.ports.reloadDemo.subscribe(() => window.location.reload());
     </script>
   </body>
 </html>

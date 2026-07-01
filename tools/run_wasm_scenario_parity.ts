@@ -30,6 +30,7 @@ type HostFunctions = {
   now(): string;
   actorID(): string;
   nextID(kind: string): string;
+  userIDForEmail(email: string): string;
 };
 
 function parseArgs(args: string[]): string {
@@ -185,6 +186,14 @@ function createHost(): { host: HostFunctions; setActor(id: string): void } {
       counters.set(kind, next);
       return `${kind}-${next}`;
     },
+    userIDForEmail(email: string): string {
+      const users = new Map<string, string>([
+        ["requester@example.com", "user-requester"],
+        ["worker@example.com", "user-worker"],
+        ["reviewer@example.com", "user-reviewer"],
+      ]);
+      return users.get(email) ?? "";
+    },
   };
   return {
     host,
@@ -231,7 +240,7 @@ function request(
   requiredNumber(response as Record<string, unknown>, "status");
   stringField(response as Record<string, unknown>, "body");
   stringField(response as Record<string, unknown>, "error");
-  requiredString(response as Record<string, unknown>, "route");
+  stringField(response as Record<string, unknown>, "route");
   return response;
 }
 
@@ -315,6 +324,112 @@ async function main(): Promise<void> {
   ) {
     throw new Error("configured WASM runtime status must be configured");
   }
+
+  const privacy = request(
+    requestExport,
+    "POST",
+    "/api/privacy-requests",
+    JSON.stringify({ kind: "data_export" }),
+    "create privacy request",
+  );
+  assertStatus(privacy, 201, "create privacy request");
+  const privacyList = request(
+    requestExport,
+    "GET",
+    "/api/admin/privacy-requests",
+    "",
+    "list privacy requests",
+  );
+  assertStatus(privacyList, 200, "list privacy requests");
+  if (
+    arrayField(responseBody(privacyList, "list privacy requests"), "requests")
+      .length !== 1
+  ) {
+    throw new Error("privacy request list must include created request");
+  }
+
+  const savedView = request(
+    requestExport,
+    "POST",
+    "/api/saved-queue-views",
+    JSON.stringify({
+      scope: "team_work",
+      name: "WASM work",
+      query: "wasm",
+      state_filter: "ready",
+      type_filter: "general",
+      sort: "title_asc",
+    }),
+    "upsert saved queue view",
+  );
+  assertStatus(savedView, 200, "upsert saved queue view");
+  const savedViews = request(
+    requestExport,
+    "GET",
+    "/api/saved-queue-views?scope=team_work",
+    "",
+    "list saved queue views",
+  );
+  assertStatus(savedViews, 200, "list saved queue views");
+  if (
+    arrayField(responseBody(savedViews, "list saved queue views"), "views")
+      .length !== 1
+  ) {
+    throw new Error("saved queue views must include upserted view");
+  }
+
+  const organization = request(
+    requestExport,
+    "POST",
+    "/api/organizations",
+    JSON.stringify({ name: "WASM Org" }),
+    "create organization",
+  );
+  assertStatus(organization, 201, "create organization");
+  const organizationID = requiredString(
+    responseBody(organization, "create organization"),
+    "id",
+  );
+  const provisionMember = request(
+    requestExport,
+    "POST",
+    `/api/organizations/${organizationID}/members`,
+    JSON.stringify({ email: "reviewer@example.com", roles: ["reviewer"] }),
+    "provision organization member",
+  );
+  assertStatus(provisionMember, 201, "provision organization member");
+  const organizationMembers = request(
+    requestExport,
+    "GET",
+    `/api/organizations/${organizationID}/members`,
+    "",
+    "list organization members",
+  );
+  assertStatus(organizationMembers, 200, "list organization members");
+  if (
+    arrayField(
+      responseBody(organizationMembers, "list organization members"),
+      "members",
+    ).length !== 2
+  ) {
+    throw new Error("organization members must include owner and reviewer");
+  }
+  const organizationTeam = request(
+    requestExport,
+    "POST",
+    `/api/organizations/${organizationID}/teams`,
+    JSON.stringify({ name: "WASM reviewers" }),
+    "create organization team",
+  );
+  assertStatus(organizationTeam, 201, "create organization team");
+  const standaloneTeam = request(
+    requestExport,
+    "POST",
+    "/api/teams",
+    JSON.stringify({ name: "WASM standalone" }),
+    "create standalone team",
+  );
+  assertStatus(standaloneTeam, 201, "create standalone team");
 
   const taskBody = JSON.stringify({
     owner: { kind: "user", user_id: "user-requester" },
@@ -465,6 +580,18 @@ async function main(): Promise<void> {
   const entries = arrayField(responseBody(ledger, "worker ledger"), "entries");
   if (entries.length !== 1) {
     throw new Error(`worker ledger count = ${entries.length}, want 1`);
+  }
+
+  const unsupported = request(
+    requestExport,
+    "GET",
+    "/api/collectibles",
+    "",
+    "unsupported collectible route",
+  );
+  assertStatus(unsupported, 404, "unsupported collectible route");
+  if (!unsupported.error.includes("request route is not implemented")) {
+    throw new Error(`unsupported route error = ${unsupported.error}`);
   }
 
   runPromise.catch((errorValue: unknown) => {

@@ -5,5 +5,7 @@ elm-stuff/
 node_modules/
 test-results/
 playwright-report/
+site/demo/sharecrop-wasm-backend.wasm
+site/demo/wasm_exec.js
 
 *.log
