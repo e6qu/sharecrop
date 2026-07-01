@@ -71,6 +71,11 @@ var (
 	RouteOrganizationMembers    = Route{value: "organization_members"}
 	RouteOrganizationTeams      = Route{value: "organization_teams"}
 	RouteStandaloneTeams        = Route{value: "standalone_teams"}
+	RouteTaskComments           = Route{value: "task_comments"}
+	RouteSubmissionComments     = Route{value: "submission_comments"}
+	RouteTaskReservations       = Route{value: "task_reservations"}
+	RouteSubmissions            = Route{value: "submissions"}
+	RouteLedger                 = Route{value: "ledger"}
 )
 
 func (route Route) String() string {
@@ -122,6 +127,22 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteOrganizationTeams}
 	case standaloneTeamsPathOnly(request.Path) == "/api/teams":
 		return RequestAdapted{Route: RouteStandaloneTeams}
+	case taskCommentsPathID(request.Path) != "":
+		return RequestAdapted{Route: RouteTaskComments}
+	case submissionCommentsPathID(request.Path) != "":
+		return RequestAdapted{Route: RouteSubmissionComments}
+	case taskReservationsPath(request.Path).taskID != "":
+		return RequestAdapted{Route: RouteTaskReservations}
+	case taskSubmissionsPath(request.Path).taskID != "":
+		return RequestAdapted{Route: RouteSubmissions}
+	case userSubmissionsPath(request.Path) != "":
+		return RequestAdapted{Route: RouteSubmissions}
+	case creditsPathOnly(request.Path) == "/api/credits/balance":
+		return RequestAdapted{Route: RouteLedger}
+	case creditsPathOnly(request.Path) == "/api/credits/ledger":
+		return RequestAdapted{Route: RouteLedger}
+	case organizationCreditsPath(request.Path).organizationID != "":
+		return RequestAdapted{Route: RouteLedger}
 	default:
 		return RequestUnsupported{Reason: "request route is not implemented by the WASM demo adapter"}
 	}

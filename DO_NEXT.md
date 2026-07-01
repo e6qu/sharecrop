@@ -5,14 +5,12 @@ Current priority from
 
 Active branch:
 
-1. `task/wasm-org-team-parity-contracts-rawid` is in progress. It bundles
-   post-merge continuity cleanup, explicit no-fallback WASM demo
-   organization/team storage and handlers, shared scenario parity for the added
-   org/team surfaces, org/team HTTP contract fixtures, local real API parity
-   verification, DB-backed browser coverage for organization/team admin flows,
-   a raw-ID audit refresh, non-default local test port configuration, and final
-   continuity updates. Verification passed against non-default local ports. The
-   branch is ready for commit, push, and pull request creation.
+1. `task/wasm-submission-parity-host-adapters` is in progress. It bundles
+   explicit host-backed Go/WASM backend slices for submissions, comments,
+   reservations, and ledger surfaces; a Go `js/wasm` command; a Deno runner
+   that loads a compiled Go `.wasm` backend and checks required exports; and
+   host adapter shape documentation. Deployed Pages routing verification remains
+   a post-merge check.
 
 Next recommended work:
 
@@ -41,8 +39,10 @@ Next recommended work:
    stores. The deployed browser demo is the first host, but WASM is also a
    production backend execution target.
    Privacy-request, moderation-triage, saved-queue-view, task, attachment,
-   notification, organization, organization-member, and team storage/handler
-   slices now exist.
+   notification, organization, organization-member, team, comment, reservation,
+   submission, and ledger storage/handler slices now exist. The Go `js/wasm`
+   command can be built and loaded, but request execution still needs explicit
+   host runtime adapters.
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
 7. Replace `site/demo/backend.js` with the compiled Go/WASM backend only after
@@ -51,6 +51,7 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 96 was merged into `main`.
 1. The `task/wasm-org-team-parity-contracts-rawid` working tree added
    no-fallback WASM demo organization, organization-member, organization-team,
    and standalone-team storage/handlers, organization/member/team route

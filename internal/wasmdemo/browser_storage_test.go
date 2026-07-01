@@ -259,6 +259,113 @@ func TestTaskBrowserStorageRejectsInvalidState(t *testing.T) {
 	}
 }
 
+func TestInteractionBrowserStorageRoundTripsSubmissionCommentsReservationsAndLedger(t *testing.T) {
+	storage := newTestBrowserStorage()
+	submission := StoredSubmission{
+		ID:               "submission-1",
+		TaskID:           "task-1",
+		SubmitterID:      "user-worker",
+		State:            "submitted",
+		ResponseJSON:     `{"answer":"done"}`,
+		Attachments:      []StoredAttachment{},
+		ValidationErrors: []StoredSubmissionValidationError{},
+		SensitiveFields:  []StoredSubmissionSensitiveField{},
+	}
+	if _, matched := SaveSubmission(storage, submission).(SubmissionStored); !matched {
+		t.Fatalf("submission save was rejected")
+	}
+	taskList := ListTaskSubmissions(storage, "task-1", DefaultStoredListPage())
+	taskSubmissions, taskMatched := taskList.(SubmissionsStored)
+	if !taskMatched {
+		t.Fatalf("task list result = %T, want SubmissionsStored", taskList)
+	}
+	if len(taskSubmissions.Values) != 1 || taskSubmissions.Values[0].ID != "submission-1" {
+		t.Fatalf("task submissions = %#v", taskSubmissions.Values)
+	}
+	userList := ListUserSubmissions(storage, "user-worker", DefaultStoredListPage())
+	userSubmissions, userMatched := userList.(SubmissionsStored)
+	if !userMatched {
+		t.Fatalf("user list result = %T, want SubmissionsStored", userList)
+	}
+	if len(userSubmissions.Values) != 1 || userSubmissions.Values[0].TaskID != "task-1" {
+		t.Fatalf("user submissions = %#v", userSubmissions.Values)
+	}
+
+	comment := StoredComment{
+		ID:           "comment-1",
+		ParentKind:   "submission",
+		ParentID:     "submission-1",
+		AuthorUserID: "user-requester",
+		Body:         "Looks good.",
+		CreatedAt:    "2026-07-01T10:00:00Z",
+	}
+	if _, matched := SaveComment(storage, comment).(CommentStored); !matched {
+		t.Fatalf("comment save was rejected")
+	}
+	commentsResult := ListComments(storage, "submission", "submission-1")
+	comments, commentsMatched := commentsResult.(CommentsStored)
+	if !commentsMatched {
+		t.Fatalf("comments result = %T, want CommentsStored", commentsResult)
+	}
+	if len(comments.Values) != 1 || comments.Values[0].Body != "Looks good." {
+		t.Fatalf("comments = %#v", comments.Values)
+	}
+
+	reservation := StoredReservation{
+		ID:           "reservation-1",
+		TaskID:       "task-1",
+		AssigneeKind: "user",
+		AssigneeID:   "user-worker",
+		State:        "requested",
+		RequestedBy:  "user-worker",
+	}
+	if _, matched := SaveReservation(storage, reservation).(ReservationStored); !matched {
+		t.Fatalf("reservation save was rejected")
+	}
+	transitionedResult := TransitionReservation(storage, "task-1", "reservation-1", "active")
+	transitioned, transitionedMatched := transitionedResult.(ReservationStored)
+	if !transitionedMatched {
+		t.Fatalf("transition result = %T, want ReservationStored", transitionedResult)
+	}
+	if transitioned.Value.State != "active" {
+		t.Fatalf("reservation state = %q, want active", transitioned.Value.State)
+	}
+
+	if _, matched := SaveLedgerEntry(storage, StoredLedgerEntry{ID: "ledger-1", OwnerKind: "user", OwnerID: "user-worker", Kind: "task_payout", Amount: 35, TaskID: "task-1"}).(LedgerEntryStored); !matched {
+		t.Fatalf("ledger save was rejected")
+	}
+	balanceResult := LedgerBalance(storage, "user", "user-worker")
+	balance, balanceMatched := balanceResult.(LedgerBalanceStored)
+	if !balanceMatched {
+		t.Fatalf("balance result = %T, want LedgerBalanceStored", balanceResult)
+	}
+	if balance.Amount != 35 {
+		t.Fatalf("balance = %d, want 35", balance.Amount)
+	}
+}
+
+func TestInteractionBrowserStorageRejectsInvalidReservationTransition(t *testing.T) {
+	storage := newTestBrowserStorage()
+	if _, matched := SaveReservation(storage, StoredReservation{
+		ID:           "reservation-1",
+		TaskID:       "task-1",
+		AssigneeKind: "user",
+		AssigneeID:   "user-worker",
+		State:        "declined",
+		RequestedBy:  "user-worker",
+	}).(ReservationStored); !matched {
+		t.Fatalf("reservation save was rejected")
+	}
+	result := TransitionReservation(storage, "task-1", "reservation-1", "active")
+	rejected, matched := result.(ReservationStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want ReservationStorageRejected", result)
+	}
+	if rejected.Reason != "reservation state transition is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
 func TestNotificationBrowserStorageListsAndMarksRead(t *testing.T) {
 	storage := newTestBrowserStorage()
 	first := StoredNotification{

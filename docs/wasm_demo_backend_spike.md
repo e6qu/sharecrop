@@ -16,9 +16,10 @@ fallback behavior.
 
 ## Request Adapter And Storage Spike
 
-`internal/wasmdemo` contains a narrow request-adapter spike. It classifies only
+`internal/wasmdemo` contains a request-adapter spike. It classifies
 the privacy, moderation, saved-queue-view, task, notification, organization,
-organization-member, and team route pairs:
+organization-member, team, comment, reservation, submission, and ledger route
+pairs:
 
 - `POST /api/privacy-requests`
 - `GET /api/admin/privacy-requests`
@@ -40,6 +41,23 @@ organization-member, and team route pairs:
 - `GET /api/organizations/{organization_id}/teams`
 - `POST /api/teams`
 - `GET /api/teams`
+- `GET /api/tasks/{task_id}/comments`
+- `POST /api/tasks/{task_id}/comments`
+- `GET /api/submissions/{submission_id}/comments`
+- `POST /api/submissions/{submission_id}/comments`
+- `POST /api/tasks/{task_id}/reservations`
+- `GET /api/tasks/{task_id}/reservations`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/approve`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/decline`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel`
+- `POST /api/tasks/{task_id}/submissions`
+- `GET /api/tasks/{task_id}/submissions`
+- `GET /api/users/{user_id}/submissions`
+- `POST /api/tasks/{task_id}/submissions/{submission_id}/accept`
+- `GET /api/credits/balance`
+- `GET /api/credits/ledger`
+- `GET /api/organizations/{organization_id}/credits/balance`
+- `GET /api/organizations/{organization_id}/credits/ledger`
 
 Unsupported methods and routes return explicit rejection results. The package
 does not yet execute the full domain service graph or replace
@@ -48,12 +66,14 @@ does not yet execute the full domain service graph or replace
 The package now also contains explicit browser-storage boundaries for privacy
 requests, moderation triage records, saved queue views, tasks, small
 task/submission attachment records, actor-scoped notifications, organizations,
-organization members, organization-owned teams, and standalone teams. The
-storage boundary is caller-provided; no in-memory store is selected by default.
-Missing records, invalid keys, invalid states, invalid scopes, invalid privacy
-request kinds, invalid task lifecycle values, invalid notification ownership,
-invalid attachment parent kinds, invalid attachment counts, invalid attachment
-sizes, invalid organization/member/team ownership, and storage read/write
+organization members, organization-owned teams, standalone teams, comments,
+reservations, submissions, and ledger entries. The storage boundary is
+caller-provided; no in-memory store is selected by default. Missing records,
+invalid keys, invalid states, invalid scopes, invalid privacy request kinds,
+invalid task lifecycle values, invalid notification ownership, invalid
+attachment parent kinds, invalid attachment counts, invalid attachment sizes,
+invalid organization/member/team ownership, invalid reservation transitions,
+invalid submission states, invalid ledger owners, and storage read/write
 failures return explicit rejected results. This is enough to prove the next
 WASM path can persist the currently classified slices without adding hidden
 fallback behavior.
@@ -79,6 +99,23 @@ The current request-handler steps use those storage boundaries for:
 - `GET /api/organizations/{organization_id}/teams`
 - `POST /api/teams`
 - `GET /api/teams`
+- `GET /api/tasks/{task_id}/comments`
+- `POST /api/tasks/{task_id}/comments`
+- `GET /api/submissions/{submission_id}/comments`
+- `POST /api/submissions/{submission_id}/comments`
+- `POST /api/tasks/{task_id}/reservations`
+- `GET /api/tasks/{task_id}/reservations`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/approve`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/decline`
+- `POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel`
+- `POST /api/tasks/{task_id}/submissions`
+- `GET /api/tasks/{task_id}/submissions`
+- `GET /api/users/{user_id}/submissions`
+- `POST /api/tasks/{task_id}/submissions/{submission_id}/accept`
+- `GET /api/credits/balance`
+- `GET /api/credits/ledger`
+- `GET /api/organizations/{organization_id}/credits/balance`
+- `GET /api/organizations/{organization_id}/credits/ledger`
 
 The handlers reject missing storage, missing clocks, missing actor identity,
 missing ID sources, unsupported routes, unsupported methods, invalid request
@@ -86,8 +123,19 @@ bodies, invalid privacy request kinds, invalid saved-queue scopes, and invalid
 triage states. Notification handlers also reject invalid pagination and
 actor/recipient mismatches. Organization handlers reject missing user resolvers
 for email-based member provisioning rather than fabricating anonymous or
-placeholder identities. They do not provide substitute stores for unimplemented
-routes.
+placeholder identities. Interaction handlers reject missing storage, clocks,
+actors, ID sources, missing task/submission records, invalid pagination,
+invalid attachments, invalid reservation transitions, invalid submission-task
+links, and invalid ledger owners. They do not provide substitute stores for
+unimplemented routes.
+
+## Host Adapter Shape
+
+`internal/wasmdemo` now has an explicit host-runtime shape for the WASM target.
+A host must provide storage, clock, actor/session, and interaction-ID adapters
+before request execution can run. `ValidateHostRuntime` rejects a missing host
+runtime or missing adapter with a clear error. This keeps the browser demo and
+future production WASM host from silently substituting process state.
 
 ## Compile Check
 
@@ -97,11 +145,19 @@ the main command:
 - `GOOS=js GOARCH=wasm go test -c -o /private/tmp/sharecrop-core-schema-submission.test.wasm ./internal/submission`
 - `GOOS=js GOARCH=wasm go test -c -o /private/tmp/sharecrop-http.test.wasm ./internal/http`
 - `GOOS=js GOARCH=wasm go build -o /private/tmp/sharecrop-cmd.wasm ./cmd/sharecrop`
+- `GOOS=js GOARCH=wasm go build -o /private/tmp/sharecrop-wasm-backend.wasm ./cmd/sharecrop-wasm`
 
 Observed artifact sizes on the local build were about 6.1 MB for the submission
 test package, 12 MB for the HTTP test package, and 24 MB for the command build.
 Plain `go test` produced WASM test binaries but could not execute them natively;
 running those tests requires a JS/WASM test runner.
+
+`deno task check:scenario-parity:wasm -- --wasm /private/tmp/sharecrop-wasm-backend.wasm`
+loads the compiled Go WASM binary through Go's `wasm_exec.js`, verifies the
+`sharecropWasmBackendStatus` and `sharecropHandleRequest` exports, and verifies
+that a classified submission route fails with the explicit "host runtime
+adapters are required" error until the host adapters are wired. The runner does
+not call `site/demo/backend.js` and does not emulate missing backend behavior.
 
 The compile check means basic Go/WASM compatibility is not the blocker. The
 blockers are broader request adaptation, enough browser storage adapters,
@@ -133,8 +189,10 @@ Replace `site/demo/backend.js` only after the WASM path can satisfy these gates:
 
 ## Next Spike Step
 
-The next WASM step is to add enough explicit browser-backed stores and request
-handlers for submissions, ledgers, collectibles, account-token flows,
-reservation/approval, and comments to run the shared scenario parity suite
-against the WASM handler. If a missing slice is discovered, it should fail
-loudly until that slice has an explicit browser storage adapter and handler.
+The next WASM step is to wire real host adapters into the Go `js/wasm` command
+and run shared scenario parity against the exported request handler. Remaining
+behavior slices include collectibles, account-token flows, admin operations,
+privacy resolution/redaction jobs, moderation projection writes, deterministic
+demo seeding/reset, and request execution through browser storage adapters. If a
+missing slice is discovered, it should fail loudly until that slice has an
+explicit browser storage adapter and handler.

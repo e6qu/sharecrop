@@ -66,16 +66,15 @@ Known risks:
   and a multi-actor reservation/submission-review/payout flow, but they do not
   prove every handler has identical domain semantics.
 - Go/WASM is a first-class backend execution target, not only a demo mechanism.
-  Go code compiles to `js/wasm` for representative packages and the main
-  command. A narrow `internal/wasmdemo` request-adapter spike exists for
-  privacy, moderation, saved-queue-view, task, notification, organization,
-  organization-member, and team route
-  classification, and explicit privacy-request, moderation-triage,
-  saved-queue-view, task, attachment, notification, organization,
-  organization-member, and team browser storage plus request-handler boundaries
-  exist. The WASM backend target still lacks enough explicit host-backed stores
-  and handlers to run the shared scenario parity suite, deterministic reset,
-  startup measurements, and a JS/WASM scenario test runner. JavaScript
+  Go code compiles to `js/wasm` for representative packages, the main command,
+  and `cmd/sharecrop-wasm`. `internal/wasmdemo` classifies privacy, moderation,
+  saved-queue-view, task, notification, organization, organization-member, team,
+  comment, reservation, submission, and ledger routes. It has explicit
+  browser-storage and request-handler boundaries for those slices. A Deno WASM
+  runner loads a compiled Go `.wasm` artifact and verifies required exports.
+  The WASM backend target still lacks wired host runtime adapters, enough
+  behavior slices to run the shared scenario parity suite through the exported
+  request handler, deterministic reset, and startup measurements. JavaScript
   reimplementations, generated fake backends, and fallback stores are not valid
   substitutes for the compiled Go WASM binary.
 

@@ -1,5 +1,40 @@
 # What We Did
 
+`task/wasm-submission-parity-host-adapters` expanded the Go/WASM backend target
+and interaction parity groundwork:
+
+- **WASM interaction slices.** `internal/wasmdemo` now classifies task-comment,
+  submission-comment, reservation, submission, user-submission, user-ledger, and
+  organization-ledger routes. It has explicit browser-storage boundaries and
+  request handlers for task/submission comments, reservation create/list/
+  approve/decline/cancel, submission create/list/accept, user submission lists,
+  ledger entries, and balances. Missing storage, clocks, actors, ID sources,
+  invalid pages, invalid attachments, invalid records, invalid reservation
+  transitions, invalid submission-task links, unsupported methods, and
+  unsupported routes reject explicitly without fallback stores.
+- **Host adapter shape.** `internal/wasmdemo` now defines explicit host request
+  and host runtime validation shapes. A host must provide storage, clock,
+  actor/session, and interaction-ID adapters before request execution can run.
+- **Compiled Go WASM target.** Added `cmd/sharecrop-wasm`, which builds with
+  `GOOS=js GOARCH=wasm` and exports `sharecropWasmBackendStatus` and
+  `sharecropHandleRequest`. The current exported handler classifies routes and
+  fails with a host-adapter-required error until host runtime adapters are
+  wired.
+- **WASM runner.** Added `tools/run_wasm_scenario_parity.ts` and
+  `deno task check:scenario-parity:wasm`, which load a compiled Go WASM
+  artifact through Go's `wasm_exec.js` and verify required Sharecrop exports
+  without calling `site/demo/backend.js`.
+- **Docs.** The WASM target, status, next-task queue, and risks were refreshed
+  to record the new interaction slices, host adapter requirement, and remaining
+  work before the JavaScript demo backend can be replaced.
+- **Verification.** Passed: `go test ./...`; `deno task check:ts`;
+  `deno task lint`; `deno task check:policy`; `deno task test`;
+  `deno fmt --check deno.json tools tests site/demo/backend.js`; `make
+  check-contracts`; `go tool deadcode -test ./...`; `GOOS=js GOARCH=wasm go
+  build -o /private/tmp/sharecrop-wasm-backend.wasm ./cmd/sharecrop-wasm`;
+  `deno task check:scenario-parity:wasm -- --wasm
+  /private/tmp/sharecrop-wasm-backend.wasm`; and `git diff --check`.
+
 `task/wasm-org-team-parity-contracts-rawid` expanded WASM demo groundwork,
 organization/member/team parity, contracts, and lifecycle coverage:
 
