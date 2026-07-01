@@ -64,9 +64,12 @@ function assertStatus(
   expected: number,
   label: string,
 ): void {
+  const error = typeof response.json.error === "string"
+    ? `: ${response.json.error}`
+    : "";
   assertScenario(
     response.status === expected,
-    `${label} status ${response.status}, want ${expected}`,
+    `${label} status ${response.status}, want ${expected}${error}`,
   );
 }
 
@@ -144,6 +147,30 @@ function assertNotificationShape(notification: JsonRecord): void {
     "metadata_json",
     "created_at",
   ].forEach((key) => requireString(notification, key));
+}
+
+function assertDistinctPagedRows(
+  firstPage: unknown[],
+  secondPage: unknown[],
+  idKey: string,
+  label: string,
+): void {
+  assertScenario(
+    firstPage.length <= 1,
+    `${label} first page must honor limit`,
+  );
+  assertScenario(
+    secondPage.length <= 1,
+    `${label} second page must honor limit`,
+  );
+  if (firstPage.length === 1 && secondPage.length === 1) {
+    const first = requireRecord(firstPage[0], `${label} first row`);
+    const second = requireRecord(secondPage[0], `${label} second row`);
+    assertScenario(
+      requireString(first, idKey) !== requireString(second, idKey),
+      `${label} pagination offsets must return distinct rows when both pages are populated`,
+    );
+  }
 }
 
 function requireMetadataRecord(value: JsonRecord, label: string): JsonRecord {
@@ -517,6 +544,7 @@ export async function runSharedScenarioParity(
     },
     response_schema_json: '{"kind":"freeform"}',
     payload: { kind: "none", json: "" },
+    placement: { kind: "standalone" },
   });
   assertStatus(collectibleRewardTask, 201, "create collectible reward task");
   assertScenario(
@@ -661,6 +689,7 @@ export async function runSharedScenarioParity(
     },
     response_schema_json: '{"kind":"freeform"}',
     payload: { kind: "none", json: "" },
+    placement: { kind: "standalone" },
   });
   assertStatus(orgReviewTask, 201, "create org reviewer task");
   const orgReviewTaskID = requireString(orgReviewTask.json, "id");
@@ -709,6 +738,25 @@ export async function runSharedScenarioParity(
     "org reviewer accept must pay the submitting worker",
   );
 
+  const orgLedgerFirstPage = await client.request(
+    "GET",
+    `/api/organizations/${organizationID}/credits/ledger?limit=1&offset=0`,
+    noScenarioBody,
+  );
+  assertStatus(orgLedgerFirstPage, 200, "organization ledger first page");
+  const orgLedgerSecondPage = await client.request(
+    "GET",
+    `/api/organizations/${organizationID}/credits/ledger?limit=1&offset=1`,
+    noScenarioBody,
+  );
+  assertStatus(orgLedgerSecondPage, 200, "organization ledger second page");
+  assertDistinctPagedRows(
+    requireArray(orgLedgerFirstPage.json, "entries"),
+    requireArray(orgLedgerSecondPage.json, "entries"),
+    "id",
+    "organization ledger",
+  );
+
   const taskTitle = uniqueName("Scenario parity task");
   const taskAttachment = {
     name: "brief.txt",
@@ -734,6 +782,7 @@ export async function runSharedScenarioParity(
     },
     response_schema_json: '{"kind":"freeform"}',
     payload: { kind: "none", json: "" },
+    placement: { kind: "standalone" },
     attachments: [taskAttachment],
   });
   assertStatus(createdTask, 201, "create task");
@@ -912,6 +961,7 @@ export async function runSharedScenarioParity(
       },
       response_schema_json: '{"kind":"freeform"}',
       payload: { kind: "none", json: "" },
+      placement: { kind: "standalone" },
     },
   );
   assertStatus(
@@ -1100,9 +1150,16 @@ export async function runSharedScenarioParity(
       ],
     }),
     payload: { kind: "none", json: "" },
+    placement: { kind: "standalone" },
   });
   assertStatus(submissionTask, 201, "create submission task");
   const submissionTaskID = requireString(submissionTask.json, "id");
+  const openedSubmissionTask = await client.request(
+    "POST",
+    `/api/tasks/${submissionTaskID}/open`,
+    {},
+  );
+  assertStatus(openedSubmissionTask, 200, "open submission task");
 
   const submissionAttachment = {
     name: "evidence.png",
@@ -1270,6 +1327,7 @@ export async function runSharedScenarioParity(
     },
     response_schema_json: '{"kind":"freeform"}',
     payload: { kind: "none", json: "" },
+    placement: { kind: "standalone" },
   });
   assertStatus(multiActorTask, 201, "create multi-actor task");
   const multiActorTaskID = requireString(multiActorTask.json, "id");
@@ -1446,6 +1504,25 @@ export async function runSharedScenarioParity(
     "worker balance must include payout and tip",
   );
 
+  const workerLedgerFirstPage = await worker.client.request(
+    "GET",
+    "/api/credits/ledger?limit=1&offset=0",
+    noScenarioBody,
+  );
+  assertStatus(workerLedgerFirstPage, 200, "worker ledger first page");
+  const workerLedgerSecondPage = await worker.client.request(
+    "GET",
+    "/api/credits/ledger?limit=1&offset=1",
+    noScenarioBody,
+  );
+  assertStatus(workerLedgerSecondPage, 200, "worker ledger second page");
+  assertDistinctPagedRows(
+    requireArray(workerLedgerFirstPage.json, "entries"),
+    requireArray(workerLedgerSecondPage.json, "entries"),
+    "id",
+    "worker ledger",
+  );
+
   const ownerNotifications = await owner.client.request(
     "GET",
     "/api/notifications",
@@ -1485,6 +1562,32 @@ export async function runSharedScenarioParity(
   assertScenario(
     acceptedNotification !== undefined,
     "worker inbox must include owner acceptance notification",
+  );
+  const workerNotificationsFirstPage = await worker.client.request(
+    "GET",
+    "/api/notifications?limit=1&offset=0",
+    noScenarioBody,
+  );
+  assertStatus(
+    workerNotificationsFirstPage,
+    200,
+    "worker notifications first page",
+  );
+  const workerNotificationsSecondPage = await worker.client.request(
+    "GET",
+    "/api/notifications?limit=1&offset=1",
+    noScenarioBody,
+  );
+  assertStatus(
+    workerNotificationsSecondPage,
+    200,
+    "worker notifications second page",
+  );
+  assertDistinctPagedRows(
+    requireArray(workerNotificationsFirstPage.json, "notifications"),
+    requireArray(workerNotificationsSecondPage.json, "notifications"),
+    "id",
+    "worker notifications",
   );
   const readAcceptedNotification = await worker.client.request(
     "POST",

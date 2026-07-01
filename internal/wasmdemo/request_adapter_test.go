@@ -28,6 +28,8 @@ func TestAdaptRecognizesPrivacyAndModerationRoutes(t *testing.T) {
 		{name: "upsert saved queue view", method: MethodPost, path: "/api/saved-queue-views", route: RouteSavedQueueViews},
 		{name: "create task", method: MethodPost, path: "/api/tasks", route: RouteTasks},
 		{name: "get task", method: MethodGet, path: "/api/tasks/task-1", route: RouteTasks},
+		{name: "list notifications", method: MethodGet, path: "/api/notifications?limit=1&offset=0", route: RouteNotifications},
+		{name: "mark notification read", method: MethodPost, path: "/api/notifications/notification-1/read", route: RouteNotifications},
 	}
 
 	for _, tc := range cases {

@@ -259,6 +259,91 @@ func TestTaskBrowserStorageRejectsInvalidState(t *testing.T) {
 	}
 }
 
+func TestNotificationBrowserStorageListsAndMarksRead(t *testing.T) {
+	storage := newTestBrowserStorage()
+	first := StoredNotification{
+		ID:              "notification-1",
+		RecipientUserID: "user-2",
+		ActorUserID:     "user-1",
+		Kind:            "submission_created",
+		SubjectKind:     "submission",
+		SubjectID:       "submission-1",
+		State:           "unread",
+		MetadataJSON:    `{"task_id":"task-1"}`,
+		CreatedAt:       "2026-07-01T10:00:00Z",
+	}
+	second := first
+	second.ID = "notification-2"
+	second.Kind = "submission_accepted"
+
+	if _, matched := SaveNotification(storage, first).(NotificationStored); !matched {
+		t.Fatalf("first notification save was rejected")
+	}
+	if _, matched := SaveNotification(storage, second).(NotificationStored); !matched {
+		t.Fatalf("second notification save was rejected")
+	}
+
+	pageResult := NewNotificationPage(1, 0)
+	page, pageMatched := pageResult.(NotificationPageAccepted)
+	if !pageMatched {
+		t.Fatalf("page result = %T, want NotificationPageAccepted", pageResult)
+	}
+	listResult := ListNotifications(storage, "user-2", page.Value)
+	listed, listedMatched := listResult.(NotificationsStored)
+	if !listedMatched {
+		t.Fatalf("list result = %T, want NotificationsStored", listResult)
+	}
+	if len(listed.Values) != 1 || listed.Values[0].ID != "notification-2" {
+		t.Fatalf("first page = %#v", listed.Values)
+	}
+
+	markResult := MarkNotificationRead(storage, "notification-2", "user-2")
+	marked, markedMatched := markResult.(NotificationStored)
+	if !markedMatched {
+		t.Fatalf("mark result = %T, want NotificationStored", markResult)
+	}
+	if marked.Value.State != "read" {
+		t.Fatalf("state = %q, want read", marked.Value.State)
+	}
+}
+
+func TestNotificationPageRejectsInvalidValues(t *testing.T) {
+	result := NewNotificationPage(0, 0)
+	rejected, matched := result.(NotificationPageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want NotificationPageRejected", result)
+	}
+	if rejected.Reason != "notification page limit is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestNotificationBrowserStorageRejectsMismatchedActor(t *testing.T) {
+	storage := newTestBrowserStorage()
+	if _, matched := SaveNotification(storage, StoredNotification{
+		ID:              "notification-1",
+		RecipientUserID: "user-2",
+		ActorUserID:     "user-1",
+		Kind:            "submission_created",
+		SubjectKind:     "submission",
+		SubjectID:       "submission-1",
+		State:           "unread",
+		MetadataJSON:    `{}`,
+		CreatedAt:       "2026-07-01T10:00:00Z",
+	}).(NotificationStored); !matched {
+		t.Fatalf("notification save was rejected")
+	}
+
+	result := MarkNotificationRead(storage, "notification-1", "user-3")
+	rejected, matched := result.(NotificationStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want NotificationStorageRejected", result)
+	}
+	if rejected.Reason != "notification does not belong to actor" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
 func TestAttachmentBrowserStorageRoundTrip(t *testing.T) {
 	storage := newTestBrowserStorage()
 	attachment := StoredAttachment{

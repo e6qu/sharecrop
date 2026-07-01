@@ -6,7 +6,7 @@ No confirmed high-traffic browser workflow requires a user to type a raw ID when
 directory data is already available.
 
 Current scan source: `rg` over `web/elm`, `docs`, and browser tests on
-2026-06-30.
+2026-07-01.
 
 Picker-backed or paginated flows are used for common user, team, organization,
 task, and admin list selection:
@@ -21,10 +21,13 @@ task, and admin list selection:
 - platform-admin grant selection
 - admin audit, platform-admin, privacy-request, and moderation-report lists
 - user submission history pagination
+- browser ledger, organization ledger, and notification pagination
+- small task/submission attachment pickers
 
 The current source scan still shows task-ID text in queue search placeholders,
 where IDs are an optional search term rather than the only way to complete the
-flow. Series task management remains picker-backed.
+flow. Series task management and collectible award task selection remain
+picker-backed.
 
 ## Remaining ID Surfaces
 

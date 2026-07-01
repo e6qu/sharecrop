@@ -229,6 +229,60 @@ test("requesters upload small task attachments through the real backend", async 
   );
 });
 
+test("requesters see attachment guardrails through the real backend UI", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "upload-edge-owner");
+  const title = `Attachment guardrails ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill(
+    "Task attachment guardrails through the DB-backed UI.",
+  );
+  await page.getByTestId("create-visibility-public").click();
+
+  async function pickAttachment(
+    name: string,
+    mimeType: string,
+    buffer: Buffer,
+  ): Promise<void> {
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByTestId("create-attachments-pick").click();
+    await (await chooser).setFiles({ name, mimeType, buffer });
+  }
+
+  await pickAttachment(
+    "archive.bin",
+    "application/octet-stream",
+    Buffer.from("not allowed"),
+  );
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Attachment type is not allowed.",
+  );
+
+  await pickAttachment(
+    "large.txt",
+    "text/plain",
+    Buffer.alloc(500 * 1024 + 1, "x"),
+  );
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Attachment must be under 500 KiB.",
+  );
+
+  for (let index = 0; index < 5; index += 1) {
+    await pickAttachment(
+      `brief-${index}.txt`,
+      "text/plain",
+      Buffer.from(`hello ${index}`),
+    );
+  }
+  await expect(page.getByTestId("selected-attachment")).toHaveCount(5);
+  await page.getByTestId("create-attachments-pick").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Attach up to 5 files.",
+  );
+});
+
 test("users create and see their organizations", async ({ page, request }) => {
   const owner = await registerViaApi(request, "org-ui-owner");
   const name = `Org UI ${crypto.randomUUID()}`;

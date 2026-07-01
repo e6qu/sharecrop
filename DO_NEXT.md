@@ -5,8 +5,13 @@ Current priority from
 
 Active branch:
 
-1. `task/real-parity-wasm-contracts-pagination-hardening` is ready for pull
-   request review.
+1. `task/real-parity-wasm-submission-contracts-rawid-attachments` is in
+   review. It cleaned post-merge continuity, added local real API
+   shared-scenario parity execution support, added a no-fallback WASM
+   notification slice, expanded shared scenario pagination coverage, expanded
+   HTTP contract fixtures, refreshed the raw-ID browser-flow audit, added
+   DB-backed attachment edge-case browser coverage, and updated continuity
+   docs.
 
 Next recommended work:
 
@@ -17,12 +22,13 @@ Next recommended work:
    persisted saved queue views, organization reviewer acceptance, sensitive-field
    response metadata/redaction state, privacy
    request/audit/resolution/retention shape, moderation report/admin-list/audit
-   triage shape, platform-admin grant/revoke/audit shape, admin audit
-   pagination, user-submission pagination, and multi-actor
-   reservation/submission acceptance.
-2. Run the shared scenario parity suite against a real API when an admin token
-   is available. The runner accepts `--origin` plus `--token` or
-   `--token-file` and probes `/healthz` before executing the scenarios.
+   triage shape, platform-admin grant/revoke/audit shape, admin audit,
+   personal-ledger, organization-ledger, notification, and user-submission
+   pagination, and multi-actor reservation/submission acceptance.
+2. Keep running shared scenario parity against real APIs as behavior changes.
+   The explicit-session runner accepts `--origin`, access-token input, and
+   refresh-token input. The local real runner can register a scenario admin and
+   grant platform-admin state through `DATABASE_URL` and `psql`.
 3. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
 4. Audit remaining raw-ID browser flows and replace high-traffic fields with
@@ -31,14 +37,33 @@ Next recommended work:
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 5. Add enough explicit browser-backed stores and request handlers for the WASM
    demo path to run the shared scenario parity suite without fallback stores.
-   Privacy-request, moderation-triage, saved-queue-view, task, and attachment
-   storage/handler slices now exist.
+   Privacy-request, moderation-triage, saved-queue-view, task, attachment, and
+   notification storage/handler slices now exist.
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
 7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The real-parity-wasm-submission-contracts-rawid-attachments branch added a
+   local real API shared scenario parity runner that registers a scenario admin,
+   grants platform-admin state through `DATABASE_URL` and `psql`, and runs the
+   same shared suite against a real local API.
+1. The branch updated the explicit real scenario runner to carry refresh-token
+   cookies, accept refresh-token file input, and include response error context
+   in status failures.
+1. The branch tightened shared scenario parity to satisfy the real task-create
+   and submission lifecycle contract, then added adjacent one-row pagination
+   checks for personal ledger, organization ledger, and notifications.
+1. The branch added a no-fallback WASM demo notification browser store,
+   notification route classification, and list/mark-read request handlers with
+   actor-scoped validation.
+1. The branch expanded HTTP fixture coverage for task owner, visibility,
+   placement, and payload request subshapes.
+1. The branch refreshed the raw-ID audit and WASM/demo parity docs.
+1. The branch added DB-backed Playwright coverage for rejected attachment type,
+   oversized file, and five-file limit UI guardrails.
 
 1. The real-parity-wasm-contracts-pagination-hardening branch hardened the real
    shared scenario parity runner with `/healthz` probing, `--token-file`, and

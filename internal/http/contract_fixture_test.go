@@ -239,6 +239,26 @@ func TestAttachmentRequestWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"name":"brief.txt","content_type":"text/plain","data_url":"data:text/plain;base64,aGVsbG8="}`)
 }
 
+func TestTaskOwnerRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskOwnerRequest{Kind: "organization_team", OrganizationID: "org-1", TeamID: "team-1"})
+	assertWireShape(t, encoded, err, `{"kind":"organization_team","user_id":"","team_id":"team-1","organization_id":"org-1"}`)
+}
+
+func TestTaskVisibilityRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskVisibilityRequest{Kind: "team", TeamID: "team-1"})
+	assertWireShape(t, encoded, err, `{"kind":"team","user_id":"","team_id":"team-1","organization_id":""}`)
+}
+
+func TestTaskPlacementRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskPlacementRequest{Kind: "new_series", SeriesTitle: "Release checks", SeriesPosition: 1})
+	assertWireShape(t, encoded, err, `{"kind":"new_series","series_id":"","series_title":"Release checks","series_position":1}`)
+}
+
+func TestTaskPayloadRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskPayloadRequest{Kind: "json", JSON: `{"batch":"A"}`})
+	assertWireShape(t, encoded, err, `{"kind":"json","json":"{\"batch\":\"A\"}"}`)
+}
+
 func TestAttachmentResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(attachmentResponse{Name: "brief.txt", ContentType: "text/plain", SizeBytes: 5, DataURL: "data:text/plain;base64,aGVsbG8="})
 	assertWireShape(t, encoded, err, `{"name":"brief.txt","content_type":"text/plain","size_bytes":5,"data_url":"data:text/plain;base64,aGVsbG8="}`)
