@@ -196,6 +196,69 @@ func TestSavedQueueViewBrowserStorageRejectsCorruptStoredRecord(t *testing.T) {
 	}
 }
 
+func TestTaskBrowserStorageRoundTrip(t *testing.T) {
+	storage := newTestBrowserStorage()
+	task := StoredTask{
+		ID:                     "task-1",
+		OwnerKind:              "user",
+		OwnerID:                "user-1",
+		Title:                  "Label receipts",
+		Description:            "Extract totals.",
+		TaskType:               "general",
+		RewardKind:             "none",
+		ParticipationPolicy:    "open",
+		AssigneeScope:          "user",
+		ReservationExpiryHours: 48,
+		State:                  "draft",
+		VisibilityKind:         "public",
+		SeriesKind:             "standalone",
+		ResponseSchemaJSON:     `{"kind":"freeform"}`,
+		PayloadKind:            "none",
+		CreatedBy:              "user-1",
+	}
+
+	saveResult := SaveTask(storage, task)
+	if _, matched := saveResult.(TaskStored); !matched {
+		t.Fatalf("save result = %T, want TaskStored", saveResult)
+	}
+	loadResult := LoadTask(storage, "task-1")
+	loaded, matched := loadResult.(TaskStored)
+	if !matched {
+		t.Fatalf("load result = %T, want TaskStored", loadResult)
+	}
+	if loaded.Value.Title != "Label receipts" || loaded.Value.State != "draft" {
+		t.Fatalf("loaded task = %#v", loaded.Value)
+	}
+}
+
+func TestTaskBrowserStorageRejectsInvalidState(t *testing.T) {
+	result := SaveTask(newTestBrowserStorage(), StoredTask{
+		ID:                     "task-1",
+		OwnerKind:              "user",
+		OwnerID:                "user-1",
+		Title:                  "Label receipts",
+		Description:            "Extract totals.",
+		TaskType:               "general",
+		RewardKind:             "none",
+		ParticipationPolicy:    "open",
+		AssigneeScope:          "user",
+		ReservationExpiryHours: 48,
+		State:                  "unknown",
+		VisibilityKind:         "public",
+		SeriesKind:             "standalone",
+		ResponseSchemaJSON:     `{"kind":"freeform"}`,
+		PayloadKind:            "none",
+		CreatedBy:              "user-1",
+	})
+	rejected, matched := result.(TaskStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want TaskStorageRejected", result)
+	}
+	if rejected.Reason != "task state is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
 func TestAttachmentBrowserStorageRoundTrip(t *testing.T) {
 	storage := newTestBrowserStorage()
 	attachment := StoredAttachment{
@@ -250,6 +313,27 @@ func TestAttachmentBrowserStorageRejectsOversizedAttachment(t *testing.T) {
 		t.Fatalf("result = %T, want AttachmentStorageRejected", result)
 	}
 	if rejected.Reason != "attachment size is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestAttachmentBrowserStorageRejectsTooManyAttachments(t *testing.T) {
+	attachments := make([]StoredAttachment, 0, maxStoredAttachments+1)
+	for index := 0; index < maxStoredAttachments+1; index++ {
+		attachments = append(attachments, StoredAttachment{
+			Name:        "brief.txt",
+			ContentType: "text/plain",
+			SizeBytes:   5,
+			DataURL:     "data:text/plain;base64,aGVsbG8=",
+		})
+	}
+
+	result := SaveAttachments(newTestBrowserStorage(), "task", "task-1", attachments)
+	rejected, matched := result.(AttachmentStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want AttachmentStorageRejected", result)
+	}
+	if rejected.Reason != "too many attachments" {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }

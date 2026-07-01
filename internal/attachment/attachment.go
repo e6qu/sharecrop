@@ -8,6 +8,7 @@ import (
 )
 
 const MaxBytes = 500 * 1024
+const MaxCount = 5
 
 type Attachment struct {
 	Name        Name

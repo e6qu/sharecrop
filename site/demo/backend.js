@@ -246,6 +246,7 @@
   }
 
   const attachmentMaxBytes = 500 * 1024;
+  const attachmentMaxCount = 5;
   const attachmentTypes = new Set([
     "image/png",
     "image/jpeg",
@@ -260,6 +261,9 @@
     if (raw === undefined || raw === null) return { ok: true, value: [] };
     if (!Array.isArray(raw)) {
       return { ok: false, reason: "attachments must be an array" };
+    }
+    if (raw.length > attachmentMaxCount) {
+      return { ok: false, reason: "too many attachments" };
     }
     const values = [];
     for (const item of raw) {
@@ -545,7 +549,7 @@
       reward_credit_amount: 80,
       escrow: 80,
       response_schema_json: invoiceSchema,
-      payload_kind: "inline",
+      payload_kind: "json",
       payload_json: pretty({
         invoices: [
           "INV-1041 | Birch Supply Co | Grand total: $1,240.55 | Due 12 Jul 2026",
@@ -568,7 +572,7 @@
       escrow: 45,
       participation_policy: "open",
       response_schema_json: ticketSchema,
-      payload_kind: "inline",
+      payload_kind: "json",
       payload_json: pretty({
         tickets: [
           "1. You charged my card again after I cancelled my plan last month",
@@ -593,7 +597,7 @@
       visibility_id: "org-lattice",
       response_schema_json: ledgerSchema,
       assignee_scope: "user",
-      payload_kind: "inline",
+      payload_kind: "json",
       payload_json: pretty({
         banned_accounts: ["ACC-666", "ACC-999"],
         transfers: [
@@ -690,7 +694,7 @@
       reward_collectible_count: 1,
       escrow: 25,
       response_schema_json: expenseSchema,
-      payload_kind: "inline",
+      payload_kind: "json",
       payload_json: pretty({
         categories: ["travel", "meals", "software", "office"],
         expenses: [
@@ -740,7 +744,7 @@
       reward_credit_amount: 30,
       escrow: 30,
       response_schema_json: dateSchema,
-      payload_kind: "inline",
+      payload_kind: "json",
       payload_json: pretty({
         dates: [
           "March 5, 2026",
@@ -766,7 +770,7 @@
       reward_credit_amount: 36,
       escrow: 36,
       response_schema_json: reviewSchema,
-      payload_kind: "inline",
+      payload_kind: "json",
       payload_json: pretty({
         reviews: [
           "Rating: 4/5 — Orchard Boots: great grip, runs a half size small",
@@ -790,7 +794,7 @@
       reward_credit_amount: 20,
       escrow: 20,
       response_schema_json: '{"kind":"freeform"}',
-      payload_kind: "inline",
+      payload_kind: "json",
       payload_json: pretty({
         changelog: [
           "PROj-412: fix null deref when exporting empty report",
@@ -1403,7 +1407,11 @@
     "/api/credits/balance",
     (_p, _url, _body, actorId) => ok({ amount: balanceFor(actorId) }),
   );
-  on("GET", "/api/credits/ledger", () => ok({ entries: db.ledger }));
+  on(
+    "GET",
+    "/api/credits/ledger",
+    (_p, url) => ok({ entries: listPage(new URL(url), db.ledger) }),
+  );
 
   on("GET", "/api/tasks", (_p, url, _body, actorId) => {
     const scope = url.searchParams.get("scope") || "";
@@ -1492,7 +1500,7 @@
       reference_url: body.reference_url || "",
       payload_kind:
         (body.payload && body.payload.kind === "json" && body.payload.json)
-          ? "inline"
+          ? "json"
           : "none",
       payload_json: (body.payload && body.payload.kind === "json")
         ? body.payload.json
@@ -2472,10 +2480,11 @@
       return ok(request);
     },
   );
-  on("GET", "/api/notifications", (_p, _url, _body, actorId) =>
+  on("GET", "/api/notifications", (_p, url, _body, actorId) =>
     ok({
-      notifications: db.notifications.filter((n) =>
-        n.recipient_user_id === actorId
+      notifications: listPage(
+        new URL(url),
+        db.notifications.filter((n) => n.recipient_user_id === actorId),
       ),
     }));
   on("POST", "/api/notifications/:id/read", (p, _url, _body, actorId) => {
@@ -2537,9 +2546,12 @@
     "/api/organizations/:id/credits/balance",
     (p) => ok({ amount: db.orgBalances[p.id] || 0 }),
   );
-  on("GET", "/api/organizations/:id/credits/ledger", (p) =>
+  on("GET", "/api/organizations/:id/credits/ledger", (p, url) =>
     ok({
-      entries: db.ledger.filter((entry) => entry.organization_id === p.id),
+      entries: listPage(
+        new URL(url),
+        db.ledger.filter((entry) => entry.organization_id === p.id),
+      ),
     }));
   on("GET", "/api/organizations/:id/audit-events", (p, url) =>
     ok({

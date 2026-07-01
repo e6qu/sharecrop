@@ -20,6 +20,9 @@ func (attachmentsRequestAccepted) attachmentsRequestResult() {}
 func (attachmentsRequestRejected) attachmentsRequestResult() {}
 
 func attachmentsFromRequest(values []attachmentRequest) attachmentsRequestResult {
+	if len(values) > attachment.MaxCount {
+		return attachmentsRequestRejected{reason: "too many attachments"}
+	}
 	attachments := make([]attachment.Attachment, 0, len(values))
 	for index := range values {
 		result := attachment.NewAttachment(values[index].Name, values[index].ContentType, values[index].DataURL)

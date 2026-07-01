@@ -297,8 +297,9 @@ Missing or partial:
 
 - Retention automation remains operator-triggered rather than a background
   scheduler.
-- Small task and submission attachments exist for files/images under 500 KiB.
-  Object storage for larger attachments is not implemented.
+- Small task and submission attachments exist for up to five files/images per
+  request under 500 KiB each. Object storage for larger attachments is not
+  implemented.
 
 ### Lists, Search, And Navigation
 

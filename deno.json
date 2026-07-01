@@ -11,7 +11,7 @@
     "frontend:build": "deno task elm:build && deno task css:build && deno run --allow-read --allow-write tools/copy_static_to_demo.ts",
     "check:policy": "deno run --allow-read tools/check_policy.ts",
     "check:pages-routing": "deno run --allow-net tools/check_pages_routing.ts",
-    "check:scenario-parity": "deno run --allow-net tools/run_scenario_parity.ts",
+    "check:scenario-parity": "deno run --allow-net --allow-read tools/run_scenario_parity.ts",
     "check:ts": "deno check tools/*.ts tests/**/*.ts",
     "lint": "deno lint tools tests",
     "test": "deno test --allow-read tests/deno",

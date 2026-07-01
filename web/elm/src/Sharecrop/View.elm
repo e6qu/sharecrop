@@ -340,6 +340,7 @@ inboxView state =
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "inbox-list" ]
                 (List.map notificationRow state.notifications)
+        , paginationControls "inbox-page" PreviousNotificationsPageClicked NextNotificationsPageClicked state.notificationsOffset
         , maybeNote state.inboxMessage "inbox-message"
         ]
 
@@ -1129,7 +1130,7 @@ overviewView state =
     div [ Html.Attributes.class "space-y-6", testId "overview" ]
         [ Ui.sectionTitle "Credit account"
         , balanceView state.balance
-        , ledgerView state.entries
+        , ledgerView state.entries state.ledgerOffset
         ]
 
 
@@ -1248,13 +1249,13 @@ organizationOperationsDashboard state =
             , operationMetric "Open tasks" (String.fromInt (countTasks Task.TaskStateOpen state.orgTasks)) "org-ops-tasks-open"
             , operationMetric "Closed tasks" (String.fromInt (countTasks Task.TaskStateClosed state.orgTasks)) "org-ops-tasks-closed"
             ]
-        , orgLedgerPanel state.orgLedger
+        , orgLedgerPanel state.orgLedger state.orgLedgerOffset
         , orgAuditPanel state.orgAuditEvents
         ]
 
 
-orgLedgerPanel : List Ledger.LedgerEntryResponse -> Html Msg
-orgLedgerPanel entries =
+orgLedgerPanel : List Ledger.LedgerEntryResponse -> Int -> Html Msg
+orgLedgerPanel entries offset =
     div [ Html.Attributes.class "space-y-2", testId "org-ledger-panel" ]
         [ h3 [ Html.Attributes.class "text-sm font-semibold text-slate-900" ] [ text "Organization ledger" ]
         , if List.isEmpty entries then
@@ -1264,6 +1265,7 @@ orgLedgerPanel entries =
             table [ Html.Attributes.class "w-full text-left text-sm" ]
                 [ tbody [ testId "org-ledger" ] (List.map ledgerRow entries)
                 ]
+        , paginationControls "org-ledger-page" PreviousOrgLedgerPageClicked NextOrgLedgerPageClicked offset
         ]
 
 
@@ -1909,8 +1911,8 @@ participationButton selectedPolicy policy =
         (participationPolicyLabel policy)
 
 
-ledgerView : List Ledger.LedgerEntryResponse -> Html Msg
-ledgerView entries =
+ledgerView : List Ledger.LedgerEntryResponse -> Int -> Html Msg
+ledgerView entries offset =
     Ui.card
         [ Ui.sectionTitle "Ledger"
         , table [ Html.Attributes.class "w-full text-left text-sm" ]
@@ -1922,6 +1924,7 @@ ledgerView entries =
                 ]
             , tbody [ testId "ledger" ] (List.map ledgerRow entries)
             ]
+        , paginationControls "ledger-page" PreviousLedgerPageClicked NextLedgerPageClicked offset
         ]
 
 
@@ -2584,7 +2587,7 @@ referenceBlock detail =
 
 taskInputBlock : TaskDetail -> List (Html Msg)
 taskInputBlock detail =
-    if (detail.payloadKind == "inline" || detail.payloadKind == "json") && detail.payloadJson /= "" then
+    if detail.payloadKind == "json" && detail.payloadJson /= "" then
         [ Ui.label_ "Task input", Ui.codeBlock [ testId "detail-input" ] detail.payloadJson ]
 
     else

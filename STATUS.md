@@ -1,16 +1,18 @@
 # Status
 
-The repository contains pull request 1 through pull request 92 work, merged into
-`main`, plus the current `task/parity-contract-wasm-pagination-uploads` branch.
+The repository contains pull request 1 through pull request 93 work, merged into
+`main`, plus the current
+`task/real-parity-wasm-contracts-pagination-hardening` branch.
 
-Active task: `task/parity-contract-wasm-pagination-uploads` added shared
-scenario parity for small attachments, fixture-level HTTP contract coverage,
-raw-ID audit refresh, explicit WASM demo attachment storage, user-submission
-pagination, browser coverage for changed upload flows, deployed Pages routing
-verification, and small file/image uploads under 500 KiB. Hard deletes remain
-out of scope; use soft lifecycle states, anonymization, redaction, tombstones,
-and audit records. Email/provider delivery, anonymous worker identity,
-per-project tokens, external wallets, and crypto integrations are out of scope.
+Active task: `task/real-parity-wasm-contracts-pagination-hardening` added real
+API shared-scenario parity runner hardening, a no-fallback WASM demo
+task-handler/storage slice, expanded HTTP contract fixtures for attachments,
+browser/demo pagination fixes for ledger and notification lists, attachment
+count hardening, DB-backed upload browser coverage, and deployed Pages routing
+verification. Hard deletes remain out of scope; use soft lifecycle states,
+anonymization, redaction, tombstones, and audit records. Email/provider
+delivery, anonymous worker identity, per-project tokens, external wallets, and
+crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -132,6 +134,9 @@ Current implemented surface:
   team/organization queue search/type/sort behavior, persisted saved queue
   views, small task/submission attachments, and sensitive-field response
   metadata.
+- The real API shared scenario parity runner probes `/healthz`, accepts
+  `--token-file`, and reports invalid JSON with request context before running
+  the shared scenario suite.
 - A GitHub Pages routing check script verifies deployed root/docs/demo entry
   paths and demo assets after deployment.
 - The Pages workflow runs the deployed routing check after GitHub Pages
@@ -143,9 +148,13 @@ Current implemented surface:
 - Browser task and discovery lists have explicit pagination controls.
 - User submission history lists support `limit`/`offset` and browser
   previous/next controls.
-- Task creation and submission creation support small attachments under 500 KiB
-  for PNG, JPEG, GIF, WebP, plain text, JSON, and PDF. Attachment bytes are
-  stored inline for this small-file path and returned as data URLs with metadata.
+- Browser ledger, organization ledger, and notification inbox lists use
+  explicit `limit`/`offset` requests with previous/next controls. The
+  backendless demo honors the same pagination for those routes.
+- Task creation and submission creation support up to five small attachments
+  under 500 KiB each for PNG, JPEG, GIF, WebP, plain text, JSON, and PDF.
+  Attachment bytes are stored inline for this small-file path and returned as
+  data URLs with metadata.
 - Inbox notification rows link to the task when notification metadata includes
   `task_id`.
 - Submission comments notify the other side of the private submission discussion
@@ -165,10 +174,10 @@ Current implemented surface:
   is not part of the project direction.
 - The WASM demo backend spike is documented with explicit storage-adapter gates,
   local compile-check results, bundle-size observations, a narrow
-  `internal/wasmdemo` request-adapter package, explicit privacy-request and
-  moderation-triage, saved-queue-view, and attachment browser-storage
-  boundaries, narrow privacy-request, moderation-triage, and saved-queue-view
-  request handlers, and no fallback path.
+  `internal/wasmdemo` request-adapter package, explicit privacy-request,
+  moderation-triage, saved-queue-view, task, and attachment browser-storage
+  boundaries, narrow privacy-request, moderation-triage, saved-queue-view, and
+  task request handlers, and no fallback path.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -188,10 +197,13 @@ Current verification:
 - `deno task test` passed.
 - `deno fmt --check deno.json tools tests site/demo/backend.js` passed.
 - `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
-  check-contracts` generated stable Elm contracts; its diff gate is expected to
-  pass after the task commit contains the generated files.
-- `go tool deadcode -test ./...` passed.
+  check-contracts` passed.
+- `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode
+  -test ./...` passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build` passed.
+- `GOOS=js GOARCH=wasm
+  GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test -c -o
+  /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo` passed.
 - `deno task check:pages-routing -- --origin https://e6qu.github.io/sharecrop`
   passed.
 - `ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read

@@ -107,6 +107,7 @@ type alias LoggedInModel =
     , page : Page
     , balance : Maybe Int
     , entries : List Ledger.LedgerEntryResponse
+    , ledgerOffset : Int
     , createTitle : String
     , createDescription : String
     , createResponseSchema : String
@@ -182,6 +183,7 @@ type alias LoggedInModel =
     , activeOrgId : String
     , orgBalance : Maybe Int
     , orgLedger : List Ledger.LedgerEntryResponse
+    , orgLedgerOffset : Int
     , orgAuditEvents : List Admin.AuditEventResponse
     , orgTeams : List Team.TeamResponse
     , standaloneTeams : List Team.TeamResponse
@@ -282,6 +284,7 @@ type alias LoggedInModel =
     , auditSubjectIDFilter : String
     , adminMessage : Maybe String
     , notifications : List Notification.NotificationResponse
+    , notificationsOffset : Int
     , inboxMessage : Maybe String
     }
 
@@ -347,6 +350,8 @@ type Msg
     | PasswordResetConfirmed (Result Http.Error ())
     | BalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | LedgerReceived (Result Http.Error Ledger.LedgerResponse)
+    | PreviousLedgerPageClicked
+    | NextLedgerPageClicked
     | TasksReceived (Result Http.Error Task.TasksResponse)
     | TaskStateFilterChanged String
     | TaskListQueryChanged String
@@ -471,6 +476,8 @@ type Msg
     | CreateOrgReceived (Result Http.Error Organization.OrganizationResponse)
     | OrgBalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | OrgLedgerReceived (Result Http.Error Ledger.LedgerResponse)
+    | PreviousOrgLedgerPageClicked
+    | NextOrgLedgerPageClicked
     | OrgAuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
     | StandaloneTeamsReceived (Result Http.Error Team.TeamsResponse)
@@ -621,6 +628,8 @@ type Msg
     | AuditSubjectIDFilterChanged String
     | SearchAuditEventsClicked
     | NotificationsReceived (Result Http.Error Notification.NotificationsResponse)
+    | PreviousNotificationsPageClicked
+    | NextNotificationsPageClicked
     | MarkNotificationReadClicked String
     | NotificationReadReceived (Result Http.Error Notification.NotificationResponse)
 

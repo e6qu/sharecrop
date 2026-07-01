@@ -10,10 +10,11 @@ interface Options {
   token: string;
 }
 
-function parseArgs(args: string[]): Options {
+async function parseArgs(args: string[]): Promise<Options> {
   const normalized = args[0] === "--" ? args.slice(1) : args;
   let origin = "";
   let token = "";
+  let tokenFile = "";
   for (let index = 0; index < normalized.length; index += 1) {
     const arg = normalized[index];
     if (arg === "--origin") {
@@ -22,12 +23,21 @@ function parseArgs(args: string[]): Options {
     } else if (arg === "--token") {
       token = normalized[index + 1] || "";
       index += 1;
+    } else if (arg === "--token-file") {
+      tokenFile = normalized[index + 1] || "";
+      index += 1;
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
   }
   if (origin.trim() === "") {
     throw new Error("missing required --origin");
+  }
+  if (token.trim() !== "" && tokenFile.trim() !== "") {
+    throw new Error("provide either --token or --token-file, not both");
+  }
+  if (tokenFile.trim() !== "") {
+    token = (await Deno.readTextFile(tokenFile)).trim();
   }
   if (token.trim() === "") {
     throw new Error("missing required --token");
@@ -37,7 +47,13 @@ function parseArgs(args: string[]): Options {
 
 function parseResponseBody(text: string, label: string): JsonRecord {
   if (text === "") return {};
-  const parsed = JSON.parse(text);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label} returned invalid JSON: ${message}`);
+  }
   assertScenario(
     parsed != undefined && !Array.isArray(parsed) &&
       typeof parsed !== "string" && typeof parsed !== "number" &&
@@ -47,7 +63,15 @@ function parseResponseBody(text: string, label: string): JsonRecord {
   return parsed as JsonRecord;
 }
 
-const options = parseArgs(Deno.args);
+const options = await parseArgs(Deno.args);
+
+const health = await fetch(`${options.origin}/healthz`);
+if (health.status !== 200) {
+  const body = await health.text();
+  throw new Error(
+    `GET /healthz returned ${health.status}: ${body.slice(0, 400)}`,
+  );
+}
 
 const clientForToken = (accessToken: string) => ({
   async request(
