@@ -344,6 +344,135 @@ func TestNotificationBrowserStorageRejectsMismatchedActor(t *testing.T) {
 	}
 }
 
+func TestOrganizationTeamAndMemberBrowserStorageRoundTrip(t *testing.T) {
+	storage := newTestBrowserStorage()
+	pageResult := NewStoredListPage(1, 0)
+	page, pageMatched := pageResult.(StoredListPageAccepted)
+	if !pageMatched {
+		t.Fatalf("page result = %T, want StoredListPageAccepted", pageResult)
+	}
+
+	saveOrg := SaveOrganization(storage, StoredOrganization{ID: "org-1", Name: "Field Ops", CreatedBy: "user-owner"})
+	if _, matched := saveOrg.(OrganizationStored); !matched {
+		t.Fatalf("organization save = %T, want OrganizationStored", saveOrg)
+	}
+	if _, matched := SaveOrganization(storage, StoredOrganization{ID: "org-2", Name: "Other Org", CreatedBy: "user-owner"}).(OrganizationStored); !matched {
+		t.Fatalf("second organization save rejected")
+	}
+	orgsResult := ListOrganizations(storage, "field", page.Value)
+	orgs, orgsMatched := orgsResult.(OrganizationsStored)
+	if !orgsMatched {
+		t.Fatalf("organization list = %T, want OrganizationsStored", orgsResult)
+	}
+	if len(orgs.Values) != 1 || orgs.Values[0].ID != "org-1" {
+		t.Fatalf("organizations = %#v", orgs.Values)
+	}
+
+	saveMember := SaveOrganizationMember(storage, StoredOrganizationMember{
+		ID:             "member-1",
+		OrganizationID: "org-1",
+		UserID:         "user-member",
+		Status:         "active",
+		Roles:          []string{"member"},
+	})
+	if _, matched := saveMember.(OrganizationMemberStored); !matched {
+		t.Fatalf("member save = %T, want OrganizationMemberStored", saveMember)
+	}
+	updatedResult := UpdateOrganizationMemberRoles(storage, "org-1", "user-member", []string{"member", "reviewer"})
+	updated, updatedMatched := updatedResult.(OrganizationMemberStored)
+	if !updatedMatched {
+		t.Fatalf("member update = %T, want OrganizationMemberStored", updatedResult)
+	}
+	if len(updated.Value.Roles) != 2 || updated.Value.Roles[1] != "reviewer" {
+		t.Fatalf("updated member = %#v", updated.Value)
+	}
+	deactivatedResult := DeactivateOrganizationMember(storage, "org-1", "user-member")
+	deactivated, deactivatedMatched := deactivatedResult.(OrganizationMemberStored)
+	if !deactivatedMatched {
+		t.Fatalf("member deactivate = %T, want OrganizationMemberStored", deactivatedResult)
+	}
+	if deactivated.Value.Status != "deactivated" {
+		t.Fatalf("member status = %q, want deactivated", deactivated.Value.Status)
+	}
+
+	saveTeam := SaveTeam(storage, StoredTeam{
+		ID:             "team-1",
+		OwnerKind:      "organization",
+		OrganizationID: "org-1",
+		Name:           "North crew",
+		CreatedBy:      "user-owner",
+	})
+	if _, matched := saveTeam.(TeamStored); !matched {
+		t.Fatalf("team save = %T, want TeamStored", saveTeam)
+	}
+	teamsResult := ListOrganizationTeams(storage, "org-1", "north", page.Value)
+	teams, teamsMatched := teamsResult.(TeamsStored)
+	if !teamsMatched {
+		t.Fatalf("team list = %T, want TeamsStored", teamsResult)
+	}
+	if len(teams.Values) != 1 || teams.Values[0].ID != "team-1" {
+		t.Fatalf("teams = %#v", teams.Values)
+	}
+
+	saveStandalone := SaveTeam(storage, StoredTeam{
+		ID:          "team-2",
+		OwnerKind:   "user",
+		OwnerUserID: "user-owner",
+		Name:        "Solo crew",
+		CreatedBy:   "user-owner",
+	})
+	if _, matched := saveStandalone.(TeamStored); !matched {
+		t.Fatalf("standalone team save = %T, want TeamStored", saveStandalone)
+	}
+	standaloneResult := ListStandaloneTeams(storage, "user-owner", "solo", page.Value)
+	standalone, standaloneMatched := standaloneResult.(TeamsStored)
+	if !standaloneMatched {
+		t.Fatalf("standalone list = %T, want TeamsStored", standaloneResult)
+	}
+	if len(standalone.Values) != 1 || standalone.Values[0].OwnerKind != "user" {
+		t.Fatalf("standalone teams = %#v", standalone.Values)
+	}
+}
+
+func TestOrganizationMemberBrowserStorageRejectsInvalidRole(t *testing.T) {
+	result := SaveOrganizationMember(newTestBrowserStorage(), StoredOrganizationMember{
+		ID:             "member-1",
+		OrganizationID: "org-1",
+		UserID:         "user-member",
+		Status:         "active",
+		Roles:          []string{"unknown"},
+	})
+	rejected, matched := result.(OrganizationMemberStorageRejected)
+	if !matched {
+		t.Fatalf("result = %T, want OrganizationMemberStorageRejected", result)
+	}
+	if rejected.Reason != "organization member role is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
+func TestTeamBrowserStorageReturnsEmptyForMissingOrganizationIndex(t *testing.T) {
+	storage := newTestBrowserStorage()
+	if _, matched := SaveTeam(storage, StoredTeam{
+		ID:             "team-1",
+		OwnerKind:      "organization",
+		OrganizationID: "org-1",
+		Name:           "North crew",
+		CreatedBy:      "user-owner",
+	}).(TeamStored); !matched {
+		t.Fatalf("team save rejected")
+	}
+	page := DefaultStoredListPage()
+	result := ListOrganizationTeams(storage, "org-2", "", page)
+	listed, matched := result.(TeamsStored)
+	if !matched {
+		t.Fatalf("empty list result = %T, want TeamsStored", result)
+	}
+	if len(listed.Values) != 0 {
+		t.Fatalf("listed teams = %#v, want empty", listed.Values)
+	}
+}
+
 func TestAttachmentBrowserStorageRoundTrip(t *testing.T) {
 	storage := newTestBrowserStorage()
 	attachment := StoredAttachment{

@@ -91,15 +91,15 @@ jobs:
           POSTGRES_USER: sharecrop
           POSTGRES_PASSWORD: sharecrop
         ports:
-          - 15432:5432
+          - 25432:5432
         options: >-
           --health-cmd "pg_isready -U sharecrop -d sharecrop"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
-      SHARECROP_HTTP_ADDR: :18080
+      DATABASE_URL: postgres://sharecrop:sharecrop@localhost:25432/sharecrop?sslmode=disable
+      SHARECROP_HTTP_ADDR: :29180
       SHARECROP_ACCESS_TOKEN_SECRET: "01234567890123456789012345678901"
       SHARECROP_MIGRATIONS_DIR: ${{ github.workspace }}/migrations
     steps:
@@ -120,16 +120,19 @@ jobs:
           POSTGRES_USER: sharecrop
           POSTGRES_PASSWORD: sharecrop
         ports:
-          - 15432:5432
+          - 25432:5432
         options: >-
           --health-cmd "pg_isready -U sharecrop -d sharecrop"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
+      DATABASE_URL: postgres://sharecrop:sharecrop@localhost:25432/sharecrop?sslmode=disable
       ELM_BIN: /usr/local/bin/elm
-      SHARECROP_HTTP_ADDR: :18080
+      SHARECROP_HTTP_ADDR: :29180
+      SHARECROP_PLAYWRIGHT_API_PORT: "29180"
+      SHARECROP_PLAYWRIGHT_DEMO_PORT: "29181"
+      SHARECROP_PLAYWRIGHT_DEMO_ORIGIN: http://127.0.0.1:29181
       SHARECROP_ACCESS_TOKEN_SECRET: "01234567890123456789012345678901"
       SHARECROP_MIGRATIONS_DIR: ${{ github.workspace }}/migrations
     steps:

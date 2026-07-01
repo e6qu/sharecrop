@@ -4,7 +4,7 @@ Sharecrop runs as one HTTP process backed by PostgreSQL.
 
 ## Required Configuration
 
-- `SHARECROP_HTTP_ADDR`: HTTP bind address, for example `:18080`.
+- `SHARECROP_HTTP_ADDR`: HTTP bind address, for example `:29180`.
 - `DATABASE_URL`: PostgreSQL connection string.
 - `SHARECROP_MIGRATIONS_DIR`: path to SQL migrations.
 - `SHARECROP_ACCESS_TOKEN_SECRET`: at least 32 bytes.

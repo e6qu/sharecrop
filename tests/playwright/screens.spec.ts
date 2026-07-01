@@ -359,6 +359,16 @@ test("users open an organization and manage its teams and members", async ({ pag
   );
   // The provisioned member now appears in the real member list (owner + member).
   await expect(page.getByTestId("org-member-row")).toHaveCount(2);
+  const provisionedMemberRow = page.getByTestId("org-member-row").filter({
+    hasText: member.body.subject_id,
+  });
+  await expect(provisionedMemberRow).toContainText("member · active");
+  await provisionedMemberRow.getByTestId("member-role-reviewer").click();
+  await expect(provisionedMemberRow).toContainText("member, reviewer · active");
+  await provisionedMemberRow.getByTestId("deactivate-member").click();
+  await expect(provisionedMemberRow).toContainText(
+    "member, reviewer · deactivated",
+  );
 
   // The team row links to its own page.
   await page.getByTestId("org-team-row").filter({ hasText: teamName }).click();

@@ -5,13 +5,14 @@ Current priority from
 
 Active branch:
 
-1. `task/real-parity-wasm-submission-contracts-rawid-attachments` is in
-   review. It cleaned post-merge continuity, added local real API
-   shared-scenario parity execution support, added a no-fallback WASM
-   notification slice, expanded shared scenario pagination coverage, expanded
-   HTTP contract fixtures, refreshed the raw-ID browser-flow audit, added
-   DB-backed attachment edge-case browser coverage, and updated continuity
-   docs.
+1. `task/wasm-org-team-parity-contracts-rawid` is in progress. It bundles
+   post-merge continuity cleanup, explicit no-fallback WASM demo
+   organization/team storage and handlers, shared scenario parity for the added
+   org/team surfaces, org/team HTTP contract fixtures, local real API parity
+   verification, DB-backed browser coverage for organization/team admin flows,
+   a raw-ID audit refresh, non-default local test port configuration, and final
+   continuity updates. Verification passed against non-default local ports. The
+   branch is ready for commit, push, and pull request creation.
 
 Next recommended work:
 
@@ -35,16 +36,31 @@ Next recommended work:
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
-5. Add enough explicit browser-backed stores and request handlers for the WASM
-   demo path to run the shared scenario parity suite without fallback stores.
-   Privacy-request, moderation-triage, saved-queue-view, task, attachment, and
-   notification storage/handler slices now exist.
+5. Add enough explicit host-backed stores and request handlers for the Go/WASM
+   backend target to run the shared scenario parity suite without fallback
+   stores. The deployed browser demo is the first host, but WASM is also a
+   production backend execution target.
+   Privacy-request, moderation-triage, saved-queue-view, task, attachment,
+   notification, organization, organization-member, and team storage/handler
+   slices now exist.
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-7. Do not replace `site/demo/backend.js` with WASM until the adoption gates in
+7. Replace `site/demo/backend.js` with the compiled Go/WASM backend only after
+   the adoption gates in
    [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
 
 Recently finished:
+
+1. The `task/wasm-org-team-parity-contracts-rawid` working tree added
+   no-fallback WASM demo organization, organization-member, organization-team,
+   and standalone-team storage/handlers, organization/member/team route
+   classification, shared scenario parity for organization member lifecycle
+   shape, org/team contract fixtures, backendless-demo deactivation response
+   parity, DB-backed browser assertions for member role/deactivation controls,
+   and a raw-ID/WASM/demo parity doc refresh. It also fixed the real
+   organization member list so managers can see deactivated non-removed members
+   while permissions still require active membership.
+1. PR 95 was merged into `main`.
 
 1. The real-parity-wasm-submission-contracts-rawid-attachments branch added a
    local real API shared scenario parity runner that registers a scenario admin,

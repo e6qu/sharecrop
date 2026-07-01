@@ -20,9 +20,9 @@ See:
 
 ```sh
 export ELM_BIN=/opt/homebrew/bin/elm
-export SHARECROP_HTTP_ADDR=:18080
+export SHARECROP_HTTP_ADDR=:29180
 export SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901
-export DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable
+export DATABASE_URL=postgres://sharecrop:sharecrop@localhost:25432/sharecrop?sslmode=disable
 export SHARECROP_MIGRATIONS_DIR=$PWD/migrations
 make build
 make test
@@ -30,6 +30,6 @@ make serve
 make migrate-up
 ```
 
-The default app address is `http://127.0.0.1:18080`.
+The local app example uses `http://127.0.0.1:29180`.
 
-Local Postgres is configured through Docker Compose on port `15432`.
+Local Postgres is configured through Docker Compose on port `25432`.

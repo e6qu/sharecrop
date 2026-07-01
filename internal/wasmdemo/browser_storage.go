@@ -143,6 +143,29 @@ type StoredNotification struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+type StoredOrganization struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedBy string `json:"created_by"`
+}
+
+type StoredOrganizationMember struct {
+	ID             string   `json:"id"`
+	OrganizationID string   `json:"organization_id"`
+	UserID         string   `json:"user_id"`
+	Status         string   `json:"status"`
+	Roles          []string `json:"roles"`
+}
+
+type StoredTeam struct {
+	ID             string `json:"id"`
+	OwnerKind      string `json:"owner_kind"`
+	OrganizationID string `json:"organization_id"`
+	OwnerUserID    string `json:"owner_user_id"`
+	Name           string `json:"name"`
+	CreatedBy      string `json:"created_by"`
+}
+
 type ModerationTriageStorageResult interface {
 	moderationTriageStorageResult()
 }
@@ -1162,6 +1185,631 @@ func notificationReadReason(result StorageReadResult) string {
 		return rejected.Reason
 	default:
 		return "notification read failed"
+	}
+}
+
+type StoredListPage struct {
+	limit  int
+	offset int
+}
+
+type StoredListPageResult interface {
+	storedListPageResult()
+}
+
+type StoredListPageAccepted struct {
+	Value StoredListPage
+}
+
+type StoredListPageRejected struct {
+	Reason string
+}
+
+func (StoredListPageAccepted) storedListPageResult() {}
+func (StoredListPageRejected) storedListPageResult() {}
+
+func NewStoredListPage(limit int, offset int) StoredListPageResult {
+	if limit < 1 {
+		return StoredListPageRejected{Reason: "list page limit is invalid"}
+	}
+	if offset < 0 {
+		return StoredListPageRejected{Reason: "list page offset is invalid"}
+	}
+	return StoredListPageAccepted{Value: StoredListPage{limit: limit, offset: offset}}
+}
+
+func DefaultStoredListPage() StoredListPage {
+	return StoredListPage{limit: 20, offset: 0}
+}
+
+type OrganizationStorageResult interface {
+	organizationStorageResult()
+}
+
+type OrganizationStored struct {
+	Value StoredOrganization
+}
+
+type OrganizationsStored struct {
+	Values []StoredOrganization
+}
+
+type OrganizationStorageRejected struct {
+	Reason string
+}
+
+func (OrganizationStored) organizationStorageResult()          {}
+func (OrganizationsStored) organizationStorageResult()         {}
+func (OrganizationStorageRejected) organizationStorageResult() {}
+
+func SaveOrganization(storage BrowserStorage, organization StoredOrganization) OrganizationStorageResult {
+	cleaned := cleanStoredOrganization(organization)
+	if reason := validateStoredOrganization(cleaned); reason != "" {
+		return OrganizationStorageRejected{Reason: reason}
+	}
+	keyResult := NewStorageKey("organization:" + cleaned.ID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return OrganizationStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return OrganizationStorageRejected{Reason: "organization encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return OrganizationStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	indexResult := appendStringIndex(storage, "organization:index", cleaned.ID, "organization")
+	if _, matched := indexResult.(stringIndexStored); !matched {
+		return OrganizationStorageRejected{Reason: indexResult.(stringIndexRejected).reason}
+	}
+	return OrganizationStored{Value: cleaned}
+}
+
+func ListOrganizations(storage BrowserStorage, query string, page StoredListPage) OrganizationStorageResult {
+	idsResult := loadStringIndex(storage, "organization:index", "organization")
+	ids, idsMatched := idsResult.(stringIndexLoaded)
+	if !idsMatched {
+		return OrganizationStorageRejected{Reason: idsResult.(stringIndexRejected).reason}
+	}
+	cleanQuery := strings.ToLower(strings.TrimSpace(query))
+	values := make([]StoredOrganization, 0, len(ids.values))
+	for index := range ids.values {
+		loadResult := LoadOrganization(storage, ids.values[index])
+		loaded, loadedMatched := loadResult.(OrganizationStored)
+		if !loadedMatched {
+			return loadResult
+		}
+		if cleanQuery == "" || strings.Contains(strings.ToLower(loaded.Value.Name), cleanQuery) || strings.Contains(strings.ToLower(loaded.Value.ID), cleanQuery) {
+			values = append(values, loaded.Value)
+		}
+	}
+	return OrganizationsStored{Values: pageStoredOrganizations(values, page)}
+}
+
+func LoadOrganization(storage BrowserStorage, organizationID string) OrganizationStorageResult {
+	cleanID := strings.TrimSpace(organizationID)
+	if cleanID == "" {
+		return OrganizationStorageRejected{Reason: "organization id is required"}
+	}
+	keyResult := NewStorageKey("organization:" + cleanID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return OrganizationStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return OrganizationStorageRejected{Reason: storageReadReason(readResult, "organization")}
+	}
+	var organization StoredOrganization
+	if err := json.Unmarshal([]byte(read.Value), &organization); err != nil {
+		return OrganizationStorageRejected{Reason: "organization decoding failed"}
+	}
+	cleaned := cleanStoredOrganization(organization)
+	if cleaned.ID != cleanID {
+		return OrganizationStorageRejected{Reason: "organization storage key contains mismatched record"}
+	}
+	if reason := validateStoredOrganization(cleaned); reason != "" {
+		return OrganizationStorageRejected{Reason: reason}
+	}
+	return OrganizationStored{Value: cleaned}
+}
+
+type OrganizationMemberStorageResult interface {
+	organizationMemberStorageResult()
+}
+
+type OrganizationMemberStored struct {
+	Value StoredOrganizationMember
+}
+
+type OrganizationMembersStored struct {
+	Values []StoredOrganizationMember
+}
+
+type OrganizationMemberStorageRejected struct {
+	Reason string
+}
+
+func (OrganizationMemberStored) organizationMemberStorageResult()          {}
+func (OrganizationMembersStored) organizationMemberStorageResult()         {}
+func (OrganizationMemberStorageRejected) organizationMemberStorageResult() {}
+
+func SaveOrganizationMember(storage BrowserStorage, member StoredOrganizationMember) OrganizationMemberStorageResult {
+	cleaned := cleanStoredOrganizationMember(member)
+	if reason := validateStoredOrganizationMember(cleaned); reason != "" {
+		return OrganizationMemberStorageRejected{Reason: reason}
+	}
+	keyResult := organizationMemberKey(cleaned.OrganizationID, cleaned.UserID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return OrganizationMemberStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return OrganizationMemberStorageRejected{Reason: "organization member encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return OrganizationMemberStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	indexResult := appendStringIndex(storage, organizationMemberIndexKey(cleaned.OrganizationID), cleaned.UserID, "organization member")
+	if _, matched := indexResult.(stringIndexStored); !matched {
+		return OrganizationMemberStorageRejected{Reason: indexResult.(stringIndexRejected).reason}
+	}
+	return OrganizationMemberStored{Value: cleaned}
+}
+
+func ListOrganizationMembers(storage BrowserStorage, organizationID string, page StoredListPage) OrganizationMemberStorageResult {
+	cleanOrganizationID := strings.TrimSpace(organizationID)
+	if cleanOrganizationID == "" {
+		return OrganizationMemberStorageRejected{Reason: "organization id is required"}
+	}
+	idsResult := loadStringIndex(storage, organizationMemberIndexKey(cleanOrganizationID), "organization member")
+	ids, idsMatched := idsResult.(stringIndexLoaded)
+	if !idsMatched {
+		return OrganizationMemberStorageRejected{Reason: idsResult.(stringIndexRejected).reason}
+	}
+	values := make([]StoredOrganizationMember, 0, len(ids.values))
+	for index := range ids.values {
+		loadResult := LoadOrganizationMember(storage, cleanOrganizationID, ids.values[index])
+		loaded, loadedMatched := loadResult.(OrganizationMemberStored)
+		if !loadedMatched {
+			return loadResult
+		}
+		values = append(values, loaded.Value)
+	}
+	return OrganizationMembersStored{Values: pageStoredOrganizationMembers(values, page)}
+}
+
+func LoadOrganizationMember(storage BrowserStorage, organizationID string, userID string) OrganizationMemberStorageResult {
+	cleanOrganizationID := strings.TrimSpace(organizationID)
+	cleanUserID := strings.TrimSpace(userID)
+	if cleanOrganizationID == "" {
+		return OrganizationMemberStorageRejected{Reason: "organization id is required"}
+	}
+	if cleanUserID == "" {
+		return OrganizationMemberStorageRejected{Reason: "organization member user id is required"}
+	}
+	keyResult := organizationMemberKey(cleanOrganizationID, cleanUserID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return OrganizationMemberStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return OrganizationMemberStorageRejected{Reason: storageReadReason(readResult, "organization member")}
+	}
+	var member StoredOrganizationMember
+	if err := json.Unmarshal([]byte(read.Value), &member); err != nil {
+		return OrganizationMemberStorageRejected{Reason: "organization member decoding failed"}
+	}
+	cleaned := cleanStoredOrganizationMember(member)
+	if cleaned.OrganizationID != cleanOrganizationID || cleaned.UserID != cleanUserID {
+		return OrganizationMemberStorageRejected{Reason: "organization member storage key contains mismatched record"}
+	}
+	if reason := validateStoredOrganizationMember(cleaned); reason != "" {
+		return OrganizationMemberStorageRejected{Reason: reason}
+	}
+	return OrganizationMemberStored{Value: cleaned}
+}
+
+func UpdateOrganizationMemberRoles(storage BrowserStorage, organizationID string, userID string, roles []string) OrganizationMemberStorageResult {
+	loadResult := LoadOrganizationMember(storage, organizationID, userID)
+	loaded, loadedMatched := loadResult.(OrganizationMemberStored)
+	if !loadedMatched {
+		return loadResult
+	}
+	loaded.Value.Roles = cleanStoredOrganizationRoles(roles)
+	return SaveOrganizationMember(storage, loaded.Value)
+}
+
+func DeactivateOrganizationMember(storage BrowserStorage, organizationID string, userID string) OrganizationMemberStorageResult {
+	loadResult := LoadOrganizationMember(storage, organizationID, userID)
+	loaded, loadedMatched := loadResult.(OrganizationMemberStored)
+	if !loadedMatched {
+		return loadResult
+	}
+	loaded.Value.Status = "deactivated"
+	return SaveOrganizationMember(storage, loaded.Value)
+}
+
+type TeamStorageResult interface {
+	teamStorageResult()
+}
+
+type TeamStored struct {
+	Value StoredTeam
+}
+
+type TeamsStored struct {
+	Values []StoredTeam
+}
+
+type TeamStorageRejected struct {
+	Reason string
+}
+
+func (TeamStored) teamStorageResult()          {}
+func (TeamsStored) teamStorageResult()         {}
+func (TeamStorageRejected) teamStorageResult() {}
+
+func SaveTeam(storage BrowserStorage, team StoredTeam) TeamStorageResult {
+	cleaned := cleanStoredTeam(team)
+	if reason := validateStoredTeam(cleaned); reason != "" {
+		return TeamStorageRejected{Reason: reason}
+	}
+	keyResult := NewStorageKey("team:" + cleaned.ID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return TeamStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return TeamStorageRejected{Reason: "team encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return TeamStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	var indexKey string
+	if cleaned.OwnerKind == "organization" {
+		indexKey = organizationTeamIndexKey(cleaned.OrganizationID)
+	} else {
+		indexKey = standaloneTeamIndexKey(cleaned.OwnerUserID)
+	}
+	indexResult := appendStringIndex(storage, indexKey, cleaned.ID, "team")
+	if _, matched := indexResult.(stringIndexStored); !matched {
+		return TeamStorageRejected{Reason: indexResult.(stringIndexRejected).reason}
+	}
+	return TeamStored{Value: cleaned}
+}
+
+func LoadTeam(storage BrowserStorage, teamID string) TeamStorageResult {
+	cleanID := strings.TrimSpace(teamID)
+	if cleanID == "" {
+		return TeamStorageRejected{Reason: "team id is required"}
+	}
+	keyResult := NewStorageKey("team:" + cleanID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return TeamStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return TeamStorageRejected{Reason: storageReadReason(readResult, "team")}
+	}
+	var team StoredTeam
+	if err := json.Unmarshal([]byte(read.Value), &team); err != nil {
+		return TeamStorageRejected{Reason: "team decoding failed"}
+	}
+	cleaned := cleanStoredTeam(team)
+	if cleaned.ID != cleanID {
+		return TeamStorageRejected{Reason: "team storage key contains mismatched record"}
+	}
+	if reason := validateStoredTeam(cleaned); reason != "" {
+		return TeamStorageRejected{Reason: reason}
+	}
+	return TeamStored{Value: cleaned}
+}
+
+func ListOrganizationTeams(storage BrowserStorage, organizationID string, query string, page StoredListPage) TeamStorageResult {
+	return listTeamsFromIndex(storage, organizationTeamIndexKey(strings.TrimSpace(organizationID)), strings.TrimSpace(organizationID), "", query, page)
+}
+
+func ListStandaloneTeams(storage BrowserStorage, ownerUserID string, query string, page StoredListPage) TeamStorageResult {
+	return listTeamsFromIndex(storage, standaloneTeamIndexKey(strings.TrimSpace(ownerUserID)), "", strings.TrimSpace(ownerUserID), query, page)
+}
+
+func listTeamsFromIndex(storage BrowserStorage, indexKey string, organizationID string, ownerUserID string, query string, page StoredListPage) TeamStorageResult {
+	if strings.TrimSpace(indexKey) == "" {
+		return TeamStorageRejected{Reason: "team index key is required"}
+	}
+	if organizationID == "" && ownerUserID == "" {
+		return TeamStorageRejected{Reason: "team owner is required"}
+	}
+	idsResult := loadStringIndex(storage, indexKey, "team")
+	ids, idsMatched := idsResult.(stringIndexLoaded)
+	if !idsMatched {
+		return TeamStorageRejected{Reason: idsResult.(stringIndexRejected).reason}
+	}
+	cleanQuery := strings.ToLower(strings.TrimSpace(query))
+	values := make([]StoredTeam, 0, len(ids.values))
+	for index := range ids.values {
+		loadResult := LoadTeam(storage, ids.values[index])
+		loaded, loadedMatched := loadResult.(TeamStored)
+		if !loadedMatched {
+			return loadResult
+		}
+		if organizationID != "" && loaded.Value.OrganizationID != organizationID {
+			return TeamStorageRejected{Reason: "team index contains mismatched organization record"}
+		}
+		if ownerUserID != "" && loaded.Value.OwnerUserID != ownerUserID {
+			return TeamStorageRejected{Reason: "team index contains mismatched user record"}
+		}
+		if cleanQuery == "" || strings.Contains(strings.ToLower(loaded.Value.Name), cleanQuery) || strings.Contains(strings.ToLower(loaded.Value.ID), cleanQuery) {
+			values = append(values, loaded.Value)
+		}
+	}
+	return TeamsStored{Values: pageStoredTeams(values, page)}
+}
+
+func cleanStoredOrganization(organization StoredOrganization) StoredOrganization {
+	return StoredOrganization{
+		ID:        strings.TrimSpace(organization.ID),
+		Name:      strings.TrimSpace(organization.Name),
+		CreatedBy: strings.TrimSpace(organization.CreatedBy),
+	}
+}
+
+func validateStoredOrganization(organization StoredOrganization) string {
+	if organization.ID == "" {
+		return "organization id is required"
+	}
+	if organization.Name == "" {
+		return "organization name is required"
+	}
+	if organization.CreatedBy == "" {
+		return "organization creator is required"
+	}
+	return ""
+}
+
+func cleanStoredOrganizationMember(member StoredOrganizationMember) StoredOrganizationMember {
+	return StoredOrganizationMember{
+		ID:             strings.TrimSpace(member.ID),
+		OrganizationID: strings.TrimSpace(member.OrganizationID),
+		UserID:         strings.TrimSpace(member.UserID),
+		Status:         strings.TrimSpace(member.Status),
+		Roles:          cleanStoredOrganizationRoles(member.Roles),
+	}
+}
+
+func cleanStoredOrganizationRoles(roles []string) []string {
+	cleaned := make([]string, 0, len(roles))
+	for index := range roles {
+		role := strings.TrimSpace(roles[index])
+		if role != "" {
+			cleaned = append(cleaned, role)
+		}
+	}
+	return cleaned
+}
+
+func validateStoredOrganizationMember(member StoredOrganizationMember) string {
+	if member.ID == "" {
+		return "organization member id is required"
+	}
+	if member.OrganizationID == "" {
+		return "organization id is required"
+	}
+	if member.UserID == "" {
+		return "organization member user id is required"
+	}
+	if !validStoredOrganizationMemberStatus(member.Status) {
+		return "organization member status is invalid"
+	}
+	if len(member.Roles) == 0 {
+		return "organization member role is required"
+	}
+	for index := range member.Roles {
+		if !validStoredOrganizationRole(member.Roles[index]) {
+			return "organization member role is invalid"
+		}
+	}
+	return ""
+}
+
+func validStoredOrganizationMemberStatus(value string) bool {
+	switch value {
+	case "active", "deactivated":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStoredOrganizationRole(value string) bool {
+	switch value {
+	case "owner", "admin", "member", "billing", "reviewer", "public_publisher":
+		return true
+	default:
+		return false
+	}
+}
+
+func cleanStoredTeam(team StoredTeam) StoredTeam {
+	return StoredTeam{
+		ID:             strings.TrimSpace(team.ID),
+		OwnerKind:      strings.TrimSpace(team.OwnerKind),
+		OrganizationID: strings.TrimSpace(team.OrganizationID),
+		OwnerUserID:    strings.TrimSpace(team.OwnerUserID),
+		Name:           strings.TrimSpace(team.Name),
+		CreatedBy:      strings.TrimSpace(team.CreatedBy),
+	}
+}
+
+func validateStoredTeam(team StoredTeam) string {
+	if team.ID == "" {
+		return "team id is required"
+	}
+	if !validStoredTeamOwnerKind(team.OwnerKind) {
+		return "team owner kind is invalid"
+	}
+	if team.OwnerKind == "organization" && team.OrganizationID == "" {
+		return "team organization id is required"
+	}
+	if team.OwnerKind == "user" && team.OwnerUserID == "" {
+		return "team owner user id is required"
+	}
+	if team.Name == "" {
+		return "team name is required"
+	}
+	if team.CreatedBy == "" {
+		return "team creator is required"
+	}
+	return ""
+}
+
+func validStoredTeamOwnerKind(value string) bool {
+	switch value {
+	case "user", "organization":
+		return true
+	default:
+		return false
+	}
+}
+
+func organizationMemberKey(organizationID string, userID string) StorageKeyResult {
+	return NewStorageKey("organization_member:" + strings.TrimSpace(organizationID) + ":" + strings.TrimSpace(userID))
+}
+
+func organizationMemberIndexKey(organizationID string) string {
+	return "organization_member:index:" + strings.TrimSpace(organizationID)
+}
+
+func organizationTeamIndexKey(organizationID string) string {
+	return "organization_team:index:" + strings.TrimSpace(organizationID)
+}
+
+func standaloneTeamIndexKey(ownerUserID string) string {
+	return "standalone_team:index:" + strings.TrimSpace(ownerUserID)
+}
+
+func pageStoredOrganizations(values []StoredOrganization, page StoredListPage) []StoredOrganization {
+	start, end := pageBounds(len(values), page)
+	return values[start:end]
+}
+
+func pageStoredOrganizationMembers(values []StoredOrganizationMember, page StoredListPage) []StoredOrganizationMember {
+	start, end := pageBounds(len(values), page)
+	return values[start:end]
+}
+
+func pageStoredTeams(values []StoredTeam, page StoredListPage) []StoredTeam {
+	start, end := pageBounds(len(values), page)
+	return values[start:end]
+}
+
+func pageBounds(length int, page StoredListPage) (int, int) {
+	start := page.offset
+	if start > length {
+		start = length
+	}
+	end := start + page.limit
+	if end > length {
+		end = length
+	}
+	return start, end
+}
+
+type stringIndexResult interface {
+	stringIndexResult()
+}
+
+type stringIndexLoaded struct {
+	values []string
+}
+
+type stringIndexStored struct{}
+type stringIndexRejected struct {
+	reason string
+}
+
+func (stringIndexLoaded) stringIndexResult()   {}
+func (stringIndexStored) stringIndexResult()   {}
+func (stringIndexRejected) stringIndexResult() {}
+
+func loadStringIndex(storage BrowserStorage, rawKey string, label string) stringIndexResult {
+	keyResult := NewStorageKey(rawKey)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return stringIndexRejected{reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	if _, missing := readResult.(StorageMissing); missing {
+		return stringIndexLoaded{values: []string{}}
+	}
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return stringIndexRejected{reason: storageReadReason(readResult, label)}
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(read.Value), &values); err != nil {
+		return stringIndexRejected{reason: label + " index decoding failed"}
+	}
+	for index := range values {
+		if strings.TrimSpace(values[index]) == "" {
+			return stringIndexRejected{reason: label + " index contains an invalid id"}
+		}
+	}
+	return stringIndexLoaded{values: values}
+}
+
+func appendStringIndex(storage BrowserStorage, rawKey string, id string, label string) stringIndexResult {
+	cleanID := strings.TrimSpace(id)
+	if cleanID == "" {
+		return stringIndexRejected{reason: label + " id is required"}
+	}
+	loadedResult := loadStringIndex(storage, rawKey, label)
+	loaded, loadedMatched := loadedResult.(stringIndexLoaded)
+	if !loadedMatched {
+		return loadedResult
+	}
+	for index := range loaded.values {
+		if loaded.values[index] == cleanID {
+			return stringIndexStored{}
+		}
+	}
+	loaded.values = append(loaded.values, cleanID)
+	encoded, err := json.Marshal(loaded.values)
+	if err != nil {
+		return stringIndexRejected{reason: label + " index encoding failed"}
+	}
+	keyResult := NewStorageKey(rawKey)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return stringIndexRejected{reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return stringIndexRejected{reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	return stringIndexStored{}
+}
+
+func storageReadReason(result StorageReadResult, label string) string {
+	switch rejected := result.(type) {
+	case StorageMissing:
+		return rejected.Reason
+	case StorageReadRejected:
+		return rejected.Reason
+	default:
+		return label + " read failed"
 	}
 }
 

@@ -1,16 +1,24 @@
 import { defineConfig } from "@playwright/test";
+import process from "node:process";
+
+const apiPort = process.env.SHARECROP_PLAYWRIGHT_API_PORT ?? "29180";
+const demoPort = process.env.SHARECROP_PLAYWRIGHT_DEMO_PORT ?? "29181";
+const databaseURL = process.env.DATABASE_URL ??
+  "postgres://sharecrop:sharecrop@127.0.0.1:25432/sharecrop?sslmode=disable";
+const apiOrigin = `http://127.0.0.1:${apiPort}`;
+const demoOrigin = `http://127.0.0.1:${demoPort}`;
 
 export default defineConfig({
   testDir: ".",
   use: {
-    baseURL: "http://127.0.0.1:18080",
+    baseURL: apiOrigin,
   },
   webServer: [
     {
       command:
-        "SHARECROP_HTTP_ADDR=:18080 SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=migrations go run ./cmd/sharecrop serve",
+        `SHARECROP_HTTP_ADDR=:${apiPort} SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL='${databaseURL}' SHARECROP_MIGRATIONS_DIR=migrations go run ./cmd/sharecrop serve`,
       cwd: "../..",
-      url: "http://127.0.0.1:18080/healthz",
+      url: `${apiOrigin}/healthz`,
       reuseExistingServer: true,
       timeout: 30_000,
     },
@@ -18,9 +26,9 @@ export default defineConfig({
       // Static origin for the demo bundle (the real Elm client + fake backend).
       // Browser.application needs a real HTTP origin, so file:// will not do.
       command:
-        "deno run --allow-net --allow-read jsr:@std/http@1/file-server -p 18081 site/demo",
+        `deno run --allow-net --allow-read jsr:@std/http@1/file-server -p ${demoPort} site/demo`,
       cwd: "../..",
-      url: "http://127.0.0.1:18081/index.html",
+      url: `${demoOrigin}/index.html`,
       reuseExistingServer: true,
       timeout: 30_000,
     },

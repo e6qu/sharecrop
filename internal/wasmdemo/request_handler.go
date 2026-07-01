@@ -54,6 +54,16 @@ type TaskIDSource interface {
 	NextTaskID() string
 }
 
+type OrganizationIDSource interface {
+	NextOrganizationID() string
+	NextOrganizationMemberID() string
+	NextTeamID() string
+}
+
+type OrganizationUserResolver interface {
+	UserIDForEmail(string) (string, bool)
+}
+
 func NewModerationTriageHandler(storage BrowserStorage, clock HandlerClock) ModerationTriageHandler {
 	return ModerationTriageHandler{storage: storage, clock: clock}
 }
@@ -771,4 +781,429 @@ func notificationQueryInt(values url.Values, key string, defaultValue int) (int,
 		return 0, false
 	}
 	return parsed, true
+}
+
+type OrganizationHandler struct {
+	storage  BrowserStorage
+	actor    HandlerActor
+	ids      OrganizationIDSource
+	resolver OrganizationUserResolver
+}
+
+func NewOrganizationHandler(storage BrowserStorage, actor HandlerActor, ids OrganizationIDSource, resolver OrganizationUserResolver) OrganizationHandler {
+	return OrganizationHandler{storage: storage, actor: actor, ids: ids, resolver: resolver}
+}
+
+func (handler OrganizationHandler) Handle(request Request) HandleResult {
+	if handler.storage == nil {
+		return RequestHandleRejected{Reason: "browser storage is required"}
+	}
+	if handler.actor == nil {
+		return RequestHandleRejected{Reason: "handler actor is required"}
+	}
+	switch {
+	case organizationCollectionPathOnly(request.Path) == "/api/organizations":
+		return handler.handleOrganizations(request)
+	case organizationTeamsRoute(request.Path) != "":
+		return handler.handleOrganizationTeams(request, organizationTeamsRoute(request.Path))
+	case standaloneTeamsPathOnly(request.Path) == "/api/teams":
+		return handler.handleStandaloneTeams(request)
+	case organizationMemberRoute(request.Path) != "":
+		return handler.handleOrganizationMembers(request)
+	default:
+		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	}
+}
+
+func (handler OrganizationHandler) handleOrganizations(request Request) HandleResult {
+	switch request.Method.String() {
+	case MethodPost.String():
+		if handler.ids == nil {
+			return RequestHandleRejected{Reason: "organization id source is required"}
+		}
+		var body organizationBody
+		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+			return RequestHandleRejected{Reason: "organization request body is invalid"}
+		}
+		organization := StoredOrganization{
+			ID:        strings.TrimSpace(handler.ids.NextOrganizationID()),
+			Name:      strings.TrimSpace(body.Name),
+			CreatedBy: strings.TrimSpace(handler.actor.UserID()),
+		}
+		saveResult := SaveOrganization(handler.storage, organization)
+		saved, savedMatched := saveResult.(OrganizationStored)
+		if !savedMatched {
+			return RequestHandleRejected{Reason: saveResult.(OrganizationStorageRejected).Reason}
+		}
+		memberResult := SaveOrganizationMember(handler.storage, StoredOrganizationMember{
+			ID:             strings.TrimSpace(handler.ids.NextOrganizationMemberID()),
+			OrganizationID: saved.Value.ID,
+			UserID:         strings.TrimSpace(handler.actor.UserID()),
+			Status:         "active",
+			Roles:          []string{"owner"},
+		})
+		if _, matched := memberResult.(OrganizationMemberStored); !matched {
+			return RequestHandleRejected{Reason: memberResult.(OrganizationMemberStorageRejected).Reason}
+		}
+		return organizationResponseResult(saved.Value, 201)
+	case MethodGet.String():
+		pageResult := storedListPageFromPath(request.Path, "organization")
+		page, pageMatched := pageResult.(storedListPageFromPathAccepted)
+		if !pageMatched {
+			return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		}
+		listResult := ListOrganizations(handler.storage, queryValueFromPath(request.Path), page.value)
+		listed, listedMatched := listResult.(OrganizationsStored)
+		if !listedMatched {
+			return RequestHandleRejected{Reason: listResult.(OrganizationStorageRejected).Reason}
+		}
+		encoded, err := json.Marshal(organizationsBody{Organizations: listed.Values})
+		if err != nil {
+			return RequestHandleRejected{Reason: "organizations response encoding failed"}
+		}
+		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+	default:
+		return RequestHandleRejected{Reason: "request method is unsupported for organizations"}
+	}
+}
+
+func (handler OrganizationHandler) handleOrganizationTeams(request Request, organizationID string) HandleResult {
+	if strings.TrimSpace(organizationID) == "" {
+		return RequestHandleRejected{Reason: "organization id is required"}
+	}
+	switch request.Method.String() {
+	case MethodPost.String():
+		if handler.ids == nil {
+			return RequestHandleRejected{Reason: "organization id source is required"}
+		}
+		var body teamBody
+		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+			return RequestHandleRejected{Reason: "team request body is invalid"}
+		}
+		team := StoredTeam{
+			ID:             strings.TrimSpace(handler.ids.NextTeamID()),
+			OwnerKind:      "organization",
+			OrganizationID: strings.TrimSpace(organizationID),
+			OwnerUserID:    "",
+			Name:           strings.TrimSpace(body.Name),
+			CreatedBy:      strings.TrimSpace(handler.actor.UserID()),
+		}
+		saveResult := SaveTeam(handler.storage, team)
+		saved, savedMatched := saveResult.(TeamStored)
+		if !savedMatched {
+			return RequestHandleRejected{Reason: saveResult.(TeamStorageRejected).Reason}
+		}
+		return teamResponseResult(saved.Value, 201)
+	case MethodGet.String():
+		pageResult := storedListPageFromPath(request.Path, "organization team")
+		page, pageMatched := pageResult.(storedListPageFromPathAccepted)
+		if !pageMatched {
+			return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		}
+		listResult := ListOrganizationTeams(handler.storage, organizationID, queryValueFromPath(request.Path), page.value)
+		listed, listedMatched := listResult.(TeamsStored)
+		if !listedMatched {
+			return RequestHandleRejected{Reason: listResult.(TeamStorageRejected).Reason}
+		}
+		return teamsResponseResult(listed.Values)
+	default:
+		return RequestHandleRejected{Reason: "request method is unsupported for organization teams"}
+	}
+}
+
+func (handler OrganizationHandler) handleStandaloneTeams(request Request) HandleResult {
+	switch request.Method.String() {
+	case MethodPost.String():
+		if handler.ids == nil {
+			return RequestHandleRejected{Reason: "organization id source is required"}
+		}
+		var body teamBody
+		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+			return RequestHandleRejected{Reason: "team request body is invalid"}
+		}
+		team := StoredTeam{
+			ID:             strings.TrimSpace(handler.ids.NextTeamID()),
+			OwnerKind:      "user",
+			OrganizationID: "",
+			OwnerUserID:    strings.TrimSpace(handler.actor.UserID()),
+			Name:           strings.TrimSpace(body.Name),
+			CreatedBy:      strings.TrimSpace(handler.actor.UserID()),
+		}
+		saveResult := SaveTeam(handler.storage, team)
+		saved, savedMatched := saveResult.(TeamStored)
+		if !savedMatched {
+			return RequestHandleRejected{Reason: saveResult.(TeamStorageRejected).Reason}
+		}
+		return teamResponseResult(saved.Value, 201)
+	case MethodGet.String():
+		pageResult := storedListPageFromPath(request.Path, "standalone team")
+		page, pageMatched := pageResult.(storedListPageFromPathAccepted)
+		if !pageMatched {
+			return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		}
+		listResult := ListStandaloneTeams(handler.storage, handler.actor.UserID(), queryValueFromPath(request.Path), page.value)
+		listed, listedMatched := listResult.(TeamsStored)
+		if !listedMatched {
+			return RequestHandleRejected{Reason: listResult.(TeamStorageRejected).Reason}
+		}
+		return teamsResponseResult(listed.Values)
+	default:
+		return RequestHandleRejected{Reason: "request method is unsupported for standalone teams"}
+	}
+}
+
+func (handler OrganizationHandler) handleOrganizationMembers(request Request) HandleResult {
+	route := parseOrganizationMemberRoute(request.Path)
+	if route.organizationID == "" {
+		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	}
+	if route.userID == "" {
+		switch request.Method.String() {
+		case MethodPost.String():
+			return handler.handleProvisionOrganizationMember(request, route.organizationID)
+		case MethodGet.String():
+			pageResult := storedListPageFromPath(request.Path, "organization member")
+			page, pageMatched := pageResult.(storedListPageFromPathAccepted)
+			if !pageMatched {
+				return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+			}
+			listResult := ListOrganizationMembers(handler.storage, route.organizationID, page.value)
+			listed, listedMatched := listResult.(OrganizationMembersStored)
+			if !listedMatched {
+				return RequestHandleRejected{Reason: listResult.(OrganizationMemberStorageRejected).Reason}
+			}
+			return organizationMembersResponseResult(listed.Values, 200)
+		default:
+			return RequestHandleRejected{Reason: "request method is unsupported for organization members"}
+		}
+	}
+	if route.action == "roles" {
+		if request.Method.String() != MethodPatch.String() {
+			return RequestHandleRejected{Reason: "request method is unsupported for organization member roles"}
+		}
+		var body organizationRolesBody
+		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+			return RequestHandleRejected{Reason: "organization member roles body is invalid"}
+		}
+		updateResult := UpdateOrganizationMemberRoles(handler.storage, route.organizationID, route.userID, body.Roles)
+		updated, updatedMatched := updateResult.(OrganizationMemberStored)
+		if !updatedMatched {
+			return RequestHandleRejected{Reason: updateResult.(OrganizationMemberStorageRejected).Reason}
+		}
+		return organizationMemberResponseResult(updated.Value, 200)
+	}
+	if route.action == "deactivate" {
+		if request.Method.String() != MethodPatch.String() {
+			return RequestHandleRejected{Reason: "request method is unsupported for organization member deactivation"}
+		}
+		deactivateResult := DeactivateOrganizationMember(handler.storage, route.organizationID, route.userID)
+		if _, deactivated := deactivateResult.(OrganizationMemberStored); !deactivated {
+			return RequestHandleRejected{Reason: deactivateResult.(OrganizationMemberStorageRejected).Reason}
+		}
+		encoded, err := json.Marshal(statusBody{Status: "deactivated"})
+		if err != nil {
+			return RequestHandleRejected{Reason: "organization member deactivation response encoding failed"}
+		}
+		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+	}
+	return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+}
+
+func (handler OrganizationHandler) handleProvisionOrganizationMember(request Request, organizationID string) HandleResult {
+	if handler.ids == nil {
+		return RequestHandleRejected{Reason: "organization id source is required"}
+	}
+	if handler.resolver == nil {
+		return RequestHandleRejected{Reason: "organization user resolver is required"}
+	}
+	var body provisionOrganizationMemberBody
+	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+		return RequestHandleRejected{Reason: "organization member request body is invalid"}
+	}
+	email := strings.TrimSpace(body.Email)
+	userID, resolved := handler.resolver.UserIDForEmail(email)
+	if !resolved || strings.TrimSpace(userID) == "" {
+		return RequestHandleRejected{Reason: "organization member user was not found"}
+	}
+	member := StoredOrganizationMember{
+		ID:             strings.TrimSpace(handler.ids.NextOrganizationMemberID()),
+		OrganizationID: strings.TrimSpace(organizationID),
+		UserID:         strings.TrimSpace(userID),
+		Status:         "active",
+		Roles:          body.Roles,
+	}
+	saveResult := SaveOrganizationMember(handler.storage, member)
+	saved, savedMatched := saveResult.(OrganizationMemberStored)
+	if !savedMatched {
+		return RequestHandleRejected{Reason: saveResult.(OrganizationMemberStorageRejected).Reason}
+	}
+	return organizationMemberResponseResult(saved.Value, 201)
+}
+
+type organizationBody struct {
+	Name string `json:"name"`
+}
+
+type teamBody struct {
+	Name string `json:"name"`
+}
+
+type provisionOrganizationMemberBody struct {
+	Email string   `json:"email"`
+	Roles []string `json:"roles"`
+}
+
+type organizationRolesBody struct {
+	Roles []string `json:"roles"`
+}
+
+type organizationsBody struct {
+	Organizations []StoredOrganization `json:"organizations"`
+}
+
+type organizationMemberBody struct {
+	ID             string   `json:"id"`
+	OrganizationID string   `json:"organization_id"`
+	UserID         string   `json:"user_id"`
+	Status         string   `json:"status"`
+	Roles          []string `json:"roles"`
+}
+
+type organizationMembersBody struct {
+	Members []organizationMemberBody `json:"members"`
+}
+
+type teamsBody struct {
+	Teams []StoredTeam `json:"teams"`
+}
+
+type statusBody struct {
+	Status string `json:"status"`
+}
+
+type organizationMemberRouteParts struct {
+	organizationID string
+	userID         string
+	action         string
+}
+
+func organizationResponseResult(organization StoredOrganization, status int) HandleResult {
+	encoded, err := json.Marshal(organization)
+	if err != nil {
+		return RequestHandleRejected{Reason: "organization response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
+}
+
+func teamResponseResult(team StoredTeam, status int) HandleResult {
+	encoded, err := json.Marshal(team)
+	if err != nil {
+		return RequestHandleRejected{Reason: "team response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
+}
+
+func teamsResponseResult(teams []StoredTeam) HandleResult {
+	encoded, err := json.Marshal(teamsBody{Teams: teams})
+	if err != nil {
+		return RequestHandleRejected{Reason: "teams response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func organizationMemberResponseResult(member StoredOrganizationMember, status int) HandleResult {
+	encoded, err := json.Marshal(organizationMemberToBody(member))
+	if err != nil {
+		return RequestHandleRejected{Reason: "organization member response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
+}
+
+func organizationMembersResponseResult(members []StoredOrganizationMember, status int) HandleResult {
+	values := make([]organizationMemberBody, 0, len(members))
+	for index := range members {
+		values = append(values, organizationMemberToBody(members[index]))
+	}
+	encoded, err := json.Marshal(organizationMembersBody{Members: values})
+	if err != nil {
+		return RequestHandleRejected{Reason: "organization members response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
+}
+
+func organizationMemberToBody(member StoredOrganizationMember) organizationMemberBody {
+	return organizationMemberBody{
+		ID:             member.ID,
+		OrganizationID: member.OrganizationID,
+		UserID:         member.UserID,
+		Status:         member.Status,
+		Roles:          member.Roles,
+	}
+}
+
+func parseOrganizationMemberRoute(path string) organizationMemberRouteParts {
+	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "organizations" && parts[3] == "members" {
+		return organizationMemberRouteParts{organizationID: strings.TrimSpace(parts[2])}
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "organizations" && parts[3] == "members" {
+		return organizationMemberRouteParts{
+			organizationID: strings.TrimSpace(parts[2]),
+			userID:         strings.TrimSpace(parts[4]),
+			action:         strings.TrimSpace(parts[5]),
+		}
+	}
+	return organizationMemberRouteParts{}
+}
+
+type storedListPageFromPathResult interface {
+	storedListPageFromPathResult()
+}
+
+type storedListPageFromPathAccepted struct {
+	value StoredListPage
+}
+
+type storedListPageFromPathRejected struct {
+	reason string
+}
+
+func (storedListPageFromPathAccepted) storedListPageFromPathResult() {}
+func (storedListPageFromPathRejected) storedListPageFromPathResult() {}
+
+func storedListPageFromPath(path string, label string) storedListPageFromPathResult {
+	parts := strings.SplitN(path, "?", 2)
+	if len(parts) != 2 {
+		return storedListPageFromPathAccepted{value: DefaultStoredListPage()}
+	}
+	values, err := url.ParseQuery(parts[1])
+	if err != nil {
+		return storedListPageFromPathRejected{reason: label + " pagination query is invalid"}
+	}
+	limit, limitMatched := notificationQueryInt(values, "limit", 20)
+	if !limitMatched {
+		return storedListPageFromPathRejected{reason: label + " limit is invalid"}
+	}
+	offset, offsetMatched := notificationQueryInt(values, "offset", 0)
+	if !offsetMatched {
+		return storedListPageFromPathRejected{reason: label + " offset is invalid"}
+	}
+	pageResult := NewStoredListPage(limit, offset)
+	page, pageMatched := pageResult.(StoredListPageAccepted)
+	if !pageMatched {
+		return storedListPageFromPathRejected{reason: pageResult.(StoredListPageRejected).Reason}
+	}
+	return storedListPageFromPathAccepted{value: page.Value}
+}
+
+func queryValueFromPath(path string) string {
+	parts := strings.SplitN(path, "?", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	values, err := url.ParseQuery(parts[1])
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(values.Get("query"))
 }

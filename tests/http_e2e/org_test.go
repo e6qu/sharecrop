@@ -313,6 +313,29 @@ func TestOrganizationMemberRolesCanBeUpdatedAndDeactivated(t *testing.T) {
 	defer deactivateResp.Body.Close()
 	assertStatus(t, deactivateResp, http.StatusOK)
 
+	ownerListResp := getWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/members", owner.AccessToken)
+	defer ownerListResp.Body.Close()
+	assertStatus(t, ownerListResp, http.StatusOK)
+	var listed struct {
+		Members []struct {
+			UserID string   `json:"user_id"`
+			Status string   `json:"status"`
+			Roles  []string `json:"roles"`
+		} `json:"members"`
+	}
+	if err := json.NewDecoder(ownerListResp.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode owner member list after deactivation: %v", err)
+	}
+	foundDeactivated := false
+	for _, entry := range listed.Members {
+		if entry.UserID == member.SubjectID {
+			foundDeactivated = entry.Status == "deactivated" && containsString(entry.Roles, "reviewer")
+		}
+	}
+	if !foundDeactivated {
+		t.Fatalf("listed members after deactivation = %+v, want deactivated reviewer", listed.Members)
+	}
+
 	memberListResp := getWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/members", member.AccessToken)
 	defer memberListResp.Body.Close()
 	assertStatus(t, memberListResp, http.StatusForbidden)

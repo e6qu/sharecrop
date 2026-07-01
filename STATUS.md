@@ -1,16 +1,17 @@
 # Status
 
-The repository contains pull request 1 through pull request 94 work, merged into
+The repository contains pull request 1 through pull request 95 work, merged into
 `main`, plus the current
-`task/real-parity-wasm-submission-contracts-rawid-attachments` branch.
+`task/wasm-org-team-parity-contracts-rawid` branch.
 
-Active task: `task/real-parity-wasm-submission-contracts-rawid-attachments`
-is ready for review. It cleaned post-merge continuity, added local real API
-shared-scenario parity execution support, added the next no-fallback WASM demo
-notification slice, expanded shared scenario pagination coverage, expanded HTTP
-contract fixtures, refreshed the raw-ID browser-flow audit, added DB-backed
-attachment edge-case browser coverage, and updated continuity docs. Hard
-deletes remain out of scope; use soft lifecycle states, anonymization,
+Active task: `task/wasm-org-team-parity-contracts-rawid` bundles post-merge
+continuity cleanup, the next explicit no-fallback WASM demo organization/team
+storage and handler slice, shared scenario parity for the added org/team
+surfaces, org/team HTTP contract fixtures, local real API parity verification,
+DB-backed browser coverage for organization/team admin flows, a raw-ID audit
+refresh, final continuity updates, and non-default local test port
+configuration. The branch is ready for commit, push, and pull request creation.
+Hard deletes remain out of scope; use soft lifecycle states, anonymization,
 redaction, tombstones, and audit records. Email/provider delivery, anonymous
 worker identity, per-project tokens, external wallets, and crypto integrations
 are out of scope.
@@ -19,6 +20,9 @@ Current implemented surface:
 
 - Organization member provisioning has role selection; organization members can
   have roles updated or be deactivated through the browser and API.
+- Organization member lists expose non-removed lifecycle rows, so managers can
+  see deactivated members while deactivated members no longer satisfy active
+  membership permissions.
 - Organization reviewers can see review controls on organization-owned tasks
   they did not create.
 - Workers see task-local own submissions with state, review notes, validation
@@ -135,6 +139,8 @@ Current implemented surface:
   team/organization queue search/type/sort behavior, persisted saved queue
   views, small task/submission attachments, and sensitive-field response
   metadata.
+- The shared scenario parity runner covers organization member
+  provisioning/listing/role-update/deactivation shape.
 - The real API shared scenario parity runner probes `/healthz`, accepts
   token and refresh-token file inputs, carries refresh-cookie rotation, and
   reports invalid JSON and status errors with request context before running the
@@ -186,10 +192,16 @@ Current implemented surface:
 - The WASM demo backend spike is documented with explicit storage-adapter gates,
   local compile-check results, bundle-size observations, a narrow
   `internal/wasmdemo` request-adapter package, explicit privacy-request,
-  moderation-triage, saved-queue-view, task, attachment, and notification
-  browser-storage boundaries, narrow privacy-request, moderation-triage,
-  saved-queue-view, task, and notification request handlers, and no fallback
-  path.
+  moderation-triage, saved-queue-view, task, attachment, notification,
+  organization, organization-member, and team browser-storage boundaries,
+  narrow privacy-request, moderation-triage, saved-queue-view, task,
+  notification, organization, organization-member, and team request handlers,
+  and no fallback path.
+- Go/WASM is a first-class backend execution target, not only a demo mechanism.
+  The target artifact is a `.wasm` binary compiled from Go with explicit host
+  adapters for storage, clock, identity/session, request handling, randomness,
+  and networking. JavaScript reimplementations, generated fake backends, and
+  fallback stores are out of scope.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -199,6 +211,9 @@ Current implemented surface:
   reference, operator runbook, and agent-side scheduling recipe.
 - README and hosted docs link to the onboarding guide in
   [docs/onboarding.md](./docs/onboarding.md).
+- Local test/development examples avoid the project's former common ports:
+  Postgres uses `25432`, the app uses `29180`, and the backendless demo uses
+  `29181`. Playwright config accepts environment overrides for those ports.
 
 Current verification:
 
@@ -216,25 +231,30 @@ Current verification:
 - `GOOS=js GOARCH=wasm
   GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test -c -o
   /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo` passed.
-- `DATABASE_URL='postgres://sharecrop@127.0.0.1:15432/sharecrop?sslmode=disable'
+- `DATABASE_URL='postgres://sharecrop@127.0.0.1:25432/sharecrop?sslmode=disable'
   SHARECROP_MIGRATIONS_DIR='/Users/zardoz/projects/sharecrop/migrations'
   SHARECROP_ACCESS_TOKEN_SECRET='01234567890123456789012345678901'
-  SHARECROP_HTTP_ADDR=':18080'
+  SHARECROP_HTTP_ADDR=':29180'
   GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
-  ./tools/run_db_checks.sh` passed against local PostgreSQL 15.
-- `DATABASE_URL='postgres://sharecrop@127.0.0.1:15432/sharecrop?sslmode=disable'
+  ./tools/run_db_checks.sh` passed against local PostgreSQL 15 after the
+  organization member lifecycle-list fix.
+- `DATABASE_URL='postgres://sharecrop@127.0.0.1:25432/sharecrop?sslmode=disable'
   deno task check:scenario-parity:local-real -- --origin
-  http://127.0.0.1:18080` passed against the local real API.
-- `DATABASE_URL='postgres://sharecrop@127.0.0.1:15432/sharecrop?sslmode=disable'
+  http://127.0.0.1:29180` passed against the local real API after the
+  organization member lifecycle-list fix.
+- `DATABASE_URL='postgres://sharecrop@127.0.0.1:25432/sharecrop?sslmode=disable'
   SHARECROP_MIGRATIONS_DIR='/Users/zardoz/projects/sharecrop/migrations'
   SHARECROP_ACCESS_TOKEN_SECRET='01234567890123456789012345678901'
-  SHARECROP_HTTP_ADDR=':18080'
+  SHARECROP_HTTP_ADDR=':29180'
+  SHARECROP_PLAYWRIGHT_API_PORT=29180
+  SHARECROP_PLAYWRIGHT_DEMO_PORT=29181
+  SHARECROP_PLAYWRIGHT_DEMO_ORIGIN='http://127.0.0.1:29181'
   GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
   ELM_BIN=/opt/homebrew/bin/elm deno run --allow-env --allow-read
   --allow-write --allow-run --allow-net --allow-sys
   npm:@playwright/test@1.61.0 test -c tests/playwright/playwright.config.ts
   tests/playwright/screens.spec.ts --output=.cache/test-results` passed against
-  local PostgreSQL 15.
+  local PostgreSQL 15 after the organization member lifecycle-list fix.
 - `git diff --check` passed.
 
 Blocking issues:
