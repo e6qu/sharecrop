@@ -175,6 +175,49 @@ type writableResponse interface{ writableResponse() }
 	}
 }
 
+// TestResolveDTOTypesFollowsFieldAccessOnTypeAssertedResultUnion reproduces
+// createModerationReport's shape: the handler destructures a result-union
+// return value with `response, ok := result.(convertedType)`, mutates a
+// field on it, and writes `response.value` (not the whole `response`) to
+// writeJSON. Resolving this needs both the two-value type-assertion pattern
+// (to learn `response`'s type) and struct field-access resolution (to learn
+// `.value`'s type), including for a struct with no JSON tags at all (an
+// internal result wrapper, not a DTO itself).
+func TestResolveDTOTypesFollowsFieldAccessOnTypeAssertedResultUnion(t *testing.T) {
+	files := parseFiles(t, map[string]string{"x.go": `package httpserver
+
+import "net/http"
+
+func (server Server) createModerationReport(w http.ResponseWriter, r *http.Request) {
+	result := convert()
+	response, ok := result.(moderationReportConverted)
+	if !ok {
+		writeDomainError(w, result.(moderationReportConversionRejected).reason)
+		return
+	}
+	response.value = applyTriage(response.value)
+	writeJSON(w, http.StatusCreated, response.value)
+}
+
+type moderationReportConverted struct {
+	value moderationReportResponse
+}
+
+type moderationReportConversionRejected struct {
+	reason string
+}
+
+func writeDomainError(w http.ResponseWriter, reason string) {}
+func writeJSON(w http.ResponseWriter, status int, value writableResponse) {}
+type writableResponse interface{ writableResponse() }
+`})
+
+	_, responseTypes := resolveDTOTypes(files)
+	if responseTypes["createModerationReport"] != "moderationReportResponse" {
+		t.Fatalf("response type = %q, want moderationReportResponse", responseTypes["createModerationReport"])
+	}
+}
+
 func TestResolveDTOTypesLeavesUnmatchedHandlersUnresolved(t *testing.T) {
 	files := parseFiles(t, map[string]string{"x.go": `package httpserver
 

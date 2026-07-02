@@ -5,26 +5,17 @@ Current priority from
 
 Active branch:
 
-1. `task/openapi-typed-schemas` is in progress. It adds typed per-route
-   request/response JSON schemas to `docs/openapi.json`, derived directly from
-   the Go DTO struct each `internal/http` handler actually decodes/writes
-   (resolved through `go/ast`, not a hand-authored mapping). 98/106 responses
-   and 39/61 request bodies resolve to a typed schema; the rest keep the generic
-   placeholder.
+1. `task/openapi-schema-field-access` is in progress. It closes the one
+   confirmed generator gap from the prior branch: `internal/openapi` now
+   resolves a two-value type assertion (`name, ok := x.(Type)`) and a
+   field-access expression (`response.value`), including through untagged
+   internal result-union structs, so `createModerationReport`'s response now
+   resolves to a typed schema too. 99/106 responses resolve (up from 98/106);
+   39/61 request bodies, unchanged.
 
 Next recommended work:
 
-1. Improve typed-schema coverage for the remaining unresolved request/response
-   bodies where a real DTO exists but the current heuristic in
-   `internal/openapi/dto_resolve.go` doesn't reach it — the one confirmed case
-   is `createModerationReport`, whose response is written via
-   `writeJSON(w, status, response.value)` (a struct field access on a
-   result-union wrapper, not a bare local variable or composite literal). Other
-   unresolved routes (`healthz`, `index`, `/static/`, `logout`, the three `/mcp`
-   JSON-RPC routes, and action endpoints with no request fields such as
-   `openTask`/`approveTaskReservation`) are genuinely untyped or bodyless, not
-   generator gaps, and should stay generic.
-2. Keep expanding shared scenario parity as new user-visible API surfaces are
+1. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    small task/submission attachments, team/organization queue search/type/sort,
@@ -34,17 +25,17 @@ Next recommended work:
    triage shape, platform-admin grant/revoke/audit shape, admin audit,
    personal-ledger, organization-ledger, notification, and user-submission
    pagination, and multi-actor reservation/submission acceptance.
-3. Keep running shared scenario parity against real APIs as behavior changes.
+2. Keep running shared scenario parity against real APIs as behavior changes.
    The explicit-session runner accepts `--origin`, access-token input, and
    refresh-token input. The local real runner can register a scenario admin and
    grant platform-admin state through `DATABASE_URL` and `psql`.
-4. Keep expanding generated/fixture-level HTTP contract coverage as the API
+3. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-5. Audit remaining raw-ID browser flows and replace high-traffic fields with
+4. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
-6. Add enough explicit host-backed stores and request handlers for the Go/WASM
+5. Add enough explicit host-backed stores and request handlers for the Go/WASM
    backend target to run the shared scenario parity suite without fallback
    stores. The deployed browser demo is the first host, but WASM is also a
    production backend execution target. User, account-token, agent-credential,
@@ -55,9 +46,9 @@ Next recommended work:
    loaded, explicitly configured with host adapters, and used for the shared
    scenario parity suite. The demo defaults to compiled WASM artifacts and
    configured browser host functions.
-7. Add provider email delivery only if the product direction changes; current
+6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-8. Build a genuine production non-browser WASM host: persistent storage (file or
+7. Build a genuine production non-browser WASM host: persistent storage (file or
    database-backed) behind the same `storageHas`/`storageGet`/`storagePut`
    contract, a real clock, verified-session actor resolution instead of the
    reference host's `setActor` test hook, and cryptographically random
@@ -70,6 +61,13 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 105 was merged into `main`.
+1. The `task/openapi-typed-schemas` branch added typed per-route
+   request/response JSON schemas to `docs/openapi.json`, derived directly from
+   the Go DTO struct each `internal/http` handler actually decodes/writes
+   (resolved through `go/ast`, not a hand-authored mapping). 98/106 responses
+   and 39/61 request bodies resolved to a typed schema; the next branch closed
+   the one remaining confirmed gap.
 1. PR 104 was merged into `main`.
 1. The `task/landing-docs-visual-redesign` branch designed and implemented real
    CSS for `site/index.html` and `site/docs/index.html` (previously unstyled in

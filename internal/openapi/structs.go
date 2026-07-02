@@ -46,6 +46,20 @@ type StructShape struct {
 // are recorded.
 func collectStructShapes(files map[string]*ast.File) map[string]StructShape {
 	shapes := map[string]StructShape{}
+	for name, structType := range collectStructTypeDecls(files) {
+		shapes[name] = structShapeFromAST(structType)
+	}
+	return shapes
+}
+
+// collectStructTypeDecls finds every top-level `type X struct { ... }`
+// declaration across the given files, keyed by X. Shared by
+// collectStructShapes (JSON wire shape, tagged fields only) and
+// collectStructFieldTypes in dto_resolve.go (raw Go field types, untagged
+// internal result-union structs included) so both start from the same
+// traversal.
+func collectStructTypeDecls(files map[string]*ast.File) map[string]*ast.StructType {
+	decls := map[string]*ast.StructType{}
 	for _, file := range files {
 		for _, decl := range file.Decls {
 			genDecl, isGenDecl := decl.(*ast.GenDecl)
@@ -61,11 +75,11 @@ func collectStructShapes(files map[string]*ast.File) map[string]StructShape {
 				if !isStruct {
 					continue
 				}
-				shapes[typeSpec.Name.Name] = structShapeFromAST(structType)
+				decls[typeSpec.Name.Name] = structType
 			}
 		}
 	}
-	return shapes
+	return decls
 }
 
 func structShapeFromAST(structType *ast.StructType) StructShape {
