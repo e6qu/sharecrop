@@ -115,9 +115,12 @@ support surfaces are absent.
    - `site/docs/index.html` has a task lifecycle and MCP quickstart, and links
      to API, MCP, operator, and agent-scheduling references in the repository.
    - A guided onboarding guide exists in `docs/onboarding.md`.
-   - There is no generated OpenAPI reference.
+   - A generated OpenAPI document (`docs/openapi.json`, `make openapi`) exists
+     with an accurate method/path/operationId/bearer-auth inventory parsed from
+     `internal/http/server.go`, but its request/response bodies are generic JSON
+     object placeholders rather than typed per-route schemas.
    - Result: a new user or integrator still needs some source-level context for
-     edge workflows.
+     edge workflows, and for exact per-route request/response field shapes.
 
 ## Flow Review
 

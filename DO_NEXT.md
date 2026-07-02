@@ -5,16 +5,23 @@ Current priority from
 
 Active branch:
 
-1. `task/wasm-nonbrowser-host-measurement` is in progress. It adds
-   `deno task measure:wasm` (artifact size, startup time, host-process memory,
-   request latency) and documents the non-browser host adapter reference
-   (`tools/wasm_runtime_loader.ts`) plus the gap between that reference host and
-   a genuine production non-browser host, without fallback stores or JavaScript
-   backend reimplementations.
+1. `task/generated-openapi-reference` is in progress. It adds `internal/openapi`
+   (`make openapi` / `docs/openapi.json`), a generator that parses
+   `internal/http`'s route registrations and local call graph with `go/ast` to
+   produce an accurate method/path/operationId/bearer-auth inventory, closing
+   the "no generated OpenAPI reference" documentation gap. Per-route
+   request/response bodies remain generic JSON object placeholders.
 
 Next recommended work:
 
-1. Keep expanding shared scenario parity as new user-visible API surfaces are
+1. Add typed per-route request/response JSON schemas to `docs/openapi.json`,
+   likely by linking `internal/openapi` routes to the existing
+   `internal/contracts` `Module`/`Definition` shapes where a route's
+   request/response type is identifiable, and leaving an explicit generic
+   placeholder (not a guess) where it is not. `internal/contracts` currently has
+   no method/path/route metadata at all, only body shapes, so this needs an
+   explicit route-to-contract-type mapping, not automatic inference.
+2. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    small task/submission attachments, team/organization queue search/type/sort,
@@ -24,17 +31,17 @@ Next recommended work:
    triage shape, platform-admin grant/revoke/audit shape, admin audit,
    personal-ledger, organization-ledger, notification, and user-submission
    pagination, and multi-actor reservation/submission acceptance.
-2. Keep running shared scenario parity against real APIs as behavior changes.
+3. Keep running shared scenario parity against real APIs as behavior changes.
    The explicit-session runner accepts `--origin`, access-token input, and
    refresh-token input. The local real runner can register a scenario admin and
    grant platform-admin state through `DATABASE_URL` and `psql`.
-3. Keep expanding generated/fixture-level HTTP contract coverage as the API
+4. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-4. Audit remaining raw-ID browser flows and replace high-traffic fields with
+5. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
-5. Add enough explicit host-backed stores and request handlers for the Go/WASM
+6. Add enough explicit host-backed stores and request handlers for the Go/WASM
    backend target to run the shared scenario parity suite without fallback
    stores. The deployed browser demo is the first host, but WASM is also a
    production backend execution target. User, account-token, agent-credential,
@@ -45,9 +52,9 @@ Next recommended work:
    loaded, explicitly configured with host adapters, and used for the shared
    scenario parity suite. The demo defaults to compiled WASM artifacts and
    configured browser host functions.
-6. Add provider email delivery only if the product direction changes; current
+7. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-7. Build a genuine production non-browser WASM host: persistent storage (file or
+8. Build a genuine production non-browser WASM host: persistent storage (file or
    database-backed) behind the same `storageHas`/`storageGet`/`storagePut`
    contract, a real clock, verified-session actor resolution instead of the
    reference host's `setActor` test hook, and cryptographically random
@@ -60,6 +67,12 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 101 was merged into `main`.
+1. The `task/wasm-nonbrowser-host-measurement` branch added
+   `deno task measure:wasm` (artifact size, startup time, host-process memory,
+   request latency) and documented the non-browser host adapter reference
+   (`tools/wasm_runtime_loader.ts`) plus the gap between that reference host and
+   a genuine production non-browser host.
 1. PR 100 was merged into `main`.
 1. The `task/wasm-default-demo-shared-parity` branch made the compiled Go/WASM
    backend the default static-demo backend, expanded explicit WASM behavior

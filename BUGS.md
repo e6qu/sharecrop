@@ -6,6 +6,13 @@ Confirmed defects:
 
 Test gaps:
 
+- `docs/openapi.json` (`make openapi`/`make check-openapi`, `internal/openapi`)
+  has an accurate method/path/operationId/bearer-auth inventory generated from
+  `internal/http/server.go`'s route table and local call graph, but
+  request/response bodies are generic JSON object placeholders, not typed
+  per-route schemas. `internal/contracts` has no method/path/route metadata to
+  drive that today; adding typed schemas needs an explicit
+  route-to-contract-type mapping.
 - GitHub Pages deployment cannot be observed from pull request CI because the
   Pages workflow publishes after pushes to `main` or manual dispatch. The Pages
   workflow runs the deployed routing check after deployment; manual checks can

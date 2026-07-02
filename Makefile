@@ -1,6 +1,6 @@
 APP := bin/sharecrop
 
-.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-policy check-ts ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up serve test test-deno test-go test-http test-integration vet
+.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet
 
 build: frontend
 	go build -o $(APP) ./cmd/sharecrop
@@ -11,6 +11,13 @@ contracts:
 check-contracts:
 	go run ./cmd/sharecrop generate elm-contracts
 	git diff --exit-code -- web/elm/src/Sharecrop/Generated
+
+openapi:
+	go run ./cmd/sharecrop generate openapi
+
+check-openapi:
+	go run ./cmd/sharecrop generate openapi
+	git diff --exit-code -- docs/openapi.json
 
 check-format:
 	test -z "$$(gofmt -l cmd internal tests web | grep -E '\\.go$$')"
@@ -28,7 +35,7 @@ check-copy-paste:
 check-dead-code:
 	go tool deadcode -test ./...
 
-ci: check-format check-contracts check-policy check-ts check-copy-paste check-dead-code lint vet test frontend build test-integration test-http e2e-ui
+ci: check-format check-contracts check-openapi check-policy check-ts check-copy-paste check-dead-code lint vet test frontend build test-integration test-http e2e-ui
 
 css:
 	deno task css:build
