@@ -104,6 +104,10 @@ func SaveSubmission(storage BrowserStorage, submission StoredSubmission) Submiss
 	if _, matched := userIndexResult.(stringIndexStored); !matched {
 		return SubmissionStorageRejected{Reason: userIndexResult.(stringIndexRejected).reason}
 	}
+	globalIndexResult := appendStringIndex(storage, "submission:index", cleaned.ID, "submission")
+	if _, matched := globalIndexResult.(stringIndexStored); !matched {
+		return SubmissionStorageRejected{Reason: globalIndexResult.(stringIndexRejected).reason}
+	}
 	return SubmissionStored{Value: cleaned}
 }
 
@@ -142,6 +146,10 @@ func ListTaskSubmissions(storage BrowserStorage, taskID string, page StoredListP
 
 func ListUserSubmissions(storage BrowserStorage, userID string, page StoredListPage) SubmissionStorageResult {
 	return listSubmissionsFromIndex(storage, "submission:index:user:"+strings.TrimSpace(userID), "user", strings.TrimSpace(userID), page)
+}
+
+func ListAllSubmissions(storage BrowserStorage, page StoredListPage) SubmissionStorageResult {
+	return listSubmissionsFromIndex(storage, "submission:index", "all", "all", page)
 }
 
 func listSubmissionsFromIndex(storage BrowserStorage, indexKey string, ownerKind string, ownerID string, page StoredListPage) SubmissionStorageResult {
@@ -207,7 +215,7 @@ func validateStoredSubmission(submission StoredSubmission) string {
 
 func validStoredSubmissionState(value string) bool {
 	switch value {
-	case "submitted", "accepted", "changes_requested", "rejected":
+	case "submitted", "invalid", "accepted", "changes_requested", "rejected":
 		return true
 	default:
 		return false
@@ -608,6 +616,9 @@ func LedgerBalance(storage BrowserStorage, ownerKind string, ownerID string) Led
 		return entriesResult
 	}
 	var amount int64
+	if strings.TrimSpace(ownerKind) == "user" {
+		amount = 100
+	}
 	for index := range entries.Values {
 		amount += entries.Values[index].Amount
 	}

@@ -124,6 +124,9 @@ func (handler InteractionHandler) handleSubmissionComments(request Request, subm
 		if !savedMatched {
 			return RequestHandleRejected{Reason: saveResult.(CommentStorageRejected).Reason}
 		}
+		if err := handler.notifySubmissionComment(submissionID); err != nil {
+			return RequestHandleRejected{Reason: err.Error()}
+		}
 		return submissionCommentResponseResult(saved.Value, 201)
 	case MethodGet.String():
 		listResult := ListComments(handler.storage, "submission", submissionID)
@@ -135,6 +138,57 @@ func (handler InteractionHandler) handleSubmissionComments(request Request, subm
 	default:
 		return RequestHandleRejected{Reason: "request method is unsupported for submission comments"}
 	}
+}
+
+func (handler InteractionHandler) notifySubmissionComment(submissionID string) error {
+	notificationIDs, matched := handler.ids.(interface{ NextNotificationID() string })
+	if !matched {
+		return errString("notification id source is required")
+	}
+	submissionResult := LoadSubmission(handler.storage, submissionID)
+	submission, submissionMatched := submissionResult.(SubmissionStored)
+	if !submissionMatched {
+		return errString(submissionResult.(SubmissionStorageRejected).Reason)
+	}
+	taskResult := LoadTask(handler.storage, submission.Value.TaskID)
+	task, taskMatched := taskResult.(TaskStored)
+	if !taskMatched {
+		return errString(taskResult.(TaskStorageRejected).Reason)
+	}
+	actorID := strings.TrimSpace(handler.actor.UserID())
+	recipientID := submission.Value.SubmitterID
+	if recipientID == actorID {
+		recipientID = task.Value.CreatedBy
+	}
+	return saveInteractionNotification(
+		handler.storage,
+		notificationIDs.NextNotificationID(),
+		recipientID,
+		actorID,
+		"submission_commented",
+		"submission",
+		submissionID,
+		`{"task_id":"`+submission.Value.TaskID+`"}`,
+		handler.clock.Now().UTC().Format(time.RFC3339),
+	)
+}
+
+func saveInteractionNotification(storage BrowserStorage, id string, recipientID string, actorID string, kind string, subjectKind string, subjectID string, metadataJSON string, createdAt string) error {
+	result := SaveNotification(storage, StoredNotification{
+		ID:              id,
+		RecipientUserID: recipientID,
+		ActorUserID:     actorID,
+		Kind:            kind,
+		SubjectKind:     subjectKind,
+		SubjectID:       subjectID,
+		State:           "unread",
+		MetadataJSON:    metadataJSON,
+		CreatedAt:       createdAt,
+	})
+	if _, matched := result.(NotificationStored); !matched {
+		return errString(result.(NotificationStorageRejected).Reason)
+	}
+	return nil
 }
 
 func (handler InteractionHandler) handleReservations(request Request, route taskReservationsRoute) HandleResult {
@@ -241,6 +295,11 @@ func (handler InteractionHandler) handleCreateSubmission(request Request, taskID
 	if handler.ids == nil {
 		return RequestHandleRejected{Reason: "interaction id source is required"}
 	}
+	taskResult := LoadTask(handler.storage, taskID)
+	taskLoaded, taskMatched := taskResult.(TaskStored)
+	if !taskMatched {
+		return RequestHandleRejected{Reason: taskResult.(TaskStorageRejected).Reason}
+	}
 	var body submissionBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
 		return RequestHandleRejected{Reason: "submission body is invalid"}
@@ -255,12 +314,12 @@ func (handler InteractionHandler) handleCreateSubmission(request Request, taskID
 		ID:               submissionID,
 		TaskID:           strings.TrimSpace(taskID),
 		SubmitterID:      strings.TrimSpace(handler.actor.UserID()),
-		State:            "submitted",
+		State:            submissionStateForResponse(taskLoaded.Value, body.ResponseJSON),
 		ResponseJSON:     strings.TrimSpace(body.ResponseJSON),
 		ReviewNote:       "",
 		Attachments:      attachments.values,
-		ValidationErrors: []StoredSubmissionValidationError{},
-		SensitiveFields:  []StoredSubmissionSensitiveField{},
+		ValidationErrors: validationErrorsForResponse(taskLoaded.Value, body.ResponseJSON),
+		SensitiveFields:  sensitiveFieldsForTask(taskLoaded.Value),
 	}
 	saveResult := SaveSubmission(handler.storage, submission)
 	saved, savedMatched := saveResult.(SubmissionStored)
@@ -271,11 +330,94 @@ func (handler InteractionHandler) handleCreateSubmission(request Request, taskID
 	if _, matched := saveAttachmentsResult.(AttachmentsStored); !matched {
 		return RequestHandleRejected{Reason: saveAttachmentsResult.(AttachmentStorageRejected).Reason}
 	}
+	if err := handler.notifySubmissionCreated(saved.Value); err != nil {
+		return RequestHandleRejected{Reason: err.Error()}
+	}
 	encoded, err := json.Marshal(submissionCreatedBody{Submission: saved.Value, ReceiptToken: "wasm-" + saved.Value.ID})
 	if err != nil {
 		return RequestHandleRejected{Reason: "submission response encoding failed"}
 	}
 	return RequestHandled{Value: Response{Status: 201, Body: string(encoded)}}
+}
+
+func submissionStateForResponse(task StoredTask, responseJSON string) string {
+	if len(validationErrorsForResponse(task, responseJSON)) > 0 {
+		return "invalid"
+	}
+	return "submitted"
+}
+
+func validationErrorsForResponse(task StoredTask, responseJSON string) []StoredSubmissionValidationError {
+	var schema sensitiveObjectSchema
+	if err := json.Unmarshal([]byte(task.ResponseSchemaJSON), &schema); err != nil || schema.Kind != "object" {
+		return []StoredSubmissionValidationError{}
+	}
+	var response map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(responseJSON)), &response); err != nil {
+		return []StoredSubmissionValidationError{{Path: "response", Message: "response must be valid JSON"}}
+	}
+	errors := []StoredSubmissionValidationError{}
+	for index := range schema.Fields {
+		if strings.TrimSpace(schema.Fields[index].Name) == "" {
+			continue
+		}
+		if _, ok := response[schema.Fields[index].Name]; !ok {
+			errors = append(errors, StoredSubmissionValidationError{Path: schema.Fields[index].Name, Message: "field is required"})
+		}
+	}
+	return errors
+}
+
+func (handler InteractionHandler) notifySubmissionCreated(submission StoredSubmission) error {
+	notificationIDs, matched := handler.ids.(interface{ NextNotificationID() string })
+	if !matched {
+		return errString("notification id source is required")
+	}
+	taskResult := LoadTask(handler.storage, submission.TaskID)
+	task, taskMatched := taskResult.(TaskStored)
+	if !taskMatched {
+		return errString(taskResult.(TaskStorageRejected).Reason)
+	}
+	if task.Value.CreatedBy == submission.SubmitterID {
+		return nil
+	}
+	return saveInteractionNotification(
+		handler.storage,
+		notificationIDs.NextNotificationID(),
+		task.Value.CreatedBy,
+		submission.SubmitterID,
+		"submission_created",
+		"submission",
+		submission.ID,
+		`{"task_id":"`+submission.TaskID+`"}`,
+		handler.clock.Now().UTC().Format(time.RFC3339),
+	)
+}
+
+func sensitiveFieldsForTask(task StoredTask) []StoredSubmissionSensitiveField {
+	var schema sensitiveObjectSchema
+	if err := json.Unmarshal([]byte(task.ResponseSchemaJSON), &schema); err != nil {
+		return []StoredSubmissionSensitiveField{}
+	}
+	if schema.Kind != "object" {
+		return []StoredSubmissionSensitiveField{}
+	}
+	fields := make([]StoredSubmissionSensitiveField, 0, len(schema.Fields))
+	for index := range schema.Fields {
+		sensitivity := schema.Fields[index].Schema.Sensitivity
+		if sensitivity.Category == "" {
+			continue
+		}
+		fields = append(fields, StoredSubmissionSensitiveField{
+			Path:       schema.Fields[index].Name,
+			Category:   sensitivity.Category,
+			Retention:  sensitivity.Retention,
+			Redaction:  sensitivity.Redaction,
+			State:      "active",
+			RedactedAt: "",
+		})
+	}
+	return fields
 }
 
 func (handler InteractionHandler) handleAcceptSubmission(request Request, taskID string, submissionID string) HandleResult {
@@ -322,6 +464,9 @@ func (handler InteractionHandler) handleAcceptSubmission(request Request, taskID
 			return RequestHandleRejected{Reason: ledgerResult.(LedgerStorageRejected).Reason}
 		}
 	}
+	if err := handler.notifySubmissionAccepted(loaded.Value); err != nil {
+		return RequestHandleRejected{Reason: err.Error()}
+	}
 	encoded, err := json.Marshal(acceptSubmissionResultBody{
 		TaskID:         taskID,
 		SubmissionID:   submissionID,
@@ -335,6 +480,24 @@ func (handler InteractionHandler) handleAcceptSubmission(request Request, taskID
 		return RequestHandleRejected{Reason: "submission acceptance response encoding failed"}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func (handler InteractionHandler) notifySubmissionAccepted(submission StoredSubmission) error {
+	notificationIDs, matched := handler.ids.(interface{ NextNotificationID() string })
+	if !matched {
+		return errString("notification id source is required")
+	}
+	return saveInteractionNotification(
+		handler.storage,
+		notificationIDs.NextNotificationID(),
+		submission.SubmitterID,
+		handler.actor.UserID(),
+		"submission_accepted",
+		"submission",
+		submission.ID,
+		`{"task_id":"`+submission.TaskID+`"}`,
+		handler.clock.Now().UTC().Format(time.RFC3339),
+	)
 }
 
 func (handler InteractionHandler) handleUserSubmissions(request Request, userID string) HandleResult {
@@ -405,6 +568,26 @@ type reservationBody struct {
 type submissionBody struct {
 	ResponseJSON string                      `json:"response_json"`
 	Attachments  []taskAttachmentRequestBody `json:"attachments"`
+}
+
+type sensitiveObjectSchema struct {
+	Kind   string                 `json:"kind"`
+	Fields []sensitiveSchemaField `json:"fields"`
+}
+
+type sensitiveSchemaField struct {
+	Name   string                `json:"name"`
+	Schema sensitiveSchemaNested `json:"schema"`
+}
+
+type sensitiveSchemaNested struct {
+	Sensitivity sensitiveSchemaMetadata `json:"sensitivity"`
+}
+
+type sensitiveSchemaMetadata struct {
+	Category  string `json:"category"`
+	Retention string `json:"retention"`
+	Redaction string `json:"redaction"`
 }
 
 type submissionCreatedBody struct {

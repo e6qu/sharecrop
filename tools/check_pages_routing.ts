@@ -40,7 +40,6 @@ const targets: CheckTarget[] = [
   { path: "/demo/index.html", mustContain: "Sharecrop Demo" },
   { path: "/demo/app.css", mustContain: "tailwindcss" },
   { path: "/demo/arcade.css", mustContain: "Arcade" },
-  { path: "/demo/backend.js", mustContain: "__sharecropDemoBackend" },
   { path: "/demo/wasm-host.js", mustContain: "SharecropWasmDemo" },
   { path: "/demo/wasm_exec.js", mustContain: "globalThis.Go" },
   { path: "/demo/elm.js", mustContain: "Elm" },

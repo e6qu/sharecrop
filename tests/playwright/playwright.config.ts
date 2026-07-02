@@ -23,7 +23,7 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      // Static origin for the demo bundle (the real Elm client + fake backend).
+      // Static origin for the demo bundle.
       // Browser.application needs a real HTTP origin, so file:// will not do.
       command:
         `deno run --allow-net --allow-read jsr:@std/http@1/file-server -p ${demoPort} site/demo`,

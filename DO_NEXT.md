@@ -5,11 +5,11 @@ Current priority from
 
 Active branch:
 
-1. `task/wasm-browser-host-full-parity-gates` is in progress. It bundles
-   post-PR-98 continuity cleanup, browser-facing WASM host adapter groundwork,
-   demo fetch integration for the compiled Go WASM backend, deterministic
-   WASM seed/reset, remaining explicit WASM behavior slices where practical,
-   broader WASM scenario parity, and WASM production gate measurement docs.
+1. `task/wasm-default-demo-shared-parity` is in progress. It replaces the demo
+   default backend with the compiled Go/WASM backend path and expands explicit
+   WASM behavior slices, deterministic demo seed/reset, shared scenario parity,
+   and production measurement docs without fallback stores or JavaScript backend
+   reimplementations.
 
 Next recommended work:
 
@@ -17,8 +17,8 @@ Next recommended work:
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    small task/submission attachments, team/organization queue search/type/sort,
-   persisted saved queue views, organization reviewer acceptance, sensitive-field
-   response metadata/redaction state, privacy
+   persisted saved queue views, organization reviewer acceptance,
+   sensitive-field response metadata/redaction state, privacy
    request/audit/resolution/retention shape, moderation report/admin-list/audit
    triage shape, platform-admin grant/revoke/audit shape, admin audit,
    personal-ledger, organization-ledger, notification, and user-submission
@@ -36,22 +36,28 @@ Next recommended work:
 5. Add enough explicit host-backed stores and request handlers for the Go/WASM
    backend target to run the shared scenario parity suite without fallback
    stores. The deployed browser demo is the first host, but WASM is also a
-   production backend execution target.
-   Privacy-request, moderation-triage, saved-queue-view, task, attachment,
-   notification, organization, organization-member, team, comment, reservation,
-   submission, and ledger storage/handler slices now exist. The Go `js/wasm`
-   command can be built, loaded, explicitly configured with host adapters, and
-   used for the current expanded WASM scenario. The demo has an opt-in
-   `?backend=wasm` path that requires compiled WASM artifacts and configured
-   browser host functions.
+   production backend execution target. User, account-token, agent-credential,
+   platform-admin, audit-event, collectible, privacy-request, moderation-triage,
+   saved-queue-view, task, attachment, notification, organization,
+   organization-member, team, comment, reservation, submission, and ledger
+   storage/handler slices now exist. The Go `js/wasm` command can be built,
+   loaded, explicitly configured with host adapters, and used for the shared
+   scenario parity suite. The demo defaults to compiled WASM artifacts and
+   configured browser host functions.
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-7. Replace `site/demo/backend.js` with the compiled Go/WASM backend only after
-   the adoption gates in
-   [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) are met.
+7. Harden the production WASM target with non-browser host adapter docs,
+   startup/size/memory/request-latency measurements, and parity expansion as new
+   API surfaces are added.
 
 Recently finished:
 
+1. PR 99 was merged into `main`.
+1. The `task/wasm-browser-host-full-parity-gates` branch added an opt-in browser
+   WASM host path, Go WASM demo artifact build, Pages workflow integration,
+   expanded WASM dispatch/scenario coverage for privacy requests, saved queue
+   views, organizations, teams, task interactions, reservations, submissions,
+   ledger, and continuity updates.
 1. PR 98 was merged into `main`.
 1. The `task/wasm-host-adapters-scenario-parity` branch wired explicit host
    configuration into the Go `js/wasm` command, ran request execution through
@@ -131,25 +137,25 @@ Recently finished:
    parity for admin audit pagination, added data-export response fixture
    coverage, added a demo-only Playwright config, and hardened DB-backed
    Playwright registration failure messages.
-1. The branch added explicit WASM demo saved-queue-view browser storage,
-   route classification, and request handlers with fail-loud validation and no
+1. The branch added explicit WASM demo saved-queue-view browser storage, route
+   classification, and request handlers with fail-loud validation and no
    fallback stores.
 1. The branch refreshed raw-ID, readiness, demo-parity, WASM-spike, status,
    bugs, and next-task docs. DB-backed checks and DB-backed Playwright screens
    passed against isolated local PostgreSQL 15.
 
-1. The parity-wasm-dashboard-revision-polish branch added shared scenario
-   parity for persisted saved queue views, request fixture coverage for privacy
+1. The parity-wasm-dashboard-revision-polish branch added shared scenario parity
+   for persisted saved queue views, request fixture coverage for privacy
    resolution and saved queue view commands, a raw-ID browser-flow audit
    refresh, no-fallback WASM privacy-request storage and request handlers,
    saved-view/demo status parity fixes, queue/revision count headings, broader
    demo/mobile Playwright coverage, and continuity updates.
 
-1. The db-admin-wasm-parity-hardening branch ran database-backed checks,
-   fixed revoked platform-admin authorization, added focused integration tests
-   for platform-admin lifecycle, moderation triage, privacy retention, and
-   sensitive-field access events, expanded demo admin Playwright coverage,
-   added a no-fallback WASM moderation-triage request handler, expanded shared
+1. The db-admin-wasm-parity-hardening branch ran database-backed checks, fixed
+   revoked platform-admin authorization, added focused integration tests for
+   platform-admin lifecycle, moderation triage, privacy retention, and
+   sensitive-field access events, expanded demo admin Playwright coverage, added
+   a no-fallback WASM moderation-triage request handler, expanded shared
    scenario parity for admin audit events, and refreshed raw-ID/readiness/API
    docs.
 
@@ -176,22 +182,22 @@ Recently finished:
    polish, demo CSS build copying, readiness/API/WASM docs refresh, and WASM
    compile-check findings. Hard deletes remained prohibited.
 
-1. The persisted-ops-privacy-lifecycle branch added persisted saved queue
-   views, organization ledger and org-scoped audit dashboard panels, persisted
-   privacy request listing/resolution with export JSON and sensitive-field
-   redaction state updates, standalone-team task assignees, persisted MCP SSE
-   polling fan-out groundwork, backendless demo parity, generated contracts,
-   and continuity updates. Hard deletes remained prohibited.
+1. The persisted-ops-privacy-lifecycle branch added persisted saved queue views,
+   organization ledger and org-scoped audit dashboard panels, persisted privacy
+   request listing/resolution with export JSON and sensitive-field redaction
+   state updates, standalone-team task assignees, persisted MCP SSE polling
+   fan-out groundwork, backendless demo parity, generated contracts, and
+   continuity updates. Hard deletes remained prohibited.
 
 1. The org-ops-queues-privacy branch added in-session saved views for team work
    and organization task queues, a loaded-data organization operations
    dashboard, a worker submission revision timeline, audited privacy request
-   creation, generated Privacy Elm contracts, HTTP fixture/unit coverage,
-   shared scenario parity for privacy request/audit shape, backendless demo
-   parity, browser assertions, and docs updates.
+   creation, generated Privacy Elm contracts, HTTP fixture/unit coverage, shared
+   scenario parity for privacy request/audit shape, backendless demo parity,
+   browser assertions, and docs updates.
 
-1. The queue-revisions-ops-privacy branch added task-list `task_type` and
-   `sort` filters, browser queue controls, audit-event filters, submission
+1. The queue-revisions-ops-privacy branch added task-list `task_type` and `sort`
+   filters, browser queue controls, audit-event filters, submission
    sensitive-field metadata in responses, visible worker submission response and
    privacy summaries, shared scenario parity for queue type/sort and sensitive
    metadata, backendless demo parity, and docs updates.

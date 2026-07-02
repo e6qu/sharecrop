@@ -1,3 +1,12 @@
+import {
+  type JsonRecord,
+  noScenarioBody,
+  runSharedScenarioParity,
+  type ScenarioBody,
+  type ScenarioClient,
+  type ScenarioResponse,
+} from "../tests/scenario_parity/scenario.ts";
+
 type GoWasmRuntime = {
   importObject: WebAssembly.Imports;
   run(instance: WebAssembly.Instance): Promise<void>;
@@ -155,10 +164,21 @@ function recordField(
   return value as Record<string, unknown>;
 }
 
-function createHost(): { host: HostFunctions; setActor(id: string): void } {
+function createHost(): {
+  host: HostFunctions;
+  setActor(id: string): void;
+  rememberUser(email: string, userID: string): void;
+} {
   const storage = new Map<string, string>();
   const counters = new Map<string, number>();
+  const users = new Map<string, string>([
+    ["requester@example.com", "user-requester"],
+    ["worker@example.com", "user-worker"],
+    ["reviewer@example.com", "user-reviewer"],
+    ["mara@sharecrop.demo", "user-mara"],
+  ]);
   let actor = "user-requester";
+  seedHostStorage(storage);
   const host: HostFunctions = {
     storageHas(key: string): boolean {
       return storage.has(key);
@@ -187,11 +207,6 @@ function createHost(): { host: HostFunctions; setActor(id: string): void } {
       return `${kind}-${next}`;
     },
     userIDForEmail(email: string): string {
-      const users = new Map<string, string>([
-        ["requester@example.com", "user-requester"],
-        ["worker@example.com", "user-worker"],
-        ["reviewer@example.com", "user-reviewer"],
-      ]);
       return users.get(email) ?? "";
     },
   };
@@ -200,7 +215,34 @@ function createHost(): { host: HostFunctions; setActor(id: string): void } {
     setActor(id: string): void {
       actor = id;
     },
+    rememberUser(email: string, userID: string): void {
+      users.set(email, userID);
+    },
   };
+}
+
+function seedHostStorage(storage: Map<string, string>): void {
+  const seededUsers = [
+    { id: "user-requester", email: "requester@example.com", status: "active" },
+    { id: "user-worker", email: "worker@example.com", status: "active" },
+    { id: "user-reviewer", email: "reviewer@example.com", status: "active" },
+    { id: "user-mara", email: "mara@sharecrop.demo", status: "active" },
+  ];
+  seededUsers.forEach((user) => {
+    storage.set(`user:${user.id}`, JSON.stringify(user));
+    storage.set(`user_email:${user.email}`, JSON.stringify(user.id));
+  });
+  storage.set("user:index", JSON.stringify(seededUsers.map((user) => user.id)));
+  storage.set(
+    "platform_admin:user-requester",
+    JSON.stringify({
+      user_id: "user-requester",
+      source: "bootstrap",
+      state: "active",
+      created_at: "2026-07-01T00:00:00Z",
+    }),
+  );
+  storage.set("platform_admin:index", JSON.stringify(["user-requester"]));
 }
 
 function wasmFunction(name: string): (...args: unknown[]) => unknown {
@@ -242,6 +284,80 @@ function request(
   stringField(response as Record<string, unknown>, "error");
   stringField(response as Record<string, unknown>, "route");
   return response;
+}
+
+class WasmScenarioClient implements ScenarioClient {
+  private readonly requestExport: (...args: unknown[]) => unknown;
+  private readonly configuredHost: {
+    setActor(id: string): void;
+    rememberUser(email: string, userID: string): void;
+  };
+  private readonly accessToken: string;
+
+  constructor(
+    requestExport: (...args: unknown[]) => unknown,
+    configuredHost: {
+      setActor(id: string): void;
+      rememberUser(email: string, userID: string): void;
+    },
+    accessToken: string,
+  ) {
+    this.requestExport = requestExport;
+    this.configuredHost = configuredHost;
+    this.accessToken = accessToken;
+  }
+
+  request(
+    method: string,
+    path: string,
+    body: ScenarioBody,
+  ): Promise<ScenarioResponse> {
+    const actor = actorFromToken(this.accessToken);
+    if (actor !== "") {
+      this.configuredHost.setActor(actor);
+    }
+    const rawBody = body === noScenarioBody ? "" : JSON.stringify(body);
+    const response = request(
+      this.requestExport,
+      method,
+      path,
+      rawBody,
+      `${method} ${path}`,
+    );
+    const json = response.body.trim() === ""
+      ? {}
+      : parseJSONRecord<JsonRecord>(response.body, `${method} ${path}`);
+    if (
+      method === "POST" && path === "/api/auth/register" &&
+      body !== noScenarioBody
+    ) {
+      const email = body.email;
+      const subjectID = json.subject_id;
+      if (typeof email === "string" && typeof subjectID === "string") {
+        this.configuredHost.rememberUser(email, subjectID);
+      }
+    }
+    if (response.status >= 400 && response.error !== "") {
+      json.error = response.error;
+    }
+    return Promise.resolve({ status: response.status, json });
+  }
+
+  withAccessToken(accessToken: string): ScenarioClient {
+    return new WasmScenarioClient(
+      this.requestExport,
+      this.configuredHost,
+      accessToken,
+    );
+  }
+}
+
+function actorFromToken(accessToken: string): string {
+  const prefix = "wasm-access-";
+  if (accessToken.startsWith(prefix)) {
+    return accessToken.slice(prefix.length);
+  }
+  return "";
 }
 
 function assertStatus(
@@ -564,9 +680,11 @@ async function main(): Promise<void> {
   );
   assertStatus(balance, 200, "worker balance");
   if (
-    requiredNumber(responseBody(balance, "worker balance"), "amount") !== 30
+    requiredNumber(responseBody(balance, "worker balance"), "amount") !== 130
   ) {
-    throw new Error("worker balance must include payout and tip");
+    throw new Error(
+      "worker balance must include signup grant, payout, and tip",
+    );
   }
 
   const ledger = request(
@@ -585,14 +703,23 @@ async function main(): Promise<void> {
   const unsupported = request(
     requestExport,
     "GET",
-    "/api/collectibles",
+    "/api/not-implemented",
     "",
-    "unsupported collectible route",
+    "unsupported route",
   );
-  assertStatus(unsupported, 404, "unsupported collectible route");
+  assertStatus(unsupported, 404, "unsupported route");
   if (!unsupported.error.includes("request route is not implemented")) {
     throw new Error(`unsupported route error = ${unsupported.error}`);
   }
+
+  configuredHost.setActor("user-requester");
+  await runSharedScenarioParity(
+    new WasmScenarioClient(
+      requestExport,
+      configuredHost,
+      "wasm-access-user-requester",
+    ),
+  );
 
   runPromise.catch((errorValue: unknown) => {
     console.error(errorValue);

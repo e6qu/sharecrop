@@ -40,7 +40,7 @@ func TestNewHostRequestAcceptsSupportedRequest(t *testing.T) {
 }
 
 func TestNewHostRequestRejectsUnsupportedMethod(t *testing.T) {
-	result := NewHostRequest("DELETE", "/api/tasks/task-1/submissions", "")
+	result := NewHostRequest("PUT", "/api/tasks/task-1/submissions", "")
 	rejected, matched := result.(HostRequestRejected)
 	if !matched {
 		t.Fatalf("result = %T, want HostRequestRejected", result)

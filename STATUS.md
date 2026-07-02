@@ -1,20 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 98 work, merged into
-`main`, plus the current
-`task/wasm-browser-host-full-parity-gates` branch.
+The repository contains pull request 1 through pull request 99 work, merged into
+`main`, plus the current `task/wasm-default-demo-shared-parity` branch.
 
-Active task: `task/wasm-browser-host-full-parity-gates` bundles post-PR-98
-continuity cleanup, browser-facing WASM host adapter groundwork, demo fetch
-integration for the compiled Go WASM backend, deterministic WASM seed/reset,
-remaining explicit WASM behavior slices where practical, broader WASM scenario
-parity, and WASM production gate measurement docs. The branch must keep
-fail-loud behavior and must not add fallback stores or JavaScript backend
-reimplementations as the target.
-Hard deletes remain out of scope; use soft lifecycle states, anonymization,
-redaction, tombstones, and audit records. Email/provider delivery, anonymous
-worker identity, per-project tokens, external wallets, and crypto integrations
-are out of scope.
+Active task: `task/wasm-default-demo-shared-parity` replaces the backendless
+demo default backend with the compiled Go/WASM backend path, expands explicit
+WASM host-backed behavior slices for collectibles, account-token shapes, agent
+credentials, admin operations, privacy resolution/redaction, moderation
+projection writes, richer deterministic demo seed/reset, broader shared scenario
+parity, and production measurement docs. The branch must keep fail-loud behavior
+and must not add fallback stores or JavaScript backend reimplementations as the
+target. Hard deletes remain out of scope; use soft lifecycle states,
+anonymization, redaction, tombstones, and audit records. Email/provider
+delivery, anonymous worker identity, per-project tokens, external wallets, and
+crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -41,20 +40,23 @@ Current implemented surface:
   controls in task creation use query and pagination where data is available.
 - Collectible and bundle task creation can escrow selected collectibles
   immediately and task responses show the held collectible count.
-- Backendless demo routes now cover current real API routes except the
-  documented real-only health/MCP/root routes.
+- The legacy `site/demo/backend.js` route checks cover current real API routes
+  except the documented real-only health/MCP/root routes.
 - Users have a persisted notification inbox for submission-created and
   submission-review events. The browser has an Inbox page with mark-read
-  support, and the backendless demo mirrors the routes and seeded unread state.
-- Backendless demo account lifecycle, user directory, organization/team member
-  provisioning, selector pagination/query, create-time collectible rewards,
-  token-aware actor flows, and shared scenario parity flows mirror the current
-  real-app flows closely enough for browser demo coverage.
+  support, and the demo backend paths mirror the routes and seeded unread state.
+- The Go/WASM demo backend supports account lifecycle, user directory,
+  organization/team member provisioning, selector pagination/query, create-time
+  collectible rewards, token-aware actor flows, and shared scenario parity flows
+  closely enough for browser demo coverage.
+- The Go/WASM demo backend supports agent credential creation, listing, and
+  revocation for the task-detail API/MCP panel, profile agent access panel, and
+  Agents page.
 - Admin operations status is available to platform admins at
   `/api/admin/operations`.
-- Authenticated users can report tasks through the task detail page. Reports
-  are persisted as `moderation_report_created` audit events and platform admins
-  can list them in the Admin moderation panel and through
+- Authenticated users can report tasks through the task detail page. Reports are
+  persisted as `moderation_report_created` audit events and platform admins can
+  list them in the Admin moderation panel and through
   `/api/admin/moderation/reports`.
 - Audit record results carry the exact recorded event, so API handlers that need
   to echo newly recorded audit-backed workflow records do not reload a guessed
@@ -75,22 +77,22 @@ Current implemented surface:
 - Team work and organization task queues support server-side search and
   pagination, task-type filters, and sorting. Organization task state filters
   are server-backed.
-- Team work and organization task queues have persisted saved views for
-  reusable query/filter/sort combinations.
+- Team work and organization task queues have persisted saved views for reusable
+  query/filter/sort combinations.
 - Organization detail pages expose an operations dashboard with loaded balance,
   ledger rows, org-scoped audit rows, member, team, collectible, and task-state
   counts.
 - Admin audit event listing supports action, subject-kind, subject-id, and page
   filters through the API and browser controls.
-- Admin audit, platform-admin, privacy-request, and moderation-report lists
-  have explicit browser pagination controls.
-- Platform admins are stored through explicit runtime services. Bootstrap
-  admins come from `SHARECROP_ADMIN_USER_IDS`; admin-granted platform admins are
+- Admin audit, platform-admin, privacy-request, and moderation-report lists have
+  explicit browser pagination controls.
+- Platform admins are stored through explicit runtime services. Bootstrap admins
+  come from `SHARECROP_ADMIN_USER_IDS`; admin-granted platform admins are
   persisted and revoked through a lifecycle state instead of row deletion.
 - The admin page includes platform-admin configuration backed by the paginated
-  user selector, privacy retention execution, moderation state filtering,
-  direct moderation subject links where routes exist, and moderation triage
-  actions for open/resolved/dismissed states with notes.
+  user selector, privacy retention execution, moderation state filtering, direct
+  moderation subject links where routes exist, and moderation triage actions for
+  open/resolved/dismissed states with notes.
 - Submission responses include indexed sensitive-field metadata, and browser
   submission history views show response bodies, validation errors, review
   notes, sensitive-field summaries, and revision shortcuts where available.
@@ -102,9 +104,8 @@ Current implemented surface:
   metadata, or marks delete-on-request sensitive-field metadata as redacted
   without removing core rows.
 - Platform admins can run sensitive-field retention. The Postgres store redacts
-  active delete-on-request sensitive-field metadata, records per-field
-  redaction events, records the retention run, and writes a privacy retention
-  audit event.
+  active delete-on-request sensitive-field metadata, records per-field redaction
+  events, records the retention run, and writes a privacy retention audit event.
 - Authorized submission-list/profile reads record sensitive-field access events
   when returned submissions include sensitive-field metadata.
 - Sensitive-field response metadata includes lifecycle state and redaction time.
@@ -117,8 +118,9 @@ Current implemented surface:
   the prior response for editing.
 - Team/organization dashboard load failures surface section-specific messages
   instead of silently rendering empty lists.
-- The backendless demo serves the current compiled Elm bundle, includes the
-  admin operations/audit route, and handles `/demo/` base paths explicitly.
+- The static demo serves the current compiled Elm bundle, defaults to the
+  compiled Go/WASM backend path, includes the admin operations/audit route, and
+  handles `/demo/` and local root-served base paths explicitly.
 - Account verification/reset token issue supports API-visible local/test mode
   and log-delivery mode.
 - Account deactivation anonymizes email, removes password credentials, and
@@ -128,11 +130,11 @@ Current implemented surface:
 - A shared scenario parity runner covers selector pagination/query, admin
   operations, account-token issue shape, privacy request/audit/resolution shape,
   moderation report/admin-list/audit shape, collectible catalog/mint/transfer,
-  organization/team/task/task-comment creation, submission creation/comments,
-  notification read shape, and a multi-actor reservation
-  approval/submission acceptance/payout/notification flow against the
-  backendless demo. It can be run against a real API with an explicit admin
-  origin/token/refresh-token session.
+  agent-credential creation/revocation, organization/team/task/task-comment
+  creation, submission creation/comments, notification read shape, and a
+  multi-actor reservation approval/submission acceptance/payout/notification
+  flow against the backendless demo. It can be run against a real API with an
+  explicit admin origin/token/refresh-token session.
 - The shared scenario parity runner also covers organization reviewer acceptance
   of an organization-owned task funded from the organization balance.
 - The shared scenario parity runner covers submission-comment notifications,
@@ -141,10 +143,10 @@ Current implemented surface:
   metadata.
 - The shared scenario parity runner covers organization member
   provisioning/listing/role-update/deactivation shape.
-- The real API shared scenario parity runner probes `/healthz`, accepts
-  token and refresh-token file inputs, carries refresh-cookie rotation, and
-  reports invalid JSON and status errors with request context before running the
-  shared scenario suite.
+- The real API shared scenario parity runner probes `/healthz`, accepts token
+  and refresh-token file inputs, carries refresh-cookie rotation, and reports
+  invalid JSON and status errors with request context before running the shared
+  scenario suite.
 - A local real API shared scenario parity runner registers a scenario admin,
   grants platform-admin state through `DATABASE_URL` and `psql`, and runs the
   same shared scenario suite against a real local API without a fallback admin
@@ -160,9 +162,9 @@ Current implemented surface:
 - Browser task and discovery lists have explicit pagination controls.
 - User submission history lists support `limit`/`offset` and browser
   previous/next controls.
-- Browser ledger, organization ledger, and notification inbox lists use
-  explicit `limit`/`offset` requests with previous/next controls. The
-  backendless demo honors the same pagination for those routes.
+- Browser ledger, organization ledger, and notification inbox lists use explicit
+  `limit`/`offset` requests with previous/next controls. Demo backend paths
+  honor the same pagination for those routes.
 - Shared scenario parity covers adjacent one-row pages for personal ledger,
   organization ledger, and notification inbox routes.
 - Task creation and submission creation support up to five small attachments
@@ -175,7 +177,7 @@ Current implemented surface:
 - Inbox notification rows link to the task when notification metadata includes
   `task_id`.
 - Submission comments notify the other side of the private submission discussion
-  thread. The backendless demo enforces the same submitter/reviewer thread
+  thread. Demo backend paths enforce the same submitter/reviewer thread
   visibility check.
 - Collectibles carry an optional organization scope.
   `transferable_within_organization` tips require both users to be active
@@ -189,15 +191,13 @@ Current implemented surface:
 - Lifecycle and redaction semantics are documented in
   [docs/deletion_semantics.md](./docs/deletion_semantics.md); core-row removal
   is not part of the project direction.
-- The WASM demo backend spike is documented with explicit storage-adapter gates,
-  local compile-check results, bundle-size observations, a narrow
-  `internal/wasmdemo` request-adapter package, explicit privacy-request,
+- The WASM backend target is documented with explicit storage-adapter gates,
+  local compile-check results, bundle-size observations, the `internal/wasmdemo`
+  request-adapter package, explicit user, account-token, platform-admin,
+  audit-event, collectible, agent-credential, privacy-request,
   moderation-triage, saved-queue-view, task, attachment, notification,
-  organization, organization-member, team, comment, reservation, submission,
-  and ledger browser-storage boundaries,
-  narrow privacy-request, moderation-triage, saved-queue-view, task,
-  notification, organization, organization-member, team, comment, reservation,
-  submission, and ledger request handlers, and no fallback path.
+  organization, organization-member, team, comment, reservation, submission, and
+  ledger browser-storage boundaries and request handlers, and no fallback path.
 - Go/WASM is a first-class backend execution target, not only a demo mechanism.
   The target artifact is a `.wasm` binary compiled from Go with explicit host
   adapters for storage, clock, identity/session, request handling, randomness,
@@ -206,21 +206,22 @@ Current implemented surface:
 - `cmd/sharecrop-wasm` builds a Go `js/wasm` artifact that exposes
   `sharecropWasmBackendStatus`, `sharecropConfigureHost`, and
   `sharecropHandleRequest`. Requests fail loudly until an explicit host is
-  configured. A configured host executes task/comment/reservation/submission and
-  ledger requests through Go handlers and caller-provided storage, clock, actor,
-  and ID adapters.
+  configured. A configured host executes auth, account, user, admin,
+  collectible, agent-credential, privacy, moderation, saved-view, task, comment,
+  reservation, submission, notification, organization/team, and ledger requests
+  through Go handlers and caller-provided storage, clock, actor, and ID
+  adapters.
 - `deno task check:scenario-parity:wasm -- --wasm <compiled.wasm>` loads the
   compiled Go WASM artifact through Go's `wasm_exec.js`, verifies the
-  unconfigured request failure, configures an explicit host, and runs privacy
-  request, saved queue view, organization/member/team, task/comment/
-  reservation/submission acceptance, ledger, and unsupported-route checks
-  without calling `site/demo/backend.js`.
-- `site/demo/index.html?backend=wasm` is an opt-in browser path for the
-  compiled Go/WASM backend. It requires `wasm_exec.js` and
-  `sharecrop-wasm-backend.wasm`, configures explicit browser host functions,
-  and intercepts `/api/*` XHR requests through `sharecropHandleRequest`.
-- `deno task wasm:demo:build` builds the deployed demo WASM artifacts. The
-  Pages workflow runs it before uploading `site`.
+  unconfigured request failure, configures an explicit host, and runs the shared
+  scenario parity suite without calling `site/demo/backend.js`.
+- `site/demo/index.html` defaults to the compiled Go/WASM backend. It requires
+  `wasm_exec.js` and `sharecrop-wasm-backend.wasm`, configures explicit browser
+  host functions, seeds deterministic demo data, and intercepts `/api/*` XHR
+  requests through `sharecropHandleRequest`. The legacy `backend.js` path is not
+  loaded as a fallback.
+- `deno task wasm:demo:build` builds the deployed demo WASM artifacts. The Pages
+  workflow runs it before uploading `site`.
 - The current raw-ID browser-flow audit is recorded in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 - Reward scope is Sharecrop credits plus admin-minted Sharecrop collectibles
@@ -242,12 +243,25 @@ Current verification:
 - `deno task check:policy` passed.
 - `deno task test` passed.
 - `deno fmt --check deno.json tools tests site/demo/index.html
-  site/demo/wasm-host.js site/demo/backend.js` passed.
+  site/demo/wasm-host.js site/demo/backend.js docs/wasm_demo_backend_spike.md
+  docs/demo_semantic_parity.md docs/application_readiness_review.md STATUS.md
+  DO_NEXT.md BUGS.md WHAT_WE_DID.md`
+  passed.
 - `make check-contracts` passed.
 - `go tool deadcode -test ./...` passed.
 - `deno task wasm:demo:build` passed with repo-local Go caches.
 - `deno task check:scenario-parity:wasm -- --wasm
-  site/demo/sharecrop-wasm-backend.wasm` passed.
+  site/demo/sharecrop-wasm-backend.wasm`
+  passed.
+- `tests/playwright/demo.spec.ts` passed against the Go/WASM default demo on
+  port `29181` after the agent-credential WASM slice was added.
+- `tests/playwright/mobile.spec.ts` failed on missing WASM
+  `/api/agent-credentials`, that slice was added, and the mobile spec passed
+  against the Go/WASM default demo on port `29181` after the fix.
+- PR CI initially failed the Playwright job because the clean runner built the
+  Elm/CSS demo assets but did not build `wasm_exec.js` and
+  `sharecrop-wasm-backend.wasm` before serving `site/demo`. `make e2e-ui` now
+  builds the demo WASM artifacts before running Playwright.
 - `git diff --check` passed.
 
 Blocking issues:

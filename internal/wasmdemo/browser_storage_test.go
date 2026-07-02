@@ -339,8 +339,8 @@ func TestInteractionBrowserStorageRoundTripsSubmissionCommentsReservationsAndLed
 	if !balanceMatched {
 		t.Fatalf("balance result = %T, want LedgerBalanceStored", balanceResult)
 	}
-	if balance.Amount != 35 {
-		t.Fatalf("balance = %d, want 35", balance.Amount)
+	if balance.Amount != 135 {
+		t.Fatalf("balance = %d, want 135", balance.Amount)
 	}
 }
 

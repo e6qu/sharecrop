@@ -43,6 +43,7 @@ docker-down:
 	docker compose down
 
 e2e-ui:
+	deno task wasm:demo:build
 	deno task e2e:ui
 
 elm:

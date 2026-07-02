@@ -2,8 +2,8 @@
 import { expect, test } from "@playwright/test";
 import process from "node:process";
 
-// The demo (real Elm client + in-browser fake backend) is served by
-// the static webServer in playwright.config.ts. It boots into a seeded account.
+// The demo (real Elm client + compiled Go/WASM backend path) is served by the
+// static webServer in playwright.config.ts. It boots into a seeded account.
 const demoOrigin = process.env.SHARECROP_PLAYWRIGHT_DEMO_ORIGIN ??
   "http://127.0.0.1:29181";
 

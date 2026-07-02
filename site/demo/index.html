@@ -8,10 +8,9 @@
       (() => {
         const parts = window.location.pathname.split("/");
         const demoIndex = parts.indexOf("demo");
-        if (demoIndex === -1) {
-          throw new Error("Sharecrop demo must be served from a /demo/ path");
-        }
-        const basePath = parts.slice(0, demoIndex + 1).join("/") + "/";
+        const basePath = demoIndex === -1
+          ? "./"
+          : parts.slice(0, demoIndex + 1).join("/") + "/";
         document.write(`<base href="${basePath}">`);
       })();
     </script>
@@ -31,20 +30,11 @@
     <script>
       const boot = async () => {
         const params = new URLSearchParams(window.location.search);
-        const backend = params.get("backend") || "demo";
+        const backend = params.get("backend") || "wasm";
         if (backend === "wasm") {
           await window.SharecropWasmDemo.install({
             wasmExecURL: "./wasm_exec.js",
             wasmURL: "./sharecrop-wasm-backend.wasm",
-          });
-        } else if (backend === "demo") {
-          await new Promise((resolve, reject) => {
-            const script = document.createElement("script");
-            script.src = "./backend.js";
-            script.onload = resolve;
-            script.onerror = () =>
-              reject(new Error("failed to load backend.js"));
-            document.head.appendChild(script);
           });
         } else {
           throw new Error("unknown Sharecrop demo backend: " + backend);
