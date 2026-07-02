@@ -327,6 +327,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page.getByTestId("org-tasks-heading")).toContainText(
     "Organization tasks (0)",
   );
+  await page.getByTestId("org-task-filters").click();
   await expect(page.getByTestId("org-task-query")).toBeVisible();
   await page.getByTestId("org-task-query").fill("missing task");
   await page.getByTestId("org-task-search").click();
@@ -350,12 +351,14 @@ test("users open an organization and manage its teams and members", async ({ pag
   // The owner is a real member of the org they created.
   await expect(page.getByTestId("org-member-row")).toHaveCount(1);
 
+  await page.getByTestId("org-teams-section").click();
   await page.getByTestId("create-org-team-name").fill(teamName);
   await page.getByTestId("create-org-team").click();
   await expect(
     page.getByTestId("org-team-row").filter({ hasText: teamName }),
   ).toHaveCount(1);
 
+  await page.getByTestId("org-members-section").click();
   await page.getByTestId("provision-member-email").fill(member.email);
   await page.getByTestId("provision-member").click();
   await expect(page.getByTestId("provision-member-message")).toContainText(

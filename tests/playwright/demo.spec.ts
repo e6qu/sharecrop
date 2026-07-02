@@ -301,6 +301,7 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
   await expect(page.getByTestId("catalog-entry")).toHaveCount(25);
 
   // Award one to myself (the demo user id), then it appears in my holdings.
+  await page.getByTestId("award-default-section").click();
   await page.getByTestId("award-recipient-id-query").fill("mara");
   await page.getByTestId("award-recipient-id").selectOption({
     label: "mara@sharecrop.demo",

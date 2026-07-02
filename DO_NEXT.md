@@ -5,17 +5,16 @@ Current priority from
 
 Active branch:
 
-1. `task/ui-ux-declutter-and-profile-fix` is in progress. Fixes two real broken
-   flows found by hand-testing the Go/WASM demo in a browser: the demo's
-   `GET /api/users/{user_id}` returned the raw stored user record instead of the
-   real backend's `{id, tasks}` profile shape (every profile page view failed
-   with a JSON decode error), and `GET /api/users/{user_id}/work` did not exist
-   at all in the demo (the profile's "Public work" tab failed the same way).
-   Also declutters the Admin page, Tasks/Discovery filter panels, and Create
-   Task's advanced/optional fields behind a new collapsible `Ui.disclosure`
-   component, and fixes a virtual-DOM node-reuse bug that could carry a
-   `<details>` element's open/closed state across unrelated pages (now keyed by
-   route).
+1. `task/org-detail-declutter-and-audit-fix` is in progress. Continues hand-
+   testing the browser demo, page by page: found that
+   `GET /api/organizations/{organization_id}/audit-events` was unclassified in
+   the WASM demo (a 404), so the organization detail page's "Organization audit"
+   section always failed, and a copy-paste bug stored that failure in
+   `orgTaskMessage` instead of a dedicated field, so the error rendered under
+   "Organization tasks" instead. Both fixed. Also declutters the organization
+   detail page (task filters, Teams, Members, Collectibles) and the Collectibles
+   page's admin-only award-recipient picker with the `Ui.disclosure` component
+   from the prior branch.
 
 Next recommended work:
 
@@ -65,6 +64,13 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 107 was merged into `main`.
+1. The `task/ui-ux-declutter-and-profile-fix` branch fixed two real broken flows
+   found by hand-testing the Go/WASM demo in a browser (the profile page's
+   `GET /api/users/{user_id}` and `GET /api/users/{user_id}/work`), introduced
+   the `Ui.disclosure` collapsible-section component and applied it to the Admin
+   page/Tasks/Discovery filters/Create Task's advanced fields, and fixed a
+   virtual-DOM node-reuse bug by keying the page root view by route.
 1. PR 106 was merged into `main`.
 1. The `task/openapi-schema-field-access` branch closed the one confirmed
    generator gap from the prior branch: `internal/openapi` resolves a two-value
