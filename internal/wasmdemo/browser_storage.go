@@ -106,29 +106,32 @@ type StoredAttachment struct {
 }
 
 type StoredTask struct {
-	ID                     string `json:"id"`
-	CreatedBy              string `json:"created_by"`
-	OwnerKind              string `json:"owner_kind"`
-	OwnerID                string `json:"owner_id"`
-	Title                  string `json:"title"`
-	State                  string `json:"state"`
-	Description            string `json:"description"`
-	TaskType               string `json:"task_type"`
-	RewardKind             string `json:"reward_kind"`
-	RewardCollectibleCount int    `json:"reward_collectible_count"`
-	RewardCreditAmount     int64  `json:"reward_credit_amount"`
-	ParticipationPolicy    string `json:"participation_policy"`
-	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
-	AssigneeScope          string `json:"assignee_scope"`
-	VisibilityKind         string `json:"visibility_kind"`
-	VisibilityID           string `json:"visibility_id"`
-	SeriesKind             string `json:"series_kind"`
-	SeriesPosition         int    `json:"series_position"`
-	SeriesID               string `json:"series_id"`
-	ReferenceURL           string `json:"reference_url"`
-	ResponseSchemaJSON     string `json:"response_schema_json"`
-	PayloadKind            string `json:"payload_kind"`
-	PayloadJSON            string `json:"payload_json"`
+	ID                     string   `json:"id"`
+	CreatedBy              string   `json:"created_by"`
+	OwnerKind              string   `json:"owner_kind"`
+	OwnerID                string   `json:"owner_id"`
+	Title                  string   `json:"title"`
+	State                  string   `json:"state"`
+	Description            string   `json:"description"`
+	TaskType               string   `json:"task_type"`
+	RewardKind             string   `json:"reward_kind"`
+	RewardCollectibleIDs   []string `json:"reward_collectible_ids"`
+	RewardCollectibleCount int      `json:"reward_collectible_count"`
+	RewardCreditAmount     int64    `json:"reward_credit_amount"`
+	ParticipationPolicy    string   `json:"participation_policy"`
+	ReservationExpiryHours int      `json:"reservation_expiry_hours"`
+	AssigneeScope          string   `json:"assignee_scope"`
+	VisibilityKind         string   `json:"visibility_kind"`
+	VisibilityID           string   `json:"visibility_id"`
+	SeriesKind             string   `json:"series_kind"`
+	SeriesPosition         int      `json:"series_position"`
+	SeriesID               string   `json:"series_id"`
+	ReferenceURL           string   `json:"reference_url"`
+	ResponseSchemaJSON     string   `json:"response_schema_json"`
+	PayloadKind            string   `json:"payload_kind"`
+	PayloadJSON            string   `json:"payload_json"`
+	EscrowAmount           int64    `json:"escrow_amount"`
+	FundedOrganizationID   string   `json:"funded_organization_id"`
 }
 
 type StoredNotification struct {
@@ -164,6 +167,56 @@ type StoredTeam struct {
 	OwnerUserID    string `json:"owner_user_id"`
 	Name           string `json:"name"`
 	CreatedBy      string `json:"created_by"`
+}
+
+type StoredUser struct {
+	ID     string `json:"id"`
+	Email  string `json:"email"`
+	Status string `json:"status"`
+}
+
+type StoredAuditEvent struct {
+	ID           string `json:"id"`
+	ActorID      string `json:"actor_id"`
+	Action       string `json:"action"`
+	SubjectKind  string `json:"subject_kind"`
+	SubjectID    string `json:"subject_id"`
+	MetadataJSON string `json:"metadata_json"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type StoredPlatformAdmin struct {
+	UserID    string `json:"user_id"`
+	Source    string `json:"source"`
+	State     string `json:"state"`
+	CreatedAt string `json:"created_at"`
+}
+
+type StoredAccountToken struct {
+	Token  string `json:"token"`
+	Kind   string `json:"kind"`
+	UserID string `json:"user_id"`
+	State  string `json:"state"`
+}
+
+type StoredCollectible struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Kind           string `json:"kind"`
+	State          string `json:"state"`
+	TransferPolicy string `json:"transfer_policy"`
+	OwnerID        string `json:"owner_id"`
+	OwnerKind      string `json:"owner_kind"`
+	OrganizationID string `json:"organization_id"`
+	Art            string `json:"art"`
+}
+
+type StoredAgentCredential struct {
+	ID      string   `json:"id"`
+	OwnerID string   `json:"owner_id"`
+	Label   string   `json:"label"`
+	Scopes  []string `json:"scopes"`
+	State   string   `json:"state"`
 }
 
 type ModerationTriageStorageResult interface {
@@ -702,6 +755,10 @@ func SaveTask(storage BrowserStorage, task StoredTask) TaskStorageResult {
 	if _, matched := writeResult.(StorageWritten); !matched {
 		return TaskStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
 	}
+	indexResult := appendStringIndex(storage, "task:index", cleaned.ID, "task")
+	if _, matched := indexResult.(stringIndexStored); !matched {
+		return TaskStorageRejected{Reason: indexResult.(stringIndexRejected).reason}
+	}
 	return TaskStored{Value: cleaned}
 }
 
@@ -734,6 +791,57 @@ func LoadTask(storage BrowserStorage, taskID string) TaskStorageResult {
 	return TaskStored{Value: cleaned}
 }
 
+type TasksStored struct {
+	Values []StoredTask
+}
+
+func (TasksStored) taskStorageResult() {}
+
+func ListTasks(storage BrowserStorage, query string, scope string, userID string, organizationID string, state string, page StoredListPage) TaskStorageResult {
+	idsResult := loadStringIndex(storage, "task:index", "task")
+	ids, idsMatched := idsResult.(stringIndexLoaded)
+	if !idsMatched {
+		return TaskStorageRejected{Reason: idsResult.(stringIndexRejected).reason}
+	}
+	cleanQuery := strings.ToLower(strings.TrimSpace(query))
+	cleanScope := strings.TrimSpace(scope)
+	cleanUserID := strings.TrimSpace(userID)
+	cleanOrganizationID := strings.TrimSpace(organizationID)
+	cleanState := strings.TrimSpace(state)
+	values := make([]StoredTask, 0, len(ids.values))
+	for index := range ids.values {
+		loadResult := LoadTask(storage, ids.values[index])
+		loaded, loadedMatched := loadResult.(TaskStored)
+		if !loadedMatched {
+			return loadResult
+		}
+		task := loaded.Value
+		if cleanScope == "public" && (task.VisibilityKind != "public" || task.State != "open") {
+			continue
+		}
+		if cleanScope == "user" && cleanUserID != "" && task.CreatedBy != cleanUserID {
+			continue
+		}
+		if cleanScope == "organization" {
+			if task.VisibilityKind != "organization" && task.OwnerKind != "organization" && task.OwnerKind != "organization_team" {
+				continue
+			}
+			if cleanOrganizationID != "" && task.OwnerID != cleanOrganizationID && task.VisibilityID != cleanOrganizationID {
+				continue
+			}
+		}
+		if cleanState != "" && task.State != cleanState {
+			continue
+		}
+		if cleanQuery != "" && !strings.Contains(strings.ToLower(task.Title), cleanQuery) && !strings.Contains(strings.ToLower(task.Description), cleanQuery) && !strings.Contains(strings.ToLower(task.ID), cleanQuery) {
+			continue
+		}
+		values = append(values, task)
+	}
+	start, end := pageBounds(len(values), page)
+	return TasksStored{Values: values[start:end]}
+}
+
 func cleanStoredTask(task StoredTask) StoredTask {
 	return StoredTask{
 		ID:                     strings.TrimSpace(task.ID),
@@ -744,6 +852,7 @@ func cleanStoredTask(task StoredTask) StoredTask {
 		TaskType:               strings.TrimSpace(task.TaskType),
 		ReferenceURL:           strings.TrimSpace(task.ReferenceURL),
 		RewardKind:             strings.TrimSpace(task.RewardKind),
+		RewardCollectibleIDs:   cleanStorageStringSlice(task.RewardCollectibleIDs),
 		RewardCreditAmount:     task.RewardCreditAmount,
 		RewardCollectibleCount: task.RewardCollectibleCount,
 		ParticipationPolicy:    strings.TrimSpace(task.ParticipationPolicy),
@@ -759,7 +868,20 @@ func cleanStoredTask(task StoredTask) StoredTask {
 		PayloadKind:            strings.TrimSpace(task.PayloadKind),
 		PayloadJSON:            strings.TrimSpace(task.PayloadJSON),
 		CreatedBy:              strings.TrimSpace(task.CreatedBy),
+		EscrowAmount:           task.EscrowAmount,
+		FundedOrganizationID:   strings.TrimSpace(task.FundedOrganizationID),
 	}
+}
+
+func cleanStorageStringSlice(values []string) []string {
+	cleaned := make([]string, 0, len(values))
+	for index := range values {
+		value := strings.TrimSpace(values[index])
+		if value != "" {
+			cleaned = append(cleaned, value)
+		}
+	}
+	return cleaned
 }
 
 func validateStoredTask(task StoredTask) string {
@@ -863,7 +985,7 @@ func validStoredTaskAssigneeScope(value string) bool {
 
 func validStoredTaskState(value string) bool {
 	switch value {
-	case "draft", "open", "cancelled", "refunded":
+	case "draft", "open", "cancelled", "refunded", "closed":
 		return true
 	default:
 		return false
@@ -872,7 +994,7 @@ func validStoredTaskState(value string) bool {
 
 func validStoredTaskVisibilityKind(value string) bool {
 	switch value {
-	case "public", "user", "team", "organization", "default":
+	case "public", "user", "team", "organization", "organization_team", "default":
 		return true
 	default:
 		return false

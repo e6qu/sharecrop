@@ -1,19 +1,47 @@
 # What We Did
 
+`task/wasm-default-demo-shared-parity` made the compiled Go/WASM backend the
+default static-demo backend:
+
+- **Default Go/WASM demo backend.** `site/demo/index.html` now defaults to
+  `wasm`, loads `wasm-host.js`, requires `wasm_exec.js` and
+  `sharecrop-wasm-backend.wasm`, configures explicit browser host functions,
+  seeds deterministic demo data, and routes `/api/*` XHR requests through
+  `sharecropHandleRequest`. The legacy `backend.js` path is not loaded as a
+  fallback.
+- **Expanded WASM behavior slices.** `internal/wasmdemo` now has explicit
+  storage and handler support for users, account tokens, platform admins, audit
+  events, collectibles, agent credentials, auth/account routes, admin
+  operations, privacy resolution/retention, moderation projection writes/triage,
+  task lists and actions, team work, submission validation, sensitive-field
+  indexing, notifications, ledger, organizations, teams, comments, and
+  reservations.
+- **Shared parity through WASM.** The WASM scenario runner seeds explicit host
+  storage, configures the compiled Go artifact, verifies unconfigured requests
+  fail, and runs the shared scenario parity suite through
+  `sharecropHandleRequest` without calling `site/demo/backend.js`.
+- **Docs and continuity.** Demo semantic parity, WASM target docs, readiness
+  review, Playwright comments, status, next-task queue, and risk notes were
+  refreshed to record the Go/WASM demo default and remaining production WASM
+  hardening work.
+- **CI wiring.** `make e2e-ui` now builds the demo WASM artifacts before
+  Playwright starts the static demo server, so clean CI runners have
+  `wasm_exec.js` and `sharecrop-wasm-backend.wasm` available.
+
 `task/wasm-browser-host-full-parity-gates` expanded the browser-facing Go/WASM
 backend path:
 
-- **Browser WASM host path.** The demo now supports an explicit
-  `?backend=wasm` mode. It loads `wasm-host.js`, requires `wasm_exec.js` and
-  `sharecrop-wasm-backend.wasm`, configures explicit browser host functions,
-  and routes `/api/*` XHR requests through `sharecropHandleRequest`. Unknown
-  backend modes, missing artifacts, missing host functions, invalid host values,
-  and missing storage keys fail loudly.
+- **Browser WASM host path.** The demo now supports an explicit `?backend=wasm`
+  mode. It loads `wasm-host.js`, requires `wasm_exec.js` and
+  `sharecrop-wasm-backend.wasm`, configures explicit browser host functions, and
+  routes `/api/*` XHR requests through `sharecropHandleRequest`. Unknown backend
+  modes, missing artifacts, missing host functions, invalid host values, and
+  missing storage keys fail loudly.
 - **Demo WASM artifact build.** `deno task wasm:demo:build` builds the Go
-  `cmd/sharecrop-wasm` artifact into `site/demo/sharecrop-wasm-backend.wasm`
-  and copies Go's `wasm_exec.js`. The Pages workflow runs this task before
-  uploading the static site, and the generated artifacts are ignored rather
-  than committed.
+  `cmd/sharecrop-wasm` artifact into `site/demo/sharecrop-wasm-backend.wasm` and
+  copies Go's `wasm_exec.js`. The Pages workflow runs this task before uploading
+  the static site, and the generated artifacts are ignored rather than
+  committed.
 - **Expanded WASM dispatch and scenario.** The WASM command now dispatches
   existing explicit privacy request, saved queue view, notification,
   organization/member/team, task, comment, reservation, submission, and ledger
@@ -26,10 +54,12 @@ backend path:
 - **Verification.** Passed: `go test ./...`; `deno task check:ts`;
   `deno task lint`; `deno task check:policy`; `deno task test`;
   `deno fmt --check deno.json tools tests site/demo/index.html
-  site/demo/wasm-host.js site/demo/backend.js`; `make check-contracts`;
-  `go tool deadcode -test ./...`; `deno task wasm:demo:build`;
+  site/demo/wasm-host.js site/demo/backend.js`;
+  `make check-contracts`; `go tool deadcode -test ./...`;
+  `deno task wasm:demo:build`;
   `deno task check:scenario-parity:wasm -- --wasm
-  site/demo/sharecrop-wasm-backend.wasm`; and `git diff --check`.
+  site/demo/sharecrop-wasm-backend.wasm`;
+  and `git diff --check`.
 
 `task/wasm-host-adapters-scenario-parity` wired the first configured Go/WASM
 request execution path:
@@ -53,12 +83,16 @@ request execution path:
   `https://e6qu.github.io/sharecrop`.
 - **Verification.** Passed: `go test ./...`; `deno task check:ts`;
   `deno task lint`; `deno task check:policy`; `deno task test`;
-  `deno fmt --check deno.json tools tests site/demo/backend.js`; `make
-  check-contracts`; `go tool deadcode -test ./...`; `GOOS=js GOARCH=wasm go
+  `deno fmt --check deno.json tools tests site/demo/backend.js`;
+  `make
+  check-contracts`; `go tool deadcode -test ./...`;
+  `GOOS=js GOARCH=wasm go
   build -o /private/tmp/sharecrop-wasm-backend.wasm ./cmd/sharecrop-wasm`;
   `deno task check:scenario-parity:wasm -- --wasm
-  /private/tmp/sharecrop-wasm-backend.wasm`; `deno task check:pages-routing --
-  --origin https://e6qu.github.io/sharecrop`; and `git diff --check`.
+  /private/tmp/sharecrop-wasm-backend.wasm`;
+  `deno task check:pages-routing --
+  --origin https://e6qu.github.io/sharecrop`;
+  and `git diff --check`.
 
 `task/wasm-submission-parity-host-adapters` expanded the Go/WASM backend target
 and interaction parity groundwork:
@@ -81,19 +115,22 @@ and interaction parity groundwork:
   fails with a host-adapter-required error until host runtime adapters are
   wired.
 - **WASM runner.** Added `tools/run_wasm_scenario_parity.ts` and
-  `deno task check:scenario-parity:wasm`, which load a compiled Go WASM
-  artifact through Go's `wasm_exec.js` and verify required Sharecrop exports
-  without calling `site/demo/backend.js`.
+  `deno task check:scenario-parity:wasm`, which load a compiled Go WASM artifact
+  through Go's `wasm_exec.js` and verify required Sharecrop exports without
+  calling `site/demo/backend.js`.
 - **Docs.** The WASM target, status, next-task queue, and risks were refreshed
   to record the new interaction slices, host adapter requirement, and remaining
   work before the JavaScript demo backend can be replaced.
 - **Verification.** Passed: `go test ./...`; `deno task check:ts`;
   `deno task lint`; `deno task check:policy`; `deno task test`;
-  `deno fmt --check deno.json tools tests site/demo/backend.js`; `make
-  check-contracts`; `go tool deadcode -test ./...`; `GOOS=js GOARCH=wasm go
+  `deno fmt --check deno.json tools tests site/demo/backend.js`;
+  `make
+  check-contracts`; `go tool deadcode -test ./...`;
+  `GOOS=js GOARCH=wasm go
   build -o /private/tmp/sharecrop-wasm-backend.wasm ./cmd/sharecrop-wasm`;
   `deno task check:scenario-parity:wasm -- --wasm
-  /private/tmp/sharecrop-wasm-backend.wasm`; and `git diff --check`.
+  /private/tmp/sharecrop-wasm-backend.wasm`;
+  and `git diff --check`.
 
 `task/wasm-org-team-parity-contracts-rawid` expanded WASM demo groundwork,
 organization/member/team parity, contracts, and lifecycle coverage:
@@ -101,21 +138,21 @@ organization/member/team parity, contracts, and lifecycle coverage:
 - **WASM demo organization/team slice.** `internal/wasmdemo` now classifies
   organization, organization-member, organization-team, and standalone-team
   routes. It has explicit browser storage for organizations, organization
-  members, organization-owned teams, and standalone teams, plus request
-  handlers for create/list/provision/role-update/deactivate flows. Missing
-  storage, actors, ID sources, user resolvers, invalid pages, invalid lifecycle
-  states, invalid roles, ownership mismatches, unsupported routes, and
-  unsupported methods reject explicitly without fallback stores.
+  members, organization-owned teams, and standalone teams, plus request handlers
+  for create/list/provision/role-update/deactivate flows. Missing storage,
+  actors, ID sources, user resolvers, invalid pages, invalid lifecycle states,
+  invalid roles, ownership mismatches, unsupported routes, and unsupported
+  methods reject explicitly without fallback stores.
 - **Scenario and demo parity.** Shared scenario parity now covers organization
   member provisioning, listing, role update, and deactivation shape. The
   backendless demo returns the real API's deactivation response body for
   organization member deactivation.
 - **Contracts and browser coverage.** HTTP fixtures now pin organization-member
-  deactivation and organization-owned team response shapes. DB-backed
-  Playwright coverage was extended around organization member role and
-  deactivation controls.
-- **Lifecycle-list fix.** The real Postgres organization member list now
-  returns non-removed memberships, so managers can see deactivated members while
+  deactivation and organization-owned team response shapes. DB-backed Playwright
+  coverage was extended around organization member role and deactivation
+  controls.
+- **Lifecycle-list fix.** The real Postgres organization member list now returns
+  non-removed memberships, so managers can see deactivated members while
   permission checks still require active membership. HTTP E2E coverage verifies
   the deactivated member appears to the owner and no longer has roster access.
 - **Docs and raw-ID audit.** WASM spike, demo semantic parity, raw-ID audit,
@@ -129,29 +166,33 @@ organization/member/team parity, contracts, and lifecycle coverage:
   JavaScript reimplementation or fallback stores.
 - **Verification.** Passed after the lifecycle-list fix: `go test ./...`;
   `deno task check:ts`; `deno task lint`; `deno task check:policy`;
-  `deno task test`; `deno fmt --check deno.json tools tests
-  site/demo/backend.js`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
-  make check-contracts`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
-  go tool deadcode -test ./...`; `ELM_BIN=/opt/homebrew/bin/elm deno task
-  frontend:build`; `GOOS=js GOARCH=wasm
+  `deno task test`;
+  `deno fmt --check deno.json tools tests
+  site/demo/backend.js`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
+  make check-contracts`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
+  go tool deadcode -test ./...`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`;
+  `GOOS=js GOARCH=wasm
   GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test -c -o
-  /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo`; and
-  `tools/run_db_checks.sh` against local PostgreSQL 15 on port `25432`; local
-  real scenario parity against the app on port `29180`; DB-backed Playwright
-  screens against app port `29180`, demo port `29181`, and Postgres port
-  `25432`; and `git diff --check`.
+  /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo`;
+  and `tools/run_db_checks.sh` against local PostgreSQL 15 on port `25432`;
+  local real scenario parity against the app on port `29180`; DB-backed
+  Playwright screens against app port `29180`, demo port `29181`, and Postgres
+  port `25432`; and `git diff --check`.
 
 `task/real-parity-wasm-submission-contracts-rawid-attachments` expanded real
 parity execution, WASM demo groundwork, contracts, pagination coverage, and
 attachment browser coverage:
 
-- **Local real API parity.** Added
-  `tools/run_local_real_scenario_parity.ts` and a Deno task that probes
-  `/healthz`, registers a scenario admin, grants platform-admin state through
-  `DATABASE_URL` and `psql`, and runs the shared scenario suite against a real
-  local API. The explicit real runner now carries refresh-token cookies,
-  accepts refresh-token file input, and reports response error context in status
-  failures.
+- **Local real API parity.** Added `tools/run_local_real_scenario_parity.ts` and
+  a Deno task that probes `/healthz`, registers a scenario admin, grants
+  platform-admin state through `DATABASE_URL` and `psql`, and runs the shared
+  scenario suite against a real local API. The explicit real runner now carries
+  refresh-token cookies, accepts refresh-token file input, and reports response
+  error context in status failures.
 - **Shared scenario parity.** The shared suite now satisfies the real
   task-create and submission lifecycle contract by sending explicit task
   placement and opening the submission task before submission. It also verifies
@@ -171,15 +212,19 @@ attachment browser coverage:
   `deno task lint`; `deno task check:policy`; `deno task test`;
   `deno fmt --check deno.json tools tests site/demo/backend.js`;
   `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
-  check-contracts`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
-  go tool deadcode -test ./...`; `ELM_BIN=/opt/homebrew/bin/elm deno task
-  frontend:build`; `GOOS=js GOARCH=wasm
+  check-contracts`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
+  go tool deadcode -test ./...`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`;
+  `GOOS=js GOARCH=wasm
   GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go test -c -o
   /private/tmp/sharecrop-wasmdemo.test.wasm ./internal/wasmdemo`;
   `tools/run_db_checks.sh` against local PostgreSQL 15;
   `deno task check:scenario-parity:local-real -- --origin
-  http://127.0.0.1:18080` against the local real API; and DB-backed
-  Playwright `tests/playwright/screens.spec.ts` against local PostgreSQL 15.
+  http://127.0.0.1:18080`
+  against the local real API; and DB-backed Playwright
+  `tests/playwright/screens.spec.ts` against local PostgreSQL 15.
 
 `task/real-parity-wasm-contracts-pagination-hardening` hardened parity,
 pagination, attachments, and the WASM demo spike:
@@ -196,11 +241,10 @@ pagination, attachments, and the WASM demo spike:
   attachments per request. The Go API, backendless demo, browser upload guards,
   and WASM attachment storage enforce the limit; each file still remains under
   500 KiB.
-- **Contracts and demo parity.** HTTP fixtures now include standalone
-  attachment request/response shapes. The backendless demo now paginates
-  personal ledger, organization ledger, and inbox notification routes, and its
-  task payload kind now matches the real API's `json` value instead of the stale
-  `inline` value.
+- **Contracts and demo parity.** HTTP fixtures now include standalone attachment
+  request/response shapes. The backendless demo now paginates personal ledger,
+  organization ledger, and inbox notification routes, and its task payload kind
+  now matches the real API's `json` value instead of the stale `inline` value.
 - **Browser pagination and upload coverage.** The browser now has explicit
   previous/next controls for personal ledger, organization ledger, and inbox
   notifications. DB-backed Playwright coverage verifies creating a task with a
@@ -208,14 +252,17 @@ pagination, attachments, and the WASM demo spike:
 - **Docs and verification.** API, readiness, demo-parity, WASM-spike, plan,
   status, bugs, and next-task docs were refreshed. Passed: `go test ./...`;
   `deno task check:ts`; `deno task lint`; `deno task check:policy`;
-  `deno task test`; `deno fmt --check deno.json tools tests
-  site/demo/backend.js`; `make check-contracts` with repo-local `GOCACHE`;
+  `deno task test`;
+  `deno fmt --check deno.json tools tests
+  site/demo/backend.js`;
+  `make check-contracts` with repo-local `GOCACHE`;
   `go tool deadcode -test ./...` with repo-local `GOCACHE`;
   `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; Playwright
   demo/mobile specs; DB-backed migrations, integration tests, HTTP E2E tests,
-  and DB-backed Playwright screens against local PostgreSQL 15; `GOOS=js
-  GOARCH=wasm go test -c ./internal/wasmdemo`; deployed Pages routing check;
-  and `git diff --check`.
+  and DB-backed Playwright screens against local PostgreSQL 15;
+  `GOOS=js
+  GOARCH=wasm go test -c ./internal/wasmdemo`; deployed Pages routing
+  check; and `git diff --check`.
 
 `task/parity-contract-wasm-pagination-uploads` added small attachments,
 pagination polish, parity coverage, and the next WASM storage slice:
@@ -236,29 +283,31 @@ pagination polish, parity coverage, and the next WASM storage slice:
 - **WASM spike.** `internal/wasmdemo` gained explicit attachment browser storage
   for task/submission parents with fail-loud validation and no fallback store.
 - **Docs and audits.** API, readiness, raw-ID audit, demo parity, WASM spike,
-  status, bugs, and next-task docs were refreshed. Object storage remains out
-  of scope; small inline attachments are the current file path.
+  status, bugs, and next-task docs were refreshed. Object storage remains out of
+  scope; small inline attachments are the current file path.
 - **Verification.** Passed: `go test ./...`; focused Go tests for
   attachment/db/http/submission/task/wasmdemo packages; `deno task check:ts`;
   `deno task lint`; `deno task check:policy`; `deno task test`;
   `deno fmt --check deno.json tools tests site/demo/backend.js`;
-  `go tool deadcode -test ./...`; `ELM_BIN=/opt/homebrew/bin/elm deno task
-  frontend:build`; Playwright demo/mobile specs; DB-backed migrations,
-  integration tests, HTTP E2E tests, and DB-backed Playwright screens against
-  isolated local PostgreSQL 15; deployed Pages routing check; and `git diff
+  `go tool deadcode -test ./...`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`; Playwright
+  demo/mobile specs; DB-backed migrations, integration tests, HTTP E2E tests,
+  and DB-backed Playwright screens against isolated local PostgreSQL 15;
+  deployed Pages routing check; and `git diff
   --check`.
 
-`task/postmerge-db-parity-wasm-pagination-coverage` cleaned post-PR-91 state
-and expanded parity, pagination, WASM-demo groundwork, and testability:
+`task/postmerge-db-parity-wasm-pagination-coverage` cleaned post-PR-91 state and
+expanded parity, pagination, WASM-demo groundwork, and testability:
 
 - **Admin pagination.** The browser Admin page now has explicit pagination for
   audit events, platform-admins, privacy requests, and moderation reports.
   Platform-admin grants refetch page zero so the list stays page-consistent
   while preserving the success message.
 - **Backendless demo parity.** `site/demo/backend.js` now honors `limit` and
-  `offset` on admin audit, platform-admin, moderation, privacy, and
-  organization audit list routes. Shared scenario parity now checks adjacent
-  one-row admin audit pages.
+  `offset` on admin audit, platform-admin, moderation, privacy, and organization
+  audit list routes. Shared scenario parity now checks adjacent one-row admin
+  audit pages.
 - **HTTP contracts.** Wire-shape fixtures now include resolved data-export
   privacy responses with embedded JSON.
 - **WASM spike.** `internal/wasmdemo` gained explicit saved-queue-view browser
@@ -276,16 +325,18 @@ and expanded parity, pagination, WASM-demo groundwork, and testability:
   `deno task lint`; `deno task test`; `deno task check:policy`;
   `deno fmt --check deno.json tools tests site/demo/backend.js`;
   `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build make
-  check-contracts`; `go tool deadcode -test ./...`;
-  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; `git diff
+  check-contracts`;
+  `go tool deadcode -test ./...`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`;
+  `git diff
   --check`; and Playwright demo/mobile specs through
   `tests/playwright/demo.config.ts`. DB-backed migrations, integration tests,
-  HTTP E2E tests, and DB-backed Playwright screens passed against isolated
-  local PostgreSQL 15 after the Podman machine failed to stay reachable through
+  HTTP E2E tests, and DB-backed Playwright screens passed against isolated local
+  PostgreSQL 15 after the Podman machine failed to stay reachable through
   Docker's socket.
 
-`task/parity-wasm-dashboard-revision-polish` expanded parity coverage, WASM
-demo groundwork, queue/revision polish, browser coverage, and docs:
+`task/parity-wasm-dashboard-revision-polish` expanded parity coverage, WASM demo
+groundwork, queue/revision polish, browser coverage, and docs:
 
 - **Scenario parity and demo parity.** Shared scenario parity now covers
   persisted saved queue views. That scenario caught a backendless-demo saved
@@ -294,9 +345,9 @@ demo groundwork, queue/revision polish, browser coverage, and docs:
 - **HTTP contracts.** Wire-shape fixtures now cover privacy resolution requests
   and saved queue view commands.
 - **WASM spike.** `internal/wasmdemo` gained explicit privacy-request browser
-  storage plus create/list request handlers. Missing storage, clocks, actors,
-  ID sources, invalid kinds, invalid states, unsupported methods, and
-  unsupported routes reject explicitly without fallback stores.
+  storage plus create/list request handlers. Missing storage, clocks, actors, ID
+  sources, invalid kinds, invalid states, unsupported methods, and unsupported
+  routes reject explicitly without fallback stores.
 - **Browser polish.** Organization task queues, team work sections, revision
   inboxes, and revision timelines now show loaded item counts. Saved-view labels
   continue to expose state/type/sort context, and browser coverage verifies
@@ -310,10 +361,11 @@ demo groundwork, queue/revision polish, browser coverage, and docs:
   `internal/http` and `internal/wasmdemo`; `deno task check:ts`;
   `deno task lint`; `deno task test`; `deno task check:policy`;
   `deno fmt --check deno.json tools tests`; `make check-contracts`;
-  `go tool deadcode -test ./...`; `ELM_BIN=/opt/homebrew/bin/elm deno task
-  frontend:build`; and Playwright demo/mobile specs. DB-backed Playwright
-  screens and local DB checks could not complete because Docker/Postgres was not
-  reachable in the local environment.
+  `go tool deadcode -test ./...`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`; and Playwright
+  demo/mobile specs. DB-backed Playwright screens and local DB checks could not
+  complete because Docker/Postgres was not reachable in the local environment.
 
 `task/db-admin-wasm-parity-hardening` hardened the PR 89 admin/privacy/
 moderation work with database-backed checks, integration tests, browser
@@ -327,8 +379,8 @@ coverage, parity coverage, and the next WASM demo step:
   post-revoke authorization denial.
 - **Moderation and privacy persistence.** Integration coverage now verifies
   moderation triage state transitions, invalid triage rejection, privacy
-  retention runs, sensitive-field redaction persistence, retention-run rows,
-  and sensitive-field access audit events.
+  retention runs, sensitive-field redaction persistence, retention-run rows, and
+  sensitive-field access audit events.
 - **Admin browser coverage.** Focused Playwright demo coverage now exercises
   platform-admin grants/revokes, privacy retention execution, moderation report
   subject links, triage resolution, and moderation state filtering.
@@ -360,9 +412,9 @@ WASM storage work:
   retention runs, per-field redaction events, and sensitive-field access events
   for authorized submission-list/profile reads.
 - **Admin UI and raw-ID fixes.** The Admin page gained selector-backed platform
-  admin grants, revoke controls, retention execution, moderation filters,
-  direct subject links, and triage controls. Blank select options now submit
-  explicit empty values instead of placeholder text.
+  admin grants, revoke controls, retention execution, moderation filters, direct
+  subject links, and triage controls. Blank select options now submit explicit
+  empty values instead of placeholder text.
 - **Contracts, parity, and demo.** Generated Elm contracts, HTTP wire-shape
   fixtures, shared scenario parity, and `site/demo/backend.js` now cover
   platform-admin grant/revoke, privacy retention, and moderation triage shapes.
@@ -371,25 +423,27 @@ WASM storage work:
   storage failures are rejected explicitly; no fallback store is selected.
 - **Verification.** Passed: `go test ./...`; `deno task check:policy`;
   `deno task check:ts`; `deno task lint`; `deno task test`;
-  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; `go tool deadcode
-  -test ./...`; focused Playwright `tests/playwright/demo.spec.ts`; and local
-  admin desktop/mobile screenshot overflow checks. Tagged integration tests were
-  attempted but require `DATABASE_URL`.
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`;
+  `go tool deadcode
+  -test ./...`; focused Playwright
+  `tests/playwright/demo.spec.ts`; and local admin desktop/mobile screenshot
+  overflow checks. Tagged integration tests were attempted but require
+  `DATABASE_URL`.
 
 `task/moderation-parity-contract-wasm` added moderation foundations, parity
 coverage, contract coverage, and a bounded WASM adapter spike:
 
 - **Moderation workflow foundation.** Authenticated users can report tasks from
-  task detail. Reports are persisted as `moderation_report_created` audit
-  events and listed for platform admins through the Admin moderation panel and
+  task detail. Reports are persisted as `moderation_report_created` audit events
+  and listed for platform admins through the Admin moderation panel and
   `/api/admin/moderation/reports`.
 - **Audit event echoing.** Audit record results now carry the exact recorded
   event, so audit-backed workflows can return the created record without
   reloading a latest matching event.
-- **Contracts and parity.** Generated Moderation Elm contracts, HTTP
-  wire-shape fixtures, backendless demo behavior, shared scenario parity, and
-  focused Playwright demo coverage were added for moderation
-  report/admin-list/audit shape.
+- **Contracts and parity.** Generated Moderation Elm contracts, HTTP wire-shape
+  fixtures, backendless demo behavior, shared scenario parity, and focused
+  Playwright demo coverage were added for moderation report/admin-list/audit
+  shape.
 - **Raw-ID audit.** The current browser raw-ID audit is documented in
   [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md). No
   confirmed high-traffic user-entered raw-ID flow remains listed; protocol,
@@ -400,17 +454,22 @@ coverage, contract coverage, and a bounded WASM adapter spike:
 - **Demo/readiness docs.** `docs/wasm_demo_backend_spike.md` was refreshed for
   the adapter spike and current adoption gates.
 - **Verification.** Passed: `go test ./...`; focused Go tests for
-  audit/db/http/wasmdemo; `make check-contracts`; `make check-format`; `deno
-  check tools/*.ts tests/**/*.ts`; `deno lint tools tests`; `deno test
-  --allow-read tests/deno`; `deno run --allow-read tools/check_policy.ts`;
-  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; `go tool deadcode
-  -test ./...`; `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools
-  web/elm/src tests`; tagged integration tests with local `DATABASE_URL`;
-  tagged HTTP E2E tests with local `DATABASE_URL` and
-  `SHARECROP_ACCESS_TOKEN_SECRET`; `GOOS=js GOARCH=wasm go test -c` for
-  `./internal/wasmdemo`; and focused Playwright
-  `tests/playwright/demo.spec.ts`. Focused task moderation/admin moderation
-  screenshots were inspected.
+  audit/db/http/wasmdemo; `make check-contracts`; `make check-format`;
+  `deno
+  check tools/*.ts tests/**/*.ts`; `deno lint tools tests`;
+  `deno test
+  --allow-read tests/deno`;
+  `deno run --allow-read tools/check_policy.ts`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`;
+  `go tool deadcode
+  -test ./...`;
+  `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools
+  web/elm/src tests`;
+  tagged integration tests with local `DATABASE_URL`; tagged HTTP E2E tests with
+  local `DATABASE_URL` and `SHARECROP_ACCESS_TOKEN_SECRET`;
+  `GOOS=js GOARCH=wasm go test -c` for `./internal/wasmdemo`; and focused
+  Playwright `tests/playwright/demo.spec.ts`. Focused task moderation/admin
+  moderation screenshots were inspected.
 
 `task/privacy-ops-demo-wasm-parity` deepened privacy/operator handling and demo
 parity:
@@ -442,11 +501,16 @@ parity:
   measurement, and a JS/WASM scenario runner. No fallback stores were added.
 - **Docs.** API, readiness, demo semantic parity, WASM spike, and continuity
   docs were refreshed. Hard deletes remained prohibited.
-- **Verification.** Passed: `go test ./...`; `deno check tools/*.ts
-  tests/**/*.ts`; `deno lint tools tests`; `deno run --allow-read
-  tools/check_policy.ts`; `deno test --allow-read tests/deno`; `make
-  check-format`; `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`;
-  `go vet ./...`; `go tool deadcode -test ./...`; `deno run -A
+- **Verification.** Passed: `go test ./...`;
+  `deno check tools/*.ts
+  tests/**/*.ts`; `deno lint tools tests`;
+  `deno run --allow-read
+  tools/check_policy.ts`;
+  `deno test --allow-read tests/deno`; `make
+  check-format`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`; `go vet ./...`;
+  `go tool deadcode -test ./...`;
+  `deno run -A
   npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src tests`;
   CI-style local `make db-checks`; and focused Playwright
   `tests/playwright/demo.spec.ts`.
@@ -460,24 +524,24 @@ lifecycle work:
   organization ledger rows and org-scoped audit rows in the operations
   dashboard.
 - **Privacy lifecycle.** Privacy requests are persisted, listable by requester
-  and platform admin, and resolvable by platform admins. Resolution stores
-  basic data-export JSON or marks delete-on-request sensitive-field metadata as
+  and platform admin, and resolvable by platform admins. Resolution stores basic
+  data-export JSON or marks delete-on-request sensitive-field metadata as
   redacted without removing core rows.
 - **Audit.** Organization create/member actions now also write
   organization-subject audit rows for org-scoped panels.
 - **Team assignees.** Standalone teams are valid task assignees; reservations
   require team membership and submission eligibility recognizes active team
   reservations.
-- **MCP.** Persisted MCP SSE subscribers poll the replay table for
-  cross-process fan-out groundwork.
+- **MCP.** Persisted MCP SSE subscribers poll the replay table for cross-process
+  fan-out groundwork.
 - **Contracts and parity.** Generated Elm contracts, backendless demo routes,
   HTTP fixture coverage, scenario/demo tests, and continuity docs were updated.
   Hard deletes remained prohibited.
 - **Verification.** Passed: `go test ./...`;
   `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go vet ./...`;
   `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go tool deadcode
-  -test ./...`; `make check-format`;
-  `deno run --allow-read tools/check_policy.ts`;
+  -test ./...`;
+  `make check-format`; `deno run --allow-read tools/check_policy.ts`;
   `deno check tools/*.ts tests/**/*.ts`; `deno lint tools tests`;
   `deno test --allow-read tests/deno`; and
   `ELM_BIN=/opt/homebrew/bin/elm deno task frontend:build`.
@@ -493,16 +557,16 @@ parity, demo behavior, browser coverage, and docs:
   save and reapply in-session query/filter/type/sort combinations.
 - **Organization operations.** Organization detail pages show loaded balance,
   team, active/inactive member, collectible, and task-state counts.
-- **Revision timeline.** Worker submission pages now include a revision
-  timeline alongside the revision inbox and submission history.
+- **Revision timeline.** Worker submission pages now include a revision timeline
+  alongside the revision inbox and submission history.
 - **Privacy requests.** Authenticated users can create audited privacy requests
   for data export or sensitive-field deletion. Requests are queued audit
   records; export generation, deletion, redaction, and retention jobs remain
   explicit future work.
 - **Contracts and parity.** Added generated Privacy Elm contracts, HTTP
-  request/response fixture tests, handler tests, backendless demo parity,
-  shared scenario privacy request/audit assertions, and Playwright coverage for
-  the new browser controls.
+  request/response fixture tests, handler tests, backendless demo parity, shared
+  scenario privacy request/audit assertions, and Playwright coverage for the new
+  browser controls.
 - **Docs.** Updated API reference, deletion semantics, operations runbook,
   readiness review, status, bugs, and next-task queue.
 - **Verification.** Passed: `go test ./...`;
@@ -510,13 +574,16 @@ parity, demo behavior, browser coverage, and docs:
   `deno fmt --check deno.json tools tests`;
   `deno run --allow-read tools/check_policy.ts`;
   `deno test --allow-read tests/deno`; `make check-format`;
-  `make check-contracts`; `ELM_BIN=/opt/homebrew/bin/elm deno task
-  frontend:build`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
-  go vet ./...`; `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go
+  `make check-contracts`;
+  `ELM_BIN=/opt/homebrew/bin/elm deno task
+  frontend:build`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build
+  go vet ./...`;
+  `GOCACHE=/Users/zardoz/projects/sharecrop/.cache/go-build go
   tool deadcode -test ./...`;
   `deno run -A npm:jscpd@5.0.11 site/demo internal cmd tools web/elm/src
-  tests`; and focused Playwright demo/mobile/screens tests with local-server
-  escalation.
+  tests`;
+  and focused Playwright demo/mobile/screens tests with local-server escalation.
 
 `task/queue-revisions-ops-privacy` combined queue tooling, revision-history
 polish, admin inspectability, parity, contracts, docs, and privacy groundwork:

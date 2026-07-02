@@ -101,15 +101,31 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 	if !runtimeMatched {
 		return wasmdemo.RequestHandleRejected{Reason: runtimeResult.(wasmdemo.HostRuntimeRejected).Reason}
 	}
-	if route.String() == wasmdemo.RouteTasks.String() {
+	switch route.String() {
+	case wasmdemo.RouteAuth.String():
+		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
+		if !matched {
+			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+		}
+		handler := wasmdemo.NewAuthHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
+		return handler.Handle(request)
+	case wasmdemo.RouteAccount.String():
+		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
+		if !matched {
+			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+		}
+		handler := wasmdemo.NewAccountHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
+		return handler.Handle(request)
+	case wasmdemo.RouteUsers.String():
+		handler := wasmdemo.NewUsersHandler(runtime.Storage)
+		return handler.Handle(request)
+	case wasmdemo.RouteTasks.String():
 		taskIDs, taskIDMatched := runtime.InteractionIDs.(wasmdemo.TaskIDSource)
 		if !taskIDMatched {
 			return wasmdemo.RequestHandleRejected{Reason: "host task id adapter is required"}
 		}
 		handler := wasmdemo.NewTaskHandler(runtime.Storage, runtime.Actor, taskIDs)
 		return handler.Handle(request)
-	}
-	switch route.String() {
 	case wasmdemo.RoutePrivacyRequests.String(), wasmdemo.RouteAdminPrivacyRequests.String():
 		privacyIDs, privacyIDMatched := runtime.InteractionIDs.(wasmdemo.PrivacyRequestIDSource)
 		if !privacyIDMatched {
@@ -117,6 +133,30 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 		}
 		handler := wasmdemo.NewPrivacyRequestHandler(runtime.Storage, runtime.Clock, runtime.Actor, privacyIDs)
 		return handler.Handle(request)
+	case wasmdemo.RouteAdminPrivacyRetention.String(),
+		wasmdemo.RouteAdminOperations.String(),
+		wasmdemo.RoutePlatformAdmins.String(),
+		wasmdemo.RouteAuditEvents.String():
+		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
+		if !matched {
+			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+		}
+		handler := wasmdemo.NewAdminHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
+		return handler.Handle(request, route)
+	case wasmdemo.RouteModerationReports.String():
+		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
+		if !matched {
+			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+		}
+		handler := wasmdemo.NewModerationReportHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
+		return handler.Handle(request)
+	case wasmdemo.RouteAdminModerationReports.String():
+		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
+		if !matched {
+			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+		}
+		handler := wasmdemo.NewAdminHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
+		return handler.Handle(request, route)
 	case wasmdemo.RouteSavedQueueViews.String():
 		savedQueueIDs, savedQueueIDMatched := runtime.InteractionIDs.(wasmdemo.SavedQueueViewIDSource)
 		if !savedQueueIDMatched {
@@ -143,6 +183,20 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 		wasmdemo.RouteSubmissions.String(),
 		wasmdemo.RouteLedger.String():
 		handler := wasmdemo.NewInteractionHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtime.InteractionIDs)
+		return handler.Handle(request)
+	case wasmdemo.RouteCollectibles.String():
+		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
+		if !matched {
+			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+		}
+		handler := wasmdemo.NewCollectibleHandler(runtime.Storage, runtime.Actor, runtimeIDs)
+		return handler.Handle(request)
+	case wasmdemo.RouteAgentCredentials.String():
+		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
+		if !matched {
+			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+		}
+		handler := wasmdemo.NewAgentCredentialHandler(runtime.Storage, runtime.Actor, runtimeIDs)
 		return handler.Handle(request)
 	default:
 		return wasmdemo.RequestHandleRejected{Reason: "configured WASM host does not execute this route"}
@@ -251,6 +305,34 @@ func (ids jsHostIDs) NextOrganizationMemberID() string {
 
 func (ids jsHostIDs) NextTeamID() string {
 	return ids.next("team")
+}
+
+func (ids jsHostIDs) NextUserID() string {
+	return ids.next("user")
+}
+
+func (ids jsHostIDs) NextAuditEventID() string {
+	return ids.next("audit")
+}
+
+func (ids jsHostIDs) NextAccountToken() string {
+	return ids.next("account_token")
+}
+
+func (ids jsHostIDs) NextCollectibleID() string {
+	return ids.next("collectible")
+}
+
+func (ids jsHostIDs) NextNotificationID() string {
+	return ids.next("notification")
+}
+
+func (ids jsHostIDs) NextAgentCredentialID() string {
+	return ids.next("agent_credential")
+}
+
+func (ids jsHostIDs) NextAgentCredentialSecret() string {
+	return "scrop_agent_" + ids.next("agent_secret")
 }
 
 func (ids jsHostIDs) next(kind string) string {

@@ -3,7 +3,7 @@ package wasmdemo
 import "testing"
 
 func TestNewRequestRejectsUnsupportedMethod(t *testing.T) {
-	result := NewRequest("DELETE", "/api/privacy-requests", "")
+	result := NewRequest("PUT", "/api/privacy-requests", "")
 	rejected, matched := result.(RequestRejected)
 	if !matched {
 		t.Fatalf("result = %T, want RequestRejected", result)
@@ -21,9 +21,16 @@ func TestAdaptRecognizesPrivacyAndModerationRoutes(t *testing.T) {
 		route  Route
 	}{
 		{name: "create privacy request", method: MethodPost, path: "/api/privacy-requests", route: RoutePrivacyRequests},
+		{name: "list user privacy requests", method: MethodGet, path: "/api/privacy-requests", route: RoutePrivacyRequests},
 		{name: "list admin privacy requests", method: MethodGet, path: "/api/admin/privacy-requests", route: RouteAdminPrivacyRequests},
+		{name: "resolve admin privacy request", method: MethodPost, path: "/api/admin/privacy-requests/privacy-1/resolve", route: RouteAdminPrivacyRequests},
+		{name: "run privacy retention", method: MethodPost, path: "/api/admin/privacy-retention/run", route: RouteAdminPrivacyRetention},
+		{name: "refresh auth", method: MethodPost, path: "/api/auth/refresh", route: RouteAuth},
+		{name: "account email verification", method: MethodPost, path: "/api/account/email-verification", route: RouteAccount},
+		{name: "user selector", method: MethodGet, path: "/api/users?query=user&limit=2&offset=0", route: RouteUsers},
 		{name: "create moderation report", method: MethodPost, path: "/api/moderation/reports", route: RouteModerationReports},
 		{name: "list admin moderation reports", method: MethodGet, path: "/api/admin/moderation/reports", route: RouteAdminModerationReports},
+		{name: "triage admin moderation report", method: MethodPost, path: "/api/admin/moderation/reports/audit-1/triage", route: RouteAdminModerationReports},
 		{name: "list saved queue views", method: MethodGet, path: "/api/saved-queue-views", route: RouteSavedQueueViews},
 		{name: "upsert saved queue view", method: MethodPost, path: "/api/saved-queue-views", route: RouteSavedQueueViews},
 		{name: "create task", method: MethodPost, path: "/api/tasks", route: RouteTasks},
@@ -55,6 +62,13 @@ func TestAdaptRecognizesPrivacyAndModerationRoutes(t *testing.T) {
 		{name: "user ledger", method: MethodGet, path: "/api/credits/ledger?limit=1&offset=0", route: RouteLedger},
 		{name: "organization balance", method: MethodGet, path: "/api/organizations/org-1/credits/balance", route: RouteLedger},
 		{name: "organization ledger", method: MethodGet, path: "/api/organizations/org-1/credits/ledger?limit=1&offset=0", route: RouteLedger},
+		{name: "collectible catalog", method: MethodGet, path: "/api/collectibles/catalog", route: RouteCollectibles},
+		{name: "mint collectible", method: MethodPost, path: "/api/collectibles", route: RouteCollectibles},
+		{name: "admin operations", method: MethodGet, path: "/api/admin/operations", route: RouteAdminOperations},
+		{name: "platform admins", method: MethodGet, path: "/api/admin/platform-admins", route: RoutePlatformAdmins},
+		{name: "admin audit events", method: MethodGet, path: "/api/admin/audit-events?limit=1&offset=0", route: RouteAuditEvents},
+		{name: "agent credentials", method: MethodGet, path: "/api/agent-credentials", route: RouteAgentCredentials},
+		{name: "agent credential revoke", method: MethodPost, path: "/api/agent-credentials/credential-1/revoke", route: RouteAgentCredentials},
 	}
 
 	for _, tc := range cases {
@@ -72,7 +86,7 @@ func TestAdaptRecognizesPrivacyAndModerationRoutes(t *testing.T) {
 }
 
 func TestAdaptRejectsUnimplementedRoute(t *testing.T) {
-	result := Adapt(Request{Method: MethodGet, Path: "/api/tasks", Body: ""})
+	result := Adapt(Request{Method: MethodGet, Path: "/api/not-implemented", Body: ""})
 	unsupported, matched := result.(RequestUnsupported)
 	if !matched {
 		t.Fatalf("result = %T, want RequestUnsupported", result)

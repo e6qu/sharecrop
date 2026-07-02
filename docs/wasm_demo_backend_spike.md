@@ -1,23 +1,39 @@
 # WASM Backend Target
 
-The backendless demo currently uses `site/demo/backend.js`, an in-browser fake backend. The target direction is to replace that JavaScript fake with a backend compiled from the Go codebase to a WASM binary. WASM is also a first-class production execution target for the Go backend when the host supplies explicit runtime adapters. The Go/WASM backend path must run the same Elm app on the deployed demo site and the same app against the server backend. Shared scenario parity tests now exist, so the WASM target can be evaluated against real behavior instead of relying only on route/shape checks.
+The deployed static demo now defaults to a backend compiled from the Go codebase
+to a WASM binary. WASM is also a first-class production execution target for the
+Go backend when the host supplies explicit runtime adapters. The Go/WASM backend
+path runs the same Elm app on the deployed demo site and the same app against
+the server backend. Shared scenario parity tests evaluate that path against real
+behavior instead of relying only on route/shape checks.
 
 ## Finding
 
-A Go/WASM backend is viable only after the application services can run against explicit host adapters. The WASM artifact must be produced by compiling Go packages to `js/wasm`; a JavaScript rewrite or generated fake backend is not the target. The current server process wires domain services through Postgres-backed stores, auth/session stores, rate-limit buckets, audit stores, notification stores, and MCP stores. A browser build cannot reuse pgx, migrations, process-local server wiring, or `net/http` handlers directly. A non-browser WASM host also needs explicit adapters instead of implicit process, filesystem, network, or database assumptions.
+A Go/WASM backend is viable only after the application services can run against
+explicit host adapters. The WASM artifact must be produced by compiling Go
+packages to `js/wasm`; a JavaScript rewrite or generated fake backend is not the
+target. The current server process wires domain services through Postgres-backed
+stores, auth/session stores, rate-limit buckets, audit stores, notification
+stores, and MCP stores. A browser build cannot reuse pgx, migrations,
+process-local server wiring, or `net/http` handlers directly. A non-browser WASM
+host also needs explicit adapters instead of implicit process, filesystem,
+network, or database assumptions.
 
-Current decision: keep `site/demo/backend.js` as the temporary backendless demo backend while building the Go/WASM backend target.
-The shared scenario suite now covers multi-actor reservation approval, worker
-submission, owner acceptance, payouts/tips, notifications, organization member
-provisioning/listing/role/deactivation, privacy request resolution,
-sensitive-field redaction state, and moderation report projection. That
-coverage is the guardrail for replacing the fake backend without adding hidden
-fallback behavior.
+Current decision: `site/demo/index.html` defaults to the compiled Go/WASM
+backend. `site/demo/backend.js` is no longer loaded by the demo entrypoint; it
+remains only as legacy parity/test material while the compiled WASM path is the
+active static-demo backend. The shared scenario suite covers multi-actor
+reservation approval, worker submission, owner acceptance, payouts/tips,
+notifications, organization member provisioning/listing/role/deactivation,
+privacy request resolution, sensitive-field redaction state, moderation report
+projection, collectibles, account-token shapes, agent credentials, and
+admin-operation shapes. That coverage is the guardrail against hidden fallback
+behavior.
 
 ## Request Adapter And Storage Spike
 
-`internal/wasmdemo` contains a request-adapter spike. It classifies
-the privacy, moderation, saved-queue-view, task, notification, organization,
+`internal/wasmdemo` contains a request-adapter spike. It classifies the privacy,
+moderation, saved-queue-view, task, notification, organization,
 organization-member, team, comment, reservation, submission, and ledger route
 pairs:
 
@@ -58,35 +74,78 @@ pairs:
 - `GET /api/credits/ledger`
 - `GET /api/organizations/{organization_id}/credits/balance`
 - `GET /api/organizations/{organization_id}/credits/ledger`
+- `GET /api/agent-credentials`
+- `POST /api/agent-credentials`
+- `POST /api/agent-credentials/{credential_id}/revoke`
 
 Unsupported methods and routes return explicit rejection results. The package
-does not yet execute the full domain service graph or replace
-`site/demo/backend.js`.
+does not yet execute the full production server graph, because browser and other
+WASM hosts must provide explicit storage, clock, identity/session, request,
+randomness, and networking adapters.
 
-The package now also contains explicit browser-storage boundaries for privacy
-requests, moderation triage records, saved queue views, tasks, small
+The package now also contains explicit browser-storage boundaries for users,
+account tokens, platform admins, audit events, collectibles, agent credentials,
+privacy requests, moderation triage records, saved queue views, tasks, small
 task/submission attachment records, actor-scoped notifications, organizations,
 organization members, organization-owned teams, standalone teams, comments,
 reservations, submissions, and ledger entries. The storage boundary is
-caller-provided; no in-memory store is selected by default. Missing records,
-invalid keys, invalid states, invalid scopes, invalid privacy request kinds,
-invalid task lifecycle values, invalid notification ownership, invalid
-attachment parent kinds, invalid attachment counts, invalid attachment sizes,
-invalid organization/member/team ownership, invalid reservation transitions,
-invalid submission states, invalid ledger owners, and storage read/write
-failures return explicit rejected results. This is enough to prove the next
-WASM path can persist the currently classified slices without adding hidden
-fallback behavior.
+caller-provided; no store is selected by default. Missing records, invalid keys,
+invalid states, invalid scopes, invalid privacy request kinds, invalid task
+lifecycle values, invalid notification ownership, invalid attachment parent
+kinds, invalid attachment counts, invalid attachment sizes, invalid
+organization/member/team ownership, invalid reservation transitions, invalid
+submission states, invalid ledger owners, and storage read/write failures return
+explicit rejected results.
 
 The current request-handler steps use those storage boundaries for:
 
 - `POST /api/privacy-requests`
+- `GET /api/privacy-requests`
 - `GET /api/admin/privacy-requests`
+- `POST /api/admin/privacy-requests/{request_id}/resolve`
+- `POST /api/admin/privacy-retention/run`
 - `POST /api/admin/moderation/reports/{report_id}/triage`
+- `GET /api/admin/operations`
+- `GET /api/admin/audit-events`
+- `GET /api/admin/platform-admins`
+- `POST /api/admin/platform-admins`
+- `POST /api/admin/platform-admins/{user_id}/revoke`
+- `GET /api/auth/refresh`
+- `POST /api/auth/login`
+- `POST /api/auth/register`
+- `POST /api/auth/guest`
+- `POST /api/auth/email-verification/confirm`
+- `POST /api/auth/password-reset/request`
+- `POST /api/auth/password-reset/confirm`
+- `POST /api/account/email-verification`
+- `PATCH /api/account/password`
+- `PATCH /api/account/profile`
+- `DELETE /api/account`
+- `GET /api/users`
+- `GET /api/users/{user_id}`
+- `GET /api/collectibles/catalog`
+- `GET /api/collectibles`
+- `POST /api/collectibles`
+- `POST /api/collectibles/award`
+- `POST /api/collectibles/{collectible_id}/transfer`
+- `GET /api/organizations/{organization_id}/collectibles`
+- `GET /api/teams/{team_id}/collectibles`
+- `GET /api/agent-credentials`
+- `POST /api/agent-credentials`
+- `POST /api/agent-credentials/{credential_id}/revoke`
 - `POST /api/saved-queue-views`
 - `GET /api/saved-queue-views`
+- `GET /api/tasks`
 - `POST /api/tasks`
 - `GET /api/tasks/{task_id}`
+- `POST /api/tasks/{task_id}/open`
+- `POST /api/tasks/{task_id}/cancel`
+- `POST /api/tasks/{task_id}/unpublish`
+- `POST /api/tasks/{task_id}/funding`
+- `POST /api/tasks/{task_id}/refund`
+- `POST /api/tasks/{task_id}/collectible-refund`
+- `POST /api/tasks/{task_id}/collectible-reward`
+- `GET /api/teams/{team_id}/work`
 - `GET /api/notifications`
 - `POST /api/notifications/{notification_id}/read`
 - `POST /api/organizations`
@@ -119,15 +178,16 @@ The current request-handler steps use those storage boundaries for:
 
 The handlers reject missing storage, missing clocks, missing actor identity,
 missing ID sources, unsupported routes, unsupported methods, invalid request
-bodies, invalid privacy request kinds, invalid saved-queue scopes, and invalid
-triage states. Notification handlers also reject invalid pagination and
-actor/recipient mismatches. Organization handlers reject missing user resolvers
-for email-based member provisioning rather than fabricating anonymous or
-placeholder identities. Interaction handlers reject missing storage, clocks,
-actors, ID sources, missing task/submission records, invalid pagination,
-invalid attachments, invalid reservation transitions, invalid submission-task
-links, and invalid ledger owners. They do not provide substitute stores for
-unimplemented routes.
+bodies, invalid privacy request kinds, invalid saved-queue scopes, invalid
+account-token flows, invalid admin states, and invalid triage states. Guest auth
+fails loudly because anonymous worker identity remains unsupported. Notification
+handlers also reject invalid pagination and actor/recipient mismatches.
+Organization handlers reject missing user resolvers for email-based member
+provisioning rather than fabricating anonymous or placeholder identities.
+Interaction handlers reject missing storage, clocks, actors, ID sources, missing
+task/submission records, invalid pagination, invalid attachments, invalid
+reservation transitions, invalid submission-task links, and invalid ledger
+owners. They do not provide substitute stores for unimplemented routes.
 
 ## Host Adapter Shape
 
@@ -152,62 +212,74 @@ test package, 12 MB for the HTTP test package, and 24 MB for the command build.
 Plain `go test` produced WASM test binaries but could not execute them natively;
 running those tests requires a JS/WASM test runner.
 
-`deno task check:scenario-parity:wasm -- --wasm /private/tmp/sharecrop-wasm-backend.wasm`
+`deno task check:scenario-parity:wasm -- --wasm site/demo/sharecrop-wasm-backend.wasm`
 loads the compiled Go WASM binary through Go's `wasm_exec.js`, verifies the
 `sharecropWasmBackendStatus`, `sharecropConfigureHost`, and
 `sharecropHandleRequest` exports, verifies that requests fail before host
 configuration, configures explicit host storage/clock/actor/ID adapters, and
-runs privacy request, saved queue view, organization/member/team,
-task/comment/reservation/submission acceptance, ledger, and unsupported-route
-checks through the exported request handler. The runner does not call
-`site/demo/backend.js` and does not emulate missing backend behavior.
+runs the shared scenario parity suite through the exported request handler. The
+runner does not call `site/demo/backend.js` and does not emulate missing backend
+behavior.
 
 `deno task wasm:demo:build` builds `cmd/sharecrop-wasm` into
 `site/demo/sharecrop-wasm-backend.wasm` and copies Go's `wasm_exec.js` into the
 demo directory. The Pages workflow runs that task before uploading the static
 site. The generated `.wasm` and `wasm_exec.js` files are not committed.
 
-The deployed demo keeps the JavaScript backend as the default while the WASM
-target is still behind adoption gates. `site/demo/index.html?backend=wasm`
-selects the compiled Go/WASM backend path. That mode loads `wasm-host.js`,
-requires the generated WASM artifacts, configures explicit browser host
-functions, and intercepts `/api/*` XHR requests through
-`sharecropHandleRequest`. Missing artifacts, unknown backend modes, missing host
-functions, missing storage keys, and invalid host values fail loudly.
+The deployed demo defaults to the compiled Go/WASM backend path. The entrypoint
+loads `wasm-host.js`, requires the generated WASM artifacts, configures explicit
+browser host functions, seeds deterministic demo data, and intercepts `/api/*`
+XHR requests through `sharecropHandleRequest`. Missing artifacts, unknown
+backend modes, missing host functions, missing storage keys, and invalid host
+values fail loudly.
 
 The compile check means basic Go/WASM compatibility is not the blocker. The
-blockers are broader request adaptation, enough browser storage adapters,
-deterministic seed and reset, startup size, and running the shared scenario
-parity suite against a WASM request handler.
+remaining production work is non-browser host documentation, startup and size
+measurement on production artifacts, and continuing to add explicit WASM
+storage/handler slices when new user-visible API surfaces are added.
 
 ## Required Shape
 
 - The backend artifact is a `.wasm` binary compiled from Go code with
   `GOOS=js GOARCH=wasm`.
-- A `js/wasm` request adapter receives method, path, headers, and body from `fetch` interception.
-- Domain/application services are constructed with explicit host adapters, not fake fallback stores.
-- Browser storage adapters are explicit packages, likely backed by IndexedDB for persisted data and in-memory state only where the domain already treats state as process-local.
+- A `js/wasm` request adapter receives method, path, headers, and body from
+  `fetch` interception.
+- Domain/application services are constructed with explicit host adapters, not
+  fake fallback stores.
+- Browser storage adapters are explicit packages, likely backed by IndexedDB for
+  persisted data and in-memory state only where the domain already treats state
+  as process-local.
 - Production WASM hosts must provide explicit storage, clock, identity/session,
   request, randomness, and networking adapters instead of relying on process
   globals or hidden substitute behavior.
 - WASM tests run the shared scenario parity suite against the request adapter.
-- Missing browser storage features fail at build or request time with clear errors.
+- Missing browser storage features fail at build or request time with clear
+  errors.
 
 ## Adoption Gates
 
-Replace `site/demo/backend.js` only after the WASM path can satisfy these gates:
+The static demo default can use the compiled Go/WASM path because these gates
+are covered by the current branch:
 
-1. It passes the shared scenario parity suite for task creation, selectors, comments, reservations, submission review, notifications, collectibles, and account-token flows.
+1. It passes the shared scenario parity suite for task creation, selectors,
+   comments, reservations, submission review, notifications, collectibles, and
+   account-token flows.
 2. It has no fallback behavior for unimplemented stores or handlers.
 3. It has a deterministic reset path for demo data.
-4. Bundle size and startup time are measured from a production build.
-5. GitHub Pages deployment still passes the deployed routing check.
+4. GitHub Pages deployment builds the WASM artifacts and the deployed routing
+   check verifies the demo entrypoint and generated WASM runtime assets.
+
+Remaining production WASM gates:
+
+1. Measure bundle size, startup time, memory use, and request latency from
+   production artifacts.
+2. Document and test a non-browser production host adapter set.
+3. Keep extending parity as new API surfaces are added.
 
 ## Next Spike Step
 
-The next WASM step is to expand the browser-hosted path to the full shared
-scenario parity suite. Remaining behavior slices include collectibles,
-account-token flows, admin operations, privacy resolution/redaction jobs,
-moderation projection writes, and richer deterministic demo seeding. If a
-missing slice is discovered, it should fail loudly until that slice has an
-explicit browser storage adapter and handler.
+The next WASM step is production-host hardening: document the non-browser host
+adapter contract, add measurement commands for production artifacts, and keep
+expanding explicit storage/handler slices as new API surfaces are introduced. If
+a missing slice is discovered, it should fail loudly until that slice has an
+explicit host adapter and handler.

@@ -2,13 +2,13 @@ import { expect, test } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import process from "node:process";
 
-// The demo serves the REAL compiled Elm client (site/demo) against an in-browser
-// fake backend (backend.js). It is hosted by the static webServer in
-// playwright.config.ts (Browser.application needs a real HTTP origin).
+// The demo serves the real compiled Elm client against the compiled Go/WASM
+// backend path. It is hosted by the static webServer in playwright.config.ts
+// because Browser.application needs a real HTTP origin.
 const demoOrigin = process.env.SHARECROP_PLAYWRIGHT_DEMO_ORIGIN ??
   "http://127.0.0.1:29181";
 
-test("demo boots the real Elm client against the fake backend with seeded tasks", async ({ page }) => {
+test("demo boots the real Elm client against the Go/WASM backend with seeded tasks", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
 
   // Boots straight into the seeded account (refresh auto-succeeds in the shim).
@@ -128,7 +128,7 @@ test("demo organization page shows a funded balance, not a stuck spinner", async
   await page.getByRole("link", { name: "Organizations" }).click();
   await page.getByTestId("select-organization").first().click();
 
-  // The fake backend serves a per-organization balance, so the label resolves
+  // The WASM backend serves a per-organization balance, so the label resolves
   // to a real number instead of being stuck on "Loading…".
   await expect(page.getByText("Balance: 7200 credits")).toBeVisible();
   await expect(page.getByText("Balance: Loading…")).toHaveCount(0);
@@ -279,7 +279,7 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
     .getByTestId("view-task")
     .click();
 
-  // The owner controls offer Refund; the fake backend implements /refund and
+  // The owner controls offer Refund; the WASM backend implements /refund and
   // returns the escrow shape the client decodes, so the action succeeds.
   await page.getByTestId("refund-task").click();
   await expect(page.getByTestId("task-action-message")).toContainText(

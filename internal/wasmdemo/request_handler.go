@@ -148,10 +148,19 @@ func (handler PrivacyRequestHandler) Handle(request Request) HandleResult {
 		return RequestHandleRejected{Reason: "handler actor is required"}
 	}
 	if request.Path == "/api/privacy-requests" {
-		return handler.handleCreate(request)
+		if request.Method.String() == MethodPost.String() {
+			return handler.handleCreate(request)
+		}
+		if request.Method.String() == MethodGet.String() {
+			return handler.handleListUser(request)
+		}
+		return RequestHandleRejected{Reason: "request method is unsupported for privacy requests"}
 	}
-	if request.Path == "/api/admin/privacy-requests" {
+	if strings.SplitN(request.Path, "?", 2)[0] == "/api/admin/privacy-requests" {
 		return handler.handleList(request)
+	}
+	if requestID := adminPrivacyResolvePathID(request.Path); requestID != "" {
+		return handler.handleResolve(request, requestID)
 	}
 	return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
 }
@@ -183,6 +192,19 @@ func (handler PrivacyRequestHandler) handleCreate(request Request) HandleResult 
 	if !savedMatched {
 		return RequestHandleRejected{Reason: saveResult.(PrivacyRequestStorageRejected).Reason}
 	}
+	if runtimeIDs, matched := handler.ids.(RuntimeIDSource); matched {
+		if err := SaveAuditEvent(handler.storage, StoredAuditEvent{
+			ID:           strings.TrimSpace(runtimeIDs.NextAuditEventID()),
+			ActorID:      strings.TrimSpace(handler.actor.UserID()),
+			Action:       "privacy_request_created",
+			SubjectKind:  "privacy_request",
+			SubjectID:    strings.TrimSpace(handler.actor.UserID()),
+			MetadataJSON: `{"kind":"` + stored.Kind + `"}`,
+			CreatedAt:    handler.clock.Now().UTC().Format(time.RFC3339),
+		}); err != nil {
+			return RequestHandleRejected{Reason: err.Error()}
+		}
+	}
 	encoded, err := json.Marshal(saved.Value)
 	if err != nil {
 		return RequestHandleRejected{Reason: "privacy request response encoding failed"}
@@ -206,8 +228,110 @@ func (handler PrivacyRequestHandler) handleList(request Request) HandleResult {
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
 
+func (handler PrivacyRequestHandler) handleListUser(request Request) HandleResult {
+	listResult := ListPrivacyRequests(handler.storage)
+	listed, listedMatched := listResult.(PrivacyRequestsStored)
+	if !listedMatched {
+		return RequestHandleRejected{Reason: listResult.(PrivacyRequestStorageRejected).Reason}
+	}
+	userID := strings.TrimSpace(handler.actor.UserID())
+	values := make([]StoredPrivacyRequest, 0, len(listed.Values))
+	for index := range listed.Values {
+		if listed.Values[index].RequestedBy == userID {
+			values = append(values, listed.Values[index])
+		}
+	}
+	encoded, err := json.Marshal(privacyRequestsBody{Requests: values})
+	if err != nil {
+		return RequestHandleRejected{Reason: "privacy requests response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func (handler PrivacyRequestHandler) handleResolve(request Request, requestID string) HandleResult {
+	if request.Method.String() != MethodPost.String() {
+		return RequestHandleRejected{Reason: "request method is unsupported for privacy request resolution"}
+	}
+	listResult := ListPrivacyRequests(handler.storage)
+	listed, listedMatched := listResult.(PrivacyRequestsStored)
+	if !listedMatched {
+		return RequestHandleRejected{Reason: listResult.(PrivacyRequestStorageRejected).Reason}
+	}
+	var body privacyResolutionBody
+	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+		return RequestHandleRejected{Reason: "privacy resolution body is invalid"}
+	}
+	for index := range listed.Values {
+		if listed.Values[index].ID == strings.TrimSpace(requestID) {
+			privacy := listed.Values[index]
+			if privacy.Status != "queued" {
+				return RequestHandleRejected{Reason: "privacy request is already resolved"}
+			}
+			privacy.Status = "resolved"
+			privacy.ResolutionNote = strings.TrimSpace(body.ResolutionNote)
+			privacy.ResolvedAt = handler.clock.Now().UTC().Format(time.RFC3339)
+			if privacy.Kind == "data_export" {
+				privacy.ExportJSON = `{"user_id":"` + privacy.RequestedBy + `","generated_at":"` + privacy.ResolvedAt + `","submissions":[],"sensitive_fields":[]}`
+			}
+			if privacy.Kind == "sensitive_field_deletion" {
+				count, err := redactSensitiveFieldsForUser(handler.storage, privacy.RequestedBy, privacy.ResolvedAt)
+				if err != nil {
+					return RequestHandleRejected{Reason: err.Error()}
+				}
+				privacy.RedactedFieldCount = count
+			}
+			saveResult := SavePrivacyRequest(handler.storage, privacy)
+			saved, savedMatched := saveResult.(PrivacyRequestStored)
+			if !savedMatched {
+				return RequestHandleRejected{Reason: saveResult.(PrivacyRequestStorageRejected).Reason}
+			}
+			encoded, err := json.Marshal(saved.Value)
+			if err != nil {
+				return RequestHandleRejected{Reason: "privacy resolution response encoding failed"}
+			}
+			return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+		}
+	}
+	return RequestHandleRejected{Reason: "privacy request was not found"}
+}
+
+func redactSensitiveFieldsForUser(storage BrowserStorage, userID string, redactedAt string) (int, error) {
+	listResult := ListAllSubmissions(storage, DefaultStoredListPage())
+	listed, matched := listResult.(SubmissionsStored)
+	if !matched {
+		return 0, errString(listResult.(SubmissionStorageRejected).Reason)
+	}
+	count := 0
+	for index := range listed.Values {
+		submission := listed.Values[index]
+		if submission.SubmitterID != strings.TrimSpace(userID) {
+			continue
+		}
+		changed := false
+		for fieldIndex := range submission.SensitiveFields {
+			if submission.SensitiveFields[fieldIndex].State == "active" && submission.SensitiveFields[fieldIndex].Retention == "delete_on_request" {
+				submission.SensitiveFields[fieldIndex].State = "redacted"
+				submission.SensitiveFields[fieldIndex].RedactedAt = redactedAt
+				count++
+				changed = true
+			}
+		}
+		if changed {
+			saveResult := SaveSubmission(storage, submission)
+			if _, saved := saveResult.(SubmissionStored); !saved {
+				return 0, errString(saveResult.(SubmissionStorageRejected).Reason)
+			}
+		}
+	}
+	return count, nil
+}
+
 type privacyRequestBody struct {
 	Kind string `json:"kind"`
+}
+
+type privacyResolutionBody struct {
+	ResolutionNote string `json:"resolution_note"`
 }
 
 type privacyRequestsBody struct {
@@ -315,6 +439,14 @@ func savedQueueViewScopeFromPath(path string) string {
 	return ""
 }
 
+func queryStringFromPath(path string) string {
+	parts := strings.SplitN(path, "?", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	return parts[1]
+}
+
 func savedQueueViewPathOnly(path string) string {
 	return strings.SplitN(path, "?", 2)[0]
 }
@@ -336,14 +468,24 @@ func (handler TaskHandler) Handle(request Request) HandleResult {
 	if handler.actor == nil {
 		return RequestHandleRejected{Reason: "handler actor is required"}
 	}
-	if request.Path == "/api/tasks" {
-		if request.Method.String() != MethodPost.String() {
-			return RequestHandleRejected{Reason: "request method is unsupported for task creation"}
+	if tasksPathOnly(request.Path) == "/api/tasks" {
+		switch request.Method.String() {
+		case MethodPost.String():
+			if handler.ids == nil {
+				return RequestHandleRejected{Reason: "task id source is required"}
+			}
+			return handler.handleCreateTask(request)
+		case MethodGet.String():
+			return handler.handleListTasks(request)
+		default:
+			return RequestHandleRejected{Reason: "request method is unsupported for tasks"}
 		}
-		if handler.ids == nil {
-			return RequestHandleRejected{Reason: "task id source is required"}
-		}
-		return handler.handleCreateTask(request)
+	}
+	if teamID := teamWorkPathID(request.Path); teamID != "" {
+		return handler.handleTeamWork(request, teamID)
+	}
+	if action := taskActionPath(request.Path); action.taskID != "" {
+		return handler.handleTaskAction(request, action)
 	}
 	taskID := taskDetailPathID(request.Path)
 	if taskID == "" {
@@ -353,6 +495,193 @@ func (handler TaskHandler) Handle(request Request) HandleResult {
 		return RequestHandleRejected{Reason: "request method is unsupported for task detail"}
 	}
 	return handler.handleGetTask(taskID)
+}
+
+func (handler TaskHandler) handleTeamWork(request Request, teamID string) HandleResult {
+	if request.Method.String() != MethodGet.String() {
+		return RequestHandleRejected{Reason: "request method is unsupported for team work"}
+	}
+	pageResult := storedListPageFromPath(request.Path, "team work")
+	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
+	if !pageMatched {
+		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+	}
+	values, err := url.ParseQuery(queryStringFromPath(request.Path))
+	if err != nil {
+		return RequestHandleRejected{Reason: "team work query is invalid"}
+	}
+	listResult := ListTasks(handler.storage, values.Get("query"), "", handler.actor.UserID(), "", "", DefaultStoredListPage())
+	listed, listedMatched := listResult.(TasksStored)
+	if !listedMatched {
+		return RequestHandleRejected{Reason: listResult.(TaskStorageRejected).Reason}
+	}
+	tasks := make([]StoredTask, 0, len(listed.Values))
+	for index := range listed.Values {
+		task := listed.Values[index]
+		if task.VisibilityID == strings.TrimSpace(teamID) || task.OwnerID == strings.TrimSpace(teamID) {
+			tasks = append(tasks, task)
+		}
+	}
+	start, end := pageBounds(len(tasks), page.value)
+	encoded, err := json.Marshal(tasksResponseBody{Tasks: taskSummaries(tasks[start:end])})
+	if err != nil {
+		return RequestHandleRejected{Reason: "team work response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func (handler TaskHandler) handleListTasks(request Request) HandleResult {
+	pageResult := storedListPageFromPath(request.Path, "task")
+	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
+	if !pageMatched {
+		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+	}
+	values, err := url.ParseQuery(queryStringFromPath(request.Path))
+	if err != nil {
+		return RequestHandleRejected{Reason: "task query is invalid"}
+	}
+	listResult := ListTasks(
+		handler.storage,
+		values.Get("query"),
+		values.Get("scope"),
+		handler.actor.UserID(),
+		values.Get("organization_id"),
+		values.Get("state"),
+		page.value,
+	)
+	listed, listedMatched := listResult.(TasksStored)
+	if !listedMatched {
+		return RequestHandleRejected{Reason: listResult.(TaskStorageRejected).Reason}
+	}
+	encoded, err := json.Marshal(tasksResponseBody{Tasks: taskSummaries(listed.Values)})
+	if err != nil {
+		return RequestHandleRejected{Reason: "tasks response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func (handler TaskHandler) handleTaskAction(request Request, action taskActionRoute) HandleResult {
+	if request.Method.String() != MethodPost.String() {
+		return RequestHandleRejected{Reason: "request method is unsupported for task action"}
+	}
+	loadResult := LoadTask(handler.storage, action.taskID)
+	loaded, loadedMatched := loadResult.(TaskStored)
+	if !loadedMatched {
+		return RequestHandleRejected{Reason: loadResult.(TaskStorageRejected).Reason}
+	}
+	task := loaded.Value
+	switch action.action {
+	case "open":
+		if task.State != "draft" {
+			return RequestHandleRejected{Reason: "only draft tasks can be opened"}
+		}
+		task.State = "open"
+	case "cancel":
+		if task.State != "draft" && task.State != "open" {
+			return RequestHandleRejected{Reason: "only draft or open tasks can be cancelled"}
+		}
+		if task.EscrowAmount > 0 || task.RewardCollectibleCount > 0 {
+			return RequestHandleRejected{Reason: "refund the task's held escrow before cancelling"}
+		}
+		task.State = "cancelled"
+	case "unpublish":
+		if task.State != "open" {
+			return RequestHandleRejected{Reason: "only open tasks can be unpublished"}
+		}
+		task.State = "draft"
+	case "funding":
+		var body taskFundingBody
+		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+			return RequestHandleRejected{Reason: "task funding body is invalid"}
+		}
+		if body.Amount < 1 {
+			return RequestHandleRejected{Reason: "task funding amount is invalid"}
+		}
+		if task.EscrowAmount > 0 {
+			return RequestHandleRejected{Reason: "task is already funded"}
+		}
+		task.EscrowAmount = body.Amount
+		task.FundedOrganizationID = strings.TrimSpace(body.OrganizationID)
+	case "refund":
+		if task.State != "draft" && task.State != "open" {
+			return RequestHandleRejected{Reason: "only draft or open tasks can be refunded"}
+		}
+		if task.EscrowAmount == 0 && task.RewardCollectibleCount == 0 {
+			return RequestHandleRejected{Reason: "task has no escrow to refund"}
+		}
+		amount := task.EscrowAmount
+		task.EscrowAmount = 0
+		task.RewardCollectibleCount = 0
+		if task.RewardCreditAmount == 0 {
+			task.RewardKind = "none"
+		} else {
+			task.RewardKind = "credit"
+		}
+		task.State = "cancelled"
+		saveResult := SaveTask(handler.storage, task)
+		if _, savedMatched := saveResult.(TaskStored); !savedMatched {
+			return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
+		}
+		encoded, err := json.Marshal(taskRefundBody{TaskID: task.ID, Amount: amount, State: "refunded"})
+		if err != nil {
+			return RequestHandleRejected{Reason: "task refund response encoding failed"}
+		}
+		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+	case "collectible-refund":
+		if task.RewardCollectibleCount == 0 {
+			return RequestHandleRejected{Reason: "task has no escrowed collectibles to refund"}
+		}
+		refunded := make([]StoredCollectible, 0, len(task.RewardCollectibleIDs))
+		for index := range task.RewardCollectibleIDs {
+			collectible, err := LoadCollectible(handler.storage, task.RewardCollectibleIDs[index])
+			if err != nil {
+				return RequestHandleRejected{Reason: err.Error()}
+			}
+			collectible.State = "minted"
+			if err := SaveCollectible(handler.storage, collectible); err != nil {
+				return RequestHandleRejected{Reason: err.Error()}
+			}
+			refunded = append(refunded, collectible)
+		}
+		task.RewardCollectibleCount = 0
+		task.RewardCollectibleIDs = []string{}
+		if task.RewardCreditAmount == 0 {
+			task.RewardKind = "none"
+		} else {
+			task.RewardKind = "credit"
+		}
+		saveResult := SaveTask(handler.storage, task)
+		if _, savedMatched := saveResult.(TaskStored); !savedMatched {
+			return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
+		}
+		encoded, err := json.Marshal(collectibleRefundBody{Collectibles: refunded})
+		if err != nil {
+			return RequestHandleRejected{Reason: "collectible refund response encoding failed"}
+		}
+		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+	case "collectible-reward":
+		task.RewardCollectibleCount = task.RewardCollectibleCount + 1
+		if task.RewardCreditAmount > 0 {
+			task.RewardKind = "bundle"
+		} else {
+			task.RewardKind = "collectible"
+		}
+	default:
+		return RequestHandleRejected{Reason: "task action is unsupported"}
+	}
+	saveResult := SaveTask(handler.storage, task)
+	saved, savedMatched := saveResult.(TaskStored)
+	if !savedMatched {
+		return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
+	}
+	if action.action == "funding" {
+		encoded, err := json.Marshal(taskFundingResponseBody{TaskID: task.ID, Amount: task.EscrowAmount, State: "held"})
+		if err != nil {
+			return RequestHandleRejected{Reason: "task funding response encoding failed"}
+		}
+		return RequestHandled{Value: Response{Status: 201, Body: string(encoded)}}
+	}
+	return taskResponseResult(saved.Value, []StoredAttachment{}, 200)
 }
 
 func (handler TaskHandler) handleCreateTask(request Request) HandleResult {
@@ -377,6 +706,7 @@ func (handler TaskHandler) handleCreateTask(request Request) HandleResult {
 		ReferenceURL:           strings.TrimSpace(body.ReferenceURL),
 		RewardKind:             reward.kind,
 		RewardCreditAmount:     reward.creditAmount,
+		RewardCollectibleIDs:   reward.collectibleIDs,
 		RewardCollectibleCount: len(reward.collectibleIDs),
 		ParticipationPolicy:    participation.policy,
 		AssigneeScope:          participation.assigneeScope,
@@ -408,6 +738,16 @@ func (handler TaskHandler) handleCreateTask(request Request) HandleResult {
 	if !savedMatched {
 		return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
 	}
+	for index := range saved.Value.RewardCollectibleIDs {
+		collectible, err := LoadCollectible(handler.storage, saved.Value.RewardCollectibleIDs[index])
+		if err != nil {
+			return RequestHandleRejected{Reason: err.Error()}
+		}
+		collectible.State = "escrowed"
+		if err := SaveCollectible(handler.storage, collectible); err != nil {
+			return RequestHandleRejected{Reason: err.Error()}
+		}
+	}
 	saveAttachmentsResult := SaveAttachments(handler.storage, "task", saved.Value.ID, attachments.values)
 	savedAttachments, savedAttachmentsMatched := saveAttachmentsResult.(AttachmentsStored)
 	if !savedAttachmentsMatched {
@@ -432,11 +772,13 @@ func (handler TaskHandler) handleGetTask(taskID string) HandleResult {
 
 func taskResponseResult(task StoredTask, attachments []StoredAttachment, status int) HandleResult {
 	encoded, err := json.Marshal(taskResponseBody{
-		StoredTask:       task,
-		Attachments:      attachments,
-		AvailabilityKind: "available",
-		ViewerAction:     "submit",
-		ReviewerAction:   "none",
+		StoredTask:         task,
+		Attachments:        attachments,
+		AvailabilityKind:   "available",
+		ViewerAction:       taskViewerAction(task),
+		ReviewerAction:     "none",
+		ActiveAssigneeKind: "none",
+		ActiveAssigneeID:   "",
 	})
 	if err != nil {
 		return RequestHandleRejected{Reason: "task response encoding failed"}
@@ -504,10 +846,72 @@ type taskAttachmentRequestBody struct {
 
 type taskResponseBody struct {
 	StoredTask
-	Attachments      []StoredAttachment `json:"attachments"`
-	AvailabilityKind string             `json:"availability_kind"`
-	ViewerAction     string             `json:"viewer_action"`
-	ReviewerAction   string             `json:"reviewer_action"`
+	Attachments        []StoredAttachment `json:"attachments"`
+	AvailabilityKind   string             `json:"availability_kind"`
+	ViewerAction       string             `json:"viewer_action"`
+	ReviewerAction     string             `json:"reviewer_action"`
+	ActiveAssigneeKind string             `json:"active_assignee_kind"`
+	ActiveAssigneeID   string             `json:"active_assignee_id"`
+}
+
+type tasksResponseBody struct {
+	Tasks []taskResponseBody `json:"tasks"`
+}
+
+func taskSummaries(tasks []StoredTask) []taskResponseBody {
+	summaries := make([]taskResponseBody, 0, len(tasks))
+	for index := range tasks {
+		summaries = append(summaries, taskResponseBody{
+			StoredTask:         tasks[index],
+			Attachments:        []StoredAttachment{},
+			AvailabilityKind:   taskAvailabilityKind(tasks[index]),
+			ViewerAction:       taskViewerAction(tasks[index]),
+			ReviewerAction:     "none",
+			ActiveAssigneeKind: "none",
+			ActiveAssigneeID:   "",
+		})
+	}
+	return summaries
+}
+
+func taskViewerAction(task StoredTask) string {
+	switch task.ParticipationPolicy {
+	case "reservation_required":
+		return "reserve"
+	case "approval_required":
+		return "request_approval"
+	default:
+		return "submit"
+	}
+}
+
+func taskAvailabilityKind(task StoredTask) string {
+	if task.State == "closed" || task.State == "cancelled" || task.State == "refunded" {
+		return "closed"
+	}
+	return "available"
+}
+
+type taskFundingBody struct {
+	Amount         int64  `json:"amount"`
+	IdempotencyKey string `json:"idempotency_key"`
+	OrganizationID string `json:"organization_id"`
+}
+
+type taskFundingResponseBody struct {
+	TaskID string `json:"task_id"`
+	Amount int64  `json:"amount"`
+	State  string `json:"state"`
+}
+
+type taskRefundBody struct {
+	TaskID string `json:"task_id"`
+	Amount int64  `json:"amount"`
+	State  string `json:"state"`
+}
+
+type collectibleRefundBody struct {
+	Collectibles []StoredCollectible `json:"collectibles"`
 }
 
 type taskOwnerParts struct {
@@ -590,6 +994,8 @@ func taskVisibilityFromBody(body taskVisibilityBody, owner taskOwnerParts) taskV
 		return taskVisibilityParts{kind: kind, id: strings.TrimSpace(body.TeamID)}
 	case "organization":
 		return taskVisibilityParts{kind: kind, id: strings.TrimSpace(body.OrganizationID)}
+	case "organization_team":
+		return taskVisibilityParts{kind: kind, id: strings.TrimSpace(body.TeamID)}
 	default:
 		return taskVisibilityParts{kind: kind, id: ""}
 	}

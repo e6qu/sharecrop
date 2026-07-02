@@ -79,10 +79,11 @@ func (resolver fixedOrganizationUserResolver) UserIDForEmail(email string) (stri
 }
 
 type fixedInteractionIDs struct {
-	submissionID  string
-	commentID     string
-	reservationID string
-	ledgerID      string
+	submissionID   string
+	commentID      string
+	reservationID  string
+	ledgerID       string
+	notificationID string
 }
 
 func (ids fixedInteractionIDs) NextSubmissionID() string {
@@ -99,6 +100,13 @@ func (ids fixedInteractionIDs) NextReservationID() string {
 
 func (ids fixedInteractionIDs) NextLedgerEntryID() string {
 	return ids.ledgerID
+}
+
+func (ids fixedInteractionIDs) NextNotificationID() string {
+	if ids.notificationID != "" {
+		return ids.notificationID
+	}
+	return "notification-1"
 }
 
 func TestModerationTriageHandlerPersistsThroughBrowserStorage(t *testing.T) {
@@ -466,8 +474,8 @@ func TestInteractionHandlerCreatesCommentsReservationsSubmissionAndLedger(t *tes
 	if err := json.Unmarshal([]byte(balanceHandled.Value.Body), &balance); err != nil {
 		t.Fatalf("decode balance: %v", err)
 	}
-	if balance.Amount != 30 {
-		t.Fatalf("balance = %d, want 30", balance.Amount)
+	if balance.Amount != 130 {
+		t.Fatalf("balance = %d, want 130", balance.Amount)
 	}
 }
 

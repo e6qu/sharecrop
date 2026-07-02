@@ -45,6 +45,9 @@ Test gaps:
   Playwright screens passed against an isolated local PostgreSQL 15 data
   directory under `.cache` on non-default local ports: Postgres `25432`, app
   `29180`, and backendless demo `29181`.
+- `tests/playwright/demo.spec.ts` and `tests/playwright/mobile.spec.ts` passed
+  against the Go/WASM default demo on non-default port `29181` after the WASM
+  agent-credential slice was added.
 
 Known risks:
 
@@ -56,32 +59,27 @@ Known risks:
   a rare funded-draft Cancel attempt now surfaces that 409 with the Refund
   action alongside.
 
-- `site/demo/backend.js` is a demo-only in-browser fake backend; it
-  re-implements API behavior in JS and can drift from the Go backend's actual
-  semantics. Deno tests compare its route surface with the real HTTP router,
-  validate representative response shapes, and run shared scenario parity flows
-  for selectors, admin operations, privacy request/audit/resolution shape,
-  moderation report/admin-list/audit shape, sensitive-field redaction state,
-  collectibles, tasks, small attachments, comments, submissions, notifications,
-  and a multi-actor reservation/submission-review/payout flow, but they do not
-  prove every handler has identical domain semantics.
+- `site/demo/backend.js` remains legacy parity/test material and still
+  re-implements API behavior in JS. The deployed static demo defaults to the
+  compiled Go/WASM backend path and does not load `backend.js` as a fallback.
+  The old Deno checks still compare its route surface with the real HTTP router
+  and run shared scenario parity flows, but those checks do not prove every
+  legacy JS handler has identical domain semantics.
 - Go/WASM is a first-class backend execution target, not only a demo mechanism.
   Go code compiles to `js/wasm` for representative packages, the main command,
-  and `cmd/sharecrop-wasm`. `internal/wasmdemo` classifies privacy, moderation,
-  saved-queue-view, task, notification, organization, organization-member, team,
-  comment, reservation, submission, and ledger routes. It has explicit
-  browser-storage and request-handler boundaries for those slices. A Deno WASM
-  runner loads a compiled Go `.wasm` artifact, verifies required exports,
-  configures explicit host adapters, and runs privacy request, saved queue view,
-  organization/member/team, task/comment/reservation/submission/ledger, and
-  unsupported-route checks through the exported request handler. The demo has an
-  opt-in `?backend=wasm` browser host path built from the compiled Go artifact.
-  The WASM backend target still lacks remaining behavior slices for
-  collectibles, account-token flows, admin operations, privacy
-  resolution/redaction jobs, moderation projection writes, richer deterministic
-  demo seeding, the full shared scenario parity suite, and startup
-  measurements. JavaScript reimplementations, generated fake backends, and
-  fallback stores are not valid substitutes for the compiled Go WASM binary.
+  and `cmd/sharecrop-wasm`. `internal/wasmdemo` classifies and handles current
+  shared-scenario slices for auth/account, users, admin operations,
+  platform-admins, audit events, collectibles, agent credentials, privacy,
+  moderation, saved-queue-view, task, notification, organization,
+  organization-member, team, comment, reservation, submission, and ledger
+  routes. A Deno WASM runner loads a compiled Go `.wasm` artifact, verifies
+  required exports, configures explicit host adapters, and runs the shared
+  scenario parity suite through the exported request handler. Remaining WASM
+  risk is production hardening: non-browser host adapter documentation,
+  startup/size/memory/request-latency measurements, and continued parity
+  expansion as API surfaces change. JavaScript reimplementations, generated fake
+  backends, and fallback stores are not valid substitutes for the compiled Go
+  WASM binary.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

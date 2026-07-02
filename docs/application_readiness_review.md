@@ -60,10 +60,10 @@ support surfaces are absent.
      are server-backed.
    - Team and organization queues have persisted saved views for repeated
      query/filter/sort combinations.
-   - Queue headings show loaded item counts, and saved view labels include
-     their state/type/sort context.
-   - Result: the core organization-team task path works, but
-     operator-specific queue defaults still need product polish.
+   - Queue headings show loaded item counts, and saved view labels include their
+     state/type/sort context.
+   - Result: the core organization-team task path works, but operator-specific
+     queue defaults still need product polish.
 
 2. **Worker revision and submission-discussion flows still need polish.**
    - Workers can submit and can list their own submissions from the profile
@@ -126,7 +126,8 @@ support surfaces are absent.
 Implemented:
 
 - Static site and real-Elm demo exist.
-- Demo uses an in-browser fake backend with seeded workflows.
+- Demo uses the compiled Go/WASM backend path with explicit browser host
+  adapters and seeded workflows.
 - Demo has reset and hash routing.
 
 Missing or partial:
@@ -136,8 +137,10 @@ Missing or partial:
 - The docs page covers the core lifecycle and MCP quickstart, and links to the
   repository API reference, MCP reference, operator runbook, and agent-side
   scheduling recipe.
-- Demo semantics can still drift from Go because `site/demo/backend.js`
-  re-implements the backend in JavaScript.
+- The demo does not execute the full production server graph because browser
+  WASM hosts provide explicit storage, clock, identity/session, request,
+  randomness, and networking adapters instead of Postgres and process-local
+  server wiring.
 
 ### Authentication And User Account
 
@@ -153,8 +156,8 @@ Implemented:
 Missing or partial:
 
 - No SMTP/provider adapter for production email delivery.
-- Account lifecycle is deactivation plus credential/session/token revocation
-  and email anonymization, not row removal.
+- Account lifecycle is deactivation plus credential/session/token revocation and
+  email anonymization, not row removal.
 - No OAuth/social login despite earlier story text referencing mock providers.
 
 ### Requester
@@ -281,8 +284,8 @@ Implemented:
   redacted for receipt lookup.
 - Submission responses expose indexed sensitive-field metadata so authorized
   users can see which response paths are governed by retention/redaction policy.
-- Users can create audited privacy requests for data export or
-  sensitive-field deletion.
+- Users can create audited privacy requests for data export or sensitive-field
+  deletion.
 - Platform admins can list and resolve privacy requests.
 - Resolution stores data-export JSON or marks delete-on-request sensitive-field
   metadata as redacted without removing core rows.
@@ -332,15 +335,15 @@ Missing or partial:
 
 ## Suggested Delivery Sequence
 
-1. Keep expanding shared scenario parity for user-visible API surfaces and
-   backendless demo behavior.
+1. Keep expanding shared scenario parity for user-visible API surfaces and the
+   Go/WASM request adapter.
 2. Keep expanding fixture-level HTTP contract coverage as request and response
    surfaces change.
 3. Add Playwright coverage when browser workflows change materially.
 4. Continue moving first-page-only lists to explicit pagination where
    high-volume use is expected.
-5. Keep adding explicit WASM browser-storage boundaries and handlers only where
+5. Keep adding explicit WASM host-storage boundaries and handlers only where
    they can fail loudly without fallback stores.
 6. Add provider email delivery only if account setup stops being admin-driven.
-7. Do not replace the JavaScript backendless demo with WASM until the documented
-   storage-adapter gates are met without fallbacks.
+7. Harden the production WASM host path with non-browser adapter docs,
+   measurement commands, and parity tests as API surfaces change.
