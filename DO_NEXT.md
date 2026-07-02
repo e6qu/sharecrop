@@ -5,11 +5,12 @@ Current priority from
 
 Active branch:
 
-1. `task/wasm-default-demo-shared-parity` is in progress. It replaces the demo
-   default backend with the compiled Go/WASM backend path and expands explicit
-   WASM behavior slices, deterministic demo seed/reset, shared scenario parity,
-   and production measurement docs without fallback stores or JavaScript backend
-   reimplementations.
+1. `task/wasm-nonbrowser-host-measurement` is in progress. It adds
+   `deno task measure:wasm` (artifact size, startup time, host-process memory,
+   request latency) and documents the non-browser host adapter reference
+   (`tools/wasm_runtime_loader.ts`) plus the gap between that reference host and
+   a genuine production non-browser host, without fallback stores or JavaScript
+   backend reimplementations.
 
 Next recommended work:
 
@@ -46,12 +47,25 @@ Next recommended work:
    configured browser host functions.
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-7. Harden the production WASM target with non-browser host adapter docs,
-   startup/size/memory/request-latency measurements, and parity expansion as new
-   API surfaces are added.
+7. Build a genuine production non-browser WASM host: persistent storage (file or
+   database-backed) behind the same `storageHas`/`storageGet`/`storagePut`
+   contract, a real clock, verified-session actor resolution instead of the
+   reference host's `setActor` test hook, and cryptographically random
+   IDs/secrets instead of the reference host's sequential counter. The
+   non-browser host contract is documented and the reference/test implementation
+   exists (`tools/wasm_runtime_loader.ts`); a deployable production
+   implementation does not yet exist because there is no concrete non-browser
+   deployment target for it yet. Keep re-running `deno task measure:wasm` as the
+   WASM binary grows.
 
 Recently finished:
 
+1. PR 100 was merged into `main`.
+1. The `task/wasm-default-demo-shared-parity` branch made the compiled Go/WASM
+   backend the default static-demo backend, expanded explicit WASM behavior
+   slices for collectibles, account tokens, agent credentials, admin operations,
+   privacy resolution/redaction, and moderation projection writes, and refreshed
+   docs/continuity for the Go/WASM demo default.
 1. PR 99 was merged into `main`.
 1. The `task/wasm-browser-host-full-parity-gates` branch added an opt-in browser
    WASM host path, Go WASM demo artifact build, Pages workflow integration,

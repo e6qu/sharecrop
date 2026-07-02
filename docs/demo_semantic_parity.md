@@ -48,8 +48,12 @@ It must not be treated as a fallback for the deployed demo.
      identity/session, randomness, and networking.
    - Does not reuse PostgreSQL, pgx, net/http server wiring, process signals, or
      production migrations directly in the browser.
-   - Build size, startup cost, JS interop, IndexedDB persistence, and
-     non-browser host behavior still need production hardening.
+   - Build size, startup cost, and request latency are measured against the
+     compiled artifact by `deno task measure:wasm` (see
+     [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md)). A non-browser
+     reference host exists and is tested, but it is in-memory and test-only; JS
+     interop, IndexedDB persistence, and a persistent-storage non-browser host
+     still need production hardening.
 
 3. Host a real demo backend with a disposable database.
    - Highest semantic parity.

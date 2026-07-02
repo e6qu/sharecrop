@@ -1,19 +1,21 @@
 # Status
 
-The repository contains pull request 1 through pull request 99 work, merged into
-`main`, plus the current `task/wasm-default-demo-shared-parity` branch.
+The repository contains pull request 1 through pull request 100 work, merged
+into `main`, plus the current `task/wasm-nonbrowser-host-measurement` branch.
 
-Active task: `task/wasm-default-demo-shared-parity` replaces the backendless
-demo default backend with the compiled Go/WASM backend path, expands explicit
-WASM host-backed behavior slices for collectibles, account-token shapes, agent
-credentials, admin operations, privacy resolution/redaction, moderation
-projection writes, richer deterministic demo seed/reset, broader shared scenario
-parity, and production measurement docs. The branch must keep fail-loud behavior
-and must not add fallback stores or JavaScript backend reimplementations as the
-target. Hard deletes remain out of scope; use soft lifecycle states,
-anonymization, redaction, tombstones, and audit records. Email/provider
-delivery, anonymous worker identity, per-project tokens, external wallets, and
-crypto integrations are out of scope.
+Active task: `task/wasm-nonbrowser-host-measurement` closes the two remaining
+"production WASM gates" from `docs/wasm_demo_backend_spike.md`: it adds
+`deno task measure:wasm` to measure artifact size, startup time, host-process
+memory, and request latency against a compiled WASM artifact, and documents the
+non-browser host adapter reference (`createHost` in
+`tools/wasm_runtime_loader.ts`) plus the concrete gaps between that reference
+host and a genuine persistent-storage, verified-actor, cryptographically-random
+production non-browser host. The branch must keep fail-loud behavior and must
+not add fallback stores or JavaScript backend reimplementations as the target.
+Hard deletes remain out of scope; use soft lifecycle states, anonymization,
+redaction, tombstones, and audit records. Email/provider delivery, anonymous
+worker identity, per-project tokens, external wallets, and crypto integrations
+are out of scope.
 
 Current implemented surface:
 
@@ -200,9 +202,22 @@ Current implemented surface:
   ledger browser-storage boundaries and request handlers, and no fallback path.
 - Go/WASM is a first-class backend execution target, not only a demo mechanism.
   The target artifact is a `.wasm` binary compiled from Go with explicit host
-  adapters for storage, clock, identity/session, request handling, randomness,
-  and networking. JavaScript reimplementations, generated fake backends, and
-  fallback stores are out of scope.
+  adapters for storage, clock, identity/session, and request handling. No
+  currently implemented route needs a randomness or networking adapter, so
+  neither exists yet in the `HostRuntime` interface; one would be added, and
+  fail loudly until added, if a future route needed it. JavaScript
+  reimplementations, generated fake backends, and fallback stores are out of
+  scope.
+- `tools/wasm_runtime_loader.ts` documents and implements the reference
+  non-browser `HostFunctions` host (in-memory storage, fixed clock, sequential
+  IDs), used by `check:scenario-parity:wasm` and `measure:wasm`.
+  `docs/wasm_demo_backend_spike.md` records what a production non-browser host
+  still needs beyond that reference: persistent storage, a real clock,
+  verified-session actor resolution, and cryptographically random IDs/secrets.
+- `deno task measure:wasm -- --wasm <compiled.wasm>` reports artifact size,
+  startup time, host-process memory, and per-route request latency for a
+  compiled `cmd/sharecrop-wasm` artifact through the non-browser reference host.
+  `docs/wasm_demo_backend_spike.md` records a baseline run.
 - `cmd/sharecrop-wasm` builds a Go `js/wasm` artifact that exposes
   `sharecropWasmBackendStatus`, `sharecropConfigureHost`, and
   `sharecropHandleRequest`. Requests fail loudly until an explicit host is
@@ -249,10 +264,15 @@ Current verification:
   passed.
 - `make check-contracts` passed.
 - `go tool deadcode -test ./...` passed.
+- `make check-copy-paste` (`jscpd`) found zero clones after extracting the
+  shared WASM loader/host helpers into `tools/wasm_runtime_loader.ts`.
 - `deno task wasm:demo:build` passed with repo-local Go caches.
 - `deno task check:scenario-parity:wasm -- --wasm
   site/demo/sharecrop-wasm-backend.wasm`
-  passed.
+  passed against the built demo artifact after the loader refactor.
+- `deno task measure:wasm -- --wasm site/demo/sharecrop-wasm-backend.wasm`
+  passed and reported the baseline numbers recorded in
+  [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md).
 - `tests/playwright/demo.spec.ts` passed against the Go/WASM default demo on
   port `29181` after the agent-credential WASM slice was added.
 - `tests/playwright/mobile.spec.ts` failed on missing WASM
