@@ -129,8 +129,12 @@
           <code>make check-openapi</code>). Method, path, <code
           >operationId</code>, and whether a route requires a bearer access
           token are derived from the actual route table and the local call
-          graph, not hand-maintained. Request/response bodies are generic JSON
-          object placeholders, not typed per-route schemas; see the
+          graph, not hand-maintained. Request/response body schemas are derived
+          from the actual Go DTO struct each handler decodes/writes; a route
+          whose handler falls outside the standard decode/write patterns gets a
+          generic placeholder instead of a guess (see the
+          <span class="auth-protected">plain</span> tag in the Schema column
+          below). See the
           <a
             href="https://github.com/e6qu/sharecrop/blob/main/docs/api_reference.md"
           >hand-written HTTP API reference</a> for prose per-route
@@ -145,6 +149,7 @@
               <th>Path</th>
               <th>Operation</th>
               <th>Auth</th>
+              <th>Schema</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -173,12 +178,27 @@
         return cell;
       }
 
-      function renderSummary(routeCount, publicCount) {
+      function hasTypedResponseSchema(operation) {
+        const schema = operation.responses?.default?.content
+          ?.["application/json"]?.schema;
+        return Boolean(schema && schema.properties);
+      }
+
+      function schemaCell(operation) {
+        const typed = hasTypedResponseSchema(operation);
+        const cell = document.createElement("span");
+        cell.className = typed ? "auth-public" : "auth-protected";
+        cell.textContent = typed ? "typed" : "plain";
+        return cell;
+      }
+
+      function renderSummary(routeCount, publicCount, typedCount) {
         const summary = document.getElementById("summary");
         const entries = [
           [routeCount, "routes"],
           [publicCount, "public"],
           [routeCount - publicCount, "require a bearer token"],
+          [typedCount, "typed response schemas"],
         ];
         for (const [value, label] of entries) {
           const card = document.createElement("div");
@@ -211,7 +231,10 @@
             isPublicOperation(operation)
           )
             .length;
-          renderSummary(rows.length, publicCount);
+          const typedCount =
+            rows.filter(({ operation }) => hasTypedResponseSchema(operation))
+              .length;
+          renderSummary(rows.length, publicCount, typedCount);
 
           const tbody = document.querySelector("#routes tbody");
           for (const { path, method, operation } of rows) {
@@ -234,6 +257,10 @@
             const authCellElement = document.createElement("td");
             authCellElement.append(authCell(operation));
             row.append(authCellElement);
+
+            const schemaCellElement = document.createElement("td");
+            schemaCellElement.append(schemaCell(operation));
+            row.append(schemaCellElement);
 
             tbody.append(row);
           }

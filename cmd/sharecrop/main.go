@@ -118,7 +118,7 @@ func runGenerateOpenAPI(stdout io.Writer, logger *slog.Logger) int {
 		return 1
 	}
 
-	document := openapi.Generate(extracted.Routes)
+	document := openapi.Generate(extracted.Routes, extracted.Structs)
 	writeResult := openapi.Write(document, "docs/openapi.json")
 	if _, written := writeResult.(openapi.Written); !written {
 		rejected := writeResult.(openapi.WriteRejected)

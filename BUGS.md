@@ -8,11 +8,13 @@ Test gaps:
 
 - `docs/openapi.json` (`make openapi`/`make check-openapi`, `internal/openapi`)
   has an accurate method/path/operationId/bearer-auth inventory generated from
-  `internal/http/server.go`'s route table and local call graph, but
-  request/response bodies are generic JSON object placeholders, not typed
-  per-route schemas. `internal/contracts` has no method/path/route metadata to
-  drive that today; adding typed schemas needs an explicit
-  route-to-contract-type mapping.
+  `internal/http/server.go`'s route table and local call graph. Request/
+  response body schemas are typed (derived from the actual Go DTO struct a
+  handler decodes/writes) for 98/106 responses and 39/61 request bodies; the
+  rest keep a generic placeholder. One known generator gap:
+  `createModerationReport`'s response is written via a struct field access
+  (`response.value`) rather than a bare local variable or composite literal,
+  which `internal/openapi/dto_resolve.go`'s heuristic does not follow.
 - GitHub Pages deployment cannot be observed from pull request CI because the
   Pages workflow publishes after pushes to `main` or manual dispatch. The Pages
   workflow runs the deployed routing check after deployment; manual checks can

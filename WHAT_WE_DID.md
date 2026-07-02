@@ -1,8 +1,55 @@
 # What We Did
 
-`task/landing-docs-visual-redesign` fixed the unstyled `site/index.html` and
-`site/docs/index.html` pages found during the prior task, with a full visual
-redesign rather than a minimal patch (explicit user choice).
+`task/openapi-typed-schemas` added typed per-route request/response JSON schemas
+to `docs/openapi.json`, derived from the actual `internal/http` Go DTO structs
+via `go/ast` rather than a hand-authored mapping to `internal/contracts`
+(research beforehand found `internal/contracts` has no request-body types at all
+and its response shapes have already drifted from `internal/http`'s in field
+order, confirming a direct DTO-source approach was both more complete and safer
+than trusting the two shapes stay in sync).
+
+- **Struct-shape extraction (`internal/openapi/structs.go`).** Parses every
+  `type X struct {...}` declaration in `internal/http` into a JSON field shape:
+  wire name and required-ness from the `json` tag (`,omitempty` absent means
+  required), and a `FieldKind` (string/integer/number/boolean/ array/struct)
+  from the Go field type, with pointers unwrapped and anything not confidently
+  classified left as unconstrained rather than guessed.
+- **Request/response type resolution (`internal/openapi/dto_resolve.go`).**
+  Finds, per handler, the request DTO from its `var request <Type>` +
+  `.Decode(&request)` pair and the response DTO from a dedicated
+  `write<Foo>Response` wrapper or the argument to a direct `writeJSON` call
+  (composite literal, local variable, or single-return-value converter call),
+  walking the local call graph transitively so handlers that delegate to a
+  shared helper (`openTask`/`cancelTask` → `changeTaskState`) still resolve.
+- **Two real bugs found and fixed via testing, not inspection.**
+  `writeError(w, status, message string)` has the exact same
+  `(http.ResponseWriter, int, <named type>)` shape as a real
+  `write<Foo>Response` wrapper, so an early auth-check's error write was winning
+  over the handler's actual success-path response — excluded builtin-primitive
+  third parameters. Separately, `writeJSON`'s own signature
+  (`value writableResponse`) matched the same wrapper pattern against itself, so
+  every `writeJSON` call was resolving to the interface name
+  `"writableResponse"` instead of its actual argument — excluded `writeJSON` by
+  name. Both are now regression tests.
+- **Schema generation (`internal/openapi/document.go`).** Recursively builds an
+  object schema from a resolved struct, with a cycle guard scoped to the current
+  call chain (not a global visited set) so the same struct can legitimately
+  appear as sibling fields without being mistaken for a cycle.
+- **Result: 98/106 responses and 39/61 request bodies now resolve to a typed
+  schema.** The remainder are genuinely out of scope for this generator (three
+  `/mcp` JSON-RPC passthrough routes, `healthz`/`index`/`/static/`, bodyless
+  action endpoints) or one known gap (`createModerationReport`'s response is a
+  struct-field access, `response.value`, not a bare variable or literal)
+  recorded in `DO_NEXT.md`.
+- **`site/docs/openapi.html`** gained a Schema column (typed vs. plain per
+  route) and a typed-response-schema count in its summary.
+- Verified the generator is deterministic (ran it twice, diffed byte-for-byte
+  identical) since the schema/property maps could otherwise leak Go's randomized
+  map iteration order into the committed JSON.
+
+`task/landing-docs-visual-redesign` (merged into `main`) fixed the unstyled
+`site/index.html` and `site/docs/index.html` pages found during the prior task,
+with a full visual redesign rather than a minimal patch (explicit user choice).
 
 - **`site/marketing.css`.** A new hand-authored stylesheet implementing every
   class those two pages already referenced but that had no matching CSS anywhere

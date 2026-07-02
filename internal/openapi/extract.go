@@ -12,11 +12,17 @@ import (
 )
 
 // Route describes one HTTP route registered on the production mux.
+// RequestType and ResponseType are the Go DTO struct names (keys into
+// Extracted.Structs) that the handler decodes/writes, resolved on a
+// best-effort basis; either is empty when the handler does not match one of
+// the standard decode/write patterns.
 type Route struct {
 	Method       string
 	Path         string
 	OperationID  string
 	RequiresAuth bool
+	RequestType  string
+	ResponseType string
 }
 
 type ExtractResult interface {
@@ -24,7 +30,8 @@ type ExtractResult interface {
 }
 
 type Extracted struct {
-	Routes []Route
+	Routes  []Route
+	Structs map[string]StructShape
 }
 
 type ExtractionRejected struct {
@@ -66,6 +73,8 @@ func Extract(sources map[string][]byte) ExtractResult {
 	}
 
 	authGatedFuncs := collectAuthGatedFuncs(files)
+	requestTypeByFunc, responseTypeByFunc := resolveDTOTypes(files)
+	structs := collectStructShapes(files)
 
 	routesByKey := map[string]Route{}
 	for _, file := range files {
@@ -75,6 +84,8 @@ func Extract(sources map[string][]byte) ExtractResult {
 				return ExtractionRejected{Reason: "duplicate route registration for " + key}
 			}
 			route.RequiresAuth = authGatedFuncs[route.OperationID]
+			route.RequestType = requestTypeByFunc[route.OperationID]
+			route.ResponseType = responseTypeByFunc[route.OperationID]
 			routesByKey[key] = route
 		}
 	}
@@ -92,7 +103,7 @@ func Extract(sources map[string][]byte) ExtractResult {
 		}
 		return routes[i].Method < routes[j].Method
 	})
-	return Extracted{Routes: routes}
+	return Extracted{Routes: routes, Structs: structs}
 }
 
 func routesInFile(file *ast.File) []Route {
