@@ -157,6 +157,8 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteStandaloneTeams}
 	case teamWorkPathID(request.Path) != "":
 		return RequestAdapted{Route: RouteTasks}
+	case teamDetailPathID(request.Path) != "":
+		return RequestAdapted{Route: RouteStandaloneTeams}
 	case taskCommentsPathID(request.Path) != "":
 		return RequestAdapted{Route: RouteTaskComments}
 	case submissionCommentsPathID(request.Path) != "":
@@ -284,6 +286,14 @@ func standaloneTeamsPathOnly(path string) string {
 func teamWorkPathID(path string) string {
 	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "teams" && parts[3] == "work" {
+		return strings.TrimSpace(parts[2])
+	}
+	return ""
+}
+
+func teamDetailPathID(path string) string {
+	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
+	if len(parts) == 3 && parts[0] == "api" && parts[1] == "teams" && strings.TrimSpace(parts[2]) != "" {
 		return strings.TrimSpace(parts[2])
 	}
 	return ""

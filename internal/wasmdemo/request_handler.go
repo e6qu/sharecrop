@@ -1273,6 +1273,8 @@ func (handler OrganizationHandler) Handle(request Request) HandleResult {
 		return handler.handleOrganizationTeams(request, organizationTeamsRoute(request.Path))
 	case standaloneTeamsPathOnly(request.Path) == "/api/teams":
 		return handler.handleStandaloneTeams(request)
+	case teamDetailPathID(request.Path) != "":
+		return handler.handleTeamDetail(request, teamDetailPathID(request.Path))
 	case organizationMemberRoute(request.Path) != "":
 		return handler.handleOrganizationMembers(request)
 	default:
@@ -1417,6 +1419,29 @@ func (handler OrganizationHandler) handleStandaloneTeams(request Request) Handle
 	}
 }
 
+// handleTeamDetail answers GET /api/teams/{team_id}: a real bug found by
+// hand-testing the demo left this route entirely unclassified (a 404), so
+// the team detail page never loaded, for either standalone or
+// organization-owned teams. The WASM demo has no team-membership storage yet
+// (only organization membership), so members is always empty here, matching
+// what a freshly created team with no members added would return from the
+// real backend.
+func (handler OrganizationHandler) handleTeamDetail(request Request, teamID string) HandleResult {
+	if request.Method.String() != MethodGet.String() {
+		return RequestHandleRejected{Reason: "request method is unsupported for team detail"}
+	}
+	loadResult := LoadTeam(handler.storage, teamID)
+	loaded, loadedMatched := loadResult.(TeamStored)
+	if !loadedMatched {
+		return RequestHandleRejected{Reason: loadResult.(TeamStorageRejected).Reason}
+	}
+	encoded, err := json.Marshal(teamDetailBody{Team: loaded.Value, Members: []string{}})
+	if err != nil {
+		return RequestHandleRejected{Reason: "team detail response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
 func (handler OrganizationHandler) handleOrganizationMembers(request Request) HandleResult {
 	route := parseOrganizationMemberRoute(request.Path)
 	if route.organizationID == "" {
@@ -1540,6 +1565,11 @@ type organizationMembersBody struct {
 
 type teamsBody struct {
 	Teams []StoredTeam `json:"teams"`
+}
+
+type teamDetailBody struct {
+	Team    StoredTeam `json:"team"`
+	Members []string   `json:"members"`
 }
 
 type statusBody struct {

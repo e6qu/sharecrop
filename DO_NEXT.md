@@ -5,16 +5,22 @@ Current priority from
 
 Active branch:
 
-1. `task/org-detail-declutter-and-audit-fix` is in progress. Continues hand-
-   testing the browser demo, page by page: found that
-   `GET /api/organizations/{organization_id}/audit-events` was unclassified in
-   the WASM demo (a 404), so the organization detail page's "Organization audit"
-   section always failed, and a copy-paste bug stored that failure in
-   `orgTaskMessage` instead of a dedicated field, so the error rendered under
-   "Organization tasks" instead. Both fixed. Also declutters the organization
-   detail page (task filters, Teams, Members, Collectibles) and the Collectibles
-   page's admin-only award-recipient picker with the `Ui.disclosure` component
-   from the prior branch.
+1. `task/team-detail-404-fix-and-declutter` is in progress. Continues hand-
+   testing the browser demo, page by page: found that `GET /api/teams/{team_id}`
+   was entirely unclassified in the WASM demo (a 404), so the team detail page
+   never loaded for any team — a completely broken flow, not just a display bug.
+   Fixed by routing it through the existing standalone-teams handler, returning
+   `{team, members: []}` (no team-membership storage exists in the demo yet).
+   Also declutters the team detail page's team-work filter panel with the
+   `Ui.disclosure` component from prior branches.
+
+   Also noting: the GitHub Pages deployment for PR 108 failed three times in a
+   row after merge with three different symptoms (10-minute timeout, duplicate
+   artifact after a `--failed`-only rerun, "deployment cancelled", another
+   10-minute timeout stuck at `deployment_queued`), while the build and
+   artifact-upload steps succeeded every time. This looks like a GitHub-side
+   Pages backend issue, not a code problem — a human should check
+   githubstatus.com or retry later; do not keep auto-retrying.
 
 Next recommended work:
 
@@ -64,6 +70,14 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 108 was merged into `main`. Its GitHub Pages deployment failed three times
+   in a row (see the note under "Active branch" above); the merge and code are
+   fine, only the deploy pipeline is affected.
+1. The `task/org-detail-declutter-and-audit-fix` branch fixed a third real
+   broken flow found by hand-testing the Go/WASM demo (the organization detail
+   page's "Organization audit" section 404ing, plus a copy-paste bug that stored
+   that error under the wrong heading), and decluttered the organization detail
+   page and the Collectibles page's admin-only picker with `Ui.disclosure`.
 1. PR 107 was merged into `main`.
 1. The `task/ui-ux-declutter-and-profile-fix` branch fixed two real broken flows
    found by hand-testing the Go/WASM demo in a browser (the profile page's

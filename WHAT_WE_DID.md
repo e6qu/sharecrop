@@ -1,8 +1,45 @@
 # What We Did
 
-`task/org-detail-declutter-and-audit-fix` continued the prior branch's
-hand-testing pass onto the organization detail page, found a third real bug the
-same way, and applied the `Ui.disclosure` component there too.
+`task/team-detail-404-fix-and-declutter` continued the hand-testing pass onto
+the team detail page, found a fourth real bug the same way, and applied
+`Ui.disclosure` there too. Also: PR 108's GitHub Pages deployment failed three
+times after merge with three different symptoms — a 10-minute timeout, then
+"multiple artifacts... unexpectedly found" after re-running only the failed job
+(which re-uploads the artifact under the same run, creating a duplicate), then
+"deployment cancelled", then another 10-minute timeout stuck at
+`deployment_queued`. Build and artifact-upload steps succeeded every time; only
+the final `deploy-pages` step failed or hung. This reads as a GitHub-side Pages
+backend issue rather than a code problem — stopped auto-retrying after three
+failures and flagged it in `STATUS.md`/`DO_NEXT.md` for a human to check
+githubstatus.com or retry later, rather than looping indefinitely.
+
+- **A fourth `internal/wasmdemo` bug, found by creating an organization team in
+  a browser and clicking into it.** `GET /api/teams/{team_id}` was completely
+  unclassified in the WASM demo's route adapter — not a wrong shape, an outright
+  missing route, so the team detail page could never load for any team,
+  standalone or organization-owned. Fixed by adding `teamDetailPathID` (a
+  3-segment `/api/teams/{id}` match, distinct from the existing 4-segment
+  `/work`/`/collectibles` suffixed routes) and a `handleTeamDetail` method on
+  the existing `OrganizationHandler`, returning `{team, members: []}` via a new
+  `teamDetailBody` type. Members is always empty because the WASM demo has no
+  team-membership storage at all yet (only organization membership) — matching
+  what a freshly created team with nobody added would return from the real
+  backend's `getTeam`/`teamDetailResponse`, not a guess.
+- **Applied `Ui.disclosure`** to the team detail page's team-work
+  search/type/sort/state-filter/saved-views panel (`teamWorkDashboard`), cutting
+  a representative team page from ~1200px to ~730px, consistent with the same
+  pattern applied to Tasks/Discovery/organization-tasks filters in prior
+  branches.
+- **Fixed the resulting Playwright regression** the same way as prior branches:
+  expanded the new `team-work-filters` disclosure before interacting with it in
+  `screens.spec.ts`. Verified: all 45 real-backend Playwright specs
+  (`make e2e-ui`), the Go integration/http_e2e suites, and the full non-browser
+  check suite pass.
+
+`task/org-detail-declutter-and-audit-fix` (merged into `main`) continued the
+prior branch's hand-testing pass onto the organization detail page, found a
+third real bug the same way, and applied the `Ui.disclosure` component there
+too.
 
 - **A third `internal/wasmdemo` bug, found by loading an organization's detail
   page in a browser and reading the "Organization audit" section's error.**

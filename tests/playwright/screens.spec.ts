@@ -391,6 +391,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   await expect(page.getByTestId("team-assigned-work-heading")).toContainText(
     "Assigned to team (0)",
   );
+  await page.getByTestId("team-work-filters").click();
   await expect(page.getByTestId("team-work-query")).toBeVisible();
   await page.getByTestId("team-work-query").fill("missing task");
   await page.getByTestId("team-work-search").click();
