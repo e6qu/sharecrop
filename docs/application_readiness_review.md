@@ -117,12 +117,15 @@ support surfaces are absent.
    - A guided onboarding guide exists in `docs/onboarding.md`.
    - A generated OpenAPI document (`docs/openapi.json`, `make openapi`) exists
      with an accurate method/path/operationId/bearer-auth inventory parsed from
-     `internal/http/server.go`, but its request/response bodies are generic JSON
-     object placeholders rather than typed per-route schemas. It is browsable on
-     the deployed docs site at `/docs/openapi.html` (raw document at
-     `/docs/openapi.json`).
+     `internal/http/server.go`. Request/response body schemas are derived from
+     the actual Go DTO struct each handler decodes/writes (98/106 responses,
+     39/61 request bodies as of this writing); a handler outside the standard
+     decode/write patterns gets a generic placeholder rather than a guess. It is
+     browsable on the deployed docs site at `/docs/openapi.html` (raw document
+     at `/docs/openapi.json`).
    - Result: a new user or integrator still needs some source-level context for
-     edge workflows, and for exact per-route request/response field shapes.
+     edge workflows, and for the remaining generic-placeholder request/response
+     shapes.
 
 ## Flow Review
 

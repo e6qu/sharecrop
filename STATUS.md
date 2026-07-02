@@ -1,20 +1,20 @@
 # Status
 
-The repository contains pull request 1 through pull request 103 work, merged
-into `main`, plus the current `task/landing-docs-visual-redesign` branch.
+The repository contains pull request 1 through pull request 104 work, merged
+into `main`, plus the current `task/openapi-typed-schemas` branch.
 
-Active task: `task/landing-docs-visual-redesign` designs and implements real CSS
-for the two static marketing/docs pages (`site/index.html`,
-`site/docs/index.html`) that previously rendered fully unstyled in production.
-`site/marketing.css` is a new hand-authored stylesheet (a "dispatch desk"
-paper/typewriter aesthetic distinct from the demo's pixel-arcade skin) covering
-the `.landing-shell`/`.docs-shell`/`.panel`/
-`.topbar`/`.button`/`.objective-list`/etc. classes those pages already used but
-that had no matching CSS anywhere. `site/docs/openapi.html` was restyled to
-match for visual consistency across all three static pages. Hard deletes remain
-out of scope; use soft lifecycle states, anonymization, redaction, tombstones,
-and audit records. Email/provider delivery, anonymous worker identity,
-per-project tokens, external wallets, and crypto integrations are out of scope.
+Active task: `task/openapi-typed-schemas` adds typed per-route request/response
+JSON schemas to `docs/openapi.json`. `internal/openapi` now parses
+`internal/http`'s DTO struct declarations and resolves, per handler (directly or
+transitively through shared helpers), which struct it decodes as a request body
+and which it writes as a response, deriving a real JSON Schema recursively
+rather than a generic placeholder wherever that resolves. 98/106 responses and
+39/61 request bodies resolve to a typed schema; the remainder (raw MCP JSON-RPC
+passthrough, genuinely bodyless routes, and one result-union-field-access case)
+keep the honest generic placeholder rather than a guess. Hard deletes remain out
+of scope; use soft lifecycle states, anonymization, redaction, tombstones, and
+audit records. Email/provider delivery, anonymous worker identity, per-project
+tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -252,10 +252,22 @@ Current implemented surface:
   bearer-auth requirement per route (a route is marked public only if its
   handler cannot reach `requireUserSubject`/`requireWorkerSubject`/
   `requireAdminSubject`/`requireOrganizationBilling`/`verifyAgent` through the
-  call graph). Request/response bodies are generic JSON object placeholders, not
-  typed per-route schemas. `make check-openapi` regenerates and asserts no diff,
-  mirroring `check-contracts`. `make check-openapi` runs in PR CI
-  (`.github/workflows/ci.yml`).
+  call graph). `make check-openapi` regenerates and asserts no diff, mirroring
+  `check-contracts`, and runs in PR CI (`.github/workflows/ci.yml`).
+- Request/response body schemas in `docs/openapi.json` are typed JSON Schema,
+  not generic placeholders, wherever `internal/openapi` can resolve the Go DTO
+  struct a handler decodes/writes: it finds the `var request <Type>` +
+  `.Decode(&request)` pair for requests, and either a dedicated
+  `write<Foo>Response(w, status, response <Type>)` wrapper or the argument to a
+  direct `writeJSON(w, status, value)` call for responses (a composite literal,
+  a local variable, or a call to a single-return-value converter function),
+  following the local call graph transitively so handlers that delegate to a
+  shared helper (`openTask`/`cancelTask` via `changeTaskState`) still resolve.
+  98/106 responses and 39/61 request bodies resolve; the rest keep the generic
+  `{"type": "object"}` (or empty) placeholder rather than a guess.
+- `site/docs/openapi.html` shows a "Schema" column (typed vs. plain) per route
+  and a typed-response-schema count in its summary, reading the same generated
+  document.
 - `site/docs/openapi.html` is a self-contained (no third-party viewer, no build
   step) static page on the deployed GitHub Pages site that fetches
   `site/docs/openapi.json` and renders a route table with method/path/
@@ -278,27 +290,34 @@ Current implemented surface:
 
 Current verification:
 
-- `go build ./...`, `go vet ./...`, and `go test ./...` passed (sanity only;
-  this task did not touch Go code).
-- `deno task check:ts`, `deno task lint`, `deno task check:policy`, and
-  `deno task test` passed (sanity only; no TypeScript changed).
-- `make check-contracts` and `make check-openapi` passed (sanity only; neither
-  is affected by this task).
+- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including new
+  `internal/openapi` unit tests for struct-shape extraction (primitives, arrays,
+  nested structs, pointer unwrapping, `json:"-"` exclusion, tag-name fallback),
+  request/response type resolution (inline decode, dedicated write wrapper via
+  method selector, converter-function return type, transitive resolution through
+  a shared helper, and two regression tests locking in real bugs found during
+  development — `writeError` and `writeJSON`'s own signature must not be
+  mistaken for response-type wrappers), and schema generation (typed
+  object/array/required-field output, cycle guard,
+  shared-struct-as-sibling-fields correctness).
+- `deno task check:ts`, `deno task lint`, `deno task check:policy` (the
+  `internal/openapi` comments initially used the literal word "any" in prose and
+  failed policy's banned-wildcard-type text scan; reworded), and
+  `deno task test` passed.
+- `make check-contracts` and `make check-openapi` passed (both regenerate and
+  assert no diff, `docs/openapi.json` and `site/docs/openapi.json` committed
+  with typed schemas).
 - `go tool deadcode -test ./...` and `make check-copy-paste` (zero clones)
   passed.
-- Served `site/` with a local static file server and ran
-  `tools/check_pages_routing.ts` against it: all targets, including
-  `/docs/openapi.html` and `/docs/openapi.json`, still passed after the
-  redesign.
-- Loaded `site/index.html`, `site/docs/index.html`, and `site/docs/openapi.html`
-  in a real Chromium browser (Playwright) against the local static server at
-  both desktop (1280x900) and mobile (390x844) viewports, checked console/page
-  errors (none), and reviewed screenshots for layout correctness;
-  `site/docs/openapi.html`'s route table still rendered 106 rows with the
-  expected 106/12/94 summary counts.
-- `deno fmt` applied to the new/edited `site/*.html` and `site/marketing.css`
-  files directly (`site/*` is not part of the enforced `make check-format` file
-  set).
+- Loaded `site/docs/openapi.html` (now showing a Schema column and typed-count
+  summary) in a real Chromium browser via Playwright against a local static
+  server: 106 rows, no console/page errors, summary read 106/12/94/98.
+- Verified the generator is deterministic: ran
+  `go run ./cmd/sharecrop
+  generate openapi` twice in a row and diffed the two
+  outputs byte-for-byte identical, since Go map iteration order could otherwise
+  leak into the output.
+- `deno fmt --check` passed for touched TypeScript/Markdown/JSON files.
 - `git diff --check` passed.
 
 Blocking issues:
