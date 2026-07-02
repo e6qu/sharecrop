@@ -138,9 +138,10 @@ Missing or partial:
   repository API reference, MCP reference, operator runbook, and agent-side
   scheduling recipe.
 - The demo does not execute the full production server graph because browser
-  WASM hosts provide explicit storage, clock, identity/session, request,
-  randomness, and networking adapters instead of Postgres and process-local
-  server wiring.
+  WASM hosts provide explicit storage, clock, identity/session, and request
+  adapters instead of Postgres and process-local server wiring. No route
+  implemented so far needs a randomness or networking adapter, so neither exists
+  yet in the `HostRuntime` contract.
 
 ### Authentication And User Account
 
@@ -345,5 +346,8 @@ Missing or partial:
 5. Keep adding explicit WASM host-storage boundaries and handlers only where
    they can fail loudly without fallback stores.
 6. Add provider email delivery only if account setup stops being admin-driven.
-7. Harden the production WASM host path with non-browser adapter docs,
-   measurement commands, and parity tests as API surfaces change.
+7. Non-browser adapter docs and measurement commands exist
+   (`docs/wasm_demo_backend_spike.md`, `deno task measure:wasm`). Keep hardening
+   the production WASM host path toward a persistent-storage, verified-actor,
+   cryptographically-random non-browser host, and keep parity tests current as
+   API surfaces change.

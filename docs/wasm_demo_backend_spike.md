@@ -197,6 +197,58 @@ before request execution can run. `ValidateHostRuntime` rejects a missing host
 runtime or missing adapter with a clear error. This keeps the browser demo and
 future production WASM host from silently substituting process state.
 
+Two concrete host implementations exist today:
+
+- `site/demo/wasm-host.js` is the browser host. It backs storage with
+  `window.localStorage`, uses `Date.now()` for the clock, and reads the
+  signed-in actor from browser-local session state.
+- `tools/wasm_runtime_loader.ts` (`createHost`) is the non-browser host. It runs
+  under Deno, with no browser APIs available, and is exercised by
+  `deno task check:scenario-parity:wasm` and `deno task measure:wasm`.
+
+## Non-Browser Host Adapter Reference
+
+`createHost` in `tools/wasm_runtime_loader.ts` is the reference non-browser
+implementation of the `HostFunctions` contract the compiled `js/wasm` binary
+requires (`storageHas`, `storageGet`, `storagePut`, `now`, `actorID`, `nextID`,
+`userIDForEmail`; see `validateJSHost` in `cmd/sharecrop-wasm/main_js_wasm.go`).
+It proves the WASM backend runs outside a browser: it is loaded through Go's
+`wasm_exec.js` the same way, with no DOM, `window`, or `localStorage`.
+
+It is a test/measurement host, not a production one. Before it could back a real
+non-browser deployment (for example a CLI-embedded or server-embedded WASM
+runtime), it would need to change in these ways:
+
+- **Storage.** `createHost` backs storage with an in-memory `Map` that is
+  discarded when the process exits. A production non-browser host needs
+  persistent storage (a file or a real database) behind the same
+  `storageHas`/`storageGet`/`storagePut` contract.
+- **Clock.** `createHost` returns a fixed timestamp so scenario runs and
+  measurements stay deterministic. A production host needs a real system clock.
+- **Actor resolution.** `createHost` exposes a `setActor` test hook that lets
+  the caller impersonate any seeded user with no credential check. A production
+  host must resolve the actor from a verified session or token, not
+  caller-supplied state.
+- **IDs and secrets.** `createHost.nextID` returns sequential,
+  per-process-predictable IDs (`task-1`, `task-2`, ...), and
+  `NextAgentCredentialSecret` in `cmd/sharecrop-wasm/main_js_wasm.go` derives
+  agent-credential secrets from that same sequential counter
+  (`"scrop_agent_" + nextID("agent_secret")`). That is acceptable for
+  deterministic tests and measurement, but sequential secrets are guessable and
+  must not be reused for a production host. The real (non-WASM) backend
+  generates agent-credential secrets with `crypto/rand`
+  (`internal/agent/values.go`); a production non-browser WASM host needs the
+  same cryptographically random source behind `nextID`/a dedicated secret
+  adapter, not the sequential counter this reference host uses.
+
+No `Random()` or `Network()` adapter exists in the `HostRuntime` interface
+(`internal/wasmdemo/host_adapters.go`) yet, even though earlier docs on this
+page describe randomness and networking as adapters a production host would
+eventually need. No currently implemented route requires unpredictable secrets
+or an outbound network call, so no such adapter has been added. If a future
+route needs one, it should fail loudly until an explicit adapter and host
+implementation exist, the same way storage/clock/actor/ID adapters do today.
+
 ## Compile Check
 
 The current Go codebase compiles to `js/wasm` for representative packages and
@@ -234,9 +286,42 @@ backend modes, missing host functions, missing storage keys, and invalid host
 values fail loudly.
 
 The compile check means basic Go/WASM compatibility is not the blocker. The
-remaining production work is non-browser host documentation, startup and size
-measurement on production artifacts, and continuing to add explicit WASM
-storage/handler slices when new user-visible API surfaces are added.
+remaining production work is continuing to add explicit WASM storage/handler
+slices when new user-visible API surfaces are added, and hardening the
+non-browser host past the reference/test shape described above.
+
+## Runtime Measurements
+
+`deno task measure:wasm -- --wasm <compiled.wasm> [--requests-per-route <n>]`
+loads a compiled `cmd/sharecrop-wasm` artifact through the non-browser reference
+host, configures it, and reports artifact size, startup time, host process
+memory, and per-route request latency. It does not measure a browser runtime;
+browser memory/latency depend on the host page and have not been measured
+separately.
+
+A local run against `site/demo/sharecrop-wasm-backend.wasm` (built by
+`deno task wasm:demo:build`, a `go build` artifact with no debug/test symbols,
+on the machine this doc was last updated on) reported:
+
+- Artifact size: 4.30 MiB (4,510,058 bytes).
+- Startup: about 29-50ms from `WebAssembly.instantiate` through the first
+  `sharecropWasmBackendStatus` call reporting `unconfigured`, plus under 1ms for
+  `sharecropConfigureHost`. Startup time varied across repeated runs within that
+  range on the same machine.
+- Host process memory (`Deno.memoryUsage()`, the Deno process hosting the WASM
+  runtime, not WASM linear memory specifically): resident set size grew from
+  about 53 MiB before loading the artifact to about 95 MiB after host
+  configuration, and to about 155-165 MiB after 1,000-2,500 requests (5 routes x
+  200-500 requests per route across runs).
+- Request latency for `GET /api/users`, `GET /api/organizations`,
+  `GET /api/tasks`, `GET /api/tasks/{task_id}`, and `GET /api/credits/balance`
+  against the in-memory reference host: mean latency under 0.15ms per route, p95
+  under 0.4ms per route, with occasional outliers up to about 10ms attributable
+  to the Deno/V8 process rather than the WASM binary itself.
+
+These numbers describe the non-browser reference host under Deno on a
+development machine, not a deployed browser or a persistent-storage production
+host; they establish a measurement method and a baseline, not a production SLA.
 
 ## Required Shape
 
@@ -271,15 +356,25 @@ are covered by the current branch:
 
 Remaining production WASM gates:
 
-1. Measure bundle size, startup time, memory use, and request latency from
-   production artifacts.
-2. Document and test a non-browser production host adapter set.
+1. Bundle size, startup time, host-process memory, and request latency are now
+   measured by `deno task measure:wasm` against the compiled artifact; see
+   Runtime Measurements above. Browser-specific memory/latency and a
+   persistent-storage production host are not yet measured.
+2. A non-browser host adapter set is documented and tested (`createHost` in
+   `tools/wasm_runtime_loader.ts`, exercised by
+   `deno task check:scenario-parity:wasm` and `deno task measure:wasm`), but it
+   is a test/measurement host, not a production one. See Non-Browser Host
+   Adapter Reference above for what a production non-browser host still needs:
+   persistent storage, a real clock, verified-session actor resolution, and
+   cryptographically random IDs/secrets.
 3. Keep extending parity as new API surfaces are added.
 
 ## Next Spike Step
 
-The next WASM step is production-host hardening: document the non-browser host
-adapter contract, add measurement commands for production artifacts, and keep
-expanding explicit storage/handler slices as new API surfaces are introduced. If
-a missing slice is discovered, it should fail loudly until that slice has an
-explicit host adapter and handler.
+The next WASM step is closing the remaining non-browser production gate: a
+persistent-storage, real-clock, verified-actor, cryptographically-random host
+implementation for a genuine non-browser deployment target, built on the same
+`HostRuntime`/`HostFunctions` contracts the reference host already proves out.
+Keep expanding explicit storage/handler slices as new API surfaces are
+introduced; a missing slice should fail loudly until it has an explicit host
+adapter and handler.

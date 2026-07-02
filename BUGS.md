@@ -74,12 +74,20 @@ Known risks:
   organization-member, team, comment, reservation, submission, and ledger
   routes. A Deno WASM runner loads a compiled Go `.wasm` artifact, verifies
   required exports, configures explicit host adapters, and runs the shared
-  scenario parity suite through the exported request handler. Remaining WASM
-  risk is production hardening: non-browser host adapter documentation,
-  startup/size/memory/request-latency measurements, and continued parity
-  expansion as API surfaces change. JavaScript reimplementations, generated fake
-  backends, and fallback stores are not valid substitutes for the compiled Go
-  WASM binary.
+  scenario parity suite through the exported request handler.
+  `deno task measure:wasm` reports artifact size, startup time, host-process
+  memory, and request latency against a compiled artifact; see
+  [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) for a
+  baseline. `tools/wasm_runtime_loader.ts` documents and implements the
+  reference non-browser host. Remaining WASM risk is a genuine production
+  non-browser host: the reference host is in-memory (unpersisted across
+  restarts), uses a fixed clock, lets the caller set the actor with no
+  credential check, and generates IDs/secrets from a sequential counter rather
+  than `crypto/rand`; none of that is safe to reuse for a production non-browser
+  deployment, and no such deployment target exists yet to build a production
+  host against. Continued parity expansion as API surfaces change also remains
+  ongoing work. JavaScript reimplementations, generated fake backends, and
+  fallback stores are not valid substitutes for the compiled Go WASM binary.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

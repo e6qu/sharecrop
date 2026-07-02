@@ -1,7 +1,42 @@
 # What We Did
 
-`task/wasm-default-demo-shared-parity` made the compiled Go/WASM backend the
-default static-demo backend:
+`task/wasm-nonbrowser-host-measurement` closed the two remaining "production
+WASM gates" recorded in `docs/wasm_demo_backend_spike.md`: runtime measurement
+and non-browser host documentation.
+
+- **Runtime measurement tool.**
+  `deno task measure:wasm -- --wasm
+  <compiled.wasm> [--requests-per-route <n>]`
+  (`tools/measure_wasm_runtime.ts`) loads a compiled `cmd/sharecrop-wasm`
+  artifact through the non-browser reference host and reports artifact size,
+  startup time (instantiate through first status call, and host configuration),
+  Deno host-process memory before load/after configure/after N requests, and
+  per-route request latency (min/mean/p50/p95/max).
+  `docs/wasm_demo_backend_spike.md` records a baseline run against
+  `site/demo/sharecrop-wasm-backend.wasm`.
+- **Non-browser host adapter reference documented.** `createHost` in
+  `tools/wasm_runtime_loader.ts` (already exercised by
+  `check:scenario-parity:wasm`) is now documented as the reference non-browser
+  `HostFunctions` implementation, alongside what a production non-browser host
+  still needs that this reference host does not provide: persistent storage, a
+  real clock, verified-session actor resolution, and cryptographically random
+  IDs/secrets (the reference host's sequential `NextAgentCredentialSecret` is
+  explicitly flagged as unsafe to reuse in production, unlike the real backend's
+  `crypto/rand`-based secret in `internal/agent/values.go`). Docs that
+  overstated existing randomness/ networking host adapters were corrected: no
+  route currently needs one, so neither exists in the `HostRuntime` interface
+  yet.
+- **Removed tool duplication.** `tools/run_wasm_scenario_parity.ts`'s Go/WASM
+  loader, host, and request-assertion helpers were extracted into
+  `tools/wasm_runtime_loader.ts` so the new measurement script could reuse them
+  without duplicating code (`make check-copy-paste` stayed at zero clones).
+- **Docs.** `docs/wasm_demo_backend_spike.md`, `docs/demo_semantic_parity.md`,
+  and `docs/application_readiness_review.md` were updated to reflect the
+  measurement tool, the non-browser host reference, and the corrected
+  randomness/networking adapter status.
+
+`task/wasm-default-demo-shared-parity` (PR 100, merged into `main`) made the
+compiled Go/WASM backend the default static-demo backend:
 
 - **Default Go/WASM demo backend.** `site/demo/index.html` now defaults to
   `wasm`, loads `wasm-host.js`, requires `wasm_exec.js` and

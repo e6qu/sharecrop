@@ -15,6 +15,7 @@
     "check:scenario-parity": "deno run --allow-net --allow-read tools/run_scenario_parity.ts",
     "check:scenario-parity:local-real": "deno run --allow-net --allow-env --allow-run tools/run_local_real_scenario_parity.ts",
     "check:scenario-parity:wasm": "deno run --allow-read --allow-env --allow-run tools/run_wasm_scenario_parity.ts",
+    "measure:wasm": "deno run --allow-read --allow-env --allow-run tools/measure_wasm_runtime.ts",
     "check:ts": "deno check tools/*.ts tests/**/*.ts",
     "lint": "deno lint tools tests",
     "test": "deno test --allow-read tests/deno",
