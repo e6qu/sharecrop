@@ -29,6 +29,7 @@ func resolveDTOTypes(files map[string]*ast.File) (requestTypeByFunc, responseTyp
 	funcBodies := map[string]*ast.BlockStmt{}
 	funcReturnType := map[string]string{}
 	writeWrapperResponseType := map[string]string{}
+	fieldTypes := collectStructFieldTypes(files)
 
 	for _, file := range files {
 		for _, decl := range file.Decls {
@@ -49,10 +50,10 @@ func resolveDTOTypes(files map[string]*ast.File) (requestTypeByFunc, responseTyp
 	directRequestType := map[string]string{}
 	directResponseType := map[string]string{}
 	for name, body := range funcBodies {
-		if requestType, ok := decodedRequestType(body, funcReturnType); ok {
+		if requestType, ok := decodedRequestType(body, funcReturnType, fieldTypes); ok {
 			directRequestType[name] = requestType
 		}
-		if responseType, ok := writtenResponseType(body, writeWrapperResponseType, funcReturnType); ok {
+		if responseType, ok := writtenResponseType(body, writeWrapperResponseType, funcReturnType, fieldTypes); ok {
 			directResponseType[name] = responseType
 		}
 	}
@@ -133,6 +134,31 @@ func writeWrapperParamType(funcDecl *ast.FuncDecl) (string, bool) {
 	return responseIdent.Name, true
 }
 
+// collectStructFieldTypes maps struct name -> Go field name -> the field's
+// named type, for every field whose type is a plain identifier, regardless
+// of JSON tags. Unlike collectStructShapes (JSON wire shape) this includes
+// untagged fields, so it can resolve a field-access expression like
+// `response.value` back to a concrete type even when `response`'s type is
+// an internal result-union wrapper rather than a JSON DTO itself (for
+// example moderationReportConverted{value moderationReportResponse}).
+func collectStructFieldTypes(files map[string]*ast.File) map[string]map[string]string {
+	fieldTypes := map[string]map[string]string{}
+	for name, structType := range collectStructTypeDecls(files) {
+		fields := map[string]string{}
+		for _, field := range structType.Fields.List {
+			ident, isIdent := field.Type.(*ast.Ident)
+			if !isIdent || len(field.Names) == 0 {
+				continue
+			}
+			for _, fieldName := range field.Names {
+				fields[fieldName.Name] = ident.Name
+			}
+		}
+		fieldTypes[name] = fields
+	}
+	return fieldTypes
+}
+
 func isGoBuiltinPrimitive(name string) bool {
 	switch name {
 	case "string", "bool",
@@ -162,8 +188,8 @@ func isIdentType(expr ast.Expr, name string) bool {
 // decodedRequestType finds a local `<name> <Type>` declaration or assignment
 // in body whose variable is later passed to a `.Decode(&<name>)` call, and
 // returns <Type>.
-func decodedRequestType(body *ast.BlockStmt, returnTypes map[string]string) (string, bool) {
-	declaredTypes := localAssignedTypes(body, returnTypes)
+func decodedRequestType(body *ast.BlockStmt, returnTypes map[string]string, fieldTypes map[string]map[string]string) (string, bool) {
+	declaredTypes := localAssignedTypes(body, returnTypes, fieldTypes)
 
 	var found string
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -196,8 +222,8 @@ func decodedRequestType(body *ast.BlockStmt, returnTypes map[string]string) (str
 
 // writtenResponseType finds the DTO type body writes as its HTTP response,
 // either through a dedicated write wrapper or a direct writeJSON call.
-func writtenResponseType(body *ast.BlockStmt, wrapperTypes, returnTypes map[string]string) (string, bool) {
-	declaredTypes := localAssignedTypes(body, returnTypes)
+func writtenResponseType(body *ast.BlockStmt, wrapperTypes, returnTypes map[string]string, fieldTypes map[string]map[string]string) (string, bool) {
+	declaredTypes := localAssignedTypes(body, returnTypes, fieldTypes)
 
 	var found string
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -219,7 +245,7 @@ func writtenResponseType(body *ast.BlockStmt, wrapperTypes, returnTypes map[stri
 		if funcName != "writeJSON" || len(call.Args) != 3 {
 			return true
 		}
-		if responseType, ok := resolveValueType(call.Args[2], declaredTypes, returnTypes); ok {
+		if responseType, ok := resolveValueType(call.Args[2], declaredTypes, returnTypes, fieldTypes); ok {
 			found = responseType
 		}
 		return true
@@ -228,22 +254,38 @@ func writtenResponseType(body *ast.BlockStmt, wrapperTypes, returnTypes map[stri
 }
 
 // localAssignedTypes walks body in source order, recording the resolved DTO
-// type of every `name := ...` or `var name Type` local so that a later
-// `writeJSON(w, status, name)` can look the type back up.
-func localAssignedTypes(body *ast.BlockStmt, returnTypes map[string]string) map[string]string {
+// type of every `name := ...`, `name, ok := x.(Type)`, or `var name Type`
+// local so that a later `writeJSON(w, status, name)` or
+// `writeJSON(w, status, name.field)` can look the type back up.
+func localAssignedTypes(body *ast.BlockStmt, returnTypes map[string]string, fieldTypes map[string]map[string]string) map[string]string {
 	types := map[string]string{}
 	ast.Inspect(body, func(node ast.Node) bool {
 		switch stmt := node.(type) {
 		case *ast.AssignStmt:
-			if stmt.Tok != token.DEFINE || len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
+			if stmt.Tok != token.DEFINE || len(stmt.Rhs) != 1 {
 				return true
 			}
-			ident, isIdent := stmt.Lhs[0].(*ast.Ident)
-			if !isIdent {
-				return true
-			}
-			if typeName, ok := resolveValueType(stmt.Rhs[0], types, returnTypes); ok {
-				types[ident.Name] = typeName
+			switch len(stmt.Lhs) {
+			case 1:
+				ident, isIdent := stmt.Lhs[0].(*ast.Ident)
+				if !isIdent {
+					return true
+				}
+				if typeName, ok := resolveValueType(stmt.Rhs[0], types, returnTypes, fieldTypes); ok {
+					types[ident.Name] = typeName
+				}
+			case 2:
+				// `value, ok := x.(Type)`: a type-assertion destructure. The
+				// asserted type is spelled out at the call site, so no
+				// further resolution is needed.
+				ident, isIdent := stmt.Lhs[0].(*ast.Ident)
+				typeAssert, isTypeAssert := stmt.Rhs[0].(*ast.TypeAssertExpr)
+				if !isIdent || !isTypeAssert || typeAssert.Type == nil {
+					return true
+				}
+				if typeIdent, isTypeIdent := typeAssert.Type.(*ast.Ident); isTypeIdent {
+					types[ident.Name] = typeIdent.Name
+				}
 			}
 		case *ast.DeclStmt:
 			genDecl, isGenDecl := stmt.Decl.(*ast.GenDecl)
@@ -269,7 +311,7 @@ func localAssignedTypes(body *ast.BlockStmt, returnTypes map[string]string) map[
 	return types
 }
 
-func resolveValueType(expr ast.Expr, declaredTypes, returnTypes map[string]string) (string, bool) {
+func resolveValueType(expr ast.Expr, declaredTypes, returnTypes map[string]string, fieldTypes map[string]map[string]string) (string, bool) {
 	switch value := expr.(type) {
 	case *ast.CompositeLit:
 		if ident, isIdent := value.Type.(*ast.Ident); isIdent {
@@ -284,6 +326,16 @@ func resolveValueType(expr ast.Expr, declaredTypes, returnTypes map[string]strin
 	case *ast.Ident:
 		if typeName, ok := declaredTypes[value.Name]; ok {
 			return typeName, true
+		}
+	case *ast.SelectorExpr:
+		// A field access such as `response.value`: resolve the base
+		// expression's type first, then look up that struct's field.
+		baseType, ok := resolveValueType(value.X, declaredTypes, returnTypes, fieldTypes)
+		if !ok {
+			return "", false
+		}
+		if fieldType, ok := fieldTypes[baseType][value.Sel.Name]; ok {
+			return fieldType, true
 		}
 	}
 	return "", false

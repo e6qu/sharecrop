@@ -1,18 +1,17 @@
 # Status
 
-The repository contains pull request 1 through pull request 104 work, merged
-into `main`, plus the current `task/openapi-typed-schemas` branch.
+The repository contains pull request 1 through pull request 105 work, merged
+into `main`, plus the current `task/openapi-schema-field-access` branch.
 
-Active task: `task/openapi-typed-schemas` adds typed per-route request/response
-JSON schemas to `docs/openapi.json`. `internal/openapi` now parses
-`internal/http`'s DTO struct declarations and resolves, per handler (directly or
-transitively through shared helpers), which struct it decodes as a request body
-and which it writes as a response, deriving a real JSON Schema recursively
-rather than a generic placeholder wherever that resolves. 98/106 responses and
-39/61 request bodies resolve to a typed schema; the remainder (raw MCP JSON-RPC
-passthrough, genuinely bodyless routes, and one result-union-field-access case)
-keep the honest generic placeholder rather than a guess. Hard deletes remain out
-of scope; use soft lifecycle states, anonymization, redaction, tombstones, and
+Active task: `task/openapi-schema-field-access` closes the one confirmed
+generator gap left by the prior branch: `internal/openapi/dto_resolve.go` now
+resolves a `name, ok := x.(Type)` two-value type assertion and a field-access
+expression (`response.value`), including through internal result-union structs
+with no JSON tags at all, so `createModerationReport`'s response schema resolves
+too. 99/106 responses and 39/61 request bodies now resolve to a typed schema;
+the remainder are genuinely out of scope (MCP JSON-RPC passthrough, bodyless
+routes, static/index/healthz), not generator gaps. Hard deletes remain out of
+scope; use soft lifecycle states, anonymization, redaction, tombstones, and
 audit records. Email/provider delivery, anonymous worker identity, per-project
 tokens, external wallets, and crypto integrations are out of scope.
 
@@ -263,8 +262,11 @@ Current implemented surface:
   a local variable, or a call to a single-return-value converter function),
   following the local call graph transitively so handlers that delegate to a
   shared helper (`openTask`/`cancelTask` via `changeTaskState`) still resolve.
-  98/106 responses and 39/61 request bodies resolve; the rest keep the generic
-  `{"type": "object"}` (or empty) placeholder rather than a guess.
+  It also resolves a `name, ok := x.(Type)` two-value type assertion and a
+  field-access expression (`response.value`), including through internal
+  result-union structs that carry no JSON tags at all. 99/106 responses and
+  39/61 request bodies resolve; the rest keep the generic `{"type": "object"}`
+  (or empty) placeholder rather than a guess.
 - `site/docs/openapi.html` shows a "Schema" column (typed vs. plain) per route
   and a typed-response-schema count in its summary, reading the same generated
   document.
@@ -290,33 +292,24 @@ Current implemented surface:
 
 Current verification:
 
-- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including new
-  `internal/openapi` unit tests for struct-shape extraction (primitives, arrays,
-  nested structs, pointer unwrapping, `json:"-"` exclusion, tag-name fallback),
-  request/response type resolution (inline decode, dedicated write wrapper via
-  method selector, converter-function return type, transitive resolution through
-  a shared helper, and two regression tests locking in real bugs found during
-  development — `writeError` and `writeJSON`'s own signature must not be
-  mistaken for response-type wrappers), and schema generation (typed
-  object/array/required-field output, cycle guard,
-  shared-struct-as-sibling-fields correctness).
-- `deno task check:ts`, `deno task lint`, `deno task check:policy` (the
-  `internal/openapi` comments initially used the literal word "any" in prose and
-  failed policy's banned-wildcard-type text scan; reworded), and
+- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including a new
+  `internal/openapi` regression test reproducing `createModerationReport`'s
+  exact shape (two-value type assertion onto an untagged result-union struct,
+  then a field-access write) plus the full existing suite (unaffected by this
+  change).
+- `deno task check:ts`, `deno task lint`, `deno task check:policy`, and
   `deno task test` passed.
 - `make check-contracts` and `make check-openapi` passed (both regenerate and
-  assert no diff, `docs/openapi.json` and `site/docs/openapi.json` committed
-  with typed schemas).
+  assert no diff).
 - `go tool deadcode -test ./...` and `make check-copy-paste` (zero clones)
   passed.
-- Loaded `site/docs/openapi.html` (now showing a Schema column and typed-count
-  summary) in a real Chromium browser via Playwright against a local static
-  server: 106 rows, no console/page errors, summary read 106/12/94/98.
+- Confirmed via `docs/openapi.json` that `POST /api/moderation/reports` now has
+  a typed response schema and that no previously-resolved route regressed
+  (99/106 responses resolve, up from 98/106; 39/61 request bodies, unchanged).
 - Verified the generator is deterministic: ran
-  `go run ./cmd/sharecrop
-  generate openapi` twice in a row and diffed the two
-  outputs byte-for-byte identical, since Go map iteration order could otherwise
-  leak into the output.
+  `go run ./cmd/sharecrop generate
+  openapi` twice in a row and diffed the two
+  outputs byte-for-byte identical.
 - `deno fmt --check` passed for touched TypeScript/Markdown/JSON files.
 - `git diff --check` passed.
 

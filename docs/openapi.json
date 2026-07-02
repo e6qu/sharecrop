@@ -1795,7 +1795,59 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "reporter_user_id": {
+                      "type": "string"
+                    },
+                    "resolution_note": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "subject_href": {
+                      "type": "string"
+                    },
+                    "subject_id": {
+                      "type": "string"
+                    },
+                    "subject_kind": {
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "type": "string"
+                    },
+                    "updated_by": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "subject_kind",
+                    "subject_id",
+                    "subject_href",
+                    "reason",
+                    "details",
+                    "reporter_user_id",
+                    "state",
+                    "resolution_note",
+                    "updated_by",
+                    "created_at",
+                    "updated_at"
+                  ]
                 }
               }
             }

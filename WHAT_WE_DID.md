@@ -1,12 +1,34 @@
 # What We Did
 
-`task/openapi-typed-schemas` added typed per-route request/response JSON schemas
-to `docs/openapi.json`, derived from the actual `internal/http` Go DTO structs
-via `go/ast` rather than a hand-authored mapping to `internal/contracts`
-(research beforehand found `internal/contracts` has no request-body types at all
-and its response shapes have already drifted from `internal/http`'s in field
-order, confirming a direct DTO-source approach was both more complete and safer
-than trusting the two shapes stay in sync).
+`task/openapi-schema-field-access` closed the one confirmed gap the prior branch
+left open: `createModerationReport`'s response schema stayed generic because
+it's written as `writeJSON(w, status, response.value)` — a struct field access
+on a result-union wrapper, not a bare local variable or composite literal.
+
+- **Two new resolution patterns in `internal/openapi/dto_resolve.go`.** A
+  two-value type assertion
+  (`response, ok := result.(moderationReportConverted)`) now records
+  `response`'s type from the assertion itself. A field-access expression
+  (`response.value`) now resolves the base variable's type, then looks up that
+  struct's field type — including fields with no JSON tag at all, since the
+  struct being accessed (`moderationReportConverted`) is an internal
+  result-union wrapper, not a DTO. Added
+  `collectStructFieldTypes`/`collectStructTypeDecls` (the latter factored out of
+  `collectStructShapes` so both share one AST traversal) for this, distinct from
+  the JSON-tag-filtered `collectStructShapes` used for schema generation.
+- **Verified against the real handler**, not just the synthetic test: after the
+  fix, `docs/openapi.json`'s `POST /api/moderation/reports` response schema has
+  real properties, response resolution went from 98/106 to 99/106 with no other
+  route regressing, and the generator is still deterministic across repeated
+  runs.
+
+`task/openapi-typed-schemas` (merged into `main`) added typed per-route
+request/response JSON schemas to `docs/openapi.json`, derived from the actual
+`internal/http` Go DTO structs via `go/ast` rather than a hand-authored mapping
+to `internal/contracts` (research beforehand found `internal/contracts` has no
+request-body types at all and its response shapes have already drifted from
+`internal/http`'s in field order, confirming a direct DTO-source approach was
+both more complete and safer than trusting the two shapes stay in sync).
 
 - **Struct-shape extraction (`internal/openapi/structs.go`).** Parses every
   `type X struct {...}` declaration in `internal/http` into a JSON field shape:
