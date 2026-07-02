@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +25,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/mcp"
 	"github.com/e6qu/sharecrop/internal/notification"
+	"github.com/e6qu/sharecrop/internal/openapi"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -65,11 +68,22 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 }
 
 func runGenerate(args []string, stdout io.Writer, logger *slog.Logger) int {
-	if len(args) != 1 || args[0] != "elm-contracts" {
-		_, _ = fmt.Fprintln(stdout, "usage: sharecrop generate elm-contracts")
+	if len(args) != 1 {
+		_, _ = fmt.Fprintln(stdout, "usage: sharecrop generate elm-contracts|openapi")
 		return 2
 	}
+	switch args[0] {
+	case "elm-contracts":
+		return runGenerateElmContracts(stdout, logger)
+	case "openapi":
+		return runGenerateOpenAPI(stdout, logger)
+	default:
+		_, _ = fmt.Fprintln(stdout, "usage: sharecrop generate elm-contracts|openapi")
+		return 2
+	}
+}
 
+func runGenerateElmContracts(stdout io.Writer, logger *slog.Logger) int {
 	filesResult := contracts.GenerateElmFiles(contracts.Modules())
 	filesGenerated, filesMatched := filesResult.(contracts.ElmFilesGenerated)
 	if !filesMatched {
@@ -87,6 +101,57 @@ func runGenerate(args []string, stdout io.Writer, logger *slog.Logger) int {
 
 	_, _ = fmt.Fprintln(stdout, "elm contracts generated")
 	return 0
+}
+
+func runGenerateOpenAPI(stdout io.Writer, logger *slog.Logger) int {
+	sources, err := readGoPackageSources("internal/http")
+	if err != nil {
+		logger.Error("read http package sources", "error", err)
+		return 1
+	}
+
+	extractResult := openapi.Extract(sources)
+	extracted, extractedMatched := extractResult.(openapi.Extracted)
+	if !extractedMatched {
+		rejected := extractResult.(openapi.ExtractionRejected)
+		logger.Error("extract openapi routes", "reason", rejected.Reason)
+		return 1
+	}
+
+	document := openapi.Generate(extracted.Routes)
+	writeResult := openapi.Write(document, "docs/openapi.json")
+	if _, written := writeResult.(openapi.Written); !written {
+		rejected := writeResult.(openapi.WriteRejected)
+		logger.Error("write openapi document", "reason", rejected.Reason)
+		return 1
+	}
+
+	_, _ = fmt.Fprintln(stdout, "openapi document generated")
+	return 0
+}
+
+// readGoPackageSources reads every non-test Go source file in dir, keyed by
+// path, so openapi.Extract can parse the package without depending on the
+// build system to enumerate files.
+func readGoPackageSources(dir string) (map[string][]byte, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	sources := make(map[string][]byte, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		sources[path] = content
+	}
+	return sources, nil
 }
 
 func runMigrate(ctx context.Context, args []string, cfg app.Config, stdout io.Writer, logger *slog.Logger) int {

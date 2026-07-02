@@ -1,8 +1,41 @@
 # What We Did
 
-`task/wasm-nonbrowser-host-measurement` closed the two remaining "production
-WASM gates" recorded in `docs/wasm_demo_backend_spike.md`: runtime measurement
-and non-browser host documentation.
+`task/generated-openapi-reference` closed the "no generated OpenAPI reference"
+documentation gap recorded in `docs/application_readiness_review.md`.
+
+- **Generated OpenAPI document.** `go run ./cmd/sharecrop generate openapi`
+  (`make openapi`) writes `docs/openapi.json`, an OpenAPI 3.0 document with an
+  accurate `paths`/method/`operationId` inventory and a global bearer security
+  requirement. `make check-openapi` regenerates and asserts no diff, mirroring
+  `check-contracts`.
+- **`internal/openapi` package.** `Extract` parses the `internal/http` package's
+  non-test source files with `go/ast`, finds every `mux.HandleFunc`/`mux.Handle`
+  route registration in `server.go`, and rejects duplicate registrations or
+  unparsable source. `Generate` builds the OpenAPI document; `Write` marshals
+  and writes it.
+- **Auth requirement from the local call graph, not a substring search.** A
+  first pass checked each handler body for a direct call to one of five known
+  identity-resolving functions (`requireUserSubject`, `requireWorkerSubject`,
+  `requireAdminSubject`, `requireOrganizationBilling`, `verifyAgent`) and
+  wrongly marked delegating handlers like `openTask`/`cancelTask` (which call a
+  shared `changeTaskState` helper, not a gateway directly) as public. The final
+  version builds a local call graph and checks transitive reachability, matching
+  the real 12 public vs. 94 protected operations.
+- **Caught by testing, not by inspection.** An `omitempty` tag on a non-pointer
+  empty-slice `Security` field made public and protected routes serialize
+  identically (both omitted the field), silently losing the one fact the
+  generator exists to prove. Changed `Security` to a pointer so `nil`
+  (protected, omitted) and a pointer to an empty slice (public, encoded as `[]`)
+  round-trip distinctly, with a test that marshals and unmarshals the real
+  `Document` type to catch a regression.
+- **Docs.** `docs/api_reference.md`, `README.md`, `docs/onboarding.md`, and
+  `docs/application_readiness_review.md` link the generated document and record
+  that its request/response bodies are generic JSON object placeholders, not
+  typed per-route schemas.
+
+`task/wasm-nonbrowser-host-measurement` (merged into `main`) closed the two
+remaining "production WASM gates" recorded in `docs/wasm_demo_backend_spike.md`:
+runtime measurement and non-browser host documentation.
 
 - **Runtime measurement tool.**
   `deno task measure:wasm -- --wasm

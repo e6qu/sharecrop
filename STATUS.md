@@ -1,21 +1,19 @@
 # Status
 
-The repository contains pull request 1 through pull request 100 work, merged
-into `main`, plus the current `task/wasm-nonbrowser-host-measurement` branch.
+The repository contains pull request 1 through pull request 101 work, merged
+into `main`, plus the current `task/generated-openapi-reference` branch.
 
-Active task: `task/wasm-nonbrowser-host-measurement` closes the two remaining
-"production WASM gates" from `docs/wasm_demo_backend_spike.md`: it adds
-`deno task measure:wasm` to measure artifact size, startup time, host-process
-memory, and request latency against a compiled WASM artifact, and documents the
-non-browser host adapter reference (`createHost` in
-`tools/wasm_runtime_loader.ts`) plus the concrete gaps between that reference
-host and a genuine persistent-storage, verified-actor, cryptographically-random
-production non-browser host. The branch must keep fail-loud behavior and must
-not add fallback stores or JavaScript backend reimplementations as the target.
-Hard deletes remain out of scope; use soft lifecycle states, anonymization,
-redaction, tombstones, and audit records. Email/provider delivery, anonymous
-worker identity, per-project tokens, external wallets, and crypto integrations
-are out of scope.
+Active task: `task/generated-openapi-reference` closes the "no generated OpenAPI
+reference" documentation gap from `docs/application_readiness_review.md`.
+`internal/openapi` parses the route registrations in `internal/http/server.go`
+(and the local call graph of the `internal/http` package) with `go/ast` to
+produce `docs/openapi.json` (`make openapi`, checked by `make check-openapi`)
+with an accurate method/path/operationId/bearer-auth inventory. Request/response
+bodies remain generic JSON object placeholders; typed per-route schemas are
+follow-up work. Hard deletes remain out of scope; use soft lifecycle states,
+anonymization, redaction, tombstones, and audit records. Email/provider
+delivery, anonymous worker identity, per-project tokens, external wallets, and
+crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -246,42 +244,41 @@ Current implemented surface:
   reference, operator runbook, and agent-side scheduling recipe.
 - README and hosted docs link to the onboarding guide in
   [docs/onboarding.md](./docs/onboarding.md).
+- `go run ./cmd/sharecrop generate openapi` (`make openapi`) parses
+  `internal/http/server.go`'s mux registrations and the `internal/http`
+  package's local call graph with `go/ast` and writes `docs/openapi.json`, an
+  OpenAPI 3.0 document with an accurate method/path/operationId inventory and
+  bearer-auth requirement per route (a route is marked public only if its
+  handler cannot reach `requireUserSubject`/`requireWorkerSubject`/
+  `requireAdminSubject`/`requireOrganizationBilling`/`verifyAgent` through the
+  call graph). Request/response bodies are generic JSON object placeholders, not
+  typed per-route schemas. `make check-openapi` regenerates and asserts no diff,
+  mirroring `check-contracts`.
 - Local test/development examples avoid the project's former common ports:
   Postgres uses `25432`, the app uses `29180`, and the backendless demo uses
   `29181`. Playwright config accepts environment overrides for those ports.
 
 Current verification:
 
-- `go test ./...` passed.
+- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including new
+  `internal/openapi` unit tests for route extraction (direct and transitive
+  auth-gateway reachability, duplicate-route rejection, sort order) and document
+  generation (public-vs-default security JSON round-trip, request-body presence
+  by method).
 - `deno task check:ts` passed.
 - `deno task lint` passed.
-- `deno task check:policy` passed.
+- `deno task check:policy` passed (the initial `internal/openapi` draft used
+  `map[string]any` for the OpenAPI schema placeholder and failed policy's
+  banned-wildcard-type check; replaced with a concrete `Schema{Type string}`
+  struct).
 - `deno task test` passed.
-- `deno fmt --check deno.json tools tests site/demo/index.html
-  site/demo/wasm-host.js site/demo/backend.js docs/wasm_demo_backend_spike.md
-  docs/demo_semantic_parity.md docs/application_readiness_review.md STATUS.md
-  DO_NEXT.md BUGS.md WHAT_WE_DID.md`
+- `deno fmt --check deno.json tools tests STATUS.md DO_NEXT.md BUGS.md
+  WHAT_WE_DID.md docs/application_readiness_review.md docs/openapi.json`
   passed.
-- `make check-contracts` passed.
+- `make check-contracts` and `make check-openapi` passed (both regenerate and
+  assert no diff).
 - `go tool deadcode -test ./...` passed.
-- `make check-copy-paste` (`jscpd`) found zero clones after extracting the
-  shared WASM loader/host helpers into `tools/wasm_runtime_loader.ts`.
-- `deno task wasm:demo:build` passed with repo-local Go caches.
-- `deno task check:scenario-parity:wasm -- --wasm
-  site/demo/sharecrop-wasm-backend.wasm`
-  passed against the built demo artifact after the loader refactor.
-- `deno task measure:wasm -- --wasm site/demo/sharecrop-wasm-backend.wasm`
-  passed and reported the baseline numbers recorded in
-  [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md).
-- `tests/playwright/demo.spec.ts` passed against the Go/WASM default demo on
-  port `29181` after the agent-credential WASM slice was added.
-- `tests/playwright/mobile.spec.ts` failed on missing WASM
-  `/api/agent-credentials`, that slice was added, and the mobile spec passed
-  against the Go/WASM default demo on port `29181` after the fix.
-- PR CI initially failed the Playwright job because the clean runner built the
-  Elm/CSS demo assets but did not build `wasm_exec.js` and
-  `sharecrop-wasm-backend.wasm` before serving `site/demo`. `make e2e-ui` now
-  builds the demo WASM artifacts before running Playwright.
+- `make check-copy-paste` (`jscpd`) found zero clones.
 - `git diff --check` passed.
 
 Blocking issues:
