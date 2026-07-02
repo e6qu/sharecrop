@@ -140,6 +140,7 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
   await expect(page.getByText("1250 credits")).toBeVisible();
 
   await page.getByTestId("nav-profile").click();
+  await page.getByTestId("account-privacy").click();
   await page.getByTestId("request-data-export").click();
   await expect(page.getByTestId("account-message")).toContainText(
     "Privacy request queued",

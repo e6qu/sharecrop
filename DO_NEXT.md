@@ -5,7 +5,24 @@ Current priority from
 
 Active branch:
 
-1. `task/task-series-wasm-support` is in progress. Continues hand-testing the
+1. `task/ui-navbar-declutter-a11y-seed` is in progress, a deliberately large
+   bundled UI/UX pass (one PR by explicit request, not the usual
+   one-task-per-branch split): a grouped `<nav>` navbar replacing the old flat
+   14-button row (with a fixed Profile active-state bug and a new Submissions
+   nav entry), further `Ui.disclosure`-based decluttering on Create Task,
+   Collectibles, account settings, user submissions, and task series pages, an
+   accessibility pass (per-page `<h1>`, `aria-hidden` decorative sprites,
+   color-differentiated status badges, a real focus-visible ring on base-theme
+   text inputs), a richer WASM demo seed (team, more org members, funded task,
+   pending submission/reservation/notification, awarded collectibles — without
+   touching the balance/catalog-count invariants existing Playwright specs
+   depend on), and several small opportunistic fixes found along the way
+   (notably: the demo skin's nav-highlight CSS was unconditionally overriding
+   every nav link to look the same, so the active-page highlight was invisible
+   app-wide, not just for Profile). See `STATUS.md`/`WHAT_WE_DID.md` for the
+   full breakdown.
+
+2. `task/task-series-wasm-support` (PR 110, merged) continued hand-testing the
    browser demo: found that `/api/task-series` (list, create) and
    `/api/task-series/{id}` (detail) were entirely unclassified in the WASM demo
    (a 404) — the whole Task Series feature had zero WASM demo support, not just
@@ -14,8 +31,8 @@ Active branch:
    response shapes exactly (including that create returns the full detail
    wrapper, not a bare series object, found by hitting a second decode error
    after fixing the first 404). Series lifecycle transitions, series-task
-   membership, and series comments are explicitly out of scope for this branch
-   and remain a known gap (see item 5 below and `BUGS.md`).
+   membership, and series comments are explicitly out of scope and remain a
+   known gap (see item 5 below and `BUGS.md`).
 
    Note: PR 108's GitHub Pages deployment failed three times in a row after
    merge (10-minute timeout, then two different deploy-pages errors on reruns),

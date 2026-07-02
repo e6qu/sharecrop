@@ -248,7 +248,6 @@ type alias LoggedInModel =
     , submissionCommentBody : String
     , submissionCommentMessage : Maybe String
     , taskAgentToken : Maybe String
-    , taskIntegrationOpen : Bool
     , taskActionMessage : Maybe String
     , userAgentToken : Maybe String
     , accountEmail : String
@@ -406,7 +405,6 @@ type Msg
     | ToggleScope Agent.AgentScope
     | CreateAgentClicked
     | AgentCreated (Result Http.Error Agent.AgentCredentialCreatedResponse)
-    | ToggleTaskIntegration
     | MintTaskTokenClicked
     | TaskTokenMinted (Result Http.Error Agent.AgentCredentialCreatedResponse)
     | MintUserTokenClicked

@@ -147,6 +147,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await page.getByTestId("create-description").fill(
     "Reservation required from the browser.",
   );
+  await page.getByTestId("create-task-ownership").click();
   await page.getByTestId("create-participation-reservation_required").click();
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
@@ -472,6 +473,7 @@ test("a user profile page lists the user's public tasks", async ({ page, request
   await expect(
     page.getByTestId("user-task-row").filter({ hasText: title }),
   ).toHaveCount(1);
+  await page.getByTestId("account-privacy").click();
   await page.getByTestId("request-data-export").click();
   await expect(page.getByTestId("account-message")).toContainText(
     "Privacy request queued: data_export",
@@ -554,6 +556,7 @@ test("workers see requested revisions in their submission inbox", async ({ page,
   await expect(page.getByTestId("revision-timeline-heading")).toContainText(
     "Revision timeline (2)",
   );
+  await page.getByTestId("user-submissions-all").click();
   await expect(page.getByTestId("user-submissions")).toContainText(
     "revised from inbox",
   );
@@ -594,6 +597,7 @@ test("requesters set a task's assignee scope to a team", async ({ page, request 
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Assigned to a team.");
   await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-task-ownership").click();
   await page.getByTestId("create-assignee-organization_team").click();
   await page.getByTestId("create-task").click();
   await expect(page.getByTestId("create-message")).toContainText(
@@ -654,7 +658,7 @@ test("pages have their own URLs and deep links load", async ({ page, request }) 
 
   await page.getByTestId("nav-collectibles").click();
   await expect(page).toHaveURL(/\/collectibles$/);
-  await expect(page.getByTestId("collectible-name")).toBeVisible();
+  await expect(page.getByTestId("collectibles-mint")).toBeVisible();
   // The admin-only award panel is hidden for a non-admin (role=member); the
   // catalog gallery is still browsable but without Award buttons.
   await expect(page.getByTestId("award-recipient-id")).toHaveCount(0);
@@ -750,6 +754,7 @@ test("a creator manages a first-class task series end to end", async ({ page, re
   );
 
   // Add the owner's task to the series, then publish it.
+  await page.getByTestId("series-creator-controls").click();
   await page.getByTestId("series-add-task-id").selectOption(seriesTask.id);
   await page.getByTestId("series-add-task").click();
   await expect(
@@ -760,6 +765,7 @@ test("a creator manages a first-class task series end to end", async ({ page, re
   await expect(page.getByTestId("series-state")).toContainText("ublished");
 
   // Comment on the series.
+  await page.getByTestId("series-comments-section").click();
   await page.getByTestId("series-comment-body").fill(
     "Round one is ready for review.",
   );

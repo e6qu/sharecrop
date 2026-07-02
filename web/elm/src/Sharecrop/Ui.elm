@@ -1,7 +1,8 @@
 module Sharecrop.Ui exposing (..)
 
-import Html exposing (Attribute, Html, button, h1, h2, input, label, p, pre, span, text, textarea)
+import Html exposing (Attribute, Html, button, h1, h2, h3, input, label, p, pre, span, text, textarea)
 import Html.Attributes exposing (attribute, class, type_)
+import Html.Events exposing (onClick)
 
 
 testId : String -> Attribute msg
@@ -41,6 +42,28 @@ disclosure identifier openByDefault title children =
 pageTitle : String -> Html msg
 pageTitle title =
     h1 [ class "text-3xl font-semibold" ] [ text title ]
+
+
+{-| A heading that also reports a live count, e.g. "Teams (3)".
+-}
+sectionTitleWithCount : String -> Int -> String -> Html msg
+sectionTitleWithCount title count identifier =
+    h3 [ class "text-lg font-medium", testId identifier ]
+        [ text (title ++ " (" ++ String.fromInt count ++ ")") ]
+
+
+{-| A two-state toggle button for a mutually-exclusive chooser group (reward
+kind, participation policy, visibility, assignee scope, etc). Reports its
+pressed state via `aria-pressed` since these are toggle buttons, not links or
+form submits.
+-}
+chooserButton : Bool -> msg -> String -> String -> Html msg
+chooserButton isSelected msg identifier labelText =
+    if isSelected then
+        primaryButton [ type_ "button", onClick msg, attribute "aria-pressed" "true", testId identifier ] labelText
+
+    else
+        secondaryButton [ type_ "button", onClick msg, attribute "aria-pressed" "false", testId identifier ] labelText
 
 
 label_ : String -> Html msg
@@ -89,7 +112,39 @@ textarea_ attrs =
 
 badge : String -> Html msg
 badge value =
-    span [ class "inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700" ] [ text value ]
+    badgeVariant "neutral" value
+
+
+{-| A status pill in one of a small set of semantic tones, so state is
+conveyed by more than color alone (the text itself still names the state).
+Each tone's Tailwind pair is chosen to keep the pill's text at or above a
+4.5:1 contrast ratio against its own background (WCAG AA for normal text):
+
+  - neutral: `slate-700` (#334155) on `slate-100` (#f1f5f9) — ~8.4:1
+  - success: `green-800` (#166534) on `green-100` (#dcfce7) — ~7.4:1
+  - warning: `amber-900` (#78350f) on `amber-100` (#fef3c7) — ~8.9:1
+  - danger: `red-800` (#991b1b) on `red-100` (#fee2e2) — ~6.8:1
+
+-}
+badgeVariant : String -> String -> Html msg
+badgeVariant tone value =
+    span [ class ("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium " ++ badgeToneClass tone) ] [ text value ]
+
+
+badgeToneClass : String -> String
+badgeToneClass tone =
+    case tone of
+        "success" ->
+            "bg-green-100 text-green-800"
+
+        "warning" ->
+            "bg-amber-100 text-amber-900"
+
+        "danger" ->
+            "bg-red-100 text-red-800"
+
+        _ ->
+            "bg-slate-100 text-slate-700"
 
 
 codeBlock : List (Attribute msg) -> String -> Html msg
@@ -123,12 +178,12 @@ secondaryButtonClass =
 
 dangerButtonClass : String
 dangerButtonClass =
-    "rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+    "inline-flex min-h-[44px] items-center justify-center rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
 
 
 fieldClass : String
 fieldClass =
-    "w-full min-h-[44px] rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+    "w-full min-h-[44px] rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-1"
 
 
 checkboxClass : String
@@ -138,7 +193,7 @@ checkboxClass =
 
 textareaClass : String
 textareaClass =
-    "w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-slate-500 focus:outline-none"
+    "w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-1"
 
 
 codeBlockClass : String

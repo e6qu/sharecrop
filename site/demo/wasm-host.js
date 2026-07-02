@@ -125,7 +125,34 @@
       status: "active",
       roles: ["owner", "admin", "reviewer"],
     });
-    putSeed("organization_member:index:org-field", ["user-mara"]);
+    putSeed("organization_member:org-field:user-jules", {
+      id: "organization-member-jules",
+      organization_id: "org-field",
+      user_id: "user-jules",
+      status: "active",
+      roles: ["member"],
+    });
+    putSeed("organization_member:org-field:user-ren", {
+      id: "organization-member-ren",
+      organization_id: "org-field",
+      user_id: "user-ren",
+      status: "active",
+      roles: ["member"],
+    });
+    putSeed("organization_member:index:org-field", [
+      "user-mara",
+      "user-jules",
+      "user-ren",
+    ]);
+    putSeed("team:team-crew", {
+      id: "team-crew",
+      owner_kind: "organization",
+      organization_id: "org-field",
+      owner_user_id: "",
+      name: "Field Crew",
+      created_by: "user-mara",
+    });
+    putSeed("organization_team:index:org-field", ["team-crew"]);
     putSeed("ledger:seed-org-balance", {
       id: "seed-org-balance",
       owner_kind: "organization",
@@ -144,6 +171,23 @@
       task_id: "",
     });
     putSeed("ledger:index:user:user-mara", ["seed-signup-grant"]);
+    const otherUserGrants = [
+      { id: "seed-signup-grant-jules", owner_id: "user-jules", amount: 400 },
+      { id: "seed-signup-grant-ren", owner_id: "user-ren", amount: 300 },
+      { id: "seed-signup-grant-tala", owner_id: "user-tala", amount: 300 },
+      { id: "seed-signup-grant-sol", owner_id: "user-sol", amount: 250 },
+    ];
+    otherUserGrants.forEach((grant) => {
+      putSeed("ledger:" + grant.id, {
+        id: grant.id,
+        owner_kind: "user",
+        owner_id: grant.owner_id,
+        kind: "signup_grant",
+        amount: grant.amount,
+        task_id: "",
+      });
+      putSeed("ledger:index:user:" + grant.owner_id, [grant.id]);
+    });
     const tasks = [
       {
         id: "task-invoices",
@@ -164,6 +208,7 @@
         payload_json: '{"tickets":["billing question","bug report"]}',
         response_schema_json:
           '{"kind":"object","fields":[{"name":"labels","presence":"required","schema":{"kind":"array"}}]}',
+        fundedOrganizationId: "org-field",
       },
       {
         id: "task-release-notes",
@@ -180,16 +225,42 @@
         task_type: "code_review",
         payload_json: '{"transfers":10}',
         response_schema_json: '{"kind":"freeform"}',
+        ownerId: "user-mara",
+      },
+      {
+        id: "task-fence-photos",
+        title: "Tag 20 fence-line photos by repair priority",
+        description:
+          "Sort field photos into urgent, scheduled, or no-action-needed.",
+        task_type: "general",
+        payload_json: '{"photos":20}',
+        response_schema_json: '{"kind":"freeform"}',
+        ownerId: "user-ren",
+        participationPolicy: "open",
+        rewardCreditAmount: 15,
+        escrowAmount: 15,
+      },
+      {
+        id: "task-onboarding-guide",
+        title: "Draft a one-page onboarding guide for seasonal workers",
+        description:
+          "Summarize the crew handbook into a single printable page.",
+        task_type: "general",
+        payload_json: '{"source":"crew-handbook-v3"}',
+        response_schema_json: '{"kind":"freeform"}',
+        ownerId: "user-tala",
+        participationPolicy: "open",
+        rewardCreditAmount: 20,
+        escrowAmount: 20,
       },
     ];
     tasks.forEach((task) => {
+      const ownerId = task.ownerId || "user-jules";
       putSeed("task:" + task.id, {
         id: task.id,
-        created_by: task.id === "task-ledger-review"
-          ? "user-mara"
-          : "user-jules",
+        created_by: ownerId,
         owner_kind: "user",
-        owner_id: task.id === "task-ledger-review" ? "user-mara" : "user-jules",
+        owner_id: ownerId,
         title: task.title,
         state: "open",
         description: task.description,
@@ -197,8 +268,8 @@
         reward_kind: "credit",
         reward_collectible_ids: [],
         reward_collectible_count: 0,
-        reward_credit_amount: 25,
-        participation_policy: "reservation_required",
+        reward_credit_amount: task.rewardCreditAmount || 25,
+        participation_policy: task.participationPolicy || "reservation_required",
         reservation_expiry_hours: 48,
         assignee_scope: "user",
         visibility_kind: "public",
@@ -210,12 +281,89 @@
         response_schema_json: task.response_schema_json,
         payload_kind: "json",
         payload_json: task.payload_json,
-        escrow_amount: 25,
-        funded_organization_id: "",
+        escrow_amount: task.escrowAmount || 25,
+        funded_organization_id: task.fundedOrganizationId || "",
       });
       putSeed("attachments:task:" + task.id, []);
     });
     putSeed("task:index", tasks.map((task) => task.id));
+    // Reserved/submitted/notified against task-ledger-review (owned by
+    // user-mara, the demo's single logged-in actor) rather than a
+    // jules-owned task: this is a single-actor demo, so a submission owned
+    // by someone other than mara would never appear in her own review
+    // queue or inbox on a fresh load.
+    putSeed("reservation:reservation-ledger-review-1", {
+      id: "reservation-ledger-review-1",
+      task_id: "task-ledger-review",
+      assignee_kind: "user",
+      assignee_id: "user-ren",
+      state: "active",
+      requested_by: "user-ren",
+    });
+    putSeed("reservation:index:task:task-ledger-review", [
+      "reservation-ledger-review-1",
+    ]);
+    putSeed("submission:submission-ledger-review-1", {
+      id: "submission-ledger-review-1",
+      task_id: "task-ledger-review",
+      submitter_id: "user-ren",
+      state: "submitted",
+      response_json:
+        '{"flagged_transfers":[{"id":"txn-4471","reason":"amount exceeds historical average by 6x"}]}',
+      review_note: "",
+      attachments: [],
+      validation_errors: [],
+      sensitive_fields: [],
+    });
+    putSeed("submission:index:task:task-ledger-review", [
+      "submission-ledger-review-1",
+    ]);
+    putSeed("submission:index:user:user-ren", ["submission-ledger-review-1"]);
+    putSeed("submission:index", ["submission-ledger-review-1"]);
+    putSeed("notification:notification-1", {
+      id: "notification-1",
+      recipient_user_id: "user-mara",
+      actor_user_id: "user-ren",
+      kind: "submission_created",
+      subject_kind: "submission",
+      subject_id: "submission-ledger-review-1",
+      state: "unread",
+      metadata_json: '{"task_id":"task-ledger-review"}',
+      created_at: "2026-07-01T10:00:00Z",
+    });
+    putSeed("notification:index:user-mara", ["notification-1"]);
+    const collectibles = [
+      {
+        id: "collectible-harvest-star-1",
+        name: "Harvest Star",
+        art: "harvest-star",
+        // Awarded to user-mara (not jules/ren) since /api/collectibles only
+        // returns the authenticated actor's own holdings, and mara is the
+        // demo's single logged-in actor — a collectible owned by anyone
+        // else would never show up on her own Collectibles page.
+        ownerId: "user-mara",
+      },
+      {
+        id: "collectible-golden-sickle-1",
+        name: "Golden Sickle",
+        art: "golden-sickle",
+        ownerId: "user-ren",
+      },
+    ];
+    collectibles.forEach((collectible) => {
+      putSeed("collectible:" + collectible.id, {
+        id: collectible.id,
+        name: collectible.name,
+        kind: "badge",
+        state: "awarded",
+        transfer_policy: "transferable_between_users",
+        owner_id: collectible.ownerId,
+        owner_kind: "user",
+        organization_id: "",
+        art: collectible.art,
+      });
+    });
+    putSeed("collectible:index", collectibles.map((c) => c.id));
   }
 
   function resetStorage() {

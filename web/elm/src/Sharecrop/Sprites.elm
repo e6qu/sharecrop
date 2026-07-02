@@ -99,6 +99,7 @@ spriteFrom cell rows palette =
         , Attr.style "height" (String.fromInt (List.length rows * cell) ++ "px")
         , Attr.style "image-rendering" "pixelated"
         , Attr.style "line-height" "0"
+        , Attr.attribute "aria-hidden" "true"
         ]
         cells
 

@@ -1,20 +1,49 @@
 # Status
 
-The repository contains pull request 1 through pull request 109 work, merged
-into `main`, plus the current `task/task-series-wasm-support` branch. PR 108's
-GitHub Pages deployment failed three times in a row after merge for what looked
-like a transient GitHub-side Pages backend issue (build/artifact steps always
-succeeded; only `deploy-pages` failed or hung, with a different symptom each
-time); PR 109's deployment succeeded on the first try with no code or workflow
-changes, confirming it was not a code problem and has since cleared on its own.
+The repository contains pull request 1 through pull request 110 work, merged
+into `main`, plus the current `task/ui-navbar-declutter-a11y-seed` branch. PR
+108's GitHub Pages deployment failed three times in a row after merge for what
+looked like a transient GitHub-side Pages backend issue (build/artifact steps
+always succeeded; only `deploy-pages` failed or hung, with a different symptom
+each time); PR 109's deployment succeeded on the first try with no code or
+workflow changes, confirming it was not a code problem and has since cleared on
+its own.
 
-Active task: `task/task-series-wasm-support` continues the hand-testing pass
-onto the Task Series feature. Found a fifth real bug, and the biggest gap yet:
-`/api/task-series` (list, create) and `/api/task-series/{id}` (detail) were
-entirely unclassified in the WASM demo (a 404), so creating a task series
-through the browser failed outright — the whole feature had zero WASM demo
-support. Implemented `StoredTaskSeries` storage and a new `TaskSeriesHandler`
-covering create/list/detail, matching `internal/http`'s
+Active task: `task/ui-navbar-declutter-a11y-seed` is a deliberately large,
+bundled UI/UX pass (explicitly requested as one PR rather than the usual
+one-task-per-branch split), covering: a grouped `<nav>` navbar (replacing the
+old flat 14-button row) with a fixed Profile active-state bug and a new
+top-level Submissions link; further page decluttering via `Ui.disclosure` on
+Create Task's ownership/access fields, the Collectibles mint/award forms, the
+account-settings card, the user-submissions "all submissions" list, and the
+series creator-controls/comments sections; an accessibility pass adding a
+per-page `<h1>` (previously the app had exactly one static "Sharecrop" `<h1>`
+that never changed per route), `aria-hidden` on decorative collectible
+sprites, color-differentiated `Ui.badgeVariant` status badges, and a real
+focus-visible ring on the base theme's text inputs/textareas (previously
+suppressed with no visible replacement); and a richer WASM demo seed (credit
+grants for the non-admin users, an organization team, more organization
+members, a funded task, two more discoverable tasks, a pending
+submission/reservation/inbox notification, and awarded collectibles) without
+touching the seed invariants (`mara`'s 1250-credit balance, the org's 7200
+balance, and the 25-entry collectible catalog) that dozens of existing
+Playwright assertions depend on. Also fixed, as "boy scout rule" opportunistic
+issues found along the way: `arcade.css`'s `[data-testid^="nav-"]` rule was
+unconditionally overriding every nav link's background, so the active-page
+nav highlight was invisible across the *entire* app in the demo skin, not just
+for Profile; `Ui.dangerButtonClass` was missing the `min-h-[44px]` touch
+target every other button class has; the task-detail "API & MCP" panel used a
+bespoke `state.taskIntegrationOpen`/`ToggleTaskIntegration` toggle instead of
+the shared `Ui.disclosure` component; and `reviewControls` hand-rolled its
+label/input markup instead of reusing `Ui.fieldLabel`/`Ui.textInput`.
+
+`task/task-series-wasm-support` (PR 110, merged into `main`) continued the
+hand-testing pass onto the Task Series feature and found a fifth real bug, the
+biggest gap yet: `/api/task-series` (list, create) and `/api/task-series/{id}`
+(detail) were entirely unclassified in the WASM demo (a 404), so creating a
+task series through the browser failed outright — the whole feature had zero
+WASM demo support. Implemented `StoredTaskSeries` storage and a new
+`TaskSeriesHandler` covering create/list/detail, matching `internal/http`'s
 `taskSeriesResponse`/`taskSeriesDetailResponse` shapes (including that create
 returns the full detail wrapper, not a bare series object — found by hitting a
 second, different decode error after fixing the first 404). Series lifecycle

@@ -87,7 +87,10 @@ a.border-slate-300 {
   text-decoration: none !important;
 }
 
-/* Nav links (each carries data-testid="nav-*") read as a menu. */
+/* Nav links (each carries data-testid="nav-*") read as a menu. The current
+   page's nav link carries the primary-button class (bg-slate-900); without
+   the second rule below, every nav link renders identically and there is no
+   visual indication of which page you're on. */
 [data-testid^="nav-"] {
   display: inline-flex;
   font-family: "Press Start 2P", monospace !important;
@@ -98,6 +101,10 @@ a.border-slate-300 {
   background: var(--pa-surface) !important;
   color: var(--pa-ink) !important;
   padding: 8px 10px !important;
+}
+[data-testid^="nav-"].bg-slate-900 {
+  background: var(--pa-accent) !important;
+  color: #fff7e0 !important;
 }
 
 /* Inputs / textareas: square, bordered, readable pixel body font. */

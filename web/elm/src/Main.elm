@@ -208,7 +208,6 @@ emptyLoggedIn response =
     , submissionCommentBody = ""
     , submissionCommentMessage = Nothing
     , taskAgentToken = Nothing
-    , taskIntegrationOpen = False
     , taskActionMessage = Nothing
     , userAgentToken = Nothing
     , accountEmail = ""
@@ -558,7 +557,7 @@ enterPage page state =
             -- not briefly show the prior task's badges, submissions, or comments.
             -- Review form fields are reset here too so the prior submission's
             -- note / partial credit / tip / ban does not carry over to the next.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskIntegrationOpen = False, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "" }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "" }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -959,9 +958,6 @@ update msg model =
         AgentCreated (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | agentMessage = Just (httpErrorLabel error) }), Cmd.none )
 
-        ToggleTaskIntegration ->
-            ( Api.updateLoggedIn model (\state -> { state | taskIntegrationOpen = not state.taskIntegrationOpen }), Cmd.none )
-
         MintTaskTokenClicked ->
             Api.withSession model (\state -> ( model, Api.mintTaskToken state.accessToken ))
 
@@ -1056,7 +1052,6 @@ update msg model =
                         , submissionCommentBody = ""
                         , activeSubmissionCommentsID = Nothing
                         , taskAgentToken = Nothing
-                        , taskIntegrationOpen = False
                     }
                 )
             , Nav.pushUrl model.key ("#/tasks/" ++ taskId)
