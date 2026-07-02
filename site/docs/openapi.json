@@ -1,0 +1,1612 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sharecrop HTTP API",
+    "version": "unversioned",
+    "description": "Generated from the route registrations in internal/http/server.go (see internal/openapi). Method, path, operationId, and bearer-auth requirements are derived from the actual mux table and handler bodies. Request/response bodies are generic JSON object placeholders, not typed per-route schemas; see docs/api_reference.md for prose request/response descriptions per route."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "index",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/account": {
+      "delete": {
+        "operationId": "deactivateAccount",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/account/email-verification": {
+      "post": {
+        "operationId": "requestEmailVerification",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/account/password": {
+      "patch": {
+        "operationId": "changePassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/account/profile": {
+      "patch": {
+        "operationId": "updateAccountProfile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/audit-events": {
+      "get": {
+        "operationId": "listAuditEvents",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/moderation/reports": {
+      "get": {
+        "operationId": "listAdminModerationReports",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/moderation/reports/{report_id}/triage": {
+      "post": {
+        "operationId": "triageModerationReport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/operations": {
+      "get": {
+        "operationId": "operationsStatus",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/platform-admins": {
+      "get": {
+        "operationId": "listPlatformAdmins",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "grantPlatformAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/platform-admins/{user_id}/revoke": {
+      "post": {
+        "operationId": "revokePlatformAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/privacy-requests": {
+      "get": {
+        "operationId": "listAdminPrivacyRequests",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/privacy-requests/{privacy_request_id}/resolve": {
+      "post": {
+        "operationId": "resolveAdminPrivacyRequest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/admin/privacy-retention/run": {
+      "post": {
+        "operationId": "runPrivacyRetention",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/agent-credentials": {
+      "get": {
+        "operationId": "listAgentCredentials",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAgentCredential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/agent-credentials/{credential_id}/revoke": {
+      "post": {
+        "operationId": "revokeAgentCredential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/auth/email-verification/confirm": {
+      "post": {
+        "operationId": "confirmEmailVerification",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/auth/guest": {
+      "post": {
+        "operationId": "guest",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "login",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/auth/password-reset/confirm": {
+      "post": {
+        "operationId": "confirmPasswordReset",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/auth/password-reset/request": {
+      "post": {
+        "operationId": "requestPasswordReset",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "operationId": "refresh",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "register",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/collectibles": {
+      "get": {
+        "operationId": "listCollectibles",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "mintCollectible",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/collectibles/award": {
+      "post": {
+        "operationId": "awardCollectible",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/collectibles/catalog": {
+      "get": {
+        "operationId": "collectibleCatalog",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/collectibles/{id}/transfer": {
+      "post": {
+        "operationId": "transferCollectible",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/credits/balance": {
+      "get": {
+        "operationId": "creditsBalance",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/credits/ledger": {
+      "get": {
+        "operationId": "creditsLedger",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/moderation/reports": {
+      "post": {
+        "operationId": "createModerationReport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "operationId": "listNotifications",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/notifications/{notification_id}/read": {
+      "post": {
+        "operationId": "markNotificationRead",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations": {
+      "get": {
+        "operationId": "listOrganizations",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOrganization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations/{id}/collectibles": {
+      "get": {
+        "operationId": "listOrganizationCollectibles",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/audit-events": {
+      "get": {
+        "operationId": "listOrganizationAuditEvents",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/credits/balance": {
+      "get": {
+        "operationId": "organizationCreditsBalance",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/credits/ledger": {
+      "get": {
+        "operationId": "organizationCreditsLedger",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/members": {
+      "get": {
+        "operationId": "listOrganizationMembers",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "provisionOrganizationMember",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/members/{user_id}/deactivate": {
+      "patch": {
+        "operationId": "deactivateOrganizationMember",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/members/{user_id}/roles": {
+      "patch": {
+        "operationId": "updateOrganizationMemberRoles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/teams": {
+      "get": {
+        "operationId": "listOrganizationTeams",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOrganizationTeam",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/privacy-requests": {
+      "get": {
+        "operationId": "listPrivacyRequests",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPrivacyRequest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/saved-queue-views": {
+      "get": {
+        "operationId": "listSavedQueueViews",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "upsertSavedQueueView",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/submission-receipts/{receipt_token}": {
+      "get": {
+        "operationId": "findSubmissionReceipt",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/submissions/{submission_id}/comments": {
+      "get": {
+        "operationId": "listSubmissionComments",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "addSubmissionComment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series": {
+      "get": {
+        "operationId": "listTaskSeries",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTaskSeries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}": {
+      "get": {
+        "operationId": "getTaskSeries",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateTaskSeries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}/close": {
+      "post": {
+        "operationId": "closeTaskSeries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}/comments": {
+      "get": {
+        "operationId": "listTaskSeriesComments",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "addTaskSeriesComment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}/publish": {
+      "post": {
+        "operationId": "publishTaskSeries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}/reopen": {
+      "post": {
+        "operationId": "reopenTaskSeries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}/reorder": {
+      "post": {
+        "operationId": "reorderTaskSeries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}/tasks": {
+      "post": {
+        "operationId": "addTaskToSeriesHandler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}/tasks/{task_id}": {
+      "delete": {
+        "operationId": "removeTaskFromSeriesHandler",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/task-series/{series_id}/unpublish": {
+      "post": {
+        "operationId": "unpublishTaskSeries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}": {
+      "get": {
+        "operationId": "getTask",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/cancel": {
+      "post": {
+        "operationId": "cancelTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/capability-tokens": {
+      "post": {
+        "operationId": "createTaskCapabilityToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/collectible-refund": {
+      "post": {
+        "operationId": "refundCollectibleReward",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/collectible-reward": {
+      "post": {
+        "operationId": "fundCollectibleReward",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/comments": {
+      "get": {
+        "operationId": "listTaskComments",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "addTaskComment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/funding": {
+      "post": {
+        "operationId": "fundTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/open": {
+      "post": {
+        "operationId": "openTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/refund": {
+      "post": {
+        "operationId": "refundTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/reservations": {
+      "get": {
+        "operationId": "listTaskReservations",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "reserveTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/reservations/{reservation_id}/approve": {
+      "post": {
+        "operationId": "approveTaskReservation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/reservations/{reservation_id}/cancel": {
+      "post": {
+        "operationId": "cancelTaskReservation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/reservations/{reservation_id}/decline": {
+      "post": {
+        "operationId": "declineTaskReservation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/submissions": {
+      "get": {
+        "operationId": "listTaskSubmissions",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAuthenticatedSubmission",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/submissions/{submission_id}/accept": {
+      "post": {
+        "operationId": "acceptSubmission",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/submissions/{submission_id}/reject": {
+      "post": {
+        "operationId": "rejectSubmission",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/submissions/{submission_id}/request-changes": {
+      "post": {
+        "operationId": "requestSubmissionChanges",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/unpublish": {
+      "post": {
+        "operationId": "unpublishTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/teams": {
+      "get": {
+        "operationId": "listStandaloneTeams",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createStandaloneTeam",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/teams/{id}/collectibles": {
+      "get": {
+        "operationId": "listTeamCollectibles",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/teams/{team_id}": {
+      "get": {
+        "operationId": "getTeam",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/teams/{team_id}/members": {
+      "post": {
+        "operationId": "addTeamMember",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/teams/{team_id}/work": {
+      "get": {
+        "operationId": "getTeamWork",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "operationId": "listUsers",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/users/{user_id}": {
+      "get": {
+        "operationId": "getUserProfile",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/users/{user_id}/submissions": {
+      "get": {
+        "operationId": "getUserSubmissions",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/api/users/{user_id}/work": {
+      "get": {
+        "operationId": "getUserWork",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "health",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "delete": {
+        "operationId": "mcpDeleteSession",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "get": {
+        "operationId": "mcpStream",
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "mcpEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    },
+    "/static/": {
+      "get": {
+        "operationId": "StripPrefix",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

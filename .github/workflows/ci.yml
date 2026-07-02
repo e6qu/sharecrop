@@ -20,6 +20,8 @@ jobs:
         run: make check-format
       - name: Check contracts
         run: make check-contracts
+      - name: Check OpenAPI document
+        run: make check-openapi
       - name: Check project policy
         run: make check-policy
       - name: Check TypeScript

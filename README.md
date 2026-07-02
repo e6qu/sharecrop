@@ -13,7 +13,8 @@ See:
 - [docs/operations_runbook.md](./docs/operations_runbook.md)
 - [docs/api_reference.md](./docs/api_reference.md)
 - [docs/openapi.json](./docs/openapi.json) (generated; run `make openapi` to
-  regenerate)
+  regenerate; also served on the deployed docs site at `/docs/openapi.html`
+  and `/docs/openapi.json`)
 - [docs/mcp_reference.md](./docs/mcp_reference.md)
 - [docs/agent_scheduling.md](./docs/agent_scheduling.md)
 - [docs/onboarding.md](./docs/onboarding.md)

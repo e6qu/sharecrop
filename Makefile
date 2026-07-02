@@ -14,10 +14,12 @@ check-contracts:
 
 openapi:
 	go run ./cmd/sharecrop generate openapi
+	deno task site:openapi:copy
 
 check-openapi:
 	go run ./cmd/sharecrop generate openapi
-	git diff --exit-code -- docs/openapi.json
+	deno task site:openapi:copy
+	git diff --exit-code -- docs/openapi.json site/docs/openapi.json
 
 check-format:
 	test -z "$$(gofmt -l cmd internal tests web | grep -E '\\.go$$')"

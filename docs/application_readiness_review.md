@@ -118,7 +118,9 @@ support surfaces are absent.
    - A generated OpenAPI document (`docs/openapi.json`, `make openapi`) exists
      with an accurate method/path/operationId/bearer-auth inventory parsed from
      `internal/http/server.go`, but its request/response bodies are generic JSON
-     object placeholders rather than typed per-route schemas.
+     object placeholders rather than typed per-route schemas. It is browsable on
+     the deployed docs site at `/docs/openapi.html` (raw document at
+     `/docs/openapi.json`).
    - Result: a new user or integrator still needs some source-level context for
      edge workflows, and for exact per-route request/response field shapes.
 

@@ -35,6 +35,8 @@ const origin = parseOrigin(Deno.args);
 const targets: CheckTarget[] = [
   { path: "/", mustContain: "Sharecrop" },
   { path: "/docs/", mustContain: "Sharecrop" },
+  { path: "/docs/openapi.html", mustContain: "OpenAPI reference" },
+  { path: "/docs/openapi.json", mustContain: '"openapi"' },
   { path: "/demo", mustContain: "Sharecrop Demo" },
   { path: "/demo/", mustContain: "Sharecrop Demo" },
   { path: "/demo/index.html", mustContain: "Sharecrop Demo" },
