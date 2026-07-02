@@ -2,7 +2,21 @@
 
 Confirmed defects:
 
-- None known.
+- `site/index.html` and `site/docs/index.html` link
+  `<link rel="stylesheet" href=".../demo/styles.css">`, but no build step ever
+  produces a `styles.css` file (`deno task css:build` always writes
+  `web/static/app.css`, copied to `site/demo/app.css`); confirmed live on the
+  deployed site (`.../demo/styles.css` returns 404, `.../demo/app.css` returns
+  200). Even pointed at the correct file, `app.css` has no rules for the custom
+  classes these two pages use (`.docs-shell`, `.landing-shell`, `.panel`,
+  `.topbar`, `.button`, `.objective-list`, and others) because
+  `web/styles/input.css` only `@source`-scans Elm sources and
+  `web/static/index.html`, not `site/*.html`. The root landing page and the docs
+  quickstart page render fully unstyled (raw browser defaults) on the deployed
+  site. The new `site/docs/openapi.html` page added alongside this entry uses a
+  self-contained inline `<style>` block instead of the shared (broken) site
+  stylesheet, so it is unaffected, but the underlying gap remains unfixed for
+  the other two pages.
 
 Test gaps:
 

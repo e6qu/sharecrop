@@ -5,23 +5,30 @@ Current priority from
 
 Active branch:
 
-1. `task/generated-openapi-reference` is in progress. It adds `internal/openapi`
-   (`make openapi` / `docs/openapi.json`), a generator that parses
-   `internal/http`'s route registrations and local call graph with `go/ast` to
-   produce an accurate method/path/operationId/bearer-auth inventory, closing
-   the "no generated OpenAPI reference" documentation gap. Per-route
-   request/response bodies remain generic JSON object placeholders.
+1. `task/openapi-pages-subpage` is in progress. It publishes the generated
+   OpenAPI document as a browsable page on the deployed GitHub Pages site
+   (`site/docs/openapi.html`, backed by a committed `site/docs/openapi.json`
+   copy) and wires `make check-openapi` into PR CI, which the prior branch had
+   added to the Makefile but not to `.github/workflows/ci.yml`.
 
 Next recommended work:
 
-1. Add typed per-route request/response JSON schemas to `docs/openapi.json`,
+1. Fix or replace the broken `site/index.html`/`site/docs/index.html` stylesheet
+   link (`.../demo/styles.css`, a file no build step produces; see `BUGS.md`)
+   and the missing CSS rules for the custom classes those two pages use
+   (`.docs-shell`, `.landing-shell`, `.panel`, `.topbar`, etc. are not
+   `@source`-scanned by `web/styles/input.css` and so are absent from
+   `app.css`). Both pages currently render unstyled on the deployed site. The
+   new `site/docs/openapi.html` page sidesteps this with a self-contained inline
+   stylesheet, so it is not itself affected.
+2. Add typed per-route request/response JSON schemas to `docs/openapi.json`,
    likely by linking `internal/openapi` routes to the existing
    `internal/contracts` `Module`/`Definition` shapes where a route's
    request/response type is identifiable, and leaving an explicit generic
    placeholder (not a guess) where it is not. `internal/contracts` currently has
    no method/path/route metadata at all, only body shapes, so this needs an
    explicit route-to-contract-type mapping, not automatic inference.
-2. Keep expanding shared scenario parity as new user-visible API surfaces are
+3. Keep expanding shared scenario parity as new user-visible API surfaces are
    added. The current suite covers selectors, collectible
    mint/transfer/create-time refund, comments, notifications with task metadata,
    small task/submission attachments, team/organization queue search/type/sort,
@@ -31,17 +38,17 @@ Next recommended work:
    triage shape, platform-admin grant/revoke/audit shape, admin audit,
    personal-ledger, organization-ledger, notification, and user-submission
    pagination, and multi-actor reservation/submission acceptance.
-3. Keep running shared scenario parity against real APIs as behavior changes.
+4. Keep running shared scenario parity against real APIs as behavior changes.
    The explicit-session runner accepts `--origin`, access-token input, and
    refresh-token input. The local real runner can register a scenario admin and
    grant platform-admin state through `DATABASE_URL` and `psql`.
-4. Keep expanding generated/fixture-level HTTP contract coverage as the API
+5. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
-5. Audit remaining raw-ID browser flows and replace high-traffic fields with
+6. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
-6. Add enough explicit host-backed stores and request handlers for the Go/WASM
+7. Add enough explicit host-backed stores and request handlers for the Go/WASM
    backend target to run the shared scenario parity suite without fallback
    stores. The deployed browser demo is the first host, but WASM is also a
    production backend execution target. User, account-token, agent-credential,
@@ -52,9 +59,9 @@ Next recommended work:
    loaded, explicitly configured with host adapters, and used for the shared
    scenario parity suite. The demo defaults to compiled WASM artifacts and
    configured browser host functions.
-7. Add provider email delivery only if the product direction changes; current
+8. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
-8. Build a genuine production non-browser WASM host: persistent storage (file or
+9. Build a genuine production non-browser WASM host: persistent storage (file or
    database-backed) behind the same `storageHas`/`storageGet`/`storagePut`
    contract, a real clock, verified-session actor resolution instead of the
    reference host's `setActor` test hook, and cryptographically random
@@ -67,6 +74,14 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 102 was merged into `main`.
+1. The `task/generated-openapi-reference` branch added `internal/openapi`
+   (`make openapi` / `docs/openapi.json`), a generator that parses
+   `internal/http`'s route registrations and local call graph with `go/ast` to
+   produce an accurate method/path/operationId/bearer-auth inventory, closing
+   the "no generated OpenAPI reference" documentation gap. It did not wire
+   `make check-openapi` into `.github/workflows/ci.yml`, only the Makefile; the
+   next branch fixed that gap.
 1. PR 101 was merged into `main`.
 1. The `task/wasm-nonbrowser-host-measurement` branch added
    `deno task measure:wasm` (artifact size, startup time, host-process memory,

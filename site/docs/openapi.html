@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sharecrop OpenAPI Reference</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 1.5rem 1.25rem 4rem;
+      }
+      nav.topbar {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem 0;
+      }
+      nav.topbar .brand {
+        font-weight: 700;
+        text-decoration: none;
+        color: #0f172a;
+      }
+      nav.topbar a.button {
+        margin-left: auto;
+        padding: 0.4rem 0.9rem;
+        border-radius: 0.4rem;
+        border: 1px solid #cbd5e1;
+        text-decoration: none;
+        color: #0f172a;
+        font-size: 0.9rem;
+      }
+      nav.topbar a.button + a.button {
+        margin-left: 0.5rem;
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.75rem;
+        color: #475569;
+        margin: 0 0 0.25rem;
+      }
+      p.lede {
+        color: #334155;
+        max-width: 65ch;
+      }
+      code {
+        background: #e2e8f0;
+        border-radius: 0.25rem;
+        padding: 0.1rem 0.3rem;
+        font-size: 0.9em;
+      }
+      #summary {
+        display: flex;
+        gap: 1.5rem;
+        margin: 1.5rem 0;
+        flex-wrap: wrap;
+      }
+      #summary div {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        padding: 0.75rem 1.25rem;
+      }
+      #summary strong {
+        display: block;
+        font-size: 1.5rem;
+      }
+      #summary span {
+        color: #64748b;
+        font-size: 0.85rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        overflow: hidden;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 0.9rem;
+        vertical-align: top;
+      }
+      th {
+        background: #f1f5f9;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #475569;
+      }
+      .method {
+        display: inline-block;
+        min-width: 3.5rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 0.25rem;
+        font-weight: 700;
+        font-size: 0.75rem;
+        text-align: center;
+      }
+      .method-get {
+        background: #dbeafe;
+        color: #1d4ed8;
+      }
+      .method-post {
+        background: #dcfce7;
+        color: #15803d;
+      }
+      .method-patch {
+        background: #fef3c7;
+        color: #b45309;
+      }
+      .method-delete {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+      .auth-public {
+        color: #15803d;
+        font-weight: 600;
+      }
+      .auth-protected {
+        color: #475569;
+      }
+      #status {
+        color: #b91c1c;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <nav class="topbar">
+        <a class="brand" href="../">Sharecrop</a>
+        <a class="button" href="./">Docs</a>
+        <a class="button" href="../demo/">Demo</a>
+      </nav>
+      <p class="eyebrow">Docs</p>
+      <h1>OpenAPI reference</h1>
+      <p class="lede">
+        Generated from the route registrations in
+        <code>internal/http/server.go</code>
+        by <code>internal/openapi</code> (<code>go run ./cmd/sharecrop generate
+          openapi</code>, checked by
+        <code>make check-openapi</code>). Method, path,
+        <code>operationId</code>, and whether a route requires a bearer access
+        token are derived from the actual route table and the local call graph,
+        not hand-maintained. Request/response bodies are generic JSON object
+        placeholders, not typed per-route schemas; see the
+        <a
+          href="https://github.com/e6qu/sharecrop/blob/main/docs/api_reference.md"
+        >hand-written HTTP API reference</a> for prose per-route
+        request/response descriptions, or fetch the raw document at
+        <a href="./openapi.json"><code>./openapi.json</code></a>.
+      </p>
+      <div id="summary"></div>
+      <table id="routes">
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Path</th>
+            <th>Operation</th>
+            <th>Auth</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="status"></p>
+    </main>
+    <script>
+      function methodBadge(method) {
+        const span = document.createElement("span");
+        span.className = "method method-" + method;
+        span.textContent = method.toUpperCase();
+        return span;
+      }
+
+      function isPublicOperation(operation) {
+        return Array.isArray(operation.security) &&
+          operation.security.length === 0;
+      }
+
+      function authCell(operation) {
+        const isPublic = isPublicOperation(operation);
+        const cell = document.createElement("span");
+        cell.className = isPublic ? "auth-public" : "auth-protected";
+        cell.textContent = isPublic ? "public" : "bearer token";
+        return cell;
+      }
+
+      function renderSummary(routeCount, publicCount) {
+        const summary = document.getElementById("summary");
+        const entries = [
+          [routeCount, "routes"],
+          [publicCount, "public"],
+          [routeCount - publicCount, "require a bearer token"],
+        ];
+        for (const [value, label] of entries) {
+          const card = document.createElement("div");
+          const strong = document.createElement("strong");
+          strong.textContent = String(value);
+          const span = document.createElement("span");
+          span.textContent = label;
+          card.append(strong, span);
+          summary.append(card);
+        }
+      }
+
+      fetch("./openapi.json")
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error("openapi.json returned HTTP " + response.status);
+          }
+          return response.json();
+        })
+        .then((document_) => {
+          const rows = [];
+          for (const path of Object.keys(document_.paths).sort()) {
+            const methods = document_.paths[path];
+            for (const method of Object.keys(methods).sort()) {
+              rows.push({ path, method, operation: methods[method] });
+            }
+          }
+
+          const publicCount = rows.filter(({ operation }) =>
+            isPublicOperation(operation)
+          )
+            .length;
+          renderSummary(rows.length, publicCount);
+
+          const tbody = document.querySelector("#routes tbody");
+          for (const { path, method, operation } of rows) {
+            const row = document.createElement("tr");
+
+            const methodCell = document.createElement("td");
+            methodCell.append(methodBadge(method));
+            row.append(methodCell);
+
+            const pathCell = document.createElement("td");
+            const pathCode = document.createElement("code");
+            pathCode.textContent = path;
+            pathCell.append(pathCode);
+            row.append(pathCell);
+
+            const operationCell = document.createElement("td");
+            operationCell.textContent = operation.operationId;
+            row.append(operationCell);
+
+            const authCellElement = document.createElement("td");
+            authCellElement.append(authCell(operation));
+            row.append(authCellElement);
+
+            tbody.append(row);
+          }
+        })
+        .catch((error) => {
+          document.getElementById("status").textContent =
+            "Failed to load openapi.json: " + error.message;
+        });
+    </script>
+  </body>
+</html>

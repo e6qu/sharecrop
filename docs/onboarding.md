@@ -73,7 +73,8 @@ accounts inside their own organizations.
 
 - [HTTP API reference](./api_reference.md)
 - [Generated OpenAPI document](./openapi.json) (route/method/auth inventory;
-  regenerate with `make openapi`)
+  regenerate with `make openapi`; browsable at `/docs/openapi.html` on the
+  deployed docs site)
 - [MCP reference](./mcp_reference.md)
 - [Agent scheduling](./agent_scheduling.md)
 - [Operations runbook](./operations_runbook.md)

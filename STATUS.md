@@ -1,17 +1,17 @@
 # Status
 
-The repository contains pull request 1 through pull request 101 work, merged
-into `main`, plus the current `task/generated-openapi-reference` branch.
+The repository contains pull request 1 through pull request 102 work, merged
+into `main`, plus the current `task/openapi-pages-subpage` branch.
 
-Active task: `task/generated-openapi-reference` closes the "no generated OpenAPI
-reference" documentation gap from `docs/application_readiness_review.md`.
-`internal/openapi` parses the route registrations in `internal/http/server.go`
-(and the local call graph of the `internal/http` package) with `go/ast` to
-produce `docs/openapi.json` (`make openapi`, checked by `make check-openapi`)
-with an accurate method/path/operationId/bearer-auth inventory. Request/response
-bodies remain generic JSON object placeholders; typed per-route schemas are
-follow-up work. Hard deletes remain out of scope; use soft lifecycle states,
-anonymization, redaction, tombstones, and audit records. Email/provider
+Active task: `task/openapi-pages-subpage` publishes the generated OpenAPI
+document as a browsable page on the deployed GitHub Pages site:
+`site/docs/openapi.html` fetches `site/docs/openapi.json` (a committed copy of
+`docs/openapi.json`, kept in sync by `make openapi`/`make check-openapi`) and
+renders a route table client-side with no third-party viewer dependency. The
+task also wired `make check-openapi` into PR CI (`.github/workflows/ci.yml`),
+which the prior `task/generated-openapi-reference` branch had added to the
+Makefile but not to CI. Hard deletes remain out of scope; use soft lifecycle
+states, anonymization, redaction, tombstones, and audit records. Email/provider
 delivery, anonymous worker identity, per-project tokens, external wallets, and
 crypto integrations are out of scope.
 
@@ -253,32 +253,43 @@ Current implemented surface:
   `requireAdminSubject`/`requireOrganizationBilling`/`verifyAgent` through the
   call graph). Request/response bodies are generic JSON object placeholders, not
   typed per-route schemas. `make check-openapi` regenerates and asserts no diff,
-  mirroring `check-contracts`.
+  mirroring `check-contracts`. `make check-openapi` runs in PR CI
+  (`.github/workflows/ci.yml`).
+- `site/docs/openapi.html` is a self-contained (no third-party viewer, no build
+  step) static page on the deployed GitHub Pages site that fetches
+  `site/docs/openapi.json` and renders a route table with method/path/
+  operationId/auth-requirement columns and a public/protected summary count.
+  `site/docs/openapi.json` is a committed copy of `docs/openapi.json`
+  (`deno task site:openapi:copy`, run by `make openapi`/`make check-openapi`).
+  `site/docs/index.html`'s References list links to the new page.
+  `tools/check_pages_routing.ts` verifies `/docs/openapi.html` and
+  `/docs/openapi.json` after deployment.
 - Local test/development examples avoid the project's former common ports:
   Postgres uses `25432`, the app uses `29180`, and the backendless demo uses
   `29181`. Playwright config accepts environment overrides for those ports.
 
 Current verification:
 
-- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including new
-  `internal/openapi` unit tests for route extraction (direct and transitive
-  auth-gateway reachability, duplicate-route rejection, sort order) and document
-  generation (public-vs-default security JSON round-trip, request-body presence
-  by method).
-- `deno task check:ts` passed.
-- `deno task lint` passed.
-- `deno task check:policy` passed (the initial `internal/openapi` draft used
-  `map[string]any` for the OpenAPI schema placeholder and failed policy's
-  banned-wildcard-type check; replaced with a concrete `Schema{Type string}`
-  struct).
-- `deno task test` passed.
-- `deno fmt --check deno.json tools tests STATUS.md DO_NEXT.md BUGS.md
-  WHAT_WE_DID.md docs/application_readiness_review.md docs/openapi.json`
-  passed.
+- `go build ./...`, `go vet ./...`, and `go test ./...` passed.
+- `deno task check:ts`, `deno task lint`, `deno task check:policy`, and
+  `deno task test` passed.
 - `make check-contracts` and `make check-openapi` passed (both regenerate and
-  assert no diff).
+  assert no diff, now including `site/docs/openapi.json`).
 - `go tool deadcode -test ./...` passed.
 - `make check-copy-paste` (`jscpd`) found zero clones.
+- `deno task check_pages_routing.ts`-style local check: served `site/` with a
+  local static file server and ran `tools/check_pages_routing.ts` against it;
+  `/docs/openapi.html` and `/docs/openapi.json` passed alongside the existing
+  targets.
+- Loaded `site/docs/openapi.html` in a real Chromium browser (Playwright)
+  against the local static server: the route table rendered 106 rows with no
+  console/page errors, and the summary counts (106 routes, 12 public, 94
+  requiring a bearer token) matched `docs/openapi.json`.
+- `deno fmt --check` passed for touched TypeScript/Markdown files; the new
+  `site/docs/openapi.html` and the edited `tools/check_pages_routing.ts` were
+  formatted with `deno fmt` directly (`site/*.html` is not part of the enforced
+  `make check-format` file set; `site/index.html` and `site/docs/index.html`
+  predate this task and are not `deno fmt`-clean either).
 - `git diff --check` passed.
 
 Blocking issues:

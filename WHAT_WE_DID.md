@@ -1,7 +1,45 @@
 # What We Did
 
-`task/generated-openapi-reference` closed the "no generated OpenAPI reference"
-documentation gap recorded in `docs/application_readiness_review.md`.
+`task/openapi-pages-subpage` published the generated OpenAPI document on the
+deployed GitHub Pages site and closed a CI gap left by the prior branch.
+
+- **OpenAPI Pages subpage.** `site/docs/openapi.html` fetches
+  `site/docs/openapi.json` and renders a method/path/operationId/auth-
+  requirement table plus a public/protected summary count, entirely with vanilla
+  JS and a self-contained inline stylesheet — no Swagger UI/Redoc or other
+  third-party viewer, matching the deployed site's existing pattern of
+  self-hosted assets only. `site/docs/openapi.json` is a committed copy of
+  `docs/openapi.json` kept in sync by `deno task site:openapi:copy`, folded into
+  `make openapi`/`make check-openapi`. `site/docs/index.html`'s References list
+  links to the new page.
+- **Verified rendering, not just presence.** Served `site/` with a local static
+  file server and loaded `site/docs/openapi.html` in a real Chromium browser
+  through Playwright: the table rendered 106 rows with zero console/page errors,
+  and the summary (106 routes, 12 public, 94 requiring a bearer token) matched
+  `docs/openapi.json`.
+- **Pages routing check extended.** `tools/check_pages_routing.ts` now checks
+  `/docs/openapi.html` and `/docs/openapi.json` after deployment, verified
+  locally against the same static server before relying on the post-deploy Pages
+  workflow step.
+- **Found and fixed a CI gap from the prior branch.**
+  `task/generated-openapi-
+  reference` added `make check-openapi` to the
+  Makefile but never wired it into `.github/workflows/ci.yml`, so PR CI was not
+  actually enforcing that `docs/openapi.json` stays in sync with the route
+  table. Added a "Check OpenAPI document" step to the `static` job, next to
+  "Check contracts".
+- **Found a pre-existing styling defect, left unfixed as out of scope.**
+  `site/index.html` and `site/docs/index.html` link a `demo/styles.css` that no
+  build step produces (confirmed 404 on the live deployed site) and use custom
+  classes (`.docs-shell`, `.panel`, `.topbar`, ...) that `web/styles/input.css`
+  never `@source`-scans, so `app.css` has no rules for them either — both pages
+  render fully unstyled in production. Recorded in `BUGS.md`/`DO_NEXT.md`; the
+  new OpenAPI page avoids the issue with its own inline styles rather than
+  depending on the broken shared stylesheet.
+
+`task/generated-openapi-reference` (merged into `main`) closed the "no generated
+OpenAPI reference" documentation gap recorded in
+`docs/application_readiness_review.md`.
 
 - **Generated OpenAPI document.** `go run ./cmd/sharecrop generate openapi`
   (`make openapi`) writes `docs/openapi.json`, an OpenAPI 3.0 document with an

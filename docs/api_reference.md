@@ -4,7 +4,7 @@ This reference lists the stable application routes used by the Elm UI, external 
 
 All protected routes require `Authorization: Bearer <access_token>` unless the route is explicitly public. Browser sessions also use the refresh-token cookie for `/api/auth/refresh`.
 
-[docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Its per-route request/response bodies are generic JSON object placeholders, not typed schemas; this document remains the source for prose per-route request/response descriptions.
+[docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Its per-route request/response bodies are generic JSON object placeholders, not typed schemas; this document remains the source for prose per-route request/response descriptions. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
 
 ## Authentication
 
