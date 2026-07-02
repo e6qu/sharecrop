@@ -1,27 +1,32 @@
 # Status
 
-The repository contains pull request 1 through pull request 107 work, merged
-into `main`, plus the current `task/org-detail-declutter-and-audit-fix` branch.
+The repository contains pull request 1 through pull request 108 work, merged
+into `main`, plus the current `task/team-detail-404-fix-and-declutter` branch.
+The GitHub Pages deployment for PR 108 failed three times in a row after merge
+(`deploy-pages` step: a 10-minute timeout, then "multiple artifacts...
+unexpectedly found" after a `--failed`-only rerun, then "deployment cancelled",
+then another 10-minute timeout stuck at `deployment_queued`) while the build and
+artifact-upload steps succeeded every time; this looks like a GitHub-side Pages
+backend issue, not a code problem, and needs a human to check githubstatus.com
+or retry later, since repeated automatic reruns did not clear it.
 
-Active task: `task/org-detail-declutter-and-audit-fix` continues the prior
-branch's hand-testing pass onto the organization detail page. Found a third real
-bug the same way: `GET /api/organizations/{organization_id}/audit-events` was
-unclassified in the WASM demo (`internal/wasmdemo`, a 404), so the organization
-detail page's "Organization audit" section always failed, and a copy-paste
-mistake in the Elm client stored that failure's message in `orgTaskMessage`
-instead of a dedicated field, surfacing the error under "Organization tasks"
-instead of "Organization audit". Both fixed (a new `orgAuditMessage` field, and
-the WASM demo route now reuses the existing platform-admin audit-events handler
-scoped to the organization's subject id). The organization detail page
-(Operations dashboard, Organization tasks with a full
-filter/search/sort/saved-views panel, Teams, Members, Provision a member,
-Collectibles — previously one ~2050px wall) is now built on the `Ui.disclosure`
-component from the prior branch, collapsing Filters/Teams/Members/Collectibles
-by default (down to ~1180px); the Collectibles page's admin-only "award a
-default collectible" picker is collapsed the same way. Hard deletes remain out
-of scope; use soft lifecycle states, anonymization, redaction, tombstones, and
-audit records. Email/provider delivery, anonymous worker identity, per-project
-tokens, external wallets, and crypto integrations are out of scope.
+Active task: `task/team-detail-404-fix-and-declutter` continues the hand-
+testing pass onto the team detail page. Found a fourth real bug the same way:
+`GET /api/teams/{team_id}` was entirely unclassified in the WASM demo (a 404),
+so the team detail page never loaded for any team, standalone or
+organization-owned — clicking a team row from an organization's Teams list was
+completely broken. Fixed by routing it to the existing
+`RouteStandaloneTeams`/`OrganizationHandler`, returning `{team, members: []}`
+(the WASM demo has no team-membership storage yet, so members is always empty,
+matching what a freshly created team with none added would return from the real
+backend). Also applied `Ui.disclosure` to the team detail page's team work
+filter/search/sort/saved-views panel (~1200px to ~730px for a representative
+team).
+
+Hard deletes remain out of scope; use soft lifecycle states, anonymization,
+redaction, tombstones, and audit records. Email/provider delivery, anonymous
+worker identity, per-project tokens, external wallets, and crypto integrations
+are out of scope.
 
 Current implemented surface:
 
@@ -67,11 +72,16 @@ Current implemented surface:
   renders correctly in the browser demo.
 - Secondary sections on the busiest pages (Admin's five sections, the
   Tasks/Discovery filter panels, Create Task's advanced/optional fields, the
-  organization detail page's task filters/Teams/Members/Collectibles, and the
-  Collectibles page's admin-only award-recipient picker) are collapsible
-  (`Ui.disclosure`, native `<details>`/`<summary>`) and collapsed by default
-  unless already in use, so those pages read short at a glance and expand on
-  demand.
+  organization detail page's task filters/Teams/Members/Collectibles, the team
+  detail page's team-work filter panel, and the Collectibles page's admin-only
+  award-recipient picker) are collapsible (`Ui.disclosure`, native
+  `<details>`/`<summary>`) and collapsed by default unless already in use, so
+  those pages read short at a glance and expand on demand.
+- The Go/WASM demo backend's `GET /api/teams/{team_id}` returns the stored team
+  plus an empty member list (no team-membership storage exists in the demo yet),
+  matching `internal/http`'s `getTeam`/`teamDetailResponse` shape, so the team
+  detail page loads for any standalone or organization-owned team instead of
+  404ing.
 - The Go/WASM demo backend's
   `GET /api/organizations/{organization_id}/audit-events` scopes the shared
   audit-event store to that organization's subject id, matching the real
@@ -317,13 +327,13 @@ Current implemented surface:
 
 Current verification:
 
-- Found the `internal/wasmdemo` audit-events route bug and the `orgTaskMessage`
-  mislabeling by actually running the compiled Go/WASM demo in a real Chromium
-  browser, opening an organization's detail page, and reading the rendered error
-  text and its network trace (patched `XMLHttpRequest`/`sharecropHandleRequest`
-  to see the real request/response pairs, since the WASM demo intercepts XHR
-  entirely in JS and never touches the real network stack, so Playwright's
-  `page.on("response")` sees nothing).
+- Found the `internal/wasmdemo` team-detail route gap by actually running the
+  compiled Go/WASM demo in a real Chromium browser: created an organization
+  team, clicked its row, and read the rendered "Could not load this team: The
+  request failed with status 404." error and its network trace (patched
+  `XMLHttpRequest`/`sharecropHandleRequest` to see the real request/response
+  pairs, since the WASM demo intercepts XHR entirely in JS and never touches the
+  real network stack, so Playwright's `page.on("response")` sees nothing).
 - `go build ./...`, `go vet ./...`, and `go test ./...` passed, including a new
   `internal/wasmdemo` regression test for the fixed route.
 - `deno task check:ts`, `deno task lint`, `deno task check:policy`, and
@@ -334,12 +344,9 @@ Current verification:
   `go test -tags integration
   ./tests/integration`,
   `go test -tags http_e2e ./tests/http_e2e`, and `make e2e-ui` (all 45
-  Playwright specs against the real API), plus the WASM-demo-only Playwright
-  specs (`demo.spec.ts`, `mobile.spec.ts`, 12 specs) run standalone. Fixed the
-  existing Playwright tests that clicked directly into sections now collapsed by
-  default (the organization detail page's task filters/Teams/Members, and the
-  Collectibles page's award-recipient picker) by expanding the relevant
-  `Ui.disclosure` first.
+  Playwright specs against the real API). Fixed the existing Playwright test
+  that clicked directly into the team-work filter panel now collapsed by
+  default, by expanding the `Ui.disclosure` first.
 
 Blocking issues:
 

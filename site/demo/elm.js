@@ -25542,6 +25542,9 @@ var $author$project$Sharecrop$View$teamWorkFilterOptions = _List_fromArray(
 		_Utils_Tuple2('ready', 'Ready'),
 		_Utils_Tuple2('assigned', 'Assigned')
 	]);
+var $author$project$Sharecrop$View$teamWorkFiltersActive = function (state) {
+	return (state.teamWorkFilter !== '') || ((state.teamWorkQuery !== '') || ((state.teamWorkTypeFilter !== '') || (state.teamWorkSort !== 'newest')));
+};
 var $author$project$Sharecrop$View$teamWorkSection = F4(
 	function (title, identifier, emptyMessage, tasks) {
 		return A2(
@@ -25602,55 +25605,63 @@ var $author$project$Sharecrop$View$teamWorkDashboard = F2(
 				]),
 			_List_fromArray(
 				[
-					A2(
-					$author$project$Sharecrop$Ui$fieldLabel,
-					'Search team work',
-					_List_fromArray(
-						[
-							$author$project$Sharecrop$Ui$textInput(
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$type_('search'),
-									$elm$html$Html$Attributes$placeholder('Task title or ID'),
-									$elm$html$Html$Attributes$value(state.teamWorkQuery),
-									$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$TeamWorkQueryChanged),
-									$author$project$Sharecrop$Ui$testId('team-work-query')
-								]))
-						])),
-					A3($author$project$Sharecrop$View$taskTypeFilterSelect, 'team-work-type', state.teamWorkTypeFilter, $author$project$Sharecrop$Types$TeamWorkTypeFilterChanged),
-					A3($author$project$Sharecrop$View$taskSortSelect, 'team-work-sort', state.teamWorkSort, $author$project$Sharecrop$Types$TeamWorkSortChanged),
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
-						]),
+					A4(
+					$author$project$Sharecrop$Ui$disclosure,
+					'team-work-filters',
+					$author$project$Sharecrop$View$teamWorkFiltersActive(state),
+					'Filters',
 					_List_fromArray(
 						[
 							A2(
-							$author$project$Sharecrop$Ui$secondaryButton,
+							$author$project$Sharecrop$Ui$fieldLabel,
+							'Search team work',
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$type_('button'),
-									$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$SearchTeamWorkClicked),
-									$author$project$Sharecrop$Ui$testId('team-work-search')
+									$author$project$Sharecrop$Ui$textInput(
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('search'),
+											$elm$html$Html$Attributes$placeholder('Task title or ID'),
+											$elm$html$Html$Attributes$value(state.teamWorkQuery),
+											$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$TeamWorkQueryChanged),
+											$author$project$Sharecrop$Ui$testId('team-work-query')
+										]))
+								])),
+							A3($author$project$Sharecrop$View$taskTypeFilterSelect, 'team-work-type', state.teamWorkTypeFilter, $author$project$Sharecrop$Types$TeamWorkTypeFilterChanged),
+							A3($author$project$Sharecrop$View$taskSortSelect, 'team-work-sort', state.teamWorkSort, $author$project$Sharecrop$Types$TeamWorkSortChanged),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
 								]),
-							'Search')
+							_List_fromArray(
+								[
+									A2(
+									$author$project$Sharecrop$Ui$secondaryButton,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('button'),
+											$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$SearchTeamWorkClicked),
+											$author$project$Sharecrop$Ui$testId('team-work-search')
+										]),
+									'Search')
+								])),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
+									$author$project$Sharecrop$Ui$testId('team-work-filter')
+								]),
+							A2(
+								$elm$core$List$map,
+								$author$project$Sharecrop$View$teamWorkFilterButton(state.teamWorkFilter),
+								$author$project$Sharecrop$View$teamWorkFilterOptions)),
+							$author$project$Sharecrop$View$queueSavedViews(
+							{applyClicked: $author$project$Sharecrop$Types$ApplyTeamWorkViewClicked, nameChanged: $author$project$Sharecrop$Types$TeamWorkSavedViewNameChanged, nameValue: state.teamWorkSavedViewName, prefix: 'team-work', saveClicked: $author$project$Sharecrop$Types$SaveTeamWorkViewClicked, views: state.teamWorkSavedViews})
 						])),
 					A4($author$project$Sharecrop$View$paginationControls, 'team-work-page', $author$project$Sharecrop$Types$PreviousTeamWorkPageClicked, $author$project$Sharecrop$Types$NextTeamWorkPageClicked, state.teamWorkOffset),
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
-							$author$project$Sharecrop$Ui$testId('team-work-filter')
-						]),
-					A2(
-						$elm$core$List$map,
-						$author$project$Sharecrop$View$teamWorkFilterButton(state.teamWorkFilter),
-						$author$project$Sharecrop$View$teamWorkFilterOptions)),
-					$author$project$Sharecrop$View$queueSavedViews(
-					{applyClicked: $author$project$Sharecrop$Types$ApplyTeamWorkViewClicked, nameChanged: $author$project$Sharecrop$Types$TeamWorkSavedViewNameChanged, nameValue: state.teamWorkSavedViewName, prefix: 'team-work', saveClicked: $author$project$Sharecrop$Types$SaveTeamWorkViewClicked, views: state.teamWorkSavedViews}),
 					A4($author$project$Sharecrop$View$teamWorkSection, 'Review queue', 'team-review-queue', 'No submissions waiting for team review.', reviewTasks),
 					A4($author$project$Sharecrop$View$teamWorkSection, 'Ready for team', 'team-ready-work', 'No team-visible tasks are ready for action.', readyForTeam),
 					A4($author$project$Sharecrop$View$teamWorkSection, 'Assigned to team', 'team-assigned-work', 'No tasks are currently assigned to this team.', assignedToTeam),

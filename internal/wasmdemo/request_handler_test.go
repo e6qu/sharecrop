@@ -701,6 +701,27 @@ func TestOrganizationHandlerCreatesListsAndManagesMembers(t *testing.T) {
 		t.Fatalf("teams = %#v", teams)
 	}
 
+	// GET /api/teams/{team_id} reproduces a real bug found by hand-testing the
+	// demo: the route was unclassified (RequestUnsupported, 404), so the team
+	// detail page never loaded, for either standalone or organization-owned
+	// teams.
+	adapted, adaptedMatched := Adapt(Request{Method: MethodGet, Path: "/api/teams/team-1"}).(RequestAdapted)
+	if !adaptedMatched || adapted.Route != RouteStandaloneTeams {
+		t.Fatalf("adapt team detail route = %#v, want RouteStandaloneTeams", adapted)
+	}
+	teamDetail := handler.Handle(Request{Method: MethodGet, Path: "/api/teams/team-1", Body: ""})
+	teamDetailHandled, teamDetailHandledMatched := teamDetail.(RequestHandled)
+	if !teamDetailHandledMatched {
+		t.Fatalf("team detail = %#v, want RequestHandled", teamDetail)
+	}
+	var detailBody teamDetailBody
+	if err := json.Unmarshal([]byte(teamDetailHandled.Value.Body), &detailBody); err != nil {
+		t.Fatalf("decode team detail: %v", err)
+	}
+	if detailBody.Team.ID != "team-1" || detailBody.Team.OrganizationID != "org-1" || detailBody.Members == nil {
+		t.Fatalf("team detail body = %#v", detailBody)
+	}
+
 	provision := handler.Handle(Request{
 		Method: MethodPost,
 		Path:   "/api/organizations/org-1/members",

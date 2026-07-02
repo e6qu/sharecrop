@@ -535,29 +535,36 @@ teamWorkDashboard teamId state =
             List.filter (\item -> item.activeAssigneeID == teamId) filteredTasks
     in
     div [ Html.Attributes.class "space-y-4", testId "team-work-dashboard" ]
-        [ Ui.fieldLabel "Search team work"
-            [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.teamWorkQuery, onInput TeamWorkQueryChanged, testId "team-work-query" ] ]
-        , taskTypeFilterSelect "team-work-type" state.teamWorkTypeFilter TeamWorkTypeFilterChanged
-        , taskSortSelect "team-work-sort" state.teamWorkSort TeamWorkSortChanged
-        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-            [ Ui.secondaryButton [ type_ "button", onClick SearchTeamWorkClicked, testId "team-work-search" ] "Search"
+        [ Ui.disclosure "team-work-filters" (teamWorkFiltersActive state) "Filters" <|
+            [ Ui.fieldLabel "Search team work"
+                [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.teamWorkQuery, onInput TeamWorkQueryChanged, testId "team-work-query" ] ]
+            , taskTypeFilterSelect "team-work-type" state.teamWorkTypeFilter TeamWorkTypeFilterChanged
+            , taskSortSelect "team-work-sort" state.teamWorkSort TeamWorkSortChanged
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ Ui.secondaryButton [ type_ "button", onClick SearchTeamWorkClicked, testId "team-work-search" ] "Search"
+                ]
+            , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "team-work-filter" ]
+                (List.map (teamWorkFilterButton state.teamWorkFilter) teamWorkFilterOptions)
+            , queueSavedViews
+                { nameValue = state.teamWorkSavedViewName
+                , nameChanged = TeamWorkSavedViewNameChanged
+                , saveClicked = SaveTeamWorkViewClicked
+                , applyClicked = ApplyTeamWorkViewClicked
+                , views = state.teamWorkSavedViews
+                , prefix = "team-work"
+                }
             ]
         , paginationControls "team-work-page" PreviousTeamWorkPageClicked NextTeamWorkPageClicked state.teamWorkOffset
-        , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "team-work-filter" ]
-            (List.map (teamWorkFilterButton state.teamWorkFilter) teamWorkFilterOptions)
-        , queueSavedViews
-            { nameValue = state.teamWorkSavedViewName
-            , nameChanged = TeamWorkSavedViewNameChanged
-            , saveClicked = SaveTeamWorkViewClicked
-            , applyClicked = ApplyTeamWorkViewClicked
-            , views = state.teamWorkSavedViews
-            , prefix = "team-work"
-            }
         , teamWorkSection "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
         , teamWorkSection "Ready for team" "team-ready-work" "No team-visible tasks are ready for action." readyForTeam
         , teamWorkSection "Assigned to team" "team-assigned-work" "No tasks are currently assigned to this team." assignedToTeam
         , maybeNote state.teamWorkMessage "team-work-message"
         ]
+
+
+teamWorkFiltersActive : LoggedInModel -> Bool
+teamWorkFiltersActive state =
+    state.teamWorkFilter /= "" || state.teamWorkQuery /= "" || state.teamWorkTypeFilter /= "" || state.teamWorkSort /= "newest"
 
 
 teamWorkFilterOptions : List ( String, String )
