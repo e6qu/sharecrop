@@ -37,6 +37,7 @@ test("minting a collectible and awarding it to a task through the browser", asyn
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-collectibles").click();
+  await page.getByTestId("collectibles-mint").click();
   const name = `Harvest badge ${crypto.randomUUID()}`;
   await page.getByTestId("collectible-name").fill(name);
   await page.getByTestId("mint-collectible").click();
@@ -55,6 +56,7 @@ test("minting a collectible and awarding it to a task through the browser", asyn
   const awardRow = page.getByTestId("collectible-row").filter({
     hasText: name,
   });
+  await page.getByTestId("collectibles-award-task").click();
   await page.getByTestId("award-task-id").selectOption(task.id);
   await awardRow.getByTestId("award-collectible").click();
 
@@ -87,6 +89,8 @@ test("awarding multiple collectibles shows the count on the task", async ({ page
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-collectibles").click();
+  await page.getByTestId("collectibles-mint").click();
+  await page.getByTestId("collectibles-award-task").click();
   for (const label of ["First", "Second"]) {
     const name = `${label} medal ${crypto.randomUUID()}`;
     await page.getByTestId("collectible-name").fill(name);

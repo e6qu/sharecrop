@@ -17,6 +17,7 @@ test("guest entry and account lifecycle controls work in the browser", async ({ 
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-profile").click();
+  await page.getByTestId("account-email-verification").click();
   await page.getByTestId("request-email-verification").click();
   await expect(page.getByTestId("account-message")).toContainText(
     "Verification token created.",
@@ -26,6 +27,7 @@ test("guest entry and account lifecycle controls work in the browser", async ({ 
     "Account updated.",
   );
 
+  await page.getByTestId("account-password").click();
   await page.getByTestId("current-password").fill(password);
   await page.getByTestId("new-password").fill(changedPassword);
   await page.getByTestId("change-password").click();

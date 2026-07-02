@@ -1,5 +1,141 @@
 # What We Did
 
+`task/ui-navbar-declutter-a11y-seed` is a deliberately large, bundled UI/UX
+pass across the Elm frontend and WASM demo seed data, explicitly requested as
+one PR rather than the project's usual one-task-per-branch split. Research
+first: three parallel exploration passes mapped every page/nav/disclosure in
+`View.elm`, audited colors/headings/ARIA/focus-state across both the base
+Tailwind theme and the demo's pixel-art `arcade.css` skin, and inventoried the
+current seed data plus the 24 existing multi-actor Playwright journeys. A
+design pass then produced a phased plan, which was corrected in two places by
+directly grepping the actual spec files for exact test coupling before
+touching any code (see below) rather than trusting an estimate.
+
+- **Navbar redesign.** `navBar` (`View.elm`) is now a semantic
+  `<nav aria-label="Primary">` with the same 14 links (plus a new
+  `nav-submissions` entry — see below) grouped into three visual rows: daily
+  work (Overview/Tasks/New task/Discovery/Inbox/Submissions), build-and-manage
+  (Funding/Series/Collectibles/Agents/Organizations), and account/system
+  (Profile/Admin/Log out/Reset demo). Every existing `nav-*` `data-testid` is
+  unchanged, so no Playwright spec needed to change for the regrouping itself.
+- **A worker-journey gap closed.** Per `docs/onboarding.md`, a worker's own
+  submissions/revision-inbox is a primary destination, but it was only
+  reachable by clicking through Profile first. Added a top-level "Submissions"
+  nav link (`nav-submissions`, purely additive testid).
+- **Fixed the Profile nav link's missing active-state.** Profile was a raw
+  `<a>` that never got the primary-button highlight even when viewing your own
+  profile; it's now routed through the same active-state comparison every
+  other nav link uses.
+- **A much bigger pre-existing bug this surfaced**: fixing Profile's
+  active-state in the Elm model didn't change what rendered on screen in the
+  demo. Traced it to `site/demo/arcade.css`'s `[data-testid^="nav-"]` rule,
+  which set `background: var(--pa-surface) !important` unconditionally on
+  every nav-prefixed element — overriding the active page's green
+  `bg-slate-900` background regardless of which link was actually active.
+  **This meant the demo has never visually shown which page you're on,
+  anywhere in the app, since the pixel-art skin was added** — not a
+  regression from this branch, a latent bug the Profile fix happened to make
+  visible. Fixed by adding a more specific `[data-testid^="nav-"].bg-slate-900`
+  override rule matching the same accent color `button.bg-slate-900` already
+  uses.
+- **Declutter pass, all via the existing `Ui.disclosure` pattern** (native
+  `<details>`/`<summary>`, no new Elm state):
+  - **Create Task**: grepped every spec file first and found `create-visibility-*`
+    is clicked in 13 places (a near-universal step in task-creation tests) while
+    `create-participation-*`/`create-assignee-*` are each clicked once and
+    `create-owner-*` is never clicked — so Reward and Visibility stay always
+    visible (hiding Visibility would have forced 13 test edits for no real
+    win), while Owner/Participation/Assignee now collapse into one
+    `create-task-ownership` disclosure (2 test edits).
+  - **Task detail's "API & MCP" panel** used a bespoke
+    `state.taskIntegrationOpen`/`Msg.ToggleTaskIntegration` toggle predating
+    `Ui.disclosure`. Replaced with `Ui.disclosure "toggle-integration" False ...`
+    — reusing the exact same testid the 3 existing specs already click meant
+    zero test edits — then removed the now-dead model field and message case.
+  - **`reviewControls`** hand-rolled its label/input markup instead of
+    `Ui.fieldLabel`/`Ui.textInput`/`Ui.textarea_`; switched to the shared
+    helpers (and picked up the new focus-ring fix below for free).
+  - **Collectibles**: wrapped the mint form and the award-to-task form in two
+    new disclosures. Discovered mid-implementation that giving a disclosure a
+    content-derived `openByDefault` (e.g. "open if the name field is
+    non-blank") breaks for forms that reset their own trigger field after a
+    successful submit but stay on the same page — the disclosure would snap
+    shut right after minting, failing a test that minted twice in a loop.
+    Fixed by using a static `False` default instead (a form field's value
+    should never be read back into whether its own disclosure stays open).
+  - **Account settings**: kept "Save profile" open by default; wrapped Email
+    verification, Change password, Privacy requests, and Deactivate account
+    into 4 separate disclosures (3 test edits across `account.spec.ts`/
+    `demo.spec.ts`/`screens.spec.ts`, all "open the disclosure before the
+    existing interaction").
+  - **User submissions**: grepped this too before touching it — a real
+    backend test checks the Revision timeline's heading/content immediately
+    after a fresh page load with no interaction, so it stays always-visible
+    (the plan's first draft would have collapsed it and broken that test);
+    only the generic "All submissions" list collapsed into a disclosure (1
+    test edit).
+  - **Task series**: wrapped creator-controls and the comments section into
+    two disclosures (tasks-in-series stays open); 2 test edits in the one
+    real-backend test that drives both sections.
+- **Accessibility pass**:
+  - **Per-page `<h1>`**: previously the entire app had exactly one `<h1>`,
+    the static "Sharecrop" wordmark, which never changed per route — every
+    page's actual title was an `<h2>` with no top-level heading above it.
+    `pageView`'s 19-case dispatch now returns a `(title, content)` pair and
+    wraps every page in its own `Ui.pageTitle`. The logged-out screen (not
+    part of the routed `Page` union) keeps "Sharecrop" as its own `<h1>`,
+    matching `app.spec.ts`'s existing `getByRole("heading", {name:
+    "Sharecrop"})` check; the wordmark is dropped entirely once logged in
+    rather than duplicated alongside each page's new title. Also removed 4
+    now-literally-duplicate inner `<h2>`s (Collectibles, Organizations, User
+    submissions, Inbox all had an `Ui.sectionTitle` repeating the exact page
+    name the new `<h1>` already says).
+  - **Decorative sprites**: `Sprites.elm`'s pixel-art collectible renderer had
+    zero text alternative. Every call site already renders the collectible's
+    name as adjacent visible text, so added `aria-hidden="true"` once at the
+    sprite's root element rather than threading a label through 4 call sites.
+  - **Color-differentiated status badges**: added `Ui.badgeVariant` (neutral/
+    success/warning/danger tones, contrast ratios documented in the function's
+    doc comment) and applied it to task/submission/collectible/series state,
+    privacy-request status, and moderation-report state — previously all
+    flat gray regardless of state.
+  - **Focus states**: `fieldClass`/`textareaClass` suppressed the native
+    outline with only a border-color change as a (weak) replacement; added a
+    `focus-visible:ring-2` that's additive with the demo skin's existing
+    compensating `outline: 3px solid` rule (a box-shadow-based ring doesn't
+    collide with an outline). `dangerButtonClass` was the only button class
+    missing `min-h-[44px]`; added it.
+- **Demo seed data expansion** (`site/demo/wasm-host.js`). Before touching
+  anything, grepped `demo.spec.ts`/`mobile.spec.ts` for every hardcoded
+  count: mara's "1250 credits" balance is asserted 13 times, the org's "7200
+  credits" once, and the catalog's 25-entry count once — all three are
+  frozen invariants. Added, without touching any of them: credit-ledger
+  entries for jules/ren/tala/sol (previously all zero); an organization team
+  ("Field Crew") and two more organization members; `funded_organization_id`
+  set on one task so the "funded from org balance" state is visible; two
+  more discoverable tasks with different owners/participation policies; a
+  reservation, a submitted-and-pending submission, and an unread inbox
+  notification; and two awarded collectible instances. **A single-actor-demo
+  correction made mid-implementation**: the demo always logs in as `user-mara`
+  (there's no real multi-user session), and `/api/collectibles` /
+  notifications are scoped to the authenticated actor server-side — so the
+  first draft of this seed data (a submission/reservation/notification
+  against a jules-owned task, and both awarded collectibles going to
+  jules/ren) would have been entirely invisible to whoever actually opens the
+  demo. Redirected the submission/reservation/notification to
+  `task-ledger-review` (already owned by mara) and one collectible to mara
+  directly, verified by screenshot that her Inbox and Collectibles page now
+  show real content on a fresh load.
+- Verified: all 46 real-backend Playwright specs (`make e2e-ui`), all 13
+  WASM-demo Playwright specs (`demo.spec.ts`/`mobile.spec.ts`), the Go
+  integration/http_e2e suites, `go test ./...`, `go vet ./...`,
+  `go tool deadcode -test ./...`, `make check-format`/`check-contracts`/
+  `check-openapi`/`check-policy`/`check-ts`/`check-copy-paste`, and
+  `deno task test`/`deno task lint` all pass. Screenshot-verified the navbar
+  active-state fix, the per-page `<h1>` structure, and the enriched seed data
+  (Discovery, Organization detail, Team detail, Inbox, Collectibles) in a
+  real browser.
+
 `task/task-series-wasm-support` continued the hand-testing pass onto the Task
 Series feature and found the biggest gap yet: the whole feature had zero WASM
 demo support, not just one missing route.
