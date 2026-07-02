@@ -114,9 +114,9 @@ func decodeUsersResponseBody(t *testing.T, body string) usersResponseBody {
 	return value
 }
 
-func decodeStoredUser(t *testing.T, body string) StoredUser {
+func decodeUserProfileResponseBody(t *testing.T, body string) userProfileResponseBody {
 	t.Helper()
-	var value StoredUser
+	var value userProfileResponseBody
 	if err := json.Unmarshal([]byte(body), &value); err != nil {
 		t.Fatalf("decode response: %v\n%s", err, body)
 	}
@@ -402,6 +402,12 @@ func TestAuthAndAccountHandlersUseExplicitRuntimeStorage(t *testing.T) {
 	}
 }
 
+// TestUsersHandlerListsAndLoadsUsers also locks in a real bug found by
+// hand-testing the demo: GET /api/users/{user_id} returned the raw stored
+// user record ({id, email, status}), but the real backend's getUserProfile
+// (and the browser's profile page decoder) expects {id, tasks: [...tasks
+// this user created...]}, so the profile page's "Public tasks" section
+// failed with a JSON decode error on every profile view.
 func TestUsersHandlerListsAndLoadsUsers(t *testing.T) {
 	storage := newTestBrowserStorage()
 	if err := SaveUser(storage, StoredUser{ID: "user-a", Email: "a@example.com", Status: "active"}); err != nil {
@@ -410,16 +416,33 @@ func TestUsersHandlerListsAndLoadsUsers(t *testing.T) {
 	if err := SaveUser(storage, StoredUser{ID: "user-b", Email: "b@example.com", Status: "active"}); err != nil {
 		t.Fatalf("save user b: %v", err)
 	}
+	taskHandler := NewTaskHandler(storage, fixedHandlerActor{userID: "user-a"}, fixedTaskIDs{value: "task-1"})
+	createResult := taskHandler.Handle(Request{
+		Method: MethodPost,
+		Path:   "/api/tasks",
+		Body:   `{"owner":{"kind":"user","user_id":"user-a"},"title":"Created by user-a","description":"desc","reward":{"kind":"none","credit_amount":0,"collectible_ids":[]},"participation":{"policy":"open","assignee_scope":"user","reservation_expiry_hours":48},"visibility":{"kind":"public"},"placement":{"kind":"standalone"},"response_schema_json":"{\"kind\":\"freeform\"}","payload":{"kind":"none","json":""},"task_type":"general","attachments":[]}`,
+	})
+	if _, matched := createResult.(RequestHandled); !matched {
+		t.Fatalf("create task = %#v, want RequestHandled", createResult)
+	}
+
 	handler := NewUsersHandler(storage)
 	list := handledRuntimeResponse(t, handler.Handle(Request{Method: MethodGet, Path: "/api/users?query=b&limit=10&offset=0", Body: ""}), 200)
 	listBody := decodeUsersResponseBody(t, list.Body)
 	if len(listBody.Users) != 1 || listBody.Users[0].ID != "user-b" {
 		t.Fatalf("list body = %#v", listBody)
 	}
+
 	detail := handledRuntimeResponse(t, handler.Handle(Request{Method: MethodGet, Path: "/api/users/user-a", Body: ""}), 200)
-	user := decodeStoredUser(t, detail.Body)
-	if user.Email != "a@example.com" {
-		t.Fatalf("user detail = %#v", user)
+	profile := decodeUserProfileResponseBody(t, detail.Body)
+	if profile.ID != "user-a" || len(profile.Tasks) != 1 || profile.Tasks[0].ID != "task-1" {
+		t.Fatalf("profile detail = %#v", profile)
+	}
+
+	emptyProfile := handledRuntimeResponse(t, handler.Handle(Request{Method: MethodGet, Path: "/api/users/user-b", Body: ""}), 200)
+	emptyProfileBody := decodeUserProfileResponseBody(t, emptyProfile.Body)
+	if emptyProfileBody.ID != "user-b" || len(emptyProfileBody.Tasks) != 0 {
+		t.Fatalf("empty profile detail = %#v", emptyProfileBody)
 	}
 }
 

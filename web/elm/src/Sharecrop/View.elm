@@ -2,6 +2,7 @@ module Sharecrop.View exposing (..)
 
 import Browser
 import Html exposing (Html, a, button, div, form, h3, label, main_, option, p, select, span, table, tbody, td, text, th, thead, tr)
+import Html.Keyed
 import Html.Attributes exposing (checked, disabled, href, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Json.Decode as Decode
@@ -77,7 +78,13 @@ loggedInView : Model -> LoggedInModel -> Html Msg
 loggedInView model state =
     div [ Html.Attributes.class "space-y-6" ]
         [ navBar model.demo state.page state.subjectId state.isAdmin
-        , pageView model.origin state
+
+        -- Keyed by route so navigating away and back always rebuilds the page
+        -- fresh: without a key, Elm's virtual DOM can match two structurally
+        -- similar pages (e.g. both starting with a `<details>` disclosure at
+        -- the same position) as "the same node" and carry over native,
+        -- Elm-invisible DOM state like an expanded/collapsed <details>.
+        , Html.Keyed.node "div" [] [ ( pageToPath state.page, pageView model.origin state ) ]
         ]
 
 
@@ -125,93 +132,108 @@ navLink current target identifier labelText =
 adminView : LoggedInModel -> Html Msg
 adminView state =
     Ui.card
-        [ Ui.sectionTitle "Operations"
-        , case state.operations of
-            Just operations ->
-                Html.dl [ Html.Attributes.class "grid gap-2 text-sm sm:grid-cols-2", testId "admin-operations" ]
-                    [ operationFact "Status" operations.status
-                    , operationFact "Account token delivery" operations.accountTokenDelivery
-                    , operationFact "MCP storage" operations.mcpStorage
-                    , operationFact "Rate limit storage" operations.rateLimitStorage
-                    , operationFact "Secure cookies" operations.secureCookies
-                    , operationFact "Active MCP sessions" (String.fromInt operations.activeMCPSessions)
-                    , operationFact "IP rate buckets" (String.fromInt operations.activeIPRateBuckets)
-                    , operationFact "Subject rate buckets" (String.fromInt operations.activeSubjectRateBuckets)
-                    ]
-
-            Nothing ->
-                p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-operations-empty" ] [ text "Operations status is not loaded." ]
-        , Ui.sectionTitle "Audit events"
-        , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-3" ]
-            [ Ui.fieldLabel "Action"
-                [ Ui.textInput [ placeholder "submission_accepted", value state.auditActionFilter, onInput AuditActionFilterChanged, testId "admin-audit-action" ] ]
-            , Ui.fieldLabel "Subject kind"
-                [ Ui.textInput [ placeholder "submission", value state.auditSubjectKindFilter, onInput AuditSubjectKindFilterChanged, testId "admin-audit-subject-kind" ] ]
-            , Ui.fieldLabel "Subject ID"
-                [ Ui.textInput [ placeholder "ID", value state.auditSubjectIDFilter, onInput AuditSubjectIDFilterChanged, testId "admin-audit-subject-id" ] ]
-            ]
-        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-            [ Ui.secondaryButton [ type_ "button", onClick SearchAuditEventsClicked, testId "admin-audit-search" ] "Search"
-            ]
-        , paginationControls "admin-audit-page" PreviousAuditEventsPageClicked NextAuditEventsPageClicked state.auditEventsOffset
-        , if List.isEmpty state.auditEvents then
-            p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-audit-empty" ] [ text "No audit events." ]
-
-          else
-            div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-audit-events" ]
-                (List.map auditEventRow state.auditEvents)
-        , Ui.sectionTitle "Platform admins"
-        , Ui.fieldLabel "Grant user"
-            [ userPicker "admin-platform-user" state.adminSelectedUserId state.userDirectoryQuery AdminSelectedUserChanged "Choose user" state.userDirectory state.userDirectoryOffset ]
-        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-            [ Ui.secondaryButton [ type_ "button", onClick GrantPlatformAdminClicked, disabled (String.trim state.adminSelectedUserId == ""), testId "admin-grant-platform-admin" ] "Grant"
-            ]
-        , paginationControls "admin-platform-admins-page" PreviousPlatformAdminsPageClicked NextPlatformAdminsPageClicked state.platformAdminsOffset
-        , if List.isEmpty state.platformAdmins then
-            p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-platform-admins-empty" ] [ text "No platform admins." ]
-
-          else
-            div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-platform-admins" ]
-                (List.map platformAdminRow state.platformAdmins)
-        , Ui.sectionTitle "Privacy requests"
-        , Ui.fieldLabel "Resolution note"
-            [ Ui.textInput [ placeholder "Export generated or fields redacted", value state.adminPrivacyResolutionNote, onInput AdminPrivacyResolutionNoteChanged, testId "admin-privacy-note" ] ]
-        , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
-            [ Ui.secondaryButton [ type_ "button", onClick RunPrivacyRetentionClicked, testId "admin-run-privacy-retention" ] "Run retention"
-            , case state.adminRetentionRedactedFieldCount of
-                Just count ->
-                    span [ Html.Attributes.class "text-xs text-slate-600", testId "admin-retention-count" ] [ text ("Redacted fields: " ++ String.fromInt count) ]
+        [ Ui.disclosure "admin-section-operations"
+            True
+            "Operations"
+            [ case state.operations of
+                Just operations ->
+                    Html.dl [ Html.Attributes.class "grid gap-2 text-sm sm:grid-cols-2", testId "admin-operations" ]
+                        [ operationFact "Status" operations.status
+                        , operationFact "Account token delivery" operations.accountTokenDelivery
+                        , operationFact "MCP storage" operations.mcpStorage
+                        , operationFact "Rate limit storage" operations.rateLimitStorage
+                        , operationFact "Secure cookies" operations.secureCookies
+                        , operationFact "Active MCP sessions" (String.fromInt operations.activeMCPSessions)
+                        , operationFact "IP rate buckets" (String.fromInt operations.activeIPRateBuckets)
+                        , operationFact "Subject rate buckets" (String.fromInt operations.activeSubjectRateBuckets)
+                        ]
 
                 Nothing ->
-                    text ""
+                    p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-operations-empty" ] [ text "Operations status is not loaded." ]
             ]
-        , paginationControls "admin-privacy-page" PreviousAdminPrivacyPageClicked NextAdminPrivacyPageClicked state.adminPrivacyOffset
-        , if List.isEmpty state.adminPrivacyRequests then
-            p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-privacy-empty" ] [ text "No privacy requests." ]
-
-          else
-            div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-privacy-requests" ]
-                (List.map (adminPrivacyRequestRow state.adminPrivacyResolutionNote) state.adminPrivacyRequests)
-        , Ui.sectionTitle "Moderation reports"
-        , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
-            [ Ui.fieldLabel "State"
-                [ select [ Html.Attributes.class Ui.fieldClass, value state.adminModerationStateFilter, onInput AdminModerationStateFilterChanged, testId "admin-moderation-state" ]
-                    [ blankOption "All states"
-                    , stringOption state.adminModerationStateFilter ( "open", "Open" )
-                    , stringOption state.adminModerationStateFilter ( "resolved", "Resolved" )
-                    , stringOption state.adminModerationStateFilter ( "dismissed", "Dismissed" )
-                    ]
+        , Ui.disclosure "admin-section-audit"
+            False
+            "Audit events"
+            [ div [ Html.Attributes.class "grid gap-3 sm:grid-cols-3" ]
+                [ Ui.fieldLabel "Action"
+                    [ Ui.textInput [ placeholder "submission_accepted", value state.auditActionFilter, onInput AuditActionFilterChanged, testId "admin-audit-action" ] ]
+                , Ui.fieldLabel "Subject kind"
+                    [ Ui.textInput [ placeholder "submission", value state.auditSubjectKindFilter, onInput AuditSubjectKindFilterChanged, testId "admin-audit-subject-kind" ] ]
+                , Ui.fieldLabel "Subject ID"
+                    [ Ui.textInput [ placeholder "ID", value state.auditSubjectIDFilter, onInput AuditSubjectIDFilterChanged, testId "admin-audit-subject-id" ] ]
                 ]
-            , Ui.fieldLabel "Triage note"
-                [ Ui.textInput [ placeholder "Decision note", value state.adminModerationResolutionNote, onInput AdminModerationResolutionNoteChanged, testId "admin-moderation-note" ] ]
-            ]
-        , paginationControls "admin-moderation-page" PreviousAdminModerationPageClicked NextAdminModerationPageClicked state.adminModerationOffset
-        , if List.isEmpty state.adminModerationReports then
-            p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-moderation-empty" ] [ text "No moderation reports." ]
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ Ui.secondaryButton [ type_ "button", onClick SearchAuditEventsClicked, testId "admin-audit-search" ] "Search"
+                ]
+            , paginationControls "admin-audit-page" PreviousAuditEventsPageClicked NextAuditEventsPageClicked state.auditEventsOffset
+            , if List.isEmpty state.auditEvents then
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-audit-empty" ] [ text "No audit events." ]
 
-          else
-            div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-moderation-reports" ]
-                (List.map (adminModerationReportRow state.adminModerationResolutionNote) state.adminModerationReports)
+              else
+                div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-audit-events" ]
+                    (List.map auditEventRow state.auditEvents)
+            ]
+        , Ui.disclosure "admin-section-platform-admins"
+            False
+            "Platform admins"
+            [ Ui.fieldLabel "Grant user"
+                [ userPicker "admin-platform-user" state.adminSelectedUserId state.userDirectoryQuery AdminSelectedUserChanged "Choose user" state.userDirectory state.userDirectoryOffset ]
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ Ui.secondaryButton [ type_ "button", onClick GrantPlatformAdminClicked, disabled (String.trim state.adminSelectedUserId == ""), testId "admin-grant-platform-admin" ] "Grant"
+                ]
+            , paginationControls "admin-platform-admins-page" PreviousPlatformAdminsPageClicked NextPlatformAdminsPageClicked state.platformAdminsOffset
+            , if List.isEmpty state.platformAdmins then
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-platform-admins-empty" ] [ text "No platform admins." ]
+
+              else
+                div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-platform-admins" ]
+                    (List.map platformAdminRow state.platformAdmins)
+            ]
+        , Ui.disclosure "admin-section-privacy"
+            False
+            "Privacy requests"
+            [ Ui.fieldLabel "Resolution note"
+                [ Ui.textInput [ placeholder "Export generated or fields redacted", value state.adminPrivacyResolutionNote, onInput AdminPrivacyResolutionNoteChanged, testId "admin-privacy-note" ] ]
+            , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+                [ Ui.secondaryButton [ type_ "button", onClick RunPrivacyRetentionClicked, testId "admin-run-privacy-retention" ] "Run retention"
+                , case state.adminRetentionRedactedFieldCount of
+                    Just count ->
+                        span [ Html.Attributes.class "text-xs text-slate-600", testId "admin-retention-count" ] [ text ("Redacted fields: " ++ String.fromInt count) ]
+
+                    Nothing ->
+                        text ""
+                ]
+            , paginationControls "admin-privacy-page" PreviousAdminPrivacyPageClicked NextAdminPrivacyPageClicked state.adminPrivacyOffset
+            , if List.isEmpty state.adminPrivacyRequests then
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-privacy-empty" ] [ text "No privacy requests." ]
+
+              else
+                div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-privacy-requests" ]
+                    (List.map (adminPrivacyRequestRow state.adminPrivacyResolutionNote) state.adminPrivacyRequests)
+            ]
+        , Ui.disclosure "admin-section-moderation"
+            False
+            "Moderation reports"
+            [ div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
+                [ Ui.fieldLabel "State"
+                    [ select [ Html.Attributes.class Ui.fieldClass, value state.adminModerationStateFilter, onInput AdminModerationStateFilterChanged, testId "admin-moderation-state" ]
+                        [ blankOption "All states"
+                        , stringOption state.adminModerationStateFilter ( "open", "Open" )
+                        , stringOption state.adminModerationStateFilter ( "resolved", "Resolved" )
+                        , stringOption state.adminModerationStateFilter ( "dismissed", "Dismissed" )
+                        ]
+                    ]
+                , Ui.fieldLabel "Triage note"
+                    [ Ui.textInput [ placeholder "Decision note", value state.adminModerationResolutionNote, onInput AdminModerationResolutionNoteChanged, testId "admin-moderation-note" ] ]
+                ]
+            , paginationControls "admin-moderation-page" PreviousAdminModerationPageClicked NextAdminModerationPageClicked state.adminModerationOffset
+            , if List.isEmpty state.adminModerationReports then
+                p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-moderation-empty" ] [ text "No moderation reports." ]
+
+              else
+                div [ Html.Attributes.class "divide-y divide-slate-100", testId "admin-moderation-reports" ]
+                    (List.map (adminModerationReportRow state.adminModerationResolutionNote) state.adminModerationReports)
+            ]
         , maybeNote state.adminMessage "admin-message"
         ]
 
@@ -1503,21 +1525,35 @@ balanceLabel balance =
 
 createTaskView : LoggedInModel -> Html Msg
 createTaskView state =
+    let
+        advancedActive =
+            state.createTaskType
+                /= "general"
+                || String.trim state.createReferenceURL
+                /= ""
+                || String.trim state.createPayloadJson
+                /= ""
+                || not (List.isEmpty state.createAttachments)
+    in
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit CreateTaskClicked ]
         [ Ui.sectionTitle "Create a task"
         , Ui.fieldLabel "Title" [ Ui.textInput [ type_ "text", placeholder "Short, descriptive title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ] ]
         , Ui.fieldLabel "Template" [ taskTypeSelect state.createTaskType ]
-        , Ui.fieldLabel "Reference URL (optional, e.g. a pull request)" [ Ui.textInput [ type_ "text", placeholder "https://github.com/org/repo/pull/123", value state.createReferenceURL, onInput CreateReferenceURLChanged, testId "create-reference-url" ] ]
         , Ui.fieldLabel "Description" [ Ui.textarea_ [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ] ]
         , if state.createTaskType == "general" then
             schemaDesignerView state
 
           else
             p [ Html.Attributes.class "text-xs text-slate-600", testId "template-schema-note" ]
-                [ text ("The " ++ taskTypeLabel state.createTaskType ++ " template prefilled the description and response schema below — edit them if you need to.") ]
-        , Ui.fieldLabel "Response schema (JSON, advanced)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
-        , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
-        , selectedAttachmentsView "Attachments" state.createAttachments PickCreateAttachmentClicked RemoveCreateAttachmentClicked "create-attachments"
+                [ text ("The " ++ taskTypeLabel state.createTaskType ++ " template prefilled the description and response schema; open Advanced options below to review or edit the schema.") ]
+        , Ui.disclosure "create-advanced-options"
+            advancedActive
+            "Advanced options"
+            [ Ui.fieldLabel "Reference URL (optional, e.g. a pull request)" [ Ui.textInput [ type_ "text", placeholder "https://github.com/org/repo/pull/123", value state.createReferenceURL, onInput CreateReferenceURLChanged, testId "create-reference-url" ] ]
+            , Ui.fieldLabel "Response schema (JSON, advanced)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
+            , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
+            , selectedAttachmentsView "Attachments" state.createAttachments PickCreateAttachmentClicked RemoveCreateAttachmentClicked "create-attachments"
+            ]
         , Ui.label_ "Reward"
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (rewardKindButton state.createRewardKind) allRewardKinds)
         , rewardAmountField state
@@ -1985,15 +2021,22 @@ tasksView origin state =
     let
         visibleTasks =
             filterTasksByQuery state.taskListQuery state.tasks
+
+        filtersActive =
+            state.taskStateFilter /= "" || state.taskListQuery /= "" || state.taskListTypeFilter /= "" || state.taskListSort /= "newest"
     in
     Ui.card
         [ Ui.sectionTitle "My tasks"
-        , Ui.label_ "Filter by state"
-        , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
-        , Ui.fieldLabel "Search loaded tasks"
-            [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.taskListQuery, onInput TaskListQueryChanged, testId "tasks-query" ] ]
-        , taskTypeFilterSelect "tasks-type" state.taskListTypeFilter TaskListTypeFilterChanged
-        , taskSortSelect "tasks-sort" state.taskListSort TaskListSortChanged
+        , Ui.disclosure "tasks-filters"
+            filtersActive
+            "Filters"
+            [ Ui.label_ "Filter by state"
+            , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
+            , Ui.fieldLabel "Search loaded tasks"
+                [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.taskListQuery, onInput TaskListQueryChanged, testId "tasks-query" ] ]
+            , taskTypeFilterSelect "tasks-type" state.taskListTypeFilter TaskListTypeFilterChanged
+            , taskSortSelect "tasks-sort" state.taskListSort TaskListSortChanged
+            ]
         , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset
         , tasksList visibleTasks
         ]
@@ -2403,12 +2446,19 @@ discoveryView state =
     let
         visibleTasks =
             filterTasksByQuery state.discoveryQuery state.discoveryTasks
+
+        filtersActive =
+            state.discoveryIncludeReserved || state.discoveryQuery /= ""
     in
     Ui.card
         [ Ui.sectionTitle "Discover public tasks"
-        , Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
-        , Ui.fieldLabel "Search loaded discovery"
-            [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.discoveryQuery, onInput DiscoveryQueryChanged, testId "discovery-query" ] ]
+        , Ui.disclosure "discovery-filters"
+            filtersActive
+            "Filters"
+            [ Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
+            , Ui.fieldLabel "Search loaded discovery"
+                [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.discoveryQuery, onInput DiscoveryQueryChanged, testId "discovery-query" ] ]
+            ]
         , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset
         , discoveryList visibleTasks
         ]

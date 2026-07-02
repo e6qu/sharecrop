@@ -1,9 +1,58 @@
 # What We Did
 
-`task/openapi-schema-field-access` closed the one confirmed gap the prior branch
-left open: `createModerationReport`'s response schema stayed generic because
-it's written as `writeJSON(w, status, response.value)` — a struct field access
-on a result-union wrapper, not a bare local variable or composite literal.
+`task/ui-ux-declutter-and-profile-fix` fixed two real broken browser flows found
+by hand-testing the Go/WASM demo, and decluttered the Elm client's busiest
+pages.
+
+- **Two `internal/wasmdemo` bugs, found by actually loading the demo in a
+  browser, not by reading code.** `GET /api/users/{user_id}` matched the demo's
+  generic users-collection route and returned the raw stored user record
+  (`{id, email, status}`); the real backend's `getUserProfile` (and the
+  browser's decoder) expects `{id, tasks}` — tasks the user created — so every
+  profile page view failed with a JSON decode error. Fixed in
+  `internal/wasmdemo/runtime_handlers.go`'s `UsersHandler.Handle` by listing
+  tasks via the existing `"user"` scope on `ListTasks`. Separately,
+  `GET /api/users/{user_id}/work` (tasks the user holds an active reservation on
+  — the profile's "Public work" tab) did not exist in the demo at all and fell
+  through to the same generic route; added
+  `userWorkPathID`/`TaskHandler.handleUserWork` (`request_adapter.go`,
+  `request_handler.go`), scanning each stored task's reservations for an active
+  user-assignee match since reservations are indexed by task, not by assignee.
+  Both covered by new regression tests (`TestUsersHandlerListsAndLoadsUsers`,
+  `TestTaskHandlerHandleUserWork`) and verified live: `docs/openapi.json` decode
+  error gone, "Public work" tab renders "Nothing to show." instead of crashing.
+- **A new `Ui.disclosure` collapsible-section component** (`Sharecrop/Ui.elm`,
+  native `<details>`/`<summary>`, no Elm model/message wiring needed) applied to
+  the Admin page's five always-expanded sections (only Operations stays open by
+  default), the Tasks/Discovery filter panels, and Create Task's
+  advanced/optional fields (reference URL, raw JSON schema, task input JSON,
+  attachments) — cutting the Admin page from ~1900px to ~680px collapsed and
+  Create Task from ~1500px to ~975px, while keeping every field reachable. Each
+  disclosure that guards state a user might already have set (task/discovery
+  filters, create-task advanced fields, a non-freeform template's schema) opens
+  by default when that state is non-default, via a plain reactive `Bool`
+  computed from the model — Elm re-applies the `open` attribute on every render,
+  so e.g. picking a template auto-expands Advanced options with no extra wiring.
+- **Found and fixed a virtual-DOM node-reuse bug this surfaced.** Without a key,
+  Elm's non-keyed diffing can match two structurally similar pages' `<details>`
+  elements at the same tree position as "the same node" and carry over the real
+  DOM's native (Elm-invisible) `open` state across a route change — e.g.
+  expanding Admin's second section, then navigating to Tasks, showed its first
+  section pre-expanded. Fixed by keying the page's root view node by route
+  (`Html.Keyed.node` with `pageToPath state.page` as the key) in `loggedInView`,
+  forcing a fresh subtree on every navigation.
+- **Fixed the resulting Playwright regressions.** Six existing `demo.spec.ts`
+  tests, plus several in `screens.spec.ts` (real-backend suite), clicked
+  directly into sections now collapsed by default; added an explicit
+  disclosure-summary click before each. Verified: all 12 WASM-demo Playwright
+  specs, all 45 real-backend Playwright specs (`make e2e-ui`), the Go
+  integration/http_e2e suites, and the full non-browser check suite pass.
+
+`task/openapi-schema-field-access` (merged into `main`) closed the one confirmed
+gap the prior branch left open: `createModerationReport`'s response schema
+stayed generic because it's written as `writeJSON(w, status, response.value)` —
+a struct field access on a result-union wrapper, not a bare local variable or
+composite literal.
 
 - **Two new resolution patterns in `internal/openapi/dto_resolve.go`.** A
   two-value type assertion

@@ -354,6 +354,60 @@ func TestTaskHandlerCreatesAndLoadsTaskWithAttachments(t *testing.T) {
 	}
 }
 
+// TestTaskHandlerHandleUserWork locks in a real bug found by hand-testing the
+// demo: GET /api/users/{user_id}/work matched the generic users-collection
+// route before this dedicated one existed, so the browser decoded a bare
+// user record where it expected {"tasks": [...]} and the profile's "Public
+// work" tab failed with a JSON decode error.
+func TestTaskHandlerHandleUserWork(t *testing.T) {
+	storage := newTestBrowserStorage()
+	handler := NewTaskHandler(storage, fixedHandlerActor{userID: "user-1"}, fixedTaskIDs{value: "task-1"})
+
+	create := handler.Handle(Request{
+		Method: MethodPost,
+		Path:   "/api/tasks",
+		Body:   `{"owner":{"kind":"user","user_id":"user-1"},"title":"Reserved task","description":"Do it.","reward":{"kind":"none","credit_amount":0,"collectible_ids":[]},"participation":{"policy":"open","assignee_scope":"user","reservation_expiry_hours":48},"visibility":{"kind":"public"},"placement":{"kind":"standalone"},"response_schema_json":"{\"kind\":\"freeform\"}","payload":{"kind":"none","json":""},"task_type":"general","attachments":[]}`,
+	})
+	if _, matched := create.(RequestHandled); !matched {
+		t.Fatalf("create result = %#v, want RequestHandled", create)
+	}
+
+	activeResult := SaveReservation(storage, StoredReservation{ID: "reservation-1", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-2", State: "active", RequestedBy: "user-1"})
+	if _, matched := activeResult.(ReservationStored); !matched {
+		t.Fatalf("save active reservation = %#v, want ReservationStored", activeResult)
+	}
+	declinedResult := SaveReservation(storage, StoredReservation{ID: "reservation-2", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-3", State: "declined", RequestedBy: "user-1"})
+	if _, matched := declinedResult.(ReservationStored); !matched {
+		t.Fatalf("save declined reservation = %#v, want ReservationStored", declinedResult)
+	}
+
+	assignedResult := handler.Handle(Request{Method: MethodGet, Path: "/api/users/user-2/work", Body: ""})
+	assigned, assignedMatched := assignedResult.(RequestHandled)
+	if !assignedMatched {
+		t.Fatalf("user-2 work result = %#v, want RequestHandled", assignedResult)
+	}
+	var assignedBody tasksResponseBody
+	if err := json.Unmarshal([]byte(assigned.Value.Body), &assignedBody); err != nil {
+		t.Fatalf("decode user-2 work response: %v", err)
+	}
+	if len(assignedBody.Tasks) != 1 || assignedBody.Tasks[0].ID != "task-1" {
+		t.Fatalf("user-2 work tasks = %#v, want [task-1]", assignedBody.Tasks)
+	}
+
+	declinedUserResult := handler.Handle(Request{Method: MethodGet, Path: "/api/users/user-3/work", Body: ""})
+	declinedUser, declinedUserMatched := declinedUserResult.(RequestHandled)
+	if !declinedUserMatched {
+		t.Fatalf("user-3 work result = %#v, want RequestHandled", declinedUserResult)
+	}
+	var declinedUserBody tasksResponseBody
+	if err := json.Unmarshal([]byte(declinedUser.Value.Body), &declinedUserBody); err != nil {
+		t.Fatalf("decode user-3 work response: %v", err)
+	}
+	if len(declinedUserBody.Tasks) != 0 {
+		t.Fatalf("user-3 (declined reservation) work tasks = %#v, want none", declinedUserBody.Tasks)
+	}
+}
+
 func TestInteractionHandlerCreatesCommentsReservationsSubmissionAndLedger(t *testing.T) {
 	storage := newTestBrowserStorage()
 	task := StoredTask{

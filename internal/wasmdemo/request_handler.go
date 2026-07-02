@@ -484,6 +484,9 @@ func (handler TaskHandler) Handle(request Request) HandleResult {
 	if teamID := teamWorkPathID(request.Path); teamID != "" {
 		return handler.handleTeamWork(request, teamID)
 	}
+	if userID := userWorkPathID(request.Path); userID != "" {
+		return handler.handleUserWork(request, userID)
+	}
 	if action := taskActionPath(request.Path); action.taskID != "" {
 		return handler.handleTaskAction(request, action)
 	}
@@ -526,6 +529,57 @@ func (handler TaskHandler) handleTeamWork(request Request, teamID string) Handle
 	encoded, err := json.Marshal(tasksResponseBody{Tasks: taskSummaries(tasks[start:end])})
 	if err != nil {
 		return RequestHandleRejected{Reason: "team work response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+// handleUserWork answers GET /api/users/{user_id}/work: tasks the given user
+// holds an active user-assignee reservation on. Reservations are indexed by
+// task, not by assignee, so this scans every stored task's reservations
+// rather than a direct lookup; acceptable at the demo's in-memory scale.
+func (handler TaskHandler) handleUserWork(request Request, userID string) HandleResult {
+	if request.Method.String() != MethodGet.String() {
+		return RequestHandleRejected{Reason: "request method is unsupported for user work"}
+	}
+	pageResult := storedListPageFromPath(request.Path, "user work")
+	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
+	if !pageMatched {
+		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+	}
+	idsResult := loadStringIndex(handler.storage, "task:index", "task")
+	ids, idsMatched := idsResult.(stringIndexLoaded)
+	if !idsMatched {
+		return RequestHandleRejected{Reason: idsResult.(stringIndexRejected).reason}
+	}
+	cleanUserID := strings.TrimSpace(userID)
+	tasks := make([]StoredTask, 0)
+	for _, taskID := range ids.values {
+		reservationsResult := ListTaskReservations(handler.storage, taskID, DefaultStoredListPage())
+		reservations, reservationsMatched := reservationsResult.(ReservationsStored)
+		if !reservationsMatched {
+			continue
+		}
+		assigned := false
+		for _, reservation := range reservations.Values {
+			if reservation.AssigneeKind == "user" && reservation.AssigneeID == cleanUserID && reservation.State == "active" {
+				assigned = true
+				break
+			}
+		}
+		if !assigned {
+			continue
+		}
+		taskResult := LoadTask(handler.storage, taskID)
+		task, taskMatched := taskResult.(TaskStored)
+		if !taskMatched {
+			continue
+		}
+		tasks = append(tasks, task.Value)
+	}
+	start, end := pageBounds(len(tasks), page.value)
+	encoded, err := json.Marshal(tasksResponseBody{Tasks: taskSummaries(tasks[start:end])})
+	if err != nil {
+		return RequestHandleRejected{Reason: "user work response encoding failed"}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -855,6 +909,11 @@ type taskResponseBody struct {
 }
 
 type tasksResponseBody struct {
+	Tasks []taskResponseBody `json:"tasks"`
+}
+
+type userProfileResponseBody struct {
+	ID    string             `json:"id"`
 	Tasks []taskResponseBody `json:"tasks"`
 }
 
