@@ -1,26 +1,27 @@
 # Status
 
-The repository contains pull request 1 through pull request 106 work, merged
-into `main`, plus the current `task/ui-ux-declutter-and-profile-fix` branch.
+The repository contains pull request 1 through pull request 107 work, merged
+into `main`, plus the current `task/org-detail-declutter-and-audit-fix` branch.
 
-Active task: `task/ui-ux-declutter-and-profile-fix` fixes two real broken
-browser flows found by hand-testing the Go/WASM demo, and declutters the Elm
-client's busiest pages. `GET /api/users/{user_id}` in the WASM demo backend
-(`internal/wasmdemo`) returned the raw stored user record instead of the real
-backend's `{id, tasks}` profile shape, so every profile page view failed with a
-JSON decode error; `GET /api/users/{user_id}/work` did not exist at all in the
-demo and matched the generic users route, so the profile's "Public work" tab
-failed the same way. Both are fixed and covered by regression tests. Separately,
-the Admin page (5 always-expanded sections), the Tasks/Discovery filter panels,
-and the Create Task form (several always-visible advanced/optional fields) are
-now built on a new `Ui.disclosure` native `<details>`/`<summary>` component so
-secondary content is collapsed by default and expands on demand; the page's root
-view is now keyed by route (`Html.Keyed`) so a `<details>` a user expanded on
-one page does not visually carry over to an unrelated page's `<details>` at the
-same tree position after navigating. Hard deletes remain out of scope; use soft
-lifecycle states, anonymization, redaction, tombstones, and audit records.
-Email/provider delivery, anonymous worker identity, per-project tokens, external
-wallets, and crypto integrations are out of scope.
+Active task: `task/org-detail-declutter-and-audit-fix` continues the prior
+branch's hand-testing pass onto the organization detail page. Found a third real
+bug the same way: `GET /api/organizations/{organization_id}/audit-events` was
+unclassified in the WASM demo (`internal/wasmdemo`, a 404), so the organization
+detail page's "Organization audit" section always failed, and a copy-paste
+mistake in the Elm client stored that failure's message in `orgTaskMessage`
+instead of a dedicated field, surfacing the error under "Organization tasks"
+instead of "Organization audit". Both fixed (a new `orgAuditMessage` field, and
+the WASM demo route now reuses the existing platform-admin audit-events handler
+scoped to the organization's subject id). The organization detail page
+(Operations dashboard, Organization tasks with a full
+filter/search/sort/saved-views panel, Teams, Members, Provision a member,
+Collectibles — previously one ~2050px wall) is now built on the `Ui.disclosure`
+component from the prior branch, collapsing Filters/Teams/Members/Collectibles
+by default (down to ~1180px); the Collectibles page's admin-only "award a
+default collectible" picker is collapsed the same way. Hard deletes remain out
+of scope; use soft lifecycle states, anonymization, redaction, tombstones, and
+audit records. Email/provider delivery, anonymous worker identity, per-project
+tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -65,10 +66,17 @@ Current implemented surface:
   reservation on, so a user's profile page (public tasks and public work tabs)
   renders correctly in the browser demo.
 - Secondary sections on the busiest pages (Admin's five sections, the
-  Tasks/Discovery filter panels, and Create Task's advanced/optional fields) are
-  collapsible (`Ui.disclosure`, native `<details>`/`<summary>`) and collapsed by
-  default unless already in use, so those pages read short at a glance and
-  expand on demand.
+  Tasks/Discovery filter panels, Create Task's advanced/optional fields, the
+  organization detail page's task filters/Teams/Members/Collectibles, and the
+  Collectibles page's admin-only award-recipient picker) are collapsible
+  (`Ui.disclosure`, native `<details>`/`<summary>`) and collapsed by default
+  unless already in use, so those pages read short at a glance and expand on
+  demand.
+- The Go/WASM demo backend's
+  `GET /api/organizations/{organization_id}/audit-events` scopes the shared
+  audit-event store to that organization's subject id, matching the real
+  backend's `listOrganizationAuditEvents`, so the organization detail page's
+  "Organization audit" section loads instead of 404ing.
 - Admin operations status is available to platform admins at
   `/api/admin/operations`.
 - Authenticated users can report tasks through the task detail page. Reports are
@@ -309,30 +317,29 @@ Current implemented surface:
 
 Current verification:
 
-- Found both `internal/wasmdemo` bugs and confirmed the fixes by actually
-  running the compiled Go/WASM demo in a real Chromium browser (Playwright) and
-  reading the rendered profile page, not just by code review.
-- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including new
-  `internal/wasmdemo` regression tests for both fixed routes.
+- Found the `internal/wasmdemo` audit-events route bug and the `orgTaskMessage`
+  mislabeling by actually running the compiled Go/WASM demo in a real Chromium
+  browser, opening an organization's detail page, and reading the rendered error
+  text and its network trace (patched `XMLHttpRequest`/`sharecropHandleRequest`
+  to see the real request/response pairs, since the WASM demo intercepts XHR
+  entirely in JS and never touches the real network stack, so Playwright's
+  `page.on("response")` sees nothing).
+- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including a new
+  `internal/wasmdemo` regression test for the fixed route.
 - `deno task check:ts`, `deno task lint`, `deno task check:policy`, and
   `deno task test` passed.
-- `make check-contracts`, `go tool deadcode -test ./...`, and
-  `make check-copy-paste` (zero clones) passed.
-- `deno fmt --check` passed for touched TypeScript files; `git diff --check`
-  passed.
+- `make check-format`, `make check-contracts`, `go tool deadcode -test ./...`,
+  and `make check-copy-paste` (zero clones) passed; `git diff --check` passed.
 - Ran the full Postgres-backed suite:
   `go test -tags integration
   ./tests/integration`,
   `go test -tags http_e2e ./tests/http_e2e`, and `make e2e-ui` (all 45
   Playwright specs against the real API), plus the WASM-demo-only Playwright
-  specs (`demo.spec.ts`, `mobile.spec.ts`, 12 specs) run standalone. Fixed the 6
+  specs (`demo.spec.ts`, `mobile.spec.ts`, 12 specs) run standalone. Fixed the
   existing Playwright tests that clicked directly into sections now collapsed by
-  default (Admin's platform-admins/ privacy/moderation sections, Create Task's
-  advanced options) by expanding the relevant `Ui.disclosure` first; confirmed
-  the reactive case (selecting a non-"general" task template) auto-expands
-  Create Task's advanced options without a test change, since `Ui.disclosure`'s
-  open state is a normal reactive view computation, re-applied by Elm on every
-  model update.
+  default (the organization detail page's task filters/Teams/Members, and the
+  Collectibles page's award-recipient picker) by expanding the relevant
+  `Ui.disclosure` first.
 
 Blocking issues:
 

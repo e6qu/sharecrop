@@ -497,6 +497,25 @@ func TestModerationAndAdminHandlersPersistRuntimeRecords(t *testing.T) {
 	if len(auditBody.Events) != 1 || auditBody.Events[0].SubjectID != "user-reviewer" {
 		t.Fatalf("audit body = %#v", auditBody)
 	}
+
+	// GET /api/organizations/{organization_id}/audit-events reproduces a real
+	// bug found by hand-testing the demo: the route was unclassified
+	// (RequestUnsupported, 404), so the organization detail page's audit
+	// section always failed to load. The route now maps to the same
+	// RouteAuditEvents/AdminHandler as the platform-admin-wide listing, scoped
+	// to the organization's own subject id.
+	adapted, adaptedMatched := Adapt(Request{Method: MethodGet, Path: "/api/organizations/org-field/audit-events?limit=10&offset=0"}).(RequestAdapted)
+	if !adaptedMatched || adapted.Route != RouteAuditEvents {
+		t.Fatalf("adapt organization audit-events route = %#v, want RouteAuditEvents", adapted)
+	}
+	if err := SaveAuditEvent(storage, StoredAuditEvent{ID: "audit-org-funded", ActorID: "user-admin", Action: "organization_funded", SubjectKind: "organization", SubjectID: "org-field", MetadataJSON: "{}", CreatedAt: "2026-07-01T10:00:00Z"}); err != nil {
+		t.Fatalf("save organization audit event: %v", err)
+	}
+	orgAudit := handledRuntimeResponse(t, admin.Handle(Request{Method: MethodGet, Path: "/api/organizations/org-field/audit-events?limit=10&offset=0", Body: ""}, RouteAuditEvents), 200)
+	orgAuditBody := decodeAuditEventsResponseBody(t, orgAudit.Body)
+	if len(orgAuditBody.Events) != 1 || orgAuditBody.Events[0].SubjectID != "org-field" {
+		t.Fatalf("organization audit body = %#v, want only the org-field event", orgAuditBody)
+	}
 }
 
 func TestCollectibleHandlerMintsAwardsTransfersAndLists(t *testing.T) {

@@ -422,7 +422,15 @@ func (handler AdminHandler) handleAuditEvents(request Request) HandleResult {
 	if err != nil {
 		return RequestHandleRejected{Reason: "audit query is invalid"}
 	}
-	events, err := ListAuditEvents(handler.storage, values.Get("action"), values.Get("subject_kind"), values.Get("subject_id"), page.value)
+	// GET /api/organizations/{organization_id}/audit-events scopes the list to
+	// that organization's own subject id, matching internal/http's
+	// listOrganizationAuditEvents; the platform-admin-wide
+	// GET /api/admin/audit-events instead takes subject_id as a free filter.
+	subjectID := values.Get("subject_id")
+	if organizationID := organizationAuditEventsPathID(request.Path); organizationID != "" {
+		subjectID = organizationID
+	}
+	events, err := ListAuditEvents(handler.storage, values.Get("action"), values.Get("subject_kind"), subjectID, page.value)
 	if err != nil {
 		return RequestHandleRejected{Reason: err.Error()}
 	}

@@ -8194,6 +8194,7 @@ var $author$project$Main$enterPage = F2(
 					{
 						activeOrgId: organizationId,
 						orgAuditEvents: _List_Nil,
+						orgAuditMessage: $elm$core$Maybe$Nothing,
 						orgBalance: $elm$core$Maybe$Nothing,
 						orgCollectibles: _List_Nil,
 						orgCollectiblesMessage: $elm$core$Maybe$Nothing,
@@ -9394,6 +9395,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		notificationsOffset: 0,
 		operations: $elm$core$Maybe$Nothing,
 		orgAuditEvents: _List_Nil,
+		orgAuditMessage: $elm$core$Maybe$Nothing,
 		orgBalance: $elm$core$Maybe$Nothing,
 		orgCollectibles: _List_Nil,
 		orgCollectiblesMessage: $elm$core$Maybe$Nothing,
@@ -13984,7 +13986,7 @@ var $author$project$Main$update = F2(
 							function (state) {
 								return _Utils_update(
 									state,
-									{orgAuditEvents: response.events});
+									{orgAuditEvents: response.events, orgAuditMessage: $elm$core$Maybe$Nothing});
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
@@ -13998,7 +14000,7 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										orgAuditEvents: _List_Nil,
-										orgTaskMessage: $elm$core$Maybe$Just(
+										orgAuditMessage: $elm$core$Maybe$Just(
 											$author$project$Sharecrop$Labels$httpErrorLabel(error))
 									});
 							}),
@@ -20083,56 +20085,49 @@ var $author$project$Sharecrop$View$chooserButton = F4(
 			labelText);
 	});
 var $author$project$Sharecrop$View$awardRecipientControl = function (state) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('mt-4 space-y-3')
-			]),
-		_List_fromArray(
-			[
-				$author$project$Sharecrop$Ui$label_('Admin: award a default collectible'),
-				A2(
-				$elm$html$Html$p,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('text-xs text-slate-600'),
-						$author$project$Sharecrop$Ui$testId('award-admin-note')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Awarding default collectibles requires a platform administrator (enabled in the demo).')
-					])),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
-					]),
-				_List_fromArray(
-					[
-						A4(
-						$author$project$Sharecrop$View$chooserButton,
-						state.awardRecipientKind === 'user',
-						$author$project$Sharecrop$Types$AwardRecipientKindChanged('user'),
-						'award-kind-user',
-						'User'),
-						A4(
-						$author$project$Sharecrop$View$chooserButton,
-						state.awardRecipientKind === 'team',
-						$author$project$Sharecrop$Types$AwardRecipientKindChanged('team'),
-						'award-kind-team',
-						'Team'),
-						A4(
-						$author$project$Sharecrop$View$chooserButton,
-						state.awardRecipientKind === 'organization',
-						$author$project$Sharecrop$Types$AwardRecipientKindChanged('organization'),
-						'award-kind-organization',
-						'Organization')
-					])),
-				$author$project$Sharecrop$View$awardRecipientPicker(state),
-				A2($author$project$Sharecrop$View$maybeNote, state.awardDefaultMessage, 'award-default-message')
-			]));
+	return _List_fromArray(
+		[
+			A2(
+			$elm$html$Html$p,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-xs text-slate-600'),
+					$author$project$Sharecrop$Ui$testId('award-admin-note')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('Awarding default collectibles requires a platform administrator (enabled in the demo).')
+				])),
+			A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+				]),
+			_List_fromArray(
+				[
+					A4(
+					$author$project$Sharecrop$View$chooserButton,
+					state.awardRecipientKind === 'user',
+					$author$project$Sharecrop$Types$AwardRecipientKindChanged('user'),
+					'award-kind-user',
+					'User'),
+					A4(
+					$author$project$Sharecrop$View$chooserButton,
+					state.awardRecipientKind === 'team',
+					$author$project$Sharecrop$Types$AwardRecipientKindChanged('team'),
+					'award-kind-team',
+					'Team'),
+					A4(
+					$author$project$Sharecrop$View$chooserButton,
+					state.awardRecipientKind === 'organization',
+					$author$project$Sharecrop$Types$AwardRecipientKindChanged('organization'),
+					'award-kind-organization',
+					'Organization')
+				])),
+			$author$project$Sharecrop$View$awardRecipientPicker(state),
+			A2($author$project$Sharecrop$View$maybeNote, state.awardDefaultMessage, 'award-default-message')
+		]);
 };
 var $author$project$Sharecrop$Types$AwardDefaultClicked = function (a) {
 	return {$: 'AwardDefaultClicked', a: a};
@@ -20405,7 +20400,12 @@ var $author$project$Sharecrop$View$collectiblesView = function (state) {
 					])),
 				$author$project$Sharecrop$View$mintForm(state),
 				$author$project$Sharecrop$View$awardForm(state),
-				state.isAdmin ? $author$project$Sharecrop$View$awardRecipientControl(state) : $elm$html$Html$text(''),
+				state.isAdmin ? A4(
+				$author$project$Sharecrop$Ui$disclosure,
+				'award-default-section',
+				$elm$core$String$trim(state.awardRecipientId) !== '',
+				'Admin: award a default collectible',
+				$author$project$Sharecrop$View$awardRecipientControl(state)) : $elm$html$Html$text(''),
 				$author$project$Sharecrop$View$catalogGallery(state),
 				$author$project$Sharecrop$View$collectiblesList(state)
 			]));
@@ -22278,46 +22278,48 @@ var $author$project$Sharecrop$View$orgAuditEventRow = function (event) {
 					]))
 			]));
 };
-var $author$project$Sharecrop$View$orgAuditPanel = function (events) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('space-y-2'),
-				$author$project$Sharecrop$Ui$testId('org-audit-panel')
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$h3,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('text-sm font-semibold text-slate-900')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Organization audit')
-					])),
-				$elm$core$List$isEmpty(events) ? A2(
-				$elm$html$Html$p,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('text-sm text-slate-500'),
-						$author$project$Sharecrop$Ui$testId('org-audit-empty')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('No audit events.')
-					])) : A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('space-y-2'),
-						$author$project$Sharecrop$Ui$testId('org-audit-events')
-					]),
-				A2($elm$core$List$map, $author$project$Sharecrop$View$orgAuditEventRow, events))
-			]));
-};
+var $author$project$Sharecrop$View$orgAuditPanel = F2(
+	function (events, message) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-2'),
+					$author$project$Sharecrop$Ui$testId('org-audit-panel')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$h3,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm font-semibold text-slate-900')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Organization audit')
+						])),
+					$elm$core$List$isEmpty(events) ? A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-slate-500'),
+							$author$project$Sharecrop$Ui$testId('org-audit-empty')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No audit events.')
+						])) : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('space-y-2'),
+							$author$project$Sharecrop$Ui$testId('org-audit-events')
+						]),
+					A2($elm$core$List$map, $author$project$Sharecrop$View$orgAuditEventRow, events)),
+					A2($author$project$Sharecrop$View$maybeNote, message, 'org-audit-message')
+				]));
+	});
 var $author$project$Sharecrop$Types$NextOrgLedgerPageClicked = {$: 'NextOrgLedgerPageClicked'};
 var $author$project$Sharecrop$Types$PreviousOrgLedgerPageClicked = {$: 'PreviousOrgLedgerPageClicked'};
 var $author$project$Sharecrop$Labels$kindLabel = function (kind) {
@@ -22493,7 +22495,7 @@ var $author$project$Sharecrop$View$organizationOperationsDashboard = function (s
 						'org-ops-tasks-closed')
 					])),
 				A2($author$project$Sharecrop$View$orgLedgerPanel, state.orgLedger, state.orgLedgerOffset),
-				$author$project$Sharecrop$View$orgAuditPanel(state.orgAuditEvents)
+				A2($author$project$Sharecrop$View$orgAuditPanel, state.orgAuditEvents, state.orgAuditMessage)
 			]));
 };
 var $author$project$Sharecrop$View$provisionableRoles = _List_fromArray(
@@ -22589,104 +22591,141 @@ var $author$project$Sharecrop$View$tasksListSimple = F2(
 				tasks));
 	});
 var $author$project$Sharecrop$View$activeOrganizationView = function (state) {
-	return (state.activeOrgId === '') ? $elm$html$Html$text('') : A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('mt-4 space-y-4 rounded-md bg-slate-50 p-4'),
-				$author$project$Sharecrop$Ui$testId('active-organization')
-			]),
-		_List_fromArray(
-			[
-				$author$project$Sharecrop$Ui$label_(
-				'Balance: ' + $author$project$Sharecrop$View$balanceLabel(state.orgBalance)),
-				$author$project$Sharecrop$View$organizationOperationsDashboard(state),
-				A3(
-				$author$project$Sharecrop$View$sectionTitleWithCount,
-				'Organization tasks',
-				$elm$core$List$length(state.orgTasks),
-				'org-tasks-heading'),
-				$author$project$Sharecrop$View$orgTaskControls(state),
-				A2($author$project$Sharecrop$View$tasksListSimple, 'org-tasks', state.orgTasks),
-				A2($author$project$Sharecrop$View$maybeNote, state.orgTaskMessage, 'org-task-message'),
-				$author$project$Sharecrop$Ui$sectionTitle('Teams'),
-				$author$project$Sharecrop$View$orgTeamsList(state.orgTeams),
-				A2(
-				$elm$html$Html$form,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('flex flex-wrap items-end gap-2'),
-						$elm$html$Html$Events$onSubmit($author$project$Sharecrop$Types$CreateOrgTeamClicked)
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$author$project$Sharecrop$Ui$fieldLabel,
-						'New team',
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Ui$textInput(
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('text'),
-										$elm$html$Html$Attributes$placeholder('Team name'),
-										$elm$html$Html$Attributes$value(state.createOrgTeamName),
-										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateOrgTeamNameChanged),
-										$author$project$Sharecrop$Ui$testId('create-org-team-name')
-									]))
-							])),
-						A2(
-						$author$project$Sharecrop$Ui$primaryButton,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$type_('submit'),
-								$author$project$Sharecrop$Ui$testId('create-org-team')
-							]),
-						'Create team')
-					])),
-				A2($author$project$Sharecrop$View$maybeNote, state.orgTeamMessage, 'org-team-message'),
-				$author$project$Sharecrop$Ui$sectionTitle('Members'),
-				$author$project$Sharecrop$View$orgMembersList(state.orgMembers),
-				$author$project$Sharecrop$Ui$sectionTitle('Provision a member'),
-				A2(
-				$elm$html$Html$form,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('flex flex-wrap items-end gap-2'),
-						$elm$html$Html$Events$onSubmit($author$project$Sharecrop$Types$ProvisionMemberClicked)
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$author$project$Sharecrop$Ui$fieldLabel,
-						'Member email',
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Ui$textInput(
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('email'),
-										$elm$html$Html$Attributes$placeholder('person@example.com'),
-										$elm$html$Html$Attributes$value(state.provisionMemberEmail),
-										$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$ProvisionMemberEmailChanged),
-										$author$project$Sharecrop$Ui$testId('provision-member-email')
-									]))
-							])),
-						$author$project$Sharecrop$View$provisionRolePicker(state.provisionMemberRoles),
-						A2(
-						$author$project$Sharecrop$Ui$primaryButton,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$type_('submit'),
-								$author$project$Sharecrop$Ui$testId('provision-member')
-							]),
-						'Provision member')
-					])),
-				A2($author$project$Sharecrop$View$maybeNote, state.provisionMemberMessage, 'provision-member-message'),
-				$author$project$Sharecrop$Ui$sectionTitle('Collectibles'),
-				A2($author$project$Sharecrop$View$collectiblesHoldingsList, 'org-collectibles', state.orgCollectibles),
-				A2($author$project$Sharecrop$View$maybeNote, state.orgCollectiblesMessage, 'org-collectibles-message')
-			]));
+	if (state.activeOrgId === '') {
+		return $elm$html$Html$text('');
+	} else {
+		var orgTaskFiltersActive = (state.orgTaskFilter !== '') || ((state.orgTaskQuery !== '') || ((state.orgTaskTypeFilter !== '') || (state.orgTaskSort !== 'newest')));
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('mt-4 space-y-4 rounded-md bg-slate-50 p-4'),
+					$author$project$Sharecrop$Ui$testId('active-organization')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$label_(
+					'Balance: ' + $author$project$Sharecrop$View$balanceLabel(state.orgBalance)),
+					$author$project$Sharecrop$View$organizationOperationsDashboard(state),
+					A3(
+					$author$project$Sharecrop$View$sectionTitleWithCount,
+					'Organization tasks',
+					$elm$core$List$length(state.orgTasks),
+					'org-tasks-heading'),
+					A4(
+					$author$project$Sharecrop$Ui$disclosure,
+					'org-task-filters',
+					orgTaskFiltersActive,
+					'Filters',
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$View$orgTaskControls(state)
+						])),
+					A2($author$project$Sharecrop$View$tasksListSimple, 'org-tasks', state.orgTasks),
+					A2($author$project$Sharecrop$View$maybeNote, state.orgTaskMessage, 'org-task-message'),
+					A4(
+					$author$project$Sharecrop$Ui$disclosure,
+					'org-teams-section',
+					false,
+					'Teams (' + ($elm$core$String$fromInt(
+						$elm$core$List$length(state.orgTeams)) + ')'),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$View$orgTeamsList(state.orgTeams),
+							A2(
+							$elm$html$Html$form,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('flex flex-wrap items-end gap-2'),
+									$elm$html$Html$Events$onSubmit($author$project$Sharecrop$Types$CreateOrgTeamClicked)
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$author$project$Sharecrop$Ui$fieldLabel,
+									'New team',
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$textInput(
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$type_('text'),
+													$elm$html$Html$Attributes$placeholder('Team name'),
+													$elm$html$Html$Attributes$value(state.createOrgTeamName),
+													$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$CreateOrgTeamNameChanged),
+													$author$project$Sharecrop$Ui$testId('create-org-team-name')
+												]))
+										])),
+									A2(
+									$author$project$Sharecrop$Ui$primaryButton,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('submit'),
+											$author$project$Sharecrop$Ui$testId('create-org-team')
+										]),
+									'Create team')
+								])),
+							A2($author$project$Sharecrop$View$maybeNote, state.orgTeamMessage, 'org-team-message')
+						])),
+					A4(
+					$author$project$Sharecrop$Ui$disclosure,
+					'org-members-section',
+					false,
+					'Members (' + ($elm$core$String$fromInt(
+						$elm$core$List$length(state.orgMembers)) + ')'),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$View$orgMembersList(state.orgMembers),
+							$author$project$Sharecrop$Ui$sectionTitle('Provision a member'),
+							A2(
+							$elm$html$Html$form,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('flex flex-wrap items-end gap-2'),
+									$elm$html$Html$Events$onSubmit($author$project$Sharecrop$Types$ProvisionMemberClicked)
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$author$project$Sharecrop$Ui$fieldLabel,
+									'Member email',
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$textInput(
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$type_('email'),
+													$elm$html$Html$Attributes$placeholder('person@example.com'),
+													$elm$html$Html$Attributes$value(state.provisionMemberEmail),
+													$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$ProvisionMemberEmailChanged),
+													$author$project$Sharecrop$Ui$testId('provision-member-email')
+												]))
+										])),
+									$author$project$Sharecrop$View$provisionRolePicker(state.provisionMemberRoles),
+									A2(
+									$author$project$Sharecrop$Ui$primaryButton,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('submit'),
+											$author$project$Sharecrop$Ui$testId('provision-member')
+										]),
+									'Provision member')
+								])),
+							A2($author$project$Sharecrop$View$maybeNote, state.provisionMemberMessage, 'provision-member-message')
+						])),
+					A4(
+					$author$project$Sharecrop$Ui$disclosure,
+					'org-collectibles-section',
+					false,
+					'Collectibles (' + ($elm$core$String$fromInt(
+						$elm$core$List$length(state.orgCollectibles)) + ')'),
+					_List_fromArray(
+						[
+							A2($author$project$Sharecrop$View$collectiblesHoldingsList, 'org-collectibles', state.orgCollectibles),
+							A2($author$project$Sharecrop$View$maybeNote, state.orgCollectiblesMessage, 'org-collectibles-message')
+						]))
+				]));
+	}
 };
 var $author$project$Sharecrop$View$organizationDetailView = function (state) {
 	var name = A2(

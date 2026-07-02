@@ -1226,34 +1226,41 @@ activeOrganizationView state =
         text ""
 
     else
+        let
+            orgTaskFiltersActive =
+                state.orgTaskFilter /= "" || state.orgTaskQuery /= "" || state.orgTaskTypeFilter /= "" || state.orgTaskSort /= "newest"
+        in
         div [ Html.Attributes.class "mt-4 space-y-4 rounded-md bg-slate-50 p-4", testId "active-organization" ]
             [ Ui.label_ ("Balance: " ++ balanceLabel state.orgBalance)
             , organizationOperationsDashboard state
             , sectionTitleWithCount "Organization tasks" (List.length state.orgTasks) "org-tasks-heading"
-            , orgTaskControls state
+            , Ui.disclosure "org-task-filters" orgTaskFiltersActive "Filters" [ orgTaskControls state ]
             , tasksListSimple "org-tasks" state.orgTasks
             , maybeNote state.orgTaskMessage "org-task-message"
-            , Ui.sectionTitle "Teams"
-            , orgTeamsList state.orgTeams
-            , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit CreateOrgTeamClicked ]
-                [ Ui.fieldLabel "New team"
-                    [ Ui.textInput [ type_ "text", placeholder "Team name", value state.createOrgTeamName, onInput CreateOrgTeamNameChanged, testId "create-org-team-name" ] ]
-                , Ui.primaryButton [ type_ "submit", testId "create-org-team" ] "Create team"
+            , Ui.disclosure "org-teams-section" False ("Teams (" ++ String.fromInt (List.length state.orgTeams) ++ ")") <|
+                [ orgTeamsList state.orgTeams
+                , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit CreateOrgTeamClicked ]
+                    [ Ui.fieldLabel "New team"
+                        [ Ui.textInput [ type_ "text", placeholder "Team name", value state.createOrgTeamName, onInput CreateOrgTeamNameChanged, testId "create-org-team-name" ] ]
+                    , Ui.primaryButton [ type_ "submit", testId "create-org-team" ] "Create team"
+                    ]
+                , maybeNote state.orgTeamMessage "org-team-message"
                 ]
-            , maybeNote state.orgTeamMessage "org-team-message"
-            , Ui.sectionTitle "Members"
-            , orgMembersList state.orgMembers
-            , Ui.sectionTitle "Provision a member"
-            , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit ProvisionMemberClicked ]
-                [ Ui.fieldLabel "Member email"
-                    [ Ui.textInput [ type_ "email", placeholder "person@example.com", value state.provisionMemberEmail, onInput ProvisionMemberEmailChanged, testId "provision-member-email" ] ]
-                , provisionRolePicker state.provisionMemberRoles
-                , Ui.primaryButton [ type_ "submit", testId "provision-member" ] "Provision member"
+            , Ui.disclosure "org-members-section" False ("Members (" ++ String.fromInt (List.length state.orgMembers) ++ ")") <|
+                [ orgMembersList state.orgMembers
+                , Ui.sectionTitle "Provision a member"
+                , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit ProvisionMemberClicked ]
+                    [ Ui.fieldLabel "Member email"
+                        [ Ui.textInput [ type_ "email", placeholder "person@example.com", value state.provisionMemberEmail, onInput ProvisionMemberEmailChanged, testId "provision-member-email" ] ]
+                    , provisionRolePicker state.provisionMemberRoles
+                    , Ui.primaryButton [ type_ "submit", testId "provision-member" ] "Provision member"
+                    ]
+                , maybeNote state.provisionMemberMessage "provision-member-message"
                 ]
-            , maybeNote state.provisionMemberMessage "provision-member-message"
-            , Ui.sectionTitle "Collectibles"
-            , collectiblesHoldingsList "org-collectibles" state.orgCollectibles
-            , maybeNote state.orgCollectiblesMessage "org-collectibles-message"
+            , Ui.disclosure "org-collectibles-section" False ("Collectibles (" ++ String.fromInt (List.length state.orgCollectibles) ++ ")") <|
+                [ collectiblesHoldingsList "org-collectibles" state.orgCollectibles
+                , maybeNote state.orgCollectiblesMessage "org-collectibles-message"
+                ]
             ]
 
 
@@ -1272,7 +1279,7 @@ organizationOperationsDashboard state =
             , operationMetric "Closed tasks" (String.fromInt (countTasks Task.TaskStateClosed state.orgTasks)) "org-ops-tasks-closed"
             ]
         , orgLedgerPanel state.orgLedger state.orgLedgerOffset
-        , orgAuditPanel state.orgAuditEvents
+        , orgAuditPanel state.orgAuditEvents state.orgAuditMessage
         ]
 
 
@@ -1291,8 +1298,8 @@ orgLedgerPanel entries offset =
         ]
 
 
-orgAuditPanel : List Admin.AuditEventResponse -> Html Msg
-orgAuditPanel events =
+orgAuditPanel : List Admin.AuditEventResponse -> Maybe String -> Html Msg
+orgAuditPanel events message =
     div [ Html.Attributes.class "space-y-2", testId "org-audit-panel" ]
         [ h3 [ Html.Attributes.class "text-sm font-semibold text-slate-900" ] [ text "Organization audit" ]
         , if List.isEmpty events then
@@ -1301,6 +1308,7 @@ orgAuditPanel events =
           else
             div [ Html.Attributes.class "space-y-2", testId "org-audit-events" ]
                 (List.map orgAuditEventRow events)
+        , maybeNote message "org-audit-message"
         ]
 
 
@@ -2301,7 +2309,7 @@ collectiblesView state =
         , mintForm state
         , awardForm state
         , if state.isAdmin then
-            awardRecipientControl state
+            Ui.disclosure "award-default-section" (String.trim state.awardRecipientId /= "") "Admin: award a default collectible" (awardRecipientControl state)
 
           else
             text ""
@@ -2310,19 +2318,17 @@ collectiblesView state =
         ]
 
 
-awardRecipientControl : LoggedInModel -> Html Msg
+awardRecipientControl : LoggedInModel -> List (Html Msg)
 awardRecipientControl state =
-    div [ Html.Attributes.class "mt-4 space-y-3" ]
-        [ Ui.label_ "Admin: award a default collectible"
-        , p [ Html.Attributes.class "text-xs text-slate-600", testId "award-admin-note" ] [ text "Awarding default collectibles requires a platform administrator (enabled in the demo)." ]
-        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-            [ chooserButton (state.awardRecipientKind == "user") (AwardRecipientKindChanged "user") "award-kind-user" "User"
-            , chooserButton (state.awardRecipientKind == "team") (AwardRecipientKindChanged "team") "award-kind-team" "Team"
-            , chooserButton (state.awardRecipientKind == "organization") (AwardRecipientKindChanged "organization") "award-kind-organization" "Organization"
-            ]
-        , awardRecipientPicker state
-        , maybeNote state.awardDefaultMessage "award-default-message"
+    [ p [ Html.Attributes.class "text-xs text-slate-600", testId "award-admin-note" ] [ text "Awarding default collectibles requires a platform administrator (enabled in the demo)." ]
+    , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+        [ chooserButton (state.awardRecipientKind == "user") (AwardRecipientKindChanged "user") "award-kind-user" "User"
+        , chooserButton (state.awardRecipientKind == "team") (AwardRecipientKindChanged "team") "award-kind-team" "Team"
+        , chooserButton (state.awardRecipientKind == "organization") (AwardRecipientKindChanged "organization") "award-kind-organization" "Organization"
         ]
+    , awardRecipientPicker state
+    , maybeNote state.awardDefaultMessage "award-default-message"
+    ]
 
 
 awardRecipientPicker : LoggedInModel -> Html Msg

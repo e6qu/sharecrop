@@ -147,6 +147,8 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteNotifications}
 	case organizationCollectionPathOnly(request.Path) == "/api/organizations":
 		return RequestAdapted{Route: RouteOrganizations}
+	case organizationAuditEventsPathID(request.Path) != "":
+		return RequestAdapted{Route: RouteAuditEvents}
 	case organizationMemberRoute(request.Path) != "":
 		return RequestAdapted{Route: RouteOrganizationMembers}
 	case organizationTeamsRoute(request.Path) != "":
@@ -254,6 +256,14 @@ func organizationTeamsRoute(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[2])
+}
+
+func organizationAuditEventsPathID(path string) string {
+	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "organizations" && parts[3] == "audit-events" {
+		return strings.TrimSpace(parts[2])
+	}
+	return ""
 }
 
 func organizationMemberRoute(path string) string {

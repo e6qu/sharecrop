@@ -145,6 +145,7 @@ emptyLoggedIn response =
     , orgLedger = []
     , orgLedgerOffset = 0
     , orgAuditEvents = []
+    , orgAuditMessage = Nothing
     , orgTeams = []
     , standaloneTeams = []
     , orgMembers = []
@@ -523,7 +524,7 @@ enterPage page state =
             { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0, discoveryQuery = "" }
 
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgLedgerOffset = 0, orgAuditEvents = [], orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgLedgerOffset = 0, orgAuditEvents = [], orgAuditMessage = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing }
@@ -1366,10 +1367,10 @@ update msg model =
                 )
 
         OrgAuditEventsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = response.events }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = response.events, orgAuditMessage = Nothing }), Cmd.none )
 
         OrgAuditEventsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = [], orgTaskMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = [], orgAuditMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         OrgTeamsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgTeams = Api.teamsFromResult result }), Cmd.none )

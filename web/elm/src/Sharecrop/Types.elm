@@ -185,6 +185,7 @@ type alias LoggedInModel =
     , orgLedger : List Ledger.LedgerEntryResponse
     , orgLedgerOffset : Int
     , orgAuditEvents : List Admin.AuditEventResponse
+    , orgAuditMessage : Maybe String
     , orgTeams : List Team.TeamResponse
     , standaloneTeams : List Team.TeamResponse
     , orgMembers : List Organization.OrganizationMemberResponse

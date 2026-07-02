@@ -1,8 +1,41 @@
 # What We Did
 
-`task/ui-ux-declutter-and-profile-fix` fixed two real broken browser flows found
-by hand-testing the Go/WASM demo, and decluttered the Elm client's busiest
-pages.
+`task/org-detail-declutter-and-audit-fix` continued the prior branch's
+hand-testing pass onto the organization detail page, found a third real bug the
+same way, and applied the `Ui.disclosure` component there too.
+
+- **A third `internal/wasmdemo` bug, found by loading an organization's detail
+  page in a browser and reading the "Organization audit" section's error.**
+  `GET /api/organizations/{organization_id}/audit-events` was unclassified in
+  the WASM demo's route adapter (`request_adapter.go`), falling through to
+  `RequestUnsupported` (404). Traced it by patching
+  `window.XMLHttpRequest`/`sharecropHandleRequest` to log every request the demo
+  makes, since the WASM demo intercepts XHR entirely in JS and never touches the
+  real network stack — `page.on("response")` sees nothing. Fixed by adding
+  `organizationAuditEventsPathID` and routing it to the existing
+  `RouteAuditEvents`/`AdminHandler.handleAuditEvents`, scoped to the
+  organization's subject id (the same `ListAuditEvents` the platform-admin audit
+  list already uses), matching `internal/http`'s `listOrganizationAuditEvents`.
+- **A related Elm-side bug this uncovered**: `OrgAuditEventsReceived`'s error
+  case stored the failure in `orgTaskMessage` (evidently copy-pasted from
+  `OrgTasksReceived`), so the audit fetch's error rendered under "Organization
+  tasks" instead of "Organization audit". Added a dedicated `orgAuditMessage`
+  field and wired it to the right panel.
+- **Applied `Ui.disclosure`** (introduced in the prior branch) to the
+  organization detail page's task filters, Teams, Members (+ provision-member
+  form), and Collectibles sections — cutting a representative organization page
+  from ~2050px to ~1180px — and to the Collectibles page's admin-only "award a
+  default collectible" recipient picker, which was previously mixed into a page
+  every user sees regardless of role.
+- **Fixed the resulting Playwright regressions** the same way as the prior
+  branch: expanded the relevant disclosure before interacting, in both the
+  WASM-demo-only and real-backend suites. Verified: all 12 WASM-demo Playwright
+  specs, all 45 real-backend Playwright specs (`make e2e-ui`), the Go
+  integration/http_e2e suites, and the full non-browser check suite pass.
+
+`task/ui-ux-declutter-and-profile-fix` (merged into `main`) fixed two real
+broken browser flows found by hand-testing the Go/WASM demo, and decluttered the
+Elm client's busiest pages.
 
 - **Two `internal/wasmdemo` bugs, found by actually loading the demo in a
   browser, not by reading code.** `GET /api/users/{user_id}` matched the demo's
