@@ -167,13 +167,22 @@ func (handler UsersHandler) Handle(request Request) HandleResult {
 	}
 	pathOnly := strings.SplitN(request.Path, "?", 2)[0]
 	if pathOnly != "/api/users" {
-		user, err := LoadUser(handler.storage, usersPath(request.Path))
-		if err != nil {
+		userID := usersPath(request.Path)
+		if _, err := LoadUser(handler.storage, userID); err != nil {
 			return RequestHandleRejected{Reason: err.Error()}
 		}
-		encoded, err := json.Marshal(user)
+		// The real backend's GET /api/users/{user_id} (getUserProfile) returns
+		// {id, tasks: [...tasks this user created...]}, not the stored user
+		// record itself; the browser's profile page decodes exactly that
+		// shape and fails otherwise.
+		listResult := ListTasks(handler.storage, "", "user", userID, "", "", DefaultStoredListPage())
+		listed, listedMatched := listResult.(TasksStored)
+		if !listedMatched {
+			return RequestHandleRejected{Reason: listResult.(TaskStorageRejected).Reason}
+		}
+		encoded, err := json.Marshal(userProfileResponseBody{ID: userID, Tasks: taskSummaries(listed.Values)})
 		if err != nil {
-			return RequestHandleRejected{Reason: "user response encoding failed"}
+			return RequestHandleRejected{Reason: "user profile response encoding failed"}
 		}
 		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 	}

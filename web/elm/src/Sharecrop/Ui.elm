@@ -19,6 +19,25 @@ sectionTitle title =
     h2 [ class "text-lg font-medium" ] [ text title ]
 
 
+{-| A collapsible section built on the native `<details>`/`<summary>`
+elements, so hiding/revealing a section needs no Elm model or message wiring.
+Use for secondary sections on pages that stack several full panels (filters,
+admin queues) so the page reads short by default and expands on demand.
+-}
+disclosure : String -> Bool -> String -> List (Html msg) -> Html msg
+disclosure identifier openByDefault title children =
+    Html.node "details"
+        (if openByDefault then
+            [ attribute "open" "" ]
+
+         else
+            []
+        )
+        [ Html.node "summary" [ class "cursor-pointer select-none text-lg font-medium marker:text-slate-400", testId identifier ] [ text title ]
+        , Html.div [ class "mt-3 space-y-4" ] children
+        ]
+
+
 pageTitle : String -> Html msg
 pageTitle title =
     h1 [ class "text-3xl font-semibold" ] [ text title ]

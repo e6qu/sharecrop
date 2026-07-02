@@ -69,6 +69,7 @@ test("demo uploads small task and submission attachments", async ({ page }) => {
   const taskTitle = `Attachment demo ${Date.now()}`;
   await page.getByTestId("create-title").fill(taskTitle);
   await page.getByTestId("create-description").fill("Task with a small brief.");
+  await page.getByTestId("create-advanced-options").click();
   const createChooser = page.waitForEvent("filechooser");
   await page.getByTestId("create-attachments-pick").click();
   await (await createChooser).setFiles({
@@ -157,6 +158,7 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
     "Offset 0",
   );
   await expect(page.getByTestId("admin-privacy-request")).toHaveCount(1);
+  await page.getByTestId("admin-section-privacy").click();
   await page.getByTestId("admin-privacy-note").fill("Export generated");
   await page.getByTestId("admin-resolve-privacy").click();
   await expect(page.getByTestId("admin-message")).toContainText(
@@ -172,6 +174,7 @@ test("demo admin config grants and revokes platform admins", async ({ page }) =>
   await expect(page.getByText("1250 credits")).toBeVisible();
 
   await page.getByTestId("nav-admin").click();
+  await page.getByTestId("admin-section-platform-admins").click();
   await page.getByTestId("admin-platform-user").selectOption("user-jules");
   await page.getByTestId("admin-grant-platform-admin").click();
   await expect(page.getByTestId("admin-message")).toContainText(
@@ -199,6 +202,7 @@ test("demo admin runs privacy retention from the browser", async ({ page }) => {
   await expect(page.getByText("1250 credits")).toBeVisible();
 
   await page.getByTestId("nav-admin").click();
+  await page.getByTestId("admin-section-privacy").click();
   await page.getByTestId("admin-run-privacy-retention").click();
   await expect(page.getByTestId("admin-message")).toContainText(
     "Privacy retention run finished.",
@@ -249,6 +253,7 @@ test("demo admin triages moderation reports from the browser", async ({ page }) 
   await expect(page.getByTestId("admin-moderation-subject-link")).toHaveCount(
     1,
   );
+  await page.getByTestId("admin-section-moderation").click();
   await page.getByTestId("admin-moderation-note").fill("Handled by admin");
   await page.getByTestId("admin-moderation-resolve").click();
   await expect(page.getByTestId("admin-message")).toContainText(

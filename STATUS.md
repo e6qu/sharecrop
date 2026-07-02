@@ -1,19 +1,26 @@
 # Status
 
-The repository contains pull request 1 through pull request 105 work, merged
-into `main`, plus the current `task/openapi-schema-field-access` branch.
+The repository contains pull request 1 through pull request 106 work, merged
+into `main`, plus the current `task/ui-ux-declutter-and-profile-fix` branch.
 
-Active task: `task/openapi-schema-field-access` closes the one confirmed
-generator gap left by the prior branch: `internal/openapi/dto_resolve.go` now
-resolves a `name, ok := x.(Type)` two-value type assertion and a field-access
-expression (`response.value`), including through internal result-union structs
-with no JSON tags at all, so `createModerationReport`'s response schema resolves
-too. 99/106 responses and 39/61 request bodies now resolve to a typed schema;
-the remainder are genuinely out of scope (MCP JSON-RPC passthrough, bodyless
-routes, static/index/healthz), not generator gaps. Hard deletes remain out of
-scope; use soft lifecycle states, anonymization, redaction, tombstones, and
-audit records. Email/provider delivery, anonymous worker identity, per-project
-tokens, external wallets, and crypto integrations are out of scope.
+Active task: `task/ui-ux-declutter-and-profile-fix` fixes two real broken
+browser flows found by hand-testing the Go/WASM demo, and declutters the Elm
+client's busiest pages. `GET /api/users/{user_id}` in the WASM demo backend
+(`internal/wasmdemo`) returned the raw stored user record instead of the real
+backend's `{id, tasks}` profile shape, so every profile page view failed with a
+JSON decode error; `GET /api/users/{user_id}/work` did not exist at all in the
+demo and matched the generic users route, so the profile's "Public work" tab
+failed the same way. Both are fixed and covered by regression tests. Separately,
+the Admin page (5 always-expanded sections), the Tasks/Discovery filter panels,
+and the Create Task form (several always-visible advanced/optional fields) are
+now built on a new `Ui.disclosure` native `<details>`/`<summary>` component so
+secondary content is collapsed by default and expands on demand; the page's root
+view is now keyed by route (`Html.Keyed`) so a `<details>` a user expanded on
+one page does not visually carry over to an unrelated page's `<details>` at the
+same tree position after navigating. Hard deletes remain out of scope; use soft
+lifecycle states, anonymization, redaction, tombstones, and audit records.
+Email/provider delivery, anonymous worker identity, per-project tokens, external
+wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -52,6 +59,16 @@ Current implemented surface:
 - The Go/WASM demo backend supports agent credential creation, listing, and
   revocation for the task-detail API/MCP panel, profile agent access panel, and
   Agents page.
+- The Go/WASM demo backend's `GET /api/users/{user_id}` matches the real
+  backend's profile shape (`{id, tasks}`, tasks the user created) and
+  `GET /api/users/{user_id}/work` lists tasks the user holds an active assignee
+  reservation on, so a user's profile page (public tasks and public work tabs)
+  renders correctly in the browser demo.
+- Secondary sections on the busiest pages (Admin's five sections, the
+  Tasks/Discovery filter panels, and Create Task's advanced/optional fields) are
+  collapsible (`Ui.disclosure`, native `<details>`/`<summary>`) and collapsed by
+  default unless already in use, so those pages read short at a glance and
+  expand on demand.
 - Admin operations status is available to platform admins at
   `/api/admin/operations`.
 - Authenticated users can report tasks through the task detail page. Reports are
@@ -292,26 +309,30 @@ Current implemented surface:
 
 Current verification:
 
-- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including a new
-  `internal/openapi` regression test reproducing `createModerationReport`'s
-  exact shape (two-value type assertion onto an untagged result-union struct,
-  then a field-access write) plus the full existing suite (unaffected by this
-  change).
+- Found both `internal/wasmdemo` bugs and confirmed the fixes by actually
+  running the compiled Go/WASM demo in a real Chromium browser (Playwright) and
+  reading the rendered profile page, not just by code review.
+- `go build ./...`, `go vet ./...`, and `go test ./...` passed, including new
+  `internal/wasmdemo` regression tests for both fixed routes.
 - `deno task check:ts`, `deno task lint`, `deno task check:policy`, and
   `deno task test` passed.
-- `make check-contracts` and `make check-openapi` passed (both regenerate and
-  assert no diff).
-- `go tool deadcode -test ./...` and `make check-copy-paste` (zero clones)
+- `make check-contracts`, `go tool deadcode -test ./...`, and
+  `make check-copy-paste` (zero clones) passed.
+- `deno fmt --check` passed for touched TypeScript files; `git diff --check`
   passed.
-- Confirmed via `docs/openapi.json` that `POST /api/moderation/reports` now has
-  a typed response schema and that no previously-resolved route regressed
-  (99/106 responses resolve, up from 98/106; 39/61 request bodies, unchanged).
-- Verified the generator is deterministic: ran
-  `go run ./cmd/sharecrop generate
-  openapi` twice in a row and diffed the two
-  outputs byte-for-byte identical.
-- `deno fmt --check` passed for touched TypeScript/Markdown/JSON files.
-- `git diff --check` passed.
+- Ran the full Postgres-backed suite:
+  `go test -tags integration
+  ./tests/integration`,
+  `go test -tags http_e2e ./tests/http_e2e`, and `make e2e-ui` (all 45
+  Playwright specs against the real API), plus the WASM-demo-only Playwright
+  specs (`demo.spec.ts`, `mobile.spec.ts`, 12 specs) run standalone. Fixed the 6
+  existing Playwright tests that clicked directly into sections now collapsed by
+  default (Admin's platform-admins/ privacy/moderation sections, Create Task's
+  advanced options) by expanding the relevant `Ui.disclosure` first; confirmed
+  the reactive case (selecting a non-"general" task template) auto-expands
+  Create Task's advanced options without a test change, since `Ui.disclosure`'s
+  open state is a normal reactive view computation, re-applied by Elm on every
+  model update.
 
 Blocking issues:
 

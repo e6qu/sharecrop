@@ -5,13 +5,17 @@ Current priority from
 
 Active branch:
 
-1. `task/openapi-schema-field-access` is in progress. It closes the one
-   confirmed generator gap from the prior branch: `internal/openapi` now
-   resolves a two-value type assertion (`name, ok := x.(Type)`) and a
-   field-access expression (`response.value`), including through untagged
-   internal result-union structs, so `createModerationReport`'s response now
-   resolves to a typed schema too. 99/106 responses resolve (up from 98/106);
-   39/61 request bodies, unchanged.
+1. `task/ui-ux-declutter-and-profile-fix` is in progress. Fixes two real broken
+   flows found by hand-testing the Go/WASM demo in a browser: the demo's
+   `GET /api/users/{user_id}` returned the raw stored user record instead of the
+   real backend's `{id, tasks}` profile shape (every profile page view failed
+   with a JSON decode error), and `GET /api/users/{user_id}/work` did not exist
+   at all in the demo (the profile's "Public work" tab failed the same way).
+   Also declutters the Admin page, Tasks/Discovery filter panels, and Create
+   Task's advanced/optional fields behind a new collapsible `Ui.disclosure`
+   component, and fixes a virtual-DOM node-reuse bug that could carry a
+   `<details>` element's open/closed state across unrelated pages (now keyed by
+   route).
 
 Next recommended work:
 
@@ -61,6 +65,13 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 106 was merged into `main`.
+1. The `task/openapi-schema-field-access` branch closed the one confirmed
+   generator gap from the prior branch: `internal/openapi` resolves a two-value
+   type assertion (`name, ok := x.(Type)`) and a field-access expression
+   (`response.value`), including through untagged internal result-union structs,
+   so `createModerationReport`'s response resolves to a typed schema too. 99/106
+   responses resolve (up from 98/106); 39/61 request bodies, unchanged.
 1. PR 105 was merged into `main`.
 1. The `task/openapi-typed-schemas` branch added typed per-route
    request/response JSON schemas to `docs/openapi.json`, derived directly from

@@ -165,6 +165,8 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteSubmissions}
 	case userSubmissionsPath(request.Path) != "":
 		return RequestAdapted{Route: RouteSubmissions}
+	case userWorkPathID(request.Path) != "":
+		return RequestAdapted{Route: RouteTasks}
 	case usersPath(request.Path) != "":
 		return RequestAdapted{Route: RouteUsers}
 	case creditsPathOnly(request.Path) == "/api/credits/balance":
@@ -272,6 +274,14 @@ func standaloneTeamsPathOnly(path string) string {
 func teamWorkPathID(path string) string {
 	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "teams" && parts[3] == "work" {
+		return strings.TrimSpace(parts[2])
+	}
+	return ""
+}
+
+func userWorkPathID(path string) string {
+	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "users" && parts[3] == "work" {
 		return strings.TrimSpace(parts[2])
 	}
 	return ""

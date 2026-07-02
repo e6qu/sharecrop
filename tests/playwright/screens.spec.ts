@@ -91,6 +91,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("discovery-filters").click();
   await page.getByTestId("discovery-query").fill(title);
   const workerRow = page.getByTestId("discovery-task-row").filter({
     hasText: title,
@@ -183,6 +184,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await page.getByTestId("logout").click();
   await loginViaUi(page, other.email);
   await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("discovery-filters").click();
   await page.getByTestId("discovery-query").fill(title);
   await expect(
     page.getByTestId("discovery-task-row").filter({ hasText: title }),
@@ -204,6 +206,7 @@ test("requesters upload small task attachments through the real backend", async 
     "Task attachment through the DB-backed UI.",
   );
   await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-advanced-options").click();
 
   const chooser = page.waitForEvent("filechooser");
   await page.getByTestId("create-attachments-pick").click();
@@ -240,6 +243,7 @@ test("requesters see attachment guardrails through the real backend UI", async (
     "Task attachment guardrails through the DB-backed UI.",
   );
   await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-advanced-options").click();
 
   async function pickAttachment(
     name: string,
@@ -429,6 +433,7 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   await expect(row).toHaveCount(1);
 
   // The new task is a draft, so filtering to Open hides it and Draft shows it.
+  await page.getByTestId("tasks-filters").click();
   await page.getByTestId("task-filter-open").click();
   await expect(page.getByTestId("task-row").filter({ hasText: title }))
     .toHaveCount(0);
@@ -683,6 +688,7 @@ test("requesters author a response schema and task input that the detail surface
   );
   // A human can now author a structured (non-freeform) response schema and an
   // embedded payload, both previously hardcoded in the client.
+  await page.getByTestId("create-advanced-options").click();
   await page.getByTestId("create-response-schema").fill(
     '{"kind":"array","item":{"kind":"string"}}',
   );
