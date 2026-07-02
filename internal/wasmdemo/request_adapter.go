@@ -88,6 +88,7 @@ var (
 	RoutePlatformAdmins         = Route{value: "platform_admins"}
 	RouteAuditEvents            = Route{value: "audit_events"}
 	RouteAgentCredentials       = Route{value: "agent_credentials"}
+	RouteTaskSeries             = Route{value: "task_series"}
 )
 
 func (route Route) String() string {
@@ -189,6 +190,10 @@ func Adapt(request Request) AdaptResult {
 		return RequestAdapted{Route: RouteAuditEvents}
 	case agentCredentialsRoute(request.Path) != "":
 		return RequestAdapted{Route: RouteAgentCredentials}
+	case taskSeriesPathOnly(request.Path) == "/api/task-series":
+		return RequestAdapted{Route: RouteTaskSeries}
+	case taskSeriesDetailPathID(request.Path) != "":
+		return RequestAdapted{Route: RouteTaskSeries}
 	default:
 		return RequestUnsupported{Reason: "request route is not implemented by the WASM demo adapter"}
 	}

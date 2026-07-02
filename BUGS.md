@@ -77,11 +77,11 @@ Known risks:
   and `cmd/sharecrop-wasm`. `internal/wasmdemo` classifies and handles current
   shared-scenario slices for auth/account, users, admin operations,
   platform-admins, audit events, collectibles, agent credentials, privacy,
-  moderation, saved-queue-view, task, notification, organization,
-  organization-member, team, comment, reservation, submission, and ledger
-  routes. A Deno WASM runner loads a compiled Go `.wasm` artifact, verifies
-  required exports, configures explicit host adapters, and runs the shared
-  scenario parity suite through the exported request handler.
+  moderation, saved-queue-view, task, task series (create/list/detail only),
+  notification, organization, organization-member, team, comment, reservation,
+  submission, and ledger routes. A Deno WASM runner loads a compiled Go `.wasm`
+  artifact, verifies required exports, configures explicit host adapters, and
+  runs the shared scenario parity suite through the exported request handler.
   `deno task measure:wasm` reports artifact size, startup time, host-process
   memory, and request latency against a compiled artifact; see
   [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) for a
@@ -93,8 +93,13 @@ Known risks:
   than `crypto/rand`; none of that is safe to reuse for a production non-browser
   deployment, and no such deployment target exists yet to build a production
   host against. Continued parity expansion as API surfaces change also remains
-  ongoing work. JavaScript reimplementations, generated fake backends, and
-  fallback stores are not valid substitutes for the compiled Go WASM binary.
+  ongoing work; two confirmed current gaps are team-membership storage (so
+  `GET /api/teams/{team_id}` always returns an empty member list) and task
+  series lifecycle/membership/comments (publish/unpublish/close/reopen,
+  adding/removing/reordering tasks in a series, and series comments all fail
+  with a graceful inline error rather than working). JavaScript
+  reimplementations, generated fake backends, and fallback stores are not valid
+  substitutes for the compiled Go WASM binary.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

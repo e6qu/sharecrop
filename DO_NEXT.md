@@ -5,22 +5,23 @@ Current priority from
 
 Active branch:
 
-1. `task/team-detail-404-fix-and-declutter` is in progress. Continues hand-
-   testing the browser demo, page by page: found that `GET /api/teams/{team_id}`
-   was entirely unclassified in the WASM demo (a 404), so the team detail page
-   never loaded for any team — a completely broken flow, not just a display bug.
-   Fixed by routing it through the existing standalone-teams handler, returning
-   `{team, members: []}` (no team-membership storage exists in the demo yet).
-   Also declutters the team detail page's team-work filter panel with the
-   `Ui.disclosure` component from prior branches.
+1. `task/task-series-wasm-support` is in progress. Continues hand-testing the
+   browser demo: found that `/api/task-series` (list, create) and
+   `/api/task-series/{id}` (detail) were entirely unclassified in the WASM demo
+   (a 404) — the whole Task Series feature had zero WASM demo support, not just
+   a single missing route. Implemented `StoredTaskSeries` storage and a new
+   `TaskSeriesHandler` covering create/list/detail, matching real backend
+   response shapes exactly (including that create returns the full detail
+   wrapper, not a bare series object, found by hitting a second decode error
+   after fixing the first 404). Series lifecycle transitions, series-task
+   membership, and series comments are explicitly out of scope for this branch
+   and remain a known gap (see item 5 below and `BUGS.md`).
 
-   Also noting: the GitHub Pages deployment for PR 108 failed three times in a
-   row after merge with three different symptoms (10-minute timeout, duplicate
-   artifact after a `--failed`-only rerun, "deployment cancelled", another
-   10-minute timeout stuck at `deployment_queued`), while the build and
-   artifact-upload steps succeeded every time. This looks like a GitHub-side
-   Pages backend issue, not a code problem — a human should check
-   githubstatus.com or retry later; do not keep auto-retrying.
+   Note: PR 108's GitHub Pages deployment failed three times in a row after
+   merge (10-minute timeout, then two different deploy-pages errors on reruns),
+   but PR 109's deployment succeeded on the first try with no code or workflow
+   changes — confirming it was a transient GitHub-side issue that has since
+   cleared, not something to keep investigating.
 
 Next recommended work:
 
@@ -49,12 +50,16 @@ Next recommended work:
    stores. The deployed browser demo is the first host, but WASM is also a
    production backend execution target. User, account-token, agent-credential,
    platform-admin, audit-event, collectible, privacy-request, moderation-triage,
-   saved-queue-view, task, attachment, notification, organization,
-   organization-member, team, comment, reservation, submission, and ledger
-   storage/handler slices now exist. The Go `js/wasm` command can be built,
-   loaded, explicitly configured with host adapters, and used for the shared
-   scenario parity suite. The demo defaults to compiled WASM artifacts and
-   configured browser host functions.
+   saved-queue-view, task, task series (create/list/detail only), attachment,
+   notification, organization, organization-member, team, comment, reservation,
+   submission, and ledger storage/handler slices now exist. The Go `js/wasm`
+   command can be built, loaded, explicitly configured with host adapters, and
+   used for the shared scenario parity suite. The demo defaults to compiled WASM
+   artifacts and configured browser host functions. Two confirmed remaining
+   gaps: team-membership storage (`GET /api/teams/{team_id}` always returns an
+   empty member list), and task series lifecycle/membership/comments
+   (publish/unpublish/close/reopen, adding/removing/reordering tasks in a
+   series, and series comments).
 6. Add provider email delivery only if the product direction changes; current
    account/org setup stays admin-driven.
 7. Build a genuine production non-browser WASM host: persistent storage (file or
@@ -70,6 +75,13 @@ Next recommended work:
 
 Recently finished:
 
+1. PR 109 was merged into `main`; its GitHub Pages deployment succeeded on the
+   first try, confirming PR 108's three prior deployment failures were a
+   transient GitHub-side issue that has since cleared.
+1. The `task/team-detail-404-fix-and-declutter` branch fixed a fourth real
+   broken flow found by hand-testing the Go/WASM demo (the team detail page
+   404ing for every team), and decluttered the team detail page's team-work
+   filter panel with `Ui.disclosure`.
 1. PR 108 was merged into `main`. Its GitHub Pages deployment failed three times
    in a row (see the note under "Active branch" above); the merge and code are
    fine, only the deploy pipeline is affected.

@@ -1,27 +1,28 @@
 # Status
 
-The repository contains pull request 1 through pull request 108 work, merged
-into `main`, plus the current `task/team-detail-404-fix-and-declutter` branch.
-The GitHub Pages deployment for PR 108 failed three times in a row after merge
-(`deploy-pages` step: a 10-minute timeout, then "multiple artifacts...
-unexpectedly found" after a `--failed`-only rerun, then "deployment cancelled",
-then another 10-minute timeout stuck at `deployment_queued`) while the build and
-artifact-upload steps succeeded every time; this looks like a GitHub-side Pages
-backend issue, not a code problem, and needs a human to check githubstatus.com
-or retry later, since repeated automatic reruns did not clear it.
+The repository contains pull request 1 through pull request 109 work, merged
+into `main`, plus the current `task/task-series-wasm-support` branch. PR 108's
+GitHub Pages deployment failed three times in a row after merge for what looked
+like a transient GitHub-side Pages backend issue (build/artifact steps always
+succeeded; only `deploy-pages` failed or hung, with a different symptom each
+time); PR 109's deployment succeeded on the first try with no code or workflow
+changes, confirming it was not a code problem and has since cleared on its own.
 
-Active task: `task/team-detail-404-fix-and-declutter` continues the hand-
-testing pass onto the team detail page. Found a fourth real bug the same way:
-`GET /api/teams/{team_id}` was entirely unclassified in the WASM demo (a 404),
-so the team detail page never loaded for any team, standalone or
-organization-owned — clicking a team row from an organization's Teams list was
-completely broken. Fixed by routing it to the existing
-`RouteStandaloneTeams`/`OrganizationHandler`, returning `{team, members: []}`
-(the WASM demo has no team-membership storage yet, so members is always empty,
-matching what a freshly created team with none added would return from the real
-backend). Also applied `Ui.disclosure` to the team detail page's team work
-filter/search/sort/saved-views panel (~1200px to ~730px for a representative
-team).
+Active task: `task/task-series-wasm-support` continues the hand-testing pass
+onto the Task Series feature. Found a fifth real bug, and the biggest gap yet:
+`/api/task-series` (list, create) and `/api/task-series/{id}` (detail) were
+entirely unclassified in the WASM demo (a 404), so creating a task series
+through the browser failed outright — the whole feature had zero WASM demo
+support. Implemented `StoredTaskSeries` storage and a new `TaskSeriesHandler`
+covering create/list/detail, matching `internal/http`'s
+`taskSeriesResponse`/`taskSeriesDetailResponse` shapes (including that create
+returns the full detail wrapper, not a bare series object — found by hitting a
+second, different decode error after fixing the first 404). Series lifecycle
+transitions (publish/unpublish/close/reopen), series-task membership
+(add/remove/reorder), and series comments are explicitly not implemented yet:
+clicking those actions shows a graceful inline error rather than crashing, but
+they do not work. This is a known, larger remaining gap (see "Next recommended
+work" below), analogous to the still-missing team-membership storage.
 
 Hard deletes remain out of scope; use soft lifecycle states, anonymization,
 redaction, tombstones, and audit records. Email/provider delivery, anonymous
@@ -82,6 +83,13 @@ Current implemented surface:
   matching `internal/http`'s `getTeam`/`teamDetailResponse` shape, so the team
   detail page loads for any standalone or organization-owned team instead of
   404ing.
+- The Go/WASM demo backend supports Task Series create/list/detail
+  (`POST`/`GET /api/task-series`, `GET /api/task-series/{id}`), matching
+  `internal/http`'s `taskSeriesResponse`/`taskSeriesDetailResponse` shapes, so
+  the browser's "Task series" page can create and open a series. Publishing,
+  closing, reopening, adding/removing/reordering tasks in a series, and series
+  comments are not implemented in the WASM demo yet; those actions fail with a
+  graceful inline error rather than a crash.
 - The Go/WASM demo backend's
   `GET /api/organizations/{organization_id}/audit-events` scopes the shared
   audit-event store to that organization's subject id, matching the real
@@ -327,15 +335,20 @@ Current implemented surface:
 
 Current verification:
 
-- Found the `internal/wasmdemo` team-detail route gap by actually running the
-  compiled Go/WASM demo in a real Chromium browser: created an organization
-  team, clicked its row, and read the rendered "Could not load this team: The
+- Found the `internal/wasmdemo` task-series gap by actually running the compiled
+  Go/WASM demo in a real Chromium browser: opened the "Task series" page, filled
+  in a title/description, clicked "Create series", and read the rendered "The
   request failed with status 404." error and its network trace (patched
   `XMLHttpRequest`/`sharecropHandleRequest` to see the real request/response
   pairs, since the WASM demo intercepts XHR entirely in JS and never touches the
-  real network stack, so Playwright's `page.on("response")` sees nothing).
+  real network stack, so Playwright's `page.on("response")` sees nothing). After
+  adding the route, hit a second, different decode error ("Expecting an OBJECT
+  with a field named `series`") the same way, which revealed that
+  `createTaskSeries` returns the full detail wrapper, not a bare series object —
+  confirmed by reading `internal/http/series.go`'s `writeSeriesMutation`.
 - `go build ./...`, `go vet ./...`, and `go test ./...` passed, including a new
-  `internal/wasmdemo` regression test for the fixed route.
+  `internal/wasmdemo` regression test covering create/list/detail.
+  `GOOS=js GOARCH=wasm go build ./cmd/sharecrop-wasm/...` passed.
 - `deno task check:ts`, `deno task lint`, `deno task check:policy`, and
   `deno task test` passed.
 - `make check-format`, `make check-contracts`, `go tool deadcode -test ./...`,
@@ -343,10 +356,12 @@ Current verification:
 - Ran the full Postgres-backed suite:
   `go test -tags integration
   ./tests/integration`,
-  `go test -tags http_e2e ./tests/http_e2e`, and `make e2e-ui` (all 45
-  Playwright specs against the real API). Fixed the existing Playwright test
-  that clicked directly into the team-work filter panel now collapsed by
-  default, by expanding the `Ui.disclosure` first.
+  `go test -tags http_e2e ./tests/http_e2e`, and `make e2e-ui` (all 46
+  Playwright specs against the real API, including the existing real-backend
+  series lifecycle test, unaffected). Added a new `demo.spec.ts` test
+  (`demo creates and opens a task series`) and confirmed publishing a freshly
+  created series fails with a graceful inline error rather than a crash (the
+  documented remaining gap).
 
 Blocking issues:
 

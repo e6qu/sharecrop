@@ -323,6 +323,30 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
   );
 });
 
+test("demo creates and opens a task series", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1250 credits")).toBeVisible();
+
+  // A real bug found by hand-testing the demo: /api/task-series was entirely
+  // unclassified in the WASM backend (a 404), so this whole flow was broken.
+  await page.getByRole("link", { name: "Series", exact: true }).click();
+  await page.getByTestId("series-create-title").fill("Sprint 1");
+  await page.getByTestId("series-create-description").fill(
+    "A batch of related tasks.",
+  );
+  await page.getByTestId("create-series").click();
+  await expect(page.getByTestId("series-message")).toContainText(
+    "Series saved.",
+  );
+  await expect(page.getByTestId("series-row")).toContainText("Sprint 1");
+  await expect(page.getByTestId("series-row")).toContainText("draft");
+
+  await page.getByTestId("open-series").first().click();
+  await expect(page.getByTestId("series-detail-title")).toContainText(
+    "Sprint 1",
+  );
+});
+
 test("the demo shows a Reset button and hash routing keeps a stable URL on refresh", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();

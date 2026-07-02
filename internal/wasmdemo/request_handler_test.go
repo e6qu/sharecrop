@@ -782,3 +782,71 @@ func TestOrganizationHandlerRejectsMissingResolverForProvision(t *testing.T) {
 		t.Fatalf("reason = %q", rejected.Reason)
 	}
 }
+
+type fixedTaskSeriesIDs struct {
+	seriesID string
+}
+
+func (ids fixedTaskSeriesIDs) NextTaskSeriesID() string {
+	return ids.seriesID
+}
+
+// TestTaskSeriesHandlerCreatesListsAndLoadsSeries reproduces a real bug found
+// by hand-testing the demo: /api/task-series was entirely unclassified (a
+// 404), so creating a task series through the browser's "Task series" page
+// failed outright.
+func TestTaskSeriesHandlerCreatesListsAndLoadsSeries(t *testing.T) {
+	storage := newTestBrowserStorage()
+	handler := NewTaskSeriesHandler(storage, fixedHandlerActor{userID: "user-owner"}, fixedTaskSeriesIDs{seriesID: "series-1"})
+
+	adapted, adaptedMatched := Adapt(Request{Method: MethodPost, Path: "/api/task-series"}).(RequestAdapted)
+	if !adaptedMatched || adapted.Route != RouteTaskSeries {
+		t.Fatalf("adapt create route = %#v, want RouteTaskSeries", adapted)
+	}
+
+	create := handler.Handle(Request{Method: MethodPost, Path: "/api/task-series", Body: `{"title":"Sprint 1","description":"A batch of related tasks."}`})
+	created, createdMatched := create.(RequestHandled)
+	if !createdMatched {
+		t.Fatalf("create result = %#v, want RequestHandled", create)
+	}
+	if created.Value.Status != 201 {
+		t.Fatalf("create status = %d, want 201", created.Value.Status)
+	}
+	var createdBody taskSeriesDetailResponseBody
+	if err := json.Unmarshal([]byte(created.Value.Body), &createdBody); err != nil {
+		t.Fatalf("decode created series: %v", err)
+	}
+	if createdBody.Series.ID != "series-1" || createdBody.Series.Title != "Sprint 1" || createdBody.Series.State != "draft" || createdBody.Series.CreatedBy != "user-owner" {
+		t.Fatalf("created series = %#v", createdBody)
+	}
+
+	list := handler.Handle(Request{Method: MethodGet, Path: "/api/task-series", Body: ""})
+	listed, listedMatched := list.(RequestHandled)
+	if !listedMatched {
+		t.Fatalf("list result = %#v, want RequestHandled", list)
+	}
+	var listedBody taskSeriesListResponseBody
+	if err := json.Unmarshal([]byte(listed.Value.Body), &listedBody); err != nil {
+		t.Fatalf("decode series list: %v", err)
+	}
+	if len(listedBody.Series) != 1 || listedBody.Series[0].ID != "series-1" {
+		t.Fatalf("series list = %#v", listedBody)
+	}
+
+	detailAdapted, detailAdaptedMatched := Adapt(Request{Method: MethodGet, Path: "/api/task-series/series-1"}).(RequestAdapted)
+	if !detailAdaptedMatched || detailAdapted.Route != RouteTaskSeries {
+		t.Fatalf("adapt detail route = %#v, want RouteTaskSeries", detailAdapted)
+	}
+	detail := handler.Handle(Request{Method: MethodGet, Path: "/api/task-series/series-1", Body: ""})
+	detailHandled, detailHandledMatched := detail.(RequestHandled)
+	if !detailHandledMatched {
+		t.Fatalf("detail result = %#v, want RequestHandled", detail)
+	}
+	var detailBody taskSeriesDetailResponseBody
+	if err := json.Unmarshal([]byte(detailHandled.Value.Body), &detailBody); err != nil {
+		t.Fatalf("decode series detail: %v", err)
+	}
+	if detailBody.Series.ID != "series-1" || detailBody.Tasks == nil || detailBody.Comments == nil {
+		t.Fatalf("series detail = %#v", detailBody)
+	}
+}
