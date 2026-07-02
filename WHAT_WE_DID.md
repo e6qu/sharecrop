@@ -1,17 +1,56 @@
 # What We Did
 
-`task/team-detail-404-fix-and-declutter` continued the hand-testing pass onto
-the team detail page, found a fourth real bug the same way, and applied
-`Ui.disclosure` there too. Also: PR 108's GitHub Pages deployment failed three
-times after merge with three different symptoms — a 10-minute timeout, then
-"multiple artifacts... unexpectedly found" after re-running only the failed job
-(which re-uploads the artifact under the same run, creating a duplicate), then
-"deployment cancelled", then another 10-minute timeout stuck at
-`deployment_queued`. Build and artifact-upload steps succeeded every time; only
-the final `deploy-pages` step failed or hung. This reads as a GitHub-side Pages
-backend issue rather than a code problem — stopped auto-retrying after three
-failures and flagged it in `STATUS.md`/`DO_NEXT.md` for a human to check
-githubstatus.com or retry later, rather than looping indefinitely.
+`task/task-series-wasm-support` continued the hand-testing pass onto the Task
+Series feature and found the biggest gap yet: the whole feature had zero WASM
+demo support, not just one missing route.
+
+- **A fifth `internal/wasmdemo` bug, found by creating a task series in a
+  browser.** `/api/task-series` (list, create) and `/api/task-series/{id}`
+  (detail) were entirely unclassified — creating a series through the browser's
+  "Task series" page failed outright with a 404. Implemented `StoredTaskSeries`
+  storage (`SaveTaskSeries`/`ListTaskSeries`/`LoadTaskSeries` in
+  `browser_storage.go`, mirroring the existing organization/team storage
+  pattern) and a new `TaskSeriesHandler` (`request_handler.go`) covering
+  create/list/detail, wired through a new `TaskSeriesIDSource` interface and
+  `jsHostIDs.NextTaskSeriesID()` in `cmd/sharecrop-wasm/main_js_wasm.go`.
+- **Found a second bug the same way, one layer deeper.** After adding the route,
+  creating a series failed again with a different error: "Expecting an OBJECT
+  with a field named `series`". Reading `internal/http/series.go`'s
+  `writeSeriesMutation` showed `createTaskSeries` actually returns the full
+  `{series, tasks, comments}` detail wrapper, not a bare series object as every
+  other create endpoint in this codebase does — an easy assumption to get wrong
+  without checking, which is exactly what happened. Fixed by wrapping the create
+  response the same way as the detail response.
+- **Deliberately scoped out series lifecycle, membership, and comments.**
+  Publishing, closing, reopening, adding/removing/reordering tasks in a series,
+  and series comments are NOT implemented — verified live that clicking
+  "Publish" on a freshly created series shows a graceful inline error ("The
+  request failed with status 404.") rather than crashing the page or corrupting
+  state. Documented as a known, larger remaining gap in `BUGS.md` and
+  `DO_NEXT.md`, alongside the similarly-scoped team-membership gap from the
+  prior branch — implementing full series CRUD (a state machine plus ordered
+  task membership plus a comment thread) is a meaningfully bigger undertaking
+  than a single missing route, and out of scope for this fix.
+- Added a new `demo.spec.ts` test (`demo creates and opens a task series`)
+  alongside the `internal/wasmdemo` regression test. Verified: all 12 WASM-demo
+  Playwright specs, all 46 real-backend Playwright specs (including the existing
+  real-backend series lifecycle test, unaffected), the Go integration/http_e2e
+  suites, and the full non-browser check suite pass.
+
+Also: PR 108's GitHub Pages deployment failed three times after merge with three
+different symptoms — a 10-minute timeout, then "multiple artifacts...
+unexpectedly found" after re-running only the failed job (which re-uploads the
+artifact under the same run, creating a duplicate), then "deployment cancelled",
+then another 10-minute timeout stuck at `deployment_queued`. Build and
+artifact-upload steps succeeded every time; only the final `deploy-pages` step
+failed or hung. Stopped auto-retrying after three failures and flagged it for a
+human. PR 109's deployment then succeeded on the first try with no code or
+workflow changes, confirming it really was a transient GitHub-side issue that
+has since cleared.
+
+`task/team-detail-404-fix-and-declutter` (merged into `main`) continued the
+hand-testing pass onto the team detail page, found a fourth real bug the same
+way, and applied `Ui.disclosure` there too.
 
 - **A fourth `internal/wasmdemo` bug, found by creating an organization team in
   a browser and clicking into it.** `GET /api/teams/{team_id}` was completely

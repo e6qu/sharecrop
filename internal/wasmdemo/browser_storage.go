@@ -169,6 +169,15 @@ type StoredTeam struct {
 	CreatedBy      string `json:"created_by"`
 }
 
+type StoredTaskSeries struct {
+	ID          string `json:"id"`
+	OwnerKind   string `json:"owner_kind"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	State       string `json:"state"`
+	CreatedBy   string `json:"created_by"`
+}
+
 type StoredUser struct {
 	ID     string `json:"id"`
 	Email  string `json:"email"`
@@ -1437,6 +1446,124 @@ func LoadOrganization(storage BrowserStorage, organizationID string) Organizatio
 		return OrganizationStorageRejected{Reason: reason}
 	}
 	return OrganizationStored{Value: cleaned}
+}
+
+type TaskSeriesStorageResult interface {
+	taskSeriesStorageResult()
+}
+
+type TaskSeriesStored struct {
+	Value StoredTaskSeries
+}
+
+type TaskSeriesListStored struct {
+	Values []StoredTaskSeries
+}
+
+type TaskSeriesStorageRejected struct {
+	Reason string
+}
+
+func (TaskSeriesStored) taskSeriesStorageResult()     {}
+func (TaskSeriesListStored) taskSeriesStorageResult() {}
+
+func (TaskSeriesStorageRejected) taskSeriesStorageResult() {}
+
+func SaveTaskSeries(storage BrowserStorage, series StoredTaskSeries) TaskSeriesStorageResult {
+	cleaned := cleanStoredTaskSeries(series)
+	if reason := validateStoredTaskSeries(cleaned); reason != "" {
+		return TaskSeriesStorageRejected{Reason: reason}
+	}
+	keyResult := NewStorageKey("task_series:" + cleaned.ID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return TaskSeriesStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return TaskSeriesStorageRejected{Reason: "task series encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return TaskSeriesStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	indexResult := appendStringIndex(storage, "task_series:index", cleaned.ID, "task series")
+	if _, matched := indexResult.(stringIndexStored); !matched {
+		return TaskSeriesStorageRejected{Reason: indexResult.(stringIndexRejected).reason}
+	}
+	return TaskSeriesStored{Value: cleaned}
+}
+
+func ListTaskSeries(storage BrowserStorage, page StoredListPage) TaskSeriesStorageResult {
+	idsResult := loadStringIndex(storage, "task_series:index", "task series")
+	ids, idsMatched := idsResult.(stringIndexLoaded)
+	if !idsMatched {
+		return TaskSeriesStorageRejected{Reason: idsResult.(stringIndexRejected).reason}
+	}
+	values := make([]StoredTaskSeries, 0, len(ids.values))
+	for index := range ids.values {
+		loadResult := LoadTaskSeries(storage, ids.values[index])
+		loaded, loadedMatched := loadResult.(TaskSeriesStored)
+		if !loadedMatched {
+			return loadResult
+		}
+		values = append(values, loaded.Value)
+	}
+	start, end := pageBounds(len(values), page)
+	return TaskSeriesListStored{Values: values[start:end]}
+}
+
+func LoadTaskSeries(storage BrowserStorage, seriesID string) TaskSeriesStorageResult {
+	cleanID := strings.TrimSpace(seriesID)
+	if cleanID == "" {
+		return TaskSeriesStorageRejected{Reason: "task series id is required"}
+	}
+	keyResult := NewStorageKey("task_series:" + cleanID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return TaskSeriesStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return TaskSeriesStorageRejected{Reason: storageReadReason(readResult, "task series")}
+	}
+	var series StoredTaskSeries
+	if err := json.Unmarshal([]byte(read.Value), &series); err != nil {
+		return TaskSeriesStorageRejected{Reason: "task series decoding failed"}
+	}
+	cleaned := cleanStoredTaskSeries(series)
+	if cleaned.ID != cleanID {
+		return TaskSeriesStorageRejected{Reason: "task series storage key contains mismatched record"}
+	}
+	if reason := validateStoredTaskSeries(cleaned); reason != "" {
+		return TaskSeriesStorageRejected{Reason: reason}
+	}
+	return TaskSeriesStored{Value: cleaned}
+}
+
+func cleanStoredTaskSeries(series StoredTaskSeries) StoredTaskSeries {
+	return StoredTaskSeries{
+		ID:          strings.TrimSpace(series.ID),
+		OwnerKind:   strings.TrimSpace(series.OwnerKind),
+		Title:       strings.TrimSpace(series.Title),
+		Description: strings.TrimSpace(series.Description),
+		State:       strings.TrimSpace(series.State),
+		CreatedBy:   strings.TrimSpace(series.CreatedBy),
+	}
+}
+
+func validateStoredTaskSeries(series StoredTaskSeries) string {
+	if series.ID == "" {
+		return "task series id is required"
+	}
+	if series.Title == "" {
+		return "task series title is required"
+	}
+	if series.CreatedBy == "" {
+		return "task series creator is required"
+	}
+	return ""
 }
 
 type OrganizationMemberStorageResult interface {

@@ -198,6 +198,13 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 		}
 		handler := wasmdemo.NewAgentCredentialHandler(runtime.Storage, runtime.Actor, runtimeIDs)
 		return handler.Handle(request)
+	case wasmdemo.RouteTaskSeries.String():
+		seriesIDs, matched := runtime.InteractionIDs.(wasmdemo.TaskSeriesIDSource)
+		if !matched {
+			return wasmdemo.RequestHandleRejected{Reason: "host task series id adapter is required"}
+		}
+		handler := wasmdemo.NewTaskSeriesHandler(runtime.Storage, runtime.Actor, seriesIDs)
+		return handler.Handle(request)
 	default:
 		return wasmdemo.RequestHandleRejected{Reason: "configured WASM host does not execute this route"}
 	}
@@ -293,6 +300,10 @@ func (ids jsHostIDs) NextPrivacyRequestID() string {
 
 func (ids jsHostIDs) NextSavedQueueViewID() string {
 	return ids.next("saved_view")
+}
+
+func (ids jsHostIDs) NextTaskSeriesID() string {
+	return ids.next("task_series")
 }
 
 func (ids jsHostIDs) NextOrganizationID() string {

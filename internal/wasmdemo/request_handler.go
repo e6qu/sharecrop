@@ -64,6 +64,10 @@ type OrganizationUserResolver interface {
 	UserIDForEmail(string) (string, bool)
 }
 
+type TaskSeriesIDSource interface {
+	NextTaskSeriesID() string
+}
+
 func NewModerationTriageHandler(storage BrowserStorage, clock HandlerClock) ModerationTriageHandler {
 	return ModerationTriageHandler{storage: storage, clock: clock}
 }
@@ -1701,4 +1705,160 @@ func queryValueFromPath(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(values.Get("query"))
+}
+
+type taskSeriesResponseBody struct {
+	ID          string `json:"id"`
+	OwnerKind   string `json:"owner_kind"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	State       string `json:"state"`
+	CreatedBy   string `json:"created_by"`
+}
+
+type taskSeriesListResponseBody struct {
+	Series []taskSeriesResponseBody `json:"series"`
+}
+
+// taskSeriesDetailResponseBody matches internal/http's taskSeriesDetailResponse
+// shape. Tasks and comments are always empty: the WASM demo has no
+// series-task-membership or series-comment storage yet, matching what a
+// freshly created series with neither would return from the real backend.
+type taskSeriesDetailResponseBody struct {
+	Series   taskSeriesResponseBody `json:"series"`
+	Tasks    []taskResponseBody     `json:"tasks"`
+	Comments []struct{}             `json:"comments"`
+}
+
+func taskSeriesToBody(series StoredTaskSeries) taskSeriesResponseBody {
+	return taskSeriesResponseBody{
+		ID:          series.ID,
+		OwnerKind:   series.OwnerKind,
+		Title:       series.Title,
+		Description: series.Description,
+		State:       series.State,
+		CreatedBy:   series.CreatedBy,
+	}
+}
+
+// TaskSeriesHandler answers /api/task-series routes. A real bug found by
+// hand-testing the demo left this entire route family unclassified (a 404),
+// so creating or listing task series was completely broken. Publishing,
+// closing, reordering, series-task membership, and series comments are not
+// implemented yet; only create/list/detail are, matching the create-a-series
+// flow the browser exposes today.
+type TaskSeriesHandler struct {
+	storage BrowserStorage
+	actor   HandlerActor
+	ids     TaskSeriesIDSource
+}
+
+func NewTaskSeriesHandler(storage BrowserStorage, actor HandlerActor, ids TaskSeriesIDSource) TaskSeriesHandler {
+	return TaskSeriesHandler{storage: storage, actor: actor, ids: ids}
+}
+
+func (handler TaskSeriesHandler) Handle(request Request) HandleResult {
+	if handler.storage == nil {
+		return RequestHandleRejected{Reason: "browser storage is required"}
+	}
+	if handler.actor == nil {
+		return RequestHandleRejected{Reason: "handler actor is required"}
+	}
+	if taskSeriesPathOnly(request.Path) == "/api/task-series" {
+		switch request.Method.String() {
+		case MethodPost.String():
+			if handler.ids == nil {
+				return RequestHandleRejected{Reason: "task series id source is required"}
+			}
+			return handler.handleCreate(request)
+		case MethodGet.String():
+			return handler.handleList(request)
+		default:
+			return RequestHandleRejected{Reason: "request method is unsupported for task series"}
+		}
+	}
+	if seriesID := taskSeriesDetailPathID(request.Path); seriesID != "" {
+		return handler.handleDetail(request, seriesID)
+	}
+	return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+}
+
+func (handler TaskSeriesHandler) handleCreate(request Request) HandleResult {
+	var body struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
+		return RequestHandleRejected{Reason: "task series request body is invalid"}
+	}
+	series := StoredTaskSeries{
+		ID:          strings.TrimSpace(handler.ids.NextTaskSeriesID()),
+		OwnerKind:   "user",
+		Title:       strings.TrimSpace(body.Title),
+		Description: strings.TrimSpace(body.Description),
+		State:       "draft",
+		CreatedBy:   strings.TrimSpace(handler.actor.UserID()),
+	}
+	saveResult := SaveTaskSeries(handler.storage, series)
+	saved, savedMatched := saveResult.(TaskSeriesStored)
+	if !savedMatched {
+		return RequestHandleRejected{Reason: saveResult.(TaskSeriesStorageRejected).Reason}
+	}
+	// internal/http's createTaskSeries writes the full detail shape
+	// ({series, tasks, comments}), not a bare series object.
+	encoded, err := json.Marshal(taskSeriesDetailResponseBody{Series: taskSeriesToBody(saved.Value), Tasks: []taskResponseBody{}, Comments: []struct{}{}})
+	if err != nil {
+		return RequestHandleRejected{Reason: "task series response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 201, Body: string(encoded)}}
+}
+
+func (handler TaskSeriesHandler) handleList(request Request) HandleResult {
+	pageResult := storedListPageFromPath(request.Path, "task series")
+	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
+	if !pageMatched {
+		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+	}
+	listResult := ListTaskSeries(handler.storage, page.value)
+	listed, listedMatched := listResult.(TaskSeriesListStored)
+	if !listedMatched {
+		return RequestHandleRejected{Reason: listResult.(TaskSeriesStorageRejected).Reason}
+	}
+	bodies := make([]taskSeriesResponseBody, 0, len(listed.Values))
+	for index := range listed.Values {
+		bodies = append(bodies, taskSeriesToBody(listed.Values[index]))
+	}
+	encoded, err := json.Marshal(taskSeriesListResponseBody{Series: bodies})
+	if err != nil {
+		return RequestHandleRejected{Reason: "task series list response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func (handler TaskSeriesHandler) handleDetail(request Request, seriesID string) HandleResult {
+	if request.Method.String() != MethodGet.String() {
+		return RequestHandleRejected{Reason: "request method is unsupported for task series detail"}
+	}
+	loadResult := LoadTaskSeries(handler.storage, seriesID)
+	loaded, loadedMatched := loadResult.(TaskSeriesStored)
+	if !loadedMatched {
+		return RequestHandleRejected{Reason: loadResult.(TaskSeriesStorageRejected).Reason}
+	}
+	encoded, err := json.Marshal(taskSeriesDetailResponseBody{Series: taskSeriesToBody(loaded.Value), Tasks: []taskResponseBody{}, Comments: []struct{}{}})
+	if err != nil {
+		return RequestHandleRejected{Reason: "task series detail response encoding failed"}
+	}
+	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
+}
+
+func taskSeriesPathOnly(path string) string {
+	return strings.SplitN(path, "?", 2)[0]
+}
+
+func taskSeriesDetailPathID(path string) string {
+	parts := strings.Split(strings.Trim(strings.SplitN(path, "?", 2)[0], "/"), "/")
+	if len(parts) == 3 && parts[0] == "api" && parts[1] == "task-series" && strings.TrimSpace(parts[2]) != "" {
+		return strings.TrimSpace(parts[2])
+	}
+	return ""
 }
