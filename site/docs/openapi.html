@@ -4,179 +4,153 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sharecrop OpenAPI Reference</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    >
+    <link rel="stylesheet" href="../marketing.css">
     <style>
-      :root {
-        color-scheme: light;
-        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      }
-      body {
-        margin: 0;
-        background: #f8fafc;
-        color: #0f172a;
-      }
-      main {
-        max-width: 960px;
-        margin: 0 auto;
-        padding: 1.5rem 1.25rem 4rem;
-      }
-      nav.topbar {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 1rem 0;
-      }
-      nav.topbar .brand {
-        font-weight: 700;
-        text-decoration: none;
-        color: #0f172a;
-      }
-      nav.topbar a.button {
-        margin-left: auto;
-        padding: 0.4rem 0.9rem;
-        border-radius: 0.4rem;
-        border: 1px solid #cbd5e1;
-        text-decoration: none;
-        color: #0f172a;
-        font-size: 0.9rem;
-      }
-      nav.topbar a.button + a.button {
-        margin-left: 0.5rem;
-      }
-      .eyebrow {
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 0.75rem;
-        color: #475569;
-        margin: 0 0 0.25rem;
+      main.docs-shell {
+        max-width: 60rem;
       }
       p.lede {
-        color: #334155;
-        max-width: 65ch;
-      }
-      code {
-        background: #e2e8f0;
-        border-radius: 0.25rem;
-        padding: 0.1rem 0.3rem;
-        font-size: 0.9em;
+        color: var(--ink-soft);
+        max-width: 68ch;
       }
       #summary {
         display: flex;
-        gap: 1.5rem;
-        margin: 1.5rem 0;
+        gap: 1.1rem;
+        margin: 1.6rem 0 1.8rem;
         flex-wrap: wrap;
       }
       #summary div {
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 0.5rem;
-        padding: 0.75rem 1.25rem;
+        background: var(--paper);
+        border: 1px dashed var(--line);
+        border-radius: 2px;
+        padding: 0.7rem 1.2rem;
       }
       #summary strong {
         display: block;
-        font-size: 1.5rem;
+        font-family: var(--font-display);
+        font-size: 1.4rem;
+        color: var(--rust-dark);
       }
       #summary span {
-        color: #64748b;
-        font-size: 0.85rem;
+        font-family: var(--font-mono);
+        color: var(--muted);
+        font-size: 0.75rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
       table {
         width: 100%;
         border-collapse: collapse;
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 0.5rem;
-        overflow: hidden;
+        background: var(--paper);
+        border: 1px solid rgba(43, 35, 24, 0.3);
       }
       th,
       td {
         text-align: left;
-        padding: 0.5rem 0.75rem;
-        border-bottom: 1px solid #e2e8f0;
-        font-size: 0.9rem;
+        padding: 0.55rem 0.75rem;
+        border-bottom: 1px solid rgba(43, 35, 24, 0.18);
+        font-size: 0.85rem;
         vertical-align: top;
       }
       th {
-        background: #f1f5f9;
-        font-size: 0.75rem;
+        background: var(--paper-deep);
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #475569;
+        letter-spacing: 0.08em;
+        color: var(--ink-soft);
+      }
+      td code {
+        background: none;
+        border: none;
+        padding: 0;
       }
       .method {
         display: inline-block;
-        min-width: 3.5rem;
+        min-width: 3.7rem;
         padding: 0.1rem 0.4rem;
-        border-radius: 0.25rem;
-        font-weight: 700;
-        font-size: 0.75rem;
+        border: 1px solid currentColor;
+        border-radius: 2px;
+        font-family: var(--font-mono);
+        font-weight: 600;
+        font-size: 0.72rem;
         text-align: center;
       }
       .method-get {
-        background: #dbeafe;
-        color: #1d4ed8;
+        color: var(--navy-dark);
       }
       .method-post {
-        background: #dcfce7;
-        color: #15803d;
+        color: #3f6b2c;
       }
       .method-patch {
-        background: #fef3c7;
-        color: #b45309;
+        color: #8a5a12;
       }
       .method-delete {
-        background: #fee2e2;
-        color: #b91c1c;
+        color: var(--rust-dark);
       }
       .auth-public {
-        color: #15803d;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--rust-dark);
         font-weight: 600;
       }
       .auth-protected {
-        color: #475569;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--muted);
       }
       #status {
-        color: #b91c1c;
+        color: var(--rust-dark);
+        font-family: var(--font-mono);
       }
     </style>
   </head>
-  <body>
-    <main>
+  <body class="site-page" data-mode="light" data-theme="corporate">
+    <main class="docs-shell">
       <nav class="topbar">
         <a class="brand" href="../">Sharecrop</a>
-        <a class="button" href="./">Docs</a>
-        <a class="button" href="../demo/">Demo</a>
+        <a class="button secondary" href="./">Docs</a>
+        <a class="button secondary" href="../demo/">Demo</a>
       </nav>
-      <p class="eyebrow">Docs</p>
-      <h1>OpenAPI reference</h1>
-      <p class="lede">
-        Generated from the route registrations in
-        <code>internal/http/server.go</code>
-        by <code>internal/openapi</code> (<code>go run ./cmd/sharecrop generate
-          openapi</code>, checked by
-        <code>make check-openapi</code>). Method, path,
-        <code>operationId</code>, and whether a route requires a bearer access
-        token are derived from the actual route table and the local call graph,
-        not hand-maintained. Request/response bodies are generic JSON object
-        placeholders, not typed per-route schemas; see the
-        <a
-          href="https://github.com/e6qu/sharecrop/blob/main/docs/api_reference.md"
-        >hand-written HTTP API reference</a> for prose per-route
-        request/response descriptions, or fetch the raw document at
-        <a href="./openapi.json"><code>./openapi.json</code></a>.
-      </p>
-      <div id="summary"></div>
-      <table id="routes">
-        <thead>
-          <tr>
-            <th>Method</th>
-            <th>Path</th>
-            <th>Operation</th>
-            <th>Auth</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-      <p id="status"></p>
+      <section class="panel">
+        <p class="eyebrow">Docs</p>
+        <h1>OpenAPI reference</h1>
+        <p class="lede">
+          Generated from the route registrations in
+          <code>internal/http/server.go</code>
+          by <code>internal/openapi</code> (<code>go run ./cmd/sharecrop
+            generate openapi</code>, checked by
+          <code>make check-openapi</code>). Method, path, <code
+          >operationId</code>, and whether a route requires a bearer access
+          token are derived from the actual route table and the local call
+          graph, not hand-maintained. Request/response bodies are generic JSON
+          object placeholders, not typed per-route schemas; see the
+          <a
+            href="https://github.com/e6qu/sharecrop/blob/main/docs/api_reference.md"
+          >hand-written HTTP API reference</a> for prose per-route
+          request/response descriptions, or fetch the raw document at
+          <a href="./openapi.json"><code>./openapi.json</code></a>.
+        </p>
+        <div id="summary"></div>
+        <table id="routes">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Path</th>
+              <th>Operation</th>
+              <th>Auth</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p id="status"></p>
+      </section>
     </main>
     <script>
       function methodBadge(method) {

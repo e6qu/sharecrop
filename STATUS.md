@@ -1,19 +1,20 @@
 # Status
 
-The repository contains pull request 1 through pull request 102 work, merged
-into `main`, plus the current `task/openapi-pages-subpage` branch.
+The repository contains pull request 1 through pull request 103 work, merged
+into `main`, plus the current `task/landing-docs-visual-redesign` branch.
 
-Active task: `task/openapi-pages-subpage` publishes the generated OpenAPI
-document as a browsable page on the deployed GitHub Pages site:
-`site/docs/openapi.html` fetches `site/docs/openapi.json` (a committed copy of
-`docs/openapi.json`, kept in sync by `make openapi`/`make check-openapi`) and
-renders a route table client-side with no third-party viewer dependency. The
-task also wired `make check-openapi` into PR CI (`.github/workflows/ci.yml`),
-which the prior `task/generated-openapi-reference` branch had added to the
-Makefile but not to CI. Hard deletes remain out of scope; use soft lifecycle
-states, anonymization, redaction, tombstones, and audit records. Email/provider
-delivery, anonymous worker identity, per-project tokens, external wallets, and
-crypto integrations are out of scope.
+Active task: `task/landing-docs-visual-redesign` designs and implements real CSS
+for the two static marketing/docs pages (`site/index.html`,
+`site/docs/index.html`) that previously rendered fully unstyled in production.
+`site/marketing.css` is a new hand-authored stylesheet (a "dispatch desk"
+paper/typewriter aesthetic distinct from the demo's pixel-arcade skin) covering
+the `.landing-shell`/`.docs-shell`/`.panel`/
+`.topbar`/`.button`/`.objective-list`/etc. classes those pages already used but
+that had no matching CSS anywhere. `site/docs/openapi.html` was restyled to
+match for visual consistency across all three static pages. Hard deletes remain
+out of scope; use soft lifecycle states, anonymization, redaction, tombstones,
+and audit records. Email/provider delivery, anonymous worker identity,
+per-project tokens, external wallets, and crypto integrations are out of scope.
 
 Current implemented surface:
 
@@ -264,32 +265,40 @@ Current implemented surface:
   `site/docs/index.html`'s References list links to the new page.
   `tools/check_pages_routing.ts` verifies `/docs/openapi.html` and
   `/docs/openapi.json` after deployment.
+- `site/marketing.css` styles the three static pages outside the compiled Elm
+  app (`site/index.html`, `site/docs/index.html`, `site/docs/openapi.html`) with
+  a hand-authored "dispatch desk" paper/typewriter aesthetic (Special Elite/IBM
+  Plex fonts loaded from Google Fonts, matching the demo's existing font-loading
+  pattern). Previously these two pages linked a stylesheet no build step
+  produced and used classes with no matching CSS anywhere, so they rendered
+  fully unstyled in production; both are now fixed.
 - Local test/development examples avoid the project's former common ports:
   Postgres uses `25432`, the app uses `29180`, and the backendless demo uses
   `29181`. Playwright config accepts environment overrides for those ports.
 
 Current verification:
 
-- `go build ./...`, `go vet ./...`, and `go test ./...` passed.
+- `go build ./...`, `go vet ./...`, and `go test ./...` passed (sanity only;
+  this task did not touch Go code).
 - `deno task check:ts`, `deno task lint`, `deno task check:policy`, and
-  `deno task test` passed.
-- `make check-contracts` and `make check-openapi` passed (both regenerate and
-  assert no diff, now including `site/docs/openapi.json`).
-- `go tool deadcode -test ./...` passed.
-- `make check-copy-paste` (`jscpd`) found zero clones.
-- `deno task check_pages_routing.ts`-style local check: served `site/` with a
-  local static file server and ran `tools/check_pages_routing.ts` against it;
-  `/docs/openapi.html` and `/docs/openapi.json` passed alongside the existing
-  targets.
-- Loaded `site/docs/openapi.html` in a real Chromium browser (Playwright)
-  against the local static server: the route table rendered 106 rows with no
-  console/page errors, and the summary counts (106 routes, 12 public, 94
-  requiring a bearer token) matched `docs/openapi.json`.
-- `deno fmt --check` passed for touched TypeScript/Markdown files; the new
-  `site/docs/openapi.html` and the edited `tools/check_pages_routing.ts` were
-  formatted with `deno fmt` directly (`site/*.html` is not part of the enforced
-  `make check-format` file set; `site/index.html` and `site/docs/index.html`
-  predate this task and are not `deno fmt`-clean either).
+  `deno task test` passed (sanity only; no TypeScript changed).
+- `make check-contracts` and `make check-openapi` passed (sanity only; neither
+  is affected by this task).
+- `go tool deadcode -test ./...` and `make check-copy-paste` (zero clones)
+  passed.
+- Served `site/` with a local static file server and ran
+  `tools/check_pages_routing.ts` against it: all targets, including
+  `/docs/openapi.html` and `/docs/openapi.json`, still passed after the
+  redesign.
+- Loaded `site/index.html`, `site/docs/index.html`, and `site/docs/openapi.html`
+  in a real Chromium browser (Playwright) against the local static server at
+  both desktop (1280x900) and mobile (390x844) viewports, checked console/page
+  errors (none), and reviewed screenshots for layout correctness;
+  `site/docs/openapi.html`'s route table still rendered 106 rows with the
+  expected 106/12/94 summary counts.
+- `deno fmt` applied to the new/edited `site/*.html` and `site/marketing.css`
+  files directly (`site/*` is not part of the enforced `make check-format` file
+  set).
 - `git diff --check` passed.
 
 Blocking issues:

@@ -1,7 +1,48 @@
 # What We Did
 
-`task/openapi-pages-subpage` published the generated OpenAPI document on the
-deployed GitHub Pages site and closed a CI gap left by the prior branch.
+`task/landing-docs-visual-redesign` fixed the unstyled `site/index.html` and
+`site/docs/index.html` pages found during the prior task, with a full visual
+redesign rather than a minimal patch (explicit user choice).
+
+- **`site/marketing.css`.** A new hand-authored stylesheet implementing every
+  class those two pages already referenced but that had no matching CSS anywhere
+  (`.landing-shell`, `.landing-hero`, `.hero-copy`, `.hero-actions`,
+  `.landing-board`, `.board-column`, `.status-pill`, `.docs-shell`, `.panel`,
+  `.topbar`, `.brand`, `.button`/`.primary`/`.secondary`, `.eyebrow`,
+  `.objective-list`). Hand-authored rather than routed through the Tailwind/Elm
+  build pipeline: these are static content pages with no build step of their
+  own, and the chosen aesthetic (paper texture, dashed tears, keyframes) is
+  mostly literal CSS that would not benefit from Tailwind utility composition.
+  Also fixed the broken `demo/styles.css` link both pages had (a file no build
+  step produces).
+- **A distinctive aesthetic, not a generic fix.** A "dispatch desk"
+  paper/typewriter direction: kraft-paper texture, Special Elite display type
+  paired with IBM Plex Sans/Mono (fonts loaded from Google Fonts, matching the
+  existing pattern in `site/demo/index.html`), rust/navy ink accents,
+  rubber-stamp buttons with a pressed hover/active state, work-order cards on
+  the landing page pinned at slightly different rotations, carbon-copy-styled
+  `<pre>` blocks, and a staggered fade/rise page-load animation. Deliberately
+  distinct from the demo's existing pixel-arcade skin (`site/demo/arcade.css`)
+  rather than reusing it.
+- **Restyled `site/docs/openapi.html` to match.** The subpage added in the prior
+  task had its own inline blue/slate style block; recolored its summary cards,
+  table, and method badges to the same palette and swapped its topbar/panel
+  markup to reuse the shared `marketing.css` classes, so all three static pages
+  now read as one system. Fixed a `margin-left: auto` selector bug this
+  surfaced: `nav.topbar a.button` applied to every button in the bar, and with
+  two buttons (this page has "Docs" and "Demo" instead of one) flexbox gave each
+  its own auto margin instead of only pushing the first one right. Narrowed to
+  `nav.topbar .brand + a.button`.
+- **Verified by rendering, not just by reading the CSS.** Loaded all three pages
+  in a real Chromium browser via Playwright at desktop and mobile viewports,
+  checked for console/page errors (none), and reviewed screenshots; confirmed
+  `site/docs/openapi.html`'s route table still rendered 106 rows with correct
+  summary counts after the restyle, and that `tools/check_pages_routing.ts`
+  still passed against a local static server.
+
+`task/openapi-pages-subpage` (merged into `main`) published the generated
+OpenAPI document on the deployed GitHub Pages site and closed a CI gap left by
+the prior branch.
 
 - **OpenAPI Pages subpage.** `site/docs/openapi.html` fetches
   `site/docs/openapi.json` and renders a method/path/operationId/auth-
