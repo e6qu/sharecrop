@@ -65,6 +65,7 @@ emptyLoggedIn response =
     , subjectId = response.subjectID
     , isAdmin = response.role == "admin"
     , page = OverviewPage
+    , openNavMenu = Nothing
     , balance = Nothing
     , entries = []
     , ledgerOffset = 0
@@ -512,9 +513,21 @@ pageFromUrl url =
 
 
 -- enterPage applies any per-page state a route needs when it becomes active, so
--- a deep link or back/forward leaves the model consistent with the URL.
+-- a deep link or back/forward leaves the model consistent with the URL. Also
+-- closes any open nav-bar dropdown: its floating panel has no page-content
+-- reason to still be visible once the route it linked to has loaded, and
+-- left open it would sit over the new page and intercept clicks.
 enterPage : Page -> LoggedInModel -> LoggedInModel
 enterPage page state =
+    let
+        nextState =
+            enterPageFields page state
+    in
+    { nextState | openNavMenu = Nothing }
+
+
+enterPageFields : Page -> LoggedInModel -> LoggedInModel
+enterPageFields page state =
     case page of
         TasksPage ->
             { state | page = page, taskStateFilter = "", taskListOffset = 0, taskListQuery = "", taskListTypeFilter = "", taskListSort = "newest" }
@@ -2460,6 +2473,21 @@ update msg model =
 
         ResetDemoClicked ->
             ( model, reloadDemo () )
+
+        ToggleNavMenu identifier ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | openNavMenu =
+                            if state.openNavMenu == Just identifier then
+                                Nothing
+
+                            else
+                                Just identifier
+                    }
+                )
+            , Cmd.none
+            )
 
 
 seriesListRefresh : Model -> Cmd Msg

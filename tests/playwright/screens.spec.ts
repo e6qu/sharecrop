@@ -111,6 +111,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await expect(page.getByTestId("submission-comments-thread")).toBeVisible();
 
   // Owner reviews and accepts the submission through the UI.
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toHaveText("80 credits");
@@ -166,6 +167,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   );
 
   const worker = await registerViaApi(request, "reservation-ui-worker");
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, worker.email);
   await page.getByTestId("nav-discovery").click();
@@ -182,6 +184,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
 
   const other = await registerViaApi(request, "reservation-ui-other");
   await page.getByTestId("detail-back").click();
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, other.email);
   await page.getByTestId("nav-discovery").click();
@@ -293,6 +296,7 @@ test("users create and see their organizations", async ({ page, request }) => {
   const name = `Org UI ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-manage-menu").click();
   await page.getByTestId("nav-organizations").click();
   await expect(page.getByTestId("organizations-empty")).toBeVisible();
 
@@ -313,6 +317,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   const teamName = `Crew ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-manage-menu").click();
   await page.getByTestId("nav-organizations").click();
   await page.getByTestId("create-org-name").fill(orgName);
   await page.getByTestId("create-org").click();
@@ -616,6 +621,7 @@ test("requesters set a task's assignee scope to a team", async ({ page, request 
 
   // A worker viewing the task sees the organization-team assignee scope.
   const worker = await registerViaApi(request, "assignee-worker");
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, worker.email);
   await page.getByTestId("nav-discovery").click();
@@ -652,10 +658,12 @@ test("pages have their own URLs and deep links load", async ({ page, request }) 
   await loginViaUi(page, owner.email);
 
   // Link navigation updates the address bar and shows the page.
+  await page.getByTestId("nav-manage-menu").click();
   await page.getByTestId("nav-agents").click();
   await expect(page).toHaveURL(/\/agents$/);
   await expect(page.getByTestId("agent-label")).toBeVisible();
 
+  await page.getByTestId("nav-manage-menu").click();
   await page.getByTestId("nav-collectibles").click();
   await expect(page).toHaveURL(/\/collectibles$/);
   await expect(page.getByTestId("collectibles-mint")).toBeVisible();
@@ -735,6 +743,7 @@ test("a creator manages a first-class task series end to end", async ({ page, re
   await loginViaUi(page, owner.email);
 
   // Create a series from the Series page.
+  await page.getByTestId("nav-work-menu").click();
   await page.getByTestId("nav-series-list").click();
   await page.getByTestId("series-create-title").fill(seriesTitle);
   await page.getByTestId("series-create-description").fill(
@@ -897,6 +906,7 @@ test("a user mints a personal agent token with MCP install commands on their own
 
   // The Profile nav link goes to the user's own page, where the agent-access
   // section is present.
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-profile").click();
   await expect(page.getByTestId("mint-user-token")).toBeVisible();
   await page.getByTestId("mint-user-token").click();
@@ -971,6 +981,7 @@ test("owner and worker exchange comments on a submission", async ({ page, reques
   await expect(page.getByTestId("detail-submit-message")).toBeVisible();
 
   // Owner opens the submission and starts a comment thread on it.
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toBeVisible();
@@ -1054,6 +1065,7 @@ test("an owner tips a collectible on accept through the review form", async ({ p
   await expect(page.getByTestId("detail-submit-message")).toBeVisible();
 
   // Owner accepts with the collectible selected as a tip.
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await openTaskFromDiscovery(page, owner.email, title);
   await expect(page.getByTestId("submission-row")).toHaveCount(1);

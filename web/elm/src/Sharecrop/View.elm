@@ -83,7 +83,7 @@ authView model =
 loggedInView : Model -> LoggedInModel -> Html Msg
 loggedInView model state =
     div [ Html.Attributes.class "space-y-6" ]
-        [ navBar model.demo state.page state.subjectId state.isAdmin
+        [ navBar model.demo state.page state.subjectId state.isAdmin state.openNavMenu
 
         -- Keyed by route so navigating away and back always rebuilds the page
         -- fresh: without a key, Elm's virtual DOM can match two structurally
@@ -94,33 +94,68 @@ loggedInView model state =
         ]
 
 
-{-| The app's primary navigation, grouped by how the personas that use this
-app reach for it: day-to-day task work, building/managing (funding, series,
-collectibles, agents, organizations), and account/system controls. Grouping
-is visual only (spacing/rows) — every link keeps the exact `nav-<id>`
-`data-testid` it always had, so this can be restructured freely without
-touching any Playwright spec that clicks a specific nav item.
+{-| The primary nav: daily-driver links stay flat (Overview/Tasks/New
+task/Discovery/Inbox — the busiest links in real usage and in test coverage),
+while less-used groups collapse into `Ui.navMenu` dropdowns so the whole bar
+reads as one row instead of a wall of buttons. Every existing `nav-*` link
+keeps its exact `data-testid`, so moving a link into a dropdown doesn't
+change how a test finds it — only whether the surrounding menu needs opening
+first.
 -}
-navBar : Bool -> Page -> String -> Bool -> Html Msg
-navBar demo current subjectId isAdmin =
+navBar : Bool -> Page -> String -> Bool -> Maybe String -> Html Msg
+navBar demo current subjectId isAdmin openNavMenu =
+    let
+        isCurrent target =
+            pageToPath current == pageToPath target
+
+        workMenuActive =
+            isCurrent (UserSubmissionsPage subjectId) || isCurrent SeriesListPage
+
+        manageMenuActive =
+            isCurrent FundingPage
+                || isCurrent CollectiblesPage
+                || isCurrent AgentsPage
+                || isCurrent OrganizationsPage
+
+        accountMenuActive =
+            isCurrent (UserDetailPage subjectId) || isCurrent AdminPage
+
+        isMenuOpen identifier =
+            openNavMenu == Just identifier
+    in
     nav
-        [ Html.Attributes.attribute "aria-label" "Primary", Html.Attributes.class "space-y-2" ]
-        [ div [ Html.Attributes.class "flex flex-wrap items-center gap-2", testId "nav-group-work" ]
-            [ navLink current OverviewPage "overview" "Overview"
-            , navLink current TasksPage "tasks" "Tasks"
-            , navLink current CreateTaskPage "create-task" "New task"
-            , navLink current DiscoveryPage "discovery" "Discovery"
-            , navLink current InboxPage "inbox" "Inbox"
-            , navLink current (UserSubmissionsPage subjectId) "submissions" "Submissions"
-            ]
-        , div [ Html.Attributes.class "flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2", testId "nav-group-manage" ]
-            [ navLink current FundingPage "funding" "Funding"
+        [ Html.Attributes.attribute "aria-label" "Primary", Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+        [ navLink current OverviewPage "overview" "Overview"
+        , navLink current TasksPage "tasks" "Tasks"
+        , navLink current CreateTaskPage "create-task" "New task"
+        , navLink current DiscoveryPage "discovery" "Discovery"
+        , navLink current InboxPage "inbox" "Inbox"
+        , Ui.navMenu "nav-work-menu"
+            True
+            workMenuActive
+            (isMenuOpen "nav-work-menu")
+            (ToggleNavMenu "nav-work-menu")
+            "Work"
+            [ navLink current (UserSubmissionsPage subjectId) "submissions" "Submissions"
             , navLink current SeriesListPage "series-list" "Series"
+            ]
+        , Ui.navMenu "nav-manage-menu"
+            False
+            manageMenuActive
+            (isMenuOpen "nav-manage-menu")
+            (ToggleNavMenu "nav-manage-menu")
+            "Manage"
+            [ navLink current FundingPage "funding" "Funding"
             , navLink current CollectiblesPage "collectibles" "Collectibles"
             , navLink current AgentsPage "agents" "Agents"
             , navLink current OrganizationsPage "organizations" "Organizations"
             ]
-        , div [ Html.Attributes.class "flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2", testId "nav-group-account" ]
+        , Ui.navMenu "nav-account-menu"
+            True
+            accountMenuActive
+            (isMenuOpen "nav-account-menu")
+            (ToggleNavMenu "nav-account-menu")
+            "Account"
             (navLink current (UserDetailPage subjectId) "profile" "Profile"
                 :: (if isAdmin then
                         [ navLink current AdminPage "admin" "Admin" ]
@@ -149,7 +184,12 @@ navLink current target identifier labelText =
             else
                 Ui.secondaryButtonClass
     in
-    a [ href ("#" ++ pageToPath target), Html.Attributes.class styleClass, testId ("nav-" ++ identifier) ] [ text labelText ]
+    a
+        [ href ("#" ++ pageToPath target)
+        , Html.Attributes.class styleClass
+        , testId ("nav-" ++ identifier)
+        ]
+        [ text labelText ]
 
 
 adminView : LoggedInModel -> Html Msg

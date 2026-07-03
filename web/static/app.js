@@ -8176,7 +8176,7 @@ var $author$project$Main$revisionDraftFor = F2(
 			state.pendingRevisionTaskID,
 			$elm$core$Maybe$Just(taskId)) ? state.pendingRevisionResponse : '';
 	});
-var $author$project$Main$enterPage = F2(
+var $author$project$Main$enterPageFields = F2(
 	function (page, state) {
 		switch (page.$) {
 			case 'TasksPage':
@@ -8321,6 +8321,13 @@ var $author$project$Main$enterPage = F2(
 					state,
 					{page: page});
 		}
+	});
+var $author$project$Main$enterPage = F2(
+	function (page, state) {
+		var nextState = A2($author$project$Main$enterPageFields, page, state);
+		return _Utils_update(
+			nextState,
+			{openNavMenu: $elm$core$Maybe$Nothing});
 	});
 var $author$project$Sharecrop$Api$entriesFromResult = function (result) {
 	if (result.$ === 'Ok') {
@@ -9392,6 +9399,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		newPassword: '',
 		notifications: _List_Nil,
 		notificationsOffset: 0,
+		openNavMenu: $elm$core$Maybe$Nothing,
 		operations: $elm$core$Maybe$Nothing,
 		orgAuditEvents: _List_Nil,
 		orgAuditMessage: $elm$core$Maybe$Nothing,
@@ -17055,10 +17063,26 @@ var $author$project$Main$update = F2(
 							{route: page}),
 						$elm$core$Platform$Cmd$none);
 				}
-			default:
+			case 'ResetDemoClicked':
 				return _Utils_Tuple2(
 					model,
 					$author$project$Main$reloadDemo(_Utils_Tuple0));
+			default:
+				var identifier = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									openNavMenu: _Utils_eq(
+										state.openNavMenu,
+										$elm$core$Maybe$Just(identifier)) ? $elm$core$Maybe$Nothing : $elm$core$Maybe$Just(identifier)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
 		}
 	});
 var $elm$html$Html$Attributes$stringProperty = F2(
@@ -17396,6 +17420,9 @@ var $author$project$Sharecrop$View$authView = function (model) {
 };
 var $author$project$Sharecrop$Types$LogoutClicked = {$: 'LogoutClicked'};
 var $author$project$Sharecrop$Types$ResetDemoClicked = {$: 'ResetDemoClicked'};
+var $author$project$Sharecrop$Types$ToggleNavMenu = function (a) {
+	return {$: 'ToggleNavMenu', a: a};
+};
 var $elm$html$Html$nav = _VirtualDom_node('nav');
 var $elm$html$Html$a = _VirtualDom_node('a');
 var $elm$html$Html$Attributes$href = function (url) {
@@ -17475,60 +17502,119 @@ var $author$project$Sharecrop$View$navLink = F4(
 					$elm$html$Html$text(labelText)
 				]));
 	});
-var $author$project$Sharecrop$View$navBar = F4(
-	function (demo, current, subjectId, isAdmin) {
+var $author$project$Sharecrop$Ui$navMenu = F7(
+	function (identifier, alignRight, isActive, isOpen, onToggle, triggerText, children) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('relative inline-block')
+				]),
+			A2(
+				$elm$core$List$cons,
+				A2(
+					$elm$html$Html$button,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick(onToggle),
+							A2(
+							$elm$html$Html$Attributes$attribute,
+							'aria-expanded',
+							isOpen ? 'true' : 'false'),
+							A2($elm$html$Html$Attributes$attribute, 'aria-haspopup', 'true'),
+							$elm$html$Html$Attributes$class(
+							(isActive ? $author$project$Sharecrop$Ui$primaryButtonClass : $author$project$Sharecrop$Ui$secondaryButtonClass) + ' select-none'),
+							$author$project$Sharecrop$Ui$testId(identifier)
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(triggerText + ' \u25BE')
+						])),
+				isOpen ? _List_fromArray(
+					[
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class(
+								'absolute top-full z-20 mt-2 flex min-w-[190px] flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg ' + (alignRight ? 'right-0' : 'left-0'))
+							]),
+						children)
+					]) : _List_Nil));
+	});
+var $author$project$Sharecrop$View$navBar = F5(
+	function (demo, current, subjectId, isAdmin, openNavMenu) {
+		var isMenuOpen = function (identifier) {
+			return _Utils_eq(
+				openNavMenu,
+				$elm$core$Maybe$Just(identifier));
+		};
+		var isCurrent = function (target) {
+			return _Utils_eq(
+				$author$project$Sharecrop$Types$pageToPath(current),
+				$author$project$Sharecrop$Types$pageToPath(target));
+		};
+		var manageMenuActive = isCurrent($author$project$Sharecrop$Types$FundingPage) || (isCurrent($author$project$Sharecrop$Types$CollectiblesPage) || (isCurrent($author$project$Sharecrop$Types$AgentsPage) || isCurrent($author$project$Sharecrop$Types$OrganizationsPage)));
+		var workMenuActive = isCurrent(
+			$author$project$Sharecrop$Types$UserSubmissionsPage(subjectId)) || isCurrent($author$project$Sharecrop$Types$SeriesListPage);
+		var accountMenuActive = isCurrent(
+			$author$project$Sharecrop$Types$UserDetailPage(subjectId)) || isCurrent($author$project$Sharecrop$Types$AdminPage);
 		return A2(
 			$elm$html$Html$nav,
 			_List_fromArray(
 				[
 					A2($elm$html$Html$Attributes$attribute, 'aria-label', 'Primary'),
-					$elm$html$Html$Attributes$class('space-y-2')
+					$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2')
 				]),
 			_List_fromArray(
 				[
-					A2(
-					$elm$html$Html$div,
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OverviewPage, 'overview', 'Overview'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$TasksPage, 'tasks', 'Tasks'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CreateTaskPage, 'create-task', 'New task'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$DiscoveryPage, 'discovery', 'Discovery'),
+					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$InboxPage, 'inbox', 'Inbox'),
+					A7(
+					$author$project$Sharecrop$Ui$navMenu,
+					'nav-work-menu',
+					true,
+					workMenuActive,
+					isMenuOpen('nav-work-menu'),
+					$author$project$Sharecrop$Types$ToggleNavMenu('nav-work-menu'),
+					'Work',
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2'),
-							$author$project$Sharecrop$Ui$testId('nav-group-work')
-						]),
-					_List_fromArray(
-						[
-							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OverviewPage, 'overview', 'Overview'),
-							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$TasksPage, 'tasks', 'Tasks'),
-							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CreateTaskPage, 'create-task', 'New task'),
-							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$DiscoveryPage, 'discovery', 'Discovery'),
-							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$InboxPage, 'inbox', 'Inbox'),
 							A4(
 							$author$project$Sharecrop$View$navLink,
 							current,
 							$author$project$Sharecrop$Types$UserSubmissionsPage(subjectId),
 							'submissions',
-							'Submissions')
+							'Submissions'),
+							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$SeriesListPage, 'series-list', 'Series')
 						])),
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2'),
-							$author$project$Sharecrop$Ui$testId('nav-group-manage')
-						]),
+					A7(
+					$author$project$Sharecrop$Ui$navMenu,
+					'nav-manage-menu',
+					false,
+					manageMenuActive,
+					isMenuOpen('nav-manage-menu'),
+					$author$project$Sharecrop$Types$ToggleNavMenu('nav-manage-menu'),
+					'Manage',
 					_List_fromArray(
 						[
 							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$FundingPage, 'funding', 'Funding'),
-							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$SeriesListPage, 'series-list', 'Series'),
 							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$CollectiblesPage, 'collectibles', 'Collectibles'),
 							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$AgentsPage, 'agents', 'Agents'),
 							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OrganizationsPage, 'organizations', 'Organizations')
 						])),
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2'),
-							$author$project$Sharecrop$Ui$testId('nav-group-account')
-						]),
+					A7(
+					$author$project$Sharecrop$Ui$navMenu,
+					'nav-account-menu',
+					true,
+					accountMenuActive,
+					isMenuOpen('nav-account-menu'),
+					$author$project$Sharecrop$Types$ToggleNavMenu('nav-account-menu'),
+					'Account',
 					A2(
 						$elm$core$List$cons,
 						A4(
@@ -26755,7 +26841,7 @@ var $author$project$Sharecrop$View$loggedInView = F2(
 				]),
 			_List_fromArray(
 				[
-					A4($author$project$Sharecrop$View$navBar, model.demo, state.page, state.subjectId, state.isAdmin),
+					A5($author$project$Sharecrop$View$navBar, model.demo, state.page, state.subjectId, state.isAdmin, state.openNavMenu),
 					A3(
 					$elm$html$Html$Keyed$node,
 					'div',

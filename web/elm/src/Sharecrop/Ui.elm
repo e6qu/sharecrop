@@ -44,6 +44,68 @@ pageTitle title =
     h1 [ class "text-3xl font-semibold" ] [ text title ]
 
 
+{-| A dropdown menu for the nav bar's grouped links: the panel is absolutely
+positioned below the trigger so it floats over page content rather than
+pushing it down. `alignRight` hangs the panel from the trigger's right edge
+instead of its left, for menus near the right side of the screen that would
+otherwise overflow off-screen. `isActive` highlights the trigger itself (like
+the active page's nav link) when the current page is one of this menu's
+items, so closing the menu doesn't lose the "you are here" signal.
+
+Deliberately Elm-controlled (`isOpen`/`onToggle`) rather than a native
+`<details>`/`<summary>`: a menu item is a link that navigates to a new page,
+and a native details element has no way for Elm to close it again once
+that navigation completes — left open, its floating panel would sit over
+the new page and intercept clicks on whatever is underneath it. The caller
+is expected to reset the open menu to `Nothing` on every route change.
+-}
+navMenu : String -> Bool -> Bool -> Bool -> msg -> String -> List (Html msg) -> Html msg
+navMenu identifier alignRight isActive isOpen onToggle triggerText children =
+    Html.div [ class "relative inline-block" ]
+        (button
+            [ type_ "button"
+            , onClick onToggle
+            , attribute "aria-expanded"
+                (if isOpen then
+                    "true"
+
+                 else
+                    "false"
+                )
+            , attribute "aria-haspopup" "true"
+            , class
+                ((if isActive then
+                    primaryButtonClass
+
+                  else
+                    secondaryButtonClass
+                 )
+                    ++ " select-none"
+                )
+            , testId identifier
+            ]
+            [ text (triggerText ++ " \u{25BE}") ]
+            :: (if isOpen then
+                    [ Html.div
+                        [ class
+                            ("absolute top-full z-20 mt-2 flex min-w-[190px] flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg "
+                                ++ (if alignRight then
+                                        "right-0"
+
+                                    else
+                                        "left-0"
+                                   )
+                            )
+                        ]
+                        children
+                    ]
+
+                else
+                    []
+               )
+        )
+
+
 {-| A heading that also reports a live count, e.g. "Teams (3)".
 -}
 sectionTitleWithCount : String -> Int -> String -> Html msg
