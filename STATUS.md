@@ -1,17 +1,37 @@
 # Status
 
-The repository contains pull request 1 through pull request 110 work, merged
-into `main`, plus the current `task/ui-navbar-declutter-a11y-seed` branch. PR
-108's GitHub Pages deployment failed three times in a row after merge for what
-looked like a transient GitHub-side Pages backend issue (build/artifact steps
-always succeeded; only `deploy-pages` failed or hung, with a different symptom
-each time); PR 109's deployment succeeded on the first try with no code or
-workflow changes, confirming it was not a code problem and has since cleared on
-its own.
+The repository contains pull request 1 through pull request 111 work, merged
+into `main`, plus the current `task/navbar-dropdown-menu-more-seed-tasks`
+branch. PR 108's GitHub Pages deployment failed three times in a row after
+merge for what looked like a transient GitHub-side Pages backend issue
+(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
+with a different symptom each time); PR 109's, 110's, and 111's deployments
+each succeeded on the first try with no code or workflow changes, confirming
+it was not a code problem and has since cleared.
 
-Active task: `task/ui-navbar-declutter-a11y-seed` is a deliberately large,
-bundled UI/UX pass (explicitly requested as one PR rather than the usual
-one-task-per-branch split), covering: a grouped `<nav>` navbar (replacing the
+Active task: `task/navbar-dropdown-menu-more-seed-tasks` follows up on PR
+111's navbar grouping (still 15 buttons across 3 rows) with real dropdown
+menus: Overview/Tasks/New task/Discovery/Inbox stay flat, and
+Submissions/Series ("Work"), Funding/Collectibles/Agents/Organizations
+("Manage"), and Profile/Admin/Log out/Reset demo ("Account") each collapse
+into a menu — one row instead of three. The first implementation attempt
+used a native `<details>`/`<summary>` (matching `Ui.disclosure`'s
+no-Elm-state philosophy) but had two real bugs the Playwright suite caught:
+Elm silently drops inline `onclick` attributes (a deliberate security
+measure), so an attempted native-JS fix to close the menu on navigation was
+a no-op, and without it the floating panel stayed open over whatever page
+loaded next and intercepted clicks on it. Fixed by making the dropdown
+Elm-controlled instead (`openNavMenu : Maybe String`, reset to `Nothing` in
+`enterPage` on every route change) — see `WHAT_WE_DID.md` for the full
+writeup, including a genuine mobile-viewport overflow bug the horizontal-
+overflow check caught in the "Work" menu specifically. Also expanded the WASM
+demo's seeded tasks from 6 to 14 for a less sparse first impression, without
+touching the frozen balance/catalog-count invariants existing Playwright
+specs depend on.
+
+`task/ui-navbar-declutter-a11y-seed` (PR 111, merged into `main`) was a
+deliberately large, bundled UI/UX pass (explicitly requested as one PR rather
+than the usual one-task-per-branch split), covering: a grouped `<nav>` navbar (replacing the
 old flat 14-button row) with a fixed Profile active-state bug and a new
 top-level Submissions link; further page decluttering via `Ui.disclosure` on
 Create Task's ownership/access fields, the Collectibles mint/award forms, the

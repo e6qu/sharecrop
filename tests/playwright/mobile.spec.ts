@@ -31,18 +31,35 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
   }
 
   await expectNoHorizontalOverflow("overview");
+
+  // The Work/Manage/Account nav dropdowns float over page content on a
+  // narrow phone viewport, so their open panels are their own overflow risk
+  // distinct from the pages they link to.
+  await page.getByTestId("nav-work-menu").click();
+  await expectNoHorizontalOverflow("nav work menu open");
+  await page.getByTestId("nav-work-menu").click();
+  await page.getByTestId("nav-manage-menu").click();
+  await expectNoHorizontalOverflow("nav manage menu open");
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByTestId("nav-account-menu").click();
+  await expectNoHorizontalOverflow("nav account menu open");
+  await page.getByTestId("nav-account-menu").click();
+
   for (
-    const name of [
-      "Discovery",
-      "Tasks",
-      "New task",
-      "Series",
-      "Funding",
-      "Agents",
-      "Collectibles",
-      "Organizations",
-    ]
+    const [name, menu] of [
+      ["Discovery", ""],
+      ["Tasks", ""],
+      ["New task", ""],
+      ["Series", "nav-work-menu"],
+      ["Funding", "nav-manage-menu"],
+      ["Agents", "nav-manage-menu"],
+      ["Collectibles", "nav-manage-menu"],
+      ["Organizations", "nav-manage-menu"],
+    ] as const
   ) {
+    if (menu) {
+      await page.getByTestId(menu).click();
+    }
     await page.getByRole("link", { name, exact: true }).click();
     await expectNoHorizontalOverflow(name);
   }
@@ -61,6 +78,7 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
   await expectNoHorizontalOverflow("task detail with API & MCP panel");
 
   // The user's own profile page mints a personal token with long MCP commands.
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-profile").click();
   await page.getByTestId("mint-user-token").click();
   await expect(page.getByTestId("user-token")).toBeVisible();

@@ -9,6 +9,7 @@ test("guest entry and account lifecycle controls work in the browser", async ({ 
   await page.goto("/");
   await page.getByTestId("guest-login").click();
   await expect(page.getByTestId("overview")).toBeVisible();
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
 
   await page.getByTestId("email").fill(email);
@@ -16,6 +17,7 @@ test("guest entry and account lifecycle controls work in the browser", async ({ 
   await page.getByTestId("register").click();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-profile").click();
   await page.getByTestId("account-email-verification").click();
   await page.getByTestId("request-email-verification").click();
@@ -35,6 +37,7 @@ test("guest entry and account lifecycle controls work in the browser", async ({ 
     "Account updated.",
   );
 
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await page.getByTestId("reset-email").fill(email);
   await page.getByTestId("request-password-reset").click();

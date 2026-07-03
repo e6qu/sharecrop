@@ -105,6 +105,7 @@ type alias LoggedInModel =
     , subjectId : String
     , isAdmin : Bool
     , page : Page
+    , openNavMenu : Maybe String
     , balance : Maybe Int
     , entries : List Ledger.LedgerEntryResponse
     , ledgerOffset : Int
@@ -339,6 +340,7 @@ type Msg
     | RegisterClicked
     | LoginClicked
     | GuestClicked
+    | ToggleNavMenu String
     | AuthReceived (Result Http.Error Auth.AuthResponse)
     | RefreshReceived (Result Http.Error Auth.AuthResponse)
     | PasswordResetEmailChanged String

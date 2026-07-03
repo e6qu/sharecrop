@@ -1,5 +1,82 @@
 # What We Did
 
+`task/navbar-dropdown-menu-more-seed-tasks` turned the prior branch's
+3-row/15-button nav grouping into a genuinely structured navbar with real
+dropdown menus, and substantially grew the WASM demo's seeded task volume.
+Screenshots (both the arcade demo skin and a standalone static mockup) were
+used to align on the design with the user before implementing.
+
+- **Navbar collapses to one row.** Overview/Tasks/New task/Discovery/Inbox
+  stay flat (the busiest links, per the same test-usage grep methodology as
+  the prior branch: Tasks is clicked 13×, Discovery 8× across the spec
+  suite — moving either would have forced ~20 test edits for no real
+  decluttering win). Submissions/Series fold into a new "Work" menu;
+  Funding/Collectibles/Agents/Organizations fold into "Manage";
+  Profile/Admin/Log out/Reset demo fold into "Account". 15 buttons across 3
+  rows became 8 items in one row (two on the narrowest viewports, since the
+  app's `max-w-3xl` content column — not the browser width — is what
+  actually constrains wrapping).
+- **First attempt used native `<details>`/`<summary>` for the dropdowns**
+  (matching `Ui.disclosure`'s no-Elm-state philosophy) and looked right in a
+  screenshot, but had two real bugs caught by the existing Playwright suite,
+  not by eyeballing screenshots:
+  - Elm's `elm/virtual-dom` silently drops `onclick` (and other `on*`)
+    attributes set via `Html.Attributes.attribute` — a deliberate security
+    measure, not a bug — so an attempted inline-JS fix to close the dropdown
+    on navigation was a complete no-op (confirmed by checking
+    `getAttribute("onclick")` in a real browser: `null`).
+  - Without that, a native `<details>` dropdown has no way to close itself
+    when a link inside it navigates: the DOM node's `open` state is
+    untouched by navigating, so the floating panel kept rendering on top of
+    whatever page loaded next and intercepted clicks on it — caught by
+    `locator.click: ... subtree intercepts pointer events` failures in
+    `screens.spec.ts`'s organization-creation tests, not by visual review.
+  - Fixed by making the menu Elm-controlled instead: one
+    `openNavMenu : Maybe String` field, one `ToggleNavMenu String` message,
+    and — the key part — `enterPage` (already the single place every route
+    change flows through) now resets `openNavMenu` to `Nothing` on every
+    navigation, so a menu never survives past the page it linked to.
+    `Ui.navMenu` became a plain `button` + conditionally-rendered `div`
+    (with `aria-expanded`/`aria-haspopup`) instead of `details`/`summary`.
+  - This in turn required re-examining every "does the menu stay open
+    across these two clicks" assumption made while updating tests for the
+    prior native-details version: it doesn't, ever, now — each nav-menu
+    item click needs the menu re-opened immediately before it, even two
+    items in the same menu back to back, if a navigation happened in
+    between.
+- **A real, previously-invisible mobile overflow bug found by the existing
+  `mobile.spec.ts` check** (extended to also open each of the 3 new menus
+  and check for overflow, not just the pages they link to): the "Work" menu,
+  positioned as the 3rd item on its wrapped mobile row, floated a
+  fixed-width panel rightward off the edge of a 375px viewport. Fixed by
+  aligning its panel to hang from its trigger's right edge instead of its
+  left (`Manage` needed to stay left-aligned, since on mobile it wraps to
+  being the *first* item on its own row — aligning it right would have
+  overflowed the *left* edge instead).
+- **Demo seed data grew from 6 tasks to 14** (`site/demo/wasm-host.js`):
+  added `security_review`/`product_review`/`ui_ux_review`-typed tasks, a
+  second task for the demo's own logged-in user (`user-mara`, since Tasks —
+  "My tasks" — only ever showed her `task-ledger-review` before), a `closed`
+  task for realism (added a `state` override, previously hardcoded to
+  `"open"` for every seeded task), and spread the rest across
+  `user-sol` (previously owned nothing) and the existing owners. Re-verified
+  the frozen invariants from the prior branch (mara's 1250 credits, the
+  org's 7200 credits, the 25-entry catalog count) still hold — none of the
+  new tasks touch a ledger entry.
+- Fixed a `check:policy` failure caught by the pre-commit hook, not by
+  review: the project forbids the literal `null` in TypeScript source, and
+  the mobile-overflow loop's "no menu needed for this link" placeholder used
+  `null` — switched to an empty string sentinel instead.
+- Verified: all 46 real-backend Playwright specs (`make e2e-ui`), all 13
+  WASM-demo Playwright specs, Go integration/http_e2e suites, `go test
+  ./...`, and the full non-browser check suite (`check-format`,
+  `check-contracts`, `check-openapi`, `check-policy`, `check-ts`,
+  `check-copy-paste`, `check-dead-code`, `lint`, `vet`) all pass.
+  Screenshot-verified the closed-by-default nav on both desktop and mobile
+  viewports, each menu's open state in both the base theme and the arcade
+  demo skin, the fixed post-navigation auto-close, and the richer Discovery
+  task list.
+
 `task/ui-navbar-declutter-a11y-seed` is a deliberately large, bundled UI/UX
 pass across the Elm frontend and WASM demo seed data, explicitly requested as
 one PR rather than the project's usual one-task-per-branch split. Research

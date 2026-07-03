@@ -126,6 +126,7 @@ test("demo organization page shows a funded balance, not a stuck spinner", async
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
 
+  await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Organizations" }).click();
   await page.getByTestId("select-organization").first().click();
 
@@ -139,6 +140,7 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
 
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-profile").click();
   await page.getByTestId("account-privacy").click();
   await page.getByTestId("request-data-export").click();
@@ -146,6 +148,7 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
     "Privacy request queued",
   );
 
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
   await expect(page.getByTestId("admin-audit-page-offset")).toHaveText(
     "Offset 0",
@@ -174,6 +177,7 @@ test("demo admin config grants and revokes platform admins", async ({ page }) =>
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
 
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
   await page.getByTestId("admin-section-platform-admins").click();
   await page.getByTestId("admin-platform-user").selectOption("user-jules");
@@ -202,6 +206,7 @@ test("demo admin runs privacy retention from the browser", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
 
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
   await page.getByTestId("admin-section-privacy").click();
   await page.getByTestId("admin-run-privacy-retention").click();
@@ -226,6 +231,7 @@ test("demo task reports appear in the admin moderation panel", async ({ page }) 
     "Report submitted: pii",
   );
 
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
   await expect(page.getByTestId("admin-moderation-report")).toHaveCount(1);
   await expect(page.getByTestId("admin-moderation-report")).toContainText(
@@ -249,6 +255,7 @@ test("demo admin triages moderation reports from the browser", async ({ page }) 
     "Report submitted: policy",
   );
 
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
   await expect(page.getByTestId("admin-moderation-report")).toHaveCount(1);
   await expect(page.getByTestId("admin-moderation-subject-link")).toHaveCount(
@@ -296,6 +303,7 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
 test("the collectibles catalog renders sprites, awards a default, and trades it", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
+  await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Collectibles", exact: true }).click();
 
   // The 25 default collectibles render as a gallery of pixel sprites.
@@ -330,6 +338,7 @@ test("demo creates and opens a task series", async ({ page }) => {
 
   // A real bug found by hand-testing the demo: /api/task-series was entirely
   // unclassified in the WASM backend (a 404), so this whole flow was broken.
+  await page.getByTestId("nav-work-menu").click();
   await page.getByRole("link", { name: "Series", exact: true }).click();
   await page.getByTestId("series-create-title").fill("Sprint 1");
   await page.getByTestId("series-create-description").fill(
@@ -353,9 +362,11 @@ test("the demo shows a Reset button and hash routing keeps a stable URL on refre
   await expect(page.getByText("1250 credits")).toBeVisible();
 
   // The demo-only Reset control is present.
+  await page.getByTestId("nav-account-menu").click();
   await expect(page.getByTestId("reset-demo")).toBeVisible();
 
   // Navigation updates the fragment, and a hard refresh stays on the page.
+  await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Collectibles", exact: true }).click();
   await expect(page).toHaveURL(/#\/collectibles$/);
   await page.reload();

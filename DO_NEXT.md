@@ -5,8 +5,19 @@ Current priority from
 
 Active branch:
 
-1. `task/ui-navbar-declutter-a11y-seed` is in progress, a deliberately large
-   bundled UI/UX pass (one PR by explicit request, not the usual
+1. `task/navbar-dropdown-menu-more-seed-tasks` is in progress. Follows up on
+   PR 111's nav grouping (still 15 buttons across 3 rows) with real dropdown
+   menus (Work/Manage/Account), collapsing to one row. A native
+   `<details>`/`<summary>` first attempt had two real bugs the Playwright
+   suite caught: Elm silently drops inline `onclick` attributes, so closing
+   the menu on navigation needed real Elm state instead
+   (`openNavMenu`/`ToggleNavMenu`, reset in `enterPage` on every route
+   change) rather than a native-only approach. Also expanded the WASM demo's
+   seeded tasks from 6 to 14. See `STATUS.md`/`WHAT_WE_DID.md` for the full
+   writeup.
+
+2. `task/ui-navbar-declutter-a11y-seed` (PR 111, merged) was a deliberately
+   large bundled UI/UX pass (one PR by explicit request, not the usual
    one-task-per-branch split): a grouped `<nav>` navbar replacing the old flat
    14-button row (with a fixed Profile active-state bug and a new Submissions
    nav entry), further `Ui.disclosure`-based decluttering on Create Task,
@@ -22,7 +33,7 @@ Active branch:
    app-wide, not just for Profile). See `STATUS.md`/`WHAT_WE_DID.md` for the
    full breakdown.
 
-2. `task/task-series-wasm-support` (PR 110, merged) continued hand-testing the
+3. `task/task-series-wasm-support` (PR 110, merged) continued hand-testing the
    browser demo: found that `/api/task-series` (list, create) and
    `/api/task-series/{id}` (detail) were entirely unclassified in the WASM demo
    (a 404) — the whole Task Series feature had zero WASM demo support, not just

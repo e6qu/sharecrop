@@ -13,6 +13,7 @@ test("creating an agent credential shows the token and MCP config", async ({ pag
   await page.getByTestId("register").click();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
+  await page.getByTestId("nav-manage-menu").click();
   await page.getByTestId("nav-agents").click();
   await page.getByTestId("agent-label").fill("Local workstation agent");
   await page.getByTestId("create-agent").click();
