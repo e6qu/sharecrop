@@ -5,7 +5,25 @@ Current priority from
 
 Active branch:
 
-1. `task/merge-tasks-nav-uiux-polish` is in progress. Consolidates the nav
+1. `task/task-detail-reorder-profile-links-uiux` is in progress. Refines the
+   task detail and profile pages for usability at the user's explicit
+   direction: Report task is now a collapsed disclosure; reservation status
+   moved to the top of the task detail page, above role-specific controls.
+   That reorder surfaced a real gap — task owners previously had no way to
+   see or act on a pending reservation request through the browser at all
+   (Approve/Decline existed in code but were never reachable by the one role
+   allowed to click them). Fixed, plus a new test since that flow had zero
+   prior coverage. Also scoped reservation/submission action buttons to who's
+   actually entitled to click them (previously any worker saw every
+   reservation's buttons, including other people's). People now link to
+   their profiles wherever their user ID appears (reservation holder,
+   submitter, task creator, notification actor, admin user ID). On profile
+   pages, "Submissions" now only shows on your own profile (the API 403s for
+   anyone else), and "Public work" is relabeled "Currently working on" with
+   richer per-task info. See `STATUS.md`/`WHAT_WE_DID.md` for the full
+   writeup.
+
+2. `task/merge-tasks-nav-uiux-polish` (PR 113, merged) consolidated the nav
    further at the user's explicit direction: New task, Discovery, and the
    whole Work menu (Submissions, Series) are gone as separate nav
    destinations — Tasks is now a hub (My tasks + Discover public tasks always
@@ -17,10 +35,9 @@ Active branch:
    plumbing. Found and fixed two real pre-existing bugs this refactor
    uncovered (submissions-pagination and series-refresh handlers were keyed
    off the current page being an exact standalone route, so they silently
-   no-op'd from the new hub). See `STATUS.md`/`WHAT_WE_DID.md` for the full
-   writeup.
+   no-op'd from the new hub).
 
-2. `task/navbar-dropdown-menu-more-seed-tasks` (PR 112, merged) followed up
+3. `task/navbar-dropdown-menu-more-seed-tasks` (PR 112, merged) followed up
    on PR 111's nav grouping (still 15 buttons across 3 rows) with real
    dropdown menus (Work/Manage/Account), collapsing to one row. A native
    `<details>`/`<summary>` first attempt had two real bugs the Playwright
@@ -30,7 +47,7 @@ Active branch:
    change) rather than a native-only approach. Also expanded the WASM demo's
    seeded tasks from 6 to 14.
 
-3. `task/ui-navbar-declutter-a11y-seed` (PR 111, merged) was a deliberately
+4. `task/ui-navbar-declutter-a11y-seed` (PR 111, merged) was a deliberately
    large bundled UI/UX pass (one PR by explicit request, not the usual
    one-task-per-branch split): a grouped `<nav>` navbar replacing the old flat
    14-button row (with a fixed Profile active-state bug and a new Submissions
@@ -47,7 +64,7 @@ Active branch:
    app-wide, not just for Profile). See `STATUS.md`/`WHAT_WE_DID.md` for the
    full breakdown.
 
-4. `task/task-series-wasm-support` (PR 110, merged) continued hand-testing the
+5. `task/task-series-wasm-support` (PR 110, merged) continued hand-testing the
    browser demo: found that `/api/task-series` (list, create) and
    `/api/task-series/{id}` (detail) were entirely unclassified in the WASM demo
    (a 404) — the whole Task Series feature had zero WASM demo support, not just

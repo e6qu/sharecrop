@@ -201,6 +201,66 @@ test("requesters configure reservations and workers include reserved tasks", asy
   ).toHaveCount(1);
 });
 
+test("an owner approves a worker's reservation request from the task detail page", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "reservation-approve-owner");
+  const title = `Approval required ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill(
+    "Approval required from the browser.",
+  );
+  await page.getByTestId("create-task-ownership").click();
+  await page.getByTestId("create-participation-approval_required").click();
+  await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
+    "view-task",
+  ).click();
+  await page.getByTestId("open-task").click();
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "Task opened",
+  );
+
+  const worker = await registerViaApi(request, "reservation-approve-worker");
+  await page.getByTestId("nav-account-menu").click();
+  await page.getByTestId("logout").click();
+  await loginViaUi(page, worker.email);
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("discovery-task-row").filter({ hasText: title })
+    .getByTestId("discovery-view").click();
+  await page.getByTestId("request-approval").click();
+  await expect(page.getByTestId("reservation-message")).toContainText(
+    "requested",
+  );
+
+  // The owner sees the pending request at the top of the task detail page
+  // (the Reservation section, above owner controls) and can approve it —
+  // previously there was no way to do this through the browser at all.
+  await page.getByTestId("detail-back").click();
+  await page.getByTestId("nav-account-menu").click();
+  await page.getByTestId("logout").click();
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
+    "view-task",
+  ).click();
+  const reservationRow = page.getByTestId("reservation-row").filter({
+    hasText: worker.body.subject_id,
+  });
+  await expect(reservationRow).toHaveCount(1);
+  await reservationRow.getByTestId("approve-reservation").click();
+  await expect(page.getByTestId("reservation-message")).toContainText(
+    "active",
+  );
+});
+
 test("requesters upload small task attachments through the real backend", async ({ page, request }) => {
   const owner = await registerViaApi(request, "upload-ui-owner");
   const title = `Attached task ${crypto.randomUUID()}`;

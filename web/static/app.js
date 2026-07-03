@@ -18216,10 +18216,11 @@ var $author$project$Sharecrop$View$platformAdminRow = function (admin) {
 				_List_fromArray(
 					[
 						A2(
-						$elm$html$Html$p,
+						$elm$html$Html$a,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('font-medium text-slate-900 break-all')
+								$elm$html$Html$Attributes$href('#/users/' + admin.userID),
+								$elm$html$Html$Attributes$class('block font-medium text-slate-900 break-all underline')
 							]),
 						_List_fromArray(
 							[
@@ -21574,7 +21575,19 @@ var $author$project$Sharecrop$View$notificationRow = function (notification) {
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text('Subject ' + (notification.subjectID + (' · actor ' + (notification.actorUserID + (' · ' + notification.createdAt)))))
+						$elm$html$Html$text('Subject ' + (notification.subjectID + ' · actor ')),
+						A2(
+						$elm$html$Html$a,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$href('#/users/' + notification.actorUserID),
+								$elm$html$Html$Attributes$class('underline')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(notification.actorUserID)
+							])),
+						$elm$html$Html$text(' · ' + notification.createdAt)
 					])),
 				$author$project$Sharecrop$View$notificationTaskLink(notification),
 				(notification.metadataJSON === '{}') ? $elm$html$Html$text('') : A2(
@@ -23839,6 +23852,28 @@ var $author$project$Sharecrop$View$detailCard = F2(
 							$elm$html$Html$p,
 							_List_fromArray(
 								[
+									$elm$html$Html$Attributes$class('text-xs text-slate-500')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Posted by '),
+									A2(
+									$elm$html$Html$a,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$href('#/users/' + detail.createdBy),
+											$elm$html$Html$Attributes$class('underline'),
+											$author$project$Sharecrop$Ui$testId('detail-created-by-link')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(detail.createdBy)
+										]))
+								])),
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
 									$elm$html$Html$Attributes$class('text-sm font-medium')
 								]),
 							_List_fromArray(
@@ -23965,38 +24000,45 @@ var $author$project$Sharecrop$View$moderationReportCard = function (state) {
 		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
 				[
-					$author$project$Sharecrop$Ui$sectionTitle('Report task'),
-					A2(
-					$elm$html$Html$div,
+					A4(
+					$author$project$Sharecrop$Ui$disclosure,
+					'moderation-report-panel',
+					false,
+					'Report task',
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
-							$author$project$Sharecrop$Ui$testId('moderation-reasons')
-						]),
-					A2(
-						$elm$core$List$map,
-						$author$project$Sharecrop$View$moderationReasonButton(state.moderationReason),
-						$author$project$Sharecrop$View$moderationReasonOptions)),
-					$author$project$Sharecrop$Ui$textarea_(
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$placeholder('Describe the issue'),
-							$elm$html$Html$Attributes$value(state.moderationDetails),
-							$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$ModerationDetailsChanged),
-							$elm$html$Html$Attributes$rows(4),
-							$author$project$Sharecrop$Ui$testId('moderation-details')
-						])),
-					A2(
-					$author$project$Sharecrop$Ui$secondaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$type_('button'),
-							$elm$html$Html$Events$onClick(
-							$author$project$Sharecrop$Types$ReportTaskClicked(detail.id)),
-							$author$project$Sharecrop$Ui$testId('report-task')
-						]),
-					'Submit report'),
-					A2($author$project$Sharecrop$View$maybeNote, state.moderationMessage, 'moderation-message')
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('flex flex-wrap gap-2'),
+									$author$project$Sharecrop$Ui$testId('moderation-reasons')
+								]),
+							A2(
+								$elm$core$List$map,
+								$author$project$Sharecrop$View$moderationReasonButton(state.moderationReason),
+								$author$project$Sharecrop$View$moderationReasonOptions)),
+							$author$project$Sharecrop$Ui$textarea_(
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$placeholder('Describe the issue'),
+									$elm$html$Html$Attributes$value(state.moderationDetails),
+									$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$ModerationDetailsChanged),
+									$elm$html$Html$Attributes$rows(4),
+									$author$project$Sharecrop$Ui$testId('moderation-details')
+								])),
+							A2(
+							$author$project$Sharecrop$Ui$secondaryButton,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('button'),
+									$elm$html$Html$Events$onClick(
+									$author$project$Sharecrop$Types$ReportTaskClicked(detail.id)),
+									$author$project$Sharecrop$Ui$testId('report-task')
+								]),
+							'Submit report'),
+							A2($author$project$Sharecrop$View$maybeNote, state.moderationMessage, 'moderation-message')
+						]))
 				]));
 	} else {
 		return $elm$html$Html$text('');
@@ -24531,6 +24573,21 @@ var $author$project$Sharecrop$View$reservationAction = F2(
 				return $elm$html$Html$text('');
 		}
 	});
+var $author$project$Sharecrop$View$assigneeIdentityLink = F2(
+	function (assigneeKind, assigneeID) {
+		return _Utils_eq(assigneeKind, $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser) ? A2(
+			$elm$html$Html$a,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$href('#/users/' + assigneeID),
+					$elm$html$Html$Attributes$class('underline'),
+					$author$project$Sharecrop$Ui$testId('reservation-assignee-link')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(assigneeID)
+				])) : $elm$html$Html$text(assigneeID);
+	});
 var $author$project$Sharecrop$Types$ApproveReservationClicked = function (a) {
 	return {$: 'ApproveReservationClicked', a: a};
 };
@@ -24540,108 +24597,116 @@ var $author$project$Sharecrop$Types$CancelReservationClicked = function (a) {
 var $author$project$Sharecrop$Types$DeclineReservationClicked = function (a) {
 	return {$: 'DeclineReservationClicked', a: a};
 };
-var $author$project$Sharecrop$View$reservationButtons = function (reservation) {
-	var _v0 = reservation.state;
-	switch (_v0.$) {
-		case 'TaskReservationStateRequested':
-			return _List_fromArray(
-				[
-					A2(
-					$author$project$Sharecrop$Ui$primaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$type_('button'),
-							$elm$html$Html$Events$onClick(
-							$author$project$Sharecrop$Types$ApproveReservationClicked(reservation.id)),
-							$author$project$Sharecrop$Ui$testId('approve-reservation')
-						]),
-					'Approve'),
-					A2(
-					$author$project$Sharecrop$Ui$secondaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$type_('button'),
-							$elm$html$Html$Events$onClick(
-							$author$project$Sharecrop$Types$DeclineReservationClicked(reservation.id)),
-							$author$project$Sharecrop$Ui$testId('decline-reservation')
-						]),
-					'Decline')
-				]);
-		case 'TaskReservationStateActive':
-			return _List_fromArray(
-				[
-					A2(
-					$author$project$Sharecrop$Ui$secondaryButton,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$type_('button'),
-							$elm$html$Html$Events$onClick(
-							$author$project$Sharecrop$Types$CancelReservationClicked(reservation.id)),
-							$author$project$Sharecrop$Ui$testId('cancel-reservation')
-						]),
-					'Cancel')
-				]);
-		default:
-			return _List_Nil;
-	}
-};
-var $author$project$Sharecrop$View$reservationRow = function (reservation) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('flex items-center justify-between gap-3 py-2'),
-				$author$project$Sharecrop$Ui$testId('reservation-row')
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$div,
-				_List_Nil,
-				_List_fromArray(
+var $author$project$Sharecrop$View$reservationButtons = F3(
+	function (isOwner, subjectId, reservation) {
+		var isHolder = _Utils_eq(reservation.assigneeKind, $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser) && _Utils_eq(reservation.assigneeID, subjectId);
+		var _v0 = reservation.state;
+		switch (_v0.$) {
+			case 'TaskReservationStateRequested':
+				return isOwner ? _List_fromArray(
 					[
 						A2(
-						$elm$html$Html$p,
+						$author$project$Sharecrop$Ui$primaryButton,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('text-sm font-medium')
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Sharecrop$Types$ApproveReservationClicked(reservation.id)),
+								$author$project$Sharecrop$Ui$testId('approve-reservation')
 							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								reservation.assigneeID + (' · ' + $author$project$Sharecrop$Labels$assigneeScopeLabel(reservation.assigneeKind)))
-							])),
+						'Approve'),
 						A2(
-						$elm$html$Html$p,
+						$author$project$Sharecrop$Ui$secondaryButton,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('text-xs text-slate-500')
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Sharecrop$Types$DeclineReservationClicked(reservation.id)),
+								$author$project$Sharecrop$Ui$testId('decline-reservation')
 							]),
+						'Decline')
+					]) : _List_Nil;
+			case 'TaskReservationStateActive':
+				return (isOwner || isHolder) ? _List_fromArray(
+					[
+						A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
 						_List_fromArray(
 							[
-								$elm$html$Html$text(
-								$author$project$Sharecrop$Labels$reservationStateLabel(reservation.state))
-							]))
-					])),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
-					]),
-				$author$project$Sharecrop$View$reservationButtons(reservation))
-			]));
-};
-var $author$project$Sharecrop$View$reservationsList = function (reservations) {
-	return $elm$core$List$isEmpty(reservations) ? $elm$html$Html$text('') : A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
-				$author$project$Sharecrop$Ui$testId('reservations')
-			]),
-		A2($elm$core$List$map, $author$project$Sharecrop$View$reservationRow, reservations));
-};
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Sharecrop$Types$CancelReservationClicked(reservation.id)),
+								$author$project$Sharecrop$Ui$testId('cancel-reservation')
+							]),
+						'Cancel')
+					]) : _List_Nil;
+			default:
+				return _List_Nil;
+		}
+	});
+var $author$project$Sharecrop$View$reservationRow = F3(
+	function (isOwner, subjectId, reservation) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex items-center justify-between gap-3 py-2'),
+					$author$project$Sharecrop$Ui$testId('reservation-row')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_Nil,
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm font-medium')
+								]),
+							_List_fromArray(
+								[
+									A2($author$project$Sharecrop$View$assigneeIdentityLink, reservation.assigneeKind, reservation.assigneeID),
+									$elm$html$Html$text(
+									' · ' + $author$project$Sharecrop$Labels$assigneeScopeLabel(reservation.assigneeKind))
+								])),
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-xs text-slate-500')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									$author$project$Sharecrop$Labels$reservationStateLabel(reservation.state))
+								]))
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
+						]),
+					A3($author$project$Sharecrop$View$reservationButtons, isOwner, subjectId, reservation))
+				]));
+	});
+var $author$project$Sharecrop$View$reservationsList = F3(
+	function (isOwner, subjectId, reservations) {
+		return $elm$core$List$isEmpty(reservations) ? $elm$html$Html$text('') : A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+					$author$project$Sharecrop$Ui$testId('reservations')
+				]),
+			A2(
+				$elm$core$List$map,
+				A2($author$project$Sharecrop$View$reservationRow, isOwner, subjectId),
+				reservations));
+	});
 var $author$project$Sharecrop$Labels$viewerActionLabel = function (action) {
 	switch (action.$) {
 		case 'TaskViewerActionSubmit':
@@ -24660,6 +24725,7 @@ var $author$project$Sharecrop$View$reservationCard = function (state) {
 	var _v0 = state.detail;
 	if (_v0.$ === 'Just') {
 		var detail = _v0.a;
+		var isOwner = _Utils_eq(detail.createdBy, state.subjectId);
 		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
 				[
@@ -24677,8 +24743,8 @@ var $author$project$Sharecrop$View$reservationCard = function (state) {
 							$author$project$Sharecrop$Ui$badge(
 							$author$project$Sharecrop$Labels$assigneeScopeLabel(detail.assigneeScope))
 						])),
-					A2($author$project$Sharecrop$View$reservationAction, state, detail),
-					$author$project$Sharecrop$View$reservationsList(state.reservations),
+					isOwner ? $elm$html$Html$text('') : A2($author$project$Sharecrop$View$reservationAction, state, detail),
+					A3($author$project$Sharecrop$View$reservationsList, isOwner, state.subjectId, state.reservations),
 					A2($author$project$Sharecrop$View$maybeNote, state.reservationMessage, 'reservation-message')
 				]));
 	} else {
@@ -24904,7 +24970,19 @@ var $author$project$Sharecrop$View$submissionRow = F2(
 						]),
 					_List_fromArray(
 						[
-							$elm$html$Html$text('Submitter: ' + submission.submitterID)
+							$elm$html$Html$text('Submitter: '),
+							A2(
+							$elm$html$Html$a,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$href('#/users/' + submission.submitterID),
+									$elm$html$Html$Attributes$class('underline'),
+									$author$project$Sharecrop$Ui$testId('submission-submitter-link')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(submission.submitterID)
+								]))
 						])),
 					$author$project$Sharecrop$View$reviewNoteView(submission.reviewNote),
 					A2(
@@ -25150,7 +25228,8 @@ var $author$project$Sharecrop$View$taskDetailPageView = F2(
 							[
 								$elm$html$Html$text('Back')
 							])),
-						A2($author$project$Sharecrop$View$detailCard, origin, state)
+						A2($author$project$Sharecrop$View$detailCard, origin, state),
+						$author$project$Sharecrop$View$reservationCard(state)
 					]),
 				_Utils_ap(
 					isOwner ? _List_fromArray(
@@ -25162,7 +25241,6 @@ var $author$project$Sharecrop$View$taskDetailPageView = F2(
 							$author$project$Sharecrop$View$submissionsCard(state)
 						]) : _List_fromArray(
 						[
-							$author$project$Sharecrop$View$reservationCard(state),
 							$author$project$Sharecrop$View$submitCard(state),
 							$author$project$Sharecrop$View$mySubmissionsCard(state)
 						])),
@@ -26569,9 +26647,9 @@ var $author$project$Sharecrop$View$userDetailView = F3(
 								[
 									$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
 								]),
-							_List_fromArray(
-								[
-									A2(
+							A2(
+								$elm$core$List$cons,
+								A2(
 									$elm$html$Html$a,
 									_List_fromArray(
 										[
@@ -26581,22 +26659,24 @@ var $author$project$Sharecrop$View$userDetailView = F3(
 										]),
 									_List_fromArray(
 										[
-											$elm$html$Html$text('Public work')
+											$elm$html$Html$text('Currently working on')
 										])),
-									A2(
-									$elm$html$Html$a,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$href('#/users/' + (userId + '/submissions')),
-											$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
-											$author$project$Sharecrop$Ui$testId('user-submissions-link')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('Submissions')
-										]))
-								])),
-							$author$project$Sharecrop$Ui$sectionTitle('Public tasks'),
+								_Utils_eq(userId, state.subjectId) ? _List_fromArray(
+									[
+										A2(
+										$elm$html$Html$a,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$href('#/users/' + (userId + '/submissions')),
+												$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+												$author$project$Sharecrop$Ui$testId('user-submissions-link')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('My submissions')
+											]))
+									]) : _List_Nil)),
+							$author$project$Sharecrop$Ui$sectionTitle('Tasks posted'),
 							function () {
 							var _v0 = state.userProfile;
 							if (_v0.$ === 'Just') {
@@ -26738,8 +26818,27 @@ var $author$project$Sharecrop$View$userTaskListView = F4(
 									]),
 								_List_fromArray(
 									[
-										$elm$html$Html$text(
-										item.title + (' · ' + $author$project$Sharecrop$Labels$taskStateLabel(item.state)))
+										A2(
+										$elm$html$Html$p,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('font-medium break-words')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text(item.title)
+											])),
+										A2(
+										$elm$html$Html$p,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-xs text-slate-500 break-words')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text(
+												$author$project$Sharecrop$Labels$taskStateLabel(item.state) + (' · ' + (A3($author$project$Sharecrop$Labels$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + $author$project$Sharecrop$View$activeAssigneeSuffix(item))))
+											]))
 									]));
 						},
 						tasks))
@@ -26795,7 +26894,7 @@ var $author$project$Sharecrop$View$pageView = F2(
 					var userId = _v1.a;
 					return _Utils_Tuple2(
 						'Work',
-						A4($author$project$Sharecrop$View$userTaskListView, 'Public work', 'user-work', userId, state.userWork));
+						A4($author$project$Sharecrop$View$userTaskListView, 'Currently working on', 'user-work', userId, state.userWork));
 				case 'UserSubmissionsPage':
 					var userId = _v1.a;
 					return _Utils_Tuple2(

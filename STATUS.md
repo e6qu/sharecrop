@@ -1,25 +1,44 @@
 # Status
 
-The repository contains pull request 1 through pull request 112 work, merged
-into `main`, plus the current `task/merge-tasks-nav-uiux-polish` branch. PR
-108's GitHub Pages deployment failed three times in a row after merge for
-what looked like a transient GitHub-side Pages backend issue (build/artifact
-steps always succeeded; only `deploy-pages` failed or hung, with a different
-symptom each time); PR 109's, 110's, 111's, and 112's deployments each
-succeeded on the first try with no code or workflow changes, confirming it
-was not a code problem and has since cleared.
+The repository contains pull request 1 through pull request 113 work, merged
+into `main`, plus the current
+`task/task-detail-reorder-profile-links-uiux` branch. PR 108's GitHub Pages
+deployment failed three times in a row after merge for what looked like a
+transient GitHub-side Pages backend issue (build/artifact steps always
+succeeded; only `deploy-pages` failed or hung, with a different symptom each
+time); PR 109's, 110's, 111's, 112's, and 113's deployments each succeeded on
+the first try with no code or workflow changes, confirming it was not a code
+problem and has since cleared.
 
-Active task: `task/merge-tasks-nav-uiux-polish` consolidates the nav further
-at the user's explicit direction — several destinations were "useless" as
-their own top-level items and should live on the Tasks page instead. New
-task, Discovery, and the whole Work menu (Submissions, Series) are gone as
-separate nav destinations; Tasks is now a hub showing My tasks and Discover
-public tasks (both always expanded) plus collapsed My-submissions/Series
-sections, with a "+ New task" button at the top. Inbox moved into the
-Account menu. Nav is now just Overview/Tasks flat plus Manage/Account menus
-(down from 8 items). Also added inline task funding (a collapsed-by-default
-"Fund this task" panel on the task detail page, plus a "Fund" button on
-task-list rows), reusing the standalone Funding page's exact Msg plumbing.
+Active task: `task/task-detail-reorder-profile-links-uiux` refines the task
+detail and profile pages for usability. Report task is now a collapsed
+disclosure. Reservation status moved to the top of the task detail page,
+above role-specific controls — this surfaced a real gap: task owners
+previously had no way to see or act on a pending reservation request through
+the browser at all (the Approve/Decline buttons existed but were never
+reachable by owners). Fixed, plus added a new test since that flow had zero
+prior coverage. Also scoped reservation/submission action buttons to who's
+actually entitled to click them (previously any worker saw every
+reservation's buttons, including other people's). People now link to their
+profiles wherever their user ID appears (reservation holder, submitter, task
+creator, notification actor, admin user ID). Profile pages: the
+"Submissions" link now only shows on your own profile (the API 403s for
+anyone else), and "Public work" is relabeled "Currently working on" with
+richer per-task info, since it's current active work, not a full history.
+See `WHAT_WE_DID.md` for the full writeup.
+
+`task/merge-tasks-nav-uiux-polish` (PR 113, merged into `main`) consolidated
+the nav further at the user's explicit direction — several destinations were
+"useless" as their own top-level items and should live on the Tasks page
+instead. New task, Discovery, and the whole Work menu (Submissions, Series)
+are gone as separate nav destinations; Tasks is now a hub showing My tasks
+and Discover public tasks (both always expanded) plus collapsed
+My-submissions/Series sections, with a "+ New task" button at the top.
+Inbox moved into the Account menu. Nav is now just Overview/Tasks flat plus
+Manage/Account menus (down from 8 items). Also added inline task funding (a
+collapsed-by-default "Fund this task" panel on the task detail page, plus a
+"Fund" button on task-list rows), reusing the standalone Funding page's
+exact Msg plumbing.
 Found and fixed two real pre-existing bugs uncovered by this refactor (the
 submissions-pagination and series-refresh handlers were keyed off the
 current page being an exact standalone route, so they silently no-op'd from

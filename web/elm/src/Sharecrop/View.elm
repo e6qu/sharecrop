@@ -316,7 +316,7 @@ platformAdminRow : Admin.PlatformAdminResponse -> Html Msg
 platformAdminRow admin =
     div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-3 py-3 text-sm", testId "admin-platform-admin" ]
         [ div [ Html.Attributes.class "space-y-1" ]
-            [ p [ Html.Attributes.class "font-medium text-slate-900 break-all" ] [ text admin.userID ]
+            [ a [ href ("#/users/" ++ admin.userID), Html.Attributes.class "block font-medium text-slate-900 break-all underline" ] [ text admin.userID ]
             , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (admin.source ++ " · " ++ admin.createdAt) ]
             ]
         , if admin.source == "bootstrap" then
@@ -426,7 +426,11 @@ notificationRow notification =
             [ p [ Html.Attributes.class "font-medium text-slate-900" ] [ text (notification.kind ++ " on " ++ notification.subjectKind) ]
             , span [ Html.Attributes.class (notificationStateClass notification.state), testId "notification-state" ] [ text notification.state ]
             ]
-        , p [ Html.Attributes.class "break-words text-xs text-slate-500" ] [ text ("Subject " ++ notification.subjectID ++ " · actor " ++ notification.actorUserID ++ " · " ++ notification.createdAt) ]
+        , p [ Html.Attributes.class "break-words text-xs text-slate-500" ]
+            [ text ("Subject " ++ notification.subjectID ++ " · actor ")
+            , a [ href ("#/users/" ++ notification.actorUserID), Html.Attributes.class "underline" ] [ text notification.actorUserID ]
+            , text (" · " ++ notification.createdAt)
+            ]
         , notificationTaskLink notification
         , if notification.metadataJSON == "{}" then
             text ""
@@ -503,7 +507,7 @@ pageView origin state =
                     ( "Profile", userDetailView origin userId state )
 
                 UserWorkPage userId ->
-                    ( "Work", userTaskListView "Public work" "user-work" userId state.userWork )
+                    ( "Work", userTaskListView "Currently working on" "user-work" userId state.userWork )
 
                 UserSubmissionsPage userId ->
                     ( "Submissions", userSubmissionsView userId state )
@@ -1139,7 +1143,16 @@ userTaskListView heading identifier userId tasks =
 
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId identifier ]
-                (List.map (\item -> a [ href ("#/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId (identifier ++ "-row") ] [ text (item.title ++ " · " ++ taskStateLabel item.state) ]) tasks)
+                (List.map
+                    (\item ->
+                        a [ href ("#/tasks/" ++ item.id), Html.Attributes.class "block py-2 text-sm underline", testId (identifier ++ "-row") ]
+                            [ p [ Html.Attributes.class "font-medium break-words" ] [ text item.title ]
+                            , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ]
+                                [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
+                            ]
+                    )
+                    tasks
+                )
         ]
 
 
@@ -1248,10 +1261,18 @@ userDetailView origin userId state =
             [ Ui.sectionTitle "User"
             , p [ Html.Attributes.class "text-sm font-medium", testId "user-id" ] [ text userId ]
             , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-                [ a [ href ("#/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Public work" ]
-                , a [ href ("#/users/" ++ userId ++ "/submissions"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-submissions-link" ] [ text "Submissions" ]
-                ]
-            , Ui.sectionTitle "Public tasks"
+                (a [ href ("#/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Currently working on" ]
+                    -- The submissions API rejects any viewer who isn't the
+                    -- submitter themselves, so this link 404s/403s on anyone
+                    -- else's profile — only show it on your own.
+                    :: (if userId == state.subjectId then
+                            [ a [ href ("#/users/" ++ userId ++ "/submissions"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-submissions-link" ] [ text "My submissions" ] ]
+
+                        else
+                            []
+                       )
+                )
+            , Ui.sectionTitle "Tasks posted"
             , case state.userProfile of
                 Just profile ->
                     if List.isEmpty profile.tasks then
@@ -2757,6 +2778,19 @@ taskDetailPageView origin state =
     div [ Html.Attributes.class "space-y-6" ]
         ([ a [ href "#/tasks", Html.Attributes.class Ui.secondaryButtonClass, testId "detail-back" ] [ text "Back" ]
          , detailCard origin state
+
+         -- Shown to every viewer, not just workers: "who has this reserved"
+         -- is useful to the owner too, and the reserve/request-approval
+         -- action form only renders for viewers whose server-computed
+         -- viewerAction actually allows it (owners' own viewerAction is
+         -- never Reserve/RequestApproval), so this needs no isOwner/
+         -- canReview gating of its own. Placed right after the task's own
+         -- details, above any role-specific controls, since "can I reserve
+         -- this / who has it" is usually the first thing a visitor wants to
+         -- know — previously buried below owner/reviewer controls entirely
+         -- (i.e. an owner had no way to see or act on reservation requests
+         -- through the browser at all).
+         , reservationCard state
          ]
             ++ (if isOwner then
                     [ ownerControlsCard state, submissionsCard state ]
@@ -2765,7 +2799,7 @@ taskDetailPageView origin state =
                     [ submissionsCard state ]
 
                 else
-                    [ reservationCard state, submitCard state, mySubmissionsCard state ]
+                    [ submitCard state, mySubmissionsCard state ]
                )
             ++ [ taskCommentsCard state, moderationReportCard state ]
         )
@@ -2806,18 +2840,21 @@ moderationReportCard state =
     case state.detail of
         Just detail ->
             Ui.card
-                [ Ui.sectionTitle "Report task"
-                , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "moderation-reasons" ]
-                    (List.map (moderationReasonButton state.moderationReason) moderationReasonOptions)
-                , Ui.textarea_
-                    [ placeholder "Describe the issue"
-                    , value state.moderationDetails
-                    , onInput ModerationDetailsChanged
-                    , Html.Attributes.rows 4
-                    , testId "moderation-details"
+                [ Ui.disclosure "moderation-report-panel"
+                    False
+                    "Report task"
+                    [ div [ Html.Attributes.class "flex flex-wrap gap-2", testId "moderation-reasons" ]
+                        (List.map (moderationReasonButton state.moderationReason) moderationReasonOptions)
+                    , Ui.textarea_
+                        [ placeholder "Describe the issue"
+                        , value state.moderationDetails
+                        , onInput ModerationDetailsChanged
+                        , Html.Attributes.rows 4
+                        , testId "moderation-details"
+                        ]
+                    , Ui.secondaryButton [ type_ "button", onClick (ReportTaskClicked detail.id), testId "report-task" ] "Submit report"
+                    , maybeNote state.moderationMessage "moderation-message"
                     ]
-                , Ui.secondaryButton [ type_ "button", onClick (ReportTaskClicked detail.id), testId "report-task" ] "Submit report"
-                , maybeNote state.moderationMessage "moderation-message"
                 ]
 
         Nothing ->
@@ -3040,6 +3077,10 @@ detailCard origin state =
                      ]
                         ++ taskTypeBadge detail
                     )
+                , p [ Html.Attributes.class "text-xs text-slate-500" ]
+                    [ text "Posted by "
+                    , a [ href ("#/users/" ++ detail.createdBy), Html.Attributes.class "underline", testId "detail-created-by-link" ] [ text detail.createdBy ]
+                    ]
                 , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
                 , p [ Html.Attributes.class "text-sm text-slate-700" ] [ text detail.description ]
                 ]
@@ -3066,14 +3107,30 @@ reservationCard : LoggedInModel -> Html Msg
 reservationCard state =
     case state.detail of
         Just detail ->
+            let
+                isOwner =
+                    detail.createdBy == state.subjectId
+            in
             Ui.card
                 [ Ui.sectionTitle "Reservation"
                 , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
                     [ Ui.badge (viewerActionLabel detail.viewerAction)
                     , Ui.badge (assigneeScopeLabel detail.assigneeScope)
                     ]
-                , reservationAction state detail
-                , reservationsList state.reservations
+
+                -- The server's viewerAction doesn't rule out an owner
+                -- reserving their own task, but that's not a real workflow
+                -- (previously invisible entirely, since owners never saw
+                -- this card at all) — the display below (existing
+                -- reservations, approve/decline/cancel) is still shown to
+                -- owners; only the "go claim this yourself" action is
+                -- owner-gated.
+                , if isOwner then
+                    text ""
+
+                  else
+                    reservationAction state detail
+                , reservationsList isOwner state.subjectId state.reservations
                 , maybeNote state.reservationMessage "reservation-message"
                 ]
 
@@ -3118,36 +3175,69 @@ organizationTeamReservationFields state detail =
             text ""
 
 
-reservationsList : List Task.TaskReservationResponse -> Html Msg
-reservationsList reservations =
+reservationsList : Bool -> String -> List Task.TaskReservationResponse -> Html Msg
+reservationsList isOwner subjectId reservations =
     if List.isEmpty reservations then
         text ""
 
     else
-        div [ Html.Attributes.class "divide-y divide-slate-100", testId "reservations" ] (List.map reservationRow reservations)
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "reservations" ] (List.map (reservationRow isOwner subjectId) reservations)
 
 
-reservationRow : Task.TaskReservationResponse -> Html Msg
-reservationRow reservation =
+reservationRow : Bool -> String -> Task.TaskReservationResponse -> Html Msg
+reservationRow isOwner subjectId reservation =
     div [ Html.Attributes.class "flex items-center justify-between gap-3 py-2", testId "reservation-row" ]
         [ div []
-            [ p [ Html.Attributes.class "text-sm font-medium" ] [ text (reservation.assigneeID ++ " · " ++ assigneeScopeLabel reservation.assigneeKind) ]
+            [ p [ Html.Attributes.class "text-sm font-medium" ]
+                [ assigneeIdentityLink reservation.assigneeKind reservation.assigneeID
+                , text (" · " ++ assigneeScopeLabel reservation.assigneeKind)
+                ]
             , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (reservationStateLabel reservation.state) ]
             ]
-        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (reservationButtons reservation)
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (reservationButtons isOwner subjectId reservation)
         ]
 
 
-reservationButtons : Task.TaskReservationResponse -> List (Html Msg)
-reservationButtons reservation =
+{-| Only a user-scoped assignee ID is a valid `/users/<id>` profile — team and
+organization-team IDs aren't, so those render as plain text.
+-}
+assigneeIdentityLink : Task.TaskAssigneeScope -> String -> Html Msg
+assigneeIdentityLink assigneeKind assigneeID =
+    if assigneeKind == Task.TaskAssigneeScopeUser then
+        a [ href ("#/users/" ++ assigneeID), Html.Attributes.class "underline", testId "reservation-assignee-link" ] [ text assigneeID ]
+
+    else
+        text assigneeID
+
+
+{-| Only show actions the current viewer is actually entitled to take —
+approving/declining a request is owner-only, and cancelling an active
+reservation is either the owner (force-cancel) or the person who holds it.
+Every other viewer (e.g. a different worker browsing the task) sees the
+reservation but no buttons that would just fail server-side if clicked.
+-}
+reservationButtons : Bool -> String -> Task.TaskReservationResponse -> List (Html Msg)
+reservationButtons isOwner subjectId reservation =
+    let
+        isHolder =
+            reservation.assigneeKind == Task.TaskAssigneeScopeUser && reservation.assigneeID == subjectId
+    in
     case reservation.state of
         Task.TaskReservationStateRequested ->
-            [ Ui.primaryButton [ type_ "button", onClick (ApproveReservationClicked reservation.id), testId "approve-reservation" ] "Approve"
-            , Ui.secondaryButton [ type_ "button", onClick (DeclineReservationClicked reservation.id), testId "decline-reservation" ] "Decline"
-            ]
+            if isOwner then
+                [ Ui.primaryButton [ type_ "button", onClick (ApproveReservationClicked reservation.id), testId "approve-reservation" ] "Approve"
+                , Ui.secondaryButton [ type_ "button", onClick (DeclineReservationClicked reservation.id), testId "decline-reservation" ] "Decline"
+                ]
+
+            else
+                []
 
         Task.TaskReservationStateActive ->
-            [ Ui.secondaryButton [ type_ "button", onClick (CancelReservationClicked reservation.id), testId "cancel-reservation" ] "Cancel" ]
+            if isOwner || isHolder then
+                [ Ui.secondaryButton [ type_ "button", onClick (CancelReservationClicked reservation.id), testId "cancel-reservation" ] "Cancel" ]
+
+            else
+                []
 
         _ ->
             []
@@ -3289,7 +3379,10 @@ submissionRow state submission =
             [ submissionStateBadge submission.state
             , reviewButtons state submission
             ]
-        , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text ("Submitter: " ++ submission.submitterID) ]
+        , p [ Html.Attributes.class "text-xs text-slate-500" ]
+            [ text "Submitter: "
+            , a [ href ("#/users/" ++ submission.submitterID), Html.Attributes.class "underline", testId "submission-submitter-link" ] [ text submission.submitterID ]
+            ]
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "submission-response" ] submission.responseJSON
         , submissionAttachmentsView submission.attachments
