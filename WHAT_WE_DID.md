@@ -1,5 +1,65 @@
 # What We Did
 
+`task/task-detail-reorder-profile-links-uiux` refined the task detail page
+and profile pages for usability, at the user's explicit direction (make the
+report panel collapsible, put reservation status at the top, link people to
+their profiles), plus a boy-scout pass that found a real, previously-
+unreachable capability gap.
+
+- **"Report task" is now a collapsed-by-default `Ui.disclosure`** (was
+  always-expanded at the bottom of every task detail page, competing for
+  attention with content people actually need most of the time).
+- **Reservation status moved to the top of the task detail page**, right
+  after the task's own details and before any role-specific controls — "can
+  I reserve this / who has it" is usually the first thing a visitor wants to
+  know. This surfaced a real, significant pre-existing gap: `reservationCard`
+  used to render only in the non-owner/non-reviewer branch, so **a task's
+  owner had no way to see or act on a pending reservation request through
+  the browser at all** — the Approve/Decline buttons existed in the code but
+  were never reachable by the one role that's actually allowed to click them.
+  Rendering the card unconditionally fixes this outright: the server's
+  per-viewer `viewerAction` already resolves correctly for owners (never
+  `Reserve`/`RequestApproval`), so no new gating was needed for the
+  read-only display — except one thing the fix itself exposed: the server
+  doesn't prevent an owner from reserving their own task, which isn't a real
+  workflow, so the "go claim this yourself" action specifically (not the
+  display) is now owner-gated client-side.
+  Added a new test (`screens.spec.ts`, "an owner approves a worker's
+  reservation request from the task detail page") since this exact flow had
+  zero prior coverage — it simply couldn't be exercised through the UI
+  before.
+- **Reservation and submission actions are now scoped to who's actually
+  entitled to take them**: previously *any* worker viewing a task saw
+  Approve/Decline/Cancel buttons on *every* reservation, including other
+  people's — buttons that would just fail server-side if clicked by someone
+  without authority. Now Approve/Decline only render for the task's owner,
+  and Cancel only for the owner or the reservation's actual holder.
+- **People now link to their profiles wherever their user ID appears** on
+  the task detail page and elsewhere: the reservation holder, a submission's
+  submitter, a task's creator ("Posted by …", previously not shown
+  anywhere), a notification's actor, and a platform admin's user ID. This
+  extends a linking pattern that already existed for comments and org
+  members to the handful of places that were missing it.
+- **Profile page task-history discoverability**: research into
+  `/api/users/{id}/work` and `/api/users/{id}/submissions` semantics showed
+  the submissions endpoint rejects any viewer who isn't the submitter
+  themselves — so the "Submissions" link on someone *else's* profile was
+  reachable but would always 403. Now shown only on your own profile.
+  Relabeled "Public work" to "Currently working on" (it's the tasks a user
+  is *currently* actively reserved on, not a full history — there's no
+  backend support for viewing another user's past/completed work, so the
+  label now says what it actually shows) and enriched its rows with
+  state/reward/reserved-by info instead of just a title.
+- Verified: all 47 real-backend Playwright specs (46 existing + 1 new,
+  `make e2e-ui`), all 13 WASM-demo Playwright specs, Go
+  integration/http_e2e suites, `go test ./...`, and the full non-browser
+  check suite all pass. Screenshot-verified the reordered task detail page
+  (reservation section showing a clickable holder, a working Cancel button
+  for the owner, and the collapsed Report task panel at the bottom) and both
+  the owner's own profile and another user's profile (confirming the
+  Submissions link is correctly absent on the latter) in the arcade demo
+  skin.
+
 `task/merge-tasks-nav-uiux-polish` consolidated the navbar further, at the
 user's explicit direction: several destinations that were separate top-level
 nav items/menus were "useless" as their own destinations and should live on

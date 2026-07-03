@@ -231,6 +231,7 @@ test("demo task reports appear in the admin moderation panel", async ({ page }) 
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
+  await page.getByTestId("moderation-report-panel").click();
   await page.getByTestId("moderation-reason-pii").click();
   await page.getByTestId("moderation-details").fill("Contains invoice PII.");
   await page.getByTestId("report-task").click();
@@ -255,6 +256,7 @@ test("demo admin triages moderation reports from the browser", async ({ page }) 
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
+  await page.getByTestId("moderation-report-panel").click();
   await page.getByTestId("moderation-reason-policy").click();
   await page.getByTestId("moderation-details").fill("Needs admin decision.");
   await page.getByTestId("report-task").click();
