@@ -464,7 +464,9 @@ pageFromUrl url =
             TaskDetailPage taskId
 
         [ "discovery" ] ->
-            DiscoveryPage
+            -- Discovery's content lives on the Tasks hub now; redirect anyone
+            -- with an old bookmark or link rather than 404ing them.
+            TasksPage
 
         [ "funding" ] ->
             FundingPage
@@ -479,7 +481,9 @@ pageFromUrl url =
             CollectibleDetailPage collectibleId
 
         [ "series" ] ->
-            SeriesListPage
+            -- Series' content lives on the Tasks hub now; redirect anyone
+            -- with an old bookmark or link rather than 404ing them.
+            TasksPage
 
         [ "series", seriesId ] ->
             SeriesDetailPage seriesId
@@ -530,10 +534,24 @@ enterPageFields : Page -> LoggedInModel -> LoggedInModel
 enterPageFields page state =
     case page of
         TasksPage ->
-            { state | page = page, taskStateFilter = "", taskListOffset = 0, taskListQuery = "", taskListTypeFilter = "", taskListSort = "newest" }
-
-        DiscoveryPage ->
-            { state | page = page, discoveryIncludeReserved = False, discoveryOffset = 0, discoveryQuery = "" }
+            -- The Tasks hub embeds My tasks, Discover public tasks, My
+            -- submissions, and Series all on one page, so entering it resets
+            -- every one of those sections' filters/offsets, not just the
+            -- My-tasks ones.
+            { state
+                | page = page
+                , taskStateFilter = ""
+                , taskListOffset = 0
+                , taskListQuery = ""
+                , taskListTypeFilter = ""
+                , taskListSort = "newest"
+                , discoveryIncludeReserved = False
+                , discoveryOffset = 0
+                , discoveryQuery = ""
+                , userSubmissions = []
+                , userSubmissionsOffset = 0
+                , seriesMessage = Nothing
+            }
 
         OrganizationDetailPage organizationId ->
             { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgLedgerOffset = 0, orgAuditEvents = [], orgAuditMessage = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
@@ -546,9 +564,6 @@ enterPageFields page state =
 
         UserSubmissionsPage _ ->
             { state | page = page, userSubmissions = [], userSubmissionsOffset = 0 }
-
-        SeriesListPage ->
-            { state | page = page, seriesMessage = Nothing }
 
         SeriesDetailPage _ ->
             { state | page = page, seriesDetail = Nothing, seriesDetailError = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
@@ -570,7 +585,11 @@ enterPageFields page state =
             -- not briefly show the prior task's badges, submissions, or comments.
             -- Review form fields are reset here too so the prior submission's
             -- note / partial credit / tip / ban does not carry over to the next.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "" }
+            -- fundTaskId is synced to the task being viewed so the inline
+            -- "Fund this task" panel (see ownerControlsCard) always targets
+            -- *this* task when submitted, regardless of whatever task was
+            -- last selected on the standalone Funding page.
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -1552,31 +1571,21 @@ update msg model =
         PreviousUserSubmissionsPageClicked ->
             Api.withSession model
                 (\state ->
-                    case state.page of
-                        UserSubmissionsPage userId ->
-                            let
-                                offset =
-                                    max 0 (state.userSubmissionsOffset - Api.selectorPageSize)
-                            in
-                            ( Api.updateLoggedIn model (\current -> { current | userSubmissionsOffset = offset }), Api.fetchUserSubmissionsPage state.accessToken userId offset )
-
-                        _ ->
-                            ( model, Cmd.none )
+                    let
+                        offset =
+                            max 0 (state.userSubmissionsOffset - Api.selectorPageSize)
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | userSubmissionsOffset = offset }), Api.fetchUserSubmissionsPage state.accessToken state.subjectId offset )
                 )
 
         NextUserSubmissionsPageClicked ->
             Api.withSession model
                 (\state ->
-                    case state.page of
-                        UserSubmissionsPage userId ->
-                            let
-                                offset =
-                                    state.userSubmissionsOffset + Api.selectorPageSize
-                            in
-                            ( Api.updateLoggedIn model (\current -> { current | userSubmissionsOffset = offset }), Api.fetchUserSubmissionsPage state.accessToken userId offset )
-
-                        _ ->
-                            ( model, Cmd.none )
+                    let
+                        offset =
+                            state.userSubmissionsOffset + Api.selectorPageSize
+                    in
+                    ( Api.updateLoggedIn model (\current -> { current | userSubmissionsOffset = offset }), Api.fetchUserSubmissionsPage state.accessToken state.subjectId offset )
                 )
 
         StartRevisionClicked taskId responseJson ->
@@ -2494,7 +2503,7 @@ seriesListRefresh : Model -> Cmd Msg
 seriesListRefresh model =
     case model.session of
         LoggedIn state ->
-            if state.page == SeriesListPage then
+            if state.page == TasksPage then
                 Api.fetchSeriesList state.accessToken
 
             else

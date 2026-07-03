@@ -60,7 +60,7 @@ async function openTaskFromDiscovery(
   // balance/nav can otherwise race and the discovery click times out.
   await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("balance")).toBeVisible({ timeout: 15000 });
-  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
     .getByTestId("discovery-view").click();
 }
@@ -90,7 +90,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await loginViaUi(page, worker.email);
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
-  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-filters").click();
   await page.getByTestId("discovery-query").fill(title);
   const workerRow = page.getByTestId("discovery-task-row").filter({
@@ -115,6 +115,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await page.getByTestId("logout").click();
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toHaveText("80 credits");
+  await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-inbox").click();
   const submissionNotification = page.getByTestId("notification-row").filter({
     hasText: "submission_created",
@@ -124,7 +125,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await submissionNotification.getByTestId("notification-task-link").click();
   await expect(page.getByTestId("detail-title")).toContainText(title);
 
-  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("nav-tasks").click();
   const ownerRow = page.getByTestId("discovery-task-row").filter({
     hasText: title,
   });
@@ -143,7 +144,8 @@ test("requesters configure reservations and workers include reserved tasks", asy
   const title = `Reserved UI ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill(
     "Reservation required from the browser.",
@@ -170,7 +172,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, worker.email);
-  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("nav-tasks").click();
   const workerRow = page.getByTestId("discovery-task-row").filter({
     hasText: title,
   });
@@ -187,7 +189,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, other.email);
-  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-filters").click();
   await page.getByTestId("discovery-query").fill(title);
   await expect(
@@ -204,7 +206,8 @@ test("requesters upload small task attachments through the real backend", async 
   const title = `Attached task ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill(
     "Task attachment through the DB-backed UI.",
@@ -241,7 +244,8 @@ test("requesters see attachment guardrails through the real backend UI", async (
   const title = `Attachment guardrails ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill(
     "Task attachment guardrails through the DB-backed UI.",
@@ -430,7 +434,8 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   const title = `Filter UI ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Filter from the browser.");
   await page.getByTestId("create-task").click();
@@ -577,7 +582,8 @@ test("requesters scope a task to a standalone team", async ({ page, request }) =
   const team = (await teamResponse.json()) as { id: string };
 
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   const title = `Team scoped ${crypto.randomUUID()}`;
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Scoped to a team.");
@@ -597,7 +603,8 @@ test("requesters scope a task to a standalone team", async ({ page, request }) =
 test("requesters set a task's assignee scope to a team", async ({ page, request }) => {
   const owner = await registerViaApi(request, "assignee-owner");
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   const title = `Team assignee ${crypto.randomUUID()}`;
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Assigned to a team.");
@@ -624,7 +631,7 @@ test("requesters set a task's assignee scope to a team", async ({ page, request 
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
   await loginViaUi(page, worker.email);
-  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
     .getByTestId("discovery-view").click();
   await expect(page.getByTestId("detail-title")).toContainText(title);
@@ -697,7 +704,8 @@ test("requesters author a response schema and task input that the detail surface
   const title = `Authored ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill(
     "Review the PR in the task input and list your findings.",
@@ -742,9 +750,9 @@ test("a creator manages a first-class task series end to end", async ({ page, re
 
   await loginViaUi(page, owner.email);
 
-  // Create a series from the Series page.
-  await page.getByTestId("nav-work-menu").click();
-  await page.getByTestId("nav-series-list").click();
+  // Create a series from the Series section on the Tasks hub.
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("tasks-series").click();
   await page.getByTestId("series-create-title").fill(seriesTitle);
   await page.getByTestId("series-create-description").fill(
     "A demo onboarding series with review rounds.",
@@ -790,7 +798,8 @@ test("a requester uses a code-review template with a PR link and comments on the
   const prURL = "https://github.com/example/repo/pull/7";
 
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   // Pick the code-review template (prefills description + response schema) and
   // point it at a specific pull request.
@@ -828,7 +837,8 @@ test("a requester builds a response schema with the structured designer", async 
   const title = `Designed ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill(
     "Summarize the linked material.",
@@ -929,7 +939,8 @@ test("the create-task template menu prefills the schema, and Freeform shows the 
   const owner = await registerViaApi(request, "template-menu");
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toBeVisible();
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
 
   // Freeform (the default) shows the structured schema designer.
   await expect(page.getByTestId("schema-add-field")).toBeVisible();
@@ -973,7 +984,7 @@ test("owner and worker exchange comments on a submission", async ({ page, reques
   const worker = await registerViaApi(request, "subcomment-worker");
   await loginViaUi(page, worker.email);
   await expect(page.getByTestId("balance")).toBeVisible();
-  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
     .getByTestId("discovery-view").click();
   await page.getByTestId("detail-submit-input").fill('{"answer":"done"}');
@@ -985,7 +996,7 @@ test("owner and worker exchange comments on a submission", async ({ page, reques
   await page.getByTestId("logout").click();
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toBeVisible();
-  await page.getByTestId("nav-discovery").click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
     .getByTestId("discovery-view").click();
   await expect(page.getByTestId("submission-row")).toHaveCount(1);

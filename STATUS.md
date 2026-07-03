@@ -1,19 +1,38 @@
 # Status
 
-The repository contains pull request 1 through pull request 111 work, merged
-into `main`, plus the current `task/navbar-dropdown-menu-more-seed-tasks`
-branch. PR 108's GitHub Pages deployment failed three times in a row after
-merge for what looked like a transient GitHub-side Pages backend issue
-(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
-with a different symptom each time); PR 109's, 110's, and 111's deployments
-each succeeded on the first try with no code or workflow changes, confirming
-it was not a code problem and has since cleared.
+The repository contains pull request 1 through pull request 112 work, merged
+into `main`, plus the current `task/merge-tasks-nav-uiux-polish` branch. PR
+108's GitHub Pages deployment failed three times in a row after merge for
+what looked like a transient GitHub-side Pages backend issue (build/artifact
+steps always succeeded; only `deploy-pages` failed or hung, with a different
+symptom each time); PR 109's, 110's, 111's, and 112's deployments each
+succeeded on the first try with no code or workflow changes, confirming it
+was not a code problem and has since cleared.
 
-Active task: `task/navbar-dropdown-menu-more-seed-tasks` follows up on PR
-111's navbar grouping (still 15 buttons across 3 rows) with real dropdown
-menus: Overview/Tasks/New task/Discovery/Inbox stay flat, and
+Active task: `task/merge-tasks-nav-uiux-polish` consolidates the nav further
+at the user's explicit direction — several destinations were "useless" as
+their own top-level items and should live on the Tasks page instead. New
+task, Discovery, and the whole Work menu (Submissions, Series) are gone as
+separate nav destinations; Tasks is now a hub showing My tasks and Discover
+public tasks (both always expanded) plus collapsed My-submissions/Series
+sections, with a "+ New task" button at the top. Inbox moved into the
+Account menu. Nav is now just Overview/Tasks flat plus Manage/Account menus
+(down from 8 items). Also added inline task funding (a collapsed-by-default
+"Fund this task" panel on the task detail page, plus a "Fund" button on
+task-list rows), reusing the standalone Funding page's exact Msg plumbing.
+Found and fixed two real pre-existing bugs uncovered by this refactor (the
+submissions-pagination and series-refresh handlers were keyed off the
+current page being an exact standalone route, so they silently no-op'd from
+the new hub) — see `WHAT_WE_DID.md` for the full writeup, including a mobile
+overflow bug and a Playwright strict-mode failure the test suite caught
+(mara's own task is also public, so it now appears in both Tasks sections at
+once).
+
+`task/navbar-dropdown-menu-more-seed-tasks` (PR 112, merged into `main`)
+followed up on PR 111's navbar grouping (still 15 buttons across 3 rows) with
+real dropdown menus: Overview/Tasks/New task/Discovery/Inbox stayed flat, and
 Submissions/Series ("Work"), Funding/Collectibles/Agents/Organizations
-("Manage"), and Profile/Admin/Log out/Reset demo ("Account") each collapse
+("Manage"), and Profile/Admin/Log out/Reset demo ("Account") each collapsed
 into a menu — one row instead of three. The first implementation attempt
 used a native `<details>`/`<summary>` (matching `Ui.disclosure`'s
 no-Elm-state philosophy) but had two real bugs the Playwright suite caught:
@@ -22,12 +41,9 @@ measure), so an attempted native-JS fix to close the menu on navigation was
 a no-op, and without it the floating panel stayed open over whatever page
 loaded next and intercepted clicks on it. Fixed by making the dropdown
 Elm-controlled instead (`openNavMenu : Maybe String`, reset to `Nothing` in
-`enterPage` on every route change) — see `WHAT_WE_DID.md` for the full
-writeup, including a genuine mobile-viewport overflow bug the horizontal-
-overflow check caught in the "Work" menu specifically. Also expanded the WASM
-demo's seeded tasks from 6 to 14 for a less sparse first impression, without
-touching the frozen balance/catalog-count invariants existing Playwright
-specs depend on.
+`enterPage` on every route change). Also expanded the WASM demo's seeded
+tasks from 6 to 14 for a less sparse first impression, without touching the
+frozen balance/catalog-count invariants existing Playwright specs depend on.
 
 `task/ui-navbar-declutter-a11y-seed` (PR 111, merged into `main`) was a
 deliberately large, bundled UI/UX pass (explicitly requested as one PR rather

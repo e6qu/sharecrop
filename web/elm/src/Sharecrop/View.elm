@@ -94,22 +94,20 @@ loggedInView model state =
         ]
 
 
-{-| The primary nav: daily-driver links stay flat (Overview/Tasks/New
-task/Discovery/Inbox — the busiest links in real usage and in test coverage),
-while less-used groups collapse into `Ui.navMenu` dropdowns so the whole bar
-reads as one row instead of a wall of buttons. Every existing `nav-*` link
-keeps its exact `data-testid`, so moving a link into a dropdown doesn't
-change how a test finds it — only whether the surrounding menu needs opening
-first.
+{-| The primary nav: just Overview and Tasks stay flat now — Tasks is the
+one hub for everything task-related (My tasks, Discover public tasks, My
+submissions, Series, and a "+ New task" shortcut all live there, see
+`tasksView`), so it no longer needs New task/Discovery/Work as siblings.
+Everything else collapses into `Ui.navMenu` dropdowns (Manage, Account) so
+the whole bar reads as one row instead of a wall of buttons. Every existing
+`nav-*` link keeps its exact `data-testid`, so moving a link doesn't change
+how a test finds it — only whether a surrounding menu needs opening first.
 -}
 navBar : Bool -> Page -> String -> Bool -> Maybe String -> Html Msg
 navBar demo current subjectId isAdmin openNavMenu =
     let
         isCurrent target =
             pageToPath current == pageToPath target
-
-        workMenuActive =
-            isCurrent (UserSubmissionsPage subjectId) || isCurrent SeriesListPage
 
         manageMenuActive =
             isCurrent FundingPage
@@ -118,7 +116,10 @@ navBar demo current subjectId isAdmin openNavMenu =
                 || isCurrent OrganizationsPage
 
         accountMenuActive =
-            isCurrent (UserDetailPage subjectId) || isCurrent AdminPage
+            isCurrent (UserDetailPage subjectId)
+                || isCurrent AdminPage
+                || isCurrent InboxPage
+                || isCurrent (UserSubmissionsPage subjectId)
 
         isMenuOpen identifier =
             openNavMenu == Just identifier
@@ -127,20 +128,8 @@ navBar demo current subjectId isAdmin openNavMenu =
         [ Html.Attributes.attribute "aria-label" "Primary", Html.Attributes.class "flex flex-wrap items-center gap-2" ]
         [ navLink current OverviewPage "overview" "Overview"
         , navLink current TasksPage "tasks" "Tasks"
-        , navLink current CreateTaskPage "create-task" "New task"
-        , navLink current DiscoveryPage "discovery" "Discovery"
-        , navLink current InboxPage "inbox" "Inbox"
-        , Ui.navMenu "nav-work-menu"
-            True
-            workMenuActive
-            (isMenuOpen "nav-work-menu")
-            (ToggleNavMenu "nav-work-menu")
-            "Work"
-            [ navLink current (UserSubmissionsPage subjectId) "submissions" "Submissions"
-            , navLink current SeriesListPage "series-list" "Series"
-            ]
         , Ui.navMenu "nav-manage-menu"
-            False
+            True
             manageMenuActive
             (isMenuOpen "nav-manage-menu")
             (ToggleNavMenu "nav-manage-menu")
@@ -157,6 +146,7 @@ navBar demo current subjectId isAdmin openNavMenu =
             (ToggleNavMenu "nav-account-menu")
             "Account"
             (navLink current (UserDetailPage subjectId) "profile" "Profile"
+                :: navLink current InboxPage "inbox" "Inbox"
                 :: (if isAdmin then
                         [ navLink current AdminPage "admin" "Admin" ]
 
@@ -494,9 +484,6 @@ pageView origin state =
                 TaskDetailPage _ ->
                     ( "Task", taskDetailPageView origin state )
 
-                DiscoveryPage ->
-                    ( "Discovery", discoveryView state )
-
                 FundingPage ->
                     ( "Funding", fundingView state )
 
@@ -523,9 +510,6 @@ pageView origin state =
 
                 CollectibleDetailPage collectibleId ->
                     ( "Collectible", collectibleDetailView collectibleId state )
-
-                SeriesListPage ->
-                    ( "Series", seriesListView state )
 
                 SeriesDetailPage seriesId ->
                     ( "Series", seriesDetailView seriesId state )
@@ -859,26 +843,28 @@ collectibleDetailView collectibleId state =
         ]
 
 
-seriesListView : LoggedInModel -> Html Msg
-seriesListView state =
-    Ui.card
-        [ Ui.sectionTitle "Task series"
-        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Group related tasks into an ordered series with its own discussion thread." ]
-        , form [ Html.Attributes.class "mt-3 space-y-2", onSubmit CreateSeriesClicked ]
-            [ Ui.fieldLabel "Title"
-                [ Ui.textInput [ type_ "text", placeholder "Series title", value state.createSeriesTitle, onInput CreateSeriesTitleChanged, testId "series-create-title" ] ]
-            , Ui.fieldLabel "Description"
-                [ Ui.textarea_ [ placeholder "What is this series about?", value state.createSeriesDescription, onInput CreateSeriesDescriptionChanged, testId "series-create-description" ] ]
-            , Ui.primaryButton [ type_ "submit", testId "create-series" ] "Create series"
-            , maybeNote state.seriesMessage "series-message"
-            ]
-        , Ui.sectionTitle "Your series"
-        , if List.isEmpty state.seriesList then
-            p [ Html.Attributes.class "text-sm text-slate-500", testId "series-empty" ] [ text "No series yet." ]
-
-          else
-            div [ Html.Attributes.class "divide-y divide-slate-100", testId "series" ] (List.map seriesRow state.seriesList)
+{-| The Series section embedded on the Tasks hub (see `tasksView`) — content
+only, no outer card or heading, since the hub wraps this in its own
+`Ui.disclosure "tasks-series"` with "Series" as the disclosure title.
+-}
+seriesSection : LoggedInModel -> List (Html Msg)
+seriesSection state =
+    [ p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Group related tasks into an ordered series with its own discussion thread." ]
+    , form [ Html.Attributes.class "mt-3 space-y-2", onSubmit CreateSeriesClicked ]
+        [ Ui.fieldLabel "Title"
+            [ Ui.textInput [ type_ "text", placeholder "Series title", value state.createSeriesTitle, onInput CreateSeriesTitleChanged, testId "series-create-title" ] ]
+        , Ui.fieldLabel "Description"
+            [ Ui.textarea_ [ placeholder "What is this series about?", value state.createSeriesDescription, onInput CreateSeriesDescriptionChanged, testId "series-create-description" ] ]
+        , Ui.primaryButton [ type_ "submit", testId "create-series" ] "Create series"
+        , maybeNote state.seriesMessage "series-message"
         ]
+    , Ui.sectionTitle "Your series"
+    , if List.isEmpty state.seriesList then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "series-empty" ] [ text "No series yet." ]
+
+      else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "series" ] (List.map seriesRow state.seriesList)
+    ]
 
 
 seriesRow : TaskSeries.TaskSeriesResponse -> Html Msg
@@ -895,7 +881,7 @@ seriesRow series =
 seriesDetailView : String -> LoggedInModel -> Html Msg
 seriesDetailView seriesId state =
     Ui.card
-        [ a [ href "#/series", Html.Attributes.class Ui.secondaryButtonClass, testId "back-series" ] [ text "Back to series" ]
+        [ a [ href "#/tasks", Html.Attributes.class Ui.secondaryButtonClass, testId "back-series" ] [ text "Back to tasks" ]
         , case state.seriesDetail of
             Just data ->
                 let
@@ -1157,8 +1143,25 @@ userTaskListView heading identifier userId tasks =
         ]
 
 
+{-| The standalone `/users/<id>/submissions` route, still reachable from the
+Profile page's "Submissions" link (`user-submissions-link` in
+`userDetailView`) — kept as its own page (unlike Discovery/Series) since
+that link explicitly targets its own URL.
+-}
 userSubmissionsView : String -> LoggedInModel -> Html Msg
 userSubmissionsView userId state =
+    Ui.card
+        (a [ href ("#/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
+            :: userSubmissionsSection state
+        )
+
+
+{-| The submissions section embedded on the Tasks hub (see `tasksView`) —
+same content as the standalone page, minus the "Back to profile" link, which
+doesn't make sense inline on a hub page.
+-}
+userSubmissionsSection : LoggedInModel -> List (Html Msg)
+userSubmissionsSection state =
     let
         submissions =
             state.userSubmissions
@@ -1166,28 +1169,26 @@ userSubmissionsView userId state =
         revisionItems =
             List.filter isRevisionSubmission submissions
     in
-    Ui.card
-        [ a [ href ("#/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
-        , Ui.sectionTitleWithCount "Revision inbox" (List.length revisionItems) "revision-inbox-heading"
-        , if List.isEmpty revisionItems then
-            p [ Html.Attributes.class "text-sm text-slate-500", testId "revision-inbox-empty" ] [ text "No requested revisions." ]
+    [ Ui.sectionTitleWithCount "Revision inbox" (List.length revisionItems) "revision-inbox-heading"
+    , if List.isEmpty revisionItems then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "revision-inbox-empty" ] [ text "No requested revisions." ]
+
+      else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "revision-inbox" ]
+            (List.map revisionSubmissionRow revisionItems)
+    , Ui.disclosure "user-submissions-all"
+        False
+        ("All submissions (" ++ String.fromInt (List.length submissions) ++ ")")
+        [ if List.isEmpty submissions then
+            p [ Html.Attributes.class "text-sm text-slate-500", testId "user-submissions-empty" ] [ text "No submissions." ]
 
           else
-            div [ Html.Attributes.class "divide-y divide-slate-100", testId "revision-inbox" ]
-                (List.map revisionSubmissionRow revisionItems)
-        , Ui.disclosure "user-submissions-all"
-            False
-            ("All submissions (" ++ String.fromInt (List.length submissions) ++ ")")
-            [ if List.isEmpty submissions then
-                p [ Html.Attributes.class "text-sm text-slate-500", testId "user-submissions-empty" ] [ text "No submissions." ]
-
-              else
-                div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
-                    (List.map userSubmissionRow submissions)
-            , paginationControls "user-submissions-page" PreviousUserSubmissionsPageClicked NextUserSubmissionsPageClicked state.userSubmissionsOffset
-            ]
-        , revisionTimelineView submissions
+            div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
+                (List.map userSubmissionRow submissions)
+        , paginationControls "user-submissions-page" PreviousUserSubmissionsPageClicked NextUserSubmissionsPageClicked state.userSubmissionsOffset
         ]
+    , revisionTimelineView submissions
+    ]
 
 
 revisionSubmissionRow : Submission.SubmissionResponse -> Html Msg
@@ -2245,6 +2246,17 @@ taskOption selectedTaskId item =
         [ text (item.title ++ " · " ++ taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount) ]
 
 
+{-| The Tasks hub: the single destination for everything task-related.
+Merges what used to be four separate nav-reachable pages/menu items (Tasks,
+Discovery, the Work menu's Submissions and Series) into one page, plus a
+"+ New task" button in place of a dedicated top-level nav entry (Create Task
+itself stays its own route/page — see `createTaskView` — this is just a
+shortcut into it). My tasks and Discover public tasks stay always-expanded
+(both are primary, equally-common things to do here); My submissions and
+Series collapse into disclosures since they're reached far less often (per
+Playwright-usage counts: the old `nav-submissions` link was never clicked by
+any spec, and `nav-series-list` only once).
+-}
 tasksView : String -> LoggedInModel -> Html Msg
 tasksView origin state =
     let
@@ -2255,8 +2267,9 @@ tasksView origin state =
             state.taskStateFilter /= "" || state.taskListQuery /= "" || state.taskListTypeFilter /= "" || state.taskListSort /= "newest"
     in
     Ui.card
-        [ Ui.sectionTitle "My tasks"
-        , Ui.disclosure "tasks-filters"
+        ([ a [ href ("#" ++ pageToPath CreateTaskPage), Html.Attributes.class Ui.primaryButtonClass, testId "new-task-button" ] [ text "+ New task" ]
+         , Ui.sectionTitle "My tasks"
+         , Ui.disclosure "tasks-filters"
             filtersActive
             "Filters"
             [ Ui.label_ "Filter by state"
@@ -2266,9 +2279,14 @@ tasksView origin state =
             , taskTypeFilterSelect "tasks-type" state.taskListTypeFilter TaskListTypeFilterChanged
             , taskSortSelect "tasks-sort" state.taskListSort TaskListSortChanged
             ]
-        , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset
-        , tasksList visibleTasks
-        ]
+         , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset
+         , tasksList visibleTasks
+         ]
+            ++ discoverySection state
+            ++ [ Ui.disclosure "tasks-submissions" False "My submissions" (userSubmissionsSection state)
+               , Ui.disclosure "tasks-series" False "Series" (seriesSection state)
+               ]
+        )
 
 
 taskStateFilterOptions : List ( String, String )
@@ -2438,7 +2456,18 @@ taskRow item =
             [ p [ Html.Attributes.class "font-medium break-words" ] [ text item.title ]
             , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
             ]
-        , a [ href ("#/tasks/" ++ item.id), Html.Attributes.class (Ui.secondaryButtonClass ++ " shrink-0"), testId "view-task" ] [ text "View" ]
+        , div [ Html.Attributes.class "flex shrink-0 gap-2" ]
+            ((if item.state == Task.TaskStateDraft || item.state == Task.TaskStateOpen then
+                -- Jumps straight to this task's detail page with its "Fund
+                -- this task" panel one click away, instead of making an
+                -- owner pick the task from a dropdown on a separate page.
+                [ a [ href ("#/tasks/" ++ item.id), Html.Attributes.class Ui.secondaryButtonClass, testId "fund-task-row" ] [ text "Fund" ] ]
+
+              else
+                []
+             )
+                ++ [ a [ href ("#/tasks/" ++ item.id), Html.Attributes.class Ui.secondaryButtonClass, testId "view-task" ] [ text "View" ] ]
+            )
         ]
 
 
@@ -2657,8 +2686,12 @@ awardCollectibleButton awardTaskId collectible =
 -- Discovery page
 
 
-discoveryView : LoggedInModel -> Html Msg
-discoveryView state =
+{-| The Discover-public-tasks section embedded on the Tasks hub (see
+`tasksView`) — content only, no outer card (Discovery no longer has its own
+route; this is the only place it renders).
+-}
+discoverySection : LoggedInModel -> List (Html Msg)
+discoverySection state =
     let
         visibleTasks =
             filterTasksByQuery state.discoveryQuery state.discoveryTasks
@@ -2666,18 +2699,17 @@ discoveryView state =
         filtersActive =
             state.discoveryIncludeReserved || state.discoveryQuery /= ""
     in
-    Ui.card
-        [ Ui.sectionTitle "Discover public tasks"
-        , Ui.disclosure "discovery-filters"
-            filtersActive
-            "Filters"
-            [ Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
-            , Ui.fieldLabel "Search loaded discovery"
-                [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.discoveryQuery, onInput DiscoveryQueryChanged, testId "discovery-query" ] ]
-            ]
-        , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset
-        , discoveryList visibleTasks
+    [ Ui.sectionTitle "Discover public tasks"
+    , Ui.disclosure "discovery-filters"
+        filtersActive
+        "Filters"
+        [ Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
+        , Ui.fieldLabel "Search loaded discovery"
+            [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.discoveryQuery, onInput DiscoveryQueryChanged, testId "discovery-query" ] ]
         ]
+    , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset
+    , discoveryList visibleTasks
+    ]
 
 
 discoveryList : List Task.TaskListItemResponse -> Html Msg
@@ -2721,16 +2753,9 @@ taskDetailPageView origin state =
 
         canReview =
             state.detail |> Maybe.map (\detail -> detail.reviewerAction == "review") |> Maybe.withDefault False
-
-        backHref =
-            if isOwner then
-                "#/tasks"
-
-            else
-                "#/discovery"
     in
     div [ Html.Attributes.class "space-y-6" ]
-        ([ a [ href backHref, Html.Attributes.class Ui.secondaryButtonClass, testId "detail-back" ] [ text "Back" ]
+        ([ a [ href "#/tasks", Html.Attributes.class Ui.secondaryButtonClass, testId "detail-back" ] [ text "Back" ]
          , detailCard origin state
          ]
             ++ (if isOwner then
@@ -2977,6 +3002,25 @@ ownerControlsCard state =
                 , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
                 , div [ Html.Attributes.class "flex flex-wrap gap-2" ] buttons
                 , maybeNote state.taskActionMessage "task-action-message"
+                , if draftOrOpen then
+                    -- state.fundTaskId is kept synced to the currently-viewed
+                    -- task on entering this page (see enterPage), so this
+                    -- reuses the exact same FundClicked/fund-* plumbing as
+                    -- the standalone Funding page without a separate Msg —
+                    -- it always targets *this* task regardless of whether
+                    -- the panel was opened via the task-row Fund shortcut or
+                    -- expanded manually.
+                    Ui.disclosure "fund-task-panel"
+                        False
+                        "Fund this task"
+                        [ Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
+                        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset
+                        , Ui.primaryButton [ type_ "button", onClick FundClicked, testId "fund" ] "Fund task"
+                        , maybeNote state.fundMessage "fund-message"
+                        ]
+
+                  else
+                    text ""
                 ]
 
         Nothing ->

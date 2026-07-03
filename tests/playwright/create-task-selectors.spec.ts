@@ -56,7 +56,8 @@ test("task creation uses directory selectors and funds selected collectible rewa
   await page.getByTestId("login").click();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   const title =
     `${selectorRewardScenario.taskTitlePrefix} ${crypto.randomUUID()}`;
   await page.getByTestId("create-title").fill(title);

@@ -1,5 +1,80 @@
 # What We Did
 
+`task/merge-tasks-nav-uiux-polish` consolidated the navbar further, at the
+user's explicit direction: several destinations that were separate top-level
+nav items/menus were "useless" as their own destinations and should live on
+the Tasks page instead. The nav went from 8 items (2 flat + Work/Manage/
+Account menus) down to 4 (Overview, Tasks flat, Manage/Account menus).
+
+- **Tasks became the one hub for everything task-related.** Merged what
+  used to be four separate nav destinations into one page:
+  - **New task**: no longer a top-level nav link; a "+ New task" button now
+    sits at the top of the Tasks hub and links to the same `/tasks/new`
+    route (`CreateTaskPage` itself is unchanged — only its entry point moved).
+  - **Discovery**: fully merged — `DiscoveryPage` no longer exists as a
+    route. Its "Discover public tasks" section is now permanently embedded
+    on the Tasks hub, always expanded (equally primary to "My tasks").
+    `/discovery` and `/series` (bare) redirect to `/tasks` for anyone with
+    an old bookmark rather than 404ing.
+  - **Work menu (Submissions, Series)**: also fully merged — `SeriesListPage`
+    no longer exists as a route (its content is a collapsed-by-default
+    `Ui.disclosure` on the hub, since `nav-series-list` was clicked by only
+    one spec). `UserSubmissionsPage` **stays as its own route**, unlike
+    Discovery/Series — the Profile page's "Submissions" link
+    (`user-submissions-link`) explicitly targets `/users/<id>/submissions`
+    as its own linkable URL, and a real test (`screens.spec.ts`) asserts
+    that URL loads; removing it would have broken a genuine, still-used
+    entry point, not just an unused nav item. Its content is also embedded
+    (collapsed) on the hub via a shared content-only function, reused by both
+    the standalone page and the hub — verified this distinction by grepping
+    actual test usage before deciding, the same discipline as prior branches.
+  - **Inbox** moved from a flat nav item into the Account menu.
+- **Two real, pre-existing bugs found while doing this refactor** (not
+  visible until Discovery/Series/Submissions could be reached from the same
+  page as Tasks): `PreviousUserSubmissionsPageClicked`/
+  `NextUserSubmissionsPageClicked` and the series-list refresh after
+  creating a series (`seriesListRefresh`) both gated on `state.page` being
+  the exact standalone route (`UserSubmissionsPage userId` / `SeriesListPage`)
+  — so paginating submissions or creating a series from the *hub* would have
+  silently no-op'd (wrong page match) instead of refreshing. Fixed the
+  submissions handlers to key off `state.subjectId` directly instead of
+  extracting a userId from the current page, and extended the series
+  refresh condition to include `TasksPage`.
+- **Inline task funding**: a task's "Fund this task" panel is now a
+  default-collapsed `Ui.disclosure` inside `ownerControlsCard` (owner-only,
+  gated the same way the existing Open/Cancel/Refund buttons are — only for
+  draft/open tasks), reusing the exact same `FundTaskIdChanged`/
+  `FundAmountChanged`/`FundClicked`/`fund-*` plumbing as the standalone
+  Funding page — no new Msg needed. Correctness subtlety: `state.fundTaskId`
+  is now synced to the currently-viewed task on every entry to a task detail
+  page (`enterPage`), so submitting always targets *this* task regardless of
+  whatever was last selected on the standalone page — considered and
+  rejected an "auto-open the panel when arriving via a shortcut" design
+  (would have required tracking open-intent separately from the task-id sync
+  to avoid the panel silently targeting the wrong task) in favor of this
+  simpler, unambiguously-correct version. Also added a "Fund" button
+  alongside "View" on each My-tasks row (gated the same way, draft/open only)
+  that jumps straight to the task's detail page.
+- **A real mobile overflow bug found by the existing (extended) horizontal-
+  overflow check**: with only Overview/Tasks/Manage on the first row now
+  (Work having been removed), Manage sat in a different horizontal position
+  than before and its left-aligned dropdown panel overflowed a 375px
+  viewport. Fixed by aligning its panel to the right, matching the same fix
+  already applied to Work in the prior branch for the same underlying reason.
+- **A real strict-mode test failure found by running the suite, not by
+  review**: mara's seeded task (`task-ledger-review`) is both her own and
+  public, so once My tasks and Discover public tasks render on the same
+  page, its title appears twice — an unscoped text assertion in
+  `demo.spec.ts` broke. Scoped it to the `tasks` (My tasks) container
+  specifically.
+- Verified: all 46 real-backend Playwright specs (`make e2e-ui`), all 13
+  WASM-demo Playwright specs, Go integration/http_e2e suites, `go test
+  ./...`, and the full non-browser check suite all pass. Screenshot-verified
+  the consolidated hub (My tasks/Discover public tasks always expanded, My
+  submissions/Series collapsed), the Fund panel's collapsed-by-default state
+  and its expansion via both entry points, and the Account menu with Inbox
+  added, in both the base theme and the arcade demo skin.
+
 `task/navbar-dropdown-menu-more-seed-tasks` turned the prior branch's
 3-row/15-button nav grouping into a genuinely structured navbar with real
 dropdown menus, and substantially grew the WASM demo's seeded task volume.

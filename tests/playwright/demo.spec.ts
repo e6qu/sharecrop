@@ -17,11 +17,17 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
   // client's decoders, else Decode.list blanks the whole section).
   await expect(page.getByText("Signup grant")).toBeVisible();
   await page.getByRole("link", { name: "Tasks", exact: true }).click();
-  await expect(page.getByText("Verify 10 ledger transfers for fraud signals"))
-    .toBeVisible();
+  // This task is mara's own AND public, so it now appears in both the
+  // My-tasks and Discover-public-tasks sections on the same hub page —
+  // scope to My tasks specifically.
+  await expect(
+    page.getByTestId("tasks").getByText(
+      "Verify 10 ledger transfers for fraud signals",
+    ),
+  ).toBeVisible();
 
-  // The real client's Discovery page lists the realistic seeded tasks.
-  await page.getByRole("link", { name: "Discovery" }).click();
+  // The Tasks hub's Discover-public-tasks section lists the realistic seeded
+  // tasks (Discovery is embedded on the same page now, already visible).
   await expect(
     page.getByText("Extract line items from 6 vendor invoices"),
   ).toBeVisible();
@@ -65,7 +71,8 @@ test("demo uploads small task and submission attachments", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
 
-  await page.getByTestId("nav-create-task").click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
   const taskTitle = `Attachment demo ${Date.now()}`;
   await page.getByTestId("create-title").fill(taskTitle);
   await page.getByTestId("create-description").fill("Task with a small brief.");
@@ -94,7 +101,7 @@ test("demo uploads small task and submission attachments", async ({ page }) => {
     "brief.txt",
   );
 
-  await page.getByRole("link", { name: "Discovery" }).click();
+  await page.getByTestId("nav-tasks").click();
   await page
     .getByTestId("discovery-task-row")
     .filter({ hasText: "Classify 8 support tickets by category" })
@@ -222,7 +229,7 @@ test("demo task reports appear in the admin moderation panel", async ({ page }) 
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
 
-  await page.getByRole("link", { name: "Discovery" }).click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
   await page.getByTestId("moderation-reason-pii").click();
   await page.getByTestId("moderation-details").fill("Contains invoice PII.");
@@ -246,7 +253,7 @@ test("demo admin triages moderation reports from the browser", async ({ page }) 
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
 
-  await page.getByRole("link", { name: "Discovery" }).click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
   await page.getByTestId("moderation-reason-policy").click();
   await page.getByTestId("moderation-details").fill("Needs admin decision.");
@@ -338,8 +345,8 @@ test("demo creates and opens a task series", async ({ page }) => {
 
   // A real bug found by hand-testing the demo: /api/task-series was entirely
   // unclassified in the WASM backend (a 404), so this whole flow was broken.
-  await page.getByTestId("nav-work-menu").click();
-  await page.getByRole("link", { name: "Series", exact: true }).click();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("tasks-series").click();
   await page.getByTestId("series-create-title").fill("Sprint 1");
   await page.getByTestId("series-create-description").fill(
     "A batch of related tasks.",
