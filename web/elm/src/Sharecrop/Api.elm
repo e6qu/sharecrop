@@ -311,16 +311,21 @@ routeLoadCmd token subjectId page =
             Cmd.batch [ fetchBalance token, fetchLedger token 0 ]
 
         TasksPage ->
-            fetchTasks token "" "" "newest" 0
+            -- The Tasks hub embeds My tasks, Discover public tasks, My
+            -- submissions, and Series all on one page, so entering it loads
+            -- data for all four sections at once.
+            Cmd.batch
+                [ fetchTasks token "" "" "newest" 0
+                , fetchDiscovery token False 0
+                , fetchUserSubmissionsPage token subjectId 0
+                , fetchSeriesList token
+                ]
 
         CreateTaskPage ->
             Cmd.batch [ fetchOrganizations token, fetchCollectibles token, fetchUserDirectory token, fetchStandaloneTeams token ]
 
         TaskDetailPage taskId ->
             fetchDetailCommands token subjectId taskId
-
-        DiscoveryPage ->
-            fetchDiscovery token False 0
 
         FundingPage ->
             Cmd.batch [ fetchTasks token "" "" "newest" 0, fetchOrganizations token ]
@@ -348,9 +353,6 @@ routeLoadCmd token subjectId page =
 
         CollectibleDetailPage _ ->
             fetchCollectibles token
-
-        SeriesListPage ->
-            fetchSeriesList token
 
         SeriesDetailPage seriesId ->
             fetchSeriesDetail token seriesId

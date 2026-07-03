@@ -32,12 +32,9 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
 
   await expectNoHorizontalOverflow("overview");
 
-  // The Work/Manage/Account nav dropdowns float over page content on a
-  // narrow phone viewport, so their open panels are their own overflow risk
+  // The Manage/Account nav dropdowns float over page content on a narrow
+  // phone viewport, so their open panels are their own overflow risk
   // distinct from the pages they link to.
-  await page.getByTestId("nav-work-menu").click();
-  await expectNoHorizontalOverflow("nav work menu open");
-  await page.getByTestId("nav-work-menu").click();
   await page.getByTestId("nav-manage-menu").click();
   await expectNoHorizontalOverflow("nav manage menu open");
   await page.getByTestId("nav-manage-menu").click();
@@ -45,27 +42,32 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
   await expectNoHorizontalOverflow("nav account menu open");
   await page.getByTestId("nav-account-menu").click();
 
+  // The Tasks hub: My tasks and Discover public tasks are always expanded;
+  // My submissions and Series are collapsed disclosures, each its own
+  // overflow risk once expanded (new content, not covered by the checks
+  // above).
+  await page.getByTestId("nav-tasks").click();
+  await expectNoHorizontalOverflow("tasks hub");
+  await page.getByTestId("tasks-submissions").click();
+  await expectNoHorizontalOverflow("tasks hub with my-submissions expanded");
+  await page.getByTestId("tasks-series").click();
+  await expectNoHorizontalOverflow("tasks hub with series expanded");
+
   for (
     const [name, menu] of [
-      ["Discovery", ""],
-      ["Tasks", ""],
-      ["New task", ""],
-      ["Series", "nav-work-menu"],
       ["Funding", "nav-manage-menu"],
       ["Agents", "nav-manage-menu"],
       ["Collectibles", "nav-manage-menu"],
       ["Organizations", "nav-manage-menu"],
     ] as const
   ) {
-    if (menu) {
-      await page.getByTestId(menu).click();
-    }
+    await page.getByTestId(menu).click();
     await page.getByRole("link", { name, exact: true }).click();
     await expectNoHorizontalOverflow(name);
   }
 
   // A task detail page (instruction/code blocks are a mobile overflow risk).
-  await page.getByRole("link", { name: "Discovery", exact: true }).click();
+  await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
   await expect(page.getByTestId("detail-title")).toBeVisible();
   await expectNoHorizontalOverflow("task detail");
@@ -76,6 +78,13 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
   await page.getByTestId("mint-task-token").click();
   await expect(page.getByTestId("integration-token")).toBeVisible();
   await expectNoHorizontalOverflow("task detail with API & MCP panel");
+
+  // The owned task's inline "Fund this task" panel (organization picker plus
+  // an amount input) is new content and its own overflow risk.
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("fund-task-row").first().click();
+  await page.getByTestId("fund-task-panel").click();
+  await expectNoHorizontalOverflow("task detail with fund panel expanded");
 
   // The user's own profile page mints a personal token with long MCP commands.
   await page.getByTestId("nav-account-menu").click();

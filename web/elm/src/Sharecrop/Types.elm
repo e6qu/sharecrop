@@ -35,7 +35,6 @@ type Page
     | TasksPage
     | CreateTaskPage
     | TaskDetailPage String
-    | DiscoveryPage
     | FundingPage
     | AgentsPage
     | CollectiblesPage
@@ -45,7 +44,6 @@ type Page
     | UserWorkPage String
     | UserSubmissionsPage String
     | CollectibleDetailPage String
-    | SeriesListPage
     | SeriesDetailPage String
     | TeamDetailPage String
     | AdminPage
@@ -650,9 +648,6 @@ pageToPath page =
         TaskDetailPage taskId ->
             "/tasks/" ++ taskId
 
-        DiscoveryPage ->
-            "/discovery"
-
         FundingPage ->
             "/funding"
 
@@ -679,9 +674,6 @@ pageToPath page =
 
         CollectibleDetailPage collectibleId ->
             "/collectibles/" ++ collectibleId
-
-        SeriesListPage ->
-            "/series"
 
         SeriesDetailPage seriesId ->
             "/series/" ++ seriesId
