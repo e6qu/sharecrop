@@ -57,7 +57,7 @@ Specific rules:
 - Create one pull request for each task.
 - Each task should happen on its own task branch.
 - The task branch should be pushed and opened as a pull request after the task commit is created.
-- Never keep more than one pull request open at a time.
+- **At most one open pull request at any time. No exceptions.** Before opening a new PR, check for any other open PR (`gh pr list`) and confirm it is merged first. This applies even to small, low-risk, or doc-only changes — there is no size or risk threshold that excuses opening a second PR while one is still open.
 - Do not start a new task branch while the previous task pull request remains open.
 - After a task pull request is merged, sync local `main` with `origin/main`.
 - Create the next task branch from synced `origin/main`.
