@@ -3,11 +3,16 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/notification"
+	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -62,6 +67,40 @@ type Services interface {
 	ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+
+	CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult
+	ListOrganizations(context.Context, auth.UserSubject, string, core.Page) org.ListOrganizationsResult
+	ListOrganizationMembers(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListMembersResult
+	ProvisionOrganizationMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
+	DeactivateOrganizationMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
+	UpdateOrganizationMemberRoles(context.Context, auth.UserSubject, core.OrganizationID, core.UserID, []org.Role) org.UpdateMemberRolesResult
+	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
+	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, string, core.Page) org.ListTeamsResult
+	CreateStandaloneTeam(context.Context, auth.UserSubject, org.TeamName) org.CreateTeamResult
+	ListStandaloneTeams(context.Context, auth.UserSubject, string, core.Page) org.ListTeamsResult
+	GetTeam(context.Context, auth.Subject, core.TeamID) org.GetTeamResult
+	GetTeamWork(context.Context, auth.UserSubject, core.TeamID, task.ListFilters, core.Page) task.ListResult
+	AddTeamMember(context.Context, auth.Subject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult
+
+	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
+	CreateOrgCredential(context.Context, core.OrganizationID, agent.Label, agent.ScopeSet, *time.Time) orgcred.CreateResult
+	ListOrgCredentials(context.Context, core.OrganizationID, core.Page) orgcred.ListResult
+	RevokeOrgCredential(context.Context, core.OrganizationID, core.OrgCredentialID) orgcred.RevokeResult
+
+	MintCollectible(context.Context, string, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult
+	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
+	ListCollectiblesByOwner(context.Context, string, string, core.Page) assets.ListResult
+	TransferCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult
+	FundCollectibleReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
+	RefundCollectibleReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
+
+	ListNotifications(context.Context, core.UserID, core.Page) notification.ListResult
+	MarkNotificationRead(context.Context, core.UserID, core.NotificationID) notification.MarkReadResult
+
+	ListUsers(context.Context, string, core.Page) auth.UserDirectoryResult
+	GetUserProfile(context.Context, auth.UserSubject, core.UserID, core.Page) task.ListResult
+	GetUserWork(context.Context, auth.UserSubject, core.UserID, core.Page) task.ListResult
+	GetUserSubmissions(context.Context, auth.UserSubject, core.UserID, core.Page) submission.ListResult
 }
 
 type Server struct {
@@ -368,6 +407,178 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, nam
 		return server.callChangeReservation(ctx, subject, arguments, server.services.DeclineReservation)
 	case toolCancelReservation:
 		return server.callChangeReservation(ctx, subject, arguments, server.services.CancelReservation)
+	case toolCreateOrganization:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCreateOrganization(ctx, userActor, arguments)
+	case toolListOrganizations:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListOrganizations(ctx, userActor, arguments)
+	case toolListOrgMembers:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListOrgMembers(ctx, userActor, arguments)
+	case toolProvisionOrgMember:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callProvisionOrgMember(ctx, userActor, arguments)
+	case toolDeactivateOrgMember:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callDeactivateOrgMember(ctx, userActor, arguments)
+	case toolUpdateOrgMemberRoles:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callUpdateOrgMemberRoles(ctx, userActor, arguments)
+	case toolCreateOrganizationTeam:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCreateOrganizationTeam(ctx, userActor, arguments)
+	case toolListOrganizationTeams:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListOrganizationTeams(ctx, userActor, arguments)
+	case toolCreateStandaloneTeam:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCreateStandaloneTeam(ctx, userActor, arguments)
+	case toolListStandaloneTeams:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListStandaloneTeams(ctx, userActor, arguments)
+	case toolGetTeam:
+		return server.callGetTeam(ctx, subject, arguments)
+	case toolGetTeamWork:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetTeamWork(ctx, userActor, arguments)
+	case toolAddTeamMember:
+		return server.callAddTeamMember(ctx, subject, arguments)
+	case toolCreateOrgCredential:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCreateOrgCredential(ctx, userActor, arguments)
+	case toolListOrgCredentials:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListOrgCredentials(ctx, userActor, arguments)
+	case toolRevokeOrgCredential:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callRevokeOrgCredential(ctx, userActor, arguments)
+	case toolMintCollectible:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callMintCollectible(ctx, userActor, arguments)
+	case toolCollectibleCatalog:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCollectibleCatalog(ctx, userActor, arguments)
+	case toolTransferCollectible:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callTransferCollectible(ctx, userActor, arguments)
+	case toolListCollectibles:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListCollectibles(ctx, userActor, arguments)
+	case toolFundCollectibleReward:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callFundCollectibleReward(ctx, userActor, arguments)
+	case toolRefundCollectibleReward:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callRefundCollectibleReward(ctx, userActor, arguments)
+	case toolListOrganizationCollectibles:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListOrganizationCollectibles(ctx, userActor, arguments)
+	case toolListTeamCollectibles:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListTeamCollectibles(ctx, userActor, arguments)
+	case toolListNotifications:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListNotifications(ctx, userActor, arguments)
+	case toolMarkNotificationRead:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callMarkNotificationRead(ctx, userActor, arguments)
+	case toolListUsers:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListUsers(ctx, userActor, arguments)
+	case toolGetUserProfile:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetUserProfile(ctx, userActor, arguments)
+	case toolGetUserWork:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetUserWork(ctx, userActor, arguments)
+	case toolGetUserSubmissions:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetUserSubmissions(ctx, userActor, arguments)
 	default:
 		return toolProtocolError{code: codeInvalidParams, message: "unknown tool: " + name}
 	}

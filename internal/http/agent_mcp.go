@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/mcp"
+	"github.com/e6qu/sharecrop/internal/notification"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -22,9 +25,14 @@ import (
 
 // mcpServices adapts the HTTP server's domain services to the MCP tool surface.
 type mcpServices struct {
-	taskService       TaskService
-	submissionService SubmissionService
-	ledgerService     LedgerService
+	taskService          TaskService
+	submissionService    SubmissionService
+	ledgerService        LedgerService
+	organizationService  OrganizationService
+	orgCredentialService OrgCredentialService
+	assetService         AssetService
+	notificationService  NotificationService
+	authService          AuthService
 }
 
 func (services mcpServices) ListTasks(ctx context.Context, subject auth.Subject, scope task.ListScope, filters task.ListFilters) task.ListResult {
@@ -165,6 +173,126 @@ func (services mcpServices) DeclineReservation(ctx context.Context, subject auth
 
 func (services mcpServices) CancelReservation(ctx context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
 	return services.taskService.CancelReservation(ctx, subject, taskID, reservationID)
+}
+
+func (services mcpServices) CreateOrganization(ctx context.Context, subject auth.UserSubject, name org.OrganizationName) org.CreateOrganizationResult {
+	return services.organizationService.CreateOrganization(ctx, subject, name)
+}
+
+func (services mcpServices) ListOrganizations(ctx context.Context, subject auth.UserSubject, query string, page core.Page) org.ListOrganizationsResult {
+	return services.organizationService.ListOrganizations(ctx, subject, query, page)
+}
+
+func (services mcpServices) ListOrganizationMembers(ctx context.Context, subject auth.UserSubject, organizationID core.OrganizationID, page core.Page) org.ListMembersResult {
+	return services.organizationService.ListMembers(ctx, subject, organizationID, page)
+}
+
+func (services mcpServices) ProvisionOrganizationMember(ctx context.Context, subject auth.UserSubject, organizationID core.OrganizationID, email auth.EmailAddress, roles []org.Role) org.ProvisionMemberResult {
+	return services.organizationService.ProvisionMember(ctx, subject, organizationID, email, roles)
+}
+
+func (services mcpServices) DeactivateOrganizationMember(ctx context.Context, subject auth.UserSubject, organizationID core.OrganizationID, userID core.UserID) org.DeactivateMemberResult {
+	return services.organizationService.DeactivateMember(ctx, subject, organizationID, userID)
+}
+
+func (services mcpServices) UpdateOrganizationMemberRoles(ctx context.Context, subject auth.UserSubject, organizationID core.OrganizationID, userID core.UserID, roles []org.Role) org.UpdateMemberRolesResult {
+	return services.organizationService.UpdateMemberRoles(ctx, subject, organizationID, userID, roles)
+}
+
+func (services mcpServices) CreateOrganizationTeam(ctx context.Context, subject auth.UserSubject, organizationID core.OrganizationID, name org.TeamName) org.CreateTeamResult {
+	return services.organizationService.CreateOrganizationTeam(ctx, subject, organizationID, name)
+}
+
+func (services mcpServices) ListOrganizationTeams(ctx context.Context, subject auth.UserSubject, organizationID core.OrganizationID, query string, page core.Page) org.ListTeamsResult {
+	return services.organizationService.ListOrganizationTeams(ctx, subject, organizationID, query, page)
+}
+
+func (services mcpServices) CreateStandaloneTeam(ctx context.Context, subject auth.UserSubject, name org.TeamName) org.CreateTeamResult {
+	return services.organizationService.CreateStandaloneTeam(ctx, subject, name)
+}
+
+func (services mcpServices) ListStandaloneTeams(ctx context.Context, subject auth.UserSubject, query string, page core.Page) org.ListTeamsResult {
+	return services.organizationService.ListStandaloneTeams(ctx, subject, query, page)
+}
+
+func (services mcpServices) GetTeam(ctx context.Context, subject auth.Subject, teamID core.TeamID) org.GetTeamResult {
+	return services.organizationService.GetTeam(ctx, subject, teamID)
+}
+
+func (services mcpServices) GetTeamWork(ctx context.Context, subject auth.UserSubject, teamID core.TeamID, filters task.ListFilters, page core.Page) task.ListResult {
+	teamResult := services.organizationService.GetTeam(ctx, subject, teamID)
+	if _, matched := teamResult.(org.TeamGot); !matched {
+		return task.ListRejected{Reason: teamResult.(org.GetTeamRejected).Reason}
+	}
+	return services.taskService.List(ctx, subject, task.TeamListScope{TeamID: teamID, IncludeReserved: true}, filters, page)
+}
+
+func (services mcpServices) AddTeamMember(ctx context.Context, subject auth.Subject, teamID core.TeamID, email auth.EmailAddress) org.AddTeamMemberResult {
+	return services.organizationService.AddTeamMember(ctx, subject, teamID, email)
+}
+
+func (services mcpServices) CheckOrganizationPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, permission org.Permission) org.PermissionCheck {
+	return services.organizationService.CheckOrganizationPermission(ctx, organizationID, userID, permission)
+}
+
+func (services mcpServices) CreateOrgCredential(ctx context.Context, organizationID core.OrganizationID, label agent.Label, scopes agent.ScopeSet, expiresAt *time.Time) orgcred.CreateResult {
+	return services.orgCredentialService.Create(ctx, organizationID, label, scopes, expiresAt)
+}
+
+func (services mcpServices) ListOrgCredentials(ctx context.Context, organizationID core.OrganizationID, page core.Page) orgcred.ListResult {
+	return services.orgCredentialService.List(ctx, organizationID, page)
+}
+
+func (services mcpServices) RevokeOrgCredential(ctx context.Context, organizationID core.OrganizationID, credentialID core.OrgCredentialID) orgcred.RevokeResult {
+	return services.orgCredentialService.Revoke(ctx, organizationID, credentialID)
+}
+
+func (services mcpServices) MintCollectible(ctx context.Context, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
+	return services.assetService.Mint(ctx, ownerKind, ownerID, organizationID, name, kind, policy, art)
+}
+
+func (services mcpServices) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) assets.ListResult {
+	return services.assetService.ListCollectibles(ctx, owner, page)
+}
+
+func (services mcpServices) ListCollectiblesByOwner(ctx context.Context, ownerKind string, ownerID string, page core.Page) assets.ListResult {
+	return services.assetService.ListByOwner(ctx, ownerKind, ownerID, page)
+}
+
+func (services mcpServices) TransferCollectible(ctx context.Context, from core.UserID, to core.UserID, collectibleID core.CollectibleID) assets.GiftResult {
+	return services.assetService.GiftCollectible(ctx, from, to, collectibleID)
+}
+
+func (services mcpServices) FundCollectibleReward(ctx context.Context, funder core.UserID, taskID core.TaskID, collectibleID core.CollectibleID) assets.FundRewardResult {
+	return services.assetService.FundReward(ctx, funder, taskID, collectibleID)
+}
+
+func (services mcpServices) RefundCollectibleReward(ctx context.Context, requester core.UserID, taskID core.TaskID) assets.RefundRewardResult {
+	return services.assetService.RefundReward(ctx, requester, taskID)
+}
+
+func (services mcpServices) ListNotifications(ctx context.Context, recipient core.UserID, page core.Page) notification.ListResult {
+	return services.notificationService.List(ctx, recipient, page)
+}
+
+func (services mcpServices) MarkNotificationRead(ctx context.Context, recipient core.UserID, notificationID core.NotificationID) notification.MarkReadResult {
+	return services.notificationService.MarkRead(ctx, recipient, notificationID)
+}
+
+func (services mcpServices) ListUsers(ctx context.Context, query string, page core.Page) auth.UserDirectoryResult {
+	return services.authService.ListUsers(ctx, query, page)
+}
+
+func (services mcpServices) GetUserProfile(ctx context.Context, subject auth.UserSubject, userID core.UserID, page core.Page) task.ListResult {
+	return services.taskService.List(ctx, subject, task.CreatorListScope{CreatorID: userID}, task.NoListFilters(), page)
+}
+
+func (services mcpServices) GetUserWork(ctx context.Context, subject auth.UserSubject, userID core.UserID, page core.Page) task.ListResult {
+	return services.taskService.List(ctx, subject, task.AssigneeListScope{AssigneeID: userID}, task.NoListFilters(), page)
+}
+
+func (services mcpServices) GetUserSubmissions(ctx context.Context, subject auth.UserSubject, userID core.UserID, page core.Page) submission.ListResult {
+	return services.submissionService.ListForSubmitter(ctx, subject, userID, page)
 }
 
 type agentCredentialRequest struct {

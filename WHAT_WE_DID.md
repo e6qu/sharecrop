@@ -1,5 +1,84 @@
 # What We Did
 
+`task/mcp-orgs-teams-collectibles-notifications-users` is Phase 4b of the
+same 5-phase RBAC + API-token effort described below (Phases 1-3 shipped as
+PRs 115-117, Phase 4a as PR 118, all merged first). This phase adds the new
+MCP tool categories Phase 4's research identified as missing.
+
+- **Scoped by re-checking REST, not by trusting the domain layer**: dispatched
+  a fresh research pass (rather than reusing Phase 4's older notes verbatim)
+  to get exact signatures/result-types for `org.Service`, `orgcred.Service`,
+  `assets.Service`, `notification.Service`, and the 4 users/profile REST
+  handlers — and, critically, which specific REST handler backs each
+  operation and whether *that* handler (not just the domain method) accepts
+  an organization-wide credential. This surfaced a real subtlety: `org.Service`'s
+  `ProvisionMember`/`DeactivateMember`/`UpdateMemberRoles` already accept
+  `auth.Subject` at the domain layer (from Phase 2's plumbing), but REST's
+  `provisionOrganizationMember`/`deactivateOrganizationMember`/
+  `updateOrganizationMemberRoles` handlers still call `requireUserSubject`,
+  not `requireUserOrOrgSubject` — so the corresponding MCP tools stayed
+  `auth.UserSubject`-only too, even though widening them would have
+  compiled fine and "worked." Only `get_team` and `add_team_member`
+  actually needed `auth.Subject` — REST's only two org-token-capable
+  team handlers.
+- **~30 new tools across 5 categories**: organizations/teams (13 —
+  create/list organizations, provision/deactivate/update-roles members,
+  create/list org and standalone teams, get-team/add-team-member/
+  get-team-work), org-wide credential self-management (3 — mirrors the
+  REST org-credential endpoints exactly, including replicating the inline
+  `PermissionManageMembers` check REST does before minting, since
+  `orgcred.Service.Create` itself has no permission gate of its own), 
+  collectibles (8 — mint/catalog/transfer/list/fund-reward/refund-reward/
+  list-by-organization/list-by-team), notifications (2), users/profile (4).
+  Deliberately excluded `award_collectible` (REST's only
+  `requireAdminSubject`-gated collectible endpoint) — that belongs with
+  Phase 4c's admin-gated tools and the double-check mechanism they need,
+  not bolted on here without that mechanism existing yet.
+- **File organization**: rather than keep growing the two existing
+  monolithic `tools.go`/`tool_calls.go` files (already large before this
+  phase), added 5 new per-domain file pairs
+  (`tools_orgs.go`/`tool_calls_orgs.go`, `tools_collectibles.go`/
+  `tool_calls_collectibles.go`, `tools_notifications.go`/
+  `tool_calls_notifications.go`, `tools_users.go`/`tool_calls_users.go`,
+  plus org-credential tools folded into the orgs pair since they're
+  organization-scoped too). `toolDefinitions()` now composes a base list
+  with `append` from each domain's own `xxxToolDefinitions()` function
+  rather than one giant literal.
+- **Reused existing helpers rather than duplicating them**: the new
+  `callGetUserWork`/`callGetUserProfile` reuse the existing `taskSummary`/
+  `tasksPayload` types and `taskToSummary` helper already in
+  `tool_calls.go`; `callGetUserSubmissions` reuses `submissionSummary`/
+  `submissionsPayload`/`submissionToSummary`. This is why `make
+  check-copy-paste` still reports 0 duplicate clones despite adding ~30
+  tools — the boilerplate that *would* have been copy-pasted (payload
+  marshaling, ID parsing) was extracted into shared helpers instead.
+- **`mcpServices` (the HTTP-to-MCP adapter) gained 5 new service
+  dependencies**: `organizationService`, `orgCredentialService`,
+  `assetService`, `notificationService`, `authService` — all already
+  existed on `httpserver.Server`, just not threaded into
+  `mcp.NewServer(mcpServices{...})` before. Both call sites (`newServer`
+  and the exported `NewMCPServer` used by the stdio bootstrap) needed
+  updating, and the stdio bootstrap (`cmd/sharecrop/main.go`) needed a new
+  `authService` construction it didn't have before (list_users needs it).
+- **A deliberate, documented gap, not an oversight**: `getUserSubmissions`'s
+  REST handler calls `recordSensitiveFieldAccess` for audit logging on each
+  returned submission — an `*http.Request`/`http.ResponseWriter`-coupled
+  helper with no non-HTTP variant. Consistent with Phase 4a's precedent
+  (no MCP tool calls `recordAudit` either), the MCP `get_user_submissions`
+  tool skips this audit step. Revisit if/when audit logging becomes a
+  cross-transport concern rather than an HTTP-handler-local one.
+- **Verification**: 9 new `http_e2e` tests (one per category, plus
+  `TestMCPGetTeamAndAddTeamMemberAcceptOrgCredential` specifically
+  regression-testing the org-token-parity boundary for the two tools that
+  have it) all pass, alongside the full pre-existing suite unchanged. Also
+  hand-verified against a real server: minted an agent credential scoped to
+  the new read/manage scopes, drove `create_organization`, `list_organizations`,
+  `mint_collectible`, and `list_users` over real MCP JSON-RPC calls, and
+  confirmed the scope gate still correctly rejects `create_task` for a
+  credential missing `tasks_write`.
+
+---
+
 `task/mcp-tool-parity-orgsubject` is Phase 4a of the same 5-phase RBAC +
 API-token effort described below (Phases 1-3 shipped as PRs 115-117, merged
 first). Phase 4 ("MCP tool parity") turned out much bigger than the

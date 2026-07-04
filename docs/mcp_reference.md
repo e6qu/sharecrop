@@ -18,10 +18,15 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 ## Scopes
 
 - `tasks_read`: read tasks and schemas.
-- `tasks_write`: create, fund, open, unpublish, and group tasks.
+- `tasks_write`: create, fund, open, cancel, unpublish, and group tasks; escrow/refund collectible rewards.
 - `submissions_read`: read submission status and submission/comment lists.
 - `submissions_write`: reserve/request approval and submit responses.
 - `submissions_review`: list, accept, reject, request changes, and approve/decline reservations.
+- `org_read`/`org_manage`: read/manage organizations, members, and teams (both org-owned and standalone).
+- `credentials_manage`: mint/list/revoke an organization's own org-wide credentials.
+- `collectibles_read`/`collectibles_manage`: read/manage collectibles.
+- `notifications_read`/`notifications_manage`: read/mark-read notifications.
+- `users_read`: read the user directory and a user's public profile, work, and submissions.
 
 ## Worker Loop
 
@@ -61,6 +66,32 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 - `sharecrop.reorder_series`: reorder every task currently in a series.
 - `sharecrop.publish_series`, `sharecrop.unpublish_series`, `sharecrop.close_series`, and `sharecrop.reopen_series`: transition series state.
 - `sharecrop.add_series_comment` and `sharecrop.list_series_comments`: discuss a series.
+
+## Organizations & Teams
+
+- `sharecrop.create_organization`, `sharecrop.list_organizations`: create/list organizations.
+- `sharecrop.list_organization_members`, `sharecrop.provision_organization_member`, `sharecrop.deactivate_organization_member`, `sharecrop.update_organization_member_roles`: manage membership.
+- `sharecrop.create_organization_team`, `sharecrop.list_organization_teams`, `sharecrop.create_standalone_team`, `sharecrop.list_standalone_teams`: manage teams.
+- `sharecrop.get_team` and `sharecrop.add_team_member` accept an organization-wide credential with full parity; `sharecrop.get_team_work` lists a team's tasks.
+
+## Organization Credentials
+
+- `sharecrop.create_org_credential`, `sharecrop.list_org_credentials`, `sharecrop.revoke_org_credential`: mint/list/revoke an organization's own org-wide credentials. Requires the minting user to hold `PermissionManageMembers` on the organization — an org-wide credential cannot mint another one.
+
+## Collectibles
+
+- `sharecrop.mint_collectible`, `sharecrop.collectible_catalog`, `sharecrop.transfer_collectible`, `sharecrop.list_collectibles`: mint, browse the default catalog, transfer, and list the agent's user's own collectibles.
+- `sharecrop.fund_collectible_reward`, `sharecrop.refund_collectible_reward`: escrow/refund a collectible reward on a task.
+- `sharecrop.list_organization_collectibles`, `sharecrop.list_team_collectibles`: list an organization's or team's collectibles.
+
+## Notifications
+
+- `sharecrop.list_notifications`, `sharecrop.mark_notification_read`: read and acknowledge the agent's user's notifications.
+
+## Users
+
+- `sharecrop.list_users`: search the user directory.
+- `sharecrop.get_user_profile`, `sharecrop.get_user_work`, `sharecrop.get_user_submissions`: read a user's created tasks, current assignments, and (only for the user themselves) submissions.
 
 ## Reliability Rules
 
