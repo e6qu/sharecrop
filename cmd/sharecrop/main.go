@@ -246,7 +246,12 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
 	assetService := assets.NewService(db.NewCollectibleStore(pool))
 	notificationService := notification.NewService(db.NewNotificationStore(pool))
-	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService, organizationService, orgCredentialService, assetService, notificationService, authService.Value)
+	bootstrapAdmins := httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
+	platformAdmins := db.NewPlatformAdminStore(pool, bootstrapAdmins)
+	moderationTriage := db.NewModerationTriageStore(pool)
+	privacyService := db.NewPrivacyStore(pool)
+	auditService := audit.NewService(db.NewAuditStore(pool))
+	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService, organizationService, orgCredentialService, assetService, notificationService, authService.Value, platformAdmins, moderationTriage, privacyService, auditService)
 
 	logger.Info("starting sharecrop mcp stdio transport")
 	if err := mcp.ServeStdio(ctx, mcpServer, subject, callerCredential, os.Stdin, stdout); err != nil {

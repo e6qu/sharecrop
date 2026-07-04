@@ -9,6 +9,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
@@ -170,6 +171,7 @@ func TestToolsCallSurfacesDomainRejectionAsToolError(t *testing.T) {
 
 type fakeServices struct {
 	rejectGet bool
+	isAdmin   bool
 }
 
 func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters) task.ListResult {
@@ -549,6 +551,63 @@ func (services fakeServices) GetUserWork(_ context.Context, _ auth.UserSubject, 
 
 func (services fakeServices) GetUserSubmissions(_ context.Context, _ auth.UserSubject, _ core.UserID, _ core.Page) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
+}
+
+func (services fakeServices) IsPlatformAdmin(_ context.Context, _ core.UserID) bool {
+	return services.isAdmin
+}
+
+func (services fakeServices) ListPlatformAdmins(_ context.Context, _ core.Page) PlatformAdminListResult {
+	return PlatformAdminsListed{Values: []PlatformAdminRecord{}}
+}
+
+func (services fakeServices) GrantPlatformAdmin(_ context.Context, userID core.UserID, _ core.UserID) PlatformAdminMutationResult {
+	return PlatformAdminSaved{Value: PlatformAdminRecord{UserID: userID, Source: "granted"}}
+}
+
+func (services fakeServices) RevokePlatformAdmin(_ context.Context, userID core.UserID) PlatformAdminMutationResult {
+	return PlatformAdminSaved{Value: PlatformAdminRecord{UserID: userID, Source: "granted"}}
+}
+
+func (services fakeServices) CreateModerationReport(_ context.Context, actor core.UserID, subjectKind string, subjectID string, reason string, details string) ModerationReportResult {
+	return ModerationReportSaved{Value: ModerationReport{ID: "report-1", SubjectKind: subjectKind, SubjectID: subjectID, Reason: reason, Details: details, ReporterUserID: actor.String(), State: "open"}}
+}
+
+func (services fakeServices) ListAdminModerationReports(_ context.Context, _ string, _ core.Page) ModerationReportsListResult {
+	return ModerationReportsListed{Values: []ModerationReport{}}
+}
+
+func (services fakeServices) TriageModerationReport(_ context.Context, actor core.UserID, reportID core.AuditEventID, state string, note string) ModerationReportResult {
+	return ModerationReportSaved{Value: ModerationReport{ID: reportID.String(), State: state, ResolutionNote: note, UpdatedBy: actor.String()}}
+}
+
+func (services fakeServices) CreatePrivacyRequest(_ context.Context, actor core.UserID, kind string) PrivacyRequestResult {
+	return PrivacyRequestSaved{Value: PrivacyRequestRecord{ID: "privacy-1", RequestedBy: actor, Kind: kind, State: "queued"}}
+}
+
+func (services fakeServices) ListPrivacyRequests(_ context.Context, _ core.UserID, _ core.Page) PrivacyRequestsListResult {
+	return PrivacyRequestsListed{Values: []PrivacyRequestRecord{}}
+}
+
+func (services fakeServices) ListAdminPrivacyRequests(_ context.Context, _ core.Page) PrivacyRequestsListResult {
+	return PrivacyRequestsListed{Values: []PrivacyRequestRecord{}}
+}
+
+func (services fakeServices) ResolveAdminPrivacyRequest(_ context.Context, requestID string, note string) PrivacyRequestResult {
+	return PrivacyRequestSaved{Value: PrivacyRequestRecord{ID: requestID, State: "resolved", ResolutionNote: note}}
+}
+
+func (services fakeServices) RunPrivacyRetention(_ context.Context, _ core.UserID) PrivacyRetentionResult {
+	return PrivacyRetentionRun{RedactedFieldCount: 0}
+}
+
+func (services fakeServices) ListAuditEvents(_ context.Context, _ audit.ListFilters, _ core.Page) audit.ListResult {
+	return audit.EventsListed{Values: []audit.Event{}}
+}
+
+func (services fakeServices) AwardCollectible(_ context.Context, _ string, recipientKind string, recipientID string, organizationID string) assets.MintResult {
+	collectibleID := core.NewCollectibleID().(core.CollectibleIDCreated)
+	return assets.CollectibleMinted{Value: assets.Collectible{ID: collectibleID.Value, State: assets.CollectibleStateMinted, OwnerKind: recipientKind, OwnerID: recipientID, OrganizationID: organizationID}}
 }
 
 func mustTeamName(raw string) org.TeamName {

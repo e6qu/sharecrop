@@ -27,6 +27,9 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 - `collectibles_read`/`collectibles_manage`: read/manage collectibles.
 - `notifications_read`/`notifications_manage`: read/mark-read notifications.
 - `users_read`: read the user directory and a user's public profile, work, and submissions.
+- `moderation_read`/`moderation_manage`: list/triage moderation reports (admin-gated).
+- `privacy_read`/`privacy_manage`: list/resolve privacy requests and run retention (admin-gated).
+- `platform_admin`: platform administration — grant/revoke admins, award default collectibles, list platform-wide audit events. **A credential's scope alone is not enough**: every `platform_admin`-scoped tool call also re-checks that the underlying user is currently a platform admin, so a credential minted before a later demotion can't be used to keep acting as one.
 
 ## Worker Loop
 
@@ -83,6 +86,26 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 - `sharecrop.mint_collectible`, `sharecrop.collectible_catalog`, `sharecrop.transfer_collectible`, `sharecrop.list_collectibles`: mint, browse the default catalog, transfer, and list the agent's user's own collectibles.
 - `sharecrop.fund_collectible_reward`, `sharecrop.refund_collectible_reward`: escrow/refund a collectible reward on a task.
 - `sharecrop.list_organization_collectibles`, `sharecrop.list_team_collectibles`: list an organization's or team's collectibles.
+- `sharecrop.award_collectible`: mint a fresh copy of a default catalog collectible for a recipient. Admin-gated.
+
+## Moderation
+
+- `sharecrop.create_moderation_report`: report a task, submission, comment, user, organization, team, or collectible for review.
+- `sharecrop.list_admin_moderation_reports`, `sharecrop.triage_moderation_report`: list and triage reports. Admin-gated.
+
+## Privacy
+
+- `sharecrop.create_privacy_request`, `sharecrop.list_privacy_requests`: file and list the agent's user's own privacy requests (data export or sensitive field deletion).
+- `sharecrop.list_admin_privacy_requests`, `sharecrop.resolve_admin_privacy_request`, `sharecrop.run_privacy_retention`: list every request, resolve one, and run the retention sweep. Admin-gated.
+
+## Audit
+
+- `sharecrop.list_organization_audit_events`: list an organization's audit events. Requires `PermissionManageMembers` on the organization.
+- `sharecrop.list_admin_audit_events`: list platform-wide audit events, optionally filtered by action/subject. Admin-gated.
+
+## Platform Admin
+
+- `sharecrop.list_platform_admins`, `sharecrop.grant_platform_admin`, `sharecrop.revoke_platform_admin`: manage platform administrators. Admin-gated (bootstrap admins set via `SHARECROP_ADMIN_USER_IDS` cannot be revoked).
 
 ## Notifications
 

@@ -33,6 +33,10 @@ type mcpServices struct {
 	assetService         AssetService
 	notificationService  NotificationService
 	authService          AuthService
+	platformAdmins       PlatformAdminService
+	moderationTriage     ModerationTriageService
+	privacyService       PrivacyService
+	auditService         AuditService
 }
 
 func (services mcpServices) ListTasks(ctx context.Context, subject auth.Subject, scope task.ListScope, filters task.ListFilters) task.ListResult {

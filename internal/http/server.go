@@ -250,7 +250,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		agentService:         agentService,
 		orgCredentialService: orgCredentialService,
 		assetService:         assetService,
-		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: runtime.NotificationService, authService: authService}),
+		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: runtime.NotificationService, authService: authService, platformAdmins: runtime.PlatformAdmins, moderationTriage: runtime.ModerationTriage, privacyService: runtime.PrivacyService, auditService: runtime.AuditService}),
 		mcpSessions:          runtime.MCPSessions,
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
@@ -393,8 +393,8 @@ func withRequestBodyLimit(next http.Handler) http.Handler {
 
 // NewMCPServer builds an MCP server backed by the given domain services so the
 // stdio transport can reuse the same tool surface as the HTTP endpoint.
-func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, organizationService OrganizationService, orgCredentialService OrgCredentialService, assetService AssetService, notificationService NotificationService, authService AuthService) mcp.Server {
-	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: notificationService, authService: authService})
+func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, organizationService OrganizationService, orgCredentialService OrgCredentialService, assetService AssetService, notificationService NotificationService, authService AuthService, platformAdmins PlatformAdminService, moderationTriage ModerationTriageService, privacyService PrivacyService, auditService AuditService) mcp.Server {
+	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: notificationService, authService: authService, platformAdmins: platformAdmins, moderationTriage: moderationTriage, privacyService: privacyService, auditService: auditService})
 }
 
 func health(w http.ResponseWriter, r *http.Request) {
