@@ -33,6 +33,78 @@ plan for the full effort; see "Non-goals" below.
   tooling/tests that make drift structurally hard, not just a promise to
   be careful.
 
+## Ecosystem research: is HTTP/networking really a WASI gap, and what should host it?
+
+Researched with real web search (not just training-knowledge recall) after
+the empirical findings below raised the question of whether this is a
+Go-specific gap or an ecosystem-wide one, and what should run the host
+process.
+
+- **It's a Go-toolchain-specific gap, not an ecosystem-wide one.** WASI
+  Preview 2 (`wasi:sockets` + `wasi:http`, both TCP/UDP client+server and a
+  proper HTTP interface) is stable as of 2026 and is exactly what "no
+  networking in wasip1" is missing. The gap is that **mainline Go only
+  supports WASI Preview 1** (`GOOS=wasip1`) — Preview 2 / component-model
+  support is tracked in [golang/go#65333](https://github.com/golang/go/issues/65333)
+  but sits in the Backlog milestone with no active work and no comments
+  since filing (checked directly). Preview 1 will not gain sockets
+  retroactively — it's a different, frozen spec generation.
+- **TinyGo (not mainline Go) already supports WASI Preview 2**, including
+  `wasi:http`, and is production-proven via [Fermyon Spin](https://developer.fermyon.com/spin/go-components):
+  Spin's Go SDK (`github.com/spinframework/spin-go-sdk`) gives a TinyGo
+  component real outbound HTTP *and* — very relevant here — real outbound
+  **Postgres** access via `spin-go-sdk/v2/pg`, using exactly the
+  "host makes the real connection on the guest's behalf" pattern this
+  plan already independently arrived at. This is strong external
+  validation that the architecture in this doc is sound, not a
+  from-scratch guess.
+- **The likely disqualifying catch: TinyGo's standard library is
+  incomplete in ways that matter a lot for this codebase.** TinyGo's
+  `reflect` support is partial, and `encoding/json` — which depends on
+  reflection — is reported to compile but panic at runtime for
+  non-trivial cases. `internal/http` and every domain service in this repo
+  uses `encoding/json` pervasively (every handler's
+  `json.NewDecoder(r.Body).Decode(&request)` / `json.Marshal`). Compiling
+  the *real* Sharecrop code through TinyGo would very likely require
+  replacing `encoding/json` across the codebase with a non-reflective
+  alternative — a large, invasive change working against the entire point
+  of this effort (reuse the real code, don't fork it). This needs to be
+  verified directly against this codebase (not just taken on secondhand
+  reports) before ruling TinyGo out for real, but it's a serious enough
+  signal to not treat Spin/TinyGo as the default path.
+- **Net recommendation given the above**: stay on mainline Go
+  (`GOOS=wasip1`) for full stdlib fidelity — already proven to compile and
+  run this codebase's real logic correctly in Phase 0/1 — and keep the
+  custom stdin/stdout-pipe bridge from Phase 1 for the networking Go's
+  wasip1 target lacks, rather than switching to TinyGo/Spin purely to get
+  networking "for free" at the cost of `encoding/json` compatibility. Spin
+  remains valuable prior art to model the bridge design after, just not
+  the runtime this effort should adopt directly.
+- **Host runtime options (Node/Deno/Bun) for a JS-based host instead of a
+  Go one**: none of the three have native WASI Preview 2 / component-model
+  support yet. Node and Bun both support WASI Preview 1 (Bun's
+  implementation is a fork of `wasi-js`, itself derived from `node-wasi`);
+  Deno has partial Preview 1 support and an open, unstarted tracking issue
+  for 0.2 ([denoland/deno#24289](https://github.com/denoland/deno/issues/24289)).
+  A tool called `jco` (Bytecode Alliance) can transpile a Preview 2
+  component to plain JS + wasm, which *could* run in any of these without
+  native runtime support — worth knowing about, not needed for the
+  mainline-Go/custom-bridge path this plan recommends, since Preview 2 was
+  the reason to consider a JS host at all. If a JS host is ever revisited:
+  Bun's own native `fetch`/Postgres client (`Bun.SQL` — Bun ships a
+  first-party Postgres client) could serve as the host-side implementation
+  behind a custom (non-WASI-standard) import bridge, the same shape as
+  this plan's Go+`pgx` bridge — but this isn't needed if staying on the
+  Go+wazero path.
+- **Real production precedent for server-side Wasm generally** (grounding
+  that this whole direction is a legitimate, not speculative, industry
+  pattern): American Express built an internal FaaS platform on wasmCloud;
+  Akamai's Fermyon-based edge platform reportedly handles 75M requests/sec
+  across 4,000+ edge locations; Cloudflare Workers and Fastly Compute both
+  run Wasm in production at scale. A 2026 industry survey cited server-side
+  Wasm usage overtaking browser-only usage in production deployments for
+  the first time.
+
 ## Verified findings (empirically tested in this session, not just reasoned about)
 
 Environment: Go 1.26.3 darwin/arm64, `wazero` v1.12.0 (via
