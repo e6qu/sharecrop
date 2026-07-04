@@ -10,7 +10,19 @@ tokens, escrow accounting, and payout workflow.
 
 - Email/password registration and login, JWT access tokens, rotating
   refresh-token cookies, logout revocation, guest subjects at the API level, and
-  scoped agent credentials.
+  scoped agent credentials with a 19-value scope taxonomy, optional expiration,
+  and optional task-scoping.
+- Organization-wide credentials with full org-admin parity, minted/listed/
+  revoked by a member holding org membership-management permission, sharing
+  the same scope/expiration model as personal credentials.
+- Task-scoped agent credentials are auto-issued the moment a worker's
+  reservation on a task becomes active (immediately, or on requester
+  approval), with the plaintext secret revealed once in the reservation
+  response and surfaced once in the browser.
+- A centralized `internal/authz` package for the org-token-or-per-member-
+  permission ownership/visibility check shared by tasks, series, and
+  submissions (organizations' own membership/team endpoints still use
+  locally-duplicated equivalents; see "Documentation Drift Found").
 - Task creation, discovery, owner task list, task detail, open/cancel/unpublish,
   public/private/user/team/organization visibility, reservations, approvals,
   submissions, review outcomes, comments, task series, and user profiles.
@@ -24,8 +36,14 @@ tokens, escrow accounting, and payout workflow.
 - Organizations, organization teams, standalone teams, member
   provisioning/listing/deactivation at the API layer, team detail, and team
   member addition.
-- MCP tools for task discovery/work/review, series, comments, reservations, and
-  Streamable HTTP sessions with SSE replay.
+- MCP tool parity with the REST API across task discovery/work/review, series,
+  comments, reservations, organizations/teams, organization-wide credentials,
+  collectibles, notifications, the user directory, and Streamable HTTP
+  sessions with SSE replay. Admin-gated tools (platform-admin grant/revoke,
+  moderation triage, privacy request resolution/retention, platform-wide
+  audit listing, catalog collectible awards) require both a scope grant and a
+  live re-check that the acting user is currently a platform admin, so a
+  credential minted before a later demotion can't keep acting as one.
 - CI covers format, generated contracts, policy checks, Deno/TypeScript checks,
   lint, vet, unit tests, integration tests, HTTP end-to-end tests, shared
   scenario parity, and Playwright browser tests.
@@ -231,6 +249,8 @@ Implemented:
   ledger rows, org-scoped audit rows, member, team, collectible, and task-state
   counts.
 - Team and organization task queues have persisted saved views.
+- Mint/list/revoke organization-wide credentials that act with full org-admin
+  parity (REST and MCP), gated the same way as membership management.
 
 Missing or partial:
 
@@ -241,10 +261,19 @@ Missing or partial:
 
 Implemented:
 
-- Create/revoke/list scoped credentials.
+- Create/revoke/list scoped credentials from the browser, with a full
+  19-scope picker and an optional expiration (encoded client-side to an
+  absolute timestamp).
+- Reserving a task auto-issues a task-scoped credential the moment the
+  reservation becomes active, revealed once on the task detail page.
+- Organization members with membership-management permission can mint/list/
+  revoke organization-wide credentials with full org-admin parity from the
+  organization detail page.
 - Copy MCP config and REST/MCP task examples.
-- MCP supports task work, review, reservations, series, task comments, and
-  submission comments.
+- MCP has REST parity across task work/review/reservations/series/comments,
+  organizations/teams, organization credentials, collectibles, notifications,
+  the user directory, and admin-gated moderation/privacy/platform-admin/audit
+  tools.
 - Streamable HTTP sessions support initialize, session-bound calls, SSE, replay,
   and delete.
 
@@ -256,8 +285,11 @@ Missing or partial:
   cross-process fan-out groundwork.
 - There is no operator UI for active MCP sessions, last use, or abuse
   investigation.
-- The task detail token helper mints broad worker tokens for the current user;
-  there is no guided scope selection per task.
+- No credential grants pagination through MCP tool arguments yet (every
+  list-type MCP tool call uses a fixed default page rather than exposing a
+  page/cursor argument), so an agent can't page past the first page of large
+  result sets (tasks, org members, audit events, etc.) the way the REST API
+  itself supports.
 - Scheduled/recurring work is intentionally agent-side, but there is no recipe
   in product docs.
 
@@ -280,6 +312,11 @@ Implemented:
   moderation reports created by authenticated users. Reports are persisted as
   audit events with separate triage state and direct subject links where a
   browser route exists.
+- All of the above (grant/revoke admins, award collectibles, resolve privacy
+  requests, run retention, triage moderation reports, list platform-wide
+  audit events) is also available through MCP with an agent credential
+  holding the matching scope, gated by the same live admin re-check the
+  browser/REST path uses.
 
 Missing or partial:
 
@@ -341,6 +378,21 @@ Missing or partial:
   deferred external reward systems.
 - The browser uses email/password login/register plus guest entry. Provider
   email delivery and social sign-in are not implemented.
+- `internal/org/service.go`'s membership/team-management checks
+  (`requirePermissionForActor`, `canViewTeam`, `canManageTeam`) hand-roll the
+  same "an org-wide credential gets unconditional access to its own org" rule
+  that `internal/authz.RequireOrganizationAccess` centralizes for task/series/
+  submission. They can't call into `authz` directly: `authz` already imports
+  `org` (for `org.Permission`), so the reverse import would be a cycle. A
+  future change to `authz`'s semantics won't automatically apply here unless
+  someone extracts a shared lower-level package both can import.
+- `site/demo/backend.js` (the hand-maintained JS mock backend) is now
+  orphaned from the live browser demo — `site/demo/index.html` defaults to
+  the compiled Go/WASM backend and no longer has a code path that loads
+  `backend.js` at all — but it's still exercised directly by
+  `tests/deno/demo_backend_test.ts` and `tests/deno/scenario_parity_test.ts`.
+  Worth an explicit decision: restore a way to select it in the browser, or
+  deprecate it and its Deno tests now that WASM is authoritative.
 
 ## Suggested Delivery Sequence
 
