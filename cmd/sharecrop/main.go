@@ -224,12 +224,29 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 		callerCredential = mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: verified.Credential.TaskID}
 	}
 
+	tokenSecretResult := auth.NewAccessTokenSecret(cfg.AccessTokenSecret())
+	tokenSecret, tokenSecretMatched := tokenSecretResult.(auth.AccessTokenSecretAccepted)
+	if !tokenSecretMatched {
+		rejected := tokenSecretResult.(auth.AccessTokenSecretRejected)
+		logger.Error("load access token secret", "reason", rejected.Reason.Description())
+		return 2
+	}
+	authServiceResult := auth.NewService(db.NewAuthStore(pool), tokenSecret.Value, auth.SystemClock{})
+	authService, authServiceMatched := authServiceResult.(auth.ServiceCreated)
+	if !authServiceMatched {
+		rejected := authServiceResult.(auth.ServiceRejected)
+		logger.Error("create auth service", "reason", rejected.Reason.Description())
+		return 2
+	}
+
 	organizationService := org.NewService(db.NewOrgStore(pool))
 	taskStore := db.NewTaskStore(pool)
 	taskService := task.NewService(taskStore, organizationService, agentService)
 	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
-	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService)
+	assetService := assets.NewService(db.NewCollectibleStore(pool))
+	notificationService := notification.NewService(db.NewNotificationStore(pool))
+	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService, organizationService, orgCredentialService, assetService, notificationService, authService.Value)
 
 	logger.Info("starting sharecrop mcp stdio transport")
 	if err := mcp.ServeStdio(ctx, mcpServer, subject, callerCredential, os.Stdin, stdout); err != nil {

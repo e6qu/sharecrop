@@ -1,51 +1,50 @@
 # Status
 
-The repository contains pull request 1 through pull request 117 work, merged
-into `main`, plus the current `task/mcp-tool-parity-orgsubject` branch. PR
-108's GitHub Pages deployment failed three times in a row after merge for
-what looked like a transient GitHub-side Pages backend issue (build/artifact
+The repository contains pull request 1 through pull request 118 work, merged
+into `main`, plus the current
+`task/mcp-orgs-teams-collectibles-notifications-users` branch. PR 108's
+GitHub Pages deployment failed three times in a row after merge for what
+looked like a transient GitHub-side Pages backend issue (build/artifact
 steps always succeeded; only `deploy-pages` failed or hung, with a different
-symptom each time); PR 109 through 117's deployments each succeeded on the
+symptom each time); PR 109 through 118's deployments each succeeded on the
 first try with no code or workflow changes, confirming it was not a code
 problem and has since cleared.
 
-Active task: `task/mcp-tool-parity-orgsubject` is **Phase 4a of a larger,
-explicitly-planned effort**: API tokens with scopes/expiration,
-organization-wide tokens, full API/MCP parity, and a real RBAC system (the
-user asked to design this; a plan was produced and approved covering 5
-phases, one PR each). Phase 1 (PR 115) laid the credential-model
-foundation; Phase 2 (PR 116) added organization-wide credentials; Phase 3
-(PR 117) centralized org-token authorization into `internal/authz`. Phase 4
-turned out to be much larger than originally scoped once researched — ~60
-missing REST-vs-MCP operations across 14 categories, MCP hardcoded to
-`auth.UserSubject` at every layer, and no admin-gate mechanism in MCP at
-all — so it's now split into three sub-phases (4a/4b/4c), each its own PR.
-**Phase 4a (this PR)** wires `auth.Subject`/`auth.OrgSubject` through the
-entire MCP stack: a new `mcp.CallerCredential` type decouples MCP's
-scope/task-restriction checks from the concrete credential kind (personal
-`agent.Credential` vs. organization-wide `orgcred.Credential`); `Handle`/
-`HandleRaw`/`ServeStdio`/`dispatchTool` all widen from `auth.UserSubject` to
-`auth.Subject`; a new `verifyMCPCaller` resolver in `internal/http` tries an
-org-credential secret (by prefix) before falling back to a personal agent
-credential, mirroring the `requireUserOrOrgSubject` pattern already proven
-out for REST; the stdio bootstrap (`cmd/sharecrop/main.go`) gets the same
-fallback. Exactly the 6 MCP tools whose REST counterpart already supports
-org-token parity (`list_tasks`, `open_task`, `unpublish_task`,
-`list_task_reservations`, `approve/decline/cancel_task_reservation`) were
-widened — every other tool stays user-only, matching REST exactly rather
-than exceeding it; a non-user actor calling a user-only tool gets a clean
-tool-level rejection, not a crash. Also shipped the 4 cheap REST-parity
-gap-fills the research turned up: `cancel_task`, `refund_task`,
-`update_series`, `reorder_series` MCP tools (the first two with org-token
-parity, matching their REST handlers). Verified end-to-end over the real
-MCP transport: an org credential opens/cancels its own org's tasks via MCP
-tool calls but is rejected outright against a different org's task, and
-gets a clean tool-level failure (not a crash) calling `create_task`. See
-`WHAT_WE_DID.md` for the full writeup. Remaining: Phase 4b (MCP tools for
-organizations/teams/org-credentials/collectibles/notifications/users),
-Phase 4c (admin-gated MCP tools + the double-check mechanism REST's
-`requireAdminSubject` already has but MCP dispatch doesn't), Phase 5 (Elm
-UI).
+Active task: `task/mcp-orgs-teams-collectibles-notifications-users` is
+**Phase 4b of a larger, explicitly-planned effort**: API tokens with
+scopes/expiration, organization-wide tokens, full API/MCP parity, and a real
+RBAC system (the user asked to design this; a plan was produced and
+approved covering 5 phases, one PR each). Phase 1 (PR 115) laid the
+credential-model foundation; Phase 2 (PR 116) added organization-wide
+credentials; Phase 3 (PR 117) centralized org-token authorization; Phase 4a
+(PR 118) wired `auth.Subject`/`OrgSubject` through the whole MCP transport
+stack. **Phase 4b (this PR)** adds the ~30 new MCP tools the Phase 4
+research found missing, across 5 new categories: organizations/teams (13
+tools — create/list organizations, provision/deactivate/update-roles
+members, create/list org and standalone teams, get/add-member for teams),
+org-wide credentials (3 tools — an org's own credential self-management,
+mirroring the REST endpoints), collectibles (8 tools — mint/catalog/
+transfer/list/fund-reward/refund-reward/list-by-organization/list-by-team,
+excluding the admin-gated `award_collectible`, deferred to Phase 4c),
+notifications (2 tools), and users/profile (4 tools). Per the "MCP tracks
+REST, doesn't exceed it" principle established in Phase 4a, each new tool's
+actor-kind (`auth.UserSubject` vs. `auth.Subject`) was decided by checking
+its *specific* REST handler's auth resolver, not just what the underlying
+domain method merely permits — of all ~30 new tools, only `get_team` and
+`add_team_member` accept an organization-wide credential, matching REST's
+`requireUserOrOrgSubject`-gated handlers exactly; everything else
+(including `provision_organization_member`, which the domain layer actually
+supports for `auth.Subject` but REST hasn't wired up yet) stays user-only.
+Split `internal/mcp`'s tool definitions/dispatch/implementations across
+5 new per-domain file pairs (`tools_orgs.go`/`tool_calls_orgs.go`, etc.)
+rather than growing the existing monolithic files further. Verified with
+9 new `http_e2e` tests (one per category plus a dedicated org-credential-
+parity regression test for `get_team`/`add_team_member`) and manual curl
+verification against the real server. See `WHAT_WE_DID.md` for the full
+writeup. Remaining: Phase 4c (admin-gated MCP tools — `award_collectible`,
+moderation, privacy, platform-admin, audit — plus the double-check
+mechanism REST's `requireAdminSubject` already has but MCP dispatch
+doesn't), Phase 5 (Elm UI).
 
 `task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
 refined the task detail and profile pages for usability. Report task is now

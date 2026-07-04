@@ -56,6 +56,15 @@ type toolDefinition struct {
 }
 
 func toolDefinitions() []toolDefinition {
+	definitions := coreToolDefinitions()
+	definitions = append(definitions, orgToolDefinitions()...)
+	definitions = append(definitions, collectiblesToolDefinitions()...)
+	definitions = append(definitions, notificationsToolDefinitions()...)
+	definitions = append(definitions, usersToolDefinitions()...)
+	return definitions
+}
+
+func coreToolDefinitions() []toolDefinition {
 	return []toolDefinition{
 		{
 			Name:        toolListTasks,

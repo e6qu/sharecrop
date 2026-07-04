@@ -5,11 +5,16 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/notification"
+	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -416,6 +421,144 @@ func fakeReservationStateChange(subject auth.Subject, taskID core.TaskID, reserv
 		State:       state,
 		RequestedBy: userID,
 	}}
+}
+
+func (services fakeServices) CreateOrganization(_ context.Context, subject auth.UserSubject, name org.OrganizationName) org.CreateOrganizationResult {
+	organizationID := core.NewOrganizationID().(core.OrganizationIDCreated)
+	return org.OrganizationCreated{Value: org.Organization{ID: organizationID.Value, Name: name, CreatedBy: subject.ID}}
+}
+
+func (services fakeServices) ListOrganizations(_ context.Context, _ auth.UserSubject, _ string, _ core.Page) org.ListOrganizationsResult {
+	return org.OrganizationsListed{Values: []org.Organization{}}
+}
+
+func (services fakeServices) ListOrganizationMembers(_ context.Context, _ auth.UserSubject, _ core.OrganizationID, _ core.Page) org.ListMembersResult {
+	return org.MembersListed{Values: []org.OrganizationMember{}}
+}
+
+func (services fakeServices) ProvisionOrganizationMember(_ context.Context, _ auth.UserSubject, organizationID core.OrganizationID, _ auth.EmailAddress, roles []org.Role) org.ProvisionMemberResult {
+	membershipID := core.NewOrganizationMembershipID().(core.OrganizationMembershipIDCreated)
+	userID := core.NewUserID().(core.UserIDCreated)
+	return org.MemberProvisioned{Value: org.OrganizationMember{ID: membershipID.Value, OrganizationID: organizationID, UserID: userID.Value, Status: org.MembershipStatusActive, Roles: roles}}
+}
+
+func (services fakeServices) DeactivateOrganizationMember(_ context.Context, _ auth.UserSubject, _ core.OrganizationID, _ core.UserID) org.DeactivateMemberResult {
+	return org.MemberDeactivationAccepted{}
+}
+
+func (services fakeServices) UpdateOrganizationMemberRoles(_ context.Context, _ auth.UserSubject, organizationID core.OrganizationID, userID core.UserID, roles []org.Role) org.UpdateMemberRolesResult {
+	membershipID := core.NewOrganizationMembershipID().(core.OrganizationMembershipIDCreated)
+	return org.MemberRolesUpdatedResult{Value: org.OrganizationMember{ID: membershipID.Value, OrganizationID: organizationID, UserID: userID, Status: org.MembershipStatusActive, Roles: roles}}
+}
+
+func (services fakeServices) CreateOrganizationTeam(_ context.Context, subject auth.UserSubject, organizationID core.OrganizationID, name org.TeamName) org.CreateTeamResult {
+	teamID := core.NewTeamID().(core.TeamIDCreated)
+	return org.TeamCreated{Value: org.Team{ID: teamID.Value, Owner: org.OrganizationOwnedTeam{OrganizationID: organizationID}, Name: name, CreatedBy: subject.ID}}
+}
+
+func (services fakeServices) ListOrganizationTeams(_ context.Context, _ auth.UserSubject, _ core.OrganizationID, _ string, _ core.Page) org.ListTeamsResult {
+	return org.OrganizationTeamsListed{Values: []org.Team{}}
+}
+
+func (services fakeServices) CreateStandaloneTeam(_ context.Context, subject auth.UserSubject, name org.TeamName) org.CreateTeamResult {
+	teamID := core.NewTeamID().(core.TeamIDCreated)
+	return org.TeamCreated{Value: org.Team{ID: teamID.Value, Owner: org.UserOwnedTeam{OwnerUserID: subject.ID}, Name: name, CreatedBy: subject.ID}}
+}
+
+func (services fakeServices) ListStandaloneTeams(_ context.Context, _ auth.UserSubject, _ string, _ core.Page) org.ListTeamsResult {
+	return org.OrganizationTeamsListed{Values: []org.Team{}}
+}
+
+func (services fakeServices) GetTeam(_ context.Context, _ auth.Subject, teamID core.TeamID) org.GetTeamResult {
+	return org.TeamGot{Team: org.Team{ID: teamID, Owner: org.UserOwnedTeam{}, Name: mustTeamName("Fake team")}, Members: []core.UserID{}}
+}
+
+func (services fakeServices) GetTeamWork(_ context.Context, _ auth.UserSubject, _ core.TeamID, _ task.ListFilters, _ core.Page) task.ListResult {
+	return task.TasksListed{Values: []task.ListItem{}}
+}
+
+func (services fakeServices) AddTeamMember(_ context.Context, _ auth.Subject, _ core.TeamID, _ auth.EmailAddress) org.AddTeamMemberResult {
+	return org.TeamMemberAddedResult{}
+}
+
+func (services fakeServices) CheckOrganizationPermission(_ context.Context, _ core.OrganizationID, _ core.UserID, _ org.Permission) org.PermissionCheck {
+	return org.PermissionGranted{}
+}
+
+func (services fakeServices) CreateOrgCredential(_ context.Context, organizationID core.OrganizationID, label agent.Label, scopes agent.ScopeSet, expiresAt *time.Time) orgcred.CreateResult {
+	credentialID := core.NewOrgCredentialID().(core.OrgCredentialIDCreated)
+	secret := orgcred.NewSecretPlain().(orgcred.SecretPlainAccepted)
+	return orgcred.CredentialCreated{
+		Value:  orgcred.Credential{ID: credentialID.Value, OrganizationID: organizationID, Label: label, Scopes: scopes, State: agent.StateActive, ExpiresAt: expiresAt},
+		Secret: secret.Value,
+	}
+}
+
+func (services fakeServices) ListOrgCredentials(_ context.Context, _ core.OrganizationID, _ core.Page) orgcred.ListResult {
+	return orgcred.CredentialsListed{Values: []orgcred.Credential{}}
+}
+
+func (services fakeServices) RevokeOrgCredential(_ context.Context, organizationID core.OrganizationID, credentialID core.OrgCredentialID) orgcred.RevokeResult {
+	return orgcred.CredentialRevoked{Value: orgcred.Credential{ID: credentialID, OrganizationID: organizationID, Label: mustLabel("Fake org credential"), Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateRevoked}}
+}
+
+func (services fakeServices) MintCollectible(_ context.Context, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
+	collectibleID := core.NewCollectibleID().(core.CollectibleIDCreated)
+	return assets.CollectibleMinted{Value: assets.Collectible{ID: collectibleID.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerKind: ownerKind, OwnerID: ownerID, OrganizationID: organizationID, Art: art}}
+}
+
+func (services fakeServices) ListCollectibles(_ context.Context, _ core.UserID, _ core.Page) assets.ListResult {
+	return assets.CollectiblesListed{Values: []assets.Collectible{}}
+}
+
+func (services fakeServices) ListCollectiblesByOwner(_ context.Context, _ string, _ string, _ core.Page) assets.ListResult {
+	return assets.CollectiblesListed{Values: []assets.Collectible{}}
+}
+
+func (services fakeServices) TransferCollectible(_ context.Context, _ core.UserID, _ core.UserID, collectibleID core.CollectibleID) assets.GiftResult {
+	return assets.CollectibleGifted{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateMinted}}
+}
+
+func (services fakeServices) FundCollectibleReward(_ context.Context, _ core.UserID, _ core.TaskID, collectibleID core.CollectibleID) assets.FundRewardResult {
+	return assets.RewardFunded{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateMinted}}
+}
+
+func (services fakeServices) RefundCollectibleReward(_ context.Context, _ core.UserID, _ core.TaskID) assets.RefundRewardResult {
+	return assets.RewardRefunded{Values: []assets.Collectible{}}
+}
+
+func (services fakeServices) ListNotifications(_ context.Context, _ core.UserID, _ core.Page) notification.ListResult {
+	return notification.NotificationsListed{Values: []notification.Notification{}}
+}
+
+func (services fakeServices) MarkNotificationRead(_ context.Context, recipient core.UserID, notificationID core.NotificationID) notification.MarkReadResult {
+	return notification.NotificationRead{Value: notification.Notification{ID: notificationID, RecipientID: recipient}}
+}
+
+func (services fakeServices) ListUsers(_ context.Context, _ string, _ core.Page) auth.UserDirectoryResult {
+	return auth.UsersListed{Values: []auth.UserDirectoryEntry{}}
+}
+
+func (services fakeServices) GetUserProfile(_ context.Context, _ auth.UserSubject, _ core.UserID, _ core.Page) task.ListResult {
+	return task.TasksListed{Values: []task.ListItem{}}
+}
+
+func (services fakeServices) GetUserWork(_ context.Context, _ auth.UserSubject, _ core.UserID, _ core.Page) task.ListResult {
+	return task.TasksListed{Values: []task.ListItem{}}
+}
+
+func (services fakeServices) GetUserSubmissions(_ context.Context, _ auth.UserSubject, _ core.UserID, _ core.Page) submission.ListResult {
+	return submission.SubmissionsListed{Values: []submission.Submission{}}
+}
+
+func mustTeamName(raw string) org.TeamName {
+	accepted := org.NewTeamName(raw).(org.TeamNameAccepted)
+	return accepted.Value
+}
+
+func mustLabel(raw string) agent.Label {
+	accepted := agent.NewLabel(raw).(agent.LabelAccepted)
+	return accepted.Value
 }
 
 func request(id string, method string, params string) Request {
