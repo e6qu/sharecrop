@@ -1,41 +1,47 @@
 # Status
 
-The repository contains pull request 1 through pull request 115 work, merged
-into `main`, plus the current `task/org-credentials-orgsubject-authz`
+The repository contains pull request 1 through pull request 116 work, merged
+into `main`, plus the current `task/authz-centralize-ownership-visibility`
 branch. PR 108's GitHub Pages deployment failed three times in a row after
 merge for what looked like a transient GitHub-side Pages backend issue
 (build/artifact steps always succeeded; only `deploy-pages` failed or hung,
-with a different symptom each time); PR 109 through 115's deployments each
+with a different symptom each time); PR 109 through 116's deployments each
 succeeded on the first try with no code or workflow changes, confirming it
 was not a code problem and has since cleared.
 
-Active task: `task/org-credentials-orgsubject-authz` is **Phase 2 of a
+Active task: `task/authz-centralize-ownership-visibility` is **Phase 3 of a
 larger, explicitly-planned effort**: API tokens with scopes/expiration,
 organization-wide tokens, full API/MCP parity, and a real RBAC system (the
 user asked to design this; a plan was produced and approved covering 5
-phases, one PR each). Phase 1 (PR 115, merged) laid the credential-model
-foundation: `agent.Credential` gained `ExpiresAt`/`TaskID`, the scope
-taxonomy widened from 5 to 19 values, and a task's reservation becoming
-active now auto-mints a credential scoped to just that task. Phase 2 adds
-**organization-wide credentials**: a new `auth.OrgSubject` acting as the
-organization itself (not through any one member), a new `internal/orgcred`
-package mirroring `internal/agent`'s create/verify/list/revoke shape with a
-distinct `scrop_org_...` secret prefix, and REST endpoints
-(`POST/GET /api/organizations/{id}/credentials`,
-`POST .../credentials/{id}/revoke`) gated by the minting user holding
-`PermissionManageMembers` — the minted token itself then acts with **full
-parity to an org-admin member** wherever a widened authorization helper
-accepts `auth.Subject` (task get/list/open/cancel/unpublish/reservations,
-team get/add-member). Also completed the scope taxonomy left unfinished by
-Phase 1: the DB migration allowed 19 scope strings, but only 5 corresponding
-`agent.Scope` Go values existed — added the other 14
-(`org_read`/`org_manage`/`collectibles_*`/`notifications_*`/etc.), a real
-gap this phase found and fixed (boy-scout). **Verified end-to-end by hand
-against the real Postgres-backed server**, matching Phase 1's precedent: an
-org token opens/lists its own organization's tasks (200) and is rejected
-outright — not silently scoped down — against a different organization's
-tasks (403); this exact flow is now also an automated `http_e2e` regression
-test. See `WHAT_WE_DID.md` for the full writeup.
+phases, one PR each). Phase 1 (PR 115) laid the credential-model
+foundation; Phase 2 (PR 116) added organization-wide credentials
+(`auth.OrgSubject`, `internal/orgcred`) with full org-admin parity wired
+into task/reservation/team authorization. Phase 3 **centralizes the
+"org-token-or-per-member-permission" pattern Phase 2 introduced** into a new
+`internal/authz` package: a single `authz.RequireOrganizationAccess`
+function grants access when an org-wide credential's own organization id
+matches (full parity, no per-member lookup) or when a user holds the given
+`org.Permission`. This let 4 near-duplicate, security-critical functions
+across `task`/`submission` collapse into thin callers of one shared,
+independently-unit-tested helper — `task.requireOrgActorViewPermission`,
+`task.requireOrganizationPermission`, `task.requireOrganizationViewPermission`,
+and `submission.requireReviewPermission` are gone entirely, folded into their
+callers. `internal/authz` deliberately does **not** depend on `internal/task`
+(would create an import cycle, since `task`/`submission` depend on `authz`)
+so it only knows about organization ids and `org.Permission`, not
+task/series-specific owner or visibility types — those stay in each
+package, unabstracted, since they're genuinely resource-specific rather than
+incidental duplication. Caught and fixed one real risk before it shipped:
+task's and series' identical-looking "denied" paths actually use *different*
+`core.ErrorCode`s (`ErrorCodePermissionDenied` → HTTP 403 for task,
+`ErrorCodeInvalidState` → HTTP 409 for series) — a naive shared helper would
+have silently changed one of those HTTP statuses, so
+`RequireOrganizationAccess` takes the error code as an explicit parameter
+instead of hardcoding one. This is a behavior-preserving refactor: the full
+test suite (unit, integration, http_e2e — including Phase 2's org-token
+regression test) passes unchanged, and `make check-copy-paste` confirms the
+duplication is actually gone (0 clones, same as before, but now for a real
+reason rather than by accident). See `WHAT_WE_DID.md` for the full writeup.
 
 `task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
 refined the task detail and profile pages for usability. Report task is now

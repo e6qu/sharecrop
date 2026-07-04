@@ -1,5 +1,79 @@
 # What We Did
 
+`task/authz-centralize-ownership-visibility` is Phase 3 of the same 5-phase
+RBAC + API-token effort described below (Phase 1 shipped as PR 115, Phase 2
+as PR 116, both merged first). This phase centralizes the authorization
+pattern Phase 2 introduced, per the plan's original Phase 3 scope.
+
+- **New `internal/authz` package**, one function:
+  `RequireOrganizationAccess(ctx, actor auth.Subject, organizationID, checker, permission org.Permission, deniedCode core.ErrorCode, deniedReason string) Decision`.
+  It grants access when actor is that exact organization's own credential
+  (`auth.OrgSubject`, full parity with an org-admin member — unconditional
+  id match, no per-member permission lookup, since the token *is* the org),
+  or when actor is a user who holds `permission` via `checker`. It does
+  **not** replace `org.CheckPermission` — that stays the single source of
+  truth for per-member role/permission logic; `authz` only decides which
+  actor kinds may reach it and how an org-wide credential bypasses it.
+- **Why not a richer abstraction**: `internal/authz` deliberately does not
+  import `internal/task` at all — `task`/`submission` both need to call
+  into `authz`, so `authz` importing `task.Owner`/`task.Visibility` back
+  would create an import cycle. This is why `authz` only knows about
+  organization ids and `org.Permission`, not the owner/visibility sum types
+  themselves — those stay resource-specific in each package. Re-reading the
+  actual code (rather than the plan's pre-implementation guess) also showed
+  the "visibility switch" shape genuinely differs per resource: Task has a
+  separate `Visibility` field distinct from `Owner`; `Series` only has
+  `Owner`, plus a draft-privacy guard task doesn't have; submission's
+  organization-view-permission checks an OR of two different permissions,
+  not the single-permission shape everything else uses. Forcing all of
+  these into one shared function would have obscured real per-resource
+  authorization rules behind indirection for a modest line-count win — so
+  only the piece that's genuinely identical everywhere (the
+  org-token-or-per-member-permission decision) got centralized.
+- **Four near-duplicate functions collapsed into thin callers, three
+  deleted outright**: `task.requireViewPermission` +
+  `task.requireOrgActorViewPermission` (two functions, one per actor kind)
+  merged into one `requireViewPermission` that branches once at the top
+  and shares the visibility switch; `task.requireOrganizationViewPermission`
+  and `task.requireOrganizationPermission` are gone, replaced by direct
+  `authz.RequireOrganizationAccess` calls at their former call sites;
+  `series.requireSeriesViewPermission`'s org/user branches unified the same
+  way; `submission.requireReviewPermission` (userID-based) is gone, folded
+  into `requireReviewPermissionForActor` (actor-based) as its sole caller.
+- **A real behavioral risk caught before it shipped, not after**: task's
+  and series' "denied" paths look identical at a glance but use *different*
+  `core.DomainError` codes — task uses `ErrorCodePermissionDenied` (maps to
+  HTTP 403), series uses `ErrorCodeInvalidState` (maps to HTTP 409). A
+  naive shared helper hardcoding one code would have silently changed the
+  other resource's HTTP status on denial. Fixed by having
+  `RequireOrganizationAccess` take the error code as an explicit parameter
+  rather than hardcoding it, with a dedicated unit test
+  (`TestRequireOrganizationAccessUsesCallerSuppliedErrorCode`) asserting the
+  code passes through unchanged.
+- **Also caught and fixed**: the original `task.requireViewPermission`
+  rejected any actor that was neither `auth.UserSubject` nor
+  `auth.OrgSubject` (e.g. a hypothetical `auth.GuestSubject`) *before* ever
+  checking task visibility — even for a `PublicVisibility` task. An early
+  version of this refactor's unified function accidentally dropped that
+  early rejection, which would have let such an actor view public tasks it
+  couldn't before. Caught by tracing through every actor-kind case against
+  the original code side by side (not by a failing test — no existing test
+  exercised this actor kind) and restored the exact original short-circuit.
+- **Verification**: full `go test ./...` (including the new
+  `internal/authz` unit tests), `go test -tags integration
+  ./tests/integration`, and `go test -tags http_e2e ./tests/http_e2e` —
+  which includes Phase 2's `TestOrgCredentialActsWithFullParityOnItsOwnOrgOnly`
+  regression test — all pass unchanged, confirming this refactor is
+  behavior-preserving. `make check-copy-paste` (0% duplication threshold)
+  reported 0 clones even before this phase (the duplicated blocks were each
+  under jscpd's 12-line/150-token match window, so the tool never flagged
+  them) — this phase's motivation was centralizing security-critical logic
+  for auditability, not clearing a failing check.
+- **Deferred, unchanged from the plan**: MCP tool parity and MCP-side
+  `OrgSubject` support (Phase 4); Elm UI (Phase 5).
+
+---
+
 `task/org-credentials-orgsubject-authz` is Phase 2 of the same 5-phase RBAC +
 API-token effort described below (Phase 1 shipped as PR 115 and merged
 first). This phase adds organization-wide credentials and widens

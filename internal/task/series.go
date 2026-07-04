@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/authz"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/org"
 )
 
 // SeriesDetail is a task series together with its ordered tasks.
@@ -100,48 +102,38 @@ func (service Service) GetSeries(ctx context.Context, actor auth.Subject, series
 	return SeriesGot{Value: found.Value}
 }
 
+// requireSeriesViewPermission grants a series's creator view access
+// outright (bypassing the draft guard below — a creator can always see
+// their own draft), then blocks drafts from everyone else, including an
+// org token: a draft series is creator-private even to other members of
+// the owning org, and an org token has no individual creator identity to
+// match. Organization/OrganizationTeam ownership routes through
+// authz.RequireOrganizationAccess, matching human org-admin members
+// exactly for an org token (unconditional org-id match, no fallback
+// permission check) and the acting user's organization permission
+// otherwise.
 func (service Service) requireSeriesViewPermission(ctx context.Context, actor auth.Subject, series Series) viewPermissionResult {
-	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
-		// Matches human org-admin members exactly, not more: a draft series
-		// is creator-private even to other members of the owning org, so an
-		// org token (which has no individual creator identity to match) is
-		// blocked from drafts the same way.
-		if series.State == SeriesStateDraft {
-			return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series view access denied")}
-		}
-		switch typed := series.Owner.(type) {
-		case OrganizationOwner:
-			if typed.OrganizationID == orgActor.ID {
-				return viewPermissionAccepted{}
-			}
-		case OrganizationTeamOwner:
-			if typed.OrganizationID == orgActor.ID {
-				return viewPermissionAccepted{}
-			}
-		}
-		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series view access denied")}
-	}
+	_, isOrg := actor.(auth.OrgSubject)
 	userActor, isUser := actor.(auth.UserSubject)
-	if !isUser {
+	if !isOrg && !isUser {
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series view access denied")}
 	}
-	if series.CreatedBy == userActor.ID {
+	if isUser && series.CreatedBy == userActor.ID {
 		return viewPermissionAccepted{}
 	}
-	// A draft series is private to its creator until published.
 	if series.State == SeriesStateDraft {
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series view access denied")}
 	}
 	switch typed := series.Owner.(type) {
 	case UserOwner:
-		if typed.UserID == userActor.ID {
+		if isUser && typed.UserID == userActor.ID {
 			return viewPermissionAccepted{}
 		}
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series view access denied")}
 	case OrganizationOwner:
-		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, userActor.ID)
+		return viewPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, typed.OrganizationID, service.organizationPermissions, org.PermissionCreateOrganizationTask, core.ErrorCodeInvalidState, "task series view access denied"))
 	case OrganizationTeamOwner:
-		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, userActor.ID)
+		return viewPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, typed.OrganizationID, service.organizationPermissions, org.PermissionCreateOrganizationTask, core.ErrorCodeInvalidState, "task series view access denied"))
 	default:
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series view access denied")}
 	}

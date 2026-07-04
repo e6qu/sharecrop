@@ -5,31 +5,30 @@ Current priority from
 
 Active branch:
 
-1. `task/org-credentials-orgsubject-authz` is in progress — Phase 2 of a
+1. `task/authz-centralize-ownership-visibility` is in progress — Phase 3 of a
    5-phase, explicitly-planned RBAC/API-token effort (full plan agreed with
-   the user; each phase ships as its own PR). Phase 1 (PR 115) merged first:
-   `agent.Credential` gained `ExpiresAt`/`TaskID`, the scope taxonomy widened
-   5→19 values, and a reservation becoming active auto-mints a task-scoped
-   credential. This phase adds **organization-wide tokens**: a new
-   `auth.OrgSubject`, a new `internal/orgcred` package (mirrors
-   `internal/agent`'s shape, distinct `scrop_org_...` secret prefix), REST
-   endpoints to mint/list/revoke them (gated by `PermissionManageMembers`),
-   and widened authorization helpers across `task`/`org`/`submission` so an
-   org token gets **full parity with an org-admin member** on its own
-   organization's resources — task get/list/open/cancel/unpublish/
-   reservations, team get/add-member. Deliberately scoped narrower on a few
-   fronts: task/series/team *creation* and submission-comment *authoring*
-   stay user-only (no individual identity to attribute to an org token);
-   MCP-side `OrgSubject` support is deferred to Phase 4. Boy-scout: Phase 1's
-   migration allowed 19 scope strings in the DB but only 5 had corresponding
-   `agent.Scope` Go values — added the other 14. **Verified end-to-end by
-   hand against the real server** (same discipline as Phase 1): an org token
-   opens/lists its own org's tasks (200), and is rejected outright — not
-   silently scoped down — against a different org's tasks (403); now also an
-   automated `http_e2e` regression test. See `STATUS.md`/`WHAT_WE_DID.md` for
-   the full writeup. Remaining phases: centralized `internal/authz` package
-   (3), MCP tool parity including admin/moderation and `OrgSubject` (4), Elm
-   UI for all of the above (5).
+   the user; each phase ships as its own PR). Phase 1 (PR 115) laid the
+   credential-model foundation; Phase 2 (PR 116) added organization-wide
+   tokens (`auth.OrgSubject`, `internal/orgcred`) with full org-admin parity
+   wired into task/reservation/team authorization. This phase **centralizes
+   the "org-token-or-per-member-permission" pattern Phase 2 introduced**
+   into a new `internal/authz` package: one `authz.RequireOrganizationAccess`
+   function, used to collapse 4 near-duplicate functions across
+   `task`/`submission` into thin callers (all 4 originals are now gone,
+   folded into their callers). Deliberately does *not* abstract the
+   visibility-switch logic itself (Task has a separate Visibility field,
+   Series doesn't, submission's org-view-permission has different
+   dual-permission-OR semantics) — real resource-specific differences, not
+   incidental duplication, per the plan's explicit caution to "extract once
+   duplication actually exists." Caught a real risk before shipping: task
+   and series use *different* `core.ErrorCode`s for a denied view (403 vs
+   409) — the shared helper takes the code as a parameter rather than
+   hardcoding one, so this didn't get silently flattened. Behavior-preserving:
+   full test suite (including Phase 2's org-token regression test) passes
+   unchanged; `make check-copy-paste` confirms 0 duplicate clones, same as
+   before but for real reasons now. See `STATUS.md`/`WHAT_WE_DID.md` for the
+   full writeup. Remaining phases: MCP tool parity including admin/moderation
+   and `OrgSubject` (4), Elm UI for all of the above (5).
 
 2. `task/task-detail-reorder-profile-links-uiux` (PR 114, merged) refined
    the task detail and profile pages for usability at the user's explicit

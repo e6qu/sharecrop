@@ -5,6 +5,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/authz"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
 )
@@ -246,62 +247,46 @@ func (viewPermissionAccepted) viewPermissionResult() {}
 
 func (viewPermissionRejected) viewPermissionResult() {}
 
+// requireViewPermission grants view access to a task's creator/owning
+// organization outright, then falls back to its visibility setting.
+// Organization/OrganizationTeam visibility routes through
+// authz.RequireOrganizationAccess, which grants an org token unconditional
+// access to its own organization's tasks (full parity with an org-admin
+// member) and otherwise checks the acting user's organization permission.
 func (service Service) requireViewPermission(ctx context.Context, actor auth.Subject, value Task) viewPermissionResult {
-	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
-		return service.requireOrgActorViewPermission(orgActor, value)
-	}
+	orgActor, isOrg := actor.(auth.OrgSubject)
 	userActor, isUser := actor.(auth.UserSubject)
-	if !isUser {
+	if !isOrg && !isUser {
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
 	}
-	if value.CreatedBy == userActor.ID {
+	if isOrg {
+		organizationIDResult := organizationIDForOwner(value.Owner)
+		if found, matched := organizationIDResult.(organizationIDFound); matched && found.value == orgActor.ID {
+			return viewPermissionAccepted{}
+		}
+	} else if value.CreatedBy == userActor.ID {
 		return viewPermissionAccepted{}
 	}
 	switch typed := value.Visibility.(type) {
 	case PublicVisibility:
 		return viewPermissionAccepted{}
 	case UserVisibility:
-		if typed.UserID == userActor.ID {
+		if isUser && typed.UserID == userActor.ID {
 			return viewPermissionAccepted{}
 		}
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
 	case OrganizationVisibility:
-		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, userActor.ID)
+		return viewPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, typed.OrganizationID, service.organizationPermissions, org.PermissionCreateOrganizationTask, core.ErrorCodePermissionDenied, "task view access denied"))
 	case OrganizationTeamVisibility:
-		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, userActor.ID)
+		return viewPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, typed.OrganizationID, service.organizationPermissions, org.PermissionCreateOrganizationTask, core.ErrorCodePermissionDenied, "task view access denied"))
 	default:
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
 	}
 }
 
-// requireOrgActorViewPermission grants an org token unconditional view
-// access to tasks its own organization owns (full parity with an org-admin
-// member, who always has owner-level access to their org's tasks), plus
-// visibility-based access equivalent to what an org member would get.
-func (service Service) requireOrgActorViewPermission(actor auth.OrgSubject, value Task) viewPermissionResult {
-	organizationIDResult := organizationIDForOwner(value.Owner)
-	if found, matched := organizationIDResult.(organizationIDFound); matched && found.value == actor.ID {
-		return viewPermissionAccepted{}
-	}
-	switch typed := value.Visibility.(type) {
-	case PublicVisibility:
-		return viewPermissionAccepted{}
-	case OrganizationVisibility:
-		if typed.OrganizationID == actor.ID {
-			return viewPermissionAccepted{}
-		}
-	case OrganizationTeamVisibility:
-		if typed.OrganizationID == actor.ID {
-			return viewPermissionAccepted{}
-		}
-	}
-	return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
-}
-
-func (service Service) requireOrganizationViewPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) viewPermissionResult {
-	check := service.organizationPermissions.CheckOrganizationPermission(ctx, organizationID, userID, org.PermissionCreateOrganizationTask)
-	if rejected, matched := check.(org.PermissionDenied); matched {
-		return viewPermissionRejected{reason: rejected.Reason}
+func viewPermissionResultFromDecision(decision authz.Decision) viewPermissionResult {
+	if denied, isDenied := decision.(authz.Denied); isDenied {
+		return viewPermissionRejected{reason: denied.Reason}
 	}
 	return viewPermissionAccepted{}
 }
@@ -754,9 +739,9 @@ func (service Service) requireOwnerPermission(ctx context.Context, actor auth.Su
 		}
 		return ownerPermissionAccepted{}
 	case OrganizationOwner:
-		return service.requireOrganizationPermission(ctx, typed.OrganizationID, userActor.ID, org.PermissionCreateOrganizationTask)
+		return ownerPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, typed.OrganizationID, service.organizationPermissions, org.PermissionCreateOrganizationTask, core.ErrorCodePermissionDenied, "task owner access denied"))
 	case OrganizationTeamOwner:
-		return service.requireOrganizationPermission(ctx, typed.OrganizationID, userActor.ID, org.PermissionCreateOrganizationTask)
+		return ownerPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, typed.OrganizationID, service.organizationPermissions, org.PermissionCreateOrganizationTask, core.ErrorCodePermissionDenied, "task owner access denied"))
 	case TeamOwner:
 		return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team-owned tasks require organization ownership in this release")}
 	default:
@@ -764,10 +749,9 @@ func (service Service) requireOwnerPermission(ctx context.Context, actor auth.Su
 	}
 }
 
-func (service Service) requireOrganizationPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, permission org.Permission) ownerPermissionResult {
-	check := service.organizationPermissions.CheckOrganizationPermission(ctx, organizationID, userID, permission)
-	if rejected, matched := check.(org.PermissionDenied); matched {
-		return ownerPermissionRejected{reason: rejected.Reason}
+func ownerPermissionResultFromDecision(decision authz.Decision) ownerPermissionResult {
+	if denied, isDenied := decision.(authz.Denied); isDenied {
+		return ownerPermissionRejected{reason: denied.Reason}
 	}
 	return ownerPermissionAccepted{}
 }
@@ -852,21 +836,7 @@ func (service Service) requireListPermission(ctx context.Context, actor auth.Sub
 		}
 		return listPermissionAccepted{}
 	case OrganizationListScope:
-		if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
-			if typed.OrganizationID != orgActor.ID {
-				return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task list access denied")}
-			}
-			return listPermissionAccepted{}
-		}
-		userActor, isUser := actor.(auth.UserSubject)
-		if !isUser {
-			return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task list access denied")}
-		}
-		check := service.organizationPermissions.CheckOrganizationPermission(ctx, typed.OrganizationID, userActor.ID, org.PermissionCreateOrganizationTask)
-		if rejected, matched := check.(org.PermissionDenied); matched {
-			return listPermissionRejected{reason: rejected.Reason}
-		}
-		return listPermissionAccepted{}
+		return listPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, typed.OrganizationID, service.organizationPermissions, org.PermissionCreateOrganizationTask, core.ErrorCodePermissionDenied, "task list access denied"))
 	case TeamListScope:
 		return listPermissionAccepted{}
 	case CreatorListScope:
@@ -876,4 +846,11 @@ func (service Service) requireListPermission(ctx context.Context, actor auth.Sub
 	default:
 		return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task list scope is invalid")}
 	}
+}
+
+func listPermissionResultFromDecision(decision authz.Decision) listPermissionResult {
+	if denied, isDenied := decision.(authz.Denied); isDenied {
+		return listPermissionRejected{reason: denied.Reason}
+	}
+	return listPermissionAccepted{}
 }
