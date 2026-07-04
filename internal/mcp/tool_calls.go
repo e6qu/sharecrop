@@ -124,7 +124,7 @@ type reservationsPayload struct {
 	Reservations []reservationSummary `json:"reservations"`
 }
 
-func (server Server) callListTasks(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callListTasks(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	var args struct {
 		Scope string `json:"scope"`
 		State string `json:"state"`
@@ -138,7 +138,11 @@ func (server Server) callListTasks(ctx context.Context, subject auth.UserSubject
 	case "public":
 		scope = task.PublicListScope{}
 	case "user":
-		scope = task.UserListScope{UserID: subject.ID}
+		userActor, isUser := subject.(auth.UserSubject)
+		if !isUser {
+			return toolFailed{message: "scope \"user\" requires a personal agent credential, not an organization credential"}
+		}
+		scope = task.UserListScope{UserID: userActor.ID}
 	default:
 		return toolProtocolError{code: codeInvalidParams, message: "scope must be public or user"}
 	}
@@ -287,12 +291,25 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 	return marshalPayload(taskToDetail(created.Value))
 }
 
-func (server Server) callOpenTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callOpenTask(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	taskID, problem := parseTaskID(arguments)
 	if problem != nil {
 		return problem
 	}
 	result := server.services.OpenTask(ctx, subject, taskID)
+	changed, matched := result.(task.TaskStateChanged)
+	if !matched {
+		return toolFailed{message: result.(task.ChangeStateRejected).Reason.Description()}
+	}
+	return marshalPayload(taskToDetail(changed.Value))
+}
+
+func (server Server) callCancelTask(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
+	taskID, problem := parseTaskID(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.CancelTask(ctx, subject, taskID)
 	changed, matched := result.(task.TaskStateChanged)
 	if !matched {
 		return toolFailed{message: result.(task.ChangeStateRejected).Reason.Description()}
@@ -333,6 +350,36 @@ func (server Server) callFundTask(ctx context.Context, subject auth.UserSubject,
 		TaskID: funded.Escrow.TaskID.String(),
 		Amount: funded.Escrow.Amount.Int64(),
 		State:  funded.Escrow.State.String(),
+	})
+}
+
+func (server Server) callRefundTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		TaskID         string `json:"task_id"`
+		IdempotencyKey string `json:"idempotency_key"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	taskIDResult := core.ParseTaskID(args.TaskID)
+	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
+	if !taskMatched {
+		return toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}
+	}
+	keyResult := ledger.NewIdempotencyKey(args.IdempotencyKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		return toolProtocolError{code: codeInvalidParams, message: keyResult.(ledger.IdempotencyKeyRejected).Reason.Description()}
+	}
+	result := server.services.RefundTask(ctx, subject.ID, taskID.Value, key.Value)
+	refunded, matched := result.(ledger.TaskRefunded)
+	if !matched {
+		return toolFailed{message: result.(ledger.RefundRejected).Reason.Description()}
+	}
+	return marshalPayload(fundPayload{
+		TaskID: refunded.Escrow.TaskID.String(),
+		Amount: refunded.Escrow.Amount.Int64(),
+		State:  refunded.Escrow.State.String(),
 	})
 }
 
@@ -758,7 +805,7 @@ func parseReserveTaskArguments(arguments json.RawMessage) parsedReserveTaskArgum
 	}
 }
 
-func (server Server) callListReservations(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callListReservations(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	taskID, problem := parseTaskID(arguments)
 	if problem != nil {
 		return problem
@@ -775,9 +822,9 @@ func (server Server) callListReservations(ctx context.Context, subject auth.User
 	return marshalPayload(reservationsPayload{Reservations: reservations})
 }
 
-type mcpReservationChanger func(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+type mcpReservationChanger func(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 
-func (server Server) callChangeReservation(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage, changer mcpReservationChanger) toolResult {
+func (server Server) callChangeReservation(ctx context.Context, subject auth.Subject, arguments json.RawMessage, changer mcpReservationChanger) toolResult {
 	ids := parseTaskReservationIDs(arguments)
 	if ids.problem != nil {
 		return ids.problem
@@ -920,6 +967,58 @@ func (server Server) callCreateSeries(ctx context.Context, subject auth.UserSubj
 		return toolProtocolError{code: codeInvalidParams, message: descriptionResult.(task.SeriesDescriptionRejected).Reason.Description()}
 	}
 	return server.seriesMutationResult(server.services.CreateSeries(ctx, subject, title.Value, description.Value))
+}
+
+func (server Server) callUpdateSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		SeriesID    string `json:"series_id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	seriesResult := core.ParseTaskSeriesID(args.SeriesID)
+	seriesID, seriesMatched := seriesResult.(core.TaskSeriesIDCreated)
+	if !seriesMatched {
+		return toolProtocolError{code: codeInvalidParams, message: seriesResult.(core.TaskSeriesIDRejected).Reason.Description()}
+	}
+	titleResult := task.NewSeriesTitle(args.Title)
+	title, titleMatched := titleResult.(task.SeriesTitleAccepted)
+	if !titleMatched {
+		return toolProtocolError{code: codeInvalidParams, message: titleResult.(task.SeriesTitleRejected).Reason.Description()}
+	}
+	descriptionResult := task.NewSeriesDescription(args.Description)
+	description, descriptionMatched := descriptionResult.(task.SeriesDescriptionAccepted)
+	if !descriptionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: descriptionResult.(task.SeriesDescriptionRejected).Reason.Description()}
+	}
+	return server.seriesMutationResult(server.services.UpdateSeries(ctx, subject, seriesID.Value, title.Value, description.Value))
+}
+
+func (server Server) callReorderSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		SeriesID string   `json:"series_id"`
+		TaskIDs  []string `json:"task_ids"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	seriesResult := core.ParseTaskSeriesID(args.SeriesID)
+	seriesID, seriesMatched := seriesResult.(core.TaskSeriesIDCreated)
+	if !seriesMatched {
+		return toolProtocolError{code: codeInvalidParams, message: seriesResult.(core.TaskSeriesIDRejected).Reason.Description()}
+	}
+	order := make([]core.TaskID, 0, len(args.TaskIDs))
+	for index := range args.TaskIDs {
+		taskIDResult := core.ParseTaskID(args.TaskIDs[index])
+		taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
+		if !taskMatched {
+			return toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}
+		}
+		order = append(order, taskID.Value)
+	}
+	return server.seriesMutationResult(server.services.ReorderSeries(ctx, subject, seriesID.Value, order))
 }
 
 func (server Server) callAddTaskToSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -1102,7 +1201,7 @@ func submissionCommentToSummary(value submission.SubmissionComment) submissionCo
 	}
 }
 
-func (server Server) callUnpublishTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callUnpublishTask(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	taskID, problem := parseTaskID(arguments)
 	if problem != nil {
 		return problem

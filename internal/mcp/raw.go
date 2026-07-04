@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
-	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 )
 
@@ -22,7 +21,7 @@ type RawResult struct {
 
 // HandleRaw parses a single JSON-RPC message or a batch array and dispatches
 // each through Handle. It is shared by the HTTP and stdio transports.
-func (server Server) HandleRaw(ctx context.Context, subject auth.UserSubject, credential agent.Credential, body []byte) RawResult {
+func (server Server) HandleRaw(ctx context.Context, subject auth.Subject, credential CallerCredential, body []byte) RawResult {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 {
 		return singleResponse(errorResponse(json.RawMessage("null"), codeInvalidRequest, "request body is empty"))
@@ -50,7 +49,7 @@ func (server Server) HandleRaw(ctx context.Context, subject auth.UserSubject, cr
 	return result
 }
 
-func (server Server) handleBatch(ctx context.Context, subject auth.UserSubject, credential agent.Credential, body []byte) RawResult {
+func (server Server) handleBatch(ctx context.Context, subject auth.Subject, credential CallerCredential, body []byte) RawResult {
 	var requests []Request
 	if err := json.Unmarshal(body, &requests); err != nil {
 		return singleResponse(errorResponse(json.RawMessage("null"), codeParseError, "batch is not valid JSON-RPC"))

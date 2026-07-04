@@ -12,13 +12,28 @@ import (
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
+// CallerCredential is the scope/task-restriction facts of whichever
+// credential authenticated an MCP call, independent of its concrete kind
+// (a personal agent.Credential or an organization-wide orgcred.Credential —
+// only the former can ever be task-scoped).
+type CallerCredential struct {
+	Scopes agent.ScopeSet
+	TaskID *core.TaskID
+}
+
 // Services is the set of domain operations the MCP adapter exposes as tools.
+// Methods here take auth.Subject when their REST counterpart already
+// accepts an organization-wide credential with full parity (see
+// requireUserOrOrgSubject in internal/http); every other method stays
+// auth.UserSubject-only, matching REST exactly rather than exceeding it.
 type Services interface {
-	ListTasks(context.Context, auth.UserSubject, task.ListScope, task.ListFilters) task.ListResult
+	ListTasks(context.Context, auth.Subject, task.ListScope, task.ListFilters) task.ListResult
 	GetTask(context.Context, auth.UserSubject, core.TaskID) task.GetResult
 	CreateTask(context.Context, task.CreateCommand) task.CreateResult
-	OpenTask(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
+	OpenTask(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
+	CancelTask(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
 	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
+	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	SubmitResponse(context.Context, submission.SubmitCommand) submission.SubmitResult
 	GetSubmissionStatus(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListTaskSubmissions(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
@@ -29,22 +44,24 @@ type Services interface {
 	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 	CreateSeries(context.Context, auth.UserSubject, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
+	UpdateSeries(context.Context, auth.UserSubject, core.TaskSeriesID, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
 	ChangeSeriesState(context.Context, auth.UserSubject, core.TaskSeriesID, task.SeriesStateTransition) task.SeriesMutationResult
 	AddTaskToSeries(context.Context, auth.UserSubject, core.TaskSeriesID, core.TaskID) task.SeriesMutationResult
 	RemoveTaskFromSeries(context.Context, auth.UserSubject, core.TaskSeriesID, core.TaskID) task.SeriesMutationResult
+	ReorderSeries(context.Context, auth.UserSubject, core.TaskSeriesID, []core.TaskID) task.SeriesMutationResult
 	AddSeriesComment(context.Context, auth.UserSubject, core.TaskSeriesID, task.CommentBody) task.SeriesCommentResult
 	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult
 	AddTaskComment(context.Context, auth.UserSubject, core.TaskID, task.CommentBody) task.TaskCommentResult
 	ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult
 	AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult
 	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult
-	UnpublishTask(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
+	UnpublishTask(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
 	ReserveTask(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ReserveTaskForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
-	ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult
-	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
-	DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
-	CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	ListReservations(context.Context, auth.Subject, core.TaskID) task.ReservationsListResult
+	ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 }
 
 type Server struct {
@@ -55,8 +72,9 @@ func NewServer(services Services) Server {
 	return Server{services: services}
 }
 
-// Handle dispatches a single JSON-RPC request for an authenticated agent.
-func (server Server) Handle(ctx context.Context, subject auth.UserSubject, credential agent.Credential, request Request) Response {
+// Handle dispatches a single JSON-RPC request for an authenticated agent or
+// organization-wide credential.
+func (server Server) Handle(ctx context.Context, subject auth.Subject, credential CallerCredential, request Request) Response {
 	if request.JSONRPC != jsonRPCVersion {
 		return errorResponse(request.ID, codeInvalidRequest, "jsonrpc version must be 2.0")
 	}
@@ -97,7 +115,7 @@ func (server Server) handleToolsList(request Request) Response {
 	return marshalResult(request.ID, toolListResult{Tools: entries})
 }
 
-func (server Server) handleToolsCall(ctx context.Context, subject auth.UserSubject, credential agent.Credential, request Request) Response {
+func (server Server) handleToolsCall(ctx context.Context, subject auth.Subject, credential CallerCredential, request Request) Response {
 	var params toolCallParams
 	if err := json.Unmarshal(request.Params, &params); err != nil {
 		return errorResponse(request.ID, codeInvalidParams, "tools/call params are invalid")
@@ -150,66 +168,198 @@ func toolArgumentTaskID(arguments json.RawMessage) (taskID string, present bool)
 	return args.TaskID, true
 }
 
-func (server Server) dispatchTool(ctx context.Context, subject auth.UserSubject, name string, arguments json.RawMessage) toolResult {
+// requireUserSubjectForTool guards tools whose underlying domain method is
+// auth.UserSubject-only (matching their REST counterpart, which likewise has
+// no organization-credential fallback): an org-wide credential is rejected
+// with a clear message rather than a type assertion panic.
+func requireUserSubjectForTool(subject auth.Subject) (auth.UserSubject, toolResult, bool) {
+	userActor, isUser := subject.(auth.UserSubject)
+	if !isUser {
+		return auth.UserSubject{}, toolFailed{message: "this tool requires a personal agent credential, not an organization credential"}, false
+	}
+	return userActor, nil, true
+}
+
+func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, name string, arguments json.RawMessage) toolResult {
 	switch name {
 	case toolListTasks:
 		return server.callListTasks(ctx, subject, arguments)
 	case toolGetTask:
-		return server.callGetTask(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetTask(ctx, userActor, arguments)
 	case toolGetTaskSchema:
-		return server.callGetTaskSchema(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetTaskSchema(ctx, userActor, arguments)
 	case toolCreateTask:
-		return server.callCreateTask(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCreateTask(ctx, userActor, arguments)
 	case toolOpenTask:
 		return server.callOpenTask(ctx, subject, arguments)
+	case toolCancelTask:
+		return server.callCancelTask(ctx, subject, arguments)
 	case toolFundTask:
-		return server.callFundTask(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callFundTask(ctx, userActor, arguments)
+	case toolRefundTask:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callRefundTask(ctx, userActor, arguments)
 	case toolSubmitResponse:
-		return server.callSubmitResponse(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callSubmitResponse(ctx, userActor, arguments)
 	case toolGetSubmissionStatus:
 		return server.callGetSubmissionStatus(ctx, arguments)
 	case toolListTaskSubmissions:
-		return server.callListTaskSubmissions(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListTaskSubmissions(ctx, userActor, arguments)
 	case toolAcceptSubmission:
-		return server.callAcceptSubmission(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callAcceptSubmission(ctx, userActor, arguments)
 	case toolRequestChanges:
-		return server.callRequestChanges(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callRequestChanges(ctx, userActor, arguments)
 	case toolRejectSubmission:
-		return server.callRejectSubmission(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callRejectSubmission(ctx, userActor, arguments)
 	case toolListTaskSeries:
-		return server.callListTaskSeries(ctx, subject)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListTaskSeries(ctx, userActor)
 	case toolGetTaskSeries:
-		return server.callGetTaskSeries(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetTaskSeries(ctx, userActor, arguments)
 	case toolCreateSeries:
-		return server.callCreateSeries(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCreateSeries(ctx, userActor, arguments)
+	case toolUpdateSeries:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callUpdateSeries(ctx, userActor, arguments)
 	case toolAddTaskToSeries:
-		return server.callAddTaskToSeries(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callAddTaskToSeries(ctx, userActor, arguments)
 	case toolRemoveSeriesTask:
-		return server.callRemoveTaskFromSeries(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callRemoveTaskFromSeries(ctx, userActor, arguments)
+	case toolReorderSeries:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callReorderSeries(ctx, userActor, arguments)
 	case toolPublishSeries:
-		return server.callChangeSeriesState(ctx, subject, arguments, task.PublishSeriesState)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callChangeSeriesState(ctx, userActor, arguments, task.PublishSeriesState)
 	case toolUnpublishSeries:
-		return server.callChangeSeriesState(ctx, subject, arguments, task.UnpublishSeriesState)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callChangeSeriesState(ctx, userActor, arguments, task.UnpublishSeriesState)
 	case toolCloseSeries:
-		return server.callChangeSeriesState(ctx, subject, arguments, task.CloseSeriesState)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callChangeSeriesState(ctx, userActor, arguments, task.CloseSeriesState)
 	case toolReopenSeries:
-		return server.callChangeSeriesState(ctx, subject, arguments, task.ReopenSeriesState)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callChangeSeriesState(ctx, userActor, arguments, task.ReopenSeriesState)
 	case toolAddSeriesComment:
-		return server.callAddSeriesComment(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callAddSeriesComment(ctx, userActor, arguments)
 	case toolListSeriesComments:
-		return server.callListSeriesComments(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListSeriesComments(ctx, userActor, arguments)
 	case toolAddTaskComment:
-		return server.callAddTaskComment(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callAddTaskComment(ctx, userActor, arguments)
 	case toolListTaskComments:
-		return server.callListTaskComments(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListTaskComments(ctx, userActor, arguments)
 	case toolAddSubmissionComment:
-		return server.callAddSubmissionComment(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callAddSubmissionComment(ctx, userActor, arguments)
 	case toolListSubmissionComments:
-		return server.callListSubmissionComments(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListSubmissionComments(ctx, userActor, arguments)
 	case toolUnpublishTask:
 		return server.callUnpublishTask(ctx, subject, arguments)
 	case toolReserveTask:
-		return server.callReserveTask(ctx, subject, arguments)
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callReserveTask(ctx, userActor, arguments)
 	case toolListReservations:
 		return server.callListReservations(ctx, subject, arguments)
 	case toolApproveReservation:

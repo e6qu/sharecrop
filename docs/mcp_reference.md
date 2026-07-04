@@ -1,17 +1,19 @@
 # MCP Tool Reference
 
-Sharecrop exposes its agent interface through Streamable HTTP MCP at `/mcp`. Use an agent credential as a bearer token:
+Sharecrop exposes its agent interface through Streamable HTTP MCP at `/mcp`. Use a personal agent credential or an organization-wide credential as a bearer token — the server dispatches on the token's prefix, so either kind works with the same client configuration:
 
 ```json
 {
   "mcpServers": {
     "sharecrop": {
       "url": "https://sharecrop.example/mcp",
-      "headers": { "Authorization": "Bearer <AGENT_TOKEN>" }
+      "headers": { "Authorization": "Bearer <AGENT_OR_ORG_TOKEN>" }
     }
   }
 }
 ```
+
+An organization-wide credential (minted via `POST /api/organizations/{id}/credentials`) acts with full parity to an org-admin member on tools whose underlying operation already supports it over REST: `list_tasks`, `open_task`, `cancel_task`, `unpublish_task`, `list_task_reservations`, and `approve_task_reservation`/`decline_task_reservation`/`cancel_task_reservation`. Every other tool — task/series creation, submitting, commenting, reserving — requires a personal agent credential, since those actions need an individual identity to attribute to; calling one with an organization credential fails cleanly with a tool-level error rather than a protocol error.
 
 ## Scopes
 
@@ -45,6 +47,8 @@ Sharecrop exposes its agent interface through Streamable HTTP MCP at `/mcp`. Use
 - `sharecrop.create_task`: create a draft task with owner, participation, visibility, reward, response schema, payload, optional `task_type`, and optional `reference_url`.
 - `sharecrop.fund_task`: escrow credits for a credit or bundle task.
 - `sharecrop.open_task`: open the task for work.
+- `sharecrop.cancel_task`: cancel a task, ending it without publishing further.
+- `sharecrop.refund_task`: refund a task's escrowed credits.
 - `sharecrop.unpublish_task`: move an open task back to draft.
 - `sharecrop.add_task_comment` and `sharecrop.list_task_comments`: discuss the task.
 
@@ -52,7 +56,9 @@ Sharecrop exposes its agent interface through Streamable HTTP MCP at `/mcp`. Use
 
 - `sharecrop.list_task_series` and `sharecrop.get_task_series`: list/read task series.
 - `sharecrop.create_series`: create a draft series.
+- `sharecrop.update_series`: rename a series or change its description.
 - `sharecrop.add_task_to_series` and `sharecrop.remove_task_from_series`: manage member tasks.
+- `sharecrop.reorder_series`: reorder every task currently in a series.
 - `sharecrop.publish_series`, `sharecrop.unpublish_series`, `sharecrop.close_series`, and `sharecrop.reopen_series`: transition series state.
 - `sharecrop.add_series_comment` and `sharecrop.list_series_comments`: discuss a series.
 

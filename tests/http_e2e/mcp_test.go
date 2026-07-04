@@ -211,6 +211,88 @@ func TestMCPReservationTools(t *testing.T) {
 	}
 }
 
+// TestMCPOrgCredentialActsWithFullParityOnItsOwnOrgOnly is the MCP-transport
+// counterpart to the REST org-credential regression test from Phase 2
+// (TestOrgCredentialActsWithFullParityOnItsOwnOrgOnly): an org-wide
+// credential can drive owner-level task actions over MCP on its own
+// organization's tasks (full parity), and is rejected outright — not
+// silently passed through — against a different organization's tasks.
+func TestMCPOrgCredentialActsWithFullParityOnItsOwnOrgOnly(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	ownerA := registerUser(t, server, "mcp-org-owner-a")
+	orgAResponse := postJSONWithBearer(t, server.URL+"/api/organizations", []byte(`{"name":"MCP Org A"}`), ownerA.AccessToken)
+	defer orgAResponse.Body.Close()
+	assertStatus(t, orgAResponse, http.StatusCreated)
+	orgA := decodeOrganizationHTTPResponse(t, orgAResponse)
+
+	credentialResponse := postJSONWithBearer(t, server.URL+"/api/organizations/"+orgA.ID+"/credentials", []byte(`{"label":"MCP org A automation","scopes":["tasks_write"],"expires_at":""}`), ownerA.AccessToken)
+	defer credentialResponse.Body.Close()
+	assertStatus(t, credentialResponse, http.StatusCreated)
+	orgACredential := decodeOrgCredentialCreatedHTTPResponse(t, credentialResponse)
+	orgASession := initializeMCPSession(t, server, orgACredential.Secret)
+
+	createTaskAResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(organizationPublicTaskRequestJSON(orgA.ID)), ownerA.AccessToken)
+	defer createTaskAResponse.Body.Close()
+	assertStatus(t, createTaskAResponse, http.StatusCreated)
+	taskA := decodeTaskHTTPResponse(t, createTaskAResponse)
+
+	// Org A's own token opens org A's own task over MCP: allowed (full parity).
+	openOwn := decodeRPC(t, mcpCall(t, server, orgACredential.Secret, orgASession, `1`, "sharecrop.open_task", `{"task_id":"`+taskA.ID+`"}`))
+	toolText(t, openOwn)
+
+	// The new cancel_task gap-fill tool also works with org-token parity.
+	createTaskA2Response := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(organizationPublicTaskRequestJSON(orgA.ID)), ownerA.AccessToken)
+	defer createTaskA2Response.Body.Close()
+	assertStatus(t, createTaskA2Response, http.StatusCreated)
+	taskA2 := decodeTaskHTTPResponse(t, createTaskA2Response)
+	cancelOwn := decodeRPC(t, mcpCall(t, server, orgACredential.Secret, orgASession, `2`, "sharecrop.cancel_task", `{"task_id":"`+taskA2.ID+`"}`))
+	toolText(t, cancelOwn)
+
+	// A user-only tool is cleanly rejected for an org token, not a crash.
+	createRejected := decodeRPC(t, mcpCall(t, server, orgACredential.Secret, orgASession, `3`, "sharecrop.create_task", `{"title":"x","description":"x","response_schema_json":"{\"kind\":\"freeform\"}","visibility":"public","reward_kind":"none"}`))
+	if createRejected.Error != nil {
+		t.Fatalf("expected a tool-level failure, not a protocol error: %+v", createRejected.Error)
+	}
+	var createResult struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+		IsError bool `json:"isError"`
+	}
+	if err := json.Unmarshal(createRejected.Result, &createResult); err != nil {
+		t.Fatalf("decode create_task result: %v", err)
+	}
+	if !createResult.IsError {
+		t.Fatalf("expected create_task to fail for an org credential")
+	}
+
+	// A second, unrelated organization and task.
+	ownerB := registerUser(t, server, "mcp-org-owner-b")
+	orgBResponse := postJSONWithBearer(t, server.URL+"/api/organizations", []byte(`{"name":"MCP Org B"}`), ownerB.AccessToken)
+	defer orgBResponse.Body.Close()
+	assertStatus(t, orgBResponse, http.StatusCreated)
+	orgB := decodeOrganizationHTTPResponse(t, orgBResponse)
+
+	createTaskBResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(organizationPublicTaskRequestJSON(orgB.ID)), ownerB.AccessToken)
+	defer createTaskBResponse.Body.Close()
+	assertStatus(t, createTaskBResponse, http.StatusCreated)
+	taskB := decodeTaskHTTPResponse(t, createTaskBResponse)
+
+	// Org A's token against org B's task over MCP: rejected outright.
+	openOther := decodeRPC(t, mcpCall(t, server, orgACredential.Secret, orgASession, `4`, "sharecrop.open_task", `{"task_id":"`+taskB.ID+`"}`))
+	var openOtherResult struct {
+		IsError bool `json:"isError"`
+	}
+	if err := json.Unmarshal(openOther.Result, &openOtherResult); err != nil {
+		t.Fatalf("decode open_task result: %v", err)
+	}
+	if !openOtherResult.IsError {
+		t.Fatalf("expected org A's token to be denied opening org B's task over MCP")
+	}
+}
+
 func TestMCPStreamableHTTPSessionSSEAndDelete(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
@@ -568,6 +650,63 @@ func TestMCPSeriesLifecycle(t *testing.T) {
 		`{"series_id":"`+seriesDetail.Series.ID+`"}`)))
 	if !strings.Contains(comments, "round two") {
 		t.Fatalf("list_series_comments missing the posted comment: %s", comments)
+	}
+}
+
+func TestMCPUpdateAndReorderSeries(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "mcp-series-gapfill")
+	ownerAgent := createAgentCredential(t, server, owner.AccessToken, []string{"tasks_read", "tasks_write"})
+	session := initializeMCPSession(t, server, ownerAgent)
+
+	created := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `1`, "sharecrop.create_series",
+		`{"title":"Original title","description":"Original description."}`)))
+	var seriesDetail struct {
+		Series struct {
+			ID string `json:"id"`
+		} `json:"series"`
+	}
+	if err := json.Unmarshal([]byte(created), &seriesDetail); err != nil {
+		t.Fatalf("decode create_series: %v (%s)", err, created)
+	}
+
+	updated := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `2`, "sharecrop.update_series",
+		`{"series_id":"`+seriesDetail.Series.ID+`","title":"Updated title","description":"Updated description."}`)))
+	if !strings.Contains(updated, "Updated title") {
+		t.Fatalf("update_series did not update the title: %s", updated)
+	}
+
+	taskOne := createPublicCreditUserTask(t, server, owner, 10)
+	taskTwo := createPublicCreditUserTask(t, server, owner, 10)
+	toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `3`, "sharecrop.add_task_to_series",
+		`{"series_id":"`+seriesDetail.Series.ID+`","task_id":"`+taskOne.ID+`"}`)))
+	toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `4`, "sharecrop.add_task_to_series",
+		`{"series_id":"`+seriesDetail.Series.ID+`","task_id":"`+taskTwo.ID+`"}`)))
+
+	reordered := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `5`, "sharecrop.reorder_series",
+		`{"series_id":"`+seriesDetail.Series.ID+`","task_ids":["`+taskTwo.ID+`","`+taskOne.ID+`"]}`)))
+	if !strings.Contains(reordered, taskTwo.ID) || !strings.Contains(reordered, taskOne.ID) {
+		t.Fatalf("reorder_series response missing reordered tasks: %s", reordered)
+	}
+}
+
+func TestMCPRefundTask(t *testing.T) {
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	owner := registerUser(t, server, "mcp-refund-owner")
+	task := createPublicCreditUserTask(t, server, owner, 25)
+	fundTask(t, server, owner.AccessToken, task.ID, 25, "mcp-fund-"+task.ID)
+
+	ownerAgent := createAgentCredential(t, server, owner.AccessToken, []string{"tasks_write"})
+	session := initializeMCPSession(t, server, ownerAgent)
+
+	refunded := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `1`, "sharecrop.refund_task",
+		`{"task_id":"`+task.ID+`","idempotency_key":"mcp-refund-`+task.ID+`"}`)))
+	if !strings.Contains(refunded, `"state":"refunded"`) {
+		t.Fatalf("refund_task did not report refunded state: %s", refunded)
 	}
 }
 
