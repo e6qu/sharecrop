@@ -152,6 +152,9 @@ createAgentCommand model state =
     if List.isEmpty state.agentScopes then
         ( updateLoggedIn model (\current -> { current | agentMessage = Just "Select at least one scope." }), Cmd.none )
 
+    else if not (expiresHoursIsValid state.agentExpiresHours) then
+        ( updateLoggedIn model (\current -> { current | agentMessage = Just "Expires in (hours) must be a positive whole number, or blank for never." }), Cmd.none )
+
     else
         ( updateLoggedIn model (\current -> { current | agentMessage = Nothing, newCredential = Nothing }), ElmTask.perform AgentExpiresAtResolved Time.now )
 
@@ -164,8 +167,27 @@ createOrgCredentialCommand model state =
     else if List.isEmpty state.orgCredentialScopes then
         ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just "Select at least one scope." }), Cmd.none )
 
+    else if not (expiresHoursIsValid state.orgCredentialExpiresHours) then
+        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just "Expires in (hours) must be a positive whole number, or blank for never." }), Cmd.none )
+
     else
         ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Nothing, newOrgCredential = Nothing }), ElmTask.perform OrgCredentialExpiresAtResolved Time.now )
+
+
+{-| True for a blank draft (never expires) or a positive whole number of
+hours. Kept separate from `expiresAtFromHours` so a typo like "0", "-1", or
+"12h" is rejected with a message rather than silently minting a
+never-expiring credential — the worst-case outcome for a least-privilege
+input error.
+-}
+expiresHoursIsValid : String -> Bool
+expiresHoursIsValid raw =
+    case String.toInt (String.trim raw) of
+        Just hours ->
+            hours > 0
+
+        Nothing ->
+            String.trim raw == ""
 
 
 createTaskCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )

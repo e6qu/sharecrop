@@ -7310,6 +7310,17 @@ var $author$project$Main$copyToClipboard = _Platform_outgoingPort('copyToClipboa
 var $author$project$Sharecrop$Types$AgentExpiresAtResolved = function (a) {
 	return {$: 'AgentExpiresAtResolved', a: a};
 };
+var $author$project$Sharecrop$Api$expiresHoursIsValid = function (raw) {
+	var _v0 = $elm$core$String$toInt(
+		$elm$core$String$trim(raw));
+	if (_v0.$ === 'Just') {
+		var hours = _v0.a;
+		return hours > 0;
+	} else {
+		return $elm$core$String$trim(raw) === '';
+	}
+};
+var $elm$core$Basics$not = _Basics_not;
 var $elm$time$Time$Name = function (a) {
 	return {$: 'Name', a: a};
 };
@@ -7339,6 +7350,17 @@ var $author$project$Sharecrop$Api$createAgentCommand = F2(
 							agentMessage: $elm$core$Maybe$Just('Select at least one scope.')
 						});
 				}),
+			$elm$core$Platform$Cmd$none) : ((!$author$project$Sharecrop$Api$expiresHoursIsValid(state.agentExpiresHours)) ? _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							agentMessage: $elm$core$Maybe$Just('Expires in (hours) must be a positive whole number, or blank for never.')
+						});
+				}),
 			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 			A2(
 				$author$project$Sharecrop$Api$updateLoggedIn,
@@ -7348,7 +7370,7 @@ var $author$project$Sharecrop$Api$createAgentCommand = F2(
 						current,
 						{agentMessage: $elm$core$Maybe$Nothing, newCredential: $elm$core$Maybe$Nothing});
 				}),
-			A2($elm$core$Task$perform, $author$project$Sharecrop$Types$AgentExpiresAtResolved, $elm$time$Time$now));
+			A2($elm$core$Task$perform, $author$project$Sharecrop$Types$AgentExpiresAtResolved, $elm$time$Time$now)));
 	});
 var $author$project$Sharecrop$Types$CreateOrgReceived = function (a) {
 	return {$: 'CreateOrgReceived', a: a};
@@ -7429,6 +7451,17 @@ var $author$project$Sharecrop$Api$createOrgCredentialCommand = F2(
 							orgCredentialMessage: $elm$core$Maybe$Just('Select at least one scope.')
 						});
 				}),
+			$elm$core$Platform$Cmd$none) : ((!$author$project$Sharecrop$Api$expiresHoursIsValid(state.orgCredentialExpiresHours)) ? _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							orgCredentialMessage: $elm$core$Maybe$Just('Expires in (hours) must be a positive whole number, or blank for never.')
+						});
+				}),
 			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 			A2(
 				$author$project$Sharecrop$Api$updateLoggedIn,
@@ -7438,7 +7471,7 @@ var $author$project$Sharecrop$Api$createOrgCredentialCommand = F2(
 						current,
 						{newOrgCredential: $elm$core$Maybe$Nothing, orgCredentialMessage: $elm$core$Maybe$Nothing});
 				}),
-			A2($elm$core$Task$perform, $author$project$Sharecrop$Types$OrgCredentialExpiresAtResolved, $elm$time$Time$now)));
+			A2($elm$core$Task$perform, $author$project$Sharecrop$Types$OrgCredentialExpiresAtResolved, $elm$time$Time$now))));
 	});
 var $author$project$Sharecrop$Types$CreateOrgTeamReceived = function (a) {
 	return {$: 'CreateOrgTeamReceived', a: a};
@@ -8297,6 +8330,7 @@ var $author$project$Main$enterPageFields = F2(
 						pendingRevisionTaskID: $elm$core$Maybe$Nothing,
 						reservationMessage: $elm$core$Maybe$Nothing,
 						reservationOrganizationId: '',
+						reservationSecret: $elm$core$Maybe$Nothing,
 						reservationTeamId: '',
 						reservations: _List_Nil,
 						reviewBan: false,
@@ -10656,7 +10690,6 @@ var $elm$core$List$member = F2(
 	});
 var $elm$file$File$mime = _File_mime;
 var $elm$file$File$name = _File_name;
-var $elm$core$Basics$not = _Basics_not;
 var $elm$file$File$size = _File_size;
 var $elm$file$File$toUrl = _File_toUrl;
 var $author$project$Main$readAttachment = F3(
@@ -13333,7 +13366,10 @@ var $author$project$Main$update = F2(
 								return _Utils_update(
 									state,
 									{
+										agentExpiresHours: '',
+										agentLabel: '',
 										agentMessage: $elm$core$Maybe$Nothing,
+										agentScopes: _List_Nil,
 										newCredential: $elm$core$Maybe$Just(created)
 									});
 							}),
@@ -13540,7 +13576,10 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										newOrgCredential: $elm$core$Maybe$Just(created),
-										orgCredentialMessage: $elm$core$Maybe$Nothing
+										orgCredentialExpiresHours: '',
+										orgCredentialLabel: '',
+										orgCredentialMessage: $elm$core$Maybe$Nothing,
+										orgCredentialScopes: _List_Nil
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshOrgCredentials(model));

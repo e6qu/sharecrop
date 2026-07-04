@@ -26,6 +26,16 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/privacy-requests`: create an audited privacy request. Accepted `kind` values are `data_export` and `sensitive_field_deletion`; the response includes `kind`, `status`, `requested_by`, timestamps, `export_json`, `resolution_note`, and `redacted_field_count`.
 - `GET /api/privacy-requests`: list the authenticated user's privacy requests.
 
+## Agent Credentials
+
+- `POST /api/agent-credentials`: mint a personal, scoped agent credential. Accepts `label`, `scopes`, and an optional `expires_at` (RFC3339 timestamp; omit or send `""` for never-expiring). The response includes the plaintext secret exactly once.
+- `GET /api/agent-credentials`: list the authenticated user's own agent credentials (never returns secrets).
+- `POST /api/agent-credentials/{credential_id}/revoke`: revoke one of the authenticated user's own agent credentials.
+- `POST /api/organizations/{organization_id}/credentials`: mint an organization-wide credential with full org-admin parity. Requires `PermissionManageMembers` on the organization. Same `label`/`scopes`/`expires_at` shape as personal credentials.
+- `GET /api/organizations/{organization_id}/credentials`: list an organization's own org-wide credentials.
+- `POST /api/organizations/{organization_id}/credentials/{credential_id}/revoke`: revoke an organization-wide credential.
+- Reserving a task also auto-issues a task-scoped agent credential for the reserving user once the reservation becomes active (immediately for `reservation_required` tasks, or on approval for `approval_required` tasks); the plaintext secret is returned exactly once in that reservation response's `issued_worker_credential` field.
+
 ## Tasks
 
 - `POST /api/tasks`: create a draft task. The request may include
@@ -42,7 +52,6 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/tasks/{task_id}/refund`: refund held credit or bundle escrow.
 - `POST /api/tasks/{task_id}/collectible-reward`: fund a task with a collectible.
 - `POST /api/tasks/{task_id}/collectible-refund`: refund held collectible escrow.
-- `POST /api/tasks/{task_id}/capability-tokens`: create a scoped task capability token.
 
 ## Reservations And Submissions
 

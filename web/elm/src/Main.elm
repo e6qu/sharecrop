@@ -606,7 +606,7 @@ enterPageFields page state =
             -- "Fund this task" panel (see ownerControlsCard) always targets
             -- *this* task when submitted, regardless of whatever task was
             -- last selected on the standalone Funding page.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -1011,7 +1011,7 @@ update msg model =
                 )
 
         AgentCreated (Ok created) ->
-            ( Api.updateLoggedIn model (\state -> { state | newCredential = Just created, agentMessage = Nothing }), Api.refreshCredentials model )
+            ( Api.updateLoggedIn model (\state -> { state | newCredential = Just created, agentMessage = Nothing, agentLabel = "", agentScopes = [], agentExpiresHours = "" }), Api.refreshCredentials model )
 
         AgentCreated (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | agentMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -1065,7 +1065,7 @@ update msg model =
                 )
 
         OrgCredentialCreated (Ok created) ->
-            ( Api.updateLoggedIn model (\state -> { state | newOrgCredential = Just created, orgCredentialMessage = Nothing }), Api.refreshOrgCredentials model )
+            ( Api.updateLoggedIn model (\state -> { state | newOrgCredential = Just created, orgCredentialMessage = Nothing, orgCredentialLabel = "", orgCredentialScopes = [], orgCredentialExpiresHours = "" }), Api.refreshOrgCredentials model )
 
         OrgCredentialCreated (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | orgCredentialMessage = Just (httpErrorLabel error) }), Cmd.none )
