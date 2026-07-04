@@ -70,12 +70,6 @@ type Series struct {
 	CreatedBy   core.UserID
 }
 
-type CapabilityToken struct {
-	ID     core.TaskCapabilityTokenID
-	TaskID core.TaskID
-	State  CapabilityTokenState
-}
-
 type Reservation struct {
 	ID          core.TaskReservationID
 	TaskID      core.TaskID
@@ -589,42 +583,3 @@ func (NoDataPayload) dataPayload() {}
 
 func (JSONDataPayload) dataPayload() {}
 
-type CapabilityTokenState struct {
-	value string
-}
-
-var (
-	CapabilityTokenStateActive  = CapabilityTokenState{value: "active"}
-	CapabilityTokenStateRevoked = CapabilityTokenState{value: "revoked"}
-)
-
-type CapabilityTokenStateResult interface {
-	capabilityTokenStateResult()
-}
-
-type CapabilityTokenStateAccepted struct {
-	Value CapabilityTokenState
-}
-
-type CapabilityTokenStateRejected struct {
-	Reason core.DomainError
-}
-
-func (CapabilityTokenStateAccepted) capabilityTokenStateResult() {}
-
-func (CapabilityTokenStateRejected) capabilityTokenStateResult() {}
-
-func ParseCapabilityTokenState(raw string) CapabilityTokenStateResult {
-	switch raw {
-	case CapabilityTokenStateActive.value:
-		return CapabilityTokenStateAccepted{Value: CapabilityTokenStateActive}
-	case CapabilityTokenStateRevoked.value:
-		return CapabilityTokenStateAccepted{Value: CapabilityTokenStateRevoked}
-	default:
-		return CapabilityTokenStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task capability token state is invalid")}
-	}
-}
-
-func (state CapabilityTokenState) String() string {
-	return state.value
-}

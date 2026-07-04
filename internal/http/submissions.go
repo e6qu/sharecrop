@@ -13,19 +13,19 @@ import (
 )
 
 func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
-	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
-		return
-	}
-
 	taskIDResult := parseTaskPathValue(r)
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
 		rejected := taskIDResult.(taskIDRejected)
 		writeError(w, http.StatusBadRequest, rejected.reason)
+		return
+	}
+
+	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite, taskIDAccepted.value)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		rejected := actorResult.(userSubjectRejected)
+		writeError(w, http.StatusUnauthorized, rejected.reason)
 		return
 	}
 

@@ -202,13 +202,13 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 
 	organizationService := org.NewService(db.NewOrgStore(pool))
 	taskStore := db.NewTaskStore(pool)
-	taskService := task.NewService(taskStore, organizationService)
+	taskService := task.NewService(taskStore, organizationService, agentService)
 	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
 	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService)
 
 	logger.Info("starting sharecrop mcp stdio transport")
-	if err := mcp.ServeStdio(ctx, mcpServer, verified.Subject, verified.Credential.Scopes, os.Stdin, stdout); err != nil {
+	if err := mcp.ServeStdio(ctx, mcpServer, verified.Subject, verified.Credential, os.Stdin, stdout); err != nil {
 		logger.Error("serve mcp stdio", "error", err)
 		return 1
 	}
@@ -248,10 +248,10 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	tokenVerifier := auth.NewAccessTokenVerifier(tokenSecret.Value, auth.SystemClock{})
 	organizationService := org.NewService(db.NewOrgStore(pool))
 	taskStore := db.NewTaskStore(pool)
-	taskService := task.NewService(taskStore, organizationService)
+	agentService := agent.NewService(db.NewAgentStore(pool))
+	taskService := task.NewService(taskStore, organizationService, agentService)
 	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
-	agentService := agent.NewService(db.NewAgentStore(pool))
 	assetService := assets.NewService(db.NewCollectibleStore(pool))
 	notificationService := notification.NewService(db.NewNotificationStore(pool))
 	bootstrapAdmins := httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS"))

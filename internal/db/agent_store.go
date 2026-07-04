@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -25,10 +26,16 @@ func (store AgentStore) CreateCredential(ctx context.Context, credential agent.C
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	var rawTaskID *string
+	if credential.TaskID != nil {
+		value := credential.TaskID.String()
+		rawTaskID = &value
+	}
+
 	_, err = tx.Exec(ctx, `
-		insert into agent_credentials (id, user_id, label, token_hash, state)
-		values ($1, $2, $3, $4, $5)
-	`, credential.ID.String(), credential.UserID.String(), credential.Label.String(), hash.String(), credential.State.String())
+		insert into agent_credentials (id, user_id, label, token_hash, state, expires_at, task_id)
+		values ($1, $2, $3, $4, $5, $6, $7)
+	`, credential.ID.String(), credential.UserID.String(), credential.Label.String(), hash.String(), credential.State.String(), credential.ExpiresAt, rawTaskID)
 	if err != nil {
 		return agent.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert agent credential failed")}
 	}
@@ -51,11 +58,13 @@ func (store AgentStore) VerifyCredential(ctx context.Context, hash agent.SecretH
 	var rawUserID string
 	var label string
 	var state string
+	var expiresAt *time.Time
+	var rawTaskID *string
 	var rawScopes []string
 	scanErr := store.pool.QueryRow(ctx, agentCredentialSelectSQL()+`
 		where agent_credentials.token_hash = $1
 		group by agent_credentials.id
-	`, hash.String()).Scan(&rawID, &rawUserID, &label, &state, &rawScopes)
+	`, hash.String()).Scan(&rawID, &rawUserID, &label, &state, &expiresAt, &rawTaskID, &rawScopes)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
 		return agent.VerifyStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "agent credential is invalid")}
 	}
@@ -63,7 +72,7 @@ func (store AgentStore) VerifyCredential(ctx context.Context, hash agent.SecretH
 		return agent.VerifyStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "verify agent credential failed")}
 	}
 
-	parsed := parseAgentCredential(rawID, rawUserID, label, state, rawScopes)
+	parsed := parseAgentCredential(rawID, rawUserID, label, state, expiresAt, rawTaskID, rawScopes)
 	accepted, matched := parsed.(agentCredentialParsed)
 	if !matched {
 		return agent.VerifyStoreRejected{Reason: parsed.(agentCredentialParseRejected).reason}
@@ -89,11 +98,13 @@ func (store AgentStore) ListCredentials(ctx context.Context, owner core.UserID, 
 		var rawUserID string
 		var label string
 		var state string
+		var expiresAt *time.Time
+		var rawTaskID *string
 		var rawScopes []string
-		if err := rows.Scan(&rawID, &rawUserID, &label, &state, &rawScopes); err != nil {
+		if err := rows.Scan(&rawID, &rawUserID, &label, &state, &expiresAt, &rawTaskID, &rawScopes); err != nil {
 			return agent.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan agent credential failed")}
 		}
-		parsed := parseAgentCredential(rawID, rawUserID, label, state, rawScopes)
+		parsed := parseAgentCredential(rawID, rawUserID, label, state, expiresAt, rawTaskID, rawScopes)
 		accepted, matched := parsed.(agentCredentialParsed)
 		if !matched {
 			return agent.ListStoreRejected{Reason: parsed.(agentCredentialParseRejected).reason}
@@ -123,16 +134,18 @@ func (store AgentStore) RevokeCredential(ctx context.Context, owner core.UserID,
 	var rawUserID string
 	var label string
 	var state string
+	var expiresAt *time.Time
+	var rawTaskID *string
 	var rawScopes []string
 	scanErr := store.pool.QueryRow(ctx, agentCredentialSelectSQL()+`
 		where agent_credentials.id = $1
 		group by agent_credentials.id
-	`, id.String()).Scan(&rawID, &rawUserID, &label, &state, &rawScopes)
+	`, id.String()).Scan(&rawID, &rawUserID, &label, &state, &expiresAt, &rawTaskID, &rawScopes)
 	if scanErr != nil {
 		return agent.RevokeStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read revoked agent credential failed")}
 	}
 
-	parsed := parseAgentCredential(rawID, rawUserID, label, state, rawScopes)
+	parsed := parseAgentCredential(rawID, rawUserID, label, state, expiresAt, rawTaskID, rawScopes)
 	accepted, matched := parsed.(agentCredentialParsed)
 	if !matched {
 		return agent.RevokeStoreRejected{Reason: parsed.(agentCredentialParseRejected).reason}
@@ -143,6 +156,7 @@ func (store AgentStore) RevokeCredential(ctx context.Context, owner core.UserID,
 func agentCredentialSelectSQL() string {
 	return `
 		select agent_credentials.id::text, agent_credentials.user_id::text, agent_credentials.label, agent_credentials.state,
+			agent_credentials.expires_at, agent_credentials.task_id::text,
 			coalesce(array_remove(array_agg(agent_credential_scopes.scope), null), '{}') as scopes
 		from agent_credentials
 		left join agent_credential_scopes on agent_credential_scopes.credential_id = agent_credentials.id
@@ -165,7 +179,7 @@ func (agentCredentialParsed) agentCredentialParseResult() {}
 
 func (agentCredentialParseRejected) agentCredentialParseResult() {}
 
-func parseAgentCredential(rawID string, rawUserID string, label string, rawState string, rawScopes []string) agentCredentialParseResult {
+func parseAgentCredential(rawID string, rawUserID string, label string, rawState string, expiresAt *time.Time, rawTaskID *string, rawScopes []string) agentCredentialParseResult {
 	idResult := core.ParseAgentCredentialID(rawID)
 	credentialID, idMatched := idResult.(core.AgentCredentialIDCreated)
 	if !idMatched {
@@ -187,6 +201,16 @@ func parseAgentCredential(rawID string, rawUserID string, label string, rawState
 		return agentCredentialParseRejected{reason: stateResult.(agent.StateRejected).Reason}
 	}
 
+	var taskID *core.TaskID
+	if rawTaskID != nil {
+		taskIDResult := core.ParseTaskID(*rawTaskID)
+		taskIDCreated, taskIDMatched := taskIDResult.(core.TaskIDCreated)
+		if !taskIDMatched {
+			return agentCredentialParseRejected{reason: taskIDResult.(core.TaskIDRejected).Reason}
+		}
+		taskID = &taskIDCreated.Value
+	}
+
 	scopes := make([]agent.Scope, 0, len(rawScopes))
 	for _, rawScope := range rawScopes {
 		scopeResult := agent.ParseScope(rawScope)
@@ -198,10 +222,12 @@ func parseAgentCredential(rawID string, rawUserID string, label string, rawState
 	}
 
 	return agentCredentialParsed{value: agent.Credential{
-		ID:     credentialID.Value,
-		UserID: userID.Value,
-		Label:  labelAccepted.Value,
-		Scopes: agent.NewScopeSet(scopes),
-		State:  stateAccepted.Value,
+		ID:        credentialID.Value,
+		UserID:    userID.Value,
+		Label:     labelAccepted.Value,
+		Scopes:    agent.NewScopeSet(scopes),
+		State:     stateAccepted.Value,
+		ExpiresAt: expiresAt,
+		TaskID:    taskID,
 	}}
 }

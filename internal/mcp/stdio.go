@@ -16,7 +16,7 @@ const maxStdioLineBytes = 4 << 20
 // stdio transport used by local agent clients. Each input line is one JSON-RPC
 // message or batch; each response is written as one line. Notification-only
 // inputs produce no output line.
-func ServeStdio(ctx context.Context, server Server, subject auth.UserSubject, scopes agent.ScopeSet, in io.Reader, out io.Writer) error {
+func ServeStdio(ctx context.Context, server Server, subject auth.UserSubject, credential agent.Credential, in io.Reader, out io.Writer) error {
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxStdioLineBytes)
 	writer := bufio.NewWriter(out)
@@ -26,7 +26,7 @@ func ServeStdio(ctx context.Context, server Server, subject auth.UserSubject, sc
 		if len(line) == 0 {
 			continue
 		}
-		result := server.HandleRaw(ctx, subject, scopes, line)
+		result := server.HandleRaw(ctx, subject, credential, line)
 		if !result.HasResponse {
 			continue
 		}

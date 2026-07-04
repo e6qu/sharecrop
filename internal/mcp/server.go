@@ -56,7 +56,7 @@ func NewServer(services Services) Server {
 }
 
 // Handle dispatches a single JSON-RPC request for an authenticated agent.
-func (server Server) Handle(ctx context.Context, subject auth.UserSubject, scopes agent.ScopeSet, request Request) Response {
+func (server Server) Handle(ctx context.Context, subject auth.UserSubject, credential agent.Credential, request Request) Response {
 	if request.JSONRPC != jsonRPCVersion {
 		return errorResponse(request.ID, codeInvalidRequest, "jsonrpc version must be 2.0")
 	}
@@ -69,7 +69,7 @@ func (server Server) Handle(ctx context.Context, subject auth.UserSubject, scope
 	case "tools/list":
 		return server.handleToolsList(request)
 	case "tools/call":
-		return server.handleToolsCall(ctx, subject, scopes, request)
+		return server.handleToolsCall(ctx, subject, credential, request)
 	default:
 		return errorResponse(request.ID, codeMethodNotFound, "unknown method: "+request.Method)
 	}
@@ -97,7 +97,7 @@ func (server Server) handleToolsList(request Request) Response {
 	return marshalResult(request.ID, toolListResult{Tools: entries})
 }
 
-func (server Server) handleToolsCall(ctx context.Context, subject auth.UserSubject, scopes agent.ScopeSet, request Request) Response {
+func (server Server) handleToolsCall(ctx context.Context, subject auth.UserSubject, credential agent.Credential, request Request) Response {
 	var params toolCallParams
 	if err := json.Unmarshal(request.Params, &params); err != nil {
 		return errorResponse(request.ID, codeInvalidParams, "tools/call params are invalid")
@@ -107,8 +107,22 @@ func (server Server) handleToolsCall(ctx context.Context, subject auth.UserSubje
 	if !found {
 		return errorResponse(request.ID, codeInvalidParams, "unknown tool: "+params.Name)
 	}
-	if _, granted := scopes.Allows(definition.Scope).(agent.ScopeGranted); !granted {
+	if _, granted := credential.Scopes.Allows(definition.Scope).(agent.ScopeGranted); !granted {
 		return errorResponse(request.ID, codeScopeDenied, "agent credential is missing the "+definition.Scope.String()+" scope")
+	}
+	// A task-scoped credential (e.g. auto-issued when a reservation becomes
+	// active) may only call tools whose arguments target that exact task.
+	// Tools with no task_id argument aren't restricted here: list_tasks is
+	// equivalent to public task browsing (not a leak); submission-comment
+	// tools take a submission_id instead (no task_id to check against) — a
+	// known, narrower gap where the credential could reach a submission on
+	// a *different* task, but only one the same underlying user is already
+	// legitimately the submitter or task owner/reviewer for, since the
+	// service-layer authorization checks below still apply regardless.
+	if credential.TaskID != nil {
+		if argTaskID, present := toolArgumentTaskID(params.Arguments); present && argTaskID != credential.TaskID.String() {
+			return errorResponse(request.ID, codeScopeDenied, "agent credential is not valid for this task")
+		}
 	}
 
 	outcome := server.dispatchTool(ctx, subject, definition.Name, params.Arguments)
@@ -122,6 +136,18 @@ func (server Server) handleToolsCall(ctx context.Context, subject auth.UserSubje
 	default:
 		return errorResponse(request.ID, codeInternalError, "tool produced no result")
 	}
+}
+
+// toolArgumentTaskID extracts a tool call's "task_id" argument, if it has
+// one. present is false for tools with no such argument (e.g. list_tasks).
+func toolArgumentTaskID(arguments json.RawMessage) (taskID string, present bool) {
+	var args struct {
+		TaskID string `json:"task_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil || args.TaskID == "" {
+		return "", false
+	}
+	return args.TaskID, true
 }
 
 func (server Server) dispatchTool(ctx context.Context, subject auth.UserSubject, name string, arguments json.RawMessage) toolResult {

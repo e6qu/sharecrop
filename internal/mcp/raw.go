@@ -22,14 +22,14 @@ type RawResult struct {
 
 // HandleRaw parses a single JSON-RPC message or a batch array and dispatches
 // each through Handle. It is shared by the HTTP and stdio transports.
-func (server Server) HandleRaw(ctx context.Context, subject auth.UserSubject, scopes agent.ScopeSet, body []byte) RawResult {
+func (server Server) HandleRaw(ctx context.Context, subject auth.UserSubject, credential agent.Credential, body []byte) RawResult {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 {
 		return singleResponse(errorResponse(json.RawMessage("null"), codeInvalidRequest, "request body is empty"))
 	}
 
 	if trimmed[0] == '[' {
-		return server.handleBatch(ctx, subject, scopes, trimmed)
+		return server.handleBatch(ctx, subject, credential, trimmed)
 	}
 
 	var request Request
@@ -43,14 +43,14 @@ func (server Server) HandleRaw(ctx context.Context, subject auth.UserSubject, sc
 		return RawResult{HasResponse: false}
 	}
 
-	result := singleResponse(server.Handle(ctx, subject, scopes, request))
+	result := singleResponse(server.Handle(ctx, subject, credential, request))
 	if request.Method == "initialize" {
 		result.SessionID = newSessionID()
 	}
 	return result
 }
 
-func (server Server) handleBatch(ctx context.Context, subject auth.UserSubject, scopes agent.ScopeSet, body []byte) RawResult {
+func (server Server) handleBatch(ctx context.Context, subject auth.UserSubject, credential agent.Credential, body []byte) RawResult {
 	var requests []Request
 	if err := json.Unmarshal(body, &requests); err != nil {
 		return singleResponse(errorResponse(json.RawMessage("null"), codeParseError, "batch is not valid JSON-RPC"))
@@ -64,7 +64,7 @@ func (server Server) handleBatch(ctx context.Context, subject auth.UserSubject, 
 		if isNotification(requests[index]) {
 			continue
 		}
-		responses = append(responses, server.Handle(ctx, subject, scopes, requests[index]))
+		responses = append(responses, server.Handle(ctx, subject, credential, requests[index]))
 	}
 	if len(responses) == 0 {
 		return RawResult{HasResponse: false}

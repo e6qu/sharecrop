@@ -855,10 +855,6 @@ func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope, t
 	return task.TasksListed{Values: []task.ListItem{}}
 }
 
-func (testTaskService) CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult {
-	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
-}
-
 func (testTaskService) Reserve(_ context.Context, actor auth.UserSubject, taskID core.TaskID) task.ReservationResult {
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationCreated{Value: task.Reservation{
@@ -1022,11 +1018,11 @@ func (testLedgerService) ListOrganizationEntries(context.Context, core.Organizat
 
 type testAgentService struct{}
 
-func (testAgentService) Create(_ context.Context, owner core.UserID, label agent.Label, scopes agent.ScopeSet) agent.CreateResult {
+func (testAgentService) Create(_ context.Context, owner core.UserID, label agent.Label, scopes agent.ScopeSet, expiresAt *time.Time, taskID *core.TaskID) agent.CreateResult {
 	idCreated := core.NewAgentCredentialID().(core.AgentCredentialIDCreated)
 	secretCreated := agent.NewSecretPlain().(agent.SecretPlainAccepted)
 	return agent.CredentialCreated{
-		Value:  agent.Credential{ID: idCreated.Value, UserID: owner, Label: label, Scopes: scopes, State: agent.StateActive},
+		Value:  agent.Credential{ID: idCreated.Value, UserID: owner, Label: label, Scopes: scopes, State: agent.StateActive, ExpiresAt: expiresAt, TaskID: taskID},
 		Secret: secretCreated.Value,
 	}
 }

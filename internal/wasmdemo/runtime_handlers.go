@@ -486,7 +486,7 @@ func (handler AgentCredentialHandler) Handle(request Request) HandleResult {
 		if label == "" {
 			label = "Agent"
 		}
-		credential := StoredAgentCredential{ID: strings.TrimSpace(handler.ids.NextAgentCredentialID()), OwnerID: handler.actor.UserID(), Label: label, Scopes: body.Scopes, State: "active"}
+		credential := StoredAgentCredential{ID: strings.TrimSpace(handler.ids.NextAgentCredentialID()), OwnerID: handler.actor.UserID(), Label: label, Scopes: body.Scopes, State: "active", ExpiresAt: strings.TrimSpace(body.ExpiresAt)}
 		if err := SaveAgentCredential(handler.storage, credential); err != nil {
 			return RequestHandleRejected{Reason: err.Error()}
 		}
@@ -776,15 +776,18 @@ type moderationReportsBody struct {
 }
 
 type agentCredentialRequestBody struct {
-	Label  string   `json:"label"`
-	Scopes []string `json:"scopes"`
+	Label     string   `json:"label"`
+	Scopes    []string `json:"scopes"`
+	ExpiresAt string   `json:"expires_at"`
 }
 
 type agentCredentialResponseBody struct {
-	ID     string   `json:"id"`
-	Label  string   `json:"label"`
-	Scopes []string `json:"scopes"`
-	State  string   `json:"state"`
+	ID        string   `json:"id"`
+	Label     string   `json:"label"`
+	Scopes    []string `json:"scopes"`
+	State     string   `json:"state"`
+	ExpiresAt string   `json:"expires_at"`
+	TaskID    string   `json:"task_id"`
 }
 
 type agentCredentialCreatedResponseBody struct {
@@ -798,10 +801,12 @@ type agentCredentialsResponseBody struct {
 
 func agentCredentialToResponse(credential StoredAgentCredential) agentCredentialResponseBody {
 	return agentCredentialResponseBody{
-		ID:     credential.ID,
-		Label:  credential.Label,
-		Scopes: credential.Scopes,
-		State:  credential.State,
+		ID:        credential.ID,
+		Label:     credential.Label,
+		Scopes:    credential.Scopes,
+		State:     credential.State,
+		ExpiresAt: credential.ExpiresAt,
+		TaskID:    credential.TaskID,
 	}
 }
 

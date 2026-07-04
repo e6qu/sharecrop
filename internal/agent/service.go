@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -39,7 +40,11 @@ func (CredentialCreated) createResult() {}
 
 func (CreateRejected) createResult() {}
 
-func (service Service) Create(ctx context.Context, owner core.UserID, label Label, scopes ScopeSet) CreateResult {
+// Create mints a new credential. expiresAt is nil for a non-expiring
+// credential; taskID is nil for a credential usable against every task the
+// scopes otherwise allow, or set to restrict it to exactly one task
+// (see Credential.MatchesTask).
+func (service Service) Create(ctx context.Context, owner core.UserID, label Label, scopes ScopeSet, expiresAt *time.Time, taskID *core.TaskID) CreateResult {
 	if scopes.IsEmpty() {
 		return CreateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "at least one agent scope is required")}
 	}
@@ -57,11 +62,13 @@ func (service Service) Create(ctx context.Context, owner core.UserID, label Labe
 	}
 
 	credential := Credential{
-		ID:     idCreated.Value,
-		UserID: owner,
-		Label:  label,
-		Scopes: scopes,
-		State:  StateActive,
+		ID:        idCreated.Value,
+		UserID:    owner,
+		Label:     label,
+		Scopes:    scopes,
+		State:     StateActive,
+		ExpiresAt: expiresAt,
+		TaskID:    taskID,
 	}
 
 	storeResult := service.store.CreateCredential(ctx, credential, secretCreated.Value.Hash())
@@ -70,6 +77,35 @@ func (service Service) Create(ctx context.Context, owner core.UserID, label Labe
 	}
 
 	return CredentialCreated{Value: credential, Secret: secretCreated.Value}
+}
+
+// taskWorkerCredentialTTL is the default lifetime of an auto-issued
+// task-scoped credential (see IssueTaskWorkerCredential). 30 days comfortably
+// covers typical task turnaround without an indefinitely-valid secret.
+const taskWorkerCredentialTTL = 30 * 24 * time.Hour
+
+// IssueTaskWorkerCredential mints a credential restricted to exactly one
+// task, scoped to just what's needed to read that task and submit a
+// response — narrow enough to safely hand to an agent. It satisfies
+// task.TaskCredentialIssuer structurally (Go interfaces are implicit), so
+// task.Service can depend on that interface without importing this package.
+// Best-effort by design: a failure reports ok=false rather than an error,
+// since minting this convenience credential should never block the
+// reservation/approval flow it's attached to.
+func (service Service) IssueTaskWorkerCredential(ctx context.Context, owner core.UserID, taskID core.TaskID) (secret string, ok bool) {
+	label, labelMatched := NewLabel("Task worker token").(LabelAccepted)
+	if !labelMatched {
+		return "", false
+	}
+	scopes := NewScopeSet([]Scope{ScopeTasksRead, ScopeSubmissionsWrite, ScopeSubmissionsRead})
+	expiresAt := time.Now().Add(taskWorkerCredentialTTL)
+
+	result := service.Create(ctx, owner, label.Value, scopes, &expiresAt, &taskID)
+	created, matched := result.(CredentialCreated)
+	if !matched {
+		return "", false
+	}
+	return created.Secret.String(), true
 }
 
 type VerifyResult interface {
@@ -97,6 +133,9 @@ func (service Service) Verify(ctx context.Context, secret SecretPlain) VerifyRes
 	}
 	if found.Value.State != StateActive {
 		return VerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "agent credential is revoked")}
+	}
+	if found.Value.IsExpired(time.Now()) {
+		return VerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "agent credential has expired")}
 	}
 
 	return CredentialVerified{

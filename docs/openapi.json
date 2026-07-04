@@ -790,6 +790,9 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -804,13 +807,18 @@
                           },
                           "state": {
                             "type": "string"
+                          },
+                          "task_id": {
+                            "type": "string"
                           }
                         },
                         "required": [
                           "id",
                           "label",
                           "scopes",
-                          "state"
+                          "state",
+                          "expires_at",
+                          "task_id"
                         ]
                       }
                     }
@@ -832,6 +840,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "expires_at": {
+                    "type": "string"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -844,7 +855,8 @@
                 },
                 "required": [
                   "label",
-                  "scopes"
+                  "scopes",
+                  "expires_at"
                 ]
               }
             }
@@ -861,6 +873,9 @@
                     "credential": {
                       "type": "object",
                       "properties": {
+                        "expires_at": {
+                          "type": "string"
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -875,13 +890,18 @@
                         },
                         "state": {
                           "type": "string"
+                        },
+                        "task_id": {
+                          "type": "string"
                         }
                       },
                       "required": [
                         "id",
                         "label",
                         "scopes",
-                        "state"
+                        "state",
+                        "expires_at",
+                        "task_id"
                       ]
                     },
                     "secret": {
@@ -919,6 +939,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "expires_at": {
+                      "type": "string"
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -933,13 +956,18 @@
                     },
                     "state": {
                       "type": "string"
+                    },
+                    "task_id": {
+                      "type": "string"
                     }
                   },
                   "required": [
                     "id",
                     "label",
                     "scopes",
-                    "state"
+                    "state",
+                    "expires_at",
+                    "task_id"
                   ]
                 }
               }
@@ -6421,52 +6449,6 @@
         }
       }
     },
-    "/api/tasks/{task_id}/capability-tokens": {
-      "post": {
-        "operationId": "createTaskCapabilityToken",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "default": {
-            "description": "response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "type": "string"
-                    },
-                    "task_id": {
-                      "type": "string"
-                    },
-                    "token": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "task_id",
-                    "state",
-                    "token"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/tasks/{task_id}/collectible-refund": {
       "post": {
         "operationId": "refundCollectibleReward",
@@ -7032,6 +7014,9 @@
                           "id": {
                             "type": "string"
                           },
+                          "issued_worker_credential": {
+                            "type": "string"
+                          },
                           "requested_by": {
                             "type": "string"
                           },
@@ -7048,7 +7033,8 @@
                           "assignee_kind",
                           "assignee_id",
                           "state",
-                          "requested_by"
+                          "requested_by",
+                          "issued_worker_credential"
                         ]
                       }
                     }
@@ -7106,6 +7092,9 @@
                     "id": {
                       "type": "string"
                     },
+                    "issued_worker_credential": {
+                      "type": "string"
+                    },
                     "requested_by": {
                       "type": "string"
                     },
@@ -7122,7 +7111,8 @@
                     "assignee_kind",
                     "assignee_id",
                     "state",
-                    "requested_by"
+                    "requested_by",
+                    "issued_worker_credential"
                   ]
                 }
               }
@@ -7160,6 +7150,9 @@
                     "id": {
                       "type": "string"
                     },
+                    "issued_worker_credential": {
+                      "type": "string"
+                    },
                     "requested_by": {
                       "type": "string"
                     },
@@ -7176,7 +7169,8 @@
                     "assignee_kind",
                     "assignee_id",
                     "state",
-                    "requested_by"
+                    "requested_by",
+                    "issued_worker_credential"
                   ]
                 }
               }
@@ -7214,6 +7208,9 @@
                     "id": {
                       "type": "string"
                     },
+                    "issued_worker_credential": {
+                      "type": "string"
+                    },
                     "requested_by": {
                       "type": "string"
                     },
@@ -7230,7 +7227,8 @@
                     "assignee_kind",
                     "assignee_id",
                     "state",
-                    "requested_by"
+                    "requested_by",
+                    "issued_worker_credential"
                   ]
                 }
               }
@@ -7268,6 +7266,9 @@
                     "id": {
                       "type": "string"
                     },
+                    "issued_worker_credential": {
+                      "type": "string"
+                    },
                     "requested_by": {
                       "type": "string"
                     },
@@ -7284,7 +7285,8 @@
                     "assignee_kind",
                     "assignee_id",
                     "state",
-                    "requested_by"
+                    "requested_by",
+                    "issued_worker_credential"
                   ]
                 }
               }

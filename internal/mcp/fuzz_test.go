@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/e6qu/sharecrop/internal/agent"
 )
 
 // FuzzHandleRaw drives the JSON-RPC transport with arbitrary bodies against the
@@ -30,7 +32,7 @@ func FuzzHandleRaw(f *testing.F) {
 	}
 
 	subject := testSubject(&testing.T{})
-	scopes := allScopes()
+	scopes := agent.Credential{Scopes: allScopes()}
 
 	f.Fuzz(func(t *testing.T, body []byte) {
 		server := NewServer(fakeServices{})

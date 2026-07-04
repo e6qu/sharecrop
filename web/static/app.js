@@ -7231,9 +7231,9 @@ var $author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse = F
 	function (credential, secret) {
 		return {credential: credential, secret: secret};
 	});
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialResponse = F4(
-	function (id, label, scopes, state) {
-		return {id: id, label: label, scopes: scopes, state: state};
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialResponse = F6(
+	function (id, label, scopes, state, expiresAt, taskID) {
+		return {expiresAt: expiresAt, id: id, label: label, scopes: scopes, state: state, taskID: taskID};
 	});
 var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive = {$: 'AgentCredentialStateActive'};
 var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked = {$: 'AgentCredentialStateRevoked'};
@@ -7274,8 +7274,8 @@ var $author$project$Sharecrop$Generated$Agent$agentScopeDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A5(
-	$elm$json$Json$Decode$map4,
+var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
 	$author$project$Sharecrop$Generated$Agent$AgentCredentialResponse,
 	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'label', $elm$json$Json$Decode$string),
@@ -7283,7 +7283,9 @@ var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A
 		$elm$json$Json$Decode$field,
 		'scopes',
 		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Agent$agentScopeDecoder)),
-	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder));
+	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder),
+	A2($elm$json$Json$Decode$field, 'expires_at', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder = A3(
 	$elm$json$Json$Decode$map2,
 	$author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse,
@@ -9911,9 +9913,9 @@ var $author$project$Sharecrop$Api$reservationRequestBody = function (state) {
 		return $elm$json$Json$Encode$object(_List_Nil);
 	}
 };
-var $author$project$Sharecrop$Generated$Task$TaskReservationResponse = F6(
-	function (id, taskID, assigneeKind, assigneeID, state, requestedBy) {
-		return {assigneeID: assigneeID, assigneeKind: assigneeKind, id: id, requestedBy: requestedBy, state: state, taskID: taskID};
+var $author$project$Sharecrop$Generated$Task$TaskReservationResponse = F7(
+	function (id, taskID, assigneeKind, assigneeID, state, requestedBy, issuedWorkerCredential) {
+		return {assigneeID: assigneeID, assigneeKind: assigneeKind, id: id, issuedWorkerCredential: issuedWorkerCredential, requestedBy: requestedBy, state: state, taskID: taskID};
 	});
 var $author$project$Sharecrop$Generated$Task$TaskReservationStateActive = {$: 'TaskReservationStateActive'};
 var $author$project$Sharecrop$Generated$Task$TaskReservationStateCancelledByRequester = {$: 'TaskReservationStateCancelledByRequester'};
@@ -9945,15 +9947,16 @@ var $author$project$Sharecrop$Generated$Task$taskReservationStateDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder = A7(
-	$elm$json$Json$Decode$map6,
+var $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder = A8(
+	$elm$json$Json$Decode$map7,
 	$author$project$Sharecrop$Generated$Task$TaskReservationResponse,
 	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'assignee_kind', $author$project$Sharecrop$Generated$Task$taskAssigneeScopeDecoder),
 	A2($elm$json$Json$Decode$field, 'assignee_id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Task$taskReservationStateDecoder),
-	A2($elm$json$Json$Decode$field, 'requested_by', $elm$json$Json$Decode$string));
+	A2($elm$json$Json$Decode$field, 'requested_by', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'issued_worker_credential', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Api$postReservation = F2(
 	function (state, taskId) {
 		return A5(

@@ -238,19 +238,6 @@ func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filt
 	return task.ListTasksStoreAccepted{Values: values.values}
 }
 
-func (store TaskStore) CreateCapabilityToken(ctx context.Context, tokenID core.TaskCapabilityTokenID, taskID core.TaskID, hash task.CapabilityTokenHash) task.CreateCapabilityTokenStoreResult {
-	_, err := store.pool.Exec(ctx, `
-		insert into task_capability_tokens (id, task_id, token_hash, state, created_by_user_id)
-		select $1, tasks.id, $3, $4, tasks.created_by_user_id
-		from tasks
-		where tasks.id = $2
-	`, tokenID.String(), taskID.String(), hash.String(), task.CapabilityTokenStateActive.String())
-	if err != nil {
-		return task.CreateCapabilityTokenStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task capability token failed")}
-	}
-	return task.CreateCapabilityTokenStoreAccepted{Value: task.CapabilityToken{ID: tokenID, TaskID: taskID, State: task.CapabilityTokenStateActive}}
-}
-
 func (store TaskStore) CreateReservation(ctx context.Context, reservationID core.TaskReservationID, command task.ReservationCommand) task.CreateReservationStoreResult {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {

@@ -357,12 +357,6 @@ type tasksResponse struct {
 	Tasks []taskListItemResponse `json:"tasks"`
 }
 
-type taskCapabilityTokenResponse struct {
-	ID     string `json:"id"`
-	TaskID string `json:"task_id"`
-	State  string `json:"state"`
-	Token  string `json:"token"`
-}
 
 type reservationResponse struct {
 	ID           string `json:"id"`
@@ -371,6 +365,12 @@ type reservationResponse struct {
 	AssigneeID   string `json:"assignee_id"`
 	State        string `json:"state"`
 	RequestedBy  string `json:"requested_by"`
+	// IssuedWorkerCredential is a one-time plaintext secret for a new
+	// task-scoped agent credential, present only immediately after this
+	// reservation was created or approved into an active state — never
+	// re-shown afterward, matching the one-shot-reveal convention used for
+	// every other credential-minting response in this codebase.
+	IssuedWorkerCredential string `json:"issued_worker_credential"`
 }
 
 type reservationsResponse struct {

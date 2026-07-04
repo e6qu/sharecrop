@@ -117,18 +117,19 @@ func (server Server) unpublishTask(w http.ResponseWriter, r *http.Request) {
 	server.changeTaskState(w, r, server.taskService.Unpublish)
 }
 func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
-	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
-		return
-	}
 	taskIDResult := parseTaskPathValue(r)
 	if rejected, matched := taskIDResult.(taskIDRejected); matched {
 		writeError(w, http.StatusBadRequest, rejected.reason)
 		return
 	}
 	taskIDAccepted := taskIDResult.(taskIDAccepted)
+
+	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite, taskIDAccepted.value)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
 
 	requestResult := decodeReservationRequest(r)
 	if rejected, matched := requestResult.(reservationRequestRejected); matched {
@@ -142,7 +143,7 @@ func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, result.(task.ReservationRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusCreated, reservationToResponse(created.Value))
+	writeJSON(w, http.StatusCreated, reservationToResponse(created.Value, created.IssuedWorkerCredentialSecret))
 }
 
 type reservationRequestResult interface {
@@ -220,7 +221,7 @@ func (server Server) listTaskReservations(w http.ResponseWriter, r *http.Request
 	}
 	response := reservationsResponse{Reservations: make([]reservationResponse, 0, len(listed.Values))}
 	for _, value := range listed.Values {
-		response.Reservations = append(response.Reservations, reservationToResponse(value))
+		response.Reservations = append(response.Reservations, reservationToResponse(value, ""))
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -259,7 +260,7 @@ func (server Server) changeTaskReservation(w http.ResponseWriter, r *http.Reques
 		writeDomainError(w, result.(task.ReservationStateChangeRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusOK, reservationToResponse(changed.Value))
+	writeJSON(w, http.StatusOK, reservationToResponse(changed.Value, changed.IssuedWorkerCredentialSecret))
 }
 func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, changer taskStateChanger) {
 	actorResult := server.requireUserSubject(r)
@@ -287,38 +288,6 @@ func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, cha
 	}
 
 	writeTaskResponse(w, http.StatusOK, taskToResponse(changed.Value))
-}
-func (server Server) createTaskCapabilityToken(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
-	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
-		return
-	}
-
-	taskIDResult := parseTaskPathValue(r)
-	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
-	if !taskIDMatched {
-		rejected := taskIDResult.(taskIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
-		return
-	}
-
-	result := server.taskService.CreateCapabilityToken(r.Context(), actor.subject, taskIDAccepted.value)
-	created, matched := result.(task.CapabilityTokenCreated)
-	if !matched {
-		rejected := result.(task.CreateCapabilityTokenRejected)
-		writeDomainError(w, rejected.Reason)
-		return
-	}
-
-	writeTaskCapabilityTokenResponse(w, http.StatusCreated, taskCapabilityTokenResponse{
-		ID:     created.Value.ID.String(),
-		TaskID: created.Value.TaskID.String(),
-		State:  created.Value.State.String(),
-		Token:  created.Plain.String(),
-	})
 }
 func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResult {
 	var request taskRequest
@@ -961,15 +930,16 @@ func taskViewerAction(value task.Task) task.ViewerAction {
 		return task.ViewerActionNone
 	}
 }
-func reservationToResponse(value task.Reservation) reservationResponse {
+func reservationToResponse(value task.Reservation, issuedWorkerCredential string) reservationResponse {
 	assignee := reservationAssigneeResponseParts(value.Assignee)
 	return reservationResponse{
-		ID:           value.ID.String(),
-		TaskID:       value.TaskID.String(),
-		AssigneeKind: assignee.kind,
-		AssigneeID:   assignee.id,
-		State:        value.State.String(),
-		RequestedBy:  value.RequestedBy.String(),
+		ID:                     value.ID.String(),
+		TaskID:                 value.TaskID.String(),
+		AssigneeKind:           assignee.kind,
+		AssigneeID:             assignee.id,
+		State:                  value.State.String(),
+		RequestedBy:            value.RequestedBy.String(),
+		IssuedWorkerCredential: issuedWorkerCredential,
 	}
 }
 func reservationAssigneeResponseParts(assignee task.Assignee) responseParts {

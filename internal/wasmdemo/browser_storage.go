@@ -221,11 +221,13 @@ type StoredCollectible struct {
 }
 
 type StoredAgentCredential struct {
-	ID      string   `json:"id"`
-	OwnerID string   `json:"owner_id"`
-	Label   string   `json:"label"`
-	Scopes  []string `json:"scopes"`
-	State   string   `json:"state"`
+	ID        string   `json:"id"`
+	OwnerID   string   `json:"owner_id"`
+	Label     string   `json:"label"`
+	Scopes    []string `json:"scopes"`
+	State     string   `json:"state"`
+	ExpiresAt string   `json:"expires_at"`
+	TaskID    string   `json:"task_id"`
 }
 
 type ModerationTriageStorageResult interface {

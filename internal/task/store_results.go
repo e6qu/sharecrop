@@ -66,22 +66,6 @@ func (ListTasksStoreAccepted) listTasksStoreResult() {}
 
 func (ListTasksStoreRejected) listTasksStoreResult() {}
 
-type CreateCapabilityTokenStoreResult interface {
-	createCapabilityTokenStoreResult()
-}
-
-type CreateCapabilityTokenStoreAccepted struct {
-	Value CapabilityToken
-}
-
-type CreateCapabilityTokenStoreRejected struct {
-	Reason core.DomainError
-}
-
-func (CreateCapabilityTokenStoreAccepted) createCapabilityTokenStoreResult() {}
-
-func (CreateCapabilityTokenStoreRejected) createCapabilityTokenStoreResult() {}
-
 type CreateReservationStoreResult interface {
 	createReservationStoreResult()
 }

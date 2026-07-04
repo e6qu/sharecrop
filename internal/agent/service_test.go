@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/core"
 )
@@ -67,7 +68,7 @@ func TestNewLabelRejectsBlank(t *testing.T) {
 
 func TestServiceCreateRejectsEmptyScopes(t *testing.T) {
 	service := NewService(&memoryStore{})
-	result := service.Create(context.Background(), newTestUserID(t), testLabel(t), NewScopeSet(nil))
+	result := service.Create(context.Background(), newTestUserID(t), testLabel(t), NewScopeSet(nil), nil, nil)
 	if _, matched := result.(CreateRejected); !matched {
 		t.Fatalf("empty scopes were accepted")
 	}
@@ -76,7 +77,7 @@ func TestServiceCreateRejectsEmptyScopes(t *testing.T) {
 func TestServiceCreateAndVerify(t *testing.T) {
 	store := &memoryStore{}
 	service := NewService(store)
-	created, matched := service.Create(context.Background(), newTestUserID(t), testLabel(t), NewScopeSet([]Scope{ScopeTasksRead})).(CredentialCreated)
+	created, matched := service.Create(context.Background(), newTestUserID(t), testLabel(t), NewScopeSet([]Scope{ScopeTasksRead}), nil, nil).(CredentialCreated)
 	if !matched {
 		t.Fatalf("create was rejected")
 	}
@@ -93,11 +94,57 @@ func TestServiceCreateAndVerify(t *testing.T) {
 func TestServiceVerifyRejectsRevoked(t *testing.T) {
 	store := &memoryStore{}
 	service := NewService(store)
-	created := service.Create(context.Background(), newTestUserID(t), testLabel(t), NewScopeSet([]Scope{ScopeTasksRead})).(CredentialCreated)
+	created := service.Create(context.Background(), newTestUserID(t), testLabel(t), NewScopeSet([]Scope{ScopeTasksRead}), nil, nil).(CredentialCreated)
 	store.revoke(created.Value.ID)
 
 	if _, matched := service.Verify(context.Background(), created.Secret).(VerifyRejected); !matched {
 		t.Fatalf("revoked credential verified")
+	}
+}
+
+func TestServiceVerifyRejectsExpiredCredential(t *testing.T) {
+	store := &memoryStore{}
+	service := NewService(store)
+	past := time.Now().Add(-time.Hour)
+	created, matched := service.Create(context.Background(), newTestUserID(t), testLabel(t), NewScopeSet([]Scope{ScopeTasksRead}), &past, nil).(CredentialCreated)
+	if !matched {
+		t.Fatalf("create was rejected")
+	}
+
+	if _, matched := service.Verify(context.Background(), created.Secret).(VerifyRejected); !matched {
+		t.Fatalf("expired credential verified")
+	}
+}
+
+func TestServiceVerifyAcceptsNotYetExpiredCredential(t *testing.T) {
+	store := &memoryStore{}
+	service := NewService(store)
+	future := time.Now().Add(time.Hour)
+	created, matched := service.Create(context.Background(), newTestUserID(t), testLabel(t), NewScopeSet([]Scope{ScopeTasksRead}), &future, nil).(CredentialCreated)
+	if !matched {
+		t.Fatalf("create was rejected")
+	}
+
+	if _, matched := service.Verify(context.Background(), created.Secret).(CredentialVerified); !matched {
+		t.Fatalf("not-yet-expired credential was rejected")
+	}
+}
+
+func TestCredentialMatchesTask(t *testing.T) {
+	taskID := newTestTaskID(t)
+	otherTaskID := newTestTaskID(t)
+
+	unscoped := Credential{}
+	if !unscoped.MatchesTask(taskID) {
+		t.Fatalf("unscoped credential did not match task")
+	}
+
+	scoped := Credential{TaskID: &taskID}
+	if !scoped.MatchesTask(taskID) {
+		t.Fatalf("task-scoped credential did not match its own task")
+	}
+	if scoped.MatchesTask(otherTaskID) {
+		t.Fatalf("task-scoped credential matched a different task")
 	}
 }
 
@@ -166,6 +213,15 @@ func newTestUserID(t *testing.T) core.UserID {
 	created, matched := core.NewUserID().(core.UserIDCreated)
 	if !matched {
 		t.Fatalf("user id rejected")
+	}
+	return created.Value
+}
+
+func newTestTaskID(t *testing.T) core.TaskID {
+	t.Helper()
+	created, matched := core.NewTaskID().(core.TaskIDCreated)
+	if !matched {
+		t.Fatalf("task id rejected")
 	}
 	return created.Value
 }

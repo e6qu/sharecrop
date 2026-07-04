@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
@@ -222,10 +223,6 @@ func (healthTaskService) List(context.Context, auth.UserSubject, task.ListScope,
 	return task.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult {
-	return task.CreateCapabilityTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
-}
-
 func (healthTaskService) ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult {
 	return task.ListSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
@@ -338,7 +335,7 @@ func (healthLedgerService) ListOrganizationEntries(context.Context, core.Organiz
 
 type healthAgentService struct{}
 
-func (healthAgentService) Create(context.Context, core.UserID, agent.Label, agent.ScopeSet) agent.CreateResult {
+func (healthAgentService) Create(context.Context, core.UserID, agent.Label, agent.ScopeSet, *time.Time, *core.TaskID) agent.CreateResult {
 	return agent.CreateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

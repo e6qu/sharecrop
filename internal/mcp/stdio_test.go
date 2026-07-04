@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/e6qu/sharecrop/internal/agent"
 )
 
 func TestServeStdioHandlesRequestsAndSkipsNotifications(t *testing.T) {
@@ -16,7 +18,7 @@ func TestServeStdioHandlesRequestsAndSkipsNotifications(t *testing.T) {
 	var out bytes.Buffer
 
 	server := NewServer(fakeServices{})
-	if err := ServeStdio(context.Background(), server, testSubject(t), allScopes(), strings.NewReader(input), &out); err != nil {
+	if err := ServeStdio(context.Background(), server, testSubject(t), agent.Credential{Scopes: allScopes()}, strings.NewReader(input), &out); err != nil {
 		t.Fatalf("serve stdio: %v", err)
 	}
 

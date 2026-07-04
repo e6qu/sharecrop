@@ -91,15 +91,19 @@ type alias AgentCredentialResponse =
     , label : String
     , scopes : List AgentScope
     , state : AgentCredentialState
+    , expiresAt : String
+    , taskID : String
     }
 
 agentCredentialResponseDecoder : Decoder AgentCredentialResponse
 agentCredentialResponseDecoder =
-    Decode.map4 AgentCredentialResponse
+    Decode.map6 AgentCredentialResponse
         (Decode.field "id" Decode.string)
         (Decode.field "label" Decode.string)
         (Decode.field "scopes" (Decode.list agentScopeDecoder))
         (Decode.field "state" agentCredentialStateDecoder)
+        (Decode.field "expires_at" Decode.string)
+        (Decode.field "task_id" Decode.string)
 
 agentCredentialResponseEncoder : AgentCredentialResponse -> Encode.Value
 agentCredentialResponseEncoder agentCredentialResponse =
@@ -108,6 +112,8 @@ agentCredentialResponseEncoder agentCredentialResponse =
         , ( "label", Encode.string agentCredentialResponse.label )
         , ( "scopes", Encode.list agentScopeEncoder agentCredentialResponse.scopes )
         , ( "state", agentCredentialStateEncoder agentCredentialResponse.state )
+        , ( "expires_at", Encode.string agentCredentialResponse.expiresAt )
+        , ( "task_id", Encode.string agentCredentialResponse.taskID )
         ]
 
 type alias AgentCredentialsResponse =

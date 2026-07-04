@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/e6qu/sharecrop/internal/agent"
 )
 
 func TestHandleRawSingleRequest(t *testing.T) {
 	server := NewServer(fakeServices{})
-	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	result := server.HandleRaw(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 	if !result.HasResponse {
 		t.Fatalf("expected a response")
 	}
@@ -20,7 +22,7 @@ func TestHandleRawSingleRequest(t *testing.T) {
 
 func TestHandleRawInitializeSetsSession(t *testing.T) {
 	server := NewServer(fakeServices{})
-	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+	result := server.HandleRaw(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
 	if result.SessionID == "" {
 		t.Fatalf("expected a session id on initialize")
 	}
@@ -28,7 +30,7 @@ func TestHandleRawInitializeSetsSession(t *testing.T) {
 
 func TestHandleRawNotificationHasNoResponse(t *testing.T) {
 	server := NewServer(fakeServices{})
-	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
+	result := server.HandleRaw(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, []byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
 	if result.HasResponse {
 		t.Fatalf("notification should produce no response")
 	}
@@ -36,7 +38,7 @@ func TestHandleRawNotificationHasNoResponse(t *testing.T) {
 
 func TestHandleRawNullIDIsRequest(t *testing.T) {
 	server := NewServer(fakeServices{})
-	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(`{"jsonrpc":"2.0","id":null,"method":"ping"}`))
+	result := server.HandleRaw(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, []byte(`{"jsonrpc":"2.0","id":null,"method":"ping"}`))
 	if !result.HasResponse {
 		t.Fatalf("id:null request should produce a response")
 	}
@@ -51,7 +53,7 @@ func TestHandleRawNullIDIsRequest(t *testing.T) {
 
 func TestHandleRawClientResponseHasNoResponse(t *testing.T) {
 	server := NewServer(fakeServices{})
-	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+	result := server.HandleRaw(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, []byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
 	if result.HasResponse {
 		t.Fatalf("client response should not be dispatched")
 	}
@@ -60,7 +62,7 @@ func TestHandleRawClientResponseHasNoResponse(t *testing.T) {
 func TestHandleRawBatchReturnsArray(t *testing.T) {
 	server := NewServer(fakeServices{})
 	body := `[{"jsonrpc":"2.0","id":1,"method":"tools/list"},{"jsonrpc":"2.0","id":2,"method":"ping"}]`
-	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(body))
+	result := server.HandleRaw(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, []byte(body))
 	if !result.HasResponse {
 		t.Fatalf("expected a batch response")
 	}
@@ -76,7 +78,7 @@ func TestHandleRawBatchReturnsArray(t *testing.T) {
 func TestHandleRawBatchDropsNotifications(t *testing.T) {
 	server := NewServer(fakeServices{})
 	body := `[{"jsonrpc":"2.0","method":"notifications/initialized"},{"jsonrpc":"2.0","id":2,"method":"ping"}]`
-	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(body))
+	result := server.HandleRaw(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, []byte(body))
 	var responses []Response
 	if err := json.Unmarshal(result.Payload, &responses); err != nil {
 		t.Fatalf("decode batch: %v", err)
@@ -88,7 +90,7 @@ func TestHandleRawBatchDropsNotifications(t *testing.T) {
 
 func TestHandleRawSeriesTool(t *testing.T) {
 	server := NewServer(fakeServices{})
-	result := server.HandleRaw(context.Background(), testSubject(t), allScopes(), []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sharecrop.list_task_series","arguments":{}}}`))
+	result := server.HandleRaw(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sharecrop.list_task_series","arguments":{}}}`))
 	if !strings.Contains(string(result.Payload), "series") {
 		t.Fatalf("list_task_series payload missing series key: %s", string(result.Payload))
 	}

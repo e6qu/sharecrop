@@ -384,10 +384,10 @@ func newAuthHTTPServer(t *testing.T, ctx context.Context) *httptest.Server {
 	verifier := auth.NewAccessTokenVerifier(secretAccepted.Value, auth.SystemClock{})
 	organizationService := org.NewService(db.NewOrgStore(pool))
 	taskStore := db.NewTaskStore(pool)
-	taskService := task.NewService(taskStore, organizationService)
+	agentService := agent.NewService(db.NewAgentStore(pool))
+	taskService := task.NewService(taskStore, organizationService, agentService)
 	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
-	agentService := agent.NewService(db.NewAgentStore(pool))
 	assetService := assets.NewService(db.NewCollectibleStore(pool))
 	return httptest.NewServer(httpserver.New(staticFiles, serviceCreated.Value, verifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService))
 }

@@ -70,7 +70,6 @@ type TaskService interface {
 	Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	Unpublish(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
 	List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult
-	CreateCapabilityToken(context.Context, auth.UserSubject, core.TaskID) task.CreateCapabilityTokenResult
 	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 	CreateSeries(context.Context, auth.UserSubject, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
@@ -93,7 +92,7 @@ type TaskService interface {
 }
 
 type AgentService interface {
-	Create(context.Context, core.UserID, agent.Label, agent.ScopeSet) agent.CreateResult
+	Create(context.Context, core.UserID, agent.Label, agent.ScopeSet, *time.Time, *core.TaskID) agent.CreateResult
 	Verify(context.Context, agent.SecretPlain) agent.VerifyResult
 	List(context.Context, core.UserID, core.Page) agent.ListResult
 	Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult
@@ -295,7 +294,6 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/tasks", server.createTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/open", server.openTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/cancel", server.cancelTask)
-	mux.HandleFunc("POST /api/tasks/{task_id}/capability-tokens", server.createTaskCapabilityToken)
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions", server.createAuthenticatedSubmission)
 	mux.HandleFunc("GET /api/tasks/{task_id}/submissions", server.listTaskSubmissions)
 	mux.HandleFunc("POST /api/tasks/{task_id}/reservations", server.reserveTask)
@@ -558,7 +556,10 @@ func ParseAdminUserIDsForRuntime(raw string) map[string]bool {
 // a user access token or an agent credential that holds the required scope. This
 // lets a single agent token drive the worker REST endpoints as well as MCP (an
 // agent credential always acts as its owning user, exactly as it does over MCP).
-func (server Server) requireWorkerSubject(r *http.Request, scope agent.Scope) userSubjectResult {
+// taskID is the task this specific request acts on: a task-scoped credential
+// (Credential.TaskID != nil, e.g. one auto-issued on reservation) is rejected
+// outright if it doesn't match, regardless of what scopes it holds.
+func (server Server) requireWorkerSubject(r *http.Request, scope agent.Scope, taskID core.TaskID) userSubjectResult {
 	if accepted, matched := server.requireUserSubject(r).(userSubjectAccepted); matched {
 		return accepted
 	}
@@ -569,6 +570,9 @@ func (server Server) requireWorkerSubject(r *http.Request, scope agent.Scope) us
 	}
 	if _, granted := verified.Credential.Scopes.Allows(scope).(agent.ScopeGranted); !granted {
 		return userSubjectRejected{reason: "the agent credential is missing the " + scope.String() + " scope"}
+	}
+	if !verified.Credential.MatchesTask(taskID) {
+		return userSubjectRejected{reason: "the agent credential is not valid for this task"}
 	}
 	return userSubjectAccepted{subject: verified.Subject}
 }
@@ -1153,12 +1157,6 @@ func writeTaskResponse(w http.ResponseWriter, status int, response taskResponse)
 }
 
 func writeTasksResponse(w http.ResponseWriter, status int, response tasksResponse) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(response)
-}
-
-func writeTaskCapabilityTokenResponse(w http.ResponseWriter, status int, response taskCapabilityTokenResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)

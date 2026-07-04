@@ -47,6 +47,11 @@ type StoredReservation struct {
 	AssigneeID   string `json:"assignee_id"`
 	State        string `json:"state"`
 	RequestedBy  string `json:"requested_by"`
+	// IssuedWorkerCredential mirrors the real backend's one-time reveal
+	// field so the Elm client's response decoder stays in sync; the WASM
+	// demo doesn't auto-issue task-scoped credentials, so this is always
+	// empty here.
+	IssuedWorkerCredential string `json:"issued_worker_credential"`
 }
 
 type StoredLedgerEntry struct {
