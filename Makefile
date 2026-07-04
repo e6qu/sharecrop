@@ -1,6 +1,6 @@
 APP := bin/sharecrop
 
-.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet
+.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet
 
 build: frontend
 	go build -o $(APP) ./cmd/sharecrop
@@ -37,7 +37,11 @@ check-copy-paste:
 check-dead-code:
 	go tool deadcode -test ./...
 
-ci: check-format check-contracts check-openapi check-policy check-ts check-copy-paste check-dead-code lint vet test frontend build test-integration test-http e2e-ui
+check-wasm-scenario-parity:
+	deno task wasm:demo:build
+	deno task check:scenario-parity:wasm -- --wasm site/demo/sharecrop-wasm-backend.wasm
+
+ci: check-format check-contracts check-openapi check-policy check-ts check-copy-paste check-dead-code lint vet test frontend build test-integration test-http e2e-ui check-wasm-scenario-parity
 
 css:
 	deno task css:build
