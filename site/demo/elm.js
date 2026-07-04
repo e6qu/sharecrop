@@ -4547,6 +4547,89 @@ function _Http_track(router, xhr, tracker)
 	});
 }
 
+
+function _Time_now(millisToPosix)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		callback(_Scheduler_succeed(millisToPosix(Date.now())));
+	});
+}
+
+var _Time_setInterval = F2(function(interval, task)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		var id = setInterval(function() { _Scheduler_rawSpawn(task); }, interval);
+		return function() { clearInterval(id); };
+	});
+});
+
+function _Time_here()
+{
+	return _Scheduler_binding(function(callback)
+	{
+		callback(_Scheduler_succeed(
+			A2($elm$time$Time$customZone, -(new Date().getTimezoneOffset()), _List_Nil)
+		));
+	});
+}
+
+
+function _Time_getZoneName()
+{
+	return _Scheduler_binding(function(callback)
+	{
+		try
+		{
+			var name = $elm$time$Time$Name(Intl.DateTimeFormat().resolvedOptions().timeZone);
+		}
+		catch (e)
+		{
+			var name = $elm$time$Time$Offset(new Date().getTimezoneOffset());
+		}
+		callback(_Scheduler_succeed(name));
+	});
+}
+
+
+
+var _Bitwise_and = F2(function(a, b)
+{
+	return a & b;
+});
+
+var _Bitwise_or = F2(function(a, b)
+{
+	return a | b;
+});
+
+var _Bitwise_xor = F2(function(a, b)
+{
+	return a ^ b;
+});
+
+function _Bitwise_complement(a)
+{
+	return ~a;
+};
+
+var _Bitwise_shiftLeftBy = F2(function(offset, a)
+{
+	return a << offset;
+});
+
+var _Bitwise_shiftRightBy = F2(function(offset, a)
+{
+	return a >> offset;
+});
+
+var _Bitwise_shiftRightZfBy = F2(function(offset, a)
+{
+	return a >>> offset;
+});
+
+
 function _Url_percentEncode(string)
 {
 	return encodeURIComponent(string);
@@ -7224,111 +7307,25 @@ var $author$project$Sharecrop$Api$confirmPasswordReset = function (model) {
 		});
 };
 var $author$project$Main$copyToClipboard = _Platform_outgoingPort('copyToClipboard', $elm$json$Json$Encode$string);
-var $author$project$Sharecrop$Types$AgentCreated = function (a) {
-	return {$: 'AgentCreated', a: a};
+var $author$project$Sharecrop$Types$AgentExpiresAtResolved = function (a) {
+	return {$: 'AgentExpiresAtResolved', a: a};
 };
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse = F2(
-	function (credential, secret) {
-		return {credential: credential, secret: secret};
-	});
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialResponse = F6(
-	function (id, label, scopes, state, expiresAt, taskID) {
-		return {expiresAt: expiresAt, id: id, label: label, scopes: scopes, state: state, taskID: taskID};
-	});
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive = {$: 'AgentCredentialStateActive'};
-var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked = {$: 'AgentCredentialStateRevoked'};
-var $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'active':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive);
-			case 'revoked':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked);
-			default:
-				return $elm$json$Json$Decode$fail('invalid AgentCredentialState');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead = {$: 'AgentScopeSubmissionsRead'};
-var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview = {$: 'AgentScopeSubmissionsReview'};
-var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite = {$: 'AgentScopeSubmissionsWrite'};
-var $author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead = {$: 'AgentScopeTasksRead'};
-var $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite = {$: 'AgentScopeTasksWrite'};
-var $author$project$Sharecrop$Generated$Agent$agentScopeDecoder = A2(
-	$elm$json$Json$Decode$andThen,
-	function (value) {
-		switch (value) {
-			case 'tasks_read':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead);
-			case 'tasks_write':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite);
-			case 'submissions_write':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite);
-			case 'submissions_read':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead);
-			case 'submissions_review':
-				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview);
-			default:
-				return $elm$json$Json$Decode$fail('invalid AgentScope');
-		}
-	},
-	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A7(
-	$elm$json$Json$Decode$map6,
-	$author$project$Sharecrop$Generated$Agent$AgentCredentialResponse,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'label', $elm$json$Json$Decode$string),
-	A2(
-		$elm$json$Json$Decode$field,
-		'scopes',
-		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Agent$agentScopeDecoder)),
-	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder),
-	A2($elm$json$Json$Decode$field, 'expires_at', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder = A3(
-	$elm$json$Json$Decode$map2,
-	$author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse,
-	A2($elm$json$Json$Decode$field, 'credential', $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder),
-	A2($elm$json$Json$Decode$field, 'secret', $elm$json$Json$Decode$string));
-var $author$project$Sharecrop$Generated$Agent$agentScopeEncoder = function (agentScope) {
-	switch (agentScope.$) {
-		case 'AgentScopeTasksRead':
-			return $elm$json$Json$Encode$string('tasks_read');
-		case 'AgentScopeTasksWrite':
-			return $elm$json$Json$Encode$string('tasks_write');
-		case 'AgentScopeSubmissionsWrite':
-			return $elm$json$Json$Encode$string('submissions_write');
-		case 'AgentScopeSubmissionsRead':
-			return $elm$json$Json$Encode$string('submissions_read');
-		default:
-			return $elm$json$Json$Encode$string('submissions_review');
-	}
+var $elm$time$Time$Name = function (a) {
+	return {$: 'Name', a: a};
 };
-var $author$project$Sharecrop$Api$agentRequestBody = F2(
-	function (agentLabel, scopes) {
-		return $elm$json$Json$Encode$object(
-			_List_fromArray(
-				[
-					_Utils_Tuple2(
-					'label',
-					$elm$json$Json$Encode$string(agentLabel)),
-					_Utils_Tuple2(
-					'scopes',
-					A2($elm$json$Json$Encode$list, $author$project$Sharecrop$Generated$Agent$agentScopeEncoder, scopes))
-				]));
+var $elm$time$Time$Offset = function (a) {
+	return {$: 'Offset', a: a};
+};
+var $elm$time$Time$Zone = F2(
+	function (a, b) {
+		return {$: 'Zone', a: a, b: b};
 	});
-var $author$project$Sharecrop$Api$postAgent = F3(
-	function (token, agentLabel, scopes) {
-		return A5(
-			$author$project$Sharecrop$Api$authorizedRequest,
-			'POST',
-			token,
-			'/api/agent-credentials',
-			$elm$http$Http$jsonBody(
-				A2($author$project$Sharecrop$Api$agentRequestBody, agentLabel, scopes)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AgentCreated, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
-	});
+var $elm$time$Time$customZone = $elm$time$Time$Zone;
+var $elm$time$Time$Posix = function (a) {
+	return {$: 'Posix', a: a};
+};
+var $elm$time$Time$millisToPosix = $elm$time$Time$Posix;
+var $elm$time$Time$now = _Time_now($elm$time$Time$millisToPosix);
 var $author$project$Sharecrop$Api$createAgentCommand = F2(
 	function (model, state) {
 		return $elm$core$List$isEmpty(state.agentScopes) ? _Utils_Tuple2(
@@ -7351,7 +7348,7 @@ var $author$project$Sharecrop$Api$createAgentCommand = F2(
 						current,
 						{agentMessage: $elm$core$Maybe$Nothing, newCredential: $elm$core$Maybe$Nothing});
 				}),
-			A3($author$project$Sharecrop$Api$postAgent, state.accessToken, state.agentLabel, state.agentScopes));
+			A2($elm$core$Task$perform, $author$project$Sharecrop$Types$AgentExpiresAtResolved, $elm$time$Time$now));
 	});
 var $author$project$Sharecrop$Types$CreateOrgReceived = function (a) {
 	return {$: 'CreateOrgReceived', a: a};
@@ -7404,6 +7401,44 @@ var $author$project$Sharecrop$Api$createOrgCommand = F2(
 									$elm$core$String$trim(state.createOrgName)))
 							]))),
 				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CreateOrgReceived, $author$project$Sharecrop$Generated$Organization$organizationResponseDecoder)));
+	});
+var $author$project$Sharecrop$Types$OrgCredentialExpiresAtResolved = function (a) {
+	return {$: 'OrgCredentialExpiresAtResolved', a: a};
+};
+var $author$project$Sharecrop$Api$createOrgCredentialCommand = F2(
+	function (model, state) {
+		return (state.activeOrgId === '') ? _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							orgCredentialMessage: $elm$core$Maybe$Just('Open an organization first.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : ($elm$core$List$isEmpty(state.orgCredentialScopes) ? _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{
+							orgCredentialMessage: $elm$core$Maybe$Just('Select at least one scope.')
+						});
+				}),
+			$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+			A2(
+				$author$project$Sharecrop$Api$updateLoggedIn,
+				model,
+				function (current) {
+					return _Utils_update(
+						current,
+						{newOrgCredential: $elm$core$Maybe$Nothing, orgCredentialMessage: $elm$core$Maybe$Nothing});
+				}),
+			A2($elm$core$Task$perform, $author$project$Sharecrop$Types$OrgCredentialExpiresAtResolved, $elm$time$Time$now)));
 	});
 var $author$project$Sharecrop$Types$CreateOrgTeamReceived = function (a) {
 	return {$: 'CreateOrgTeamReceived', a: a};
@@ -8332,6 +8367,253 @@ var $author$project$Sharecrop$Api$entriesFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $author$project$Sharecrop$Api$monthNumber = function (month) {
+	switch (month.$) {
+		case 'Jan':
+			return 1;
+		case 'Feb':
+			return 2;
+		case 'Mar':
+			return 3;
+		case 'Apr':
+			return 4;
+		case 'May':
+			return 5;
+		case 'Jun':
+			return 6;
+		case 'Jul':
+			return 7;
+		case 'Aug':
+			return 8;
+		case 'Sep':
+			return 9;
+		case 'Oct':
+			return 10;
+		case 'Nov':
+			return 11;
+		default:
+			return 12;
+	}
+};
+var $elm$core$String$cons = _String_cons;
+var $elm$core$String$fromChar = function (_char) {
+	return A2($elm$core$String$cons, _char, '');
+};
+var $elm$core$Bitwise$and = _Bitwise_and;
+var $elm$core$Bitwise$shiftRightBy = _Bitwise_shiftRightBy;
+var $elm$core$String$repeatHelp = F3(
+	function (n, chunk, result) {
+		return (n <= 0) ? result : A3(
+			$elm$core$String$repeatHelp,
+			n >> 1,
+			_Utils_ap(chunk, chunk),
+			(!(n & 1)) ? result : _Utils_ap(result, chunk));
+	});
+var $elm$core$String$repeat = F2(
+	function (n, chunk) {
+		return A3($elm$core$String$repeatHelp, n, chunk, '');
+	});
+var $elm$core$String$padLeft = F3(
+	function (n, _char, string) {
+		return _Utils_ap(
+			A2(
+				$elm$core$String$repeat,
+				n - $elm$core$String$length(string),
+				$elm$core$String$fromChar(_char)),
+			string);
+	});
+var $elm$time$Time$flooredDiv = F2(
+	function (numerator, denominator) {
+		return $elm$core$Basics$floor(numerator / denominator);
+	});
+var $elm$time$Time$posixToMillis = function (_v0) {
+	var millis = _v0.a;
+	return millis;
+};
+var $elm$time$Time$toAdjustedMinutesHelp = F3(
+	function (defaultOffset, posixMinutes, eras) {
+		toAdjustedMinutesHelp:
+		while (true) {
+			if (!eras.b) {
+				return posixMinutes + defaultOffset;
+			} else {
+				var era = eras.a;
+				var olderEras = eras.b;
+				if (_Utils_cmp(era.start, posixMinutes) < 0) {
+					return posixMinutes + era.offset;
+				} else {
+					var $temp$defaultOffset = defaultOffset,
+						$temp$posixMinutes = posixMinutes,
+						$temp$eras = olderEras;
+					defaultOffset = $temp$defaultOffset;
+					posixMinutes = $temp$posixMinutes;
+					eras = $temp$eras;
+					continue toAdjustedMinutesHelp;
+				}
+			}
+		}
+	});
+var $elm$time$Time$toAdjustedMinutes = F2(
+	function (_v0, time) {
+		var defaultOffset = _v0.a;
+		var eras = _v0.b;
+		return A3(
+			$elm$time$Time$toAdjustedMinutesHelp,
+			defaultOffset,
+			A2(
+				$elm$time$Time$flooredDiv,
+				$elm$time$Time$posixToMillis(time),
+				60000),
+			eras);
+	});
+var $elm$core$Basics$ge = _Utils_ge;
+var $elm$core$Basics$negate = function (n) {
+	return -n;
+};
+var $elm$time$Time$toCivil = function (minutes) {
+	var rawDay = A2($elm$time$Time$flooredDiv, minutes, 60 * 24) + 719468;
+	var era = (((rawDay >= 0) ? rawDay : (rawDay - 146096)) / 146097) | 0;
+	var dayOfEra = rawDay - (era * 146097);
+	var yearOfEra = ((((dayOfEra - ((dayOfEra / 1460) | 0)) + ((dayOfEra / 36524) | 0)) - ((dayOfEra / 146096) | 0)) / 365) | 0;
+	var dayOfYear = dayOfEra - (((365 * yearOfEra) + ((yearOfEra / 4) | 0)) - ((yearOfEra / 100) | 0));
+	var mp = (((5 * dayOfYear) + 2) / 153) | 0;
+	var month = mp + ((mp < 10) ? 3 : (-9));
+	var year = yearOfEra + (era * 400);
+	return {
+		day: (dayOfYear - ((((153 * mp) + 2) / 5) | 0)) + 1,
+		month: month,
+		year: year + ((month <= 2) ? 1 : 0)
+	};
+};
+var $elm$time$Time$toDay = F2(
+	function (zone, time) {
+		return $elm$time$Time$toCivil(
+			A2($elm$time$Time$toAdjustedMinutes, zone, time)).day;
+	});
+var $elm$core$Basics$modBy = _Basics_modBy;
+var $elm$time$Time$toHour = F2(
+	function (zone, time) {
+		return A2(
+			$elm$core$Basics$modBy,
+			24,
+			A2(
+				$elm$time$Time$flooredDiv,
+				A2($elm$time$Time$toAdjustedMinutes, zone, time),
+				60));
+	});
+var $elm$time$Time$toMinute = F2(
+	function (zone, time) {
+		return A2(
+			$elm$core$Basics$modBy,
+			60,
+			A2($elm$time$Time$toAdjustedMinutes, zone, time));
+	});
+var $elm$time$Time$Apr = {$: 'Apr'};
+var $elm$time$Time$Aug = {$: 'Aug'};
+var $elm$time$Time$Dec = {$: 'Dec'};
+var $elm$time$Time$Feb = {$: 'Feb'};
+var $elm$time$Time$Jan = {$: 'Jan'};
+var $elm$time$Time$Jul = {$: 'Jul'};
+var $elm$time$Time$Jun = {$: 'Jun'};
+var $elm$time$Time$Mar = {$: 'Mar'};
+var $elm$time$Time$May = {$: 'May'};
+var $elm$time$Time$Nov = {$: 'Nov'};
+var $elm$time$Time$Oct = {$: 'Oct'};
+var $elm$time$Time$Sep = {$: 'Sep'};
+var $elm$time$Time$toMonth = F2(
+	function (zone, time) {
+		var _v0 = $elm$time$Time$toCivil(
+			A2($elm$time$Time$toAdjustedMinutes, zone, time)).month;
+		switch (_v0) {
+			case 1:
+				return $elm$time$Time$Jan;
+			case 2:
+				return $elm$time$Time$Feb;
+			case 3:
+				return $elm$time$Time$Mar;
+			case 4:
+				return $elm$time$Time$Apr;
+			case 5:
+				return $elm$time$Time$May;
+			case 6:
+				return $elm$time$Time$Jun;
+			case 7:
+				return $elm$time$Time$Jul;
+			case 8:
+				return $elm$time$Time$Aug;
+			case 9:
+				return $elm$time$Time$Sep;
+			case 10:
+				return $elm$time$Time$Oct;
+			case 11:
+				return $elm$time$Time$Nov;
+			default:
+				return $elm$time$Time$Dec;
+		}
+	});
+var $elm$time$Time$toSecond = F2(
+	function (_v0, time) {
+		return A2(
+			$elm$core$Basics$modBy,
+			60,
+			A2(
+				$elm$time$Time$flooredDiv,
+				$elm$time$Time$posixToMillis(time),
+				1000));
+	});
+var $elm$time$Time$toYear = F2(
+	function (zone, time) {
+		return $elm$time$Time$toCivil(
+			A2($elm$time$Time$toAdjustedMinutes, zone, time)).year;
+	});
+var $elm$time$Time$utc = A2($elm$time$Time$Zone, 0, _List_Nil);
+var $author$project$Sharecrop$Api$formatRFC3339 = function (posix) {
+	return A3(
+		$elm$core$String$padLeft,
+		4,
+		_Utils_chr('0'),
+		$elm$core$String$fromInt(
+			A2($elm$time$Time$toYear, $elm$time$Time$utc, posix))) + ('-' + (A3(
+		$elm$core$String$padLeft,
+		2,
+		_Utils_chr('0'),
+		$elm$core$String$fromInt(
+			$author$project$Sharecrop$Api$monthNumber(
+				A2($elm$time$Time$toMonth, $elm$time$Time$utc, posix)))) + ('-' + (A3(
+		$elm$core$String$padLeft,
+		2,
+		_Utils_chr('0'),
+		$elm$core$String$fromInt(
+			A2($elm$time$Time$toDay, $elm$time$Time$utc, posix))) + ('T' + (A3(
+		$elm$core$String$padLeft,
+		2,
+		_Utils_chr('0'),
+		$elm$core$String$fromInt(
+			A2($elm$time$Time$toHour, $elm$time$Time$utc, posix))) + (':' + (A3(
+		$elm$core$String$padLeft,
+		2,
+		_Utils_chr('0'),
+		$elm$core$String$fromInt(
+			A2($elm$time$Time$toMinute, $elm$time$Time$utc, posix))) + (':' + (A3(
+		$elm$core$String$padLeft,
+		2,
+		_Utils_chr('0'),
+		$elm$core$String$fromInt(
+			A2($elm$time$Time$toSecond, $elm$time$Time$utc, posix))) + 'Z'))))))))));
+};
+var $author$project$Sharecrop$Api$expiresAtFromHours = F2(
+	function (now, rawHours) {
+		var _v0 = $elm$core$String$toInt(
+			$elm$core$String$trim(rawHours));
+		if (_v0.$ === 'Just') {
+			var hours = _v0.a;
+			return (hours > 0) ? $author$project$Sharecrop$Api$formatRFC3339(
+				$elm$time$Time$millisToPosix(
+					$elm$time$Time$posixToMillis(now) + (hours * 3600000))) : '';
+		} else {
+			return '';
+		}
+	});
 var $author$project$Sharecrop$Types$AdminModerationReportsReceived = function (a) {
 	return {$: 'AdminModerationReportsReceived', a: a};
 };
@@ -9164,7 +9446,6 @@ var $author$project$Sharecrop$Api$fundTaskCommand = F2(
 				$elm$core$Platform$Cmd$none);
 		}
 	});
-var $elm$core$Basics$ge = _Utils_ge;
 var $author$project$Sharecrop$Types$PlatformAdminGranted = function (a) {
 	return {$: 'PlatformAdminGranted', a: a};
 };
@@ -9202,6 +9483,10 @@ var $author$project$Sharecrop$Labels$httpErrorLabel = function (error) {
 			return 'The response was unexpected: ' + message;
 	}
 };
+var $author$project$Main$issuedCredentialSecret = F2(
+	function (rawSecret, previous) {
+		return (rawSecret === '') ? previous : $elm$core$Maybe$Just(rawSecret);
+	});
 var $elm$browser$Browser$Navigation$load = _Browser_load;
 var $author$project$Sharecrop$Types$BalanceReceived = function (a) {
 	return {$: 'BalanceReceived', a: a};
@@ -9228,6 +9513,103 @@ var $author$project$Sharecrop$Types$CredentialsReceived = function (a) {
 var $author$project$Sharecrop$Generated$Agent$AgentCredentialsResponse = function (credentials) {
 	return {credentials: credentials};
 };
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialResponse = F6(
+	function (id, label, scopes, state, expiresAt, taskID) {
+		return {expiresAt: expiresAt, id: id, label: label, scopes: scopes, state: state, taskID: taskID};
+	});
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive = {$: 'AgentCredentialStateActive'};
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked = {$: 'AgentCredentialStateRevoked'};
+var $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'active':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentCredentialStateActive);
+			case 'revoked':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentCredentialStateRevoked);
+			default:
+				return $elm$json$Json$Decode$fail('invalid AgentCredentialState');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Agent$AgentScopeCollectiblesManage = {$: 'AgentScopeCollectiblesManage'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeCollectiblesRead = {$: 'AgentScopeCollectiblesRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeCredentialsManage = {$: 'AgentScopeCredentialsManage'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeLedgerRead = {$: 'AgentScopeLedgerRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeModerationManage = {$: 'AgentScopeModerationManage'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeModerationRead = {$: 'AgentScopeModerationRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeNotificationsManage = {$: 'AgentScopeNotificationsManage'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeNotificationsRead = {$: 'AgentScopeNotificationsRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeOrgManage = {$: 'AgentScopeOrgManage'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeOrgRead = {$: 'AgentScopeOrgRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopePlatformAdmin = {$: 'AgentScopePlatformAdmin'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopePrivacyManage = {$: 'AgentScopePrivacyManage'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopePrivacyRead = {$: 'AgentScopePrivacyRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead = {$: 'AgentScopeSubmissionsRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview = {$: 'AgentScopeSubmissionsReview'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite = {$: 'AgentScopeSubmissionsWrite'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead = {$: 'AgentScopeTasksRead'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite = {$: 'AgentScopeTasksWrite'};
+var $author$project$Sharecrop$Generated$Agent$AgentScopeUsersRead = {$: 'AgentScopeUsersRead'};
+var $author$project$Sharecrop$Generated$Agent$agentScopeDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (value) {
+		switch (value) {
+			case 'tasks_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead);
+			case 'tasks_write':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite);
+			case 'submissions_write':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite);
+			case 'submissions_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead);
+			case 'submissions_review':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview);
+			case 'org_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeOrgRead);
+			case 'org_manage':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeOrgManage);
+			case 'collectibles_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeCollectiblesRead);
+			case 'collectibles_manage':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeCollectiblesManage);
+			case 'notifications_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeNotificationsRead);
+			case 'notifications_manage':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeNotificationsManage);
+			case 'users_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeUsersRead);
+			case 'ledger_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeLedgerRead);
+			case 'moderation_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeModerationRead);
+			case 'moderation_manage':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeModerationManage);
+			case 'privacy_read':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopePrivacyRead);
+			case 'privacy_manage':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopePrivacyManage);
+			case 'platform_admin':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopePlatformAdmin);
+			case 'credentials_manage':
+				return $elm$json$Json$Decode$succeed($author$project$Sharecrop$Generated$Agent$AgentScopeCredentialsManage);
+			default:
+				return $elm$json$Json$Decode$fail('invalid AgentScope');
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
+	$author$project$Sharecrop$Generated$Agent$AgentCredentialResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'label', $elm$json$Json$Decode$string),
+	A2(
+		$elm$json$Json$Decode$field,
+		'scopes',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Agent$agentScopeDecoder)),
+	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder),
+	A2($elm$json$Json$Decode$field, 'expires_at', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'task_id', $elm$json$Json$Decode$string));
 var $author$project$Sharecrop$Generated$Agent$agentCredentialsResponseDecoder = A2(
 	$elm$json$Json$Decode$map,
 	$author$project$Sharecrop$Generated$Agent$AgentCredentialsResponse,
@@ -9323,6 +9705,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		adminPrivacyResolutionNote: '',
 		adminRetentionRedactedFieldCount: $elm$core$Maybe$Nothing,
 		adminSelectedUserId: '',
+		agentExpiresHours: '',
 		agentLabel: '',
 		agentMessage: $elm$core$Maybe$Nothing,
 		agentScopes: _List_fromArray(
@@ -9391,6 +9774,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		moderationMessage: $elm$core$Maybe$Nothing,
 		moderationReason: $author$project$Sharecrop$Generated$Moderation$ModerationReasonPolicy,
 		newCredential: $elm$core$Maybe$Nothing,
+		newOrgCredential: $elm$core$Maybe$Nothing,
 		newPassword: '',
 		notifications: _List_Nil,
 		notificationsOffset: 0,
@@ -9401,6 +9785,12 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		orgBalance: $elm$core$Maybe$Nothing,
 		orgCollectibles: _List_Nil,
 		orgCollectiblesMessage: $elm$core$Maybe$Nothing,
+		orgCredentialExpiresHours: '',
+		orgCredentialLabel: '',
+		orgCredentialMessage: $elm$core$Maybe$Nothing,
+		orgCredentialScopes: _List_fromArray(
+			[$author$project$Sharecrop$Generated$Agent$AgentScopeOrgRead]),
+		orgCredentials: _List_Nil,
 		orgLedger: _List_Nil,
 		orgLedgerOffset: 0,
 		orgMembers: _List_Nil,
@@ -9432,6 +9822,7 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 			['member']),
 		reservationMessage: $elm$core$Maybe$Nothing,
 		reservationOrganizationId: '',
+		reservationSecret: $elm$core$Maybe$Nothing,
 		reservationTeamId: '',
 		reservations: _List_Nil,
 		reviewBan: false,
@@ -9621,6 +10012,73 @@ var $author$project$Sharecrop$View$mintSuccessLabel = function (collectible) {
 var $author$project$Sharecrop$Types$TaskTokenMinted = function (a) {
 	return {$: 'TaskTokenMinted', a: a};
 };
+var $author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse = F2(
+	function (credential, secret) {
+		return {credential: credential, secret: secret};
+	});
+var $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Agent$AgentCredentialCreatedResponse,
+	A2($elm$json$Json$Decode$field, 'credential', $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder),
+	A2($elm$json$Json$Decode$field, 'secret', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Agent$agentScopeEncoder = function (agentScope) {
+	switch (agentScope.$) {
+		case 'AgentScopeTasksRead':
+			return $elm$json$Json$Encode$string('tasks_read');
+		case 'AgentScopeTasksWrite':
+			return $elm$json$Json$Encode$string('tasks_write');
+		case 'AgentScopeSubmissionsWrite':
+			return $elm$json$Json$Encode$string('submissions_write');
+		case 'AgentScopeSubmissionsRead':
+			return $elm$json$Json$Encode$string('submissions_read');
+		case 'AgentScopeSubmissionsReview':
+			return $elm$json$Json$Encode$string('submissions_review');
+		case 'AgentScopeOrgRead':
+			return $elm$json$Json$Encode$string('org_read');
+		case 'AgentScopeOrgManage':
+			return $elm$json$Json$Encode$string('org_manage');
+		case 'AgentScopeCollectiblesRead':
+			return $elm$json$Json$Encode$string('collectibles_read');
+		case 'AgentScopeCollectiblesManage':
+			return $elm$json$Json$Encode$string('collectibles_manage');
+		case 'AgentScopeNotificationsRead':
+			return $elm$json$Json$Encode$string('notifications_read');
+		case 'AgentScopeNotificationsManage':
+			return $elm$json$Json$Encode$string('notifications_manage');
+		case 'AgentScopeUsersRead':
+			return $elm$json$Json$Encode$string('users_read');
+		case 'AgentScopeLedgerRead':
+			return $elm$json$Json$Encode$string('ledger_read');
+		case 'AgentScopeModerationRead':
+			return $elm$json$Json$Encode$string('moderation_read');
+		case 'AgentScopeModerationManage':
+			return $elm$json$Json$Encode$string('moderation_manage');
+		case 'AgentScopePrivacyRead':
+			return $elm$json$Json$Encode$string('privacy_read');
+		case 'AgentScopePrivacyManage':
+			return $elm$json$Json$Encode$string('privacy_manage');
+		case 'AgentScopePlatformAdmin':
+			return $elm$json$Json$Encode$string('platform_admin');
+		default:
+			return $elm$json$Json$Encode$string('credentials_manage');
+	}
+};
+var $author$project$Sharecrop$Api$agentRequestBody = F3(
+	function (agentLabel, scopes, expiresAt) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'label',
+					$elm$json$Json$Encode$string(agentLabel)),
+					_Utils_Tuple2(
+					'scopes',
+					A2($elm$json$Json$Encode$list, $author$project$Sharecrop$Generated$Agent$agentScopeEncoder, scopes)),
+					_Utils_Tuple2(
+					'expires_at',
+					$elm$json$Json$Encode$string(expiresAt))
+				]));
+	});
 var $author$project$Sharecrop$Api$mintTaskToken = function (token) {
 	return A5(
 		$author$project$Sharecrop$Api$authorizedRequest,
@@ -9628,11 +10086,12 @@ var $author$project$Sharecrop$Api$mintTaskToken = function (token) {
 		token,
 		'/api/agent-credentials',
 		$elm$http$Http$jsonBody(
-			A2(
+			A3(
 				$author$project$Sharecrop$Api$agentRequestBody,
 				'Task worker token',
 				_List_fromArray(
-					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead]))),
+					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead]),
+				'')),
 		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TaskTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
 };
 var $author$project$Sharecrop$Types$UserTokenMinted = function (a) {
@@ -9645,12 +10104,21 @@ var $author$project$Sharecrop$Api$mintUserToken = function (token) {
 		token,
 		'/api/agent-credentials',
 		$elm$http$Http$jsonBody(
-			A2(
+			A3(
 				$author$project$Sharecrop$Api$agentRequestBody,
 				'Personal agent token',
 				_List_fromArray(
-					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview]))),
+					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview]),
+				'')),
 		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
+};
+var $author$project$Sharecrop$Api$orgCredentialsFromResult = function (result) {
+	if (result.$ === 'Ok') {
+		var response = result.a;
+		return response.credentials;
+	} else {
+		return _List_Nil;
+	}
 };
 var $author$project$Main$orgTaskSavedViewScope = 'organization_tasks';
 var $author$project$Main$orgTeamSearchOrganizationID = function (state) {
@@ -9770,6 +10238,20 @@ var $author$project$Sharecrop$Api$postAddTeamMember = F3(
 						]))),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AddTeamMemberReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder));
 	});
+var $author$project$Sharecrop$Types$AgentCreated = function (a) {
+	return {$: 'AgentCreated', a: a};
+};
+var $author$project$Sharecrop$Api$postAgent = F4(
+	function (token, agentLabel, scopes, expiresAt) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/agent-credentials',
+			$elm$http$Http$jsonBody(
+				A3($author$project$Sharecrop$Api$agentRequestBody, agentLabel, scopes, expiresAt)),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AgentCreated, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$AuthReceived = function (a) {
 	return {$: 'AuthReceived', a: a};
 };
@@ -9837,6 +10319,45 @@ var $author$project$Sharecrop$Api$postOpenTask = F2(
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OpenTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+	});
+var $author$project$Sharecrop$Types$OrgCredentialCreated = function (a) {
+	return {$: 'OrgCredentialCreated', a: a};
+};
+var $author$project$Sharecrop$Generated$Agent$OrgCredentialCreatedResponse = F2(
+	function (credential, secret) {
+		return {credential: credential, secret: secret};
+	});
+var $author$project$Sharecrop$Generated$Agent$OrgCredentialResponse = F6(
+	function (id, organizationID, label, scopes, state, expiresAt) {
+		return {expiresAt: expiresAt, id: id, label: label, organizationID: organizationID, scopes: scopes, state: state};
+	});
+var $author$project$Sharecrop$Generated$Agent$orgCredentialResponseDecoder = A7(
+	$elm$json$Json$Decode$map6,
+	$author$project$Sharecrop$Generated$Agent$OrgCredentialResponse,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'organization_id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'label', $elm$json$Json$Decode$string),
+	A2(
+		$elm$json$Json$Decode$field,
+		'scopes',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Agent$agentScopeDecoder)),
+	A2($elm$json$Json$Decode$field, 'state', $author$project$Sharecrop$Generated$Agent$agentCredentialStateDecoder),
+	A2($elm$json$Json$Decode$field, 'expires_at', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Generated$Agent$orgCredentialCreatedResponseDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Sharecrop$Generated$Agent$OrgCredentialCreatedResponse,
+	A2($elm$json$Json$Decode$field, 'credential', $author$project$Sharecrop$Generated$Agent$orgCredentialResponseDecoder),
+	A2($elm$json$Json$Decode$field, 'secret', $elm$json$Json$Decode$string));
+var $author$project$Sharecrop$Api$postOrgCredential = F5(
+	function (token, organizationId, label, scopes, expiresAt) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/organizations/' + (organizationId + '/credentials'),
+			$elm$http$Http$jsonBody(
+				A3($author$project$Sharecrop$Api$agentRequestBody, label, scopes, expiresAt)),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCredentialCreated, $author$project$Sharecrop$Generated$Agent$orgCredentialCreatedResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$RefundCollectibleRewardReceived = function (a) {
 	return {$: 'RefundCollectibleRewardReceived', a: a};
@@ -9967,6 +10488,20 @@ var $author$project$Sharecrop$Api$postReservation = F2(
 			$elm$http$Http$jsonBody(
 				$author$project$Sharecrop$Api$reservationRequestBody(state)),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$ReservationReceived, $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder));
+	});
+var $author$project$Sharecrop$Types$OrgCredentialRevoked = function (a) {
+	return {$: 'OrgCredentialRevoked', a: a};
+};
+var $author$project$Sharecrop$Api$postRevokeOrgCredential = F3(
+	function (token, organizationId, credentialId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/organizations/' + (organizationId + ('/credentials/' + (credentialId + '/revoke'))),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(_List_Nil)),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCredentialRevoked, $author$project$Sharecrop$Generated$Agent$orgCredentialResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$TaskCommentReceived = function (a) {
 	return {$: 'TaskCommentReceived', a: a};
@@ -10119,10 +10654,6 @@ var $elm$core$List$member = F2(
 			},
 			xs);
 	});
-var $elm$time$Time$Posix = function (a) {
-	return {$: 'Posix', a: a};
-};
-var $elm$time$Time$millisToPosix = $elm$time$Time$Posix;
 var $elm$file$File$mime = _File_mime;
 var $elm$file$File$name = _File_name;
 var $elm$core$Basics$not = _Basics_not;
@@ -10317,6 +10848,38 @@ var $author$project$Sharecrop$Api$refreshLedger = function (model) {
 					$author$project$Sharecrop$Api$fetchBalance(state.accessToken),
 					A2($author$project$Sharecrop$Api$fetchLedger, state.accessToken, state.ledgerOffset)
 				]));
+	} else {
+		return $elm$core$Platform$Cmd$none;
+	}
+};
+var $author$project$Sharecrop$Types$OrgCredentialsReceived = function (a) {
+	return {$: 'OrgCredentialsReceived', a: a};
+};
+var $author$project$Sharecrop$Generated$Agent$OrgCredentialsResponse = function (credentials) {
+	return {credentials: credentials};
+};
+var $author$project$Sharecrop$Generated$Agent$orgCredentialsResponseDecoder = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Sharecrop$Generated$Agent$OrgCredentialsResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'credentials',
+		$elm$json$Json$Decode$list($author$project$Sharecrop$Generated$Agent$orgCredentialResponseDecoder)));
+var $author$project$Sharecrop$Api$fetchOrgCredentials = F2(
+	function (token, organizationId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/organizations/' + (organizationId + '/credentials'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCredentialsReceived, $author$project$Sharecrop$Generated$Agent$orgCredentialsResponseDecoder));
+	});
+var $author$project$Sharecrop$Api$refreshOrgCredentials = function (model) {
+	var _v0 = model.session;
+	if (_v0.$ === 'LoggedIn') {
+		var state = _v0.a;
+		return A2($author$project$Sharecrop$Api$fetchOrgCredentials, state.accessToken, state.activeOrgId);
 	} else {
 		return $elm$core$Platform$Cmd$none;
 	}
@@ -10933,7 +11496,8 @@ var $author$project$Sharecrop$Api$loadOrganization = F2(
 					'/api/organizations/' + (organizationId + '/members'),
 					$elm$http$Http$emptyBody,
 					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgMembersReceived, $author$project$Sharecrop$Generated$Organization$organizationMembersResponseDecoder)),
-					A7($author$project$Sharecrop$Api$fetchOrgTasksPage, token, organizationId, '', '', '', 'newest', 0)
+					A7($author$project$Sharecrop$Api$fetchOrgTasksPage, token, organizationId, '', '', '', 'newest', 0),
+					A2($author$project$Sharecrop$Api$fetchOrgCredentials, token, organizationId)
 				]));
 	});
 var $author$project$Sharecrop$Generated$Admin$OperationsResponse = F8(
@@ -12724,12 +13288,39 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'AgentExpiresHoursChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{agentExpiresHours: value});
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'CreateAgentClicked':
 				return A2(
 					$author$project$Sharecrop$Api$withSession,
 					model,
 					function (state) {
 						return A2($author$project$Sharecrop$Api$createAgentCommand, model, state);
+					});
+			case 'AgentExpiresAtResolved':
+				var now = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A4(
+								$author$project$Sharecrop$Api$postAgent,
+								state.accessToken,
+								state.agentLabel,
+								state.agentScopes,
+								A2($author$project$Sharecrop$Api$expiresAtFromHours, now, state.agentExpiresHours)));
 					});
 			case 'AgentCreated':
 				if (msg.a.$ === 'Ok') {
@@ -12862,6 +13453,144 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					model,
 					$author$project$Sharecrop$Api$refreshCredentials(model));
+			case 'OrgCredentialsReceived':
+				var result = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									orgCredentials: $author$project$Sharecrop$Api$orgCredentialsFromResult(result)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'OrgCredentialLabelChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{orgCredentialLabel: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ToggleOrgCredentialScope':
+				var scope = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									orgCredentialScopes: A2($author$project$Sharecrop$Api$toggleScope, scope, state.orgCredentialScopes)
+								});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'OrgCredentialExpiresHoursChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{orgCredentialExpiresHours: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'CreateOrgCredentialClicked':
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return A2($author$project$Sharecrop$Api$createOrgCredentialCommand, model, state);
+					});
+			case 'OrgCredentialExpiresAtResolved':
+				var now = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A5(
+								$author$project$Sharecrop$Api$postOrgCredential,
+								state.accessToken,
+								state.activeOrgId,
+								state.orgCredentialLabel,
+								state.orgCredentialScopes,
+								A2($author$project$Sharecrop$Api$expiresAtFromHours, now, state.orgCredentialExpiresHours)));
+					});
+			case 'OrgCredentialCreated':
+				if (msg.a.$ === 'Ok') {
+					var created = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										newOrgCredential: $elm$core$Maybe$Just(created),
+										orgCredentialMessage: $elm$core$Maybe$Nothing
+									});
+							}),
+						$author$project$Sharecrop$Api$refreshOrgCredentials(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										orgCredentialMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'RevokeOrgCredentialClicked':
+				var credentialId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A3($author$project$Sharecrop$Api$postRevokeOrgCredential, state.accessToken, state.activeOrgId, credentialId));
+					});
+			case 'OrgCredentialRevoked':
+				if (msg.a.$ === 'Ok') {
+					return _Utils_Tuple2(
+						model,
+						$author$project$Sharecrop$Api$refreshOrgCredentials(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										orgCredentialMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'LogoutClicked':
 				return _Utils_Tuple2(
 					_Utils_update(
@@ -13055,7 +13784,8 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										reservationMessage: $elm$core$Maybe$Just(
-											$author$project$Sharecrop$View$reservationSuccessLabel(reservation))
+											$author$project$Sharecrop$View$reservationSuccessLabel(reservation)),
+										reservationSecret: A2($author$project$Main$issuedCredentialSecret, reservation.issuedWorkerCredential, state.reservationSecret)
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshDetailReservations(model));
@@ -13136,7 +13866,8 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										reservationMessage: $elm$core$Maybe$Just(
-											$author$project$Sharecrop$View$reservationSuccessLabel(reservation))
+											$author$project$Sharecrop$View$reservationSuccessLabel(reservation)),
+										reservationSecret: A2($author$project$Main$issuedCredentialSecret, reservation.issuedWorkerCredential, state.reservationSecret)
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshDetailReservations(model));
@@ -18773,18 +19504,24 @@ var $author$project$Sharecrop$View$adminView = function (state) {
 				A2($author$project$Sharecrop$View$maybeNote, state.adminMessage, 'admin-message')
 			]));
 };
+var $author$project$Sharecrop$Types$AgentExpiresHoursChanged = function (a) {
+	return {$: 'AgentExpiresHoursChanged', a: a};
+};
 var $author$project$Sharecrop$Types$AgentLabelChanged = function (a) {
 	return {$: 'AgentLabelChanged', a: a};
 };
 var $author$project$Sharecrop$Types$CreateAgentClicked = {$: 'CreateAgentClicked'};
 var $author$project$Sharecrop$Labels$allScopes = _List_fromArray(
-	[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview]);
+	[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview, $author$project$Sharecrop$Generated$Agent$AgentScopeOrgRead, $author$project$Sharecrop$Generated$Agent$AgentScopeOrgManage, $author$project$Sharecrop$Generated$Agent$AgentScopeCollectiblesRead, $author$project$Sharecrop$Generated$Agent$AgentScopeCollectiblesManage, $author$project$Sharecrop$Generated$Agent$AgentScopeNotificationsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeNotificationsManage, $author$project$Sharecrop$Generated$Agent$AgentScopeUsersRead, $author$project$Sharecrop$Generated$Agent$AgentScopeLedgerRead, $author$project$Sharecrop$Generated$Agent$AgentScopeModerationRead, $author$project$Sharecrop$Generated$Agent$AgentScopeModerationManage, $author$project$Sharecrop$Generated$Agent$AgentScopePrivacyRead, $author$project$Sharecrop$Generated$Agent$AgentScopePrivacyManage, $author$project$Sharecrop$Generated$Agent$AgentScopePlatformAdmin, $author$project$Sharecrop$Generated$Agent$AgentScopeCredentialsManage]);
 var $author$project$Sharecrop$Labels$credentialStateLabel = function (state) {
 	if (state.$ === 'AgentCredentialStateActive') {
 		return 'active';
 	} else {
 		return 'revoked';
 	}
+};
+var $author$project$Sharecrop$View$expiryNote = function (expiresAt) {
+	return (expiresAt === '') ? '' : (' · expires ' + expiresAt);
 };
 var $author$project$Sharecrop$Types$RevokeClicked = function (a) {
 	return {$: 'RevokeClicked', a: a};
@@ -18824,8 +19561,36 @@ var $author$project$Sharecrop$Labels$scopeLabel = function (scope) {
 			return 'Submit work';
 		case 'AgentScopeSubmissionsRead':
 			return 'Read submissions';
-		default:
+		case 'AgentScopeSubmissionsReview':
 			return 'Review submissions';
+		case 'AgentScopeOrgRead':
+			return 'Read organizations';
+		case 'AgentScopeOrgManage':
+			return 'Manage organizations';
+		case 'AgentScopeCollectiblesRead':
+			return 'Read collectibles';
+		case 'AgentScopeCollectiblesManage':
+			return 'Manage collectibles';
+		case 'AgentScopeNotificationsRead':
+			return 'Read notifications';
+		case 'AgentScopeNotificationsManage':
+			return 'Manage notifications';
+		case 'AgentScopeUsersRead':
+			return 'Read user directory';
+		case 'AgentScopeLedgerRead':
+			return 'Read ledger';
+		case 'AgentScopeModerationRead':
+			return 'Read moderation reports';
+		case 'AgentScopeModerationManage':
+			return 'Triage moderation reports';
+		case 'AgentScopePrivacyRead':
+			return 'Read privacy requests';
+		case 'AgentScopePrivacyManage':
+			return 'Manage privacy requests';
+		case 'AgentScopePlatformAdmin':
+			return 'Platform admin';
+		default:
+			return 'Manage own credentials';
 	}
 };
 var $author$project$Sharecrop$View$credentialRow = function (credential) {
@@ -18862,10 +19627,10 @@ var $author$project$Sharecrop$View$credentialRow = function (credential) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								$author$project$Sharecrop$Labels$credentialStateLabel(credential.state) + (' · ' + A2(
+								$author$project$Sharecrop$Labels$credentialStateLabel(credential.state) + ($author$project$Sharecrop$View$expiryNote(credential.expiresAt) + (' · ' + A2(
 									$elm$core$String$join,
 									', ',
-									A2($elm$core$List$map, $author$project$Sharecrop$Labels$scopeLabel, credential.scopes))))
+									A2($elm$core$List$map, $author$project$Sharecrop$Labels$scopeLabel, credential.scopes)))))
 							]))
 					])),
 				$author$project$Sharecrop$View$revokeButton(credential)
@@ -18944,8 +19709,36 @@ var $author$project$Sharecrop$Labels$scopeTag = function (scope) {
 			return 'submissions_write';
 		case 'AgentScopeSubmissionsRead':
 			return 'submissions_read';
-		default:
+		case 'AgentScopeSubmissionsReview':
 			return 'submissions_review';
+		case 'AgentScopeOrgRead':
+			return 'org_read';
+		case 'AgentScopeOrgManage':
+			return 'org_manage';
+		case 'AgentScopeCollectiblesRead':
+			return 'collectibles_read';
+		case 'AgentScopeCollectiblesManage':
+			return 'collectibles_manage';
+		case 'AgentScopeNotificationsRead':
+			return 'notifications_read';
+		case 'AgentScopeNotificationsManage':
+			return 'notifications_manage';
+		case 'AgentScopeUsersRead':
+			return 'users_read';
+		case 'AgentScopeLedgerRead':
+			return 'ledger_read';
+		case 'AgentScopeModerationRead':
+			return 'moderation_read';
+		case 'AgentScopeModerationManage':
+			return 'moderation_manage';
+		case 'AgentScopePrivacyRead':
+			return 'privacy_read';
+		case 'AgentScopePrivacyManage':
+			return 'privacy_manage';
+		case 'AgentScopePlatformAdmin':
+			return 'platform_admin';
+		default:
+			return 'credentials_manage';
 	}
 };
 var $author$project$Sharecrop$View$scopeCheckbox = F2(
@@ -19041,6 +19834,21 @@ var $author$project$Sharecrop$View$agentsView = F2(
 								$elm$core$List$map,
 								$author$project$Sharecrop$View$scopeCheckbox(state.agentScopes),
 								$author$project$Sharecrop$Labels$allScopes)),
+							A2(
+							$author$project$Sharecrop$Ui$fieldLabel,
+							'Expires in (hours, blank for never)',
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$textInput(
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('number'),
+											$elm$html$Html$Attributes$placeholder('never'),
+											$elm$html$Html$Attributes$value(state.agentExpiresHours),
+											$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$AgentExpiresHoursChanged),
+											$author$project$Sharecrop$Ui$testId('agent-expires-hours')
+										]))
+								])),
 							A2(
 							$author$project$Sharecrop$Ui$primaryButton,
 							_List_fromArray(
@@ -21638,9 +22446,16 @@ var $author$project$Sharecrop$View$inboxView = function (state) {
 				A2($author$project$Sharecrop$View$maybeNote, state.inboxMessage, 'inbox-message')
 			]));
 };
+var $author$project$Sharecrop$Types$CreateOrgCredentialClicked = {$: 'CreateOrgCredentialClicked'};
 var $author$project$Sharecrop$Types$CreateOrgTeamClicked = {$: 'CreateOrgTeamClicked'};
 var $author$project$Sharecrop$Types$CreateOrgTeamNameChanged = function (a) {
 	return {$: 'CreateOrgTeamNameChanged', a: a};
+};
+var $author$project$Sharecrop$Types$OrgCredentialExpiresHoursChanged = function (a) {
+	return {$: 'OrgCredentialExpiresHoursChanged', a: a};
+};
+var $author$project$Sharecrop$Types$OrgCredentialLabelChanged = function (a) {
+	return {$: 'OrgCredentialLabelChanged', a: a};
 };
 var $author$project$Sharecrop$Types$ProvisionMemberClicked = {$: 'ProvisionMemberClicked'};
 var $author$project$Sharecrop$Types$ProvisionMemberEmailChanged = function (a) {
@@ -21700,6 +22515,87 @@ var $author$project$Sharecrop$View$collectiblesHoldingsList = F2(
 				]),
 			A2($elm$core$List$map, $author$project$Sharecrop$View$collectibleHoldingRow, collectibles));
 	});
+var $author$project$Sharecrop$Types$RevokeOrgCredentialClicked = function (a) {
+	return {$: 'RevokeOrgCredentialClicked', a: a};
+};
+var $author$project$Sharecrop$View$orgRevokeButton = function (credential) {
+	var _v0 = credential.state;
+	if (_v0.$ === 'AgentCredentialStateActive') {
+		return A2(
+			$author$project$Sharecrop$Ui$secondaryButton,
+			_List_fromArray(
+				[
+					$elm$html$Html$Events$onClick(
+					$author$project$Sharecrop$Types$RevokeOrgCredentialClicked(credential.id)),
+					$author$project$Sharecrop$Ui$testId('revoke-org-credential')
+				]),
+			'Revoke');
+	} else {
+		return A2(
+			$elm$html$Html$span,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-xs text-slate-600')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('revoked')
+				]));
+	}
+};
+var $author$project$Sharecrop$View$orgCredentialRow = function (credential) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex items-center justify-between py-2'),
+				$author$project$Sharecrop$Ui$testId('org-credential-row')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_Nil,
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('font-medium')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(credential.label)
+							])),
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-xs text-slate-500')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								$author$project$Sharecrop$Labels$credentialStateLabel(credential.state) + ($author$project$Sharecrop$View$expiryNote(credential.expiresAt) + (' · ' + A2(
+									$elm$core$String$join,
+									', ',
+									A2($elm$core$List$map, $author$project$Sharecrop$Labels$scopeLabel, credential.scopes)))))
+							]))
+					])),
+				$author$project$Sharecrop$View$orgRevokeButton(credential)
+			]));
+};
+var $author$project$Sharecrop$View$orgCredentialsList = function (credentials) {
+	return $elm$core$List$isEmpty(credentials) ? $elm$html$Html$text('') : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('mt-2 divide-y divide-slate-100'),
+				$author$project$Sharecrop$Ui$testId('org-credentials')
+			]),
+		A2($elm$core$List$map, $author$project$Sharecrop$View$orgCredentialRow, credentials));
+};
 var $author$project$Sharecrop$Types$DeactivateMemberClicked = function (a) {
 	return {$: 'DeactivateMemberClicked', a: a};
 };
@@ -21859,6 +22755,69 @@ var $author$project$Sharecrop$View$orgMembersList = function (members) {
 			]),
 		A2($elm$core$List$map, $author$project$Sharecrop$View$orgMemberRow, members));
 };
+var $author$project$Sharecrop$View$orgNewCredentialView = function (created) {
+	if (created.$ === 'Just') {
+		var credential = created.a;
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('mt-4 space-y-3 rounded-md bg-slate-50 p-4')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$label_('New organization token (shown once)'),
+					A2(
+					$author$project$Sharecrop$Ui$codeBlock,
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$testId('org-credential-secret')
+						]),
+					credential.secret)
+				]));
+	} else {
+		return $elm$html$Html$text('');
+	}
+};
+var $author$project$Sharecrop$Types$ToggleOrgCredentialScope = function (a) {
+	return {$: 'ToggleOrgCredentialScope', a: a};
+};
+var $author$project$Sharecrop$View$orgScopeCheckbox = F2(
+	function (selected, scope) {
+		return A2(
+			$elm$html$Html$label,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex min-h-[44px] items-center gap-2 text-sm')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$input,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('checkbox'),
+							$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$checkboxClass),
+							$elm$html$Html$Attributes$checked(
+							A2($elm$core$List$member, scope, selected)),
+							$elm$html$Html$Events$onCheck(
+							function (_v0) {
+								return $author$project$Sharecrop$Types$ToggleOrgCredentialScope(scope);
+							}),
+							$author$project$Sharecrop$Ui$testId(
+							'org-scope-' + $author$project$Sharecrop$Labels$scopeTag(scope))
+						]),
+					_List_Nil),
+					A2(
+					$elm$html$Html$span,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							$author$project$Sharecrop$Labels$scopeLabel(scope) + (' (' + ($author$project$Sharecrop$Labels$scopeTag(scope) + ')')))
+						]))
+				]));
+	});
 var $author$project$Sharecrop$Types$ApplyOrgTaskViewClicked = function (a) {
 	return {$: 'ApplyOrgTaskViewClicked', a: a};
 };
@@ -22729,6 +23688,70 @@ var $author$project$Sharecrop$View$activeOrganizationView = function (state) {
 						[
 							A2($author$project$Sharecrop$View$collectiblesHoldingsList, 'org-collectibles', state.orgCollectibles),
 							A2($author$project$Sharecrop$View$maybeNote, state.orgCollectiblesMessage, 'org-collectibles-message')
+						])),
+					A4(
+					$author$project$Sharecrop$Ui$disclosure,
+					'org-credentials-section',
+					false,
+					'Credentials (' + ($elm$core$String$fromInt(
+						$elm$core$List$length(state.orgCredentials)) + ')'),
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$View$orgCredentialsList(state.orgCredentials),
+							$author$project$Sharecrop$View$orgNewCredentialView(state.newOrgCredential),
+							A2(
+							$elm$html$Html$form,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('mt-3 space-y-3'),
+									$elm$html$Html$Events$onSubmit($author$project$Sharecrop$Types$CreateOrgCredentialClicked)
+								]),
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$textInput(
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('text'),
+											$elm$html$Html$Attributes$placeholder('Credential label'),
+											$elm$html$Html$Attributes$value(state.orgCredentialLabel),
+											$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$OrgCredentialLabelChanged),
+											$author$project$Sharecrop$Ui$testId('org-credential-label')
+										])),
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('space-y-1')
+										]),
+									A2(
+										$elm$core$List$map,
+										$author$project$Sharecrop$View$orgScopeCheckbox(state.orgCredentialScopes),
+										$author$project$Sharecrop$Labels$allScopes)),
+									A2(
+									$author$project$Sharecrop$Ui$fieldLabel,
+									'Expires in (hours, blank for never)',
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$textInput(
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$type_('number'),
+													$elm$html$Html$Attributes$placeholder('never'),
+													$elm$html$Html$Attributes$value(state.orgCredentialExpiresHours),
+													$elm$html$Html$Events$onInput($author$project$Sharecrop$Types$OrgCredentialExpiresHoursChanged),
+													$author$project$Sharecrop$Ui$testId('org-credential-expires-hours')
+												]))
+										])),
+									A2(
+									$author$project$Sharecrop$Ui$primaryButton,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$type_('submit'),
+											$author$project$Sharecrop$Ui$testId('create-org-credential')
+										]),
+									'Create credential'),
+									A2($author$project$Sharecrop$View$maybeNote, state.orgCredentialMessage, 'org-credential-message')
+								]))
 						]))
 				]));
 	}
@@ -24576,6 +25599,30 @@ var $author$project$Sharecrop$View$reservationAction = F2(
 				return $elm$html$Html$text('');
 		}
 	});
+var $author$project$Sharecrop$View$reservationSecretView = function (secret) {
+	if (secret.$ === 'Just') {
+		var token = secret.a;
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('mt-4 space-y-3 rounded-md bg-slate-50 p-4')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Sharecrop$Ui$label_('Agent token for this task (shown once)'),
+					A2(
+					$author$project$Sharecrop$Ui$codeBlock,
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$Ui$testId('reservation-agent-secret')
+						]),
+					token)
+				]));
+	} else {
+		return $elm$html$Html$text('');
+	}
+};
 var $author$project$Sharecrop$View$assigneeIdentityLink = F2(
 	function (assigneeKind, assigneeID) {
 		return _Utils_eq(assigneeKind, $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser) ? A2(
@@ -24748,6 +25795,7 @@ var $author$project$Sharecrop$View$reservationCard = function (state) {
 						])),
 					isOwner ? $elm$html$Html$text('') : A2($author$project$Sharecrop$View$reservationAction, state, detail),
 					A3($author$project$Sharecrop$View$reservationsList, isOwner, state.subjectId, state.reservations),
+					$author$project$Sharecrop$View$reservationSecretView(state.reservationSecret),
 					A2($author$project$Sharecrop$View$maybeNote, state.reservationMessage, 'reservation-message')
 				]));
 	} else {

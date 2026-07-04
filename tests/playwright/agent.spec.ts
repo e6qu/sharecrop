@@ -26,6 +26,27 @@ test("creating an agent credential shows the token and MCP config", async ({ pag
   );
 });
 
+test("creating an agent credential with an expiration and org scopes lists it as such", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("email").fill(uniqueEmail("ui-agent-expiring"));
+  await page.getByTestId("password").fill(password);
+  await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("100 credits");
+
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByTestId("nav-agents").click();
+  await page.getByTestId("agent-label").fill("Expiring reporting agent");
+  await page.getByTestId("scope-org_read").check();
+  await page.getByTestId("agent-expires-hours").fill("24");
+  await page.getByTestId("create-agent").click();
+
+  await expect(page.getByTestId("agent-secret")).toContainText("scrop_agent_");
+  await expect(page.getByTestId("credential-row")).toContainText(
+    "Expiring reporting agent",
+  );
+  await expect(page.getByTestId("credential-row")).toContainText("expires");
+});
+
 test("tasks panel lists user tasks and shows agent curl examples", async ({ page, request }) => {
   const email = uniqueEmail("ui-tasks");
 

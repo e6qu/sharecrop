@@ -183,6 +183,10 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await expect(page.getByTestId("reservation-message")).toContainText(
     "active",
   );
+  // Becoming active auto-issues a task-scoped agent credential, revealed once.
+  await expect(page.getByTestId("reservation-agent-secret")).toContainText(
+    "scrop_agent_",
+  );
 
   const other = await registerViaApi(request, "reservation-ui-other");
   await page.getByTestId("detail-back").click();
@@ -487,6 +491,37 @@ test("users open an organization and manage its teams and members", async ({ pag
   );
   await expect(page.getByTestId("team-review-queue-empty")).toBeVisible();
   await expect(page.getByTestId("team-ready-work-empty")).toBeVisible();
+});
+
+test("org admins mint and revoke an organization-wide credential", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "org-cred-owner");
+  const orgName = `Cred Org ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByTestId("nav-organizations").click();
+  await page.getByTestId("create-org-name").fill(orgName);
+  await page.getByTestId("create-org").click();
+  await page.getByTestId("select-organization").first().click();
+  await expect(page.getByTestId("active-organization")).toBeVisible();
+
+  await page.getByTestId("org-credentials-section").click();
+  await page.getByTestId("org-credential-label").fill("Org reporting bot");
+  await page.getByTestId("org-scope-org_read").check();
+  await page.getByTestId("org-credential-expires-hours").fill("48");
+  await page.getByTestId("create-org-credential").click();
+
+  await expect(page.getByTestId("org-credential-secret")).toContainText(
+    "scrop_org_",
+  );
+  const credentialRow = page.getByTestId("org-credential-row").filter({
+    hasText: "Org reporting bot",
+  });
+  await expect(credentialRow).toHaveCount(1);
+  await expect(credentialRow).toContainText("expires");
+
+  await credentialRow.getByTestId("revoke-org-credential").click();
+  await expect(credentialRow).toContainText("revoked");
 });
 
 test("requesters filter their task list by state", async ({ page, request }) => {

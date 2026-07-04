@@ -1,46 +1,44 @@
 # Status
 
-The repository contains pull request 1 through pull request 119 work, merged
-into `main`, plus the current `task/mcp-admin-moderation-privacy-audit`
-branch. PR 108's GitHub Pages deployment failed three times in a row after
-merge for what looked like a transient GitHub-side Pages backend issue
-(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
-with a different symptom each time); PR 109 through 119's deployments each
-succeeded on the first try with no code or workflow changes, confirming it
-was not a code problem and has since cleared.
+The repository contains pull request 1 through pull request 120 work, merged
+into `main`, plus the current
+`task/mcp-rbac-elm-ui-scopes-expiration-org-tokens` branch. PR 108's GitHub
+Pages deployment failed three times in a row after merge for what looked
+like a transient GitHub-side Pages backend issue (build/artifact steps
+always succeeded; only `deploy-pages` failed or hung, with a different
+symptom each time); PR 109 through 120's deployments each succeeded on the
+first try with no code or workflow changes, confirming it was not a code
+problem and has since cleared.
 
-Active task: `task/mcp-admin-moderation-privacy-audit` is **Phase 4c of a
-larger, explicitly-planned effort** (the last MCP-parity sub-phase): API
-tokens with scopes/expiration, organization-wide tokens, full API/MCP
-parity, and a real RBAC system. Phase 1 (PR 115) laid the credential-model
-foundation; Phase 2 (PR 116) added organization-wide credentials; Phase 3
-(PR 117) centralized org-token authorization; Phase 4a (PR 118) wired the
-MCP transport stack for `auth.Subject`/`OrgSubject`; Phase 4b (PR 119) added
-~30 new tools for organizations/teams/collectibles/notifications/users.
-**Phase 4c (this PR)** adds the remaining 14 admin-gated MCP tools —
-platform admin management (3), moderation (3), privacy (5), audit event
-listing (2), and `award_collectible` (1) — plus the double-check mechanism
-MCP dispatch was missing: REST's `requireAdminSubject` doesn't just check a
-credential's scope, it also re-checks `PlatformAdminService.IsAdmin` on the
-*acting user*, since a credential's scopes are fixed at mint time and an
-admin can be demoted after minting one. MCP's `handleToolsCall` only ever
-checked scope, so a `platform_admin`-scoped credential minted by an
-admin who was later demoted would have kept working. Fixed with a new
-`requireAdminSubjectForTool` helper mirroring `requireAdminSubject` exactly,
-verified both by a new regression test and by hand against the real server.
-Structurally, platform-admin/moderation/privacy have no standalone domain
-package (they're in-memory services defined entirely inside
-`internal/http`), so `internal/mcp` can't import their types directly
-without an import cycle — added small mirror types
-(`mcp.PlatformAdminRecord`, `mcp.ModerationReport`, `mcp.PrivacyRequestRecord`
-and their Result families) that `mcpServices` converts to/from, reusing the
-exact same unexported validation/conversion helpers the REST handlers
-already use so there's no logic duplication. Audit itself *is* a proper
-domain package (`internal/audit`), so its MCP tools reuse `audit.ListResult`
-etc. directly. See `WHAT_WE_DID.md` for the full writeup. This completes
-Phase 4 (all 4 sub-phases merged). Remaining: Phase 5 (Elm UI for
-scopes/expiration/org tokens/task-token reveal) — the last phase of the
-original plan.
+Active task: `task/mcp-rbac-elm-ui-scopes-expiration-org-tokens` is
+**Phase 5, the final phase** of the RBAC + API-token effort: API tokens
+with scopes/expiration, organization-wide tokens, full API/MCP parity, and
+a real RBAC system. Phases 1-3 (PRs 115-117) built the credential/org-token
+model and centralized authorization; Phases 4a-4c (PRs 118-120) brought MCP
+to full REST parity including admin-gated tools. **Phase 5 (this PR)**
+builds the Elm UI for everything the backend already supports but the
+frontend couldn't yet reach: the widened 19-scope taxonomy in the
+credential-mint form and scope labels, an "expires in N hours" input on
+both the personal-token and generic agent-credential forms (encoded
+client-side as an absolute RFC3339 timestamp via a `Time.now`-based flow,
+since the REST API takes an absolute timestamp, not a relative duration — a
+new, self-contained RFC3339 formatter was added since no date-formatting
+package was already a dependency), a new "Credentials" section on the
+organization detail page for minting/listing/revoking org-wide credentials
+(mirroring the existing teams/members/collectibles disclosure sections),
+and a one-time "Agent token for this task" reveal on the task detail page's
+reservation card when a reservation the viewer owns becomes active (reusing
+`ReservationResponse.issuedWorkerCredential`, which the Phase 1 backend
+already returned but no Elm code had ever read). Also added `orgCredModule()`
+to `internal/contracts/definitions.go` and widened `agentModule()`'s scope
+enum, regenerating `Generated/Agent.elm`; org-credential wire types live in
+that same generated module rather than a new one, since generated Elm
+modules don't import each other and org credentials reuse `agent.Scope`/
+`agent.State` directly on the Go side. Verified with `elm make`, the full Go
+test/check suite, and the full Playwright suite (49/49 passing, including 3
+new/extended specs) against a real Postgres-backed server. See
+`WHAT_WE_DID.md` for the full writeup. **This completes the entire 5-phase
+plan.**
 
 `task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
 refined the task detail and profile pages for usability. Report task is now
