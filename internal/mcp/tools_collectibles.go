@@ -15,6 +15,7 @@ const (
 	toolRefundCollectibleReward      = "sharecrop.refund_collectible_reward"
 	toolListOrganizationCollectibles = "sharecrop.list_organization_collectibles"
 	toolListTeamCollectibles         = "sharecrop.list_team_collectibles"
+	toolAwardCollectible             = "sharecrop.award_collectible"
 )
 
 func collectiblesToolDefinitions() []toolDefinition {
@@ -66,6 +67,12 @@ func collectiblesToolDefinitions() []toolDefinition {
 			Description: "List collectibles held by a team.",
 			Scope:       agent.ScopeCollectiblesRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"team_id":{"type":"string"}},"required":["team_id"]}`),
+		},
+		{
+			Name:        toolAwardCollectible,
+			Description: "Mint a fresh copy of a default catalog collectible (by slug) owned by a recipient user, team, or organization. Requires platform admin access.",
+			Scope:       agent.ScopePlatformAdmin,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"slug":{"type":"string"},"recipient_kind":{"type":"string"},"recipient_id":{"type":"string"},"organization_id":{"type":"string"}},"required":["slug","recipient_id"]}`),
 		},
 	}
 }

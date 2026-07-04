@@ -61,6 +61,7 @@ func toolDefinitions() []toolDefinition {
 	definitions = append(definitions, collectiblesToolDefinitions()...)
 	definitions = append(definitions, notificationsToolDefinitions()...)
 	definitions = append(definitions, usersToolDefinitions()...)
+	definitions = append(definitions, adminToolDefinitions()...)
 	return definitions
 }
 

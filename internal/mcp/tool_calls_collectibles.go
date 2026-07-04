@@ -217,3 +217,31 @@ func (server Server) listCollectiblesByOwner(ctx context.Context, ownerKind stri
 	}
 	return marshalPayload(collectiblesListPayload{Collectibles: summaries})
 }
+
+func (server Server) callAwardCollectible(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		Slug           string `json:"slug"`
+		RecipientKind  string `json:"recipient_kind"`
+		RecipientID    string `json:"recipient_id"`
+		OrganizationID string `json:"organization_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	recipientKind := strings.TrimSpace(args.RecipientKind)
+	if recipientKind == "" {
+		recipientKind = assets.CollectibleOwnerKindUser
+	}
+	if !assets.ValidCollectibleOwnerKind(recipientKind) {
+		return toolProtocolError{code: codeInvalidParams, message: "recipient kind must be user, team, or organization"}
+	}
+	if strings.TrimSpace(args.RecipientID) == "" {
+		return toolProtocolError{code: codeInvalidParams, message: "recipient id is required"}
+	}
+	result := server.services.AwardCollectible(ctx, strings.TrimSpace(args.Slug), recipientKind, strings.TrimSpace(args.RecipientID), strings.TrimSpace(args.OrganizationID))
+	minted, matched := result.(assets.CollectibleMinted)
+	if !matched {
+		return toolFailed{message: result.(assets.MintRejected).Reason.Description()}
+	}
+	return marshalPayload(collectibleToSummary(minted.Value))
+}

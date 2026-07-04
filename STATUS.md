@@ -1,50 +1,46 @@
 # Status
 
-The repository contains pull request 1 through pull request 118 work, merged
-into `main`, plus the current
-`task/mcp-orgs-teams-collectibles-notifications-users` branch. PR 108's
-GitHub Pages deployment failed three times in a row after merge for what
-looked like a transient GitHub-side Pages backend issue (build/artifact
-steps always succeeded; only `deploy-pages` failed or hung, with a different
-symptom each time); PR 109 through 118's deployments each succeeded on the
-first try with no code or workflow changes, confirming it was not a code
-problem and has since cleared.
+The repository contains pull request 1 through pull request 119 work, merged
+into `main`, plus the current `task/mcp-admin-moderation-privacy-audit`
+branch. PR 108's GitHub Pages deployment failed three times in a row after
+merge for what looked like a transient GitHub-side Pages backend issue
+(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
+with a different symptom each time); PR 109 through 119's deployments each
+succeeded on the first try with no code or workflow changes, confirming it
+was not a code problem and has since cleared.
 
-Active task: `task/mcp-orgs-teams-collectibles-notifications-users` is
-**Phase 4b of a larger, explicitly-planned effort**: API tokens with
-scopes/expiration, organization-wide tokens, full API/MCP parity, and a real
-RBAC system (the user asked to design this; a plan was produced and
-approved covering 5 phases, one PR each). Phase 1 (PR 115) laid the
-credential-model foundation; Phase 2 (PR 116) added organization-wide
-credentials; Phase 3 (PR 117) centralized org-token authorization; Phase 4a
-(PR 118) wired `auth.Subject`/`OrgSubject` through the whole MCP transport
-stack. **Phase 4b (this PR)** adds the ~30 new MCP tools the Phase 4
-research found missing, across 5 new categories: organizations/teams (13
-tools — create/list organizations, provision/deactivate/update-roles
-members, create/list org and standalone teams, get/add-member for teams),
-org-wide credentials (3 tools — an org's own credential self-management,
-mirroring the REST endpoints), collectibles (8 tools — mint/catalog/
-transfer/list/fund-reward/refund-reward/list-by-organization/list-by-team,
-excluding the admin-gated `award_collectible`, deferred to Phase 4c),
-notifications (2 tools), and users/profile (4 tools). Per the "MCP tracks
-REST, doesn't exceed it" principle established in Phase 4a, each new tool's
-actor-kind (`auth.UserSubject` vs. `auth.Subject`) was decided by checking
-its *specific* REST handler's auth resolver, not just what the underlying
-domain method merely permits — of all ~30 new tools, only `get_team` and
-`add_team_member` accept an organization-wide credential, matching REST's
-`requireUserOrOrgSubject`-gated handlers exactly; everything else
-(including `provision_organization_member`, which the domain layer actually
-supports for `auth.Subject` but REST hasn't wired up yet) stays user-only.
-Split `internal/mcp`'s tool definitions/dispatch/implementations across
-5 new per-domain file pairs (`tools_orgs.go`/`tool_calls_orgs.go`, etc.)
-rather than growing the existing monolithic files further. Verified with
-9 new `http_e2e` tests (one per category plus a dedicated org-credential-
-parity regression test for `get_team`/`add_team_member`) and manual curl
-verification against the real server. See `WHAT_WE_DID.md` for the full
-writeup. Remaining: Phase 4c (admin-gated MCP tools — `award_collectible`,
-moderation, privacy, platform-admin, audit — plus the double-check
-mechanism REST's `requireAdminSubject` already has but MCP dispatch
-doesn't), Phase 5 (Elm UI).
+Active task: `task/mcp-admin-moderation-privacy-audit` is **Phase 4c of a
+larger, explicitly-planned effort** (the last MCP-parity sub-phase): API
+tokens with scopes/expiration, organization-wide tokens, full API/MCP
+parity, and a real RBAC system. Phase 1 (PR 115) laid the credential-model
+foundation; Phase 2 (PR 116) added organization-wide credentials; Phase 3
+(PR 117) centralized org-token authorization; Phase 4a (PR 118) wired the
+MCP transport stack for `auth.Subject`/`OrgSubject`; Phase 4b (PR 119) added
+~30 new tools for organizations/teams/collectibles/notifications/users.
+**Phase 4c (this PR)** adds the remaining 14 admin-gated MCP tools —
+platform admin management (3), moderation (3), privacy (5), audit event
+listing (2), and `award_collectible` (1) — plus the double-check mechanism
+MCP dispatch was missing: REST's `requireAdminSubject` doesn't just check a
+credential's scope, it also re-checks `PlatformAdminService.IsAdmin` on the
+*acting user*, since a credential's scopes are fixed at mint time and an
+admin can be demoted after minting one. MCP's `handleToolsCall` only ever
+checked scope, so a `platform_admin`-scoped credential minted by an
+admin who was later demoted would have kept working. Fixed with a new
+`requireAdminSubjectForTool` helper mirroring `requireAdminSubject` exactly,
+verified both by a new regression test and by hand against the real server.
+Structurally, platform-admin/moderation/privacy have no standalone domain
+package (they're in-memory services defined entirely inside
+`internal/http`), so `internal/mcp` can't import their types directly
+without an import cycle — added small mirror types
+(`mcp.PlatformAdminRecord`, `mcp.ModerationReport`, `mcp.PrivacyRequestRecord`
+and their Result families) that `mcpServices` converts to/from, reusing the
+exact same unexported validation/conversion helpers the REST handlers
+already use so there's no logic duplication. Audit itself *is* a proper
+domain package (`internal/audit`), so its MCP tools reuse `audit.ListResult`
+etc. directly. See `WHAT_WE_DID.md` for the full writeup. This completes
+Phase 4 (all 4 sub-phases merged). Remaining: Phase 5 (Elm UI for
+scopes/expiration/org tokens/task-token reveal) — the last phase of the
+original plan.
 
 `task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
 refined the task detail and profile pages for usability. Report task is now

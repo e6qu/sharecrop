@@ -7,6 +7,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
@@ -101,6 +102,25 @@ type Services interface {
 	GetUserProfile(context.Context, auth.UserSubject, core.UserID, core.Page) task.ListResult
 	GetUserWork(context.Context, auth.UserSubject, core.UserID, core.Page) task.ListResult
 	GetUserSubmissions(context.Context, auth.UserSubject, core.UserID, core.Page) submission.ListResult
+
+	IsPlatformAdmin(context.Context, core.UserID) bool
+	ListPlatformAdmins(context.Context, core.Page) PlatformAdminListResult
+	GrantPlatformAdmin(context.Context, core.UserID, core.UserID) PlatformAdminMutationResult
+	RevokePlatformAdmin(context.Context, core.UserID) PlatformAdminMutationResult
+
+	CreateModerationReport(context.Context, core.UserID, string, string, string, string) ModerationReportResult
+	ListAdminModerationReports(context.Context, string, core.Page) ModerationReportsListResult
+	TriageModerationReport(context.Context, core.UserID, core.AuditEventID, string, string) ModerationReportResult
+
+	CreatePrivacyRequest(context.Context, core.UserID, string) PrivacyRequestResult
+	ListPrivacyRequests(context.Context, core.UserID, core.Page) PrivacyRequestsListResult
+	ListAdminPrivacyRequests(context.Context, core.Page) PrivacyRequestsListResult
+	ResolveAdminPrivacyRequest(context.Context, string, string) PrivacyRequestResult
+	RunPrivacyRetention(context.Context, core.UserID) PrivacyRetentionResult
+
+	ListAuditEvents(context.Context, audit.ListFilters, core.Page) audit.ListResult
+
+	AwardCollectible(context.Context, string, string, string, string) assets.MintResult
 }
 
 type Server struct {
@@ -215,6 +235,23 @@ func requireUserSubjectForTool(subject auth.Subject) (auth.UserSubject, toolResu
 	userActor, isUser := subject.(auth.UserSubject)
 	if !isUser {
 		return auth.UserSubject{}, toolFailed{message: "this tool requires a personal agent credential, not an organization credential"}, false
+	}
+	return userActor, nil, true
+}
+
+// requireAdminSubjectForTool gates an admin-only tool exactly like REST's
+// requireAdminSubject: beyond the scope check handleToolsCall already did,
+// it re-checks that the underlying user is actually a platform admin right
+// now. This matters because a credential's scopes are fixed at mint time —
+// without this check, a platform_admin-scoped credential minted by an admin
+// who is later demoted would still pass the scope gate alone.
+func (server Server) requireAdminSubjectForTool(ctx context.Context, subject auth.Subject) (auth.UserSubject, toolResult, bool) {
+	userActor, failure, ok := requireUserSubjectForTool(subject)
+	if !ok {
+		return userActor, failure, false
+	}
+	if !server.services.IsPlatformAdmin(ctx, userActor.ID) {
+		return userActor, toolFailed{message: "platform admin access is required"}, false
 	}
 	return userActor, nil, true
 }
@@ -579,6 +616,90 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, nam
 			return failure
 		}
 		return server.callGetUserSubmissions(ctx, userActor, arguments)
+	case toolListPlatformAdmins:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callListPlatformAdmins(ctx, userActor, arguments)
+	case toolGrantPlatformAdmin:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callGrantPlatformAdmin(ctx, userActor, arguments)
+	case toolRevokePlatformAdmin:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callRevokePlatformAdmin(ctx, userActor, arguments)
+	case toolCreateModerationReport:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCreateModerationReport(ctx, userActor, arguments)
+	case toolListAdminModerationReports:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callListAdminModerationReports(ctx, userActor, arguments)
+	case toolTriageModerationReport:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callTriageModerationReport(ctx, userActor, arguments)
+	case toolCreatePrivacyRequest:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callCreatePrivacyRequest(ctx, userActor, arguments)
+	case toolListPrivacyRequests:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListPrivacyRequests(ctx, userActor, arguments)
+	case toolListAdminPrivacyRequests:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callListAdminPrivacyRequests(ctx, userActor, arguments)
+	case toolResolveAdminPrivacyRequest:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callResolveAdminPrivacyRequest(ctx, userActor, arguments)
+	case toolRunPrivacyRetention:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callRunPrivacyRetention(ctx, userActor, arguments)
+	case toolListOrganizationAuditEvents:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListOrganizationAuditEvents(ctx, userActor, arguments)
+	case toolListAdminAuditEvents:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callListAdminAuditEvents(ctx, userActor, arguments)
+	case toolAwardCollectible:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callAwardCollectible(ctx, userActor, arguments)
 	default:
 		return toolProtocolError{code: codeInvalidParams, message: "unknown tool: " + name}
 	}

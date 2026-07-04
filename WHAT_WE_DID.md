@@ -1,5 +1,104 @@
 # What We Did
 
+`task/mcp-admin-moderation-privacy-audit` is Phase 4c of the same 5-phase
+RBAC + API-token effort described below (Phases 1-3 shipped as PRs 115-117,
+Phase 4a as PR 118, Phase 4b as PR 119, all merged first). This is the last
+of the three MCP-parity sub-phases: it adds the 14 admin-gated tools and the
+double-check mechanism MCP dispatch was missing.
+
+- **The double-check mechanism, mirrored exactly from REST**: REST's
+  `requireAdminSubject` (`internal/http/admin_config.go`) does two checks —
+  a valid user session, *then* `server.platformAdmins.IsAdmin(ctx, actor.ID)`
+  — because a user's admin status can change after a credential was minted;
+  checking only the credential's scope would let a demoted admin's old
+  credential keep working. Before this phase, MCP's `handleToolsCall` only
+  ever checked the credential's scope (`credential.Scopes.Allows(...)`) —
+  there was no second check at all. Added `requireAdminSubjectForTool`
+  (`internal/mcp/server.go`), which calls the existing
+  `requireUserSubjectForTool` then a new `Services.IsPlatformAdmin(ctx,
+  userID) bool` method, gating all 10 admin tools. Verified this is a real
+  gap that would have mattered: minted an agent credential with the
+  `platform_admin` scope for an ordinary (non-admin) user and confirmed
+  `list_platform_admins` used to have no code path that would reject it —
+  now it does, both via a new `http_e2e` regression test
+  (`TestMCPAdminScopeAloneIsNotEnough`) and by hand against the real server.
+- **A structural discovery that shaped the design**: platform-admin,
+  moderation, and privacy have no standalone domain package like
+  `org`/`assets`/`notification` do — they're in-memory services defined
+  entirely inside `internal/http` (`admin_config.go`, `moderation.go`,
+  `privacy.go`). This means `internal/mcp` cannot reference their types
+  directly: `internal/http` already imports `internal/mcp` (for
+  `mcp.Server`), so the reverse import would be a cycle. Solved the same way
+  Phase 4a solved it for `agent.Credential`/`orgcred.Credential`
+  (`mcp.CallerCredential`): added small MCP-local mirror types
+  (`mcp.PlatformAdminRecord`, `mcp.ModerationReport`,
+  `mcp.PrivacyRequestRecord`, plus their Result-type families following the
+  same closed-interface pattern as everywhere else in this codebase) that
+  `mcpServices` converts to/from. Audit, by contrast, *is* a proper domain
+  package (`internal/audit`) with no such constraint, so its MCP tools
+  (`list_organization_audit_events`, `list_admin_audit_events`) reuse
+  `audit.ListFilters`/`audit.ListResult`/`audit.Event` directly — only one
+  new `Services.ListAuditEvents` method needed, with each tool constructing
+  its own filters at the call site.
+- **No logic duplication despite the new mirror types**: `mcpServices`'
+  conversion functions (in a new `internal/http/agent_mcp_admin.go`) reuse
+  the *exact* unexported helpers the REST handlers already call —
+  `validModerationSubjectKind`, `validModerationReason`,
+  `encodeModerationMetadata`, `validPrivacyRequestKind`, the
+  `PlatformAdminService`/`ModerationTriageService`/`PrivacyService`/
+  `AuditService` interfaces themselves — rather than re-implementing
+  moderation/privacy business rules a second time in a new place. One new
+  helper, `moderationReportFromEventAndTriage`, was added because the
+  existing `moderationReportFromAuditEvent`/`applyModerationTriage` produce
+  an already-stringified HTTP response shape; the new one keeps
+  `time.Time` fields as `time.Time` so `internal/mcp`'s own summary
+  functions do the JSON formatting, consistent with every other domain
+  type's pattern in this codebase (e.g. `notification.Notification`).
+- **14 new tools**: `list_platform_admins`/`grant_platform_admin`/
+  `revoke_platform_admin` (admin-gated), `create_moderation_report`
+  (any user) plus `list_admin_moderation_reports`/`triage_moderation_report`
+  (admin-gated), `create_privacy_request`/`list_privacy_requests` (any
+  user, own requests only) plus `list_admin_privacy_requests`/
+  `resolve_admin_privacy_request`/`run_privacy_retention` (admin-gated),
+  `list_organization_audit_events` (any user with `PermissionManageMembers`
+  on the org) plus `list_admin_audit_events` (admin-gated), and
+  `award_collectible` (admin-gated, deferred from Phase 4b specifically
+  because it needed this phase's double-check mechanism to exist first).
+- **`mcpServices` gained 4 more service dependencies**:
+  `platformAdmins`, `moderationTriage`, `privacyService`, `auditService` —
+  again all already existed on `httpserver.Server`, just not threaded into
+  `mcp.NewServer(mcpServices{...})`. A **real bug caught before it shipped**
+  while wiring this up: the struct-literal construction in `newServer`
+  compiles fine even when new named fields are omitted (they just default
+  to their zero value — `nil` for interfaces), so the build stayed green
+  after adding the new `Services` methods but *before* actually passing the
+  real runtime services in — every new admin/moderation/privacy MCP tool
+  would have nil-panicked in production. Caught by re-reading the
+  construction site deliberately rather than trusting a passing build,
+  and fixed by threading `runtime.PlatformAdmins`/`runtime.ModerationTriage`/
+  `runtime.PrivacyService`/`runtime.AuditService` through explicitly. The
+  exported `NewMCPServer` (used by the stdio bootstrap) and
+  `cmd/sharecrop/main.go`'s `runMCPStdio` needed the same 4 new
+  constructor arguments, using the same DB-backed constructors
+  (`db.NewPlatformAdminStore`, `db.NewModerationTriageStore`,
+  `db.NewPrivacyStore`, `audit.NewService(db.NewAuditStore(pool))`)
+  `runServe` already used for the HTTP path.
+- **Verification**: 6 new `http_e2e` tests covering the double-check
+  regression, a real admin driving all 3 platform-admin tools, the full
+  moderation lifecycle (report → list → triage), the full privacy lifecycle
+  (request → list → admin-list → resolve → retention), both audit tools,
+  and `award_collectible` (including confirming a non-admin is denied at
+  the scope-check layer, one level earlier than the double-check). All
+  pass alongside the full pre-existing suite unchanged. Hand-verified
+  against the real server: minted an agent credential with the
+  `platform_admin` scope for a genuinely non-admin user and confirmed
+  `list_platform_admins` is rejected with "platform admin access is
+  required" rather than succeeding.
+- **Phase 4 is now complete** across all three sub-phases (4a/4b/4c).
+  Remaining in the original 5-phase plan: Phase 5, the Elm UI.
+
+---
+
 `task/mcp-orgs-teams-collectibles-notifications-users` is Phase 4b of the
 same 5-phase RBAC + API-token effort described below (Phases 1-3 shipped as
 PRs 115-117, Phase 4a as PR 118, all merged first). This phase adds the new

@@ -5,30 +5,31 @@ Current priority from
 
 Active branch:
 
-1. `task/mcp-orgs-teams-collectibles-notifications-users` is in progress —
-   Phase 4b of a 5-phase, explicitly-planned RBAC/API-token effort (full plan
-   agreed with the user; each phase ships as its own PR). Phase 1 (PR 115)
-   laid the credential-model foundation; Phase 2 (PR 116) added
-   organization-wide tokens; Phase 3 (PR 117) centralized org-token
-   authorization; Phase 4a (PR 118) wired `auth.Subject`/`OrgSubject` through
-   the whole MCP transport stack. **This phase (4b)** adds the ~30 new MCP
-   tools the Phase 4 research found missing: organizations/teams (13 tools),
-   org-wide credential self-management (3 tools), collectibles (8 tools,
-   excluding the admin-gated `award_collectible` — deferred to 4c),
-   notifications (2 tools), users/profile (4 tools). Per the "MCP tracks
-   REST, doesn't exceed it" principle from 4a, each tool's actor-kind was
-   decided by checking its specific REST handler, not just what the domain
-   layer permits — only `get_team`/`add_team_member` ended up org-token
-   capable, matching REST's `requireUserOrOrgSubject`-gated handlers exactly.
-   Split `internal/mcp` into 5 new per-domain file pairs
-   (`tools_orgs.go`/`tool_calls_orgs.go`, etc.) instead of growing the
-   existing monolithic files further. Verified with 9 new `http_e2e` tests
-   plus manual curl verification against the real server. See
-   `STATUS.md`/`WHAT_WE_DID.md` for the full writeup. Remaining: Phase 4c
-   (admin-gated MCP tools — `award_collectible`, moderation, privacy,
-   platform-admin, audit — plus the double-check mechanism REST's
-   `requireAdminSubject` already has but MCP dispatch doesn't), Phase 5
-   (Elm UI).
+1. `task/mcp-admin-moderation-privacy-audit` is in progress — Phase 4c of a
+   5-phase, explicitly-planned RBAC/API-token effort (full plan agreed with
+   the user; each phase ships as its own PR), and the **last MCP-parity
+   sub-phase**. Phase 1 (PR 115) laid the credential-model foundation;
+   Phase 2 (PR 116) added organization-wide tokens; Phase 3 (PR 117)
+   centralized org-token authorization; Phase 4a (PR 118) wired the MCP
+   transport stack for `auth.Subject`/`OrgSubject`; Phase 4b (PR 119) added
+   ~30 tools for orgs/teams/collectibles/notifications/users. **This phase
+   (4c)** adds the remaining 14 admin-gated tools (platform admin
+   management, moderation, privacy, audit event listing, `award_collectible`)
+   plus a `requireAdminSubjectForTool` double-check MCP dispatch was
+   missing: REST's `requireAdminSubject` re-checks
+   `PlatformAdminService.IsAdmin` on the acting user on top of the scope
+   check (a credential's scopes are fixed at mint time; the user might be
+   demoted after), but MCP only ever checked scope before this phase.
+   Verified both with a new regression test and by hand against the real
+   server: a `platform_admin`-scoped credential from a non-admin user is
+   still denied. Platform-admin/moderation/privacy have no standalone domain
+   package (in-memory services living inside `internal/http`), so added
+   small MCP-local mirror types that `mcpServices` converts to/from, reusing
+   the REST handlers' own unexported helpers rather than duplicating logic;
+   audit *is* a proper domain package, so those tools reuse `audit.*` types
+   directly. See `STATUS.md`/`WHAT_WE_DID.md` for the full writeup. **This
+   completes Phase 4.** Remaining: Phase 5 (Elm UI for scopes/expiration/org
+   tokens/task-token reveal) — the last phase of the original plan.
 
 2. `task/task-detail-reorder-profile-links-uiux` (PR 114, merged) refined
    the task detail and profile pages for usability at the user's explicit
