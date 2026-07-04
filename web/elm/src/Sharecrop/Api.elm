@@ -966,11 +966,6 @@ fetchUserDirectory token =
     fetchUserDirectoryPage token "" 0
 
 
-fetchUserDirectoryQuery : String -> String -> Cmd Msg
-fetchUserDirectoryQuery token queryText =
-    fetchUserDirectoryPage token queryText 0
-
-
 fetchUserDirectoryPage : String -> String -> Int -> Cmd Msg
 fetchUserDirectoryPage token queryText offset =
     authorizedRequest "GET" token (selectorQuery queryText offset "/api/users") Http.emptyBody (Http.expectJson UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))

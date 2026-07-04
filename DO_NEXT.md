@@ -5,30 +5,47 @@ Current priority from
 
 Active branch:
 
-1. `task/rbac-cleanup-boyscout-fixes` is in progress — a requested clean-up
-   pass over the just-completed 5-phase RBAC/API-token effort (PRs 115-121),
-   plus anything else opportunistic found along the way ("boy-scout rule").
-   Used 4 parallel review agents (credential/authz backend, MCP layer, Elm
-   frontend, broad repo sweep) then applied the real findings: a stale
-   `reservationSecret` model field not cleared on task navigation (could
-   leak a previously-revealed task token onto a different task's
-   reservation card); credential-mint forms not reset after a successful
-   mint; an invalid "expires in hours" value silently minting a
-   never-expiring credential instead of being rejected; MCP's task-scoped
-   credential check doing a raw string compare instead of parsing both
-   sides (a differently-cased but valid task ID was spuriously rejected);
-   `docs/api_reference.md` missing the whole credential REST surface and
-   still documenting the deleted `capability-tokens` route; two stale/
-   misleading scope descriptions in `docs/mcp_reference.md`; and
-   `site/demo/backend.js`'s reservation objects missing a field the Elm
-   decoder requires. Two things were flagged rather than fixed
-   unilaterally: `internal/org/service.go` can't structurally use the
-   centralized `internal/authz` package (an import cycle), and
-   `site/demo/backend.js` is now orphaned from the live browser demo
-   (WASM is the default) but still exercised by Deno tests — worth an
-   explicit restore-or-deprecate decision. See `STATUS.md`/`WHAT_WE_DID.md`
-   for the full writeup. This is the last item from the RBAC effort; no
-   further phases are planned.
+1. `task/comprehensive-cleanup-boyscout` is in progress — a **second,
+   explicitly more exhaustive** clean-up pass, requested to act on every
+   remaining issue (including the two items the first pass, PR 122, had
+   flagged rather than fixed) plus any other bug/UI/API/performance/
+   concurrency issue found, related to the RBAC effort or not. Boy-scout
+   rule is now standing guidance for all future tasks in this project, not
+   just when explicitly requested (see memory).
+   - Resolved: `internal/org/service.go`'s authz-duplication flag — extracted
+     the shared org-actor-match check into a new `internal/orgactor` leaf
+     package both `internal/authz` and `internal/org` now call, instead of
+     `org` hand-rolling its own copy (fixes the import-cycle constraint
+     correctly rather than working around it).
+   - Fixed: a narrow TOCTOU race in the Postgres rate limiter's first-touch
+     handling of a brand-new key (verified by reasoning about Postgres's
+     `INSERT ... ON CONFLICT` semantics; the race window proved too narrow
+     to reliably reproduce locally even at 200 concurrent goroutines, so no
+     regression test was added rather than shipping one that would pass
+     regardless of the fix); every MCP session-store method panicking on
+     any transient DB error (crashing the whole process — serious given the
+     ~100-concurrent-SSE-session target), now logging and failing closed
+     instead, with a new regression test; two genuinely dead code paths
+     (an Elm `Api.elm` function, and an orphaned WASM-demo moderation
+     handler superseded by a different live implementation) that neither
+     `go tool deadcode` nor the Elm compiler catches on their own.
+   - Confirmed clean: `go test -race` across the whole suite, and the test
+     suite's wiring integrity (no skips, no orphaned build-tagged tests,
+     both Deno and Playwright genuinely live in CI).
+   - **Still open, not resolved**: `site/demo/backend.js`'s
+     restore-or-deprecate decision. A working WASM-based replacement for
+     its scenario-parity coverage was found and verified, but attempting
+     the deletion was correctly blocked by the safety classifier as
+     irreversible, and a follow-up clarifying question went unanswered — it
+     remains untouched, flagged for an explicit decision.
+   - Also newly confirmed as **separate, deferred future efforts** (not
+     part of this or any current PR; see memory for full detail): unifying
+     the backend into a single WASI-hosted WASM binary (no more separate
+     `cmd/sharecrop` native server and `internal/wasmdemo` reimplementation);
+     and moving MCP/SSE to HTTP/2 by default (HTTP/3-ready) to genuinely
+     support ~100 concurrent streaming sessions, while keeping HTTP/1.1 as
+     an explicit, supported option for regular UI/API traffic.
+   - See `STATUS.md`/`WHAT_WE_DID.md` for the full writeup.
 
 2. `task/task-detail-reorder-profile-links-uiux` (PR 114, merged) refined
    the task detail and profile pages for usability at the user's explicit

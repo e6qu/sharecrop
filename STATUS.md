@@ -1,45 +1,90 @@
 # Status
 
-The repository contains pull request 1 through pull request 121 work, merged
-into `main`, plus the current `task/rbac-cleanup-boyscout-fixes` branch.
+The repository contains pull request 1 through pull request 123 work, merged
+into `main`, plus the current `task/comprehensive-cleanup-boyscout` branch.
 PR 108's GitHub Pages deployment failed three times in a row after merge for
 what looked like a transient GitHub-side Pages backend issue (build/artifact
 steps always succeeded; only `deploy-pages` failed or hung, with a different
-symptom each time); PR 109 through 121's deployments each succeeded on the
+symptom each time); PR 109 through 123's deployments each succeeded on the
 first try with no code or workflow changes, confirming it was not a code
 problem and has since cleared.
 
-The 5-phase RBAC + API-token effort (credential scopes/expiration, org-wide
-tokens, centralized authz, full MCP parity, and the Elm UI for all of it;
-PRs 115-121) is complete. Active task: `task/rbac-cleanup-boyscout-fixes` is
-a requested clean-up pass over that effort (plus anything else opportunistic
-found along the way), using 4 parallel review agents covering the
-credential/authz backend, the MCP layer, the Elm frontend, and a broader
-repo-wide sweep. Real fixes applied: (1) a stale `reservationSecret` model
-field that wasn't cleared on task-to-task navigation, so a previously
-revealed one-time task-token could still show under a different task's
-reservation card; (2) the credential-mint forms weren't reset after a
-successful mint, so a second mint silently repeated the prior label/scopes/
-expiry; (3) an invalid "expires in hours" value (blank, "0", negative, or
-non-numeric) silently minted a *never-expiring* credential with no feedback
-— now validated with an explicit rejection message; (4) MCP's task-scoped
-credential check did a raw string compare against the caller-supplied
-task_id instead of parsing both sides, so a validly-cased-differently task
-ID could be spuriously rejected; (5) `docs/api_reference.md` was missing the
-entire agent-credential/org-credential REST surface and still documented
-the Phase-1-deleted `capability-tokens` route; (6) `docs/mcp_reference.md`
-had two stale/misleading scope descriptions; (7) `site/demo/backend.js`'s
-reservation objects were missing the `issued_worker_credential` field the
-Elm decoder requires (currently unreachable from the live demo, but the
-Deno tests that directly exercise `backend.js` would still benefit, and it
-future-proofs the mock). See `WHAT_WE_DID.md` for the full writeup,
-including two things flagged for the user's judgment rather than fixed
-unilaterally: `internal/org/service.go` structurally can't use the
-centralized `internal/authz` package (import-cycle constraint) and
-duplicates its actor-kind logic in three places instead; and
-`site/demo/backend.js` is now orphaned from the live browser demo (which
-defaults to the WASM backend) but still exercised by Deno tests, worth an
-explicit decision on whether to restore/deprecate it.
+The 5-phase RBAC + API-token effort (PRs 115-121) plus a first clean-up pass
+(PR 122) and a docs refresh (PR 123) are complete. Active task:
+`task/comprehensive-cleanup-boyscout` is a **second, more exhaustive**
+clean-up pass, explicitly requested to act on every remaining issue —
+including the two items PR 122 had flagged rather than fixed — plus any
+other bug/UI/API/performance/concurrency issue found along the way,
+regardless of relation to the RBAC effort. Used parallel review agents
+covering concurrency/races/deadlocks, test-suite wiring integrity, and a
+final dead-code sweep (Go `deadcode` + Elm + WASM-demo-specific, since
+neither of the first two catch unused struct fields or Elm dead code).
+
+Real fixes applied:
+- **`internal/org/service.go`'s authz duplication (PR 122's flag #1),
+  resolved**: extracted the shared "does this org-wide credential match
+  this organization" actor-kind check into a new leaf package,
+  `internal/orgactor`, that both `internal/authz` (task/series/submission)
+  and `internal/org` (its own membership/team endpoints) now call, instead
+  of `org` hand-rolling its own copy of the same logic. This was the
+  correct fix for the import-cycle constraint (`authz` already imports
+  `org` for `org.Permission`) — a new dependency-free package, not a
+  reshuffle of the existing two.
+- **A real, if narrow, TOCTOU race in the Postgres-backed rate limiter**
+  (`internal/db/rate_limit_store.go`): `select ... for update` on a
+  not-yet-existing bucket row has nothing to lock, so concurrent *first*
+  touches of a brand-new rate-limit key could each read "no bucket yet" and
+  each grant, over-admitting past capacity. Fixed by inserting the row
+  (`on conflict do nothing`) before locking it, so Postgres's own
+  conflicting-insert serialization protects the first touch too. Verified
+  by code reasoning about Postgres's documented `INSERT ... ON CONFLICT`
+  concurrency semantics, not a reliably-failing/passing test — the race
+  window proved too narrow to trigger locally even at 200 concurrent
+  goroutines against a fast local Postgres, so no regression test could be
+  written honestly; noted rather than papered over with a test that would
+  pass regardless of the fix.
+- **MCP session store methods panicking on any transient database error**
+  (`internal/http/mcp_sessions.go`) — crashing the *entire process*, not
+  just failing one request. Especially serious for the background SSE
+  replay-polling goroutine (`pollPersistedEvents`), which runs one instance
+  per live subscriber: at real concurrency (the user's stated target is
+  ~100 concurrent MCP SSE sessions), a single transient DB hiccup would
+  have taken down every session and all other API traffic at once. Fixed
+  every call site to log and fail closed (matching what "session not
+  found"/"refused" already meant to callers) instead of panicking. Added a
+  regression test (`TestMCPSessionStoreDegradesGracefullyOnPersistenceFailure`)
+  with a fake persistence layer that always errors, proving no path panics.
+- **Dead code**: an unreachable `fetchUserDirectoryQuery` wrapper in
+  `Api.elm` (superseded by a direct call the real caller already uses), and
+  a fully orphaned `ModerationTriageHandler`/`NewModerationTriageHandler`/
+  `.Handle`/`moderationTriagePathReportID` in `internal/wasmdemo` — reachable
+  only from their own dedicated tests, with the live WASM dispatch path
+  routing through a separate, independently-implemented
+  `AdminHandler.handleAdminModerationReports` instead. Both `go tool
+  deadcode` and the Elm compiler miss this class of dead code (unused
+  struct fields / functions with a same-shape live sibling), so this needed
+  a dedicated pass.
+- Confirmed clean (no changes needed): `go test -race` across the full
+  suite (unit/integration/http_e2e) reports no data races; the test suite
+  itself is genuinely wired (no skips, no orphaned build-tagged tests, both
+  Deno and Playwright tiers are live in CI, no over-mocking); `go tool
+  deadcode -test ./...` reports zero unreachable Go code.
+
+**Still an open, explicit decision — not resolved in this PR**:
+`site/demo/backend.js` (the orphaned JS mock backend, unreachable from the
+live browser demo but still exercised directly by two Deno tests) was
+flagged again as a deletion candidate, and a working WASM-based replacement
+for its scenario-parity coverage was identified and verified
+(`deno task check:scenario-parity:wasm`, not currently wired into CI) — but
+no equivalent replacement exists yet for its route-drift-detection test.
+Attempting the deletion was correctly blocked by the safety classifier as
+an irreversible action needing explicit user confirmation, and a follow-up
+clarifying question went unanswered, so the file and its tests remain
+untouched. This is likely to resolve naturally once the separately-planned
+WASM/production backend unification (see project memory) actually
+supersedes it.
+
+See `WHAT_WE_DID.md` for the full writeup.
 
 `task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
 refined the task detail and profile pages for usability. Report task is now

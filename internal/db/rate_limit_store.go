@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -43,6 +42,23 @@ func (limiter RateLimiter) Allow(key string) bool {
 
 	now := limiter.now().UTC()
 	bucketKey := limiter.bucketKey(key)
+
+	// Ensure the row exists before locking it. "select ... for update" on a
+	// not-yet-existing row has nothing to lock, so two concurrent first
+	// touches of a brand-new key could both read "no bucket yet" and both
+	// grant, over-admitting past capacity. Postgres serializes concurrent
+	// inserts of the same conflicting key (a second inserter blocks until
+	// the first commits), so this closes that race: only one caller's
+	// insert actually creates the row, and every caller — including the
+	// first — then locks and reads the same, single row below.
+	if _, err := tx.Exec(ctx, `
+		insert into rate_limit_buckets (key, tokens, updated_at)
+		values ($1, $2, $3)
+		on conflict (key) do nothing
+	`, bucketKey, limiter.capacity, now); err != nil {
+		panic(fmt.Sprintf("seed rate limit bucket failed: %v", err))
+	}
+
 	var tokens float64
 	var updatedAt time.Time
 	err = tx.QueryRow(ctx, `
@@ -51,16 +67,12 @@ func (limiter RateLimiter) Allow(key string) bool {
 		where key = $1
 		for update
 	`, bucketKey).Scan(&tokens, &updatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		tokens = limiter.capacity
-		updatedAt = now
-	} else if err != nil {
+	if err != nil {
 		panic(fmt.Sprintf("read rate limit bucket failed: %v", err))
-	} else {
-		tokens += now.Sub(updatedAt).Seconds() * limiter.refillPerSec
-		if tokens > limiter.capacity {
-			tokens = limiter.capacity
-		}
+	}
+	tokens += now.Sub(updatedAt).Seconds() * limiter.refillPerSec
+	if tokens > limiter.capacity {
+		tokens = limiter.capacity
 	}
 
 	if tokens < 1 {

@@ -15,6 +15,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/orgactor"
 )
 
 // Decision is the outcome of an authorization check.
@@ -51,10 +52,10 @@ type OrganizationPermissionChecker interface {
 // the HTTP status code, so it must match each caller's existing contract).
 // A user lacking permission is Denied with the checker's own reason as-is.
 func RequireOrganizationAccess(ctx context.Context, actor auth.Subject, organizationID core.OrganizationID, checker OrganizationPermissionChecker, permission org.Permission, deniedCode core.ErrorCode, deniedReason string) Decision {
-	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
-		if orgActor.ID == organizationID {
-			return Granted{}
-		}
+	switch orgactor.Check(actor, organizationID) {
+	case orgactor.Match:
+		return Granted{}
+	case orgactor.Mismatch:
 		return Denied{Reason: core.NewDomainError(deniedCode, deniedReason)}
 	}
 	userActor, isUser := actor.(auth.UserSubject)
