@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -100,20 +101,23 @@ func (store *mcpHTTPSessionStore) create(id string, subject string) bool {
 		cutoff := now.Add(-store.ttl)
 		total, err := store.persistence.ActiveMCPSessionCount(context.Background(), cutoff)
 		if err != nil {
-			panic(fmt.Sprintf("count active MCP sessions failed: %v", err))
+			slog.Error("count active MCP sessions failed, refusing session creation", "error", err)
+			return false
 		}
 		if total >= maxMCPSessionsTotal {
 			return false
 		}
 		perSubject, err := store.persistence.ActiveMCPSessionCountForSubject(context.Background(), subject, cutoff)
 		if err != nil {
-			panic(fmt.Sprintf("count subject MCP sessions failed: %v", err))
+			slog.Error("count subject MCP sessions failed, refusing session creation", "error", err)
+			return false
 		}
 		if perSubject >= maxMCPSessionsPerSubject {
 			return false
 		}
 		if err := store.persistence.CreateMCPSession(context.Background(), id, subject, now); err != nil {
-			panic(fmt.Sprintf("create MCP session failed: %v", err))
+			slog.Error("create MCP session failed", "error", err)
+			return false
 		}
 	} else {
 		if len(store.sessions) >= maxMCPSessionsTotal {
@@ -145,7 +149,8 @@ func (store *mcpHTTPSessionStore) existsForSubject(id string, subject string) bo
 		now := store.now()
 		exists, err := store.persistence.TouchMCPSession(context.Background(), id, subject, now, now.Add(-store.ttl))
 		if err != nil {
-			panic(fmt.Sprintf("touch MCP session failed: %v", err))
+			slog.Error("touch MCP session failed, treating session as invalid", "error", err)
+			return false
 		}
 		if !exists {
 			return false
@@ -156,7 +161,8 @@ func (store *mcpHTTPSessionStore) existsForSubject(id string, subject string) bo
 	session.lastSeen = store.now()
 	if store.persistence != nil {
 		if _, err := store.persistence.TouchMCPSession(context.Background(), id, subject, session.lastSeen, session.lastSeen.Add(-store.ttl)); err != nil {
-			panic(fmt.Sprintf("touch MCP session failed: %v", err))
+			slog.Error("touch MCP session failed, treating session as invalid", "error", err)
+			return false
 		}
 	}
 	return true
@@ -172,7 +178,8 @@ func (store *mcpHTTPSessionStore) terminate(id string) bool {
 		}
 		closed, err := store.persistence.CloseMCPSession(context.Background(), id, store.now())
 		if err != nil {
-			panic(fmt.Sprintf("close MCP session failed: %v", err))
+			slog.Error("close MCP session failed", "error", err)
+			return false
 		}
 		return closed
 	}
@@ -183,7 +190,8 @@ func (store *mcpHTTPSessionStore) terminate(id string) bool {
 	delete(store.sessions, id)
 	if store.persistence != nil {
 		if _, err := store.persistence.CloseMCPSession(context.Background(), id, store.now()); err != nil {
-			panic(fmt.Sprintf("close MCP session failed: %v", err))
+			slog.Error("close MCP session failed", "error", err)
+			return false
 		}
 	}
 	return true
@@ -199,7 +207,8 @@ func (store *mcpHTTPSessionStore) appendEvent(sessionID string, payload []byte) 
 	session.lastSeen = store.now()
 	if store.persistence != nil {
 		if _, err := store.persistence.TouchMCPSession(context.Background(), sessionID, session.subject, session.lastSeen, session.lastSeen.Add(-store.ttl)); err != nil {
-			panic(fmt.Sprintf("touch MCP session failed: %v", err))
+			slog.Error("touch MCP session failed", "error", err)
+			return "", false
 		}
 	}
 	copied := make([]byte, len(payload))
@@ -208,7 +217,8 @@ func (store *mcpHTTPSessionStore) appendEvent(sessionID string, payload []byte) 
 	if store.persistence != nil {
 		eventID, eventPayload, err := store.persistence.AppendMCPEvent(context.Background(), sessionID, copied, session.lastSeen)
 		if err != nil {
-			panic(fmt.Sprintf("append MCP event failed: %v", err))
+			slog.Error("append MCP event failed", "error", err)
+			return "", false
 		}
 		event = mcpHTTPEvent{id: eventID, payload: eventPayload}
 	} else {
@@ -241,7 +251,9 @@ func (store *mcpHTTPSessionStore) replayAndSubscribe(sessionID string, lastEvent
 	if store.persistence != nil {
 		eventIDs, payloads, err := store.persistence.ListMCPEvents(context.Background(), sessionID, lastEventID, 100)
 		if err != nil {
-			panic(fmt.Sprintf("list MCP events failed: %v", err))
+			slog.Error("list MCP events failed", "error", err)
+			store.mu.Unlock()
+			return nil, nil, func() {}, false
 		}
 		events = make([]mcpHTTPEvent, 0, len(eventIDs))
 		for index := range eventIDs {
@@ -305,7 +317,13 @@ func (store *mcpHTTPSessionStore) pollPersistedEvents(sessionID string, lastEven
 			case <-ticker.C:
 				eventIDs, payloads, err := store.persistence.ListMCPEvents(context.Background(), sessionID, currentLastEventID, 100)
 				if err != nil {
-					panic(fmt.Sprintf("poll MCP events failed: %v", err))
+					// A transient DB error here must not crash the process:
+					// this runs in a background goroutine per live SSE
+					// subscriber, so with many concurrent streams a single
+					// blip would otherwise take down every session at once.
+					// Skip this tick and retry on the next one.
+					slog.Error("poll MCP events failed, will retry next tick", "session_id", sessionID, "error", err)
+					continue
 				}
 				for index := range eventIDs {
 					event := mcpHTTPEvent{id: eventIDs[index], payload: payloads[index]}
@@ -332,7 +350,8 @@ func (store *mcpHTTPSessionStore) activeSessionCount() int {
 	if store.persistence != nil {
 		count, err := store.persistence.ActiveMCPSessionCount(context.Background(), store.now().Add(-store.ttl))
 		if err != nil {
-			panic(fmt.Sprintf("count active MCP sessions failed: %v", err))
+			slog.Error("count active MCP sessions failed", "error", err)
+			return 0
 		}
 		return count
 	}

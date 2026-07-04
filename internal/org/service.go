@@ -5,6 +5,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/orgactor"
 )
 
 type Store interface {
@@ -336,9 +337,9 @@ func (service Service) GetTeam(ctx context.Context, actor auth.Subject, teamID c
 }
 
 func (service Service) canViewTeam(ctx context.Context, actor auth.Subject, team Team, members []core.UserID) bool {
-	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
+	if _, isOrg := actor.(auth.OrgSubject); isOrg {
 		owner, matched := team.Owner.(OrganizationOwnedTeam)
-		return matched && owner.OrganizationID == orgActor.ID
+		return matched && orgactor.Check(actor, owner.OrganizationID) == orgactor.Match
 	}
 	userActor, isUser := actor.(auth.UserSubject)
 	if !isUser {
@@ -484,10 +485,10 @@ func (service Service) requirePermission(ctx context.Context, organizationID cor
 // role table to consult, since the token itself represents the org. A
 // UserSubject actor delegates to the existing per-member check unchanged.
 func (service Service) requirePermissionForActor(ctx context.Context, actor auth.Subject, organizationID core.OrganizationID, permission Permission) PermissionCheck {
-	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
-		if orgActor.ID == organizationID {
-			return PermissionGranted{}
-		}
+	switch orgactor.Check(actor, organizationID) {
+	case orgactor.Match:
+		return PermissionGranted{}
+	case orgactor.Mismatch:
 		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization access denied")}
 	}
 	userActor, isUser := actor.(auth.UserSubject)
