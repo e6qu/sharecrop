@@ -16,7 +16,7 @@ import (
 
 func TestInitializeReportsProtocolVersion(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "initialize", `{}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "initialize", `{}`))
 	if response.Error != nil {
 		t.Fatalf("initialize error: %s", response.Error.Message)
 	}
@@ -33,7 +33,7 @@ func TestInitializeReportsProtocolVersion(t *testing.T) {
 
 func TestToolsListReturnsAllTools(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/list", `{}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/list", `{}`))
 	var result struct {
 		Tools []struct {
 			Name        string          `json:"name"`
@@ -53,7 +53,7 @@ func TestToolsListReturnsAllTools(t *testing.T) {
 
 func TestUnknownMethodReturnsMethodNotFound(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "resources/list", `{}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "resources/list", `{}`))
 	if response.Error == nil || response.Error.Code != codeMethodNotFound {
 		t.Fatalf("expected method-not-found error, got %+v", response.Error)
 	}
@@ -61,7 +61,7 @@ func TestUnknownMethodReturnsMethodNotFound(t *testing.T) {
 
 func TestToolsCallEnforcesScope(t *testing.T) {
 	server := NewServer(fakeServices{})
-	onlyRead := agent.Credential{Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead})}
+	onlyRead := CallerCredential{Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead})}
 	response := server.Handle(context.Background(), testSubject(t), onlyRead, request(`1`, "tools/call", `{"name":"sharecrop.submit_response","arguments":{"task_id":"`+testTaskID(t)+`","response_json":"{}"}}`))
 	if response.Error == nil || response.Error.Code != codeScopeDenied {
 		t.Fatalf("expected scope-denied error, got %+v", response.Error)
@@ -71,7 +71,7 @@ func TestToolsCallEnforcesScope(t *testing.T) {
 func TestToolsCallRejectsTaskScopedCredentialForADifferentTask(t *testing.T) {
 	server := NewServer(fakeServices{})
 	scopedTaskID := testTaskID(t)
-	credential := agent.Credential{Scopes: allScopes(), TaskID: taskIDPointer(t, scopedTaskID)}
+	credential := CallerCredential{Scopes: allScopes(), TaskID: taskIDPointer(t, scopedTaskID)}
 
 	// Its own task: allowed.
 	own := server.Handle(context.Background(), testSubject(t), credential, request(`1`, "tools/call", `{"name":"sharecrop.get_task","arguments":{"task_id":"`+scopedTaskID+`"}}`))
@@ -98,7 +98,7 @@ func taskIDPointer(t *testing.T, raw string) *core.TaskID {
 
 func TestToolsCallListTasks(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.list_tasks","arguments":{"scope":"public"}}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.list_tasks","arguments":{"scope":"public"}}`))
 	content := decodeToolText(t, response)
 	if !strings.Contains(content, "\"tasks\"") {
 		t.Fatalf("list tasks content missing tasks key: %s", content)
@@ -107,7 +107,7 @@ func TestToolsCallListTasks(t *testing.T) {
 
 func TestToolsCallReserveTask(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
 	content := decodeToolText(t, response)
 	if !strings.Contains(content, "\"reservation\"") {
 		t.Fatalf("reserve content missing reservation key: %s", content)
@@ -121,7 +121,7 @@ func TestToolsCallReserveTaskForOrganizationTeam(t *testing.T) {
 	server := NewServer(fakeServices{})
 	organizationID := testOrganizationID(t)
 	teamID := testTeamID(t)
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`","assignee_kind":"organization_team","organization_id":"`+organizationID+`","team_id":"`+teamID+`"}}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`","assignee_kind":"organization_team","organization_id":"`+organizationID+`","team_id":"`+teamID+`"}}`))
 	content := decodeToolText(t, response)
 	if !strings.Contains(content, "\"assignee_kind\":\"organization_team\"") {
 		t.Fatalf("reserve content missing organization team assignee: %s", content)
@@ -133,7 +133,7 @@ func TestToolsCallReserveTaskForOrganizationTeam(t *testing.T) {
 
 func TestToolsCallSubmitResponseReturnsReceipt(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.submit_response","arguments":{"task_id":"`+testTaskID(t)+`","response_json":"{\"answer\":\"done\"}"}}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.submit_response","arguments":{"task_id":"`+testTaskID(t)+`","response_json":"{\"answer\":\"done\"}"}}`))
 	content := decodeToolText(t, response)
 	if !strings.Contains(content, "receipt_token") {
 		t.Fatalf("submit content missing receipt token: %s", content)
@@ -142,7 +142,7 @@ func TestToolsCallSubmitResponseReturnsReceipt(t *testing.T) {
 
 func TestToolsCallRejectsUnknownTool(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.delete_everything","arguments":{}}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.delete_everything","arguments":{}}`))
 	if response.Error == nil || response.Error.Code != codeInvalidParams {
 		t.Fatalf("expected invalid-params error, got %+v", response.Error)
 	}
@@ -150,7 +150,7 @@ func TestToolsCallRejectsUnknownTool(t *testing.T) {
 
 func TestToolsCallSurfacesDomainRejectionAsToolError(t *testing.T) {
 	server := NewServer(fakeServices{rejectGet: true})
-	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.get_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.get_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
 	if response.Error != nil {
 		t.Fatalf("expected tool result, got protocol error: %s", response.Error.Message)
 	}
@@ -167,7 +167,7 @@ type fakeServices struct {
 	rejectGet bool
 }
 
-func (services fakeServices) ListTasks(_ context.Context, _ auth.UserSubject, _ task.ListScope, _ task.ListFilters) task.ListResult {
+func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters) task.ListResult {
 	return task.TasksListed{Values: []task.ListItem{}}
 }
 
@@ -201,18 +201,45 @@ func (services fakeServices) CreateTask(_ context.Context, command task.CreateCo
 	}}
 }
 
-func (services fakeServices) OpenTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
+func (services fakeServices) OpenTask(_ context.Context, subject auth.Subject, taskID core.TaskID) task.ChangeStateResult {
+	userID := fakeUserID(subject)
 	return task.TaskStateChanged{Value: task.Task{
 		ID:         taskID,
-		Owner:      task.UserOwner{UserID: subject.ID},
-		Visibility: task.UserVisibility{UserID: subject.ID},
+		Owner:      task.UserOwner{UserID: userID},
+		Visibility: task.UserVisibility{UserID: userID},
 		State:      task.StateOpen,
-		CreatedBy:  subject.ID,
+		CreatedBy:  userID,
+	}}
+}
+
+func (services fakeServices) CancelTask(_ context.Context, subject auth.Subject, taskID core.TaskID) task.ChangeStateResult {
+	userID := fakeUserID(subject)
+	return task.TaskStateChanged{Value: task.Task{
+		ID:         taskID,
+		Owner:      task.UserOwner{UserID: userID},
+		Visibility: task.UserVisibility{UserID: userID},
+		State:      task.StateCancelled,
+		CreatedBy:  userID,
 	}}
 }
 
 func (services fakeServices) FundTask(_ context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
 	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
+}
+
+func (services fakeServices) RefundTask(_ context.Context, _ core.UserID, taskID core.TaskID, _ ledger.IdempotencyKey) ledger.RefundResult {
+	return ledger.TaskRefunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: ledger.NewCreditAmount(0).(ledger.CreditAmountAccepted).Value, State: ledger.EscrowStateRefunded}}
+}
+
+// fakeUserID extracts a core.UserID from an auth.Subject for test-fixture
+// construction; OrgSubject has no individual user, so it returns the zero
+// value (fine for a fake — the fixture's identity fields aren't asserted on
+// in the OrgSubject test cases).
+func fakeUserID(subject auth.Subject) core.UserID {
+	if userActor, isUser := subject.(auth.UserSubject); isUser {
+		return userActor.ID
+	}
+	return core.UserID{}
 }
 
 func (services fakeServices) SubmitResponse(_ context.Context, command submission.SubmitCommand) submission.SubmitResult {
@@ -275,6 +302,17 @@ func (services fakeServices) CreateSeries(_ context.Context, subject auth.UserSu
 	}}}
 }
 
+func (services fakeServices) UpdateSeries(_ context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, title task.SeriesTitle, description task.SeriesDescription) task.SeriesMutationResult {
+	return task.SeriesMutated{Value: task.SeriesDetail{Series: task.Series{
+		ID:          seriesID,
+		Owner:       task.UserOwner{UserID: subject.ID},
+		Title:       title,
+		Description: description,
+		State:       task.SeriesStateDraft,
+		CreatedBy:   subject.ID,
+	}}}
+}
+
 func (services fakeServices) ChangeSeriesState(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID, _ task.SeriesStateTransition) task.SeriesMutationResult {
 	return task.SeriesMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
 }
@@ -284,6 +322,10 @@ func (services fakeServices) AddTaskToSeries(_ context.Context, _ auth.UserSubje
 }
 
 func (services fakeServices) RemoveTaskFromSeries(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID, _ core.TaskID) task.SeriesMutationResult {
+	return task.SeriesMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (services fakeServices) ReorderSeries(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID, _ []core.TaskID) task.SeriesMutationResult {
 	return task.SeriesMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
 }
 
@@ -314,8 +356,9 @@ func (services fakeServices) ListSubmissionComments(_ context.Context, _ auth.Us
 	return submission.SubmissionCommentsListed{Values: nil}
 }
 
-func (services fakeServices) UnpublishTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
-	return task.TaskStateChanged{Value: task.Task{ID: taskID, Owner: task.UserOwner{UserID: subject.ID}, State: task.StateDraft, CreatedBy: subject.ID}}
+func (services fakeServices) UnpublishTask(_ context.Context, subject auth.Subject, taskID core.TaskID) task.ChangeStateResult {
+	userID := fakeUserID(subject)
+	return task.TaskStateChanged{Value: task.Task{ID: taskID, Owner: task.UserOwner{UserID: userID}, State: task.StateDraft, CreatedBy: userID}}
 }
 
 func (services fakeServices) ReserveTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
@@ -340,36 +383,38 @@ func (services fakeServices) ReserveTaskForOrganizationTeam(_ context.Context, s
 	}}
 }
 
-func (services fakeServices) ListReservations(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationsListResult {
+func (services fakeServices) ListReservations(_ context.Context, subject auth.Subject, taskID core.TaskID) task.ReservationsListResult {
+	userID := fakeUserID(subject)
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationsListed{Values: []task.Reservation{{
 		ID:          reservationID.Value,
 		TaskID:      taskID,
-		Assignee:    task.UserAssignee{UserID: subject.ID},
+		Assignee:    task.UserAssignee{UserID: userID},
 		State:       task.ReservationStateRequested,
-		RequestedBy: subject.ID,
+		RequestedBy: userID,
 	}}}
 }
 
-func (services fakeServices) ApproveReservation(_ context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+func (services fakeServices) ApproveReservation(_ context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
 	return fakeReservationStateChange(subject, taskID, reservationID, task.ReservationStateActive)
 }
 
-func (services fakeServices) DeclineReservation(_ context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+func (services fakeServices) DeclineReservation(_ context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
 	return fakeReservationStateChange(subject, taskID, reservationID, task.ReservationStateDeclined)
 }
 
-func (services fakeServices) CancelReservation(_ context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+func (services fakeServices) CancelReservation(_ context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
 	return fakeReservationStateChange(subject, taskID, reservationID, task.ReservationStateCancelledByRequester)
 }
 
-func fakeReservationStateChange(subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState) task.ReservationStateChangeResult {
+func fakeReservationStateChange(subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState) task.ReservationStateChangeResult {
+	userID := fakeUserID(subject)
 	return task.ReservationStateChanged{Value: task.Reservation{
 		ID:          reservationID,
 		TaskID:      taskID,
-		Assignee:    task.UserAssignee{UserID: subject.ID},
+		Assignee:    task.UserAssignee{UserID: userID},
 		State:       state,
-		RequestedBy: subject.ID,
+		RequestedBy: userID,
 	}}
 }
 

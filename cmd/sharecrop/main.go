@@ -179,12 +179,6 @@ func runMigrate(ctx context.Context, args []string, cfg app.Config, stdout io.Wr
 
 func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *slog.Logger) int {
 	rawToken := os.Getenv("SHARECROP_AGENT_TOKEN")
-	secretResult := agent.ParseSecretPlain(rawToken)
-	secret, secretMatched := secretResult.(agent.SecretPlainAccepted)
-	if !secretMatched {
-		logger.Error("agent credential", "reason", "SHARECROP_AGENT_TOKEN is required and must be a valid agent credential")
-		return 2
-	}
 
 	pool, err := db.Open(ctx, cfg.DatabaseURL())
 	if err != nil {
@@ -194,11 +188,40 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 	defer pool.Close()
 
 	agentService := agent.NewService(db.NewAgentStore(pool))
-	verifyResult := agentService.Verify(ctx, secret.Value)
-	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
-	if !verifiedMatched {
-		logger.Error("verify agent credential", "reason", verifyResult.(agent.VerifyRejected).Reason.Description())
-		return 1
+	orgCredentialService := orgcred.NewService(db.NewOrgCredentialStore(pool))
+
+	var subject auth.Subject
+	var callerCredential mcp.CallerCredential
+	if orgcred.HasSecretPrefix(rawToken) {
+		secretResult := orgcred.ParseSecretPlain(rawToken)
+		secret, secretMatched := secretResult.(orgcred.SecretPlainAccepted)
+		if !secretMatched {
+			logger.Error("organization credential", "reason", secretResult.(orgcred.SecretPlainRejected).Reason.Description())
+			return 2
+		}
+		verifyResult := orgCredentialService.Verify(ctx, secret.Value)
+		verified, verifiedMatched := verifyResult.(orgcred.CredentialVerified)
+		if !verifiedMatched {
+			logger.Error("verify organization credential", "reason", verifyResult.(orgcred.VerifyRejected).Reason.Description())
+			return 1
+		}
+		subject = verified.Subject
+		callerCredential = mcp.CallerCredential{Scopes: verified.Credential.Scopes}
+	} else {
+		secretResult := agent.ParseSecretPlain(rawToken)
+		secret, secretMatched := secretResult.(agent.SecretPlainAccepted)
+		if !secretMatched {
+			logger.Error("agent credential", "reason", "SHARECROP_AGENT_TOKEN is required and must be a valid agent or organization credential")
+			return 2
+		}
+		verifyResult := agentService.Verify(ctx, secret.Value)
+		verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+		if !verifiedMatched {
+			logger.Error("verify agent credential", "reason", verifyResult.(agent.VerifyRejected).Reason.Description())
+			return 1
+		}
+		subject = verified.Subject
+		callerCredential = mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: verified.Credential.TaskID}
 	}
 
 	organizationService := org.NewService(db.NewOrgStore(pool))
@@ -209,7 +232,7 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService)
 
 	logger.Info("starting sharecrop mcp stdio transport")
-	if err := mcp.ServeStdio(ctx, mcpServer, verified.Subject, verified.Credential, os.Stdin, stdout); err != nil {
+	if err := mcp.ServeStdio(ctx, mcpServer, subject, callerCredential, os.Stdin, stdout); err != nil {
 		logger.Error("serve mcp stdio", "error", err)
 		return 1
 	}

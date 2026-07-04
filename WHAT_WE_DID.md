@@ -1,5 +1,111 @@
 # What We Did
 
+`task/mcp-tool-parity-orgsubject` is Phase 4a of the same 5-phase RBAC +
+API-token effort described below (Phases 1-3 shipped as PRs 115-117, merged
+first). Phase 4 ("MCP tool parity") turned out much bigger than the
+original plan estimated once actually researched, so it's split into three
+sub-phases; this is the first.
+
+- **Scoping first**: before writing any code, dispatched a research pass
+  comparing the full REST route table (`internal/http/server.go`) against
+  the MCP tool surface (`internal/mcp/tools.go`). Found ~60 REST operations
+  across 14 categories with no MCP equivalent (organizations, teams,
+  collectibles, notifications, moderation, privacy, platform-admin, audit,
+  saved-queue-views, account self-service, plus 4 gaps in already-covered
+  categories), and — more load-bearing for this phase — that MCP's entire
+  actor-handling stack was hardcoded to `auth.UserSubject`: the `Services`
+  interface, `Handle`/`HandleRaw`/`ServeStdio`, every `dispatchTool` case,
+  all ~29 `call*` implementations, and the transport-auth resolver
+  (`verifyAgent`) that only ever looks in the personal-agent-credential
+  store, never an org-credential one. Given the scale, split Phase 4 into
+  4a (this PR, MCP transport + `OrgSubject` wiring + cheap gap-fills), 4b
+  (new tool categories), 4c (admin-gated tools + the missing double-check
+  mechanism) rather than one enormous PR.
+- **`mcp.CallerCredential`**: a new type (`Scopes agent.ScopeSet, TaskID
+  *core.TaskID`) that decouples MCP's scope-gate and task-scoping checks
+  from the concrete credential type. Before this phase, `handleToolsCall`
+  took a hard `agent.Credential` — impossible to also carry an
+  `orgcred.Credential` (a different struct, and org credentials are never
+  task-scoped, so no `TaskID` field to speak of). Both credential kinds now
+  convert to this one shape before entering MCP's dispatch layer.
+- **`auth.Subject` through the whole stack**: `mcp.Services`, `Handle`,
+  `HandleRaw`, `handleBatch`, `ServeStdio`, and `dispatchTool` all widened
+  from `auth.UserSubject` to `auth.Subject`. A new `requireUserSubjectForTool`
+  helper centralizes the "this tool needs a person, not an org token" check
+  at each of the ~23 still-user-only dispatch cases, so those ~23 `call*`
+  functions themselves stay untouched (still typed `auth.UserSubject`,
+  zero risk to their existing logic) — only the dispatch wrapper changed.
+- **Exactly 6 tools widened, matching REST — not exceeding it**: rather
+  than widen every tool that theoretically *could* accept an org token (the
+  underlying domain method being `auth.Subject`-typed doesn't automatically
+  mean it should be exposed that way), checked each candidate tool's REST
+  counterpart specifically: does that REST handler already use
+  `requireUserOrOrgSubject`? Only 6 do (`list_tasks`, `open_task`,
+  `unpublish_task`, `list_task_reservations`, `approve/decline/
+  cancel_task_reservation`), so only those 6 MCP tools got org-token
+  support this phase — e.g. `get_task` stays worker-credential/user-only
+  because its REST handler (`requireWorkerSubject`) has no org-credential
+  fallback either. This is a deliberate design principle for the whole
+  effort: MCP capability tracks REST capability, it doesn't get ahead of it.
+- **New MCP transport auth resolver**: `internal/http/agent_mcp.go` gained
+  `verifyMCPCaller`, mirroring `requireUserOrOrgSubject`'s prefix-dispatch
+  pattern (`orgcred.HasSecretPrefix`) but for MCP's credential-secret-only
+  auth model (MCP has no user-session concept at all, unlike REST, so it
+  never tries a user access token — just personal-agent-or-org secret).
+  Wired into all three MCP HTTP handlers (`mcpEndpoint`, `mcpStream`,
+  `mcpDeleteSession`). Rate-limit and session-ownership keys switched from
+  `verified.Subject.ID.String()` (assumed a `core.UserID`) to a new
+  `mcpSubjectIdentity` helper that prefixes `"user:"`/`"org:"` so a
+  `core.UserID` and `core.OrganizationID` that happened to stringify
+  identically could never collide.
+- **Stdio bootstrap gets the same fallback**: `cmd/sharecrop/main.go`'s
+  `runMCPStdio` (reads `SHARECROP_AGENT_TOKEN`) now tries org-secret parsing
+  first, falling back to the personal-agent path — the CLI/stdio transport
+  and the HTTP transport now authenticate identically.
+- **4 cheap gap-fill tools**, reusing existing scopes and plumbing per the
+  research's own recommendation: `cancel_task` and `refund_task` (REST
+  already had `cancel`/`refund` handlers with no MCP equivalent —
+  `cancel_task` got org-token parity since `changeTaskState` already
+  supports it; `refund_task` stayed user-only, matching `refundTask`'s
+  still-user-only REST handler), `update_series` and `reorder_series`
+  (REST already had these too, both stay user-only since their REST
+  handler shares the user-only `seriesActor` helper).
+- **A narrow risk caught while widening**: the MCP `list_tasks` tool's
+  `scope=user` case dereferences `subject.ID` directly, which only compiles
+  for a concrete `auth.UserSubject`. Widening the tool's parameter to
+  `auth.Subject` meant this needed an explicit guard rather than a bare
+  type assertion — added a check that cleanly rejects `scope=user` for a
+  non-`UserSubject` actor (an org-wide credential using `scope=public`
+  still works, matching what an org-admin member could browse; `scope=
+  organization` isn't exposed via MCP at all yet, deferred with the rest
+  of the new-capability work).
+- **Verified end-to-end against the real transport**, matching the
+  established per-phase discipline: a new `http_e2e` test
+  (`TestMCPOrgCredentialActsWithFullParityOnItsOwnOrgOnly`) mints an org
+  credential, uses it over real MCP JSON-RPC calls to open and cancel its
+  own organization's tasks (succeeds), confirms a user-only tool
+  (`create_task`) fails cleanly with a tool-level error rather than a
+  protocol-level crash, then confirms the same org credential is rejected
+  outright — not silently scoped down — against a second organization's
+  task. Plus two more new tests exercising the gap-fill tools
+  (`TestMCPUpdateAndReorderSeries`, `TestMCPRefundTask`). All pre-existing
+  MCP `http_e2e` tests pass unchanged, confirming this phase didn't disturb
+  the existing worker/reviewer/requester/series tool loops.
+- **Documentation**: updated `docs/mcp_reference.md` with the 4 new tools
+  and a new section explaining which tools accept an organization-wide
+  credential and why (mirrors REST parity, not a special MCP-only rule).
+- **Deferred to Phase 4b/4c, explicitly**: the ~14 new tool categories
+  (organizations, teams, org-credentials, collectibles, notifications,
+  users, moderation, privacy, platform-admin, audit) and the admin
+  double-check mechanism MCP dispatch doesn't have yet (REST's
+  `requireAdminSubject` checks `PlatformAdminService.IsAdmin` on top of the
+  scope check; MCP's `handleToolsCall` only ever checks scope today — a
+  credential minted with a `platform_admin` scope by an admin who is later
+  demoted would still pass MCP's gate, a gap that needs its own careful
+  design rather than being bolted on here).
+
+---
+
 `task/authz-centralize-ownership-visibility` is Phase 3 of the same 5-phase
 RBAC + API-token effort described below (Phase 1 shipped as PR 115, Phase 2
 as PR 116, both merged first). This phase centralizes the authorization

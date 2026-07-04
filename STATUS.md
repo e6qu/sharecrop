@@ -1,47 +1,51 @@
 # Status
 
-The repository contains pull request 1 through pull request 116 work, merged
-into `main`, plus the current `task/authz-centralize-ownership-visibility`
-branch. PR 108's GitHub Pages deployment failed three times in a row after
-merge for what looked like a transient GitHub-side Pages backend issue
-(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
-with a different symptom each time); PR 109 through 116's deployments each
-succeeded on the first try with no code or workflow changes, confirming it
-was not a code problem and has since cleared.
+The repository contains pull request 1 through pull request 117 work, merged
+into `main`, plus the current `task/mcp-tool-parity-orgsubject` branch. PR
+108's GitHub Pages deployment failed three times in a row after merge for
+what looked like a transient GitHub-side Pages backend issue (build/artifact
+steps always succeeded; only `deploy-pages` failed or hung, with a different
+symptom each time); PR 109 through 117's deployments each succeeded on the
+first try with no code or workflow changes, confirming it was not a code
+problem and has since cleared.
 
-Active task: `task/authz-centralize-ownership-visibility` is **Phase 3 of a
-larger, explicitly-planned effort**: API tokens with scopes/expiration,
+Active task: `task/mcp-tool-parity-orgsubject` is **Phase 4a of a larger,
+explicitly-planned effort**: API tokens with scopes/expiration,
 organization-wide tokens, full API/MCP parity, and a real RBAC system (the
 user asked to design this; a plan was produced and approved covering 5
 phases, one PR each). Phase 1 (PR 115) laid the credential-model
-foundation; Phase 2 (PR 116) added organization-wide credentials
-(`auth.OrgSubject`, `internal/orgcred`) with full org-admin parity wired
-into task/reservation/team authorization. Phase 3 **centralizes the
-"org-token-or-per-member-permission" pattern Phase 2 introduced** into a new
-`internal/authz` package: a single `authz.RequireOrganizationAccess`
-function grants access when an org-wide credential's own organization id
-matches (full parity, no per-member lookup) or when a user holds the given
-`org.Permission`. This let 4 near-duplicate, security-critical functions
-across `task`/`submission` collapse into thin callers of one shared,
-independently-unit-tested helper — `task.requireOrgActorViewPermission`,
-`task.requireOrganizationPermission`, `task.requireOrganizationViewPermission`,
-and `submission.requireReviewPermission` are gone entirely, folded into their
-callers. `internal/authz` deliberately does **not** depend on `internal/task`
-(would create an import cycle, since `task`/`submission` depend on `authz`)
-so it only knows about organization ids and `org.Permission`, not
-task/series-specific owner or visibility types — those stay in each
-package, unabstracted, since they're genuinely resource-specific rather than
-incidental duplication. Caught and fixed one real risk before it shipped:
-task's and series' identical-looking "denied" paths actually use *different*
-`core.ErrorCode`s (`ErrorCodePermissionDenied` → HTTP 403 for task,
-`ErrorCodeInvalidState` → HTTP 409 for series) — a naive shared helper would
-have silently changed one of those HTTP statuses, so
-`RequireOrganizationAccess` takes the error code as an explicit parameter
-instead of hardcoding one. This is a behavior-preserving refactor: the full
-test suite (unit, integration, http_e2e — including Phase 2's org-token
-regression test) passes unchanged, and `make check-copy-paste` confirms the
-duplication is actually gone (0 clones, same as before, but now for a real
-reason rather than by accident). See `WHAT_WE_DID.md` for the full writeup.
+foundation; Phase 2 (PR 116) added organization-wide credentials; Phase 3
+(PR 117) centralized org-token authorization into `internal/authz`. Phase 4
+turned out to be much larger than originally scoped once researched — ~60
+missing REST-vs-MCP operations across 14 categories, MCP hardcoded to
+`auth.UserSubject` at every layer, and no admin-gate mechanism in MCP at
+all — so it's now split into three sub-phases (4a/4b/4c), each its own PR.
+**Phase 4a (this PR)** wires `auth.Subject`/`auth.OrgSubject` through the
+entire MCP stack: a new `mcp.CallerCredential` type decouples MCP's
+scope/task-restriction checks from the concrete credential kind (personal
+`agent.Credential` vs. organization-wide `orgcred.Credential`); `Handle`/
+`HandleRaw`/`ServeStdio`/`dispatchTool` all widen from `auth.UserSubject` to
+`auth.Subject`; a new `verifyMCPCaller` resolver in `internal/http` tries an
+org-credential secret (by prefix) before falling back to a personal agent
+credential, mirroring the `requireUserOrOrgSubject` pattern already proven
+out for REST; the stdio bootstrap (`cmd/sharecrop/main.go`) gets the same
+fallback. Exactly the 6 MCP tools whose REST counterpart already supports
+org-token parity (`list_tasks`, `open_task`, `unpublish_task`,
+`list_task_reservations`, `approve/decline/cancel_task_reservation`) were
+widened — every other tool stays user-only, matching REST exactly rather
+than exceeding it; a non-user actor calling a user-only tool gets a clean
+tool-level rejection, not a crash. Also shipped the 4 cheap REST-parity
+gap-fills the research turned up: `cancel_task`, `refund_task`,
+`update_series`, `reorder_series` MCP tools (the first two with org-token
+parity, matching their REST handlers). Verified end-to-end over the real
+MCP transport: an org credential opens/cancels its own org's tasks via MCP
+tool calls but is rejected outright against a different org's task, and
+gets a clean tool-level failure (not a crash) calling `create_task`. See
+`WHAT_WE_DID.md` for the full writeup. Remaining: Phase 4b (MCP tools for
+organizations/teams/org-credentials/collectibles/notifications/users),
+Phase 4c (admin-gated MCP tools + the double-check mechanism REST's
+`requireAdminSubject` already has but MCP dispatch doesn't), Phase 5 (Elm
+UI).
 
 `task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
 refined the task detail and profile pages for usability. Report task is now

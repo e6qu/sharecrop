@@ -15,6 +15,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/mcp"
+	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -26,7 +27,7 @@ type mcpServices struct {
 	ledgerService     LedgerService
 }
 
-func (services mcpServices) ListTasks(ctx context.Context, subject auth.UserSubject, scope task.ListScope, filters task.ListFilters) task.ListResult {
+func (services mcpServices) ListTasks(ctx context.Context, subject auth.Subject, scope task.ListScope, filters task.ListFilters) task.ListResult {
 	return services.taskService.List(ctx, subject, scope, filters, core.DefaultPage())
 }
 
@@ -38,12 +39,20 @@ func (services mcpServices) CreateTask(ctx context.Context, command task.CreateC
 	return services.taskService.Create(ctx, command)
 }
 
-func (services mcpServices) OpenTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
+func (services mcpServices) OpenTask(ctx context.Context, subject auth.Subject, taskID core.TaskID) task.ChangeStateResult {
 	return services.taskService.Open(ctx, subject, taskID)
+}
+
+func (services mcpServices) CancelTask(ctx context.Context, subject auth.Subject, taskID core.TaskID) task.ChangeStateResult {
+	return services.taskService.Cancel(ctx, subject, taskID)
 }
 
 func (services mcpServices) FundTask(ctx context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, key ledger.IdempotencyKey) ledger.FundResult {
 	return services.ledgerService.FundTask(ctx, funder, taskID, amount, key)
+}
+
+func (services mcpServices) RefundTask(ctx context.Context, requester core.UserID, taskID core.TaskID, key ledger.IdempotencyKey) ledger.RefundResult {
+	return services.ledgerService.RefundTask(ctx, requester, taskID, key)
 }
 
 func (services mcpServices) SubmitResponse(ctx context.Context, command submission.SubmitCommand) submission.SubmitResult {
@@ -86,6 +95,10 @@ func (services mcpServices) CreateSeries(ctx context.Context, subject auth.UserS
 	return services.taskService.CreateSeries(ctx, subject, title, description)
 }
 
+func (services mcpServices) UpdateSeries(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, title task.SeriesTitle, description task.SeriesDescription) task.SeriesMutationResult {
+	return services.taskService.UpdateSeries(ctx, subject, seriesID, title, description)
+}
+
 func (services mcpServices) ChangeSeriesState(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, transition task.SeriesStateTransition) task.SeriesMutationResult {
 	return services.taskService.ChangeSeriesState(ctx, subject, seriesID, transition)
 }
@@ -98,6 +111,10 @@ func (services mcpServices) RemoveTaskFromSeries(ctx context.Context, subject au
 	return services.taskService.RemoveTaskFromSeries(ctx, subject, seriesID, taskID)
 }
 
+func (services mcpServices) ReorderSeries(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, order []core.TaskID) task.SeriesMutationResult {
+	return services.taskService.ReorderSeries(ctx, subject, seriesID, order)
+}
+
 func (services mcpServices) AddSeriesComment(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, body task.CommentBody) task.SeriesCommentResult {
 	return services.taskService.AddSeriesComment(ctx, subject, seriesID, body)
 }
@@ -106,7 +123,7 @@ func (services mcpServices) ListSeriesComments(ctx context.Context, subject auth
 	return services.taskService.ListSeriesComments(ctx, subject, seriesID)
 }
 
-func (services mcpServices) UnpublishTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ChangeStateResult {
+func (services mcpServices) UnpublishTask(ctx context.Context, subject auth.Subject, taskID core.TaskID) task.ChangeStateResult {
 	return services.taskService.Unpublish(ctx, subject, taskID)
 }
 
@@ -134,19 +151,19 @@ func (services mcpServices) ReserveTaskForOrganizationTeam(ctx context.Context, 
 	return services.taskService.ReserveForOrganizationTeam(ctx, subject, taskID, organizationID, teamID)
 }
 
-func (services mcpServices) ListReservations(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationsListResult {
+func (services mcpServices) ListReservations(ctx context.Context, subject auth.Subject, taskID core.TaskID) task.ReservationsListResult {
 	return services.taskService.ListReservations(ctx, subject, taskID)
 }
 
-func (services mcpServices) ApproveReservation(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+func (services mcpServices) ApproveReservation(ctx context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
 	return services.taskService.ApproveReservation(ctx, subject, taskID, reservationID)
 }
 
-func (services mcpServices) DeclineReservation(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+func (services mcpServices) DeclineReservation(ctx context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
 	return services.taskService.DeclineReservation(ctx, subject, taskID, reservationID)
 }
 
-func (services mcpServices) CancelReservation(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
+func (services mcpServices) CancelReservation(ctx context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
 	return services.taskService.CancelReservation(ctx, subject, taskID, reservationID)
 }
 
@@ -345,14 +362,15 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	verifyResult := server.verifyAgent(r)
-	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+	verifyResult := server.verifyMCPCaller(r)
+	verified, verifiedMatched := verifyResult.(mcpCallerVerified)
 	if !verifiedMatched {
-		writeError(w, http.StatusUnauthorized, verifyResult.(agent.VerifyRejected).Reason.Description())
+		writeError(w, http.StatusUnauthorized, verifyResult.(mcpCallerRejected).reason)
 		return
 	}
+	subjectIdentity := mcpSubjectIdentity(verified.subject)
 
-	if !server.subjectRateLimiter.Allow(verified.Subject.ID.String()) {
+	if !server.subjectRateLimiter.Allow(subjectIdentity) {
 		writeError(w, http.StatusTooManyRequests, "too many MCP requests; slow down and retry")
 		return
 	}
@@ -366,14 +384,14 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 	} else if sessionID == "" {
 		writeError(w, http.StatusBadRequest, "MCP session id is required")
 		return
-	} else if !server.mcpSessions.existsForSubject(sessionID, verified.Subject.ID.String()) {
+	} else if !server.mcpSessions.existsForSubject(sessionID, subjectIdentity) {
 		writeError(w, http.StatusNotFound, "MCP session was not found")
 		return
 	}
 
-	result := server.mcpServer.HandleRaw(r.Context(), verified.Subject, verified.Credential, body)
+	result := server.mcpServer.HandleRaw(r.Context(), verified.subject, verified.credential, body)
 	if result.SessionID != "" {
-		if !server.mcpSessions.create(result.SessionID, verified.Subject.ID.String()) {
+		if !server.mcpSessions.create(result.SessionID, subjectIdentity) {
 			writeError(w, http.StatusTooManyRequests, "too many active MCP sessions for this agent")
 			return
 		}
@@ -384,7 +402,7 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "MCP session could not be created")
 			return
 		}
-		if !server.mcpSessions.create(generatedSessionID, verified.Subject.ID.String()) {
+		if !server.mcpSessions.create(generatedSessionID, subjectIdentity) {
 			writeError(w, http.StatusTooManyRequests, "too many active MCP sessions for this agent")
 			return
 		}
@@ -432,10 +450,10 @@ func (server Server) mcpStream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "MCP protocol version is unsupported")
 		return
 	}
-	verifyResult := server.verifyAgent(r)
-	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+	verifyResult := server.verifyMCPCaller(r)
+	verified, verifiedMatched := verifyResult.(mcpCallerVerified)
 	if !verifiedMatched {
-		writeError(w, http.StatusUnauthorized, verifyResult.(agent.VerifyRejected).Reason.Description())
+		writeError(w, http.StatusUnauthorized, verifyResult.(mcpCallerRejected).reason)
 		return
 	}
 	sessionID := r.Header.Get(mcpSessionHeader)
@@ -443,7 +461,7 @@ func (server Server) mcpStream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "MCP session id is required")
 		return
 	}
-	if !server.mcpSessions.existsForSubject(sessionID, verified.Subject.ID.String()) {
+	if !server.mcpSessions.existsForSubject(sessionID, mcpSubjectIdentity(verified.subject)) {
 		writeError(w, http.StatusNotFound, "MCP session was not found")
 		return
 	}
@@ -488,10 +506,10 @@ func (server Server) mcpDeleteSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "origin is not allowed")
 		return
 	}
-	verifyResult := server.verifyAgent(r)
-	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+	verifyResult := server.verifyMCPCaller(r)
+	verified, verifiedMatched := verifyResult.(mcpCallerVerified)
 	if !verifiedMatched {
-		writeError(w, http.StatusUnauthorized, verifyResult.(agent.VerifyRejected).Reason.Description())
+		writeError(w, http.StatusUnauthorized, verifyResult.(mcpCallerRejected).reason)
 		return
 	}
 	sessionID := r.Header.Get(mcpSessionHeader)
@@ -499,7 +517,7 @@ func (server Server) mcpDeleteSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "MCP session id is required")
 		return
 	}
-	if !server.mcpSessions.existsForSubject(sessionID, verified.Subject.ID.String()) {
+	if !server.mcpSessions.existsForSubject(sessionID, mcpSubjectIdentity(verified.subject)) {
 		writeError(w, http.StatusNotFound, "MCP session was not found")
 		return
 	}
@@ -590,6 +608,76 @@ func (server Server) verifyAgent(r *http.Request) agent.VerifyResult {
 		return agent.VerifyRejected{Reason: secretResult.(agent.SecretPlainRejected).Reason}
 	}
 	return server.agentService.Verify(r.Context(), secret.Value)
+}
+
+type mcpCallerResult interface {
+	mcpCallerResult()
+}
+
+type mcpCallerVerified struct {
+	subject    auth.Subject
+	credential mcp.CallerCredential
+}
+
+type mcpCallerRejected struct {
+	reason string
+}
+
+func (mcpCallerVerified) mcpCallerResult() {}
+
+func (mcpCallerRejected) mcpCallerResult() {}
+
+// verifyMCPCaller resolves the bearer token on an MCP transport request to
+// either a personal agent credential or an organization-wide credential
+// (dispatched by secret prefix, mirroring requireUserOrOrgSubject's fallback
+// for REST endpoints) — MCP has no user-session concept, so unlike REST this
+// never tries a user access token.
+func (server Server) verifyMCPCaller(r *http.Request) mcpCallerResult {
+	rawHeader := r.Header.Get("Authorization")
+	rawToken, matched := strings.CutPrefix(rawHeader, "Bearer ")
+	if !matched {
+		return mcpCallerRejected{reason: "an agent credential or organization credential is required"}
+	}
+	if orgcred.HasSecretPrefix(rawToken) {
+		secretResult := orgcred.ParseSecretPlain(rawToken)
+		secret, secretMatched := secretResult.(orgcred.SecretPlainAccepted)
+		if !secretMatched {
+			return mcpCallerRejected{reason: secretResult.(orgcred.SecretPlainRejected).Reason.Description()}
+		}
+		verifyResult := server.orgCredentialService.Verify(r.Context(), secret.Value)
+		verified, verifyMatched := verifyResult.(orgcred.CredentialVerified)
+		if !verifyMatched {
+			return mcpCallerRejected{reason: verifyResult.(orgcred.VerifyRejected).Reason.Description()}
+		}
+		return mcpCallerVerified{
+			subject:    verified.Subject,
+			credential: mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: nil},
+		}
+	}
+	verifyResult := server.verifyAgent(r)
+	verified, verifyMatched := verifyResult.(agent.CredentialVerified)
+	if !verifyMatched {
+		return mcpCallerRejected{reason: verifyResult.(agent.VerifyRejected).Reason.Description()}
+	}
+	return mcpCallerVerified{
+		subject:    verified.Subject,
+		credential: mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: verified.Credential.TaskID},
+	}
+}
+
+// mcpSubjectIdentity returns a stable string key for an MCP caller's
+// subject, used for rate limiting and session-ownership checks regardless
+// of whether the caller authenticated as a personal agent credential
+// (auth.UserSubject) or an organization-wide one (auth.OrgSubject).
+func mcpSubjectIdentity(subject auth.Subject) string {
+	switch typed := subject.(type) {
+	case auth.UserSubject:
+		return "user:" + typed.ID.String()
+	case auth.OrgSubject:
+		return "org:" + typed.ID.String()
+	default:
+		return ""
+	}
 }
 
 func credentialToResponse(value agent.Credential) agentCredentialResponse {

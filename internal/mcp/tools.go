@@ -41,6 +41,11 @@ const (
 	toolApproveReservation     = "sharecrop.approve_task_reservation"
 	toolDeclineReservation     = "sharecrop.decline_task_reservation"
 	toolCancelReservation      = "sharecrop.cancel_task_reservation"
+
+	toolCancelTask    = "sharecrop.cancel_task"
+	toolRefundTask    = "sharecrop.refund_task"
+	toolUpdateSeries  = "sharecrop.update_series"
+	toolReorderSeries = "sharecrop.reorder_series"
 )
 
 type toolDefinition struct {
@@ -249,6 +254,30 @@ func toolDefinitions() []toolDefinition {
 			Description: "Cancel an active reservation for a task owned by the agent's user.",
 			Scope:       agent.ScopeSubmissionsReview,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"reservation_id":{"type":"string"}},"required":["task_id","reservation_id"]}`),
+		},
+		{
+			Name:        toolCancelTask,
+			Description: "Cancel a task the agent's user or organization owns, ending it without publishing further.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"]}`),
+		},
+		{
+			Name:        toolRefundTask,
+			Description: "Refund a task's escrowed credits back to the agent's user. idempotency_key makes a retried refund safe.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"idempotency_key":{"type":"string"}},"required":["task_id","idempotency_key"]}`),
+		},
+		{
+			Name:        toolUpdateSeries,
+			Description: "Update a task series' title and description. Only the series' creator may do this.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"}},"required":["series_id","title","description"]}`),
+		},
+		{
+			Name:        toolReorderSeries,
+			Description: "Reorder the tasks within a series. task_ids must list every task currently in the series, in the desired order.",
+			Scope:       agent.ScopeTasksWrite,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"series_id":{"type":"string"},"task_ids":{"type":"array","items":{"type":"string"}}},"required":["series_id","task_ids"]}`),
 		},
 	}
 }
