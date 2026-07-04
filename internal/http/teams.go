@@ -28,10 +28,10 @@ func teamDetailFrom(got org.TeamGot) teamDetailResponse {
 }
 
 func (server Server) getTeam(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actorResult := server.requireUserOrOrgSubject(r)
+	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, actorResult.(actorRejected).reason)
 		return
 	}
 
@@ -42,7 +42,7 @@ func (server Server) getTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.organizationService.GetTeam(r.Context(), actor.subject, teamIDCreated.Value)
+	result := server.organizationService.GetTeam(r.Context(), actor.actor, teamIDCreated.Value)
 	got, matched := result.(org.TeamGot)
 	if !matched {
 		writeDomainError(w, result.(org.GetTeamRejected).Reason)
@@ -97,10 +97,10 @@ func (server Server) getTeamWork(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) addTeamMember(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actorResult := server.requireUserOrOrgSubject(r)
+	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, actorResult.(actorRejected).reason)
 		return
 	}
 
@@ -123,13 +123,13 @@ func (server Server) addTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.organizationService.AddTeamMember(r.Context(), actor.subject, teamIDCreated.Value, emailAccepted.Value)
+	result := server.organizationService.AddTeamMember(r.Context(), actor.actor, teamIDCreated.Value, emailAccepted.Value)
 	if _, added := result.(org.TeamMemberAddedResult); !added {
 		writeDomainError(w, result.(org.AddTeamMemberRejected).Reason)
 		return
 	}
 
-	gotResult := server.organizationService.GetTeam(r.Context(), actor.subject, teamIDCreated.Value)
+	gotResult := server.organizationService.GetTeam(r.Context(), actor.actor, teamIDCreated.Value)
 	got, gotMatched := gotResult.(org.TeamGot)
 	if !gotMatched {
 		writeDomainError(w, gotResult.(org.GetTeamRejected).Reason)

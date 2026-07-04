@@ -62,15 +62,15 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 	writeTaskResponse(w, http.StatusCreated, taskToResponse(created.Value))
 }
 func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actorResult := server.requireUserOrOrgSubject(r)
+	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
+		rejected := actorResult.(actorRejected)
 		writeError(w, http.StatusUnauthorized, rejected.reason)
 		return
 	}
 
-	scopeResult := parseTaskListScope(r, actor.subject)
+	scopeResult := parseTaskListScope(r, actor.actor)
 	scopeAccepted, scopeMatched := scopeResult.(taskListScopeAccepted)
 	if !scopeMatched {
 		rejected := scopeResult.(taskListScopeRejected)
@@ -92,7 +92,7 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.taskService.List(r.Context(), actor.subject, scopeAccepted.value, filtersAccepted.value, pageAccepted.value)
+	result := server.taskService.List(r.Context(), actor.actor, scopeAccepted.value, filtersAccepted.value, pageAccepted.value)
 	switch listed := result.(type) {
 	case task.ListRejected:
 		writeDomainError(w, listed.Reason)
@@ -200,10 +200,10 @@ func (server Server) reserveTaskForRequest(ctx context.Context, actor auth.UserS
 }
 
 func (server Server) listTaskReservations(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actorResult := server.requireUserOrOrgSubject(r)
+	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, actorResult.(actorRejected).reason)
 		return
 	}
 	taskIDResult := parseTaskPathValue(r)
@@ -213,7 +213,7 @@ func (server Server) listTaskReservations(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result := server.taskService.ListReservations(r.Context(), actor.subject, taskIDAccepted.value)
+	result := server.taskService.ListReservations(r.Context(), actor.actor, taskIDAccepted.value)
 	listed, matched := result.(task.ReservationsListed)
 	if !matched {
 		writeDomainError(w, result.(task.ReservationsListRejected).Reason)
@@ -235,10 +235,10 @@ func (server Server) cancelTaskReservation(w http.ResponseWriter, r *http.Reques
 	server.changeTaskReservation(w, r, server.taskService.CancelReservation)
 }
 func (server Server) changeTaskReservation(w http.ResponseWriter, r *http.Request, changer taskReservationChanger) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actorResult := server.requireUserOrOrgSubject(r)
+	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, actorResult.(actorRejected).reason)
 		return
 	}
 	taskIDResult := parseTaskPathValue(r)
@@ -254,7 +254,7 @@ func (server Server) changeTaskReservation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result := changer(r.Context(), actor.subject, taskIDAccepted.value, reservationIDAccepted.value)
+	result := changer(r.Context(), actor.actor, taskIDAccepted.value, reservationIDAccepted.value)
 	changed, matched := result.(task.ReservationStateChanged)
 	if !matched {
 		writeDomainError(w, result.(task.ReservationStateChangeRejected).Reason)
@@ -263,10 +263,10 @@ func (server Server) changeTaskReservation(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, reservationToResponse(changed.Value, changed.IssuedWorkerCredentialSecret))
 }
 func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, changer taskStateChanger) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actorResult := server.requireUserOrOrgSubject(r)
+	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
+		rejected := actorResult.(actorRejected)
 		writeError(w, http.StatusUnauthorized, rejected.reason)
 		return
 	}
@@ -279,7 +279,7 @@ func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, cha
 		return
 	}
 
-	result := changer(r.Context(), actor.subject, taskIDAccepted.value)
+	result := changer(r.Context(), actor.actor, taskIDAccepted.value)
 	changed, matched := result.(task.TaskStateChanged)
 	if !matched {
 		rejected := result.(task.ChangeStateRejected)
@@ -705,14 +705,27 @@ func parseReservationPathValue(r *http.Request) reservationIDResult {
 	}
 	return reservationIDAccepted{value: accepted.Value}
 }
-func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeResult {
+// parseTaskListScope builds the list scope for the request. scope=organization
+// works for either a UserSubject or an OrgSubject (an org token omits the
+// viewer-personalization UserID, which only affects include_reserved
+// filtering, not authorization — requireListPermission checks the org id
+// match directly for an OrgSubject). scope=public/user are inherently
+// individual-viewer concepts and require a UserSubject.
+func parseTaskListScope(r *http.Request, actor auth.Subject) taskListScopeResult {
 	scope := r.URL.Query().Get("scope")
 	includeReserved := r.URL.Query().Get("include_reserved") == "true"
+	userActor, isUser := actor.(auth.UserSubject)
 	switch scope {
 	case "public":
-		return taskListScopeAccepted{value: task.PublicListScope{ViewerID: actor.ID, IncludeReserved: includeReserved}}
+		if !isUser {
+			return taskListScopeRejected{reason: "task list scope is invalid"}
+		}
+		return taskListScopeAccepted{value: task.PublicListScope{ViewerID: userActor.ID, IncludeReserved: includeReserved}}
 	case "user":
-		return taskListScopeAccepted{value: task.UserListScope{UserID: actor.ID, IncludeReserved: includeReserved}}
+		if !isUser {
+			return taskListScopeRejected{reason: "task list scope is invalid"}
+		}
+		return taskListScopeAccepted{value: task.UserListScope{UserID: userActor.ID, IncludeReserved: includeReserved}}
 	case "organization":
 		organizationIDResult := core.ParseOrganizationID(r.URL.Query().Get("organization_id"))
 		organizationID, matched := organizationIDResult.(core.OrganizationIDCreated)
@@ -720,7 +733,11 @@ func parseTaskListScope(r *http.Request, actor auth.UserSubject) taskListScopeRe
 			rejected := organizationIDResult.(core.OrganizationIDRejected)
 			return taskListScopeRejected{reason: rejected.Reason.Description()}
 		}
-		return taskListScopeAccepted{value: task.OrganizationListScope{OrganizationID: organizationID.Value, UserID: actor.ID, IncludeReserved: includeReserved}}
+		var viewerID core.UserID
+		if isUser {
+			viewerID = userActor.ID
+		}
+		return taskListScopeAccepted{value: task.OrganizationListScope{OrganizationID: organizationID.Value, UserID: viewerID, IncludeReserved: includeReserved}}
 	case "team":
 		teamIDResult := core.ParseTeamID(r.URL.Query().Get("team_id"))
 		teamID, matched := teamIDResult.(core.TeamIDCreated)

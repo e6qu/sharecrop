@@ -2237,6 +2237,208 @@
         }
       }
     },
+    "/api/organizations/{organization_id}/credentials": {
+      "get": {
+        "operationId": "listOrgCredentials",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "credentials": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "expires_at": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "organization_id": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "organization_id",
+                          "label",
+                          "scopes",
+                          "state",
+                          "expires_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "credentials"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOrgCredential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expires_at": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "scopes",
+                  "expires_at"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "credential": {
+                      "type": "object",
+                      "properties": {
+                        "expires_at": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "organization_id": {
+                          "type": "string"
+                        },
+                        "scopes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "organization_id",
+                        "label",
+                        "scopes",
+                        "state",
+                        "expires_at"
+                      ]
+                    },
+                    "secret": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "credential",
+                    "secret"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/credentials/{credential_id}/revoke": {
+      "post": {
+        "operationId": "revokeOrgCredential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "expires_at": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "organization_id": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organization_id",
+                    "label",
+                    "scopes",
+                    "state",
+                    "expires_at"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/organizations/{organization_id}/credits/balance": {
       "get": {
         "operationId": "organizationCreditsBalance",

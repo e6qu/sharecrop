@@ -5,24 +5,31 @@ Current priority from
 
 Active branch:
 
-1. `task/agent-credential-scopes-expiry-task-tokens` is in progress — Phase 1
-   of a 5-phase, explicitly-planned RBAC/API-token effort (full plan agreed
-   with the user; each phase ships as its own PR). This phase: `agent.Credential`
-   gained `ExpiresAt`/`TaskID`; the scope taxonomy widened 5→19 values; a
-   reservation becoming active now auto-mints a credential scoped to just
-   that task (30-day expiry) — "hand a task-specific token to an agent."
-   **Found and fixed a real security gap via manual curl testing against the
-   real server** (unit tests all passed while it was live): task-scoping was
-   modeled but never enforced on the actual REST/MCP request paths, so a
-   task-scoped credential worked against any task. Fixed both, with a new
-   regression test and a re-verified manual curl test. Boy-scout: deleted
-   `task.CapabilityToken` (mint-only dead code, no verify path anywhere,
-   including a stale WASM-demo route copy) and fixed the WASM demo allowing
-   self-reservation (real backend already blocked it). See
-   `STATUS.md`/`WHAT_WE_DID.md` for the full writeup. Remaining phases:
-   org-wide tokens + `OrgSubject` (2), centralized `internal/authz` package
-   (3), MCP tool parity including admin/moderation (4), Elm UI for all of the
-   above (5).
+1. `task/org-credentials-orgsubject-authz` is in progress — Phase 2 of a
+   5-phase, explicitly-planned RBAC/API-token effort (full plan agreed with
+   the user; each phase ships as its own PR). Phase 1 (PR 115) merged first:
+   `agent.Credential` gained `ExpiresAt`/`TaskID`, the scope taxonomy widened
+   5→19 values, and a reservation becoming active auto-mints a task-scoped
+   credential. This phase adds **organization-wide tokens**: a new
+   `auth.OrgSubject`, a new `internal/orgcred` package (mirrors
+   `internal/agent`'s shape, distinct `scrop_org_...` secret prefix), REST
+   endpoints to mint/list/revoke them (gated by `PermissionManageMembers`),
+   and widened authorization helpers across `task`/`org`/`submission` so an
+   org token gets **full parity with an org-admin member** on its own
+   organization's resources — task get/list/open/cancel/unpublish/
+   reservations, team get/add-member. Deliberately scoped narrower on a few
+   fronts: task/series/team *creation* and submission-comment *authoring*
+   stay user-only (no individual identity to attribute to an org token);
+   MCP-side `OrgSubject` support is deferred to Phase 4. Boy-scout: Phase 1's
+   migration allowed 19 scope strings in the DB but only 5 had corresponding
+   `agent.Scope` Go values — added the other 14. **Verified end-to-end by
+   hand against the real server** (same discipline as Phase 1): an org token
+   opens/lists its own org's tasks (200), and is rejected outright — not
+   silently scoped down — against a different org's tasks (403); now also an
+   automated `http_e2e` regression test. See `STATUS.md`/`WHAT_WE_DID.md` for
+   the full writeup. Remaining phases: centralized `internal/authz` package
+   (3), MCP tool parity including admin/moderation and `OrgSubject` (4), Elm
+   UI for all of the above (5).
 
 2. `task/task-detail-reorder-profile-links-uiux` (PR 114, merged) refined
    the task detail and profile pages for usability at the user's explicit

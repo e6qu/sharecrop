@@ -106,7 +106,7 @@ func (service Service) AddSubmissionComment(ctx context.Context, actor auth.User
 	return SubmissionCommentAdded{Value: accepted.Value, TaskID: value.TaskID, SubmitterID: value.SubmitterID, TaskCreatorID: taskValue.CreatedBy}
 }
 
-func (service Service) ListSubmissionComments(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID) SubmissionCommentsResult {
+func (service Service) ListSubmissionComments(ctx context.Context, actor auth.Subject, submissionID core.SubmissionID) SubmissionCommentsResult {
 	_, problem := service.loadCommentableSubmission(ctx, actor, submissionID)
 	if problem != nil {
 		return SubmissionCommentsListRejected{Reason: *problem}
@@ -122,12 +122,12 @@ func (service Service) ListSubmissionComments(ctx context.Context, actor auth.Us
 // loadCommentableSubmission finds the submission and permits commenting only for
 // the submission's author or the owner of the submission's task. Other actors
 // are denied so the thread stays private to those two parties.
-func (service Service) loadCommentableSubmission(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID) (Submission, *core.DomainError) {
+func (service Service) loadCommentableSubmission(ctx context.Context, actor auth.Subject, submissionID core.SubmissionID) (Submission, *core.DomainError) {
 	value, _, problem := service.loadCommentableSubmissionWithTask(ctx, actor, submissionID)
 	return value, problem
 }
 
-func (service Service) loadCommentableSubmissionWithTask(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID) (Submission, task.Task, *core.DomainError) {
+func (service Service) loadCommentableSubmissionWithTask(ctx context.Context, actor auth.Subject, submissionID core.SubmissionID) (Submission, task.Task, *core.DomainError) {
 	submissionResult := service.store.FindSubmission(ctx, submissionID)
 	found, matched := submissionResult.(FindSubmissionStoreAccepted)
 	if !matched {
@@ -140,10 +140,12 @@ func (service Service) loadCommentableSubmissionWithTask(ctx context.Context, ac
 		reason := taskResult.(task.FindTaskStoreRejected).Reason
 		return Submission{}, task.Task{}, &reason
 	}
-	if found.Value.SubmitterID == actor.ID {
+	// An org token is never "the submitter" (submitting is an individual
+	// act), so it always goes through the review-permission check below.
+	if userActor, isUser := actor.(auth.UserSubject); isUser && found.Value.SubmitterID == userActor.ID {
 		return found.Value, taskFound.Value, nil
 	}
-	if rejected, denied := service.requireReviewPermission(ctx, actor.ID, taskFound.Value).(reviewPermissionRejected); denied {
+	if rejected, denied := service.requireReviewPermissionForActor(ctx, actor, taskFound.Value).(reviewPermissionRejected); denied {
 		return Submission{}, task.Task{}, &rejected.reason
 	}
 	return found.Value, taskFound.Value, nil

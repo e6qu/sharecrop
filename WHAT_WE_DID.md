@@ -1,5 +1,112 @@
 # What We Did
 
+`task/org-credentials-orgsubject-authz` is Phase 2 of the same 5-phase RBAC +
+API-token effort described below (Phase 1 shipped as PR 115 and merged
+first). This phase adds organization-wide credentials and widens
+authorization to recognize them with full org-admin parity.
+
+- **`auth.OrgSubject{ID core.OrganizationID}`**: a third variant of the
+  closed `auth.Subject` interface (alongside `UserSubject`/`GuestSubject`),
+  representing an organization acting as itself via an org-wide credential
+  rather than through any one member.
+- **New `internal/orgcred` package**, mirroring `internal/agent`'s
+  create/verify/list/revoke shape exactly (same result-type idiom, same
+  `Store` interface pattern) rather than inventing a new one — reuses
+  `agent.Label`/`agent.ScopeSet`/`agent.State` directly since those carry no
+  user-specific semantics, and even reuses `agent.CreateStoreResult` itself
+  (a type alias) since that particular result carries no credential-kind
+  payload either. Secrets use a distinct `scrop_org_...` prefix
+  (`orgcred.HasSecretPrefix`) so verification can dispatch on the prefix
+  alone, matching `internal/agent`'s existing `scrop_agent_...` convention.
+  New migration `migrations/000033_org_credentials.sql` adds
+  `org_credentials`/`org_credential_scopes` tables mirroring
+  `agent_credentials`'s shape (organization id instead of user id, same
+  scope-check constraint).
+- **New REST endpoints**: `POST/GET /api/organizations/{id}/credentials`,
+  `POST /api/organizations/{id}/credentials/{credential_id}/revoke`. Minting
+  itself is a *user* action, gated by the existing
+  `org.PermissionManageMembers` check (minting an org-wide admin-equivalent
+  credential is at least as sensitive as membership management) — the
+  resulting token then acts on its own, with `auth.OrgSubject` parity, once
+  issued.
+- **Widened authorization, deliberately scoped**: went through every
+  `task`/`org`/`submission` service method one at a time and asked "does
+  this need an individual human identity, or is it a view/list/manage
+  action an org token can stand in for?" View/list/manage/review methods
+  (`task.Service.Get/Open/Cancel/Unpublish/List/GetSeries/*Reservation*`,
+  `org.Service.ProvisionMember/DeactivateMember/UpdateMemberRoles/GetTeam/
+  AddTeamMember`, `submission.Service.Get/ListForTask/
+  ListSubmissionComments`) widened from `actor auth.UserSubject` to
+  `actor auth.Subject`, with a new `case auth.OrgSubject:` branch per helper
+  granting access unconditionally when the resource's owning organization
+  matches the token's own id — full parity, no per-member permission-table
+  lookup, since the token *is* the org. Creation and individual-authored-work
+  methods (task/series/team creation, comment authoring, submission
+  submitting) deliberately stayed `auth.UserSubject`-only: an organization
+  has no individual identity to attribute `CreatedBy`/`AuthorID`/
+  `SubmitterID` to. Caught and self-corrected one over-permissive draft
+  before it shipped: series-view permission initially let an org token see
+  *any* of its org's draft series, but re-reading the human-actor code path
+  showed a draft series is creator-private even to other org-admin members
+  — added the same guard to the `OrgSubject` branch so org-token access
+  matches a human org-admin member exactly, not more.
+- **REST wiring is intentionally partial, not exhaustive**: the handlers for
+  task get/list/open/cancel/unpublish/reservations and team get/add-member
+  now accept either a user session or an org credential
+  (`requireUserOrOrgSubject`, a new resolver alongside the existing
+  `requireUserSubject`/`requireWorkerSubject`). Series-detail and
+  organization-member-management handlers were deliberately left
+  user-only for this phase: series routes share a `seriesActor` helper used
+  by every series handler including creation, and member-management
+  handlers thread the actor's user id into audit-log attribution
+  (`recordAudit` is hard-typed to `core.UserID`) — extending either cleanly
+  would mean touching shared helpers or the audit model itself, judged out
+  of scope here. The service-layer widening for these already-completed
+  paths stays forward-compatible and dormant until a later phase wires it up.
+- **A real gap found and fixed, not introduced this phase**: Phase 1's
+  migration widened the DB scope-check constraint to allow 19 scope
+  strings, but only the original 5 had corresponding `agent.Scope` Go
+  values — `agent.ParseScope("org_manage")` would have rejected a
+  perfectly DB-legal scope. Added the other 14 (`org_read`/`org_manage`/
+  `collectibles_read`/`collectibles_manage`/`notifications_read`/
+  `notifications_manage`/`users_read`/`ledger_read`/`moderation_read`/
+  `moderation_manage`/`privacy_read`/`privacy_manage`/`platform_admin`/
+  `credentials_manage`), completing the taxonomy Phase 1 only half-finished
+  at the DB layer.
+- **Verified end-to-end by hand against the real Postgres-backed server**,
+  matching Phase 1's precedent of not trusting green tests alone for
+  security-sensitive changes: registered two organizations, minted an org
+  credential for the first, used it to open and list its own organization's
+  tasks (200), then used the *same* credential against the second
+  organization's tasks and reservation-open action — rejected outright
+  (403) both times, not silently scoped down to nothing. Also confirmed
+  a `scope=organization` task-list returning zero results was a
+  *pre-existing* semantic (that scope filters by explicit
+  organization-visibility sharing, not by owning organization) by
+  reproducing the identical zero-count result with a plain user token,
+  not something this phase's changes caused — deliberately left alone as
+  out of scope. This flow is now also an automated `http_e2e` regression
+  test (`TestOrgCredentialActsWithFullParityOnItsOwnOrgOnly`).
+- **New tests**: `internal/orgcred` unit tests (create/verify/expiry/revoke,
+  distinct secret prefix from `agent`'s), a store integration test
+  (`tests/integration/org_credential_store_test.go`), and the `http_e2e`
+  regression test above.
+- **Boy-scout / hygiene**: extracted a shared `parseCredentialFields`
+  helper (label/scopes/expiration parsing) out of the near-identical
+  `createAgentCredential`/`createOrgCredential` handler bodies, and aliased
+  `orgcred.CreateStoreResult` to `agent.CreateStoreResult` — both found by
+  `make check-copy-paste` (0% duplication threshold) flagging genuine
+  copy-paste, not worked around by weakening the check.
+- **Deferred to later phases, explicitly**: MCP-side `OrgSubject` support
+  (Phase 4, per the original plan); centralizing the
+  `switch actor.(type) { UserSubject; OrgSubject }` shape now duplicated
+  across several authorization helpers into `internal/authz` (Phase 3, per
+  the original plan — extracting it now would be designing the abstraction
+  before enough duplication existed to shape it correctly); Elm UI for
+  minting/listing/revoking org tokens (Phase 5).
+
+---
+
 `task/agent-credential-scopes-expiry-task-tokens` is Phase 1 of a larger,
 explicitly-planned RBAC + API-token effort (users can create scoped/expiring
 API tokens; organizations get org-wide tokens; MCP gets full parity with the

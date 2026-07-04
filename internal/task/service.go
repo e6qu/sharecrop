@@ -157,21 +157,21 @@ func (TaskStateChanged) changeStateResult() {}
 
 func (ChangeStateRejected) changeStateResult() {}
 
-func (service Service) Open(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ChangeStateResult {
+func (service Service) Open(ctx context.Context, actor auth.Subject, taskID core.TaskID) ChangeStateResult {
 	return service.changeState(ctx, actor, taskID, OpenState)
 }
 
-func (service Service) Cancel(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ChangeStateResult {
+func (service Service) Cancel(ctx context.Context, actor auth.Subject, taskID core.TaskID) ChangeStateResult {
 	return service.changeState(ctx, actor, taskID, CancelState)
 }
 
-func (service Service) Unpublish(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ChangeStateResult {
+func (service Service) Unpublish(ctx context.Context, actor auth.Subject, taskID core.TaskID) ChangeStateResult {
 	return service.changeState(ctx, actor, taskID, UnpublishState)
 }
 
 type StateTransition func(State) StateTransitionResult
 
-func (service Service) changeState(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, transition StateTransition) ChangeStateResult {
+func (service Service) changeState(ctx context.Context, actor auth.Subject, taskID core.TaskID, transition StateTransition) ChangeStateResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
@@ -217,7 +217,7 @@ func (TaskGot) getResult() {}
 
 func (GetRejected) getResult() {}
 
-func (service Service) Get(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) GetResult {
+func (service Service) Get(ctx context.Context, actor auth.Subject, taskID core.TaskID) GetResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
@@ -246,25 +246,56 @@ func (viewPermissionAccepted) viewPermissionResult() {}
 
 func (viewPermissionRejected) viewPermissionResult() {}
 
-func (service Service) requireViewPermission(ctx context.Context, actor auth.UserSubject, value Task) viewPermissionResult {
-	if value.CreatedBy == actor.ID {
+func (service Service) requireViewPermission(ctx context.Context, actor auth.Subject, value Task) viewPermissionResult {
+	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
+		return service.requireOrgActorViewPermission(orgActor, value)
+	}
+	userActor, isUser := actor.(auth.UserSubject)
+	if !isUser {
+		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
+	}
+	if value.CreatedBy == userActor.ID {
 		return viewPermissionAccepted{}
 	}
 	switch typed := value.Visibility.(type) {
 	case PublicVisibility:
 		return viewPermissionAccepted{}
 	case UserVisibility:
-		if typed.UserID == actor.ID {
+		if typed.UserID == userActor.ID {
 			return viewPermissionAccepted{}
 		}
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
 	case OrganizationVisibility:
-		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, actor.ID)
+		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, userActor.ID)
 	case OrganizationTeamVisibility:
-		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, actor.ID)
+		return service.requireOrganizationViewPermission(ctx, typed.OrganizationID, userActor.ID)
 	default:
 		return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
 	}
+}
+
+// requireOrgActorViewPermission grants an org token unconditional view
+// access to tasks its own organization owns (full parity with an org-admin
+// member, who always has owner-level access to their org's tasks), plus
+// visibility-based access equivalent to what an org member would get.
+func (service Service) requireOrgActorViewPermission(actor auth.OrgSubject, value Task) viewPermissionResult {
+	organizationIDResult := organizationIDForOwner(value.Owner)
+	if found, matched := organizationIDResult.(organizationIDFound); matched && found.value == actor.ID {
+		return viewPermissionAccepted{}
+	}
+	switch typed := value.Visibility.(type) {
+	case PublicVisibility:
+		return viewPermissionAccepted{}
+	case OrganizationVisibility:
+		if typed.OrganizationID == actor.ID {
+			return viewPermissionAccepted{}
+		}
+	case OrganizationTeamVisibility:
+		if typed.OrganizationID == actor.ID {
+			return viewPermissionAccepted{}
+		}
+	}
+	return viewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task view access denied")}
 }
 
 func (service Service) requireOrganizationViewPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) viewPermissionResult {
@@ -473,7 +504,7 @@ func (TasksListed) listResult() {}
 
 func (ListRejected) listResult() {}
 
-func (service Service) List(ctx context.Context, actor auth.UserSubject, scope ListScope, filters ListFilters, page core.Page) ListResult {
+func (service Service) List(ctx context.Context, actor auth.Subject, scope ListScope, filters ListFilters, page core.Page) ListResult {
 	scopePermission := service.requireListPermission(ctx, actor, scope)
 	if rejected, matched := scopePermission.(listPermissionRejected); matched {
 		return ListRejected{Reason: rejected.reason}
@@ -601,7 +632,7 @@ func (ReservationStateChanged) reservationStateChangeResult() {}
 
 func (ReservationStateChangeRejected) reservationStateChangeResult() {}
 
-func (service Service) ApproveReservation(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
+func (service Service) ApproveReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
 	result := service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateActive)
 	changed, matched := result.(ReservationStateChanged)
 	if !matched {
@@ -611,15 +642,15 @@ func (service Service) ApproveReservation(ctx context.Context, actor auth.UserSu
 	return changed
 }
 
-func (service Service) DeclineReservation(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
+func (service Service) DeclineReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
 	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateDeclined)
 }
 
-func (service Service) CancelReservation(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
+func (service Service) CancelReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
 	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateCancelledByRequester)
 }
 
-func (service Service) changeReservationByRequester(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState) ReservationStateChangeResult {
+func (service Service) changeReservationByRequester(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState) ReservationStateChangeResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
@@ -662,7 +693,7 @@ func (ReservationsListed) reservationsListResult() {}
 
 func (ReservationsListRejected) reservationsListResult() {}
 
-func (service Service) ListReservations(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ReservationsListResult {
+func (service Service) ListReservations(ctx context.Context, actor auth.Subject, taskID core.TaskID) ReservationsListResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
@@ -701,17 +732,31 @@ func (ownerPermissionAccepted) ownerPermissionResult() {}
 
 func (ownerPermissionRejected) ownerPermissionResult() {}
 
-func (service Service) requireOwnerPermission(ctx context.Context, actor auth.UserSubject, owner Owner) ownerPermissionResult {
+func (service Service) requireOwnerPermission(ctx context.Context, actor auth.Subject, owner Owner) ownerPermissionResult {
+	// An org token has unconditional owner access to its own org's tasks —
+	// the same way a UserSubject always has owner access to their own
+	// UserOwner tasks below — without consulting a per-member permission table.
+	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
+		organizationIDResult := organizationIDForOwner(owner)
+		if found, matched := organizationIDResult.(organizationIDFound); matched && found.value == orgActor.ID {
+			return ownerPermissionAccepted{}
+		}
+		return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task owner access denied")}
+	}
+	userActor, isUser := actor.(auth.UserSubject)
+	if !isUser {
+		return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task owner access denied")}
+	}
 	switch typed := owner.(type) {
 	case UserOwner:
-		if typed.UserID != actor.ID {
+		if typed.UserID != userActor.ID {
 			return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task owner access denied")}
 		}
 		return ownerPermissionAccepted{}
 	case OrganizationOwner:
-		return service.requireOrganizationPermission(ctx, typed.OrganizationID, actor.ID, org.PermissionCreateOrganizationTask)
+		return service.requireOrganizationPermission(ctx, typed.OrganizationID, userActor.ID, org.PermissionCreateOrganizationTask)
 	case OrganizationTeamOwner:
-		return service.requireOrganizationPermission(ctx, typed.OrganizationID, actor.ID, org.PermissionCreateOrganizationTask)
+		return service.requireOrganizationPermission(ctx, typed.OrganizationID, userActor.ID, org.PermissionCreateOrganizationTask)
 	case TeamOwner:
 		return ownerPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team-owned tasks require organization ownership in this release")}
 	default:
@@ -796,17 +841,28 @@ func (listPermissionAccepted) listPermissionResult() {}
 
 func (listPermissionRejected) listPermissionResult() {}
 
-func (service Service) requireListPermission(ctx context.Context, actor auth.UserSubject, scope ListScope) listPermissionResult {
+func (service Service) requireListPermission(ctx context.Context, actor auth.Subject, scope ListScope) listPermissionResult {
 	switch typed := scope.(type) {
 	case PublicListScope:
 		return listPermissionAccepted{}
 	case UserListScope:
-		if typed.UserID != actor.ID {
+		userActor, isUser := actor.(auth.UserSubject)
+		if !isUser || typed.UserID != userActor.ID {
 			return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task list access denied")}
 		}
 		return listPermissionAccepted{}
 	case OrganizationListScope:
-		check := service.organizationPermissions.CheckOrganizationPermission(ctx, typed.OrganizationID, actor.ID, org.PermissionCreateOrganizationTask)
+		if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
+			if typed.OrganizationID != orgActor.ID {
+				return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task list access denied")}
+			}
+			return listPermissionAccepted{}
+		}
+		userActor, isUser := actor.(auth.UserSubject)
+		if !isUser {
+			return listPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task list access denied")}
+		}
+		check := service.organizationPermissions.CheckOrganizationPermission(ctx, typed.OrganizationID, userActor.ID, org.PermissionCreateOrganizationTask)
 		if rejected, matched := check.(org.PermissionDenied); matched {
 			return listPermissionRejected{reason: rejected.Reason}
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -545,7 +546,7 @@ func TestMCPEndpointRequiresAgentCredential(t *testing.T) {
 }
 
 func testHandler() http.Handler {
-	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{}, testLedgerService{}, testAgentService{}, testAssetService{})
+	return New(testStaticFiles(), testAuthService(), testVerifier{}, testOrganizationService{}, testTaskService{}, testSubmissionService{}, testLedgerService{}, testAgentService{}, testOrgCredentialService{}, testAssetService{})
 }
 
 func testStaticFiles() fs.FS {
@@ -698,7 +699,7 @@ func (testOrganizationService) ListOrganizations(context.Context, auth.UserSubje
 	return org.OrganizationsListed{Values: []org.Organization{}}
 }
 
-func (testOrganizationService) ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult {
+func (testOrganizationService) ProvisionMember(context.Context, auth.Subject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult {
 	membershipIDResult := core.NewOrganizationMembershipID()
 	membershipIDCreated := membershipIDResult.(core.OrganizationMembershipIDCreated)
 	userIDResult := core.NewUserID()
@@ -708,11 +709,11 @@ func (testOrganizationService) ProvisionMember(context.Context, auth.UserSubject
 	return org.MemberProvisioned{Value: org.OrganizationMember{ID: membershipIDCreated.Value, OrganizationID: organizationIDCreated.Value, UserID: userIDCreated.Value, Status: org.MembershipStatusActive, Roles: []org.Role{org.RoleMember}}}
 }
 
-func (testOrganizationService) DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult {
+func (testOrganizationService) DeactivateMember(context.Context, auth.Subject, core.OrganizationID, core.UserID) org.DeactivateMemberResult {
 	return org.MemberDeactivationAccepted{}
 }
 
-func (testOrganizationService) UpdateMemberRoles(_ context.Context, _ auth.UserSubject, organizationID core.OrganizationID, userID core.UserID, roles []org.Role) org.UpdateMemberRolesResult {
+func (testOrganizationService) UpdateMemberRoles(_ context.Context, _ auth.Subject, organizationID core.OrganizationID, userID core.UserID, roles []org.Role) org.UpdateMemberRolesResult {
 	membershipIDResult := core.NewOrganizationMembershipID()
 	membershipIDCreated := membershipIDResult.(core.OrganizationMembershipIDCreated)
 	return org.MemberRolesUpdatedResult{Value: org.OrganizationMember{ID: membershipIDCreated.Value, OrganizationID: organizationID, UserID: userID, Status: org.MembershipStatusActive, Roles: roles}}
@@ -742,11 +743,11 @@ func (testOrganizationService) ListStandaloneTeams(context.Context, auth.UserSub
 	return org.OrganizationTeamsListed{Values: []org.Team{}}
 }
 
-func (testOrganizationService) GetTeam(context.Context, auth.UserSubject, core.TeamID) org.GetTeamResult {
+func (testOrganizationService) GetTeam(context.Context, auth.Subject, core.TeamID) org.GetTeamResult {
 	return org.GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "team not found")}
 }
 
-func (testOrganizationService) AddTeamMember(context.Context, auth.UserSubject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult {
+func (testOrganizationService) AddTeamMember(context.Context, auth.Subject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult {
 	return org.TeamMemberAddedResult{}
 }
 
@@ -784,30 +785,31 @@ func (testTaskService) Create(_ context.Context, command task.CreateCommand) tas
 	}}
 }
 
-func (testTaskService) Get(_ context.Context, actor auth.UserSubject, taskID core.TaskID) task.GetResult {
+func (testTaskService) Get(_ context.Context, actor auth.Subject, taskID core.TaskID) task.GetResult {
+	userActor, _ := actor.(auth.UserSubject)
 	return task.TaskGot{Value: task.Task{
 		ID:             taskID,
-		Owner:          task.UserOwner{UserID: actor.ID},
+		Owner:          task.UserOwner{UserID: userActor.ID},
 		Participation:  task.ParticipationPolicyOpen,
 		AssigneeScope:  task.AssigneeScopeUser,
 		ReservationTTL: task.DefaultReservationTTL(),
 		State:          task.StateOpen,
-		Visibility:     task.UserVisibility{UserID: actor.ID},
+		Visibility:     task.UserVisibility{UserID: userActor.ID},
 		Placement:      task.StandalonePlacement{},
 		Payload:        task.NoDataPayload{},
-		CreatedBy:      actor.ID,
+		CreatedBy:      userActor.ID,
 	}}
 }
 
-func (testTaskService) Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+func (testTaskService) Open(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult {
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+func (testTaskService) Cancel(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult {
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) Unpublish(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+func (testTaskService) Unpublish(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult {
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
@@ -851,7 +853,7 @@ func (testTaskService) ListTaskComments(context.Context, auth.UserSubject, core.
 	return task.TaskCommentsListed{Values: nil}
 }
 
-func (testTaskService) List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
+func (testTaskService) List(context.Context, auth.Subject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
 	return task.TasksListed{Values: []task.ListItem{}}
 }
 
@@ -888,19 +890,19 @@ func (testTaskService) ReserveForTeam(_ context.Context, actor auth.UserSubject,
 	}}
 }
 
-func (testTaskService) ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+func (testTaskService) ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+func (testTaskService) DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+func (testTaskService) CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult {
+func (testTaskService) ListReservations(context.Context, auth.Subject, core.TaskID) task.ReservationsListResult {
 	return task.ReservationsListed{Values: []task.Reservation{}}
 }
 
@@ -908,7 +910,7 @@ func (testTaskService) ListSeries(context.Context, auth.UserSubject, core.Page) 
 	return task.SeriesListed{Values: []task.Series{}}
 }
 
-func (testTaskService) GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult {
+func (testTaskService) GetSeries(context.Context, auth.Subject, core.TaskSeriesID) task.GetSeriesResult {
 	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
@@ -935,21 +937,22 @@ func (testSubmissionService) FindByReceipt(context.Context, submission.ReceiptTo
 	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test submission service")}
 }
 
-func (testSubmissionService) Get(_ context.Context, actor auth.UserSubject, submissionID core.SubmissionID) submission.GetResult {
+func (testSubmissionService) Get(_ context.Context, actor auth.Subject, submissionID core.SubmissionID) submission.GetResult {
+	userActor, _ := actor.(auth.UserSubject)
 	taskIDCreated := core.NewTaskID().(core.TaskIDCreated)
 	sourceResult := submission.NewResponseSource("{}")
 	sourceAccepted := sourceResult.(submission.ResponseSourceAccepted)
 	return submission.SubmissionGot{Value: submission.Submission{
 		ID:             submissionID,
 		TaskID:         taskIDCreated.Value,
-		SubmitterID:    actor.ID,
+		SubmitterID:    userActor.ID,
 		State:          submission.StateSubmitted,
 		ResponseSource: sourceAccepted.Value,
 		Validation:     submission.ValidationPassed{},
 	}}
 }
 
-func (testSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult {
+func (testSubmissionService) ListForTask(context.Context, auth.Subject, core.TaskID, core.Page) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
@@ -968,7 +971,7 @@ func (testSubmissionService) AddSubmissionComment(_ context.Context, actor auth.
 	}
 }
 
-func (testSubmissionService) ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult {
+func (testSubmissionService) ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID) submission.SubmissionCommentsResult {
 	return submission.SubmissionCommentsListed{Values: []submission.SubmissionComment{}}
 }
 
@@ -1034,6 +1037,30 @@ func (testAgentService) Verify(context.Context, agent.SecretPlain) agent.VerifyR
 
 func (testAgentService) List(context.Context, core.UserID, core.Page) agent.ListResult {
 	return agent.CredentialsListed{Values: []agent.Credential{}}
+}
+
+type testOrgCredentialService struct{}
+
+func (testOrgCredentialService) Create(_ context.Context, organizationID core.OrganizationID, label agent.Label, scopes agent.ScopeSet, expiresAt *time.Time) orgcred.CreateResult {
+	idCreated := core.NewOrgCredentialID().(core.OrgCredentialIDCreated)
+	secretCreated := orgcred.NewSecretPlain().(orgcred.SecretPlainAccepted)
+	return orgcred.CredentialCreated{
+		Value:  orgcred.Credential{ID: idCreated.Value, OrganizationID: organizationID, Label: label, Scopes: scopes, State: agent.StateActive, ExpiresAt: expiresAt},
+		Secret: secretCreated.Value,
+	}
+}
+
+func (testOrgCredentialService) Verify(context.Context, orgcred.SecretPlain) orgcred.VerifyResult {
+	return orgcred.VerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test org credential service")}
+}
+
+func (testOrgCredentialService) List(context.Context, core.OrganizationID, core.Page) orgcred.ListResult {
+	return orgcred.CredentialsListed{Values: []orgcred.Credential{}}
+}
+
+func (testOrgCredentialService) Revoke(_ context.Context, organizationID core.OrganizationID, id core.OrgCredentialID) orgcred.RevokeResult {
+	labelAccepted := agent.NewLabel("Test org").(agent.LabelAccepted)
+	return orgcred.CredentialRevoked{Value: orgcred.Credential{ID: id, OrganizationID: organizationID, Label: labelAccepted.Value, Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateRevoked}}
 }
 
 type testAssetService struct{}

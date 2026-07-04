@@ -19,6 +19,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/mcp"
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -51,27 +52,27 @@ type OrganizationService interface {
 	CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult
 	ListOrganizations(context.Context, auth.UserSubject, string, core.Page) org.ListOrganizationsResult
 	ListMembers(context.Context, auth.UserSubject, core.OrganizationID, core.Page) org.ListMembersResult
-	ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
-	DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
-	UpdateMemberRoles(context.Context, auth.UserSubject, core.OrganizationID, core.UserID, []org.Role) org.UpdateMemberRolesResult
+	ProvisionMember(context.Context, auth.Subject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult
+	DeactivateMember(context.Context, auth.Subject, core.OrganizationID, core.UserID) org.DeactivateMemberResult
+	UpdateMemberRoles(context.Context, auth.Subject, core.OrganizationID, core.UserID, []org.Role) org.UpdateMemberRolesResult
 	CreateOrganizationTeam(context.Context, auth.UserSubject, core.OrganizationID, org.TeamName) org.CreateTeamResult
 	CreateStandaloneTeam(context.Context, auth.UserSubject, org.TeamName) org.CreateTeamResult
 	ListOrganizationTeams(context.Context, auth.UserSubject, core.OrganizationID, string, core.Page) org.ListTeamsResult
 	ListStandaloneTeams(context.Context, auth.UserSubject, string, core.Page) org.ListTeamsResult
-	GetTeam(context.Context, auth.UserSubject, core.TeamID) org.GetTeamResult
-	AddTeamMember(context.Context, auth.UserSubject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult
+	GetTeam(context.Context, auth.Subject, core.TeamID) org.GetTeamResult
+	AddTeamMember(context.Context, auth.Subject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 }
 
 type TaskService interface {
 	Create(context.Context, task.CreateCommand) task.CreateResult
-	Get(context.Context, auth.UserSubject, core.TaskID) task.GetResult
-	Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
-	Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
-	Unpublish(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
-	List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult
+	Get(context.Context, auth.Subject, core.TaskID) task.GetResult
+	Open(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
+	Cancel(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
+	Unpublish(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
+	List(context.Context, auth.Subject, task.ListScope, task.ListFilters, core.Page) task.ListResult
 	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
-	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
+	GetSeries(context.Context, auth.Subject, core.TaskSeriesID) task.GetSeriesResult
 	CreateSeries(context.Context, auth.UserSubject, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
 	UpdateSeries(context.Context, auth.UserSubject, core.TaskSeriesID, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
 	ChangeSeriesState(context.Context, auth.UserSubject, core.TaskSeriesID, task.SeriesStateTransition) task.SeriesMutationResult
@@ -85,10 +86,10 @@ type TaskService interface {
 	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ReserveForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
 	ReserveForTeam(context.Context, auth.UserSubject, core.TaskID, core.TeamID) task.ReservationResult
-	ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
-	DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
-	CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
-	ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult
+	ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+	ListReservations(context.Context, auth.Subject, core.TaskID) task.ReservationsListResult
 }
 
 type AgentService interface {
@@ -96,6 +97,16 @@ type AgentService interface {
 	Verify(context.Context, agent.SecretPlain) agent.VerifyResult
 	List(context.Context, core.UserID, core.Page) agent.ListResult
 	Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult
+}
+
+// OrgCredentialService mints and verifies org-wide credentials (see
+// internal/orgcred), which act with full parity to an org-admin member
+// wherever a Server handler accepts auth.Subject.
+type OrgCredentialService interface {
+	Create(context.Context, core.OrganizationID, agent.Label, agent.ScopeSet, *time.Time) orgcred.CreateResult
+	Verify(context.Context, orgcred.SecretPlain) orgcred.VerifyResult
+	List(context.Context, core.OrganizationID, core.Page) orgcred.ListResult
+	Revoke(context.Context, core.OrganizationID, core.OrgCredentialID) orgcred.RevokeResult
 }
 
 type AssetService interface {
@@ -109,12 +120,12 @@ type AssetService interface {
 
 type SubmissionService interface {
 	Submit(context.Context, submission.SubmitCommand) submission.SubmitResult
-	Get(context.Context, auth.UserSubject, core.SubmissionID) submission.GetResult
+	Get(context.Context, auth.Subject, core.SubmissionID) submission.GetResult
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
-	ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
+	ListForTask(context.Context, auth.Subject, core.TaskID, core.Page) submission.ListResult
 	ListForSubmitter(context.Context, auth.UserSubject, core.UserID, core.Page) submission.ListResult
 	AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult
-	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult
+	ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID) submission.SubmissionCommentsResult
 }
 
 type LedgerService interface {
@@ -159,27 +170,28 @@ type ModerationTriageService interface {
 }
 
 type Server struct {
-	staticFiles         fs.FS
-	authService         AuthService
-	subjectVerifier     SubjectVerifier
-	organizationService OrganizationService
-	taskService         TaskService
-	submissionService   SubmissionService
-	ledgerService       LedgerService
-	agentService        AgentService
-	assetService        AssetService
-	mcpServer           mcp.Server
-	mcpSessions         *mcpHTTPSessionStore
-	secureCookies       bool
-	ipRateLimiter       RateLimiter
-	subjectRateLimiter  RateLimiter
-	platformAdmins      PlatformAdminService
-	accountTokens       accountTokenDelivery
-	auditService        AuditService
-	notificationService NotificationService
-	savedQueueViews     SavedQueueViewService
-	privacyService      PrivacyService
-	moderationTriage    ModerationTriageService
+	staticFiles          fs.FS
+	authService          AuthService
+	subjectVerifier      SubjectVerifier
+	organizationService  OrganizationService
+	taskService          TaskService
+	submissionService    SubmissionService
+	ledgerService        LedgerService
+	agentService         AgentService
+	orgCredentialService OrgCredentialService
+	assetService         AssetService
+	mcpServer            mcp.Server
+	mcpSessions          *mcpHTTPSessionStore
+	secureCookies        bool
+	ipRateLimiter        RateLimiter
+	subjectRateLimiter   RateLimiter
+	platformAdmins       PlatformAdminService
+	accountTokens        accountTokenDelivery
+	auditService         AuditService
+	notificationService  NotificationService
+	savedQueueViews      SavedQueueViewService
+	privacyService       PrivacyService
+	moderationTriage     ModerationTriageService
 }
 
 type RuntimeState struct {
@@ -204,9 +216,9 @@ const (
 	MCPRateRefillPerSec = 10
 )
 
-func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService) http.Handler {
+func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService) http.Handler {
 	bootstrapAdmins := parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
-	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, RuntimeState{
+	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, RuntimeState{
 		IPRateLimiter:       newRateLimiter(IPRateCapacity, IPRateRefillPerSec),
 		SubjectRateLimiter:  newRateLimiter(MCPRateCapacity, MCPRateRefillPerSec),
 		MCPSessions:         newMCPHTTPSessionStore(),
@@ -219,26 +231,27 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 	})
 }
 
-func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService, runtime RuntimeState) http.Handler {
+func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService, runtime RuntimeState) http.Handler {
 	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil {
 		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, saved queue views, privacy service, platform admin service, and moderation triage service")
 	}
-	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, runtime)
+	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, runtime)
 }
 
-func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, assetService AssetService, runtime RuntimeState) http.Handler {
+func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService, runtime RuntimeState) http.Handler {
 	server := Server{
-		staticFiles:         staticFiles,
-		authService:         authService,
-		subjectVerifier:     subjectVerifier,
-		organizationService: organizationService,
-		taskService:         taskService,
-		submissionService:   submissionService,
-		ledgerService:       ledgerService,
-		agentService:        agentService,
-		assetService:        assetService,
-		mcpServer:           mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}),
-		mcpSessions:         runtime.MCPSessions,
+		staticFiles:          staticFiles,
+		authService:          authService,
+		subjectVerifier:      subjectVerifier,
+		organizationService:  organizationService,
+		taskService:          taskService,
+		submissionService:    submissionService,
+		ledgerService:        ledgerService,
+		agentService:         agentService,
+		orgCredentialService: orgCredentialService,
+		assetService:         assetService,
+		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService}),
+		mcpSessions:          runtime.MCPSessions,
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
 		secureCookies:       os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
@@ -353,6 +366,9 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/agent-credentials", server.createAgentCredential)
 	mux.HandleFunc("GET /api/agent-credentials", server.listAgentCredentials)
 	mux.HandleFunc("POST /api/agent-credentials/{credential_id}/revoke", server.revokeAgentCredential)
+	mux.HandleFunc("POST /api/organizations/{organization_id}/credentials", server.createOrgCredential)
+	mux.HandleFunc("GET /api/organizations/{organization_id}/credentials", server.listOrgCredentials)
+	mux.HandleFunc("POST /api/organizations/{organization_id}/credentials/{credential_id}/revoke", server.revokeOrgCredential)
 	mux.HandleFunc("POST /mcp", server.mcpEndpoint)
 	mux.HandleFunc("GET /mcp", server.mcpStream)
 	mux.HandleFunc("DELETE /mcp", server.mcpDeleteSession)
@@ -438,9 +454,9 @@ func (authRequestAccepted) authRequestResult() {}
 
 func (authRequestRejected) authRequestResult() {}
 
-type taskReservationChanger func(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
+type taskReservationChanger func(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 
-type taskStateChanger func(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult
+type taskStateChanger func(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
 
 type reviewPathResult interface {
 	reviewPathResult()
@@ -604,6 +620,48 @@ func (server Server) requireUserSubject(r *http.Request) userSubjectResult {
 	}
 
 	return userSubjectAccepted{subject: subject}
+}
+
+type actorResult interface {
+	actorResult()
+}
+
+type actorAccepted struct {
+	actor auth.Subject
+}
+
+type actorRejected struct {
+	reason string
+}
+
+func (actorAccepted) actorResult() {}
+
+func (actorRejected) actorResult() {}
+
+// requireUserOrOrgSubject resolves a request to either a user session
+// subject or an org-wide credential's OrgSubject, for handlers on methods
+// widened to accept auth.Subject (full org-token parity). Handlers that stay
+// user-only keep using requireUserSubject and never see an OrgSubject.
+func (server Server) requireUserOrOrgSubject(r *http.Request) actorResult {
+	if accepted, matched := server.requireUserSubject(r).(userSubjectAccepted); matched {
+		return actorAccepted{actor: accepted.subject}
+	}
+	rawHeader := r.Header.Get("Authorization")
+	rawToken, matched := strings.CutPrefix(rawHeader, "Bearer ")
+	if !matched || !orgcred.HasSecretPrefix(rawToken) {
+		return actorRejected{reason: "a user access token or an organization credential is required"}
+	}
+	secretResult := orgcred.ParseSecretPlain(rawToken)
+	secret, secretMatched := secretResult.(orgcred.SecretPlainAccepted)
+	if !secretMatched {
+		return actorRejected{reason: secretResult.(orgcred.SecretPlainRejected).Reason.Description()}
+	}
+	verifyResult := server.orgCredentialService.Verify(r.Context(), secret.Value)
+	verified, verifyMatched := verifyResult.(orgcred.CredentialVerified)
+	if !verifyMatched {
+		return actorRejected{reason: verifyResult.(orgcred.VerifyRejected).Reason.Description()}
+	}
+	return actorAccepted{actor: verified.Subject}
 }
 
 type organizationIDResult interface {

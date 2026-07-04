@@ -205,6 +205,42 @@ func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
 	writeTaskResponse(w, http.StatusOK, server.taskToResponseForActor(r.Context(), actor.subject, got.Value))
 }
 
+// credentialFields is the label/scopes/expiration triple common to both a
+// personal agent credential and an org-wide credential request body.
+type credentialFields struct {
+	label     agent.Label
+	scopes    agent.ScopeSet
+	expiresAt *time.Time
+}
+
+// parseCredentialFields decodes and validates the label/scopes/expiration
+// fields shared by the agent-credential and org-credential mint requests,
+// writing an error response and returning false on the first invalid field.
+func parseCredentialFields(w http.ResponseWriter, rawLabel string, rawScopes []string, rawExpiresAt string) (credentialFields, bool) {
+	labelResult := agent.NewLabel(rawLabel)
+	label, labelMatched := labelResult.(agent.LabelAccepted)
+	if !labelMatched {
+		writeError(w, http.StatusBadRequest, labelResult.(agent.LabelRejected).Reason.Description())
+		return credentialFields{}, false
+	}
+
+	scopesResult := parseAgentScopes(rawScopes)
+	scopes, scopesMatched := scopesResult.(agentScopesAccepted)
+	if !scopesMatched {
+		writeError(w, http.StatusBadRequest, scopesResult.(agentScopesRejected).reason)
+		return credentialFields{}, false
+	}
+
+	expiresAtResult := parseOptionalExpiresAt(rawExpiresAt)
+	expiresAt, expiresAtMatched := expiresAtResult.(expiresAtAccepted)
+	if !expiresAtMatched {
+		writeError(w, http.StatusBadRequest, expiresAtResult.(expiresAtRejected).reason)
+		return credentialFields{}, false
+	}
+
+	return credentialFields{label: label.Value, scopes: scopes.value, expiresAt: expiresAt.value}, true
+}
+
 func (server Server) createAgentCredential(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
@@ -219,28 +255,12 @@ func (server Server) createAgentCredential(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	labelResult := agent.NewLabel(request.Label)
-	label, labelMatched := labelResult.(agent.LabelAccepted)
-	if !labelMatched {
-		writeError(w, http.StatusBadRequest, labelResult.(agent.LabelRejected).Reason.Description())
+	fields, ok := parseCredentialFields(w, request.Label, request.Scopes, request.ExpiresAt)
+	if !ok {
 		return
 	}
 
-	scopesResult := parseAgentScopes(request.Scopes)
-	scopes, scopesMatched := scopesResult.(agentScopesAccepted)
-	if !scopesMatched {
-		writeError(w, http.StatusBadRequest, scopesResult.(agentScopesRejected).reason)
-		return
-	}
-
-	expiresAtResult := parseOptionalExpiresAt(request.ExpiresAt)
-	expiresAt, expiresAtMatched := expiresAtResult.(expiresAtAccepted)
-	if !expiresAtMatched {
-		writeError(w, http.StatusBadRequest, expiresAtResult.(expiresAtRejected).reason)
-		return
-	}
-
-	result := server.agentService.Create(r.Context(), actor.subject.ID, label.Value, scopes.value, expiresAt.value, nil)
+	result := server.agentService.Create(r.Context(), actor.subject.ID, fields.label, fields.scopes, fields.expiresAt, nil)
 	created, matched := result.(agent.CredentialCreated)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(agent.CreateRejected).Reason.Description())
