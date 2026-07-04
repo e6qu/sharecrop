@@ -236,6 +236,9 @@ func (handler InteractionHandler) handleCreateReservation(request Request, taskI
 	if !loadedMatched {
 		return RequestHandleRejected{Reason: loadResult.(TaskStorageRejected).Reason}
 	}
+	if loaded.Value.CreatedBy == handler.actor.UserID() {
+		return RequestHandleRejected{Reason: "task requester cannot reserve their own task"}
+	}
 	var body reservationBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
 		return RequestHandleRejected{Reason: "reservation body is invalid"}

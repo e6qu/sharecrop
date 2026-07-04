@@ -2126,18 +2126,6 @@
     decide("changes_requested", "reserved"),
   );
   on(
-    "POST",
-    "/api/tasks/:id/capability-tokens",
-    (p) =>
-      ok({
-        id: nextId("cap"),
-        task_id: p.id,
-        state: "active",
-        token: "demo-capability-" + nextId("tok"),
-      }, 201),
-  );
-
-  on(
     "GET",
     "/api/agent-credentials",
     () => ok({ credentials: db.credentials }),

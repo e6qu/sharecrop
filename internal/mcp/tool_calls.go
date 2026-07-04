@@ -110,6 +110,10 @@ type reservationSummary struct {
 	AssigneeID   string `json:"assignee_id"`
 	State        string `json:"state"`
 	RequestedBy  string `json:"requested_by"`
+	// IssuedWorkerCredential is a one-time plaintext secret for a new
+	// task-scoped agent credential, present only immediately after this
+	// reservation was created or approved into an active state.
+	IssuedWorkerCredential string `json:"issued_worker_credential"`
 }
 
 type reservationPayload struct {
@@ -706,7 +710,7 @@ func (server Server) callReserveTask(ctx context.Context, subject auth.UserSubje
 	if !matched {
 		return toolFailed{message: result.(task.ReservationRejected).Reason.Description()}
 	}
-	return marshalPayload(reservationPayload{Reservation: reservationToSummary(created.Value)})
+	return marshalPayload(reservationPayload{Reservation: reservationToSummary(created.Value, created.IssuedWorkerCredentialSecret)})
 }
 
 type parsedReserveTaskArguments struct {
@@ -766,7 +770,7 @@ func (server Server) callListReservations(ctx context.Context, subject auth.User
 	}
 	reservations := make([]reservationSummary, 0, len(listed.Values))
 	for index := range listed.Values {
-		reservations = append(reservations, reservationToSummary(listed.Values[index]))
+		reservations = append(reservations, reservationToSummary(listed.Values[index], ""))
 	}
 	return marshalPayload(reservationsPayload{Reservations: reservations})
 }
@@ -783,7 +787,7 @@ func (server Server) callChangeReservation(ctx context.Context, subject auth.Use
 	if !matched {
 		return toolFailed{message: result.(task.ReservationStateChangeRejected).Reason.Description()}
 	}
-	return marshalPayload(reservationPayload{Reservation: reservationToSummary(changed.Value)})
+	return marshalPayload(reservationPayload{Reservation: reservationToSummary(changed.Value, changed.IssuedWorkerCredentialSecret)})
 }
 
 func seriesToSummary(value task.Series) seriesSummary {
@@ -1245,15 +1249,16 @@ func submissionToSummary(value submission.Submission) submissionSummary {
 	}
 }
 
-func reservationToSummary(value task.Reservation) reservationSummary {
+func reservationToSummary(value task.Reservation, issuedWorkerCredential string) reservationSummary {
 	assigneeKind, assigneeID := reservationAssigneeParts(value.Assignee)
 	return reservationSummary{
-		ID:           value.ID.String(),
-		TaskID:       value.TaskID.String(),
-		AssigneeKind: assigneeKind,
-		AssigneeID:   assigneeID,
-		State:        value.State.String(),
-		RequestedBy:  value.RequestedBy.String(),
+		ID:                     value.ID.String(),
+		TaskID:                 value.TaskID.String(),
+		AssigneeKind:           assigneeKind,
+		AssigneeID:             assigneeID,
+		State:                  value.State.String(),
+		RequestedBy:            value.RequestedBy.String(),
+		IssuedWorkerCredential: issuedWorkerCredential,
 	}
 }
 

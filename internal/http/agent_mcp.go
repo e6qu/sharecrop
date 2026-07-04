@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -150,15 +151,18 @@ func (services mcpServices) CancelReservation(ctx context.Context, subject auth.
 }
 
 type agentCredentialRequest struct {
-	Label  string   `json:"label"`
-	Scopes []string `json:"scopes"`
+	Label     string   `json:"label"`
+	Scopes    []string `json:"scopes"`
+	ExpiresAt string   `json:"expires_at"`
 }
 
 type agentCredentialResponse struct {
-	ID     string   `json:"id"`
-	Label  string   `json:"label"`
-	Scopes []string `json:"scopes"`
-	State  string   `json:"state"`
+	ID        string   `json:"id"`
+	Label     string   `json:"label"`
+	Scopes    []string `json:"scopes"`
+	State     string   `json:"state"`
+	ExpiresAt string   `json:"expires_at"`
+	TaskID    string   `json:"task_id"`
 }
 
 type agentCredentialCreatedResponse struct {
@@ -177,17 +181,17 @@ func (agentCredentialCreatedResponse) writableResponse() {}
 func (agentCredentialsResponse) writableResponse() {}
 
 func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireWorkerSubject(r, agent.ScopeTasksRead)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
-	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
-		return
-	}
-
 	taskIDResult := parseTaskPathValue(r)
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
 		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		return
+	}
+
+	actorResult := server.requireWorkerSubject(r, agent.ScopeTasksRead, taskIDAccepted.value)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
@@ -229,7 +233,14 @@ func (server Server) createAgentCredential(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result := server.agentService.Create(r.Context(), actor.subject.ID, label.Value, scopes.value)
+	expiresAtResult := parseOptionalExpiresAt(request.ExpiresAt)
+	expiresAt, expiresAtMatched := expiresAtResult.(expiresAtAccepted)
+	if !expiresAtMatched {
+		writeError(w, http.StatusBadRequest, expiresAtResult.(expiresAtRejected).reason)
+		return
+	}
+
+	result := server.agentService.Create(r.Context(), actor.subject.ID, label.Value, scopes.value, expiresAt.value, nil)
 	created, matched := result.(agent.CredentialCreated)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(agent.CreateRejected).Reason.Description())
@@ -340,7 +351,7 @@ func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.mcpServer.HandleRaw(r.Context(), verified.Subject, verified.Credential.Scopes, body)
+	result := server.mcpServer.HandleRaw(r.Context(), verified.Subject, verified.Credential, body)
 	if result.SessionID != "" {
 		if !server.mcpSessions.create(result.SessionID, verified.Subject.ID.String()) {
 			writeError(w, http.StatusTooManyRequests, "too many active MCP sessions for this agent")
@@ -567,12 +578,52 @@ func credentialToResponse(value agent.Credential) agentCredentialResponse {
 	for index := range scopes {
 		rawScopes = append(rawScopes, scopes[index].String())
 	}
-	return agentCredentialResponse{
-		ID:     value.ID.String(),
-		Label:  value.Label.String(),
-		Scopes: rawScopes,
-		State:  value.State.String(),
+	var rawExpiresAt string
+	if value.ExpiresAt != nil {
+		rawExpiresAt = value.ExpiresAt.UTC().Format(time.RFC3339)
 	}
+	var rawTaskID string
+	if value.TaskID != nil {
+		rawTaskID = value.TaskID.String()
+	}
+	return agentCredentialResponse{
+		ID:        value.ID.String(),
+		Label:     value.Label.String(),
+		Scopes:    rawScopes,
+		State:     value.State.String(),
+		ExpiresAt: rawExpiresAt,
+		TaskID:    rawTaskID,
+	}
+}
+
+type expiresAtResult interface {
+	expiresAtResult()
+}
+
+type expiresAtAccepted struct {
+	value *time.Time
+}
+
+type expiresAtRejected struct {
+	reason string
+}
+
+func (expiresAtAccepted) expiresAtResult() {}
+
+func (expiresAtRejected) expiresAtResult() {}
+
+// parseOptionalExpiresAt treats an empty string as "never expires", matching
+// this codebase's convention of empty-string sentinels over JSON null for
+// optional fields.
+func parseOptionalExpiresAt(raw string) expiresAtResult {
+	if raw == "" {
+		return expiresAtAccepted{value: nil}
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return expiresAtRejected{reason: "expires_at must be an RFC3339 timestamp"}
+	}
+	return expiresAtAccepted{value: &parsed}
 }
 
 type agentScopesResult interface {

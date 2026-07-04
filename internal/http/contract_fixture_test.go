@@ -156,12 +156,12 @@ func TestReviewSubmissionResponseWireShape(t *testing.T) {
 
 func TestReservationResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(reservationResponse{ID: "reservation-1", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-1", State: "active", RequestedBy: "user-1"})
-	assertWireShape(t, encoded, err, `{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"active","requested_by":"user-1"}`)
+	assertWireShape(t, encoded, err, `{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"active","requested_by":"user-1","issued_worker_credential":""}`)
 }
 
 func TestReservationsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(reservationsResponse{Reservations: []reservationResponse{{ID: "reservation-1", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-1", State: "requested", RequestedBy: "user-1"}}})
-	assertWireShape(t, encoded, err, `{"reservations":[{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"requested","requested_by":"user-1"}]}`)
+	assertWireShape(t, encoded, err, `{"reservations":[{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"requested","requested_by":"user-1","issued_worker_credential":""}]}`)
 }
 
 func TestTeamResponseWireShape(t *testing.T) {
@@ -232,11 +232,6 @@ func TestTeamsResponseWireShape(t *testing.T) {
 func TestOrganizationTeamsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(teamsResponse{Teams: []teamResponse{{ID: "team-1", OwnerKind: "organization", OrganizationID: "org-1", OwnerUserID: "", Name: "Review crew", CreatedBy: "user-1"}}})
 	assertWireShape(t, encoded, err, `{"teams":[{"id":"team-1","owner_kind":"organization","organization_id":"org-1","owner_user_id":"","name":"Review crew","created_by":"user-1"}]}`)
-}
-
-func TestTaskCapabilityTokenResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(taskCapabilityTokenResponse{ID: "cap-1", TaskID: "task-1", State: "active", Token: "secret-token"})
-	assertWireShape(t, encoded, err, `{"id":"cap-1","task_id":"task-1","state":"active","token":"secret-token"}`)
 }
 
 func TestTaskResponseWireShape(t *testing.T) {
@@ -442,22 +437,22 @@ func TestCollectibleCatalogResponseWireShape(t *testing.T) {
 
 func TestAgentCredentialResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(agentCredentialResponse{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read", "submissions_write"}, State: "active"})
-	assertWireShape(t, encoded, err, `{"id":"cred-1","label":"Local agent","scopes":["tasks_read","submissions_write"],"state":"active"}`)
+	assertWireShape(t, encoded, err, `{"id":"cred-1","label":"Local agent","scopes":["tasks_read","submissions_write"],"state":"active","expires_at":"","task_id":""}`)
 }
 
 func TestAgentCredentialRequestWireShape(t *testing.T) {
 	encoded, err := json.Marshal(agentCredentialRequest{Label: "Local agent", Scopes: []string{"tasks_read", "submissions_write"}})
-	assertWireShape(t, encoded, err, `{"label":"Local agent","scopes":["tasks_read","submissions_write"]}`)
+	assertWireShape(t, encoded, err, `{"label":"Local agent","scopes":["tasks_read","submissions_write"],"expires_at":""}`)
 }
 
 func TestAgentCredentialCreatedResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(agentCredentialCreatedResponse{Credential: agentCredentialResponse{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read"}, State: "active"}, Secret: "agent-secret"})
-	assertWireShape(t, encoded, err, `{"credential":{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active"},"secret":"agent-secret"}`)
+	assertWireShape(t, encoded, err, `{"credential":{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active","expires_at":"","task_id":""},"secret":"agent-secret"}`)
 }
 
 func TestAgentCredentialsResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(agentCredentialsResponse{Credentials: []agentCredentialResponse{{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read"}, State: "active"}}})
-	assertWireShape(t, encoded, err, `{"credentials":[{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active"}]}`)
+	assertWireShape(t, encoded, err, `{"credentials":[{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active","expires_at":"","task_id":""}]}`)
 }
 
 func TestUserProfileResponseWireShape(t *testing.T) {

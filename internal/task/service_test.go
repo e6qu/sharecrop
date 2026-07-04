@@ -2,37 +2,12 @@ package task
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
 )
-
-func TestCapabilityTokenDoesNotContainTaskIdentifier(t *testing.T) {
-	taskID := testTaskID(t)
-	result := NewCapabilityTokenPlain()
-	created, matched := result.(CapabilityTokenPlainAccepted)
-	if !matched {
-		t.Fatalf("result = %T, want CapabilityTokenPlainAccepted", result)
-	}
-
-	if strings.Contains(created.Value.String(), taskID.String()) {
-		t.Fatalf("capability token contained task id")
-	}
-
-	if created.Value.Hash().String() == created.Value.String() {
-		t.Fatalf("capability token hash equaled plain token")
-	}
-}
-
-func TestParseCapabilityTokenPlainRejectsInvalidToken(t *testing.T) {
-	result := ParseCapabilityTokenPlain("not base64")
-	if _, matched := result.(CapabilityTokenPlainRejected); !matched {
-		t.Fatalf("result = %T, want CapabilityTokenPlainRejected", result)
-	}
-}
 
 func TestOpenStateOnlyAcceptsDraft(t *testing.T) {
 	result := OpenState(StateDraft)
@@ -46,17 +21,10 @@ func TestOpenStateOnlyAcceptsDraft(t *testing.T) {
 	}
 }
 
-func TestParseCapabilityTokenStateRejectsUnknownState(t *testing.T) {
-	result := ParseCapabilityTokenState("missing")
-	if _, matched := result.(CapabilityTokenStateRejected); !matched {
-		t.Fatalf("result = %T, want CapabilityTokenStateRejected", result)
-	}
-}
-
 func TestServiceRequiresPublicPublisherForOrganizationPublicTask(t *testing.T) {
 	store := newTaskMemoryStore()
 	permissions := newTaskPermissionStore()
-	service := NewService(store, permissions)
+	service := NewService(store, permissions, nil)
 	actor := testUserSubject(t)
 	organizationID := testOrganizationID(t)
 	command := testCreateCommand(t, actor, OrganizationOwner{OrganizationID: organizationID}, PublicVisibility{})
@@ -88,7 +56,7 @@ func TestServiceUsesOrganizationDefaultHiddenVisibility(t *testing.T) {
 
 func TestServiceReserveCreatesUserReservation(t *testing.T) {
 	store := newTaskMemoryStore()
-	service := NewService(store, newTaskPermissionStore())
+	service := NewService(store, newTaskPermissionStore(), nil)
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
@@ -109,9 +77,66 @@ func TestServiceReserveCreatesUserReservation(t *testing.T) {
 	}
 }
 
+func TestServiceReserveIssuesTaskScopedWorkerCredentialWhenImmediatelyActive(t *testing.T) {
+	store := newTaskMemoryStore()
+	issuer := &stubCredentialIssuer{}
+	service := NewService(store, newTaskPermissionStore(), issuer)
+	requester := testUserSubject(t)
+	worker := testUserSubject(t)
+	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
+	created := service.Create(context.Background(), command).(TaskCreated)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+
+	result := service.Reserve(context.Background(), worker, created.Value.ID)
+	reserved, matched := result.(ReservationCreated)
+	if !matched {
+		t.Fatalf("result = %T, want ReservationCreated", result)
+	}
+	if reserved.IssuedWorkerCredentialSecret == "" {
+		t.Fatalf("expected a task-scoped credential secret to be issued")
+	}
+	if issuer.owner != worker.ID {
+		t.Fatalf("credential issued for %s, want the worker %s", issuer.owner.String(), worker.ID.String())
+	}
+	if issuer.taskID != created.Value.ID {
+		t.Fatalf("credential issued for task %s, want %s", issuer.taskID.String(), created.Value.ID.String())
+	}
+}
+
+func TestServiceApproveReservationIssuesTaskScopedWorkerCredential(t *testing.T) {
+	store := newTaskMemoryStore()
+	issuer := &stubCredentialIssuer{}
+	service := NewService(store, newTaskPermissionStore(), issuer)
+	requester := testUserSubject(t)
+	worker := testUserSubject(t)
+	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
+	created := service.Create(context.Background(), command).(TaskCreated)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+	reserved := service.Reserve(context.Background(), worker, created.Value.ID).(ReservationCreated)
+
+	// Reset the issuer so we can attribute this credential specifically to
+	// the approval call, not the reserve call above (the fake store always
+	// creates reservations already Active, but ApproveReservation should
+	// still mint its own credential independent of reserve's).
+	issuer.owner = core.UserID{}
+	issuer.taskID = core.TaskID{}
+
+	result := service.ApproveReservation(context.Background(), requester, created.Value.ID, reserved.Value.ID)
+	changed, matched := result.(ReservationStateChanged)
+	if !matched {
+		t.Fatalf("result = %T, want ReservationStateChanged", result)
+	}
+	if changed.IssuedWorkerCredentialSecret == "" {
+		t.Fatalf("expected a task-scoped credential secret to be issued on approval")
+	}
+	if issuer.owner != worker.ID {
+		t.Fatalf("credential issued for %s, want the worker %s", issuer.owner.String(), worker.ID.String())
+	}
+}
+
 func TestServiceReserveRejectsRequester(t *testing.T) {
 	store := newTaskMemoryStore()
-	service := NewService(store, newTaskPermissionStore())
+	service := NewService(store, newTaskPermissionStore(), nil)
 	requester := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	created := service.Create(context.Background(), command).(TaskCreated)
@@ -126,7 +151,7 @@ func TestServiceReserveRejectsRequester(t *testing.T) {
 func TestServiceReserveCreatesOrganizationTeamReservation(t *testing.T) {
 	store := newTaskMemoryStore()
 	permissions := newTaskPermissionStore()
-	service := NewService(store, permissions)
+	service := NewService(store, permissions, nil)
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	organizationID := testOrganizationID(t)
@@ -153,7 +178,7 @@ func TestServiceReserveCreatesOrganizationTeamReservation(t *testing.T) {
 
 func TestServiceReserveRejectsUserReservationForOrganizationTeamAssigneeScope(t *testing.T) {
 	store := newTaskMemoryStore()
-	service := NewService(store, newTaskPermissionStore())
+	service := NewService(store, newTaskPermissionStore(), nil)
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
@@ -169,7 +194,7 @@ func TestServiceReserveRejectsUserReservationForOrganizationTeamAssigneeScope(t 
 
 func TestServiceReserveRejectsOrganizationTeamNonMember(t *testing.T) {
 	store := newTaskMemoryStore()
-	service := NewService(store, newTaskPermissionStore())
+	service := NewService(store, newTaskPermissionStore(), nil)
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
@@ -300,9 +325,15 @@ func newTaskPermissionStore() *taskPermissionStore {
 	return &taskPermissionStore{grants: taskPermissionSeed}
 }
 
-func (store *taskMemoryStore) CreateCapabilityToken(context.Context, core.TaskCapabilityTokenID, core.TaskID, CapabilityTokenHash) CreateCapabilityTokenStoreResult {
-	reason := core.NewDomainError(core.ErrorCodeInvalidState, "not used")
-	return CreateCapabilityTokenStoreRejected{Reason: reason}
+type stubCredentialIssuer struct {
+	owner  core.UserID
+	taskID core.TaskID
+}
+
+func (issuer *stubCredentialIssuer) IssueTaskWorkerCredential(_ context.Context, owner core.UserID, taskID core.TaskID) (string, bool) {
+	issuer.owner = owner
+	issuer.taskID = taskID
+	return "stub-secret", true
 }
 
 func (store *taskMemoryStore) ListSeries(context.Context, core.UserID, core.Page) ListSeriesStoreResult {
@@ -496,7 +527,7 @@ func TestGetSeriesAllowsOwner(t *testing.T) {
 	actor := testUserSubject(t)
 	seriesID := testTaskSeriesID(t)
 	store.series = []Series{{ID: seriesID, Owner: UserOwner{UserID: actor.ID}, Title: acceptedSeriesTitle(t, "My series"), CreatedBy: actor.ID}}
-	service := NewService(store, newTaskPermissionStore())
+	service := NewService(store, newTaskPermissionStore(), nil)
 
 	result := service.GetSeries(context.Background(), actor, seriesID)
 	if _, matched := result.(SeriesGot); !matched {
@@ -510,7 +541,7 @@ func TestGetSeriesDeniesNonOwner(t *testing.T) {
 	other := testUserSubject(t)
 	seriesID := testTaskSeriesID(t)
 	store.series = []Series{{ID: seriesID, Owner: UserOwner{UserID: owner.ID}, Title: acceptedSeriesTitle(t, "Private series"), CreatedBy: owner.ID}}
-	service := NewService(store, newTaskPermissionStore())
+	service := NewService(store, newTaskPermissionStore(), nil)
 
 	result := service.GetSeries(context.Background(), other, seriesID)
 	if _, matched := result.(GetSeriesRejected); !matched {
@@ -542,16 +573,6 @@ func testUserID(t *testing.T) core.UserID {
 	created, matched := result.(core.UserIDCreated)
 	if !matched {
 		t.Fatalf("user id = %T, want UserIDCreated", result)
-	}
-	return created.Value
-}
-
-func testTaskID(t *testing.T) core.TaskID {
-	t.Helper()
-	result := core.NewTaskID()
-	created, matched := result.(core.TaskIDCreated)
-	if !matched {
-		t.Fatalf("task id = %T, want TaskIDCreated", result)
 	}
 	return created.Value
 }

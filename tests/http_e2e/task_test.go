@@ -47,14 +47,6 @@ func TestTaskHTTPFlow(t *testing.T) {
 		t.Fatalf("task count = %d, want 1", len(listBody.Tasks))
 	}
 
-	tokenResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/capability-tokens", []byte(`{}`), ownerBody.AccessToken)
-	defer tokenResponse.Body.Close()
-	assertStatus(t, tokenResponse, http.StatusCreated)
-	tokenBody := decodeTaskCapabilityTokenHTTPResponse(t, tokenResponse)
-	if strings.Contains(tokenBody.Token, taskBody.ID) {
-		t.Fatalf("capability token contained task id")
-	}
-
 	cancelResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/cancel", []byte(`{}`), ownerBody.AccessToken)
 	defer cancelResponse.Body.Close()
 	assertStatus(t, cancelResponse, http.StatusOK)
@@ -569,10 +561,6 @@ type tasksHTTPResponse struct {
 	Tasks []taskHTTPResponse `json:"tasks"`
 }
 
-type taskCapabilityTokenHTTPResponse struct {
-	Token string `json:"token"`
-}
-
 type reservationHTTPResponse struct {
 	ID           string `json:"id"`
 	AssigneeKind string `json:"assignee_kind"`
@@ -765,18 +753,6 @@ func decodeTasksHTTPResponse(t *testing.T, response *http.Response) tasksHTTPRes
 	var body tasksHTTPResponse
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode tasks response: %v", err)
-	}
-	return body
-}
-
-func decodeTaskCapabilityTokenHTTPResponse(t *testing.T, response *http.Response) taskCapabilityTokenHTTPResponse {
-	t.Helper()
-	var body taskCapabilityTokenHTTPResponse
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-		t.Fatalf("decode task capability token response: %v", err)
-	}
-	if body.Token == "" {
-		t.Fatalf("capability token is empty")
 	}
 	return body
 }

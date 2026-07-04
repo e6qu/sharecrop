@@ -151,36 +151,6 @@ taskVisibilityKindEncoder taskVisibilityKind =
             Encode.string "organization_team"
 
 
-type TaskCapabilityTokenState
-    = TaskCapabilityTokenStateActive
-    | TaskCapabilityTokenStateRevoked
-
-taskCapabilityTokenStateDecoder : Decoder TaskCapabilityTokenState
-taskCapabilityTokenStateDecoder =
-    Decode.string
-        |> Decode.andThen
-            (\value ->
-                case value of
-                    "active" ->
-                        Decode.succeed TaskCapabilityTokenStateActive
-
-                    "revoked" ->
-                        Decode.succeed TaskCapabilityTokenStateRevoked
-
-                    _ ->
-                        Decode.fail "invalid TaskCapabilityTokenState"
-            )
-
-taskCapabilityTokenStateEncoder : TaskCapabilityTokenState -> Encode.Value
-taskCapabilityTokenStateEncoder taskCapabilityTokenState =
-    case taskCapabilityTokenState of
-        TaskCapabilityTokenStateActive ->
-            Encode.string "active"
-
-        TaskCapabilityTokenStateRevoked ->
-            Encode.string "revoked"
-
-
 type TaskParticipationPolicy
     = TaskParticipationPolicyOpen
     | TaskParticipationPolicyReservationRequired
@@ -682,17 +652,19 @@ type alias TaskReservationResponse =
     , assigneeID : String
     , state : TaskReservationState
     , requestedBy : String
+    , issuedWorkerCredential : String
     }
 
 taskReservationResponseDecoder : Decoder TaskReservationResponse
 taskReservationResponseDecoder =
-    Decode.map6 TaskReservationResponse
+    Decode.map7 TaskReservationResponse
         (Decode.field "id" Decode.string)
         (Decode.field "task_id" Decode.string)
         (Decode.field "assignee_kind" taskAssigneeScopeDecoder)
         (Decode.field "assignee_id" Decode.string)
         (Decode.field "state" taskReservationStateDecoder)
         (Decode.field "requested_by" Decode.string)
+        (Decode.field "issued_worker_credential" Decode.string)
 
 taskReservationResponseEncoder : TaskReservationResponse -> Encode.Value
 taskReservationResponseEncoder taskReservationResponse =
@@ -703,6 +675,7 @@ taskReservationResponseEncoder taskReservationResponse =
         , ( "assignee_id", Encode.string taskReservationResponse.assigneeID )
         , ( "state", taskReservationStateEncoder taskReservationResponse.state )
         , ( "requested_by", Encode.string taskReservationResponse.requestedBy )
+        , ( "issued_worker_credential", Encode.string taskReservationResponse.issuedWorkerCredential )
         ]
 
 type alias TaskReservationsResponse =
@@ -718,28 +691,4 @@ taskReservationsResponseEncoder : TaskReservationsResponse -> Encode.Value
 taskReservationsResponseEncoder taskReservationsResponse =
     Encode.object
         [ ( "reservations", Encode.list taskReservationResponseEncoder taskReservationsResponse.reservations )
-        ]
-
-type alias TaskCapabilityTokenResponse =
-    { id : String
-    , taskID : String
-    , state : TaskCapabilityTokenState
-    , token : String
-    }
-
-taskCapabilityTokenResponseDecoder : Decoder TaskCapabilityTokenResponse
-taskCapabilityTokenResponseDecoder =
-    Decode.map4 TaskCapabilityTokenResponse
-        (Decode.field "id" Decode.string)
-        (Decode.field "task_id" Decode.string)
-        (Decode.field "state" taskCapabilityTokenStateDecoder)
-        (Decode.field "token" Decode.string)
-
-taskCapabilityTokenResponseEncoder : TaskCapabilityTokenResponse -> Encode.Value
-taskCapabilityTokenResponseEncoder taskCapabilityTokenResponse =
-    Encode.object
-        [ ( "id", Encode.string taskCapabilityTokenResponse.id )
-        , ( "task_id", Encode.string taskCapabilityTokenResponse.taskID )
-        , ( "state", taskCapabilityTokenStateEncoder taskCapabilityTokenResponse.state )
-        , ( "token", Encode.string taskCapabilityTokenResponse.token )
         ]

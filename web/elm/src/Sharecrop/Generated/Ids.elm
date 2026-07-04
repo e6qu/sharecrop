@@ -49,17 +49,6 @@ taskSeriesIDEncoder : TaskSeriesID -> Encode.Value
 taskSeriesIDEncoder taskSeriesID =
     Encode.string taskSeriesID
 
-type alias TaskCapabilityTokenID =
-    String
-
-taskCapabilityTokenIDDecoder : Decoder TaskCapabilityTokenID
-taskCapabilityTokenIDDecoder =
-    Decode.string
-
-taskCapabilityTokenIDEncoder : TaskCapabilityTokenID -> Encode.Value
-taskCapabilityTokenIDEncoder taskCapabilityTokenID =
-    Encode.string taskCapabilityTokenID
-
 type alias SubmissionID =
     String
 

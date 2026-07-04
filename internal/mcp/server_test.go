@@ -16,7 +16,7 @@ import (
 
 func TestInitializeReportsProtocolVersion(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "initialize", `{}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "initialize", `{}`))
 	if response.Error != nil {
 		t.Fatalf("initialize error: %s", response.Error.Message)
 	}
@@ -33,7 +33,7 @@ func TestInitializeReportsProtocolVersion(t *testing.T) {
 
 func TestToolsListReturnsAllTools(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/list", `{}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/list", `{}`))
 	var result struct {
 		Tools []struct {
 			Name        string          `json:"name"`
@@ -53,7 +53,7 @@ func TestToolsListReturnsAllTools(t *testing.T) {
 
 func TestUnknownMethodReturnsMethodNotFound(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "resources/list", `{}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "resources/list", `{}`))
 	if response.Error == nil || response.Error.Code != codeMethodNotFound {
 		t.Fatalf("expected method-not-found error, got %+v", response.Error)
 	}
@@ -61,16 +61,44 @@ func TestUnknownMethodReturnsMethodNotFound(t *testing.T) {
 
 func TestToolsCallEnforcesScope(t *testing.T) {
 	server := NewServer(fakeServices{})
-	onlyRead := agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead})
+	onlyRead := agent.Credential{Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead})}
 	response := server.Handle(context.Background(), testSubject(t), onlyRead, request(`1`, "tools/call", `{"name":"sharecrop.submit_response","arguments":{"task_id":"`+testTaskID(t)+`","response_json":"{}"}}`))
 	if response.Error == nil || response.Error.Code != codeScopeDenied {
 		t.Fatalf("expected scope-denied error, got %+v", response.Error)
 	}
 }
 
+func TestToolsCallRejectsTaskScopedCredentialForADifferentTask(t *testing.T) {
+	server := NewServer(fakeServices{})
+	scopedTaskID := testTaskID(t)
+	credential := agent.Credential{Scopes: allScopes(), TaskID: taskIDPointer(t, scopedTaskID)}
+
+	// Its own task: allowed.
+	own := server.Handle(context.Background(), testSubject(t), credential, request(`1`, "tools/call", `{"name":"sharecrop.get_task","arguments":{"task_id":"`+scopedTaskID+`"}}`))
+	if own.Error != nil {
+		t.Fatalf("expected the task-scoped credential to work against its own task, got %+v", own.Error)
+	}
+
+	// A different task: rejected, not silently passed through to the service.
+	otherTaskID := testTaskID(t)
+	other := server.Handle(context.Background(), testSubject(t), credential, request(`2`, "tools/call", `{"name":"sharecrop.get_task","arguments":{"task_id":"`+otherTaskID+`"}}`))
+	if other.Error == nil || other.Error.Code != codeScopeDenied {
+		t.Fatalf("expected scope-denied error for a different task, got %+v", other.Error)
+	}
+}
+
+func taskIDPointer(t *testing.T, raw string) *core.TaskID {
+	t.Helper()
+	parsed, matched := core.ParseTaskID(raw).(core.TaskIDCreated)
+	if !matched {
+		t.Fatalf("parse task id: %q", raw)
+	}
+	return &parsed.Value
+}
+
 func TestToolsCallListTasks(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.list_tasks","arguments":{"scope":"public"}}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.list_tasks","arguments":{"scope":"public"}}`))
 	content := decodeToolText(t, response)
 	if !strings.Contains(content, "\"tasks\"") {
 		t.Fatalf("list tasks content missing tasks key: %s", content)
@@ -79,7 +107,7 @@ func TestToolsCallListTasks(t *testing.T) {
 
 func TestToolsCallReserveTask(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
 	content := decodeToolText(t, response)
 	if !strings.Contains(content, "\"reservation\"") {
 		t.Fatalf("reserve content missing reservation key: %s", content)
@@ -93,7 +121,7 @@ func TestToolsCallReserveTaskForOrganizationTeam(t *testing.T) {
 	server := NewServer(fakeServices{})
 	organizationID := testOrganizationID(t)
 	teamID := testTeamID(t)
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`","assignee_kind":"organization_team","organization_id":"`+organizationID+`","team_id":"`+teamID+`"}}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.reserve_task","arguments":{"task_id":"`+testTaskID(t)+`","assignee_kind":"organization_team","organization_id":"`+organizationID+`","team_id":"`+teamID+`"}}`))
 	content := decodeToolText(t, response)
 	if !strings.Contains(content, "\"assignee_kind\":\"organization_team\"") {
 		t.Fatalf("reserve content missing organization team assignee: %s", content)
@@ -105,7 +133,7 @@ func TestToolsCallReserveTaskForOrganizationTeam(t *testing.T) {
 
 func TestToolsCallSubmitResponseReturnsReceipt(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.submit_response","arguments":{"task_id":"`+testTaskID(t)+`","response_json":"{\"answer\":\"done\"}"}}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.submit_response","arguments":{"task_id":"`+testTaskID(t)+`","response_json":"{\"answer\":\"done\"}"}}`))
 	content := decodeToolText(t, response)
 	if !strings.Contains(content, "receipt_token") {
 		t.Fatalf("submit content missing receipt token: %s", content)
@@ -114,7 +142,7 @@ func TestToolsCallSubmitResponseReturnsReceipt(t *testing.T) {
 
 func TestToolsCallRejectsUnknownTool(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.delete_everything","arguments":{}}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.delete_everything","arguments":{}}`))
 	if response.Error == nil || response.Error.Code != codeInvalidParams {
 		t.Fatalf("expected invalid-params error, got %+v", response.Error)
 	}
@@ -122,7 +150,7 @@ func TestToolsCallRejectsUnknownTool(t *testing.T) {
 
 func TestToolsCallSurfacesDomainRejectionAsToolError(t *testing.T) {
 	server := NewServer(fakeServices{rejectGet: true})
-	response := server.Handle(context.Background(), testSubject(t), allScopes(), request(`1`, "tools/call", `{"name":"sharecrop.get_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
+	response := server.Handle(context.Background(), testSubject(t), agent.Credential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.get_task","arguments":{"task_id":"`+testTaskID(t)+`"}}`))
 	if response.Error != nil {
 		t.Fatalf("expected tool result, got protocol error: %s", response.Error.Message)
 	}

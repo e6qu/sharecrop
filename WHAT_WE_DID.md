@@ -1,5 +1,78 @@
 # What We Did
 
+`task/agent-credential-scopes-expiry-task-tokens` is Phase 1 of a larger,
+explicitly-planned RBAC + API-token effort (users can create scoped/expiring
+API tokens; organizations get org-wide tokens; MCP gets full parity with the
+API; the system gets a real RBAC layer) — see the design plan discussed with
+the user for the full 5-phase breakdown. This phase lays the foundation:
+credential scopes/expiration, a real per-task credential, and auto-issuance
+on reservation.
+
+- **`agent.Credential` gained `ExpiresAt`/`TaskID`**, both nil-able. `Verify`
+  now rejects an expired credential the same way it already rejected a
+  revoked one. The scope taxonomy widened from 5 to 19 values (adding
+  organizations/teams/collectibles/notifications/users/ledger/moderation/
+  privacy/platform-admin/credential-self-management scopes) so later phases
+  have room to grow without another migration touching the same constraint.
+- **Auto-issued task-scoped worker credential**: when a worker's reservation
+  on a task becomes active — confirmed via direct source reading that this
+  happens at *two* distinct call sites, `Service.reserve` (immediately
+  active under `reservation_required` policy) and `Service.ApproveReservation`
+  (`approval_required` policy's explicit approval step), not just the one
+  the initial research suggested — the task now auto-mints a credential
+  scoped to `{tasks_read, submissions_write, submissions_read}`, restricted
+  to that one task, 30-day expiry, surfaced as a one-time plaintext secret
+  in the reservation/approval response (`issued_worker_credential`) for both
+  REST and MCP. This is the concrete mechanism behind "hand a task-specific
+  token to an agent, compartmentalized to just that task."
+- **A real security gap found by manual end-to-end testing, not by code
+  review or unit tests**: the task-scoping was modeled in
+  `Credential.MatchesTask` and wired into `Verify`'s expiration check, but I
+  never actually wired the *match* check into the REST (`requireWorkerSubject`)
+  or MCP (`handleToolsCall`) request paths — so a freshly-minted task-scoped
+  credential worked against *any* task, not just its own. Caught this by
+  hand-testing the full flow with curl against the real Postgres-backed
+  server (create task → reserve → approve → use the issued secret against
+  its own task, then a different one) exactly as the plan's verification
+  section called for, rather than trusting that "the tests pass" meant the
+  feature was actually secure. Fixed on both REST and MCP: `core.TaskID` now
+  threads through `requireWorkerSubject`'s three call sites (task
+  reordered-before-auth so the ID is known at check time), and MCP's
+  `handleToolsCall` now checks a tool call's `task_id` argument against the
+  credential — the whole `scopes`-only plumbing (`ServeStdio` →
+  `HandleRaw` → `Handle` → `handleToolsCall`) widened to carry the full
+  `agent.Credential` instead of just its `ScopeSet`, since the check needs
+  the credential's `TaskID` too. Documented one narrower, accepted residual
+  gap in the code: submission-comment tools take a `submission_id`, not a
+  `task_id`, so a task-scoped credential could technically reach a comment
+  thread on a *different* task's submission — but only one the same
+  underlying user is already legitimately the submitter or task owner for,
+  since the service-layer authorization still applies regardless. Added a
+  dedicated regression test for the fixed case
+  (`TestToolsCallRejectsTaskScopedCredentialForADifferentTask`).
+- **Boy-scout: deleted `task.CapabilityToken` entirely.** Confirmed via a
+  full-repo grep that this task-bound token type — minted via
+  `POST /api/tasks/{id}/capability-tokens` — had no verification/lookup
+  path anywhere in the codebase; it was mint-only dead code, almost
+  certainly an abandoned earlier stub for exactly the auto-issuance feature
+  built in this phase. Removed the Go types, the HTTP route and handler, the
+  DB table (migration), the OpenAPI/Elm-contract entries, and the WASM
+  demo's separate stale copy of the same route (a real, distinct parity bug
+  caught by `tests/deno/demo_backend_test.ts`'s route-surface check, which
+  compares the WASM/JS demo backend's routes against the real Go router).
+- **Boy-scout: the WASM demo allowed reserving your own task.** The real
+  backend already rejects this (`"task requester cannot reserve their own
+  task"`); the WASM demo's reservation handler had no equivalent check.
+  Fixed for parity — a pre-existing gap unrelated to this phase's core work,
+  found while reading the reservation code path closely enough to place the
+  new auto-issuance hooks correctly.
+- Verified: all 47 real-backend Playwright specs, all 13 WASM-demo specs,
+  Go unit/integration/http_e2e suites, the full non-browser check suite,
+  and (given the security-sensitive nature of this phase) a hand-run
+  end-to-end curl verification against the real Postgres-backed server
+  confirming the issued credential works against its own task and is
+  correctly rejected (401) against a different one.
+
 `task/task-detail-reorder-profile-links-uiux` refined the task detail page
 and profile pages for usability, at the user's explicit direction (make the
 report panel collapsible, put reservation status at the top, link people to

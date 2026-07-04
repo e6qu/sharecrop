@@ -336,7 +336,6 @@ func idsModule() Module {
 			Alias{Name: NewElmTypeName("GuestID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TaskID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("TaskSeriesID"), Type: StringRef{}},
-			Alias{Name: NewElmTypeName("TaskCapabilityTokenID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("SubmissionID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("SubmissionReceiptTokenID"), Type: StringRef{}},
 			Alias{Name: NewElmTypeName("CreditAccountID"), Type: StringRef{}},
@@ -512,13 +511,6 @@ func taskModule() Module {
 				},
 			},
 			Enum{
-				Name: NewElmTypeName("TaskCapabilityTokenState"),
-				Variants: []Variant{
-					{Name: NewElmTypeName("TaskCapabilityTokenStateActive"), Tag: "active"},
-					{Name: NewElmTypeName("TaskCapabilityTokenStateRevoked"), Tag: "revoked"},
-				},
-			},
-			Enum{
 				Name: NewElmTypeName("TaskParticipationPolicy"),
 				Variants: []Variant{
 					{Name: NewElmTypeName("TaskParticipationPolicyOpen"), Tag: "open"},
@@ -660,21 +652,13 @@ func taskModule() Module {
 					{Name: NewElmValueName("assigneeID"), JSONName: NewJSONFieldName("assignee_id"), Type: StringRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskReservationState")}},
 					{Name: NewElmValueName("requestedBy"), JSONName: NewJSONFieldName("requested_by"), Type: StringRef{}},
+					{Name: NewElmValueName("issuedWorkerCredential"), JSONName: NewJSONFieldName("issued_worker_credential"), Type: StringRef{}},
 				},
 			},
 			Product{
 				Name: NewElmTypeName("TaskReservationsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("reservations"), JSONName: NewJSONFieldName("reservations"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskReservationResponse")}}},
-				},
-			},
-			Product{
-				Name: NewElmTypeName("TaskCapabilityTokenResponse"),
-				Fields: []Field{
-					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
-					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
-					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskCapabilityTokenState")}},
-					{Name: NewElmValueName("token"), JSONName: NewJSONFieldName("token"), Type: StringRef{}},
 				},
 			},
 		},
@@ -878,6 +862,8 @@ func agentModule() Module {
 					{Name: NewElmValueName("label"), JSONName: NewJSONFieldName("label"), Type: StringRef{}},
 					{Name: NewElmValueName("scopes"), JSONName: NewJSONFieldName("scopes"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("AgentScope")}}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("AgentCredentialState")}},
+					{Name: NewElmValueName("expiresAt"), JSONName: NewJSONFieldName("expires_at"), Type: StringRef{}},
+					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
 				},
 			},
 			Product{

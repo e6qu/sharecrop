@@ -14,7 +14,6 @@ type Store interface {
 	FindTask(context.Context, core.TaskID) FindTaskStoreResult
 	ChangeTaskState(context.Context, core.TaskID, State) ChangeTaskStateStoreResult
 	ListTasks(context.Context, ListScope, ListFilters, core.Page) ListTasksStoreResult
-	CreateCapabilityToken(context.Context, core.TaskCapabilityTokenID, core.TaskID, CapabilityTokenHash) CreateCapabilityTokenStoreResult
 	ListSeries(context.Context, core.UserID, core.Page) ListSeriesStoreResult
 	FindSeries(context.Context, core.TaskSeriesID) FindSeriesStoreResult
 	CreateSeries(context.Context, Series) SeriesMutationStoreResult
@@ -39,13 +38,38 @@ type OrganizationPermissions interface {
 	CheckTeamMembership(context.Context, core.TeamID, core.UserID) org.PermissionCheck
 }
 
+// TaskCredentialIssuer mints a narrowly-scoped agent credential restricted to
+// exactly one task, auto-issued when a reservation on it becomes active so it
+// can be handed to an agent to solve just that task. Defined here rather than
+// depending on internal/agent's concrete types so this package doesn't take a
+// hard dependency on the credential implementation. Issuance is best-effort:
+// a failure here does not fail the reservation/approval it's attached to, so
+// the second return value reports whether a credential was actually minted.
+type TaskCredentialIssuer interface {
+	IssueTaskWorkerCredential(ctx context.Context, owner core.UserID, taskID core.TaskID) (secret string, ok bool)
+}
+
 type Service struct {
 	store                   Store
 	organizationPermissions OrganizationPermissions
+	credentialIssuer        TaskCredentialIssuer
 }
 
-func NewService(store Store, organizationPermissions OrganizationPermissions) Service {
-	return Service{store: store, organizationPermissions: organizationPermissions}
+func NewService(store Store, organizationPermissions OrganizationPermissions, credentialIssuer TaskCredentialIssuer) Service {
+	return Service{store: store, organizationPermissions: organizationPermissions, credentialIssuer: credentialIssuer}
+}
+
+// issueWorkerCredential is a nil-safe best-effort helper: it returns an empty
+// string when no issuer is configured or issuance fails, never an error.
+func (service Service) issueWorkerCredential(ctx context.Context, owner core.UserID, taskID core.TaskID) string {
+	if service.credentialIssuer == nil {
+		return ""
+	}
+	secret, ok := service.credentialIssuer.IssueTaskWorkerCredential(ctx, owner, taskID)
+	if !ok {
+		return ""
+	}
+	return secret
 }
 
 type CreateCommand struct {
@@ -476,6 +500,11 @@ type ReservationResult interface {
 
 type ReservationCreated struct {
 	Value Reservation
+	// IssuedWorkerCredentialSecret is a one-time plaintext secret for a new
+	// task-scoped agent credential, populated only when this reservation was
+	// created already active (no approval step required) so it can be
+	// revealed to the reserving worker exactly once. Empty otherwise.
+	IssuedWorkerCredentialSecret string
 }
 
 type ReservationRejected struct {
@@ -543,7 +572,12 @@ func (service Service) reserve(ctx context.Context, actor auth.UserSubject, task
 		rejected := storeResult.(CreateReservationStoreRejected)
 		return ReservationRejected{Reason: rejected.Reason}
 	}
-	return ReservationCreated{Value: created.Value}
+
+	var secret string
+	if created.Value.State == ReservationStateActive {
+		secret = service.issueWorkerCredential(ctx, created.Value.RequestedBy, taskID)
+	}
+	return ReservationCreated{Value: created.Value, IssuedWorkerCredentialSecret: secret}
 }
 
 type ReservationStateChangeResult interface {
@@ -552,6 +586,11 @@ type ReservationStateChangeResult interface {
 
 type ReservationStateChanged struct {
 	Value Reservation
+	// IssuedWorkerCredentialSecret is a one-time plaintext secret for a new
+	// task-scoped agent credential, populated only by ApproveReservation
+	// (never by Decline/Cancel, which share this result type). Empty
+	// otherwise.
+	IssuedWorkerCredentialSecret string
 }
 
 type ReservationStateChangeRejected struct {
@@ -563,7 +602,13 @@ func (ReservationStateChanged) reservationStateChangeResult() {}
 func (ReservationStateChangeRejected) reservationStateChangeResult() {}
 
 func (service Service) ApproveReservation(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
-	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateActive)
+	result := service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateActive)
+	changed, matched := result.(ReservationStateChanged)
+	if !matched {
+		return result
+	}
+	changed.IssuedWorkerCredentialSecret = service.issueWorkerCredential(ctx, changed.Value.RequestedBy, taskID)
+	return changed
 }
 
 func (service Service) DeclineReservation(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
@@ -640,60 +685,6 @@ func (service Service) ListReservations(ctx context.Context, actor auth.UserSubj
 
 func (service Service) CheckSubmissionEligibility(ctx context.Context, taskID core.TaskID, submitterID core.UserID) SubmissionEligibilityStoreResult {
 	return service.store.CheckSubmissionEligibility(ctx, taskID, submitterID)
-}
-
-type CreateCapabilityTokenResult interface {
-	createCapabilityTokenResult()
-}
-
-type CapabilityTokenCreated struct {
-	Value CapabilityToken
-	Plain CapabilityTokenPlain
-}
-
-type CreateCapabilityTokenRejected struct {
-	Reason core.DomainError
-}
-
-func (CapabilityTokenCreated) createCapabilityTokenResult() {}
-
-func (CreateCapabilityTokenRejected) createCapabilityTokenResult() {}
-
-func (service Service) CreateCapabilityToken(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) CreateCapabilityTokenResult {
-	taskResult := service.store.FindTask(ctx, taskID)
-	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
-	if !taskMatched {
-		rejected := taskResult.(FindTaskStoreRejected)
-		return CreateCapabilityTokenRejected{Reason: rejected.Reason}
-	}
-
-	ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
-	if rejected, matched := ownerPermission.(ownerPermissionRejected); matched {
-		return CreateCapabilityTokenRejected{Reason: rejected.reason}
-	}
-
-	tokenIDResult := core.NewTaskCapabilityTokenID()
-	tokenIDCreated, tokenIDMatched := tokenIDResult.(core.TaskCapabilityTokenIDCreated)
-	if !tokenIDMatched {
-		rejected := tokenIDResult.(core.TaskCapabilityTokenIDRejected)
-		return CreateCapabilityTokenRejected{Reason: rejected.Reason}
-	}
-
-	plainResult := NewCapabilityTokenPlain()
-	plainCreated, plainMatched := plainResult.(CapabilityTokenPlainAccepted)
-	if !plainMatched {
-		rejected := plainResult.(CapabilityTokenPlainRejected)
-		return CreateCapabilityTokenRejected{Reason: rejected.Reason}
-	}
-
-	storeResult := service.store.CreateCapabilityToken(ctx, tokenIDCreated.Value, taskID, plainCreated.Value.Hash())
-	created, matched := storeResult.(CreateCapabilityTokenStoreAccepted)
-	if !matched {
-		rejected := storeResult.(CreateCapabilityTokenStoreRejected)
-		return CreateCapabilityTokenRejected{Reason: rejected.Reason}
-	}
-
-	return CapabilityTokenCreated{Value: created.Value, Plain: plainCreated.Value}
 }
 
 type ownerPermissionResult interface {

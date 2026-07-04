@@ -1,31 +1,53 @@
 # Status
 
-The repository contains pull request 1 through pull request 113 work, merged
+The repository contains pull request 1 through pull request 114 work, merged
 into `main`, plus the current
-`task/task-detail-reorder-profile-links-uiux` branch. PR 108's GitHub Pages
-deployment failed three times in a row after merge for what looked like a
-transient GitHub-side Pages backend issue (build/artifact steps always
-succeeded; only `deploy-pages` failed or hung, with a different symptom each
-time); PR 109's, 110's, 111's, 112's, and 113's deployments each succeeded on
-the first try with no code or workflow changes, confirming it was not a code
+`task/agent-credential-scopes-expiry-task-tokens` branch. PR 108's GitHub
+Pages deployment failed three times in a row after merge for what looked
+like a transient GitHub-side Pages backend issue (build/artifact steps
+always succeeded; only `deploy-pages` failed or hung, with a different
+symptom each time); PR 109 through 114's deployments each succeeded on the
+first try with no code or workflow changes, confirming it was not a code
 problem and has since cleared.
 
-Active task: `task/task-detail-reorder-profile-links-uiux` refines the task
-detail and profile pages for usability. Report task is now a collapsed
-disclosure. Reservation status moved to the top of the task detail page,
-above role-specific controls — this surfaced a real gap: task owners
-previously had no way to see or act on a pending reservation request through
-the browser at all (the Approve/Decline buttons existed but were never
-reachable by owners). Fixed, plus added a new test since that flow had zero
-prior coverage. Also scoped reservation/submission action buttons to who's
-actually entitled to click them (previously any worker saw every
+Active task: `task/agent-credential-scopes-expiry-task-tokens` is **Phase 1
+of a larger, explicitly-planned effort**: API tokens with scopes/expiration,
+organization-wide tokens, full API/MCP parity, and a real RBAC system (the
+user asked to design this; a plan was produced and approved covering 5
+phases, one PR each). Phase 1 lays the credential-model foundation:
+`agent.Credential` gained `ExpiresAt`/`TaskID`, the scope taxonomy widened
+from 5 to 19 values, and a task's reservation becoming active now
+auto-mints a credential scoped to just that task (`tasks_read`,
+`submissions_write`, `submissions_read`, 30-day expiry) — the mechanism
+behind handing a worker a task-specific token to give an agent. **A real
+security gap was found by manual end-to-end curl testing against the real
+server** (not by unit tests, which all passed while the bug was live): the
+task-scoping check existed in the data model but was never actually wired
+into the REST or MCP request paths, so a freshly-minted task-scoped
+credential worked against *any* task. Fixed on both REST
+(`requireWorkerSubject`) and MCP (`handleToolsCall`, which now carries the
+full credential instead of just its scopes), with a new regression test and
+a hand-verified curl re-test confirming the fix. Also boy-scout: deleted
+`task.CapabilityToken`, a mint-only dead-code predecessor to this feature
+with no verification path anywhere, including its stale WASM-demo route
+copy; and fixed the WASM demo allowing self-reservation (the real backend
+already blocked it). See `WHAT_WE_DID.md` for the full writeup.
+
+`task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
+refined the task detail and profile pages for usability. Report task is now
+a collapsed disclosure. Reservation status moved to the top of the task
+detail page, above role-specific controls — this surfaced a real gap: task
+owners previously had no way to see or act on a pending reservation request
+through the browser at all (the Approve/Decline buttons existed but were
+never reachable by owners). Fixed, plus added a new test since that flow
+had zero prior coverage. Also scoped reservation/submission action buttons
+to who's actually entitled to click them (previously any worker saw every
 reservation's buttons, including other people's). People now link to their
 profiles wherever their user ID appears (reservation holder, submitter, task
 creator, notification actor, admin user ID). Profile pages: the
 "Submissions" link now only shows on your own profile (the API 403s for
 anyone else), and "Public work" is relabeled "Currently working on" with
 richer per-task info, since it's current active work, not a full history.
-See `WHAT_WE_DID.md` for the full writeup.
 
 `task/merge-tasks-nav-uiux-polish` (PR 113, merged into `main`) consolidated
 the nav further at the user's explicit direction — several destinations were
