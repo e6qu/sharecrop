@@ -28,7 +28,7 @@ jobs:
           deno-version: v2.8.3
       - uses: actions/setup-go@v6.1.0
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
       - name: Build demo WASM backend
         run: deno task wasm:demo:build
       - uses: actions/configure-pages@v6.0.0
