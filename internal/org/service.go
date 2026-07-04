@@ -120,8 +120,8 @@ func (MemberProvisioned) provisionMemberResult() {}
 
 func (ProvisionMemberRejected) provisionMemberResult() {}
 
-func (service Service) ProvisionMember(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID, email auth.EmailAddress, roles []Role) ProvisionMemberResult {
-	permissionResult := service.requirePermission(ctx, organizationID, actor.ID, PermissionManageMembers)
+func (service Service) ProvisionMember(ctx context.Context, actor auth.Subject, organizationID core.OrganizationID, email auth.EmailAddress, roles []Role) ProvisionMemberResult {
+	permissionResult := service.requirePermissionForActor(ctx, actor, organizationID, PermissionManageMembers)
 	if rejected, matched := permissionResult.(PermissionDenied); matched {
 		return ProvisionMemberRejected{Reason: rejected.Reason}
 	}
@@ -316,7 +316,7 @@ func (GetTeamRejected) getTeamResult() {}
 // GetTeam returns a team and its roster. A viewer may see a team only when they
 // own it, belong to it, or (for an organization team) are a member of the owning
 // organization, so a team roster never leaks to unrelated users.
-func (service Service) GetTeam(ctx context.Context, actor auth.UserSubject, teamID core.TeamID) GetTeamResult {
+func (service Service) GetTeam(ctx context.Context, actor auth.Subject, teamID core.TeamID) GetTeamResult {
 	findResult := service.store.FindTeam(ctx, teamID)
 	found, matched := findResult.(TeamFound)
 	if !matched {
@@ -335,17 +335,25 @@ func (service Service) GetTeam(ctx context.Context, actor auth.UserSubject, team
 	return TeamGot{Team: found.Value, Members: membersListed.Values}
 }
 
-func (service Service) canViewTeam(ctx context.Context, actor auth.UserSubject, team Team, members []core.UserID) bool {
+func (service Service) canViewTeam(ctx context.Context, actor auth.Subject, team Team, members []core.UserID) bool {
+	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
+		owner, matched := team.Owner.(OrganizationOwnedTeam)
+		return matched && owner.OrganizationID == orgActor.ID
+	}
+	userActor, isUser := actor.(auth.UserSubject)
+	if !isUser {
+		return false
+	}
 	for _, member := range members {
-		if member == actor.ID {
+		if member == userActor.ID {
 			return true
 		}
 	}
 	switch owner := team.Owner.(type) {
 	case UserOwnedTeam:
-		return owner.OwnerUserID == actor.ID
+		return owner.OwnerUserID == userActor.ID
 	case OrganizationOwnedTeam:
-		_, matched := service.store.FindMemberRoles(ctx, owner.OrganizationID, actor.ID).(MemberRolesFound)
+		_, matched := service.store.FindMemberRoles(ctx, owner.OrganizationID, userActor.ID).(MemberRolesFound)
 		return matched
 	default:
 		return false
@@ -369,7 +377,7 @@ func (AddTeamMemberRejected) addTeamMemberResult() {}
 // AddTeamMember adds a member (by email) to a team. Only the owner of a
 // user-owned team, or a member with team-management permission in the owning
 // organization, may add members.
-func (service Service) AddTeamMember(ctx context.Context, actor auth.UserSubject, teamID core.TeamID, email auth.EmailAddress) AddTeamMemberResult {
+func (service Service) AddTeamMember(ctx context.Context, actor auth.Subject, teamID core.TeamID, email auth.EmailAddress) AddTeamMemberResult {
 	findResult := service.store.FindTeam(ctx, teamID)
 	found, matched := findResult.(TeamFound)
 	if !matched {
@@ -386,16 +394,18 @@ func (service Service) AddTeamMember(ctx context.Context, actor auth.UserSubject
 	return TeamMemberAddedResult{}
 }
 
-func (service Service) canManageTeam(ctx context.Context, actor auth.UserSubject, team Team) bool {
-	switch owner := team.Owner.(type) {
-	case UserOwnedTeam:
-		return owner.OwnerUserID == actor.ID
-	case OrganizationOwnedTeam:
-		_, denied := service.requirePermission(ctx, owner.OrganizationID, actor.ID, PermissionManageTeams).(PermissionDenied)
-		return !denied
-	default:
-		return false
+func (service Service) canManageTeam(ctx context.Context, actor auth.Subject, team Team) bool {
+	owner, isOrgOwned := team.Owner.(OrganizationOwnedTeam)
+	if !isOrgOwned {
+		userActor, isUser := actor.(auth.UserSubject)
+		if !isUser {
+			return false
+		}
+		userOwner, matched := team.Owner.(UserOwnedTeam)
+		return matched && userOwner.OwnerUserID == userActor.ID
 	}
+	_, denied := service.requirePermissionForActor(ctx, actor, owner.OrganizationID, PermissionManageTeams).(PermissionDenied)
+	return !denied
 }
 
 type DeactivateMemberResult interface {
@@ -412,8 +422,8 @@ func (MemberDeactivationAccepted) deactivateMemberResult() {}
 
 func (DeactivateMemberRejected) deactivateMemberResult() {}
 
-func (service Service) DeactivateMember(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID, userID core.UserID) DeactivateMemberResult {
-	permissionResult := service.requirePermission(ctx, organizationID, actor.ID, PermissionManageMembers)
+func (service Service) DeactivateMember(ctx context.Context, actor auth.Subject, organizationID core.OrganizationID, userID core.UserID) DeactivateMemberResult {
+	permissionResult := service.requirePermissionForActor(ctx, actor, organizationID, PermissionManageMembers)
 	if rejected, matched := permissionResult.(PermissionDenied); matched {
 		return DeactivateMemberRejected{Reason: rejected.Reason}
 	}
@@ -442,8 +452,8 @@ func (MemberRolesUpdatedResult) updateMemberRolesResult() {}
 
 func (UpdateMemberRolesRejected) updateMemberRolesResult() {}
 
-func (service Service) UpdateMemberRoles(ctx context.Context, actor auth.UserSubject, organizationID core.OrganizationID, userID core.UserID, roles []Role) UpdateMemberRolesResult {
-	permissionResult := service.requirePermission(ctx, organizationID, actor.ID, PermissionManageMembers)
+func (service Service) UpdateMemberRoles(ctx context.Context, actor auth.Subject, organizationID core.OrganizationID, userID core.UserID, roles []Role) UpdateMemberRolesResult {
+	permissionResult := service.requirePermissionForActor(ctx, actor, organizationID, PermissionManageMembers)
 	if rejected, matched := permissionResult.(PermissionDenied); matched {
 		return UpdateMemberRolesRejected{Reason: rejected.Reason}
 	}
@@ -466,6 +476,25 @@ func (service Service) requirePermission(ctx context.Context, organizationID cor
 		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization member roles were not found")}
 	}
 	return CheckPermission(rolesFound.Roles, permission)
+}
+
+// requirePermissionForActor adds org-token support in front of
+// requirePermission: an org token is granted unconditionally for its own
+// organization (full parity with an org-admin member), with no per-member
+// role table to consult, since the token itself represents the org. A
+// UserSubject actor delegates to the existing per-member check unchanged.
+func (service Service) requirePermissionForActor(ctx context.Context, actor auth.Subject, organizationID core.OrganizationID, permission Permission) PermissionCheck {
+	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
+		if orgActor.ID == organizationID {
+			return PermissionGranted{}
+		}
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization access denied")}
+	}
+	userActor, isUser := actor.(auth.UserSubject)
+	if !isUser {
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization access denied")}
+	}
+	return service.requirePermission(ctx, organizationID, userActor.ID, permission)
 }
 
 func (service Service) CheckOrganizationPermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, permission Permission) PermissionCheck {

@@ -297,9 +297,19 @@ type GuestSubject struct {
 	ID core.GuestID
 }
 
+// OrgSubject is an organization acting as itself via an org-wide credential
+// (see internal/orgcred), rather than through an individual member. It
+// carries full parity with an org-admin-role member wherever authorization
+// helpers accept a Subject.
+type OrgSubject struct {
+	ID core.OrganizationID
+}
+
 func (UserSubject) subject() {}
 
 func (GuestSubject) subject() {}
+
+func (OrgSubject) subject() {}
 
 func SignAccessToken(secret AccessTokenSecret, subject Subject, now time.Time) AccessTokenResult {
 	subjectID := ""

@@ -42,6 +42,10 @@ type AgentCredentialID struct {
 	value id.ID
 }
 
+type OrgCredentialID struct {
+	value id.ID
+}
+
 type CollectibleID struct {
 	value id.ID
 }
@@ -535,6 +539,45 @@ func agentCredentialIDFromIDResult(result id.IDResult) AgentCredentialIDResult {
 		return AgentCredentialIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return AgentCredentialIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type OrgCredentialIDResult interface {
+	orgCredentialIDResult()
+}
+
+type OrgCredentialIDCreated struct {
+	Value OrgCredentialID
+}
+
+type OrgCredentialIDRejected struct {
+	Reason DomainError
+}
+
+func (OrgCredentialIDCreated) orgCredentialIDResult() {}
+
+func (OrgCredentialIDRejected) orgCredentialIDResult() {}
+
+func NewOrgCredentialID() OrgCredentialIDResult {
+	return orgCredentialIDFromIDResult(id.New())
+}
+
+func ParseOrgCredentialID(raw string) OrgCredentialIDResult {
+	return orgCredentialIDFromIDResult(id.Parse(raw))
+}
+
+func (id OrgCredentialID) String() string {
+	return id.value.String()
+}
+
+func orgCredentialIDFromIDResult(result id.IDResult) OrgCredentialIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return OrgCredentialIDCreated{Value: OrgCredentialID{value: typed.Value}}
+	case id.IDRejected:
+		return OrgCredentialIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return OrgCredentialIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }
 

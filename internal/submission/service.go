@@ -197,7 +197,7 @@ func (SubmissionGot) getResult() {}
 
 func (GetRejected) getResult() {}
 
-func (service Service) Get(ctx context.Context, actor auth.UserSubject, submissionID core.SubmissionID) GetResult {
+func (service Service) Get(ctx context.Context, actor auth.Subject, submissionID core.SubmissionID) GetResult {
 	value, problem := service.loadCommentableSubmission(ctx, actor, submissionID)
 	if problem != nil {
 		return GetRejected{Reason: *problem}
@@ -205,14 +205,14 @@ func (service Service) Get(ctx context.Context, actor auth.UserSubject, submissi
 	return SubmissionGot{Value: value}
 }
 
-func (service Service) ListForTask(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, page core.Page) ListResult {
+func (service Service) ListForTask(ctx context.Context, actor auth.Subject, taskID core.TaskID, page core.Page) ListResult {
 	taskResult := service.taskStore.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(task.FindTaskStoreAccepted)
 	if !taskMatched {
 		rejected := taskResult.(task.FindTaskStoreRejected)
 		return ListRejected{Reason: rejected.Reason}
 	}
-	if rejected, matched := service.requireReviewPermission(ctx, actor.ID, taskFound.Value).(reviewPermissionRejected); matched {
+	if rejected, matched := service.requireReviewPermissionForActor(ctx, actor, taskFound.Value).(reviewPermissionRejected); matched {
 		return ListRejected{Reason: rejected.reason}
 	}
 
@@ -316,6 +316,27 @@ func (service Service) requireReviewPermission(ctx context.Context, userID core.
 		return reviewPermissionRejected{reason: rejected.Reason}
 	}
 	return reviewPermissionAccepted{}
+}
+
+// requireReviewPermissionForActor adds org-token support in front of
+// requireReviewPermission: an org token gets unconditional review access to
+// submissions on its own org's tasks (full parity with an org-admin
+// member), without needing a userID to check against a per-member
+// permission table. A UserSubject actor delegates to the existing
+// userID-based check unchanged.
+func (service Service) requireReviewPermissionForActor(ctx context.Context, actor auth.Subject, value task.Task) reviewPermissionResult {
+	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
+		organizationIDResult := organizationIDForTask(value)
+		if found, matched := organizationIDResult.(organizationIDFound); matched && found.value == orgActor.ID {
+			return reviewPermissionAccepted{}
+		}
+		return reviewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submission list access denied")}
+	}
+	userActor, isUser := actor.(auth.UserSubject)
+	if !isUser {
+		return reviewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submission list access denied")}
+	}
+	return service.requireReviewPermission(ctx, userActor.ID, value)
 }
 
 type organizationIDForTaskResult interface {

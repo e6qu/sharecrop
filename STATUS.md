@@ -1,37 +1,41 @@
 # Status
 
-The repository contains pull request 1 through pull request 114 work, merged
-into `main`, plus the current
-`task/agent-credential-scopes-expiry-task-tokens` branch. PR 108's GitHub
-Pages deployment failed three times in a row after merge for what looked
-like a transient GitHub-side Pages backend issue (build/artifact steps
-always succeeded; only `deploy-pages` failed or hung, with a different
-symptom each time); PR 109 through 114's deployments each succeeded on the
-first try with no code or workflow changes, confirming it was not a code
-problem and has since cleared.
+The repository contains pull request 1 through pull request 115 work, merged
+into `main`, plus the current `task/org-credentials-orgsubject-authz`
+branch. PR 108's GitHub Pages deployment failed three times in a row after
+merge for what looked like a transient GitHub-side Pages backend issue
+(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
+with a different symptom each time); PR 109 through 115's deployments each
+succeeded on the first try with no code or workflow changes, confirming it
+was not a code problem and has since cleared.
 
-Active task: `task/agent-credential-scopes-expiry-task-tokens` is **Phase 1
-of a larger, explicitly-planned effort**: API tokens with scopes/expiration,
+Active task: `task/org-credentials-orgsubject-authz` is **Phase 2 of a
+larger, explicitly-planned effort**: API tokens with scopes/expiration,
 organization-wide tokens, full API/MCP parity, and a real RBAC system (the
 user asked to design this; a plan was produced and approved covering 5
-phases, one PR each). Phase 1 lays the credential-model foundation:
-`agent.Credential` gained `ExpiresAt`/`TaskID`, the scope taxonomy widened
-from 5 to 19 values, and a task's reservation becoming active now
-auto-mints a credential scoped to just that task (`tasks_read`,
-`submissions_write`, `submissions_read`, 30-day expiry) — the mechanism
-behind handing a worker a task-specific token to give an agent. **A real
-security gap was found by manual end-to-end curl testing against the real
-server** (not by unit tests, which all passed while the bug was live): the
-task-scoping check existed in the data model but was never actually wired
-into the REST or MCP request paths, so a freshly-minted task-scoped
-credential worked against *any* task. Fixed on both REST
-(`requireWorkerSubject`) and MCP (`handleToolsCall`, which now carries the
-full credential instead of just its scopes), with a new regression test and
-a hand-verified curl re-test confirming the fix. Also boy-scout: deleted
-`task.CapabilityToken`, a mint-only dead-code predecessor to this feature
-with no verification path anywhere, including its stale WASM-demo route
-copy; and fixed the WASM demo allowing self-reservation (the real backend
-already blocked it). See `WHAT_WE_DID.md` for the full writeup.
+phases, one PR each). Phase 1 (PR 115, merged) laid the credential-model
+foundation: `agent.Credential` gained `ExpiresAt`/`TaskID`, the scope
+taxonomy widened from 5 to 19 values, and a task's reservation becoming
+active now auto-mints a credential scoped to just that task. Phase 2 adds
+**organization-wide credentials**: a new `auth.OrgSubject` acting as the
+organization itself (not through any one member), a new `internal/orgcred`
+package mirroring `internal/agent`'s create/verify/list/revoke shape with a
+distinct `scrop_org_...` secret prefix, and REST endpoints
+(`POST/GET /api/organizations/{id}/credentials`,
+`POST .../credentials/{id}/revoke`) gated by the minting user holding
+`PermissionManageMembers` — the minted token itself then acts with **full
+parity to an org-admin member** wherever a widened authorization helper
+accepts `auth.Subject` (task get/list/open/cancel/unpublish/reservations,
+team get/add-member). Also completed the scope taxonomy left unfinished by
+Phase 1: the DB migration allowed 19 scope strings, but only 5 corresponding
+`agent.Scope` Go values existed — added the other 14
+(`org_read`/`org_manage`/`collectibles_*`/`notifications_*`/etc.), a real
+gap this phase found and fixed (boy-scout). **Verified end-to-end by hand
+against the real Postgres-backed server**, matching Phase 1's precedent: an
+org token opens/lists its own organization's tasks (200) and is rejected
+outright — not silently scoped down — against a different organization's
+tasks (403); this exact flow is now also an automated `http_e2e` regression
+test. See `WHAT_WE_DID.md` for the full writeup.
 
 `task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
 refined the task detail and profile pages for usability. Report task is now

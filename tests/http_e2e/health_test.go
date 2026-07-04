@@ -16,6 +16,7 @@ import (
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/web"
@@ -27,7 +28,7 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("static files: %v", err)
 	}
 
-	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}, healthSubmissionService{}, healthLedgerService{}, healthAgentService{}, healthAssetService{}))
+	server := httptest.NewServer(httpserver.New(staticFiles, healthAuthService{}, healthVerifier{}, healthOrganizationService{}, healthTaskService{}, healthSubmissionService{}, healthLedgerService{}, healthAgentService{}, healthOrgCredentialService{}, healthAssetService{}))
 	defer server.Close()
 
 	response, err := http.Get(server.URL + "/healthz")
@@ -115,15 +116,15 @@ func (healthOrganizationService) ListOrganizations(context.Context, auth.UserSub
 	return org.ListOrganizationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) ProvisionMember(context.Context, auth.UserSubject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult {
+func (healthOrganizationService) ProvisionMember(context.Context, auth.Subject, core.OrganizationID, auth.EmailAddress, []org.Role) org.ProvisionMemberResult {
 	return org.ProvisionMemberRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) DeactivateMember(context.Context, auth.UserSubject, core.OrganizationID, core.UserID) org.DeactivateMemberResult {
+func (healthOrganizationService) DeactivateMember(context.Context, auth.Subject, core.OrganizationID, core.UserID) org.DeactivateMemberResult {
 	return org.DeactivateMemberRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) UpdateMemberRoles(context.Context, auth.UserSubject, core.OrganizationID, core.UserID, []org.Role) org.UpdateMemberRolesResult {
+func (healthOrganizationService) UpdateMemberRoles(context.Context, auth.Subject, core.OrganizationID, core.UserID, []org.Role) org.UpdateMemberRolesResult {
 	return org.UpdateMemberRolesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -147,11 +148,11 @@ func (healthOrganizationService) ListStandaloneTeams(context.Context, auth.UserS
 	return org.ListTeamsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) GetTeam(context.Context, auth.UserSubject, core.TeamID) org.GetTeamResult {
+func (healthOrganizationService) GetTeam(context.Context, auth.Subject, core.TeamID) org.GetTeamResult {
 	return org.GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthOrganizationService) AddTeamMember(context.Context, auth.UserSubject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult {
+func (healthOrganizationService) AddTeamMember(context.Context, auth.Subject, core.TeamID, auth.EmailAddress) org.AddTeamMemberResult {
 	return org.AddTeamMemberRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -163,19 +164,19 @@ func (healthTaskService) Create(context.Context, task.CreateCommand) task.Create
 	return task.CreateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) Get(context.Context, auth.UserSubject, core.TaskID) task.GetResult {
+func (healthTaskService) Get(context.Context, auth.Subject, core.TaskID) task.GetResult {
 	return task.GetRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) Open(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+func (healthTaskService) Open(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult {
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) Cancel(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+func (healthTaskService) Cancel(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult {
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) Unpublish(context.Context, auth.UserSubject, core.TaskID) task.ChangeStateResult {
+func (healthTaskService) Unpublish(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult {
 	return task.ChangeStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -219,7 +220,7 @@ func (healthTaskService) ListTaskComments(context.Context, auth.UserSubject, cor
 	return task.TaskCommentsListed{Values: nil}
 }
 
-func (healthTaskService) List(context.Context, auth.UserSubject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
+func (healthTaskService) List(context.Context, auth.Subject, task.ListScope, task.ListFilters, core.Page) task.ListResult {
 	return task.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -227,7 +228,7 @@ func (healthTaskService) ListSeries(context.Context, auth.UserSubject, core.Page
 	return task.ListSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult {
+func (healthTaskService) GetSeries(context.Context, auth.Subject, core.TaskSeriesID) task.GetSeriesResult {
 	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -243,19 +244,19 @@ func (healthTaskService) ReserveForTeam(context.Context, auth.UserSubject, core.
 	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) ApproveReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+func (healthTaskService) ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) DeclineReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+func (healthTaskService) DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) CancelReservation(context.Context, auth.UserSubject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
+func (healthTaskService) CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) ListReservations(context.Context, auth.UserSubject, core.TaskID) task.ReservationsListResult {
+func (healthTaskService) ListReservations(context.Context, auth.Subject, core.TaskID) task.ReservationsListResult {
 	return task.ReservationsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -263,7 +264,7 @@ func (healthSubmissionService) Submit(context.Context, submission.SubmitCommand)
 	return submission.SubmitRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthSubmissionService) Get(context.Context, auth.UserSubject, core.SubmissionID) submission.GetResult {
+func (healthSubmissionService) Get(context.Context, auth.Subject, core.SubmissionID) submission.GetResult {
 	return submission.GetRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -271,7 +272,7 @@ func (healthSubmissionService) FindByReceipt(context.Context, submission.Receipt
 	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthSubmissionService) ListForTask(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult {
+func (healthSubmissionService) ListForTask(context.Context, auth.Subject, core.TaskID, core.Page) submission.ListResult {
 	return submission.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -283,7 +284,7 @@ func (healthSubmissionService) AddSubmissionComment(context.Context, auth.UserSu
 	return submission.SubmissionCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthSubmissionService) ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult {
+func (healthSubmissionService) ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID) submission.SubmissionCommentsResult {
 	return submission.SubmissionCommentsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -345,6 +346,24 @@ func (healthAgentService) Verify(context.Context, agent.SecretPlain) agent.Verif
 
 func (healthAgentService) List(context.Context, core.UserID, core.Page) agent.ListResult {
 	return agent.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+type healthOrgCredentialService struct{}
+
+func (healthOrgCredentialService) Create(context.Context, core.OrganizationID, agent.Label, agent.ScopeSet, *time.Time) orgcred.CreateResult {
+	return orgcred.CreateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthOrgCredentialService) Verify(context.Context, orgcred.SecretPlain) orgcred.VerifyResult {
+	return orgcred.VerifyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthOrgCredentialService) List(context.Context, core.OrganizationID, core.Page) orgcred.ListResult {
+	return orgcred.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthOrgCredentialService) Revoke(context.Context, core.OrganizationID, core.OrgCredentialID) orgcred.RevokeResult {
+	return orgcred.RevokeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 type healthAssetService struct{}

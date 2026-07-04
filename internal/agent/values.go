@@ -18,12 +18,41 @@ type Scope struct {
 }
 
 var (
-	ScopeTasksRead         = Scope{value: "tasks_read"}
-	ScopeTasksWrite        = Scope{value: "tasks_write"}
-	ScopeSubmissionsWrite  = Scope{value: "submissions_write"}
-	ScopeSubmissionsRead   = Scope{value: "submissions_read"}
-	ScopeSubmissionsReview = Scope{value: "submissions_review"}
+	ScopeTasksRead           = Scope{value: "tasks_read"}
+	ScopeTasksWrite          = Scope{value: "tasks_write"}
+	ScopeSubmissionsWrite    = Scope{value: "submissions_write"}
+	ScopeSubmissionsRead     = Scope{value: "submissions_read"}
+	ScopeSubmissionsReview   = Scope{value: "submissions_review"}
+	ScopeOrgRead             = Scope{value: "org_read"}
+	ScopeOrgManage           = Scope{value: "org_manage"}
+	ScopeCollectiblesRead    = Scope{value: "collectibles_read"}
+	ScopeCollectiblesManage  = Scope{value: "collectibles_manage"}
+	ScopeNotificationsRead   = Scope{value: "notifications_read"}
+	ScopeNotificationsManage = Scope{value: "notifications_manage"}
+	ScopeUsersRead           = Scope{value: "users_read"}
+	ScopeLedgerRead          = Scope{value: "ledger_read"}
+	ScopeModerationRead      = Scope{value: "moderation_read"}
+	ScopeModerationManage    = Scope{value: "moderation_manage"}
+	ScopePrivacyRead         = Scope{value: "privacy_read"}
+	ScopePrivacyManage       = Scope{value: "privacy_manage"}
+	ScopePlatformAdmin       = Scope{value: "platform_admin"}
+	ScopeCredentialsManage   = Scope{value: "credentials_manage"}
 )
+
+// allScopes lists every legal scope, used by ParseScope so adding a new
+// scope means adding one entry here rather than a new switch case.
+var allScopes = []Scope{
+	ScopeTasksRead, ScopeTasksWrite, ScopeSubmissionsWrite, ScopeSubmissionsRead, ScopeSubmissionsReview,
+	ScopeOrgRead, ScopeOrgManage,
+	ScopeCollectiblesRead, ScopeCollectiblesManage,
+	ScopeNotificationsRead, ScopeNotificationsManage,
+	ScopeUsersRead,
+	ScopeLedgerRead,
+	ScopeModerationRead, ScopeModerationManage,
+	ScopePrivacyRead, ScopePrivacyManage,
+	ScopePlatformAdmin,
+	ScopeCredentialsManage,
+}
 
 type ScopeResult interface {
 	scopeResult()
@@ -42,20 +71,12 @@ func (ScopeAccepted) scopeResult() {}
 func (ScopeRejected) scopeResult() {}
 
 func ParseScope(raw string) ScopeResult {
-	switch raw {
-	case ScopeTasksRead.value:
-		return ScopeAccepted{Value: ScopeTasksRead}
-	case ScopeTasksWrite.value:
-		return ScopeAccepted{Value: ScopeTasksWrite}
-	case ScopeSubmissionsWrite.value:
-		return ScopeAccepted{Value: ScopeSubmissionsWrite}
-	case ScopeSubmissionsRead.value:
-		return ScopeAccepted{Value: ScopeSubmissionsRead}
-	case ScopeSubmissionsReview.value:
-		return ScopeAccepted{Value: ScopeSubmissionsReview}
-	default:
-		return ScopeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "agent scope is invalid")}
+	for _, scope := range allScopes {
+		if scope.value == raw {
+			return ScopeAccepted{Value: scope}
+		}
 	}
+	return ScopeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "agent scope is invalid")}
 }
 
 func (scope Scope) String() string {

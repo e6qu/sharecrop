@@ -27,6 +27,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/openapi"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/web"
@@ -249,6 +250,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	organizationService := org.NewService(db.NewOrgStore(pool))
 	taskStore := db.NewTaskStore(pool)
 	agentService := agent.NewService(db.NewAgentStore(pool))
+	orgCredentialService := orgcred.NewService(db.NewOrgCredentialStore(pool))
 	taskService := task.NewService(taskStore, organizationService, agentService)
 	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
 	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
@@ -258,7 +260,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress(),
-		Handler: httpserver.NewWithRuntimeState(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, assetService, httpserver.RuntimeState{
+		Handler: httpserver.NewWithRuntimeState(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, httpserver.RuntimeState{
 			IPRateLimiter:       db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
 			SubjectRateLimiter:  db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
 			MCPSessions:         httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
