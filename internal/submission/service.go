@@ -5,6 +5,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/authz"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/schema"
@@ -302,8 +303,14 @@ func (reviewPermissionAccepted) reviewPermissionResult() {}
 
 func (reviewPermissionRejected) reviewPermissionResult() {}
 
-func (service Service) requireReviewPermission(ctx context.Context, userID core.UserID, value task.Task) reviewPermissionResult {
-	if value.CreatedBy == userID {
+// requireReviewPermissionForActor grants the task's creator review access
+// outright, then falls back to organization-level access via
+// authz.RequireOrganizationAccess: an org token gets unconditional review
+// access to submissions on its own org's tasks (full parity with an
+// org-admin member, no per-member permission lookup), while a user needs
+// PermissionReviewSubmissions in the task's owning organization.
+func (service Service) requireReviewPermissionForActor(ctx context.Context, actor auth.Subject, value task.Task) reviewPermissionResult {
+	if userActor, isUser := actor.(auth.UserSubject); isUser && value.CreatedBy == userActor.ID {
 		return reviewPermissionAccepted{}
 	}
 	organizationIDResult := organizationIDForTask(value)
@@ -311,32 +318,14 @@ func (service Service) requireReviewPermission(ctx context.Context, userID core.
 	if !matched {
 		return reviewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submission list access denied")}
 	}
-	check := service.organizationPermissions.CheckOrganizationPermission(ctx, organizationIDFound.value, userID, org.PermissionReviewSubmissions)
-	if rejected, permissionMatched := check.(org.PermissionDenied); permissionMatched {
-		return reviewPermissionRejected{reason: rejected.Reason}
-	}
-	return reviewPermissionAccepted{}
+	return reviewPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, organizationIDFound.value, service.organizationPermissions, org.PermissionReviewSubmissions, core.ErrorCodePermissionDenied, "submission list access denied"))
 }
 
-// requireReviewPermissionForActor adds org-token support in front of
-// requireReviewPermission: an org token gets unconditional review access to
-// submissions on its own org's tasks (full parity with an org-admin
-// member), without needing a userID to check against a per-member
-// permission table. A UserSubject actor delegates to the existing
-// userID-based check unchanged.
-func (service Service) requireReviewPermissionForActor(ctx context.Context, actor auth.Subject, value task.Task) reviewPermissionResult {
-	if orgActor, isOrg := actor.(auth.OrgSubject); isOrg {
-		organizationIDResult := organizationIDForTask(value)
-		if found, matched := organizationIDResult.(organizationIDFound); matched && found.value == orgActor.ID {
-			return reviewPermissionAccepted{}
-		}
-		return reviewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submission list access denied")}
+func reviewPermissionResultFromDecision(decision authz.Decision) reviewPermissionResult {
+	if denied, isDenied := decision.(authz.Denied); isDenied {
+		return reviewPermissionRejected{reason: denied.Reason}
 	}
-	userActor, isUser := actor.(auth.UserSubject)
-	if !isUser {
-		return reviewPermissionRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "submission list access denied")}
-	}
-	return service.requireReviewPermission(ctx, userActor.ID, value)
+	return reviewPermissionAccepted{}
 }
 
 type organizationIDForTaskResult interface {
