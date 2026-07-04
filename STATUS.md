@@ -1,44 +1,45 @@
 # Status
 
-The repository contains pull request 1 through pull request 120 work, merged
-into `main`, plus the current
-`task/mcp-rbac-elm-ui-scopes-expiration-org-tokens` branch. PR 108's GitHub
-Pages deployment failed three times in a row after merge for what looked
-like a transient GitHub-side Pages backend issue (build/artifact steps
-always succeeded; only `deploy-pages` failed or hung, with a different
-symptom each time); PR 109 through 120's deployments each succeeded on the
+The repository contains pull request 1 through pull request 121 work, merged
+into `main`, plus the current `task/rbac-cleanup-boyscout-fixes` branch.
+PR 108's GitHub Pages deployment failed three times in a row after merge for
+what looked like a transient GitHub-side Pages backend issue (build/artifact
+steps always succeeded; only `deploy-pages` failed or hung, with a different
+symptom each time); PR 109 through 121's deployments each succeeded on the
 first try with no code or workflow changes, confirming it was not a code
 problem and has since cleared.
 
-Active task: `task/mcp-rbac-elm-ui-scopes-expiration-org-tokens` is
-**Phase 5, the final phase** of the RBAC + API-token effort: API tokens
-with scopes/expiration, organization-wide tokens, full API/MCP parity, and
-a real RBAC system. Phases 1-3 (PRs 115-117) built the credential/org-token
-model and centralized authorization; Phases 4a-4c (PRs 118-120) brought MCP
-to full REST parity including admin-gated tools. **Phase 5 (this PR)**
-builds the Elm UI for everything the backend already supports but the
-frontend couldn't yet reach: the widened 19-scope taxonomy in the
-credential-mint form and scope labels, an "expires in N hours" input on
-both the personal-token and generic agent-credential forms (encoded
-client-side as an absolute RFC3339 timestamp via a `Time.now`-based flow,
-since the REST API takes an absolute timestamp, not a relative duration — a
-new, self-contained RFC3339 formatter was added since no date-formatting
-package was already a dependency), a new "Credentials" section on the
-organization detail page for minting/listing/revoking org-wide credentials
-(mirroring the existing teams/members/collectibles disclosure sections),
-and a one-time "Agent token for this task" reveal on the task detail page's
-reservation card when a reservation the viewer owns becomes active (reusing
-`ReservationResponse.issuedWorkerCredential`, which the Phase 1 backend
-already returned but no Elm code had ever read). Also added `orgCredModule()`
-to `internal/contracts/definitions.go` and widened `agentModule()`'s scope
-enum, regenerating `Generated/Agent.elm`; org-credential wire types live in
-that same generated module rather than a new one, since generated Elm
-modules don't import each other and org credentials reuse `agent.Scope`/
-`agent.State` directly on the Go side. Verified with `elm make`, the full Go
-test/check suite, and the full Playwright suite (49/49 passing, including 3
-new/extended specs) against a real Postgres-backed server. See
-`WHAT_WE_DID.md` for the full writeup. **This completes the entire 5-phase
-plan.**
+The 5-phase RBAC + API-token effort (credential scopes/expiration, org-wide
+tokens, centralized authz, full MCP parity, and the Elm UI for all of it;
+PRs 115-121) is complete. Active task: `task/rbac-cleanup-boyscout-fixes` is
+a requested clean-up pass over that effort (plus anything else opportunistic
+found along the way), using 4 parallel review agents covering the
+credential/authz backend, the MCP layer, the Elm frontend, and a broader
+repo-wide sweep. Real fixes applied: (1) a stale `reservationSecret` model
+field that wasn't cleared on task-to-task navigation, so a previously
+revealed one-time task-token could still show under a different task's
+reservation card; (2) the credential-mint forms weren't reset after a
+successful mint, so a second mint silently repeated the prior label/scopes/
+expiry; (3) an invalid "expires in hours" value (blank, "0", negative, or
+non-numeric) silently minted a *never-expiring* credential with no feedback
+— now validated with an explicit rejection message; (4) MCP's task-scoped
+credential check did a raw string compare against the caller-supplied
+task_id instead of parsing both sides, so a validly-cased-differently task
+ID could be spuriously rejected; (5) `docs/api_reference.md` was missing the
+entire agent-credential/org-credential REST surface and still documented
+the Phase-1-deleted `capability-tokens` route; (6) `docs/mcp_reference.md`
+had two stale/misleading scope descriptions; (7) `site/demo/backend.js`'s
+reservation objects were missing the `issued_worker_credential` field the
+Elm decoder requires (currently unreachable from the live demo, but the
+Deno tests that directly exercise `backend.js` would still benefit, and it
+future-proofs the mock). See `WHAT_WE_DID.md` for the full writeup,
+including two things flagged for the user's judgment rather than fixed
+unilaterally: `internal/org/service.go` structurally can't use the
+centralized `internal/authz` package (import-cycle constraint) and
+duplicates its actor-kind logic in three places instead; and
+`site/demo/backend.js` is now orphaned from the live browser demo (which
+defaults to the WASM backend) but still exercised by Deno tests, worth an
+explicit decision on whether to restore/deprecate it.
 
 `task/task-detail-reorder-profile-links-uiux` (PR 114, merged into `main`)
 refined the task detail and profile pages for usability. Report task is now

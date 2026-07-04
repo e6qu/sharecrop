@@ -93,6 +93,22 @@ func TestToolsCallRejectsTaskScopedCredentialForADifferentTask(t *testing.T) {
 	}
 }
 
+func TestToolsCallAcceptsTaskScopedCredentialWithDifferentlyCasedTaskID(t *testing.T) {
+	server := NewServer(fakeServices{})
+	scopedTaskID := testTaskID(t)
+	credential := CallerCredential{Scopes: allScopes(), TaskID: taskIDPointer(t, scopedTaskID)}
+
+	// The same task ID, differently cased, must still be recognized as a
+	// match — the check parses and normalizes both sides rather than doing a
+	// raw string compare, so it doesn't spuriously reject a valid but
+	// non-canonically-cased task ID.
+	uppercased := strings.ToUpper(scopedTaskID)
+	response := server.Handle(context.Background(), testSubject(t), credential, request(`1`, "tools/call", `{"name":"sharecrop.get_task","arguments":{"task_id":"`+uppercased+`"}}`))
+	if response.Error != nil {
+		t.Fatalf("expected a differently-cased but equal task id to be accepted, got %+v", response.Error)
+	}
+}
+
 func taskIDPointer(t *testing.T, raw string) *core.TaskID {
 	t.Helper()
 	parsed, matched := core.ParseTaskID(raw).(core.TaskIDCreated)

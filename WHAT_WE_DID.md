@@ -1,5 +1,122 @@
 # What We Did
 
+`task/rbac-cleanup-boyscout-fixes` is a requested clean-up pass over the
+just-completed 5-phase RBAC + API-token effort (PRs 115-121, all merged
+first), plus anything else opportunistic found along the way. Used 4
+parallel review agents (read-only investigation, no edits) covering: the
+credential/authz backend (`internal/agent`, `internal/orgcred`,
+`internal/authz`), the MCP layer (dispatch, admin gating, adapters), the
+Elm frontend (the Phase 5 additions specifically), and a broad repo-wide
+sweep (demo backend parity, dead code, stale docs). Then triaged every
+finding and fixed what was real.
+
+- **Stale one-time task-token leak across tasks** (`web/elm/src/Main.elm`):
+  `TaskDetailPage taskId`'s navigation reset cleared `reservations`,
+  `reservationMessage`, `taskAgentToken`, etc. but missed the newer
+  `reservationSecret` field. Since `issuedCredentialSecret` deliberately
+  *keeps* the previous secret when a reservation event carries no fresh one
+  (so cancel/decline events after a reveal don't blank it), navigating from
+  a task whose reservation you'd just revealed a token for to a *different*
+  task still showed that stale secret under the new task's "Reservation"
+  card, labeled "Agent token for this task" — misleadingly implying it
+  belonged to the task currently being viewed. Fixed by adding
+  `reservationSecret = Nothing` to the same reset. Added a Playwright
+  assertion (extending the existing reservation test) that visiting an
+  unrelated task after revealing one shows no `reservation-agent-secret`
+  element at all.
+- **Credential-mint forms never reset after a successful mint**
+  (`web/elm/src/Main.elm`'s `AgentCreated (Ok created)` /
+  `OrgCredentialCreated (Ok created)`): only `newCredential`/
+  `newOrgCredential` and the message field were set; `agentLabel`/
+  `agentScopes`/`agentExpiresHours` (and the org-credential equivalents)
+  were left as-is, unlike the rest of the app's established convention
+  (`createOrgTeamName`/`provisionMemberEmail` both clear on success). A
+  second mint would silently resubmit the same label, the same checked
+  scopes, and the same now-stale "expires in hours" value. Fixed by
+  clearing all three draft fields alongside the existing message-clear.
+  Added a Playwright test asserting the form fields are empty right after a
+  successful mint.
+- **Invalid "expires in hours" silently minted a *never-expiring*
+  credential** (`web/elm/src/Sharecrop/Api.elm`): `expiresAtFromHours`
+  correctly returns `""` (never expires) for a blank field, but also for
+  `"0"`, negative numbers, and non-numeric garbage — indistinguishable from
+  the intentional blank case, with zero user feedback. For a
+  least-privilege credential system, silently falling back to *no
+  expiration* on a typo is the worst-case outcome. Added a separate
+  `expiresHoursIsValid` check (blank, or a positive whole number) used by
+  `createAgentCommand`/`createOrgCredentialCommand` before submission,
+  surfacing "Expires in (hours) must be a positive whole number, or blank
+  for never." otherwise. (An initial fix also added `Html.Attributes.min
+  "1"` to the number inputs for a browser-level hint — reverted after
+  confirming no other numeric field in this app does that, and because it
+  actually broke testability: a browser's native constraint validation
+  blocks the `submit` event entirely before Elm's own `onSubmit` handler
+  — and therefore Elm's own validation message — ever runs.) Added a
+  Playwright test confirming a negative value is rejected with the message
+  and mints nothing.
+- **MCP's task-scoped credential check used a raw string compare instead
+  of parsing both sides** (`internal/mcp/server.go`): `toolArgumentTaskID`
+  extracted the caller-supplied JSON string and compared it directly
+  against `credential.TaskID.String()` (which is always canonical
+  lowercase). A task ID sent in different casing — still the same,
+  correct task — would be spuriously rejected with "agent credential is
+  not valid for this task". Fails closed (not a security bypass) but a
+  real correctness/availability bug for any caller that doesn't happen to
+  echo the exact canonical form. Fixed by parsing the argument through
+  `core.ParseTaskID` first and comparing the parsed value's `.String()`,
+  normalizing case on both sides; an unparseable argument still fails
+  closed. Added `TestToolsCallAcceptsTaskScopedCredentialWithDifferentlyCasedTaskID`.
+- **`internal/mcp/tool_calls_admin.go`'s `callResolveAdminPrivacyRequest`**
+  passed `args.PrivacyRequestID` straight through untrimmed, while the
+  sibling moderation-report handler in the same file trims its equivalent
+  ID-like field (`SubjectID`). A whitespace-padded ID would silently
+  "not found" instead of matching. Added the missing `strings.TrimSpace`.
+- **`docs/api_reference.md` was missing the entire agent-credential and
+  org-credential REST surface** (never updated across Phases 1-2) and
+  still documented `POST /api/tasks/{task_id}/capability-tokens`, deleted
+  in Phase 1. Removed the stale line and added a new "Agent Credentials"
+  section documenting all 6 routes plus the auto-issuance-on-reservation
+  behavior.
+- **`docs/mcp_reference.md` had two stale/misleading scope descriptions**:
+  `submissions_review`'s bullet claimed it covered "list ... reservations",
+  but `list_task_reservations` is actually gated by `submissions_read` (like
+  `list_task_submissions`); and `privacy_read`/`privacy_manage`'s bullet
+  said "(admin-gated)" without noting `privacy_read` is *also* the scope
+  for the two non-admin self-service tools (`create_privacy_request`,
+  `list_privacy_requests`) — only the runtime admin re-check, not the
+  scope, distinguishes the admin-only listing tool. Corrected both.
+- **`site/demo/backend.js`'s reservation objects (both the live handler and
+  two hardcoded seed reservations) were missing `issued_worker_credential`**,
+  a field `Generated/Task.elm`'s decoder requires (not `Decode.maybe`).
+  Currently unreachable from the live browser demo (which defaults to WASM;
+  the JS-backend `index.html` branch was removed in a prior PR), but the
+  Deno tests (`demo_backend_test.ts`, `scenario_parity_test.ts`) still load
+  `backend.js` directly, and the fix future-proofs the mock in case the JS
+  backend path is ever restored. Added `issued_worker_credential: ""`
+  (never issues one — kept intentionally minimal, not a full credential
+  simulation) to all three reservation object literals.
+- **Flagged, not fixed** (judgment calls, not opportunistic fixes):
+  `internal/org/service.go` (`requirePermissionForActor`, `canViewTeam`,
+  `canManageTeam`) hand-rolls the same "an `OrgSubject` gets unconditional
+  access to its own org" rule `internal/authz.RequireOrganizationAccess`
+  centralizes for task/series/submission — but `internal/authz` imports
+  `internal/org` (for `org.Permission`), so `org` importing `authz` back
+  would be a cycle. `org`'s own membership/team endpoints are structurally
+  stuck outside the centralized layer; worth a real design discussion
+  (e.g. extracting a lower-level shared package), not a cleanup-pass fix.
+  Separately, `site/demo/backend.js` is now orphaned from the live demo
+  (confirmed via `site/demo/index.html`'s current `main`: the `?backend=js`
+  branch was removed) but still CI-tested directly — worth an explicit
+  decision on whether to restore browser access or deprecate the JS mock
+  and its Deno tests now that WASM is authoritative.
+- **Verification**: `elm make` clean; full Go test/check suite green
+  (`go build`/`vet`/`test`, `-tags integration`, `-tags http_e2e`, and the
+  full `make check-*`/`lint`/`vet`/`test-deno` suite); full Playwright
+  suite green (53/53, including 3 new specs and 1 extended existing spec);
+  a new Go unit test for the task-ID case-insensitivity fix.
+
+---
+
 `task/mcp-rbac-elm-ui-scopes-expiration-org-tokens` is **Phase 5, the final
 phase**, of the same 5-phase RBAC + API-token effort described below
 (Phases 1-3 shipped as PRs 115-117, Phases 4a-4c as PRs 118-120, all merged

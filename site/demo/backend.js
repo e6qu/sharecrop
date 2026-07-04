@@ -681,6 +681,7 @@
         assignee_id: "user-tala",
         state: "requested",
         requested_by: "user-tala",
+        issued_worker_credential: "",
       }],
       participation_policy: "approval_required",
       availability_kind: "awaiting_approval",
@@ -714,6 +715,7 @@
         assignee_id: "user-sol",
         state: "active",
         requested_by: "user-sol",
+        issued_worker_credential: "",
       }],
       submissions: [{
         id: "sub-4-sol",
@@ -1723,6 +1725,11 @@
       assignee_id: assigneeId,
       state,
       requested_by: actorId,
+      // The real backend auto-issues a task-scoped agent credential once a
+      // reservation becomes active, revealed once in this field. This mock
+      // never issues one; the Elm decoder requires the field to be present
+      // (not Decode.maybe), so it must still be "" rather than omitted.
+      issued_worker_credential: "",
     };
     t.reservations.push(r);
     if (state === "active") t.availability_kind = "reserved";

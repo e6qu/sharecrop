@@ -168,6 +168,28 @@ test("requesters configure reservations and workers include reserved tasks", asy
     "Task opened",
   );
 
+  const otherTitle = `Reserved UI unrelated ${crypto.randomUUID()}`;
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+  await page.getByTestId("create-title").fill(otherTitle);
+  await page.getByTestId("create-description").fill(
+    "An unrelated open task with no reservation requirement.",
+  );
+  await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+  await page.getByTestId("nav-tasks").click();
+  const otherOwnerRow = page.getByTestId("task-row").filter({
+    hasText: otherTitle,
+  });
+  await otherOwnerRow.getByTestId("view-task").click();
+  await page.getByTestId("open-task").click();
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "Task opened",
+  );
+
   const worker = await registerViaApi(request, "reservation-ui-worker");
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("logout").click();
@@ -187,6 +209,14 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await expect(page.getByTestId("reservation-agent-secret")).toContainText(
     "scrop_agent_",
   );
+
+  // Navigating to an unrelated task must not leak this task's one-time secret.
+  await page.getByTestId("nav-tasks").click();
+  const otherWorkerRow = page.getByTestId("discovery-task-row").filter({
+    hasText: otherTitle,
+  });
+  await otherWorkerRow.getByTestId("discovery-view").click();
+  await expect(page.getByTestId("reservation-agent-secret")).toHaveCount(0);
 
   const other = await registerViaApi(request, "reservation-ui-other");
   await page.getByTestId("detail-back").click();

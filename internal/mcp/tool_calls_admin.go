@@ -277,7 +277,7 @@ func (server Server) callResolveAdminPrivacyRequest(ctx context.Context, subject
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	result := server.services.ResolveAdminPrivacyRequest(ctx, args.PrivacyRequestID, args.ResolutionNote)
+	result := server.services.ResolveAdminPrivacyRequest(ctx, strings.TrimSpace(args.PrivacyRequestID), args.ResolutionNote)
 	saved, matched := result.(PrivacyRequestSaved)
 	if !matched {
 		return toolFailed{message: result.(PrivacyRequestRejected).Reason.Description()}

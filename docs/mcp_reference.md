@@ -19,16 +19,16 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 
 - `tasks_read`: read tasks and schemas.
 - `tasks_write`: create, fund, open, cancel, unpublish, and group tasks; escrow/refund collectible rewards.
-- `submissions_read`: read submission status and submission/comment lists.
+- `submissions_read`: read submission status, submission/comment lists, and reservations.
 - `submissions_write`: reserve/request approval and submit responses.
-- `submissions_review`: list, accept, reject, request changes, and approve/decline reservations.
+- `submissions_review`: accept, reject, request changes, and approve/decline/cancel reservations.
 - `org_read`/`org_manage`: read/manage organizations, members, and teams (both org-owned and standalone).
 - `credentials_manage`: mint/list/revoke an organization's own org-wide credentials.
 - `collectibles_read`/`collectibles_manage`: read/manage collectibles.
 - `notifications_read`/`notifications_manage`: read/mark-read notifications.
 - `users_read`: read the user directory and a user's public profile, work, and submissions.
-- `moderation_read`/`moderation_manage`: list/triage moderation reports (admin-gated).
-- `privacy_read`/`privacy_manage`: list/resolve privacy requests and run retention (admin-gated).
+- `moderation_read`/`moderation_manage`: list/triage moderation reports. `moderation_read`/`moderation_manage` are admin-gated; reporting itself (`create_moderation_report`) only needs `tasks_read`.
+- `privacy_read`/`privacy_manage`: file/list your own privacy requests, or (admin-gated) list every request, resolve one, and run retention. `privacy_read` covers both the self-service and admin-only listing tools — only the live admin re-check (not the scope) distinguishes them, so a `privacy_read`-scoped credential is scope-*eligible* to attempt the platform-wide listing tool even if it was only meant for self-service use.
 - `platform_admin`: platform administration — grant/revoke admins, award default collectibles, list platform-wide audit events. **A credential's scope alone is not enough**: every `platform_admin`-scoped tool call also re-checks that the underlying user is currently a platform admin, so a credential minted before a later demotion can't be used to keep acting as one.
 
 ## Worker Loop

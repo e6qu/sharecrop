@@ -197,8 +197,15 @@ func (server Server) handleToolsCall(ctx context.Context, subject auth.Subject, 
 	// legitimately the submitter or task owner/reviewer for, since the
 	// service-layer authorization checks below still apply regardless.
 	if credential.TaskID != nil {
-		if argTaskID, present := toolArgumentTaskID(params.Arguments); present && argTaskID != credential.TaskID.String() {
-			return errorResponse(request.ID, codeScopeDenied, "agent credential is not valid for this task")
+		if argTaskID, present := toolArgumentTaskID(params.Arguments); present {
+			// Parse before comparing rather than a raw string match, so a
+			// non-canonically-cased (but otherwise valid) task ID isn't
+			// spuriously rejected as "not valid for this task".
+			parsedResult := core.ParseTaskID(argTaskID)
+			parsed, parsedMatched := parsedResult.(core.TaskIDCreated)
+			if !parsedMatched || parsed.Value.String() != credential.TaskID.String() {
+				return errorResponse(request.ID, codeScopeDenied, "agent credential is not valid for this task")
+			}
 		}
 	}
 
