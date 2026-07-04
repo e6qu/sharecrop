@@ -11,6 +11,20 @@ type AgentScope
     | AgentScopeSubmissionsWrite
     | AgentScopeSubmissionsRead
     | AgentScopeSubmissionsReview
+    | AgentScopeOrgRead
+    | AgentScopeOrgManage
+    | AgentScopeCollectiblesRead
+    | AgentScopeCollectiblesManage
+    | AgentScopeNotificationsRead
+    | AgentScopeNotificationsManage
+    | AgentScopeUsersRead
+    | AgentScopeLedgerRead
+    | AgentScopeModerationRead
+    | AgentScopeModerationManage
+    | AgentScopePrivacyRead
+    | AgentScopePrivacyManage
+    | AgentScopePlatformAdmin
+    | AgentScopeCredentialsManage
 
 agentScopeDecoder : Decoder AgentScope
 agentScopeDecoder =
@@ -33,6 +47,48 @@ agentScopeDecoder =
                     "submissions_review" ->
                         Decode.succeed AgentScopeSubmissionsReview
 
+                    "org_read" ->
+                        Decode.succeed AgentScopeOrgRead
+
+                    "org_manage" ->
+                        Decode.succeed AgentScopeOrgManage
+
+                    "collectibles_read" ->
+                        Decode.succeed AgentScopeCollectiblesRead
+
+                    "collectibles_manage" ->
+                        Decode.succeed AgentScopeCollectiblesManage
+
+                    "notifications_read" ->
+                        Decode.succeed AgentScopeNotificationsRead
+
+                    "notifications_manage" ->
+                        Decode.succeed AgentScopeNotificationsManage
+
+                    "users_read" ->
+                        Decode.succeed AgentScopeUsersRead
+
+                    "ledger_read" ->
+                        Decode.succeed AgentScopeLedgerRead
+
+                    "moderation_read" ->
+                        Decode.succeed AgentScopeModerationRead
+
+                    "moderation_manage" ->
+                        Decode.succeed AgentScopeModerationManage
+
+                    "privacy_read" ->
+                        Decode.succeed AgentScopePrivacyRead
+
+                    "privacy_manage" ->
+                        Decode.succeed AgentScopePrivacyManage
+
+                    "platform_admin" ->
+                        Decode.succeed AgentScopePlatformAdmin
+
+                    "credentials_manage" ->
+                        Decode.succeed AgentScopeCredentialsManage
+
                     _ ->
                         Decode.fail "invalid AgentScope"
             )
@@ -54,6 +110,48 @@ agentScopeEncoder agentScope =
 
         AgentScopeSubmissionsReview ->
             Encode.string "submissions_review"
+
+        AgentScopeOrgRead ->
+            Encode.string "org_read"
+
+        AgentScopeOrgManage ->
+            Encode.string "org_manage"
+
+        AgentScopeCollectiblesRead ->
+            Encode.string "collectibles_read"
+
+        AgentScopeCollectiblesManage ->
+            Encode.string "collectibles_manage"
+
+        AgentScopeNotificationsRead ->
+            Encode.string "notifications_read"
+
+        AgentScopeNotificationsManage ->
+            Encode.string "notifications_manage"
+
+        AgentScopeUsersRead ->
+            Encode.string "users_read"
+
+        AgentScopeLedgerRead ->
+            Encode.string "ledger_read"
+
+        AgentScopeModerationRead ->
+            Encode.string "moderation_read"
+
+        AgentScopeModerationManage ->
+            Encode.string "moderation_manage"
+
+        AgentScopePrivacyRead ->
+            Encode.string "privacy_read"
+
+        AgentScopePrivacyManage ->
+            Encode.string "privacy_manage"
+
+        AgentScopePlatformAdmin ->
+            Encode.string "platform_admin"
+
+        AgentScopeCredentialsManage ->
+            Encode.string "credentials_manage"
 
 
 type AgentCredentialState
@@ -147,4 +245,67 @@ agentCredentialCreatedResponseEncoder agentCredentialCreatedResponse =
     Encode.object
         [ ( "credential", agentCredentialResponseEncoder agentCredentialCreatedResponse.credential )
         , ( "secret", Encode.string agentCredentialCreatedResponse.secret )
+        ]
+
+type alias OrgCredentialResponse =
+    { id : String
+    , organizationID : String
+    , label : String
+    , scopes : List AgentScope
+    , state : AgentCredentialState
+    , expiresAt : String
+    }
+
+orgCredentialResponseDecoder : Decoder OrgCredentialResponse
+orgCredentialResponseDecoder =
+    Decode.map6 OrgCredentialResponse
+        (Decode.field "id" Decode.string)
+        (Decode.field "organization_id" Decode.string)
+        (Decode.field "label" Decode.string)
+        (Decode.field "scopes" (Decode.list agentScopeDecoder))
+        (Decode.field "state" agentCredentialStateDecoder)
+        (Decode.field "expires_at" Decode.string)
+
+orgCredentialResponseEncoder : OrgCredentialResponse -> Encode.Value
+orgCredentialResponseEncoder orgCredentialResponse =
+    Encode.object
+        [ ( "id", Encode.string orgCredentialResponse.id )
+        , ( "organization_id", Encode.string orgCredentialResponse.organizationID )
+        , ( "label", Encode.string orgCredentialResponse.label )
+        , ( "scopes", Encode.list agentScopeEncoder orgCredentialResponse.scopes )
+        , ( "state", agentCredentialStateEncoder orgCredentialResponse.state )
+        , ( "expires_at", Encode.string orgCredentialResponse.expiresAt )
+        ]
+
+type alias OrgCredentialsResponse =
+    { credentials : List OrgCredentialResponse
+    }
+
+orgCredentialsResponseDecoder : Decoder OrgCredentialsResponse
+orgCredentialsResponseDecoder =
+    Decode.map OrgCredentialsResponse
+        (Decode.field "credentials" (Decode.list orgCredentialResponseDecoder))
+
+orgCredentialsResponseEncoder : OrgCredentialsResponse -> Encode.Value
+orgCredentialsResponseEncoder orgCredentialsResponse =
+    Encode.object
+        [ ( "credentials", Encode.list orgCredentialResponseEncoder orgCredentialsResponse.credentials )
+        ]
+
+type alias OrgCredentialCreatedResponse =
+    { credential : OrgCredentialResponse
+    , secret : String
+    }
+
+orgCredentialCreatedResponseDecoder : Decoder OrgCredentialCreatedResponse
+orgCredentialCreatedResponseDecoder =
+    Decode.map2 OrgCredentialCreatedResponse
+        (Decode.field "credential" orgCredentialResponseDecoder)
+        (Decode.field "secret" Decode.string)
+
+orgCredentialCreatedResponseEncoder : OrgCredentialCreatedResponse -> Encode.Value
+orgCredentialCreatedResponseEncoder orgCredentialCreatedResponse =
+    Encode.object
+        [ ( "credential", orgCredentialResponseEncoder orgCredentialCreatedResponse.credential )
+        , ( "secret", Encode.string orgCredentialCreatedResponse.secret )
         ]

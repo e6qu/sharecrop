@@ -19,6 +19,8 @@ import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.Labels exposing (assigneeScopeTag, participationUsesReservation)
 import Sharecrop.Types exposing (..)
+import Task as ElmTask
+import Time
 import Url
 
 
@@ -151,7 +153,19 @@ createAgentCommand model state =
         ( updateLoggedIn model (\current -> { current | agentMessage = Just "Select at least one scope." }), Cmd.none )
 
     else
-        ( updateLoggedIn model (\current -> { current | agentMessage = Nothing, newCredential = Nothing }), postAgent state.accessToken state.agentLabel state.agentScopes )
+        ( updateLoggedIn model (\current -> { current | agentMessage = Nothing, newCredential = Nothing }), ElmTask.perform AgentExpiresAtResolved Time.now )
+
+
+createOrgCredentialCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+createOrgCredentialCommand model state =
+    if state.activeOrgId == "" then
+        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just "Open an organization first." }), Cmd.none )
+
+    else if List.isEmpty state.orgCredentialScopes then
+        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just "Select at least one scope." }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Nothing, newOrgCredential = Nothing }), ElmTask.perform OrgCredentialExpiresAtResolved Time.now )
 
 
 createTaskCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
@@ -410,6 +424,16 @@ refreshCredentials model =
     case model.session of
         LoggedIn state ->
             fetchCredentials state.accessToken
+
+        LoggedOut ->
+            Cmd.none
+
+
+refreshOrgCredentials : Model -> Cmd Msg
+refreshOrgCredentials model =
+    case model.session of
+        LoggedIn state ->
+            fetchOrgCredentials state.accessToken state.activeOrgId
 
         LoggedOut ->
             Cmd.none
@@ -799,12 +823,12 @@ postReservationChange token taskId reservationId action =
         (Http.expectJson ReservationChangeReceived Task.taskReservationResponseDecoder)
 
 
-postAgent : String -> String -> List Agent.AgentScope -> Cmd Msg
-postAgent token agentLabel scopes =
+postAgent : String -> String -> List Agent.AgentScope -> String -> Cmd Msg
+postAgent token agentLabel scopes expiresAt =
     authorizedRequest "POST"
         token
         "/api/agent-credentials"
-        (Http.jsonBody (agentRequestBody agentLabel scopes))
+        (Http.jsonBody (agentRequestBody agentLabel scopes expiresAt))
         (Http.expectJson AgentCreated Agent.agentCredentialCreatedResponseDecoder)
 
 
@@ -813,7 +837,7 @@ mintTaskToken token =
     authorizedRequest "POST"
         token
         "/api/agent-credentials"
-        (Http.jsonBody (agentRequestBody "Task worker token" [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeSubmissionsRead ]))
+        (Http.jsonBody (agentRequestBody "Task worker token" [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeSubmissionsRead ] ""))
         (Http.expectJson TaskTokenMinted Agent.agentCredentialCreatedResponseDecoder)
 
 
@@ -822,7 +846,7 @@ mintUserToken token =
     authorizedRequest "POST"
         token
         "/api/agent-credentials"
-        (Http.jsonBody (agentRequestBody "Personal agent token" [ Agent.AgentScopeTasksRead, Agent.AgentScopeTasksWrite, Agent.AgentScopeSubmissionsRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeSubmissionsReview ]))
+        (Http.jsonBody (agentRequestBody "Personal agent token" [ Agent.AgentScopeTasksRead, Agent.AgentScopeTasksWrite, Agent.AgentScopeSubmissionsRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeSubmissionsReview ] ""))
         (Http.expectJson UserTokenMinted Agent.agentCredentialCreatedResponseDecoder)
 
 
@@ -963,7 +987,31 @@ loadOrganization token organizationId =
             , fetchOrgTeams token organizationId
             , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder)
             , fetchOrgTasksPage token organizationId "" "" "" "newest" 0
+            , fetchOrgCredentials token organizationId
             ]
+
+
+fetchOrgCredentials : String -> String -> Cmd Msg
+fetchOrgCredentials token organizationId =
+    authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credentials") Http.emptyBody (Http.expectJson OrgCredentialsReceived Agent.orgCredentialsResponseDecoder)
+
+
+postOrgCredential : String -> String -> String -> List Agent.AgentScope -> String -> Cmd Msg
+postOrgCredential token organizationId label scopes expiresAt =
+    authorizedRequest "POST"
+        token
+        ("/api/organizations/" ++ organizationId ++ "/credentials")
+        (Http.jsonBody (agentRequestBody label scopes expiresAt))
+        (Http.expectJson OrgCredentialCreated Agent.orgCredentialCreatedResponseDecoder)
+
+
+postRevokeOrgCredential : String -> String -> String -> Cmd Msg
+postRevokeOrgCredential token organizationId credentialId =
+    authorizedRequest "POST"
+        token
+        ("/api/organizations/" ++ organizationId ++ "/credentials/" ++ credentialId ++ "/revoke")
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson OrgCredentialRevoked Agent.orgCredentialResponseDecoder)
 
 
 fetchOrgTasksPage : String -> String -> String -> String -> String -> String -> Int -> Cmd Msg
@@ -1232,6 +1280,16 @@ teamsFromResult result =
             []
 
 
+orgCredentialsFromResult : Result Http.Error Agent.OrgCredentialsResponse -> List Agent.OrgCredentialResponse
+orgCredentialsFromResult result =
+    case result of
+        Ok response ->
+            response.credentials
+
+        Err _ ->
+            []
+
+
 membersFromResult : Result Http.Error Organization.OrganizationMembersResponse -> List Organization.OrganizationMemberResponse
 membersFromResult result =
     case result of
@@ -1435,12 +1493,86 @@ reservationHoursValue raw =
             48
 
 
-agentRequestBody : String -> List Agent.AgentScope -> Encode.Value
-agentRequestBody agentLabel scopes =
+agentRequestBody : String -> List Agent.AgentScope -> String -> Encode.Value
+agentRequestBody agentLabel scopes expiresAt =
     Encode.object
         [ ( "label", Encode.string agentLabel )
         , ( "scopes", Encode.list Agent.agentScopeEncoder scopes )
+        , ( "expires_at", Encode.string expiresAt )
         ]
+
+
+{-| Converts an "expires in N hours" draft field into the absolute RFC3339
+timestamp the REST API expects, or "" for "never expires" (blank/non-positive).
+-}
+expiresAtFromHours : Time.Posix -> String -> String
+expiresAtFromHours now rawHours =
+    case String.toInt (String.trim rawHours) of
+        Just hours ->
+            if hours > 0 then
+                formatRFC3339 (Time.millisToPosix (Time.posixToMillis now + hours * 3600000))
+
+            else
+                ""
+
+        Nothing ->
+            ""
+
+
+formatRFC3339 : Time.Posix -> String
+formatRFC3339 posix =
+    String.padLeft 4 '0' (String.fromInt (Time.toYear Time.utc posix))
+        ++ "-"
+        ++ String.padLeft 2 '0' (String.fromInt (monthNumber (Time.toMonth Time.utc posix)))
+        ++ "-"
+        ++ String.padLeft 2 '0' (String.fromInt (Time.toDay Time.utc posix))
+        ++ "T"
+        ++ String.padLeft 2 '0' (String.fromInt (Time.toHour Time.utc posix))
+        ++ ":"
+        ++ String.padLeft 2 '0' (String.fromInt (Time.toMinute Time.utc posix))
+        ++ ":"
+        ++ String.padLeft 2 '0' (String.fromInt (Time.toSecond Time.utc posix))
+        ++ "Z"
+
+
+monthNumber : Time.Month -> Int
+monthNumber month =
+    case month of
+        Time.Jan ->
+            1
+
+        Time.Feb ->
+            2
+
+        Time.Mar ->
+            3
+
+        Time.Apr ->
+            4
+
+        Time.May ->
+            5
+
+        Time.Jun ->
+            6
+
+        Time.Jul ->
+            7
+
+        Time.Aug ->
+            8
+
+        Time.Sep ->
+            9
+
+        Time.Oct ->
+            10
+
+        Time.Nov ->
+            11
+
+        Time.Dec ->
+            12
 
 
 submissionRequestBody : String -> List SelectedAttachment -> Encode.Value

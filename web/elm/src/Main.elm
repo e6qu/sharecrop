@@ -99,6 +99,7 @@ emptyLoggedIn response =
     , taskListSort = "newest"
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
+    , agentExpiresHours = ""
     , credentials = []
     , newCredential = Nothing
     , agentMessage = Nothing
@@ -112,6 +113,7 @@ emptyLoggedIn response =
     , reservationOrganizationId = ""
     , reservationTeamId = ""
     , reservationMessage = Nothing
+    , reservationSecret = Nothing
     , submissions = []
     , submitInput = ""
     , submitAttachments = []
@@ -161,6 +163,12 @@ emptyLoggedIn response =
     , orgTaskSavedViews = []
     , orgCollectibles = []
     , orgCollectiblesMessage = Nothing
+    , orgCredentials = []
+    , orgCredentialLabel = ""
+    , orgCredentialScopes = [ Agent.AgentScopeOrgRead ]
+    , orgCredentialExpiresHours = ""
+    , newOrgCredential = Nothing
+    , orgCredentialMessage = Nothing
     , teamCollectibles = []
     , teamCollectiblesMessage = Nothing
     , userProfile = Nothing
@@ -248,6 +256,15 @@ emptyLoggedIn response =
     , notificationsOffset = 0
     , inboxMessage = Nothing
     }
+
+
+issuedCredentialSecret : String -> Maybe String -> Maybe String
+issuedCredentialSecret rawSecret previous =
+    if rawSecret == "" then
+        previous
+
+    else
+        Just rawSecret
 
 
 updateFieldAt : Int -> (SchemaFieldDraft -> SchemaFieldDraft) -> List SchemaFieldDraft -> List SchemaFieldDraft
@@ -981,8 +998,17 @@ update msg model =
         ToggleScope scope ->
             ( Api.updateLoggedIn model (\state -> { state | agentScopes = Api.toggleScope scope state.agentScopes }), Cmd.none )
 
+        AgentExpiresHoursChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | agentExpiresHours = value }), Cmd.none )
+
         CreateAgentClicked ->
             Api.withSession model (\state -> Api.createAgentCommand model state)
+
+        AgentExpiresAtResolved now ->
+            Api.withSession model
+                (\state ->
+                    ( model, Api.postAgent state.accessToken state.agentLabel state.agentScopes (Api.expiresAtFromHours now state.agentExpiresHours) )
+                )
 
         AgentCreated (Ok created) ->
             ( Api.updateLoggedIn model (\state -> { state | newCredential = Just created, agentMessage = Nothing }), Api.refreshCredentials model )
@@ -1016,6 +1042,42 @@ update msg model =
 
         AgentRevoked _ ->
             ( model, Api.refreshCredentials model )
+
+        OrgCredentialsReceived result ->
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentials = Api.orgCredentialsFromResult result }), Cmd.none )
+
+        OrgCredentialLabelChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentialLabel = value }), Cmd.none )
+
+        ToggleOrgCredentialScope scope ->
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentialScopes = Api.toggleScope scope state.orgCredentialScopes }), Cmd.none )
+
+        OrgCredentialExpiresHoursChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentialExpiresHours = value }), Cmd.none )
+
+        CreateOrgCredentialClicked ->
+            Api.withSession model (\state -> Api.createOrgCredentialCommand model state)
+
+        OrgCredentialExpiresAtResolved now ->
+            Api.withSession model
+                (\state ->
+                    ( model, Api.postOrgCredential state.accessToken state.activeOrgId state.orgCredentialLabel state.orgCredentialScopes (Api.expiresAtFromHours now state.orgCredentialExpiresHours) )
+                )
+
+        OrgCredentialCreated (Ok created) ->
+            ( Api.updateLoggedIn model (\state -> { state | newOrgCredential = Just created, orgCredentialMessage = Nothing }), Api.refreshOrgCredentials model )
+
+        OrgCredentialCreated (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentialMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        RevokeOrgCredentialClicked credentialId ->
+            Api.withSession model (\state -> ( model, Api.postRevokeOrgCredential state.accessToken state.activeOrgId credentialId ))
+
+        OrgCredentialRevoked (Ok _) ->
+            ( model, Api.refreshOrgCredentials model )
+
+        OrgCredentialRevoked (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentialMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         LogoutClicked ->
             ( { model | session = LoggedOut, email = "", password = "" }
@@ -1114,7 +1176,13 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | reservationTeamId = value }), Cmd.none )
 
         ReservationReceived (Ok reservation) ->
-            ( Api.updateLoggedIn model (\state -> { state | reservationMessage = Just (View.reservationSuccessLabel reservation) })
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | reservationMessage = Just (View.reservationSuccessLabel reservation)
+                        , reservationSecret = issuedCredentialSecret reservation.issuedWorkerCredential state.reservationSecret
+                    }
+                )
             , Api.refreshDetailReservations model
             )
 
@@ -1137,7 +1205,13 @@ update msg model =
             Api.withSession model (\state -> Api.reservationChangeCommand model state reservationId "cancel")
 
         ReservationChangeReceived (Ok reservation) ->
-            ( Api.updateLoggedIn model (\state -> { state | reservationMessage = Just (View.reservationSuccessLabel reservation) })
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | reservationMessage = Just (View.reservationSuccessLabel reservation)
+                        , reservationSecret = issuedCredentialSecret reservation.issuedWorkerCredential state.reservationSecret
+                    }
+                )
             , Api.refreshDetailReservations model
             )
 

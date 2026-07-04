@@ -203,6 +203,20 @@ allScopes =
     , Agent.AgentScopeSubmissionsWrite
     , Agent.AgentScopeSubmissionsRead
     , Agent.AgentScopeSubmissionsReview
+    , Agent.AgentScopeOrgRead
+    , Agent.AgentScopeOrgManage
+    , Agent.AgentScopeCollectiblesRead
+    , Agent.AgentScopeCollectiblesManage
+    , Agent.AgentScopeNotificationsRead
+    , Agent.AgentScopeNotificationsManage
+    , Agent.AgentScopeUsersRead
+    , Agent.AgentScopeLedgerRead
+    , Agent.AgentScopeModerationRead
+    , Agent.AgentScopeModerationManage
+    , Agent.AgentScopePrivacyRead
+    , Agent.AgentScopePrivacyManage
+    , Agent.AgentScopePlatformAdmin
+    , Agent.AgentScopeCredentialsManage
     ]
 
 
@@ -224,6 +238,48 @@ scopeTag scope =
         Agent.AgentScopeSubmissionsReview ->
             "submissions_review"
 
+        Agent.AgentScopeOrgRead ->
+            "org_read"
+
+        Agent.AgentScopeOrgManage ->
+            "org_manage"
+
+        Agent.AgentScopeCollectiblesRead ->
+            "collectibles_read"
+
+        Agent.AgentScopeCollectiblesManage ->
+            "collectibles_manage"
+
+        Agent.AgentScopeNotificationsRead ->
+            "notifications_read"
+
+        Agent.AgentScopeNotificationsManage ->
+            "notifications_manage"
+
+        Agent.AgentScopeUsersRead ->
+            "users_read"
+
+        Agent.AgentScopeLedgerRead ->
+            "ledger_read"
+
+        Agent.AgentScopeModerationRead ->
+            "moderation_read"
+
+        Agent.AgentScopeModerationManage ->
+            "moderation_manage"
+
+        Agent.AgentScopePrivacyRead ->
+            "privacy_read"
+
+        Agent.AgentScopePrivacyManage ->
+            "privacy_manage"
+
+        Agent.AgentScopePlatformAdmin ->
+            "platform_admin"
+
+        Agent.AgentScopeCredentialsManage ->
+            "credentials_manage"
+
 
 scopeLabel : Agent.AgentScope -> String
 scopeLabel scope =
@@ -242,6 +298,48 @@ scopeLabel scope =
 
         Agent.AgentScopeSubmissionsReview ->
             "Review submissions"
+
+        Agent.AgentScopeOrgRead ->
+            "Read organizations"
+
+        Agent.AgentScopeOrgManage ->
+            "Manage organizations"
+
+        Agent.AgentScopeCollectiblesRead ->
+            "Read collectibles"
+
+        Agent.AgentScopeCollectiblesManage ->
+            "Manage collectibles"
+
+        Agent.AgentScopeNotificationsRead ->
+            "Read notifications"
+
+        Agent.AgentScopeNotificationsManage ->
+            "Manage notifications"
+
+        Agent.AgentScopeUsersRead ->
+            "Read user directory"
+
+        Agent.AgentScopeLedgerRead ->
+            "Read ledger"
+
+        Agent.AgentScopeModerationRead ->
+            "Read moderation reports"
+
+        Agent.AgentScopeModerationManage ->
+            "Triage moderation reports"
+
+        Agent.AgentScopePrivacyRead ->
+            "Read privacy requests"
+
+        Agent.AgentScopePrivacyManage ->
+            "Manage privacy requests"
+
+        Agent.AgentScopePlatformAdmin ->
+            "Platform admin"
+
+        Agent.AgentScopeCredentialsManage ->
+            "Manage own credentials"
 
 
 credentialStateLabel : Agent.AgentCredentialState -> String

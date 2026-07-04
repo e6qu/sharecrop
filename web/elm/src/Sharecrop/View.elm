@@ -1492,7 +1492,76 @@ activeOrganizationView state =
                 [ collectiblesHoldingsList "org-collectibles" state.orgCollectibles
                 , maybeNote state.orgCollectiblesMessage "org-collectibles-message"
                 ]
+            , Ui.disclosure "org-credentials-section" False ("Credentials (" ++ String.fromInt (List.length state.orgCredentials) ++ ")") <|
+                [ orgCredentialsList state.orgCredentials
+                , orgNewCredentialView state.newOrgCredential
+                , form [ Html.Attributes.class "mt-3 space-y-3", onSubmit CreateOrgCredentialClicked ]
+                    [ Ui.textInput [ type_ "text", placeholder "Credential label", value state.orgCredentialLabel, onInput OrgCredentialLabelChanged, testId "org-credential-label" ]
+                    , div [ Html.Attributes.class "space-y-1" ] (List.map (orgScopeCheckbox state.orgCredentialScopes) allScopes)
+                    , Ui.fieldLabel "Expires in (hours, blank for never)" [ Ui.textInput [ type_ "number", placeholder "never", value state.orgCredentialExpiresHours, onInput OrgCredentialExpiresHoursChanged, testId "org-credential-expires-hours" ] ]
+                    , Ui.primaryButton [ type_ "submit", testId "create-org-credential" ] "Create credential"
+                    , maybeNote state.orgCredentialMessage "org-credential-message"
+                    ]
+                ]
             ]
+
+
+orgScopeCheckbox : List Agent.AgentScope -> Agent.AgentScope -> Html Msg
+orgScopeCheckbox selected scope =
+    label [ Html.Attributes.class "flex min-h-[44px] items-center gap-2 text-sm" ]
+        [ Html.input
+            [ type_ "checkbox"
+            , Html.Attributes.class Ui.checkboxClass
+            , checked (List.member scope selected)
+            , onCheck (\_ -> ToggleOrgCredentialScope scope)
+            , testId ("org-scope-" ++ scopeTag scope)
+            ]
+            []
+        , span [] [ text (scopeLabel scope ++ " (" ++ scopeTag scope ++ ")") ]
+        ]
+
+
+orgNewCredentialView : Maybe Agent.OrgCredentialCreatedResponse -> Html Msg
+orgNewCredentialView created =
+    case created of
+        Just credential ->
+            div [ Html.Attributes.class "mt-4 space-y-3 rounded-md bg-slate-50 p-4" ]
+                [ Ui.label_ "New organization token (shown once)"
+                , Ui.codeBlock [ testId "org-credential-secret" ] credential.secret
+                ]
+
+        Nothing ->
+            text ""
+
+
+orgCredentialsList : List Agent.OrgCredentialResponse -> Html Msg
+orgCredentialsList credentials =
+    if List.isEmpty credentials then
+        text ""
+
+    else
+        div [ Html.Attributes.class "mt-2 divide-y divide-slate-100", testId "org-credentials" ] (List.map orgCredentialRow credentials)
+
+
+orgCredentialRow : Agent.OrgCredentialResponse -> Html Msg
+orgCredentialRow credential =
+    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "org-credential-row" ]
+        [ div []
+            [ p [ Html.Attributes.class "font-medium" ] [ text credential.label ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (credentialStateLabel credential.state ++ expiryNote credential.expiresAt ++ " · " ++ String.join ", " (List.map scopeLabel credential.scopes)) ]
+            ]
+        , orgRevokeButton credential
+        ]
+
+
+orgRevokeButton : Agent.OrgCredentialResponse -> Html Msg
+orgRevokeButton credential =
+    case credential.state of
+        Agent.AgentCredentialStateActive ->
+            Ui.secondaryButton [ onClick (RevokeOrgCredentialClicked credential.id), testId "revoke-org-credential" ] "Revoke"
+
+        Agent.AgentCredentialStateRevoked ->
+            span [ Html.Attributes.class "text-xs text-slate-600" ] [ text "revoked" ]
 
 
 organizationOperationsDashboard : LoggedInModel -> Html Msg
@@ -2500,6 +2569,7 @@ agentsView origin state =
         , form [ Html.Attributes.class "mt-3 space-y-3", onSubmit CreateAgentClicked ]
             [ Ui.textInput [ type_ "text", placeholder "Agent label", value state.agentLabel, onInput AgentLabelChanged, testId "agent-label" ]
             , div [ Html.Attributes.class "space-y-1" ] (List.map (scopeCheckbox state.agentScopes) allScopes)
+            , Ui.fieldLabel "Expires in (hours, blank for never)" [ Ui.textInput [ type_ "number", placeholder "never", value state.agentExpiresHours, onInput AgentExpiresHoursChanged, testId "agent-expires-hours" ] ]
             , Ui.primaryButton [ type_ "submit", testId "create-agent" ] "Create credential"
             , maybeNote state.agentMessage "agent-message"
             ]
@@ -2552,10 +2622,19 @@ credentialRow credential =
     div [ Html.Attributes.class "flex items-center justify-between py-2", testId "credential-row" ]
         [ div []
             [ p [ Html.Attributes.class "font-medium" ] [ text credential.label ]
-            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (credentialStateLabel credential.state ++ " · " ++ String.join ", " (List.map scopeLabel credential.scopes)) ]
+            , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text (credentialStateLabel credential.state ++ expiryNote credential.expiresAt ++ " · " ++ String.join ", " (List.map scopeLabel credential.scopes)) ]
             ]
         , revokeButton credential
         ]
+
+
+expiryNote : String -> String
+expiryNote expiresAt =
+    if expiresAt == "" then
+        ""
+
+    else
+        " · expires " ++ expiresAt
 
 
 revokeButton : Agent.AgentCredentialResponse -> Html Msg
@@ -3131,7 +3210,21 @@ reservationCard state =
                   else
                     reservationAction state detail
                 , reservationsList isOwner state.subjectId state.reservations
+                , reservationSecretView state.reservationSecret
                 , maybeNote state.reservationMessage "reservation-message"
+                ]
+
+        Nothing ->
+            text ""
+
+
+reservationSecretView : Maybe String -> Html Msg
+reservationSecretView secret =
+    case secret of
+        Just token ->
+            div [ Html.Attributes.class "mt-4 space-y-3 rounded-md bg-slate-50 p-4" ]
+                [ Ui.label_ "Agent token for this task (shown once)"
+                , Ui.codeBlock [ testId "reservation-agent-secret" ] token
                 ]
 
         Nothing ->

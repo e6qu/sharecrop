@@ -846,6 +846,20 @@ func agentModule() Module {
 					{Name: NewElmTypeName("AgentScopeSubmissionsWrite"), Tag: "submissions_write"},
 					{Name: NewElmTypeName("AgentScopeSubmissionsRead"), Tag: "submissions_read"},
 					{Name: NewElmTypeName("AgentScopeSubmissionsReview"), Tag: "submissions_review"},
+					{Name: NewElmTypeName("AgentScopeOrgRead"), Tag: "org_read"},
+					{Name: NewElmTypeName("AgentScopeOrgManage"), Tag: "org_manage"},
+					{Name: NewElmTypeName("AgentScopeCollectiblesRead"), Tag: "collectibles_read"},
+					{Name: NewElmTypeName("AgentScopeCollectiblesManage"), Tag: "collectibles_manage"},
+					{Name: NewElmTypeName("AgentScopeNotificationsRead"), Tag: "notifications_read"},
+					{Name: NewElmTypeName("AgentScopeNotificationsManage"), Tag: "notifications_manage"},
+					{Name: NewElmTypeName("AgentScopeUsersRead"), Tag: "users_read"},
+					{Name: NewElmTypeName("AgentScopeLedgerRead"), Tag: "ledger_read"},
+					{Name: NewElmTypeName("AgentScopeModerationRead"), Tag: "moderation_read"},
+					{Name: NewElmTypeName("AgentScopeModerationManage"), Tag: "moderation_manage"},
+					{Name: NewElmTypeName("AgentScopePrivacyRead"), Tag: "privacy_read"},
+					{Name: NewElmTypeName("AgentScopePrivacyManage"), Tag: "privacy_manage"},
+					{Name: NewElmTypeName("AgentScopePlatformAdmin"), Tag: "platform_admin"},
+					{Name: NewElmTypeName("AgentScopeCredentialsManage"), Tag: "credentials_manage"},
 				},
 			},
 			Enum{
@@ -876,6 +890,35 @@ func agentModule() Module {
 				Name: NewElmTypeName("AgentCredentialCreatedResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("credential"), JSONName: NewJSONFieldName("credential"), Type: NamedRef{Name: NewElmTypeName("AgentCredentialResponse")}},
+					{Name: NewElmValueName("secret"), JSONName: NewJSONFieldName("secret"), Type: StringRef{}},
+				},
+			},
+			// Organization-wide credentials reuse agent.Scope/agent.State
+			// directly on the Go side (internal/orgcred/models.go), so their
+			// wire types live here too rather than in a new module: generated
+			// Elm modules don't import each other, and duplicating the scope
+			// enum would risk the two copies drifting apart.
+			Product{
+				Name: NewElmTypeName("OrgCredentialResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("organizationID"), JSONName: NewJSONFieldName("organization_id"), Type: StringRef{}},
+					{Name: NewElmValueName("label"), JSONName: NewJSONFieldName("label"), Type: StringRef{}},
+					{Name: NewElmValueName("scopes"), JSONName: NewJSONFieldName("scopes"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("AgentScope")}}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("AgentCredentialState")}},
+					{Name: NewElmValueName("expiresAt"), JSONName: NewJSONFieldName("expires_at"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("OrgCredentialsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("credentials"), JSONName: NewJSONFieldName("credentials"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrgCredentialResponse")}}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("OrgCredentialCreatedResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("credential"), JSONName: NewJSONFieldName("credential"), Type: NamedRef{Name: NewElmTypeName("OrgCredentialResponse")}},
 					{Name: NewElmValueName("secret"), JSONName: NewJSONFieldName("secret"), Type: StringRef{}},
 				},
 			},

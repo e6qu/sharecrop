@@ -18,6 +18,7 @@ import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
+import Time
 import Url exposing (Url)
 
 
@@ -137,6 +138,7 @@ type alias LoggedInModel =
     , taskListSort : String
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
+    , agentExpiresHours : String
     , credentials : List Agent.AgentCredentialResponse
     , newCredential : Maybe Agent.AgentCredentialCreatedResponse
     , agentMessage : Maybe String
@@ -150,6 +152,7 @@ type alias LoggedInModel =
     , reservationOrganizationId : String
     , reservationTeamId : String
     , reservationMessage : Maybe String
+    , reservationSecret : Maybe String
     , submissions : List Submission.SubmissionResponse
     , submitInput : String
     , submitAttachments : List SelectedAttachment
@@ -199,6 +202,12 @@ type alias LoggedInModel =
     , orgTaskSavedViews : List QueueView
     , orgCollectibles : List Collectible.CollectibleResponse
     , orgCollectiblesMessage : Maybe String
+    , orgCredentials : List Agent.OrgCredentialResponse
+    , orgCredentialLabel : String
+    , orgCredentialScopes : List Agent.AgentScope
+    , orgCredentialExpiresHours : String
+    , newOrgCredential : Maybe Agent.OrgCredentialCreatedResponse
+    , orgCredentialMessage : Maybe String
     , teamCollectibles : List Collectible.CollectibleResponse
     , teamCollectiblesMessage : Maybe String
     , userProfile : Maybe Task.UserProfileResponse
@@ -403,7 +412,9 @@ type Msg
     | RefundCollectibleRewardReceived (Result Http.Error Collectible.CollectiblesResponse)
     | AgentLabelChanged String
     | ToggleScope Agent.AgentScope
+    | AgentExpiresHoursChanged String
     | CreateAgentClicked
+    | AgentExpiresAtResolved Time.Posix
     | AgentCreated (Result Http.Error Agent.AgentCredentialCreatedResponse)
     | MintTaskTokenClicked
     | TaskTokenMinted (Result Http.Error Agent.AgentCredentialCreatedResponse)
@@ -412,6 +423,15 @@ type Msg
     | CopyClicked String
     | RevokeClicked String
     | AgentRevoked (Result Http.Error Agent.AgentCredentialResponse)
+    | OrgCredentialsReceived (Result Http.Error Agent.OrgCredentialsResponse)
+    | OrgCredentialLabelChanged String
+    | ToggleOrgCredentialScope Agent.AgentScope
+    | OrgCredentialExpiresHoursChanged String
+    | CreateOrgCredentialClicked
+    | OrgCredentialExpiresAtResolved Time.Posix
+    | OrgCredentialCreated (Result Http.Error Agent.OrgCredentialCreatedResponse)
+    | RevokeOrgCredentialClicked String
+    | OrgCredentialRevoked (Result Http.Error Agent.OrgCredentialResponse)
     | LogoutClicked
     | LogoutReceived (Result Http.Error ())
     | DiscoveryIncludeReservedChanged Bool

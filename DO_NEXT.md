@@ -5,31 +5,29 @@ Current priority from
 
 Active branch:
 
-1. `task/mcp-admin-moderation-privacy-audit` is in progress — Phase 4c of a
-   5-phase, explicitly-planned RBAC/API-token effort (full plan agreed with
-   the user; each phase ships as its own PR), and the **last MCP-parity
-   sub-phase**. Phase 1 (PR 115) laid the credential-model foundation;
-   Phase 2 (PR 116) added organization-wide tokens; Phase 3 (PR 117)
-   centralized org-token authorization; Phase 4a (PR 118) wired the MCP
-   transport stack for `auth.Subject`/`OrgSubject`; Phase 4b (PR 119) added
-   ~30 tools for orgs/teams/collectibles/notifications/users. **This phase
-   (4c)** adds the remaining 14 admin-gated tools (platform admin
-   management, moderation, privacy, audit event listing, `award_collectible`)
-   plus a `requireAdminSubjectForTool` double-check MCP dispatch was
-   missing: REST's `requireAdminSubject` re-checks
-   `PlatformAdminService.IsAdmin` on the acting user on top of the scope
-   check (a credential's scopes are fixed at mint time; the user might be
-   demoted after), but MCP only ever checked scope before this phase.
-   Verified both with a new regression test and by hand against the real
-   server: a `platform_admin`-scoped credential from a non-admin user is
-   still denied. Platform-admin/moderation/privacy have no standalone domain
-   package (in-memory services living inside `internal/http`), so added
-   small MCP-local mirror types that `mcpServices` converts to/from, reusing
-   the REST handlers' own unexported helpers rather than duplicating logic;
-   audit *is* a proper domain package, so those tools reuse `audit.*` types
-   directly. See `STATUS.md`/`WHAT_WE_DID.md` for the full writeup. **This
-   completes Phase 4.** Remaining: Phase 5 (Elm UI for scopes/expiration/org
-   tokens/task-token reveal) — the last phase of the original plan.
+1. `task/mcp-rbac-elm-ui-scopes-expiration-org-tokens` is in progress —
+   **Phase 5, the final phase**, of a 5-phase, explicitly-planned
+   RBAC/API-token effort (full plan agreed with the user; each phase
+   shipped as its own PR). Phases 1-3 (PRs 115-117) built the
+   credential/org-token model and centralized authorization; Phases 4a-4c
+   (PRs 118-120) brought MCP to full REST parity. **This phase (5)** builds
+   the Elm UI: the widened 19-scope taxonomy in the credential form/labels,
+   an "expires in N hours" input on both credential-mint forms (client-side
+   converted to an absolute RFC3339 timestamp via `Time.now`, since the REST
+   API takes an absolute timestamp — required adding a small hand-rolled
+   RFC3339 formatter and promoting `elm/time` to a direct dependency), a new
+   "Credentials" disclosure section on the organization detail page for
+   org-wide credential mint/list/revoke, and a one-time "Agent token for
+   this task" reveal on the task detail reservation card (reading
+   `ReservationResponse.issuedWorkerCredential`, which the Phase 1 backend
+   already returned but no Elm code had read). Org-credential wire types
+   were added to the *same* generated `Agent.elm` module rather than a new
+   one, since generated Elm modules don't cross-import and org credentials
+   reuse `agent.Scope`/`agent.State` directly on the Go side. Verified with
+   `elm make`, the full Go test/check suite, and the full Playwright suite
+   (49/49 passing) against a real Postgres-backed server. See
+   `STATUS.md`/`WHAT_WE_DID.md` for the full writeup. **This completes the
+   entire 5-phase plan** — no further phases are planned.
 
 2. `task/task-detail-reorder-profile-links-uiux` (PR 114, merged) refined
    the task detail and profile pages for usability at the user's explicit

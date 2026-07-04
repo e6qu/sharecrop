@@ -1,5 +1,80 @@
 # What We Did
 
+`task/mcp-rbac-elm-ui-scopes-expiration-org-tokens` is **Phase 5, the final
+phase**, of the same 5-phase RBAC + API-token effort described below
+(Phases 1-3 shipped as PRs 115-117, Phases 4a-4c as PRs 118-120, all merged
+first). This phase builds the Elm UI for everything the backend already
+supported but the frontend couldn't reach yet.
+
+- **Contracts regeneration was step one**: `internal/contracts/
+  definitions.go`'s `agentModule()` still only declared the original 5
+  scopes, even though `internal/agent/values.go` had 19 as of Phase 2. Widened
+  the `AgentScope` enum to all 19 and regenerated `Generated/Agent.elm`
+  (`go run ./cmd/sharecrop generate elm-contracts`). Also updated
+  `Sharecrop.Labels`' `allScopes`/`scopeTag`/`scopeLabel` to match — Elm's
+  exhaustive `case` checking meant the compiler itself caught every place
+  that needed updating.
+- **Org-credential wire types went into the existing `Agent` module, not a
+  new one — a real structural finding, not a style choice**: generated Elm
+  modules only ever `import Json.Decode`/`Json.Encode`, never each other
+  (confirmed by reading `internal/contracts/elm.go`'s file-header
+  generation). Since `internal/orgcred.Credential` reuses `agent.Scope`/
+  `agent.State` directly on the Go side (`internal/orgcred/models.go`),
+  putting `OrgCredentialResponse`/`OrgCredentialsResponse`/
+  `OrgCredentialCreatedResponse` inside `agentModule()` let them reuse the
+  already-generated `AgentScope`/`AgentCredentialState` types instead of
+  generating a duplicate enum that could drift from the real one.
+- **Expiration input required more plumbing than expected**: the plan's
+  original assumption was a plain "expires in N hours" number input mirroring
+  the existing "reservation expiry hours" field, sent to the server as-is.
+  Reading `internal/http/agent_mcp.go`'s `parseOptionalExpiresAt` showed the
+  REST API actually expects an *absolute* RFC3339 timestamp, not a relative
+  duration — unlike the reservation-hours field, where the server does that
+  math. Elm has no access to "now" without an effect, so `Api.elm` gained a
+  `Time.now`-driven flow: submitting either credential-mint form now defers
+  the actual POST to a `AgentExpiresAtResolved`/`OrgCredentialExpiresAtResolved`
+  message carrying `Time.Posix`, which combines with the hours draft field
+  to compute the absolute timestamp. No existing Elm code touched `Time` at
+  all, so this needed a small hand-rolled RFC3339 formatter (`Time` gives
+  year/month/day/hour/minute/second accessors but no string formatting) and
+  promoting `elm/time` from an indirect to a direct `elm.json` dependency
+  (Elm refused to compile an `import Time` otherwise, even though the
+  package was already present transitively).
+- **The task-token reveal was mostly-wired already, just never read**:
+  `Task.TaskReservationResponse.issuedWorkerCredential` has existed in
+  generated code since Phase 1 (the backend already returns the one-time
+  plaintext secret when a reservation becomes active), but `Main.elm`'s
+  `ReservationReceived`/`ReservationChangeReceived` handlers only ever read
+  it indirectly for a success-message label — the actual secret value was
+  discarded. Added a `reservationSecret : Maybe String` model field, an
+  `issuedCredentialSecret` helper (empty string → keep whatever was already
+  revealed, non-empty → reveal it) so cancel/decline events after a reveal
+  don't blank it out, and a `reservationSecretView` in `View.elm` reusing
+  the same always-visible (not `Ui.disclosure`-collapsed) one-time-reveal
+  shape the existing personal/task-token mint flows already use.
+- **Org detail page**: added a 6th `Ui.disclosure "org-credentials-section"`
+  sibling alongside the existing teams/members/collectibles sections
+  (`View.elm`'s `activeOrganizationView`), with its own mint form (label,
+  scope checkboxes reusing `allScopes`, expiration input), list, and revoke
+  buttons — mirroring the personal-credential UI almost exactly, since org
+  credentials are functionally the same shape with one more identifying
+  field (`organizationID`).
+- **Verification**: `elm make` compiled cleanly throughout (Elm's
+  exhaustiveness checking caught every missing case as new Msg
+  constructors/scope variants were added — no runtime surprises there), the
+  full Go test/check suite passed unchanged, and the full Playwright suite
+  (49/49) passed against a real Postgres-backed server, including 3
+  new/extended specs: minting a credential with an expiration + new scope
+  and seeing "expires" on its row, an org admin minting and revoking an
+  org-wide credential end to end (asserting the `scrop_org_` secret
+  prefix), and the existing reservation-becomes-active test now also
+  asserting the one-time task-token reveal appears with a `scrop_agent_`
+  secret.
+- **This completes the entire 5-phase plan.** No further phases are planned
+  for this effort.
+
+---
+
 `task/mcp-admin-moderation-privacy-audit` is Phase 4c of the same 5-phase
 RBAC + API-token effort described below (Phases 1-3 shipped as PRs 115-117,
 Phase 4a as PR 118, Phase 4b as PR 119, all merged first). This is the last
