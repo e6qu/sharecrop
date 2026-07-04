@@ -463,6 +463,7 @@
         state: "active",
       },
     ],
+    orgCredentials: {},
     series: [{
       id: "series-orchard",
       owner_kind: "user",
@@ -2146,6 +2147,36 @@
     c.state = "revoked";
     return ok(c);
   });
+  on(
+    "GET",
+    "/api/organizations/:id/credentials",
+    (p) => ok({ credentials: db.orgCredentials[p.id] || [] }),
+  );
+  on("POST", "/api/organizations/:id/credentials", (p, _url, body) => {
+    const cred = {
+      id: nextId("orgcred"),
+      organization_id: p.id,
+      label: (body && body.label) || "Organization token",
+      scopes: (body && body.scopes) || [],
+      state: "active",
+      expires_at: (body && body.expires_at) || "",
+    };
+    (db.orgCredentials[p.id] = db.orgCredentials[p.id] || []).push(cred);
+    return ok(
+      { credential: cred, secret: "demo-org-secret-" + nextId("s") },
+      201,
+    );
+  });
+  on(
+    "POST",
+    "/api/organizations/:id/credentials/:credId/revoke",
+    (p) => {
+      const c = (db.orgCredentials[p.id] || []).find((x) => x.id === p.credId);
+      if (!c) return err(404, "organization credential not found");
+      c.state = "revoked";
+      return ok(c);
+    },
+  );
 
   on(
     "GET",
