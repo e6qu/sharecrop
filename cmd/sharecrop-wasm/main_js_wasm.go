@@ -4,10 +4,12 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"syscall/js"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/wasmdemo"
 )
 
@@ -88,7 +90,8 @@ func main() {
 		handleResult := handleWithConfiguredHost(request.Value, adapted.Route)
 		handled, handledMatched := handleResult.(wasmdemo.RequestHandled)
 		if !handledMatched {
-			return encodeHandleResponse(wasmHandleResponse{Status: 500, Error: handleResult.(wasmdemo.RequestHandleRejected).Reason, Route: adapted.Route.String()})
+			rejected := handleResult.(wasmdemo.RequestHandleRejected)
+			return encodeHandleResponse(wasmHandleResponse{Status: statusForError(rejected.Reason), Error: rejected.Reason.Description(), Route: adapted.Route.String()})
 		}
 		return encodeHandleResponse(wasmHandleResponse{Status: handled.Value.Status, Body: handled.Value.Body, Route: adapted.Route.String()})
 	}))
@@ -99,20 +102,20 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 	runtimeResult := wasmdemo.ValidateHostRuntime(configuredHost)
 	runtime, runtimeMatched := runtimeResult.(wasmdemo.HostRuntimeAccepted)
 	if !runtimeMatched {
-		return wasmdemo.RequestHandleRejected{Reason: runtimeResult.(wasmdemo.HostRuntimeRejected).Reason}
+		return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, runtimeResult.(wasmdemo.HostRuntimeRejected).Reason)}
 	}
 	switch route.String() {
 	case wasmdemo.RouteAuth.String():
 		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
 		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
 		}
 		handler := wasmdemo.NewAuthHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
 		return handler.Handle(request)
 	case wasmdemo.RouteAccount.String():
 		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
 		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
 		}
 		handler := wasmdemo.NewAccountHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
 		return handler.Handle(request)
@@ -122,14 +125,14 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 	case wasmdemo.RouteTasks.String():
 		taskIDs, taskIDMatched := runtime.InteractionIDs.(wasmdemo.TaskIDSource)
 		if !taskIDMatched {
-			return wasmdemo.RequestHandleRejected{Reason: "host task id adapter is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host task id adapter is required")}
 		}
 		handler := wasmdemo.NewTaskHandler(runtime.Storage, runtime.Actor, taskIDs)
 		return handler.Handle(request)
 	case wasmdemo.RoutePrivacyRequests.String(), wasmdemo.RouteAdminPrivacyRequests.String():
 		privacyIDs, privacyIDMatched := runtime.InteractionIDs.(wasmdemo.PrivacyRequestIDSource)
 		if !privacyIDMatched {
-			return wasmdemo.RequestHandleRejected{Reason: "host privacy request id adapter is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host privacy request id adapter is required")}
 		}
 		handler := wasmdemo.NewPrivacyRequestHandler(runtime.Storage, runtime.Clock, runtime.Actor, privacyIDs)
 		return handler.Handle(request)
@@ -139,28 +142,28 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 		wasmdemo.RouteAuditEvents.String():
 		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
 		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
 		}
 		handler := wasmdemo.NewAdminHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
 		return handler.Handle(request, route)
 	case wasmdemo.RouteModerationReports.String():
 		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
 		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
 		}
 		handler := wasmdemo.NewModerationReportHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
 		return handler.Handle(request)
 	case wasmdemo.RouteAdminModerationReports.String():
 		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
 		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
 		}
 		handler := wasmdemo.NewAdminHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
 		return handler.Handle(request, route)
 	case wasmdemo.RouteSavedQueueViews.String():
 		savedQueueIDs, savedQueueIDMatched := runtime.InteractionIDs.(wasmdemo.SavedQueueViewIDSource)
 		if !savedQueueIDMatched {
-			return wasmdemo.RequestHandleRejected{Reason: "host saved queue view id adapter is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host saved queue view id adapter is required")}
 		}
 		handler := wasmdemo.NewSavedQueueViewHandler(runtime.Storage, runtime.Actor, savedQueueIDs)
 		return handler.Handle(request)
@@ -173,7 +176,7 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 		wasmdemo.RouteStandaloneTeams.String():
 		organizationIDs, organizationIDMatched := runtime.InteractionIDs.(wasmdemo.OrganizationIDSource)
 		if !organizationIDMatched {
-			return wasmdemo.RequestHandleRejected{Reason: "host organization id adapter is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host organization id adapter is required")}
 		}
 		handler := wasmdemo.NewOrganizationHandler(runtime.Storage, runtime.Actor, organizationIDs, configuredHost)
 		return handler.Handle(request)
@@ -187,26 +190,26 @@ func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wa
 	case wasmdemo.RouteCollectibles.String():
 		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
 		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
 		}
 		handler := wasmdemo.NewCollectibleHandler(runtime.Storage, runtime.Actor, runtimeIDs)
 		return handler.Handle(request)
 	case wasmdemo.RouteAgentCredentials.String():
 		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
 		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: "runtime id source is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
 		}
 		handler := wasmdemo.NewAgentCredentialHandler(runtime.Storage, runtime.Actor, runtimeIDs)
 		return handler.Handle(request)
 	case wasmdemo.RouteTaskSeries.String():
 		seriesIDs, matched := runtime.InteractionIDs.(wasmdemo.TaskSeriesIDSource)
 		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: "host task series id adapter is required"}
+			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host task series id adapter is required")}
 		}
 		handler := wasmdemo.NewTaskSeriesHandler(runtime.Storage, runtime.Actor, seriesIDs)
 		return handler.Handle(request)
 	default:
-		return wasmdemo.RequestHandleRejected{Reason: "configured WASM host does not execute this route"}
+		return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "configured WASM host does not execute this route")}
 	}
 }
 
@@ -389,4 +392,25 @@ func encodeHandleResponse(response wasmHandleResponse) string {
 		panic("wasm response encoding failed")
 	}
 	return string(encoded)
+}
+
+// statusForError mirrors internal/http/server.go's statusForError so a
+// domain rejection maps to the same HTTP status the real backend would use
+// for the same DomainError code, instead of collapsing every rejection to
+// 500 regardless of cause.
+func statusForError(reason core.DomainError) int {
+	switch reason.Code() {
+	case core.ErrorCodeInvalidID, core.ErrorCodeInvalidEnum, core.ErrorCodeInvalidArgument:
+		return http.StatusBadRequest
+	case core.ErrorCodeInvalidState:
+		return http.StatusConflict
+	case core.ErrorCodeNotFound:
+		return http.StatusNotFound
+	case core.ErrorCodePermissionDenied:
+		return http.StatusForbidden
+	case core.ErrorCodeConflict:
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
 }

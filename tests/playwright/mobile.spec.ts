@@ -80,9 +80,27 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
   await expectNoHorizontalOverflow("task detail with API & MCP panel");
 
   // The owned task's inline "Fund this task" panel (organization picker plus
-  // an amount input) is new content and its own overflow risk.
+  // an amount input) is new content and its own overflow risk. The panel
+  // only shows for a draft credit/bundle-reward task, so create one fresh
+  // rather than relying on a seeded task's state.
   await page.getByTestId("nav-tasks").click();
-  await page.getByTestId("fund-task-row").first().click();
+  await page.getByTestId("new-task-button").click();
+  await page.getByTestId("create-title").fill("Mobile overflow fund check");
+  await page.getByTestId("create-description").fill(
+    "Created to exercise the fund panel's mobile layout.",
+  );
+  await page.getByTestId("create-reward-kind-credit").click();
+  await page.getByTestId("create-reward").fill("10");
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+  await page.getByTestId("nav-tasks").click();
+  await page
+    .getByTestId("task-row")
+    .filter({ hasText: "Mobile overflow fund check" })
+    .getByTestId("view-task")
+    .click();
   await page.getByTestId("fund-task-panel").click();
   await expectNoHorizontalOverflow("task detail with fund panel expanded");
 

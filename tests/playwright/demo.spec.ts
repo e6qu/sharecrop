@@ -309,6 +309,53 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
   );
 });
 
+test("the fund panel does not appear on an already-funded, open demo task", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1250 credits")).toBeVisible();
+
+  await page.getByRole("link", { name: "Tasks", exact: true }).click();
+  await page
+    .getByTestId("task-row")
+    .filter({ hasText: "Verify 10 ledger transfers for fraud signals" })
+    .getByTestId("view-task")
+    .click();
+
+  await expect(page.getByTestId("detail-title")).toBeVisible();
+  await expect(page.getByTestId("fund-task-panel")).toHaveCount(0);
+});
+
+test("demo owner funds a draft credit task they own", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("1250 credits")).toBeVisible();
+
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+  await page.getByTestId("create-title").fill("Fund this fresh draft task");
+  await page.getByTestId("create-description").fill(
+    "A draft task created to exercise the demo backend's funding path.",
+  );
+  await page.getByTestId("create-reward-kind-credit").click();
+  await page.getByTestId("create-reward").fill("25");
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "Created task",
+  );
+
+  await page.getByTestId("nav-tasks").click();
+  await page
+    .getByTestId("task-row")
+    .filter({ hasText: "Fund this fresh draft task" })
+    .getByTestId("view-task")
+    .click();
+
+  await page.getByTestId("fund-task-panel").click();
+  await page.getByTestId("fund-amount").fill("25");
+  await page.getByTestId("fund").click();
+  await expect(page.getByTestId("fund-message")).toContainText(
+    "Escrowed 25 credits",
+  );
+});
+
 test("the collectibles catalog renders sprites, awards a default, and trades it", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
