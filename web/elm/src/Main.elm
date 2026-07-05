@@ -895,29 +895,23 @@ update msg model =
         CreateTaskReceived (Ok created) ->
             ( Api.updateLoggedIn model
                 (\state ->
-                    { state
-                        | createTitle = ""
-                        , createDescription = ""
-                        , createResponseSchema = "{\"kind\":\"freeform\"}"
-                        , createSchemaFields = []
-                        , createPayloadJson = ""
-                        , createTaskType = "general"
-                        , createReferenceURL = ""
-                        , createRewardCollectibleIds = []
-                        , createAttachments = []
-                        , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
-                        , createReservationHours = "48"
-                        , createMessage = Just ("Created task " ++ created.id)
-                        , fundTaskId = created.id
-                        , fundAmount =
-                            if created.rewardKind == "credit" then
-                                String.fromInt created.rewardCreditAmount
-
-                            else
-                                state.fundAmount
-                    }
+                    enterPage (TaskDetailPage created.id)
+                        { state
+                            | createTitle = ""
+                            , createDescription = ""
+                            , createResponseSchema = "{\"kind\":\"freeform\"}"
+                            , createSchemaFields = []
+                            , createPayloadJson = ""
+                            , createTaskType = "general"
+                            , createReferenceURL = ""
+                            , createRewardCollectibleIds = []
+                            , createAttachments = []
+                            , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
+                            , createReservationHours = "48"
+                            , createMessage = Just ("Created task " ++ created.id)
+                        }
                 )
-            , Api.refreshTasksAndLedger model
+            , Cmd.batch [ Api.refreshTasksAndLedger model, Nav.pushUrl model.key ("#/tasks/" ++ created.id) ]
             )
 
         CreateTaskReceived (Err error) ->

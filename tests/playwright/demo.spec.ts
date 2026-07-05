@@ -88,15 +88,8 @@ test("demo uploads small task and submission attachments", async ({ page }) => {
     "brief.txt",
   );
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
-  await page.getByTestId("nav-tasks").click();
-  await page
-    .getByTestId("task-row")
-    .filter({ hasText: taskTitle })
-    .getByTestId("view-task")
-    .click();
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toHaveText(taskTitle);
   await expect(page.getByTestId("detail-attachments")).toContainText(
     "brief.txt",
   );
@@ -324,7 +317,7 @@ test("the fund panel does not appear on an already-funded, open demo task", asyn
   await expect(page.getByTestId("fund-task-panel")).toHaveCount(0);
 });
 
-test("demo owner funds a draft credit task they own", async ({ page }) => {
+test("demo owner funds a draft task created with no declared reward", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("1250 credits")).toBeVisible();
 
@@ -334,19 +327,13 @@ test("demo owner funds a draft credit task they own", async ({ page }) => {
   await page.getByTestId("create-description").fill(
     "A draft task created to exercise the demo backend's funding path.",
   );
-  await page.getByTestId("create-reward-kind-credit").click();
-  await page.getByTestId("create-reward").fill("25");
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
+  // Creating a task now opens it in the UI for further editing. A draft
+  // task is always fundable by its creator, even one created with no
+  // declared reward.
+  await expect(page.getByTestId("detail-title")).toHaveText(
+    "Fund this fresh draft task",
   );
-
-  await page.getByTestId("nav-tasks").click();
-  await page
-    .getByTestId("task-row")
-    .filter({ hasText: "Fund this fresh draft task" })
-    .getByTestId("view-task")
-    .click();
 
   await page.getByTestId("fund-task-panel").click();
   await page.getByTestId("fund-amount").fill("25");

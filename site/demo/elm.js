@@ -12988,26 +12988,32 @@ var $author$project$Main$update = F2(
 							$author$project$Sharecrop$Api$updateLoggedIn,
 							model,
 							function (state) {
-								return _Utils_update(
-									state,
-									{
-										createAttachments: _List_Nil,
-										createDescription: '',
-										createMessage: $elm$core$Maybe$Just('Created task ' + created.id),
-										createParticipationPolicy: $author$project$Sharecrop$Labels$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
-										createPayloadJson: '',
-										createReferenceURL: '',
-										createReservationHours: '48',
-										createResponseSchema: '{\"kind\":\"freeform\"}',
-										createRewardCollectibleIds: _List_Nil,
-										createSchemaFields: _List_Nil,
-										createTaskType: 'general',
-										createTitle: '',
-										fundAmount: (created.rewardKind === 'credit') ? $elm$core$String$fromInt(created.rewardCreditAmount) : state.fundAmount,
-										fundTaskId: created.id
-									});
+								return A2(
+									$author$project$Main$enterPage,
+									$author$project$Sharecrop$Types$TaskDetailPage(created.id),
+									_Utils_update(
+										state,
+										{
+											createAttachments: _List_Nil,
+											createDescription: '',
+											createMessage: $elm$core$Maybe$Just('Created task ' + created.id),
+											createParticipationPolicy: $author$project$Sharecrop$Labels$participationPolicyTag($author$project$Sharecrop$Generated$Task$TaskParticipationPolicyOpen),
+											createPayloadJson: '',
+											createReferenceURL: '',
+											createReservationHours: '48',
+											createResponseSchema: '{\"kind\":\"freeform\"}',
+											createRewardCollectibleIds: _List_Nil,
+											createSchemaFields: _List_Nil,
+											createTaskType: 'general',
+											createTitle: ''
+										}));
 							}),
-						$author$project$Sharecrop$Api$refreshTasksAndLedger(model));
+						$elm$core$Platform$Cmd$batch(
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Api$refreshTasksAndLedger(model),
+									A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/tasks/' + created.id)
+								])));
 				} else {
 					var error = msg.a.a;
 					return _Utils_Tuple2(
@@ -25462,7 +25468,7 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 						$author$project$Sharecrop$Ui$testId('refund-collectible')
 					]),
 				'Refund collectible')) : $elm$core$Maybe$Nothing));
-		var canFund = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) && ((detail.rewardKind === 'credit') || (detail.rewardKind === 'bundle'));
+		var canFund = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft);
 		var buttons = A2(
 			$elm$core$List$filterMap,
 			$elm$core$Basics$identity,

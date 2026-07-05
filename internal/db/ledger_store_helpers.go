@@ -225,7 +225,14 @@ type fundingRewardResult interface {
 	fundingRewardResult()
 }
 
-type fundingRewardAccepted struct{}
+// fundingRewardAccepted signals funding may proceed. RewardKindUpdate is
+// non-empty when the task's reward_kind must transition as part of this
+// funding (none -> credit, collectible -> bundle) - a task is always
+// fundable by whoever is authorized to fund it, regardless of the reward
+// kind it was created with.
+type fundingRewardAccepted struct {
+	RewardKindUpdate string
+}
 
 type fundingRewardRejected struct {
 	reason core.DomainError
@@ -236,13 +243,39 @@ func (fundingRewardAccepted) fundingRewardResult() {}
 func (fundingRewardRejected) fundingRewardResult() {}
 
 func requireCreditRewardFunding(taskRow taskLocked, amount ledger.CreditAmount) fundingRewardResult {
-	if taskRow.rewardKind != "credit" && taskRow.rewardKind != "bundle" {
-		return fundingRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "task does not declare a credit reward")}
+	switch taskRow.rewardKind {
+	case "credit", "bundle":
+		if taskRow.rewardCreditAmount != amount.Int64() {
+			return fundingRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "funding amount must match the declared credit reward")}
+		}
+		return fundingRewardAccepted{}
+	case "collectible":
+		return fundingRewardAccepted{RewardKindUpdate: "bundle"}
+	default:
+		return fundingRewardAccepted{RewardKindUpdate: "credit"}
 	}
-	if taskRow.rewardCreditAmount != amount.Int64() {
-		return fundingRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "funding amount must match the declared credit reward")}
+}
+
+// requireFundableTask checks a locked task is still draft and, if needed,
+// persists the reward_kind transition a first-time credit funding requires
+// (none -> credit, collectible -> bundle) - shared by personal and
+// organization funding so this policy lives in exactly one place.
+func requireFundableTask(ctx context.Context, tx pgx.Tx, taskID core.TaskID, taskRow taskLocked, amount ledger.CreditAmount) ledger.FundResult {
+	if taskRow.state != "draft" {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be funded")}
 	}
-	return fundingRewardAccepted{}
+	rewardResult := requireCreditRewardFunding(taskRow, amount)
+	if rejected, matched := rewardResult.(fundingRewardRejected); matched {
+		return ledger.FundRejected{Reason: rejected.reason}
+	}
+	rewardKindUpdate := rewardResult.(fundingRewardAccepted).RewardKindUpdate
+	if rewardKindUpdate == "" {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, "update tasks set reward_kind = $1, reward_credit_amount = $2 where id = $3", rewardKindUpdate, amount.Int64(), taskID.String()); err != nil {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update task reward kind failed")}
+	}
+	return nil
 }
 
 // findEscrowForKey returns a non-nil FundResult when a fund command with the

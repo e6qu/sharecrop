@@ -40,6 +40,33 @@ func TestSignupGrantPersistsBalance(t *testing.T) {
 	}
 }
 
+func TestFundTaskWithoutADeclaredRewardTransitionsRewardKind(t *testing.T) {
+	pool := newPool(t)
+	store := db.NewLedgerStore(pool)
+
+	owner := createUser(t, pool, "integration-fund-none")
+	noneTaskID := insertTaskWithRewardKind(t, pool, owner, "draft", "none")
+
+	fundResult := store.FundTask(context.Background(), fundCommand(t, owner, noneTaskID, 25, "fund-none-"+noneTaskID.String()))
+	if _, matched := fundResult.(ledger.TaskFunded); !matched {
+		t.Fatalf("fund result for a none-reward task = %T, want TaskFunded", fundResult)
+	}
+	rewardKind, rewardCreditAmount := taskRewardRow(t, pool, noneTaskID)
+	if rewardKind != "credit" || rewardCreditAmount != 25 {
+		t.Fatalf("reward row after funding a none-reward task = (%q, %d), want (credit, 25)", rewardKind, rewardCreditAmount)
+	}
+
+	collectibleTaskID := insertTaskWithRewardKind(t, pool, owner, "draft", "collectible")
+	collectibleFundResult := store.FundTask(context.Background(), fundCommand(t, owner, collectibleTaskID, 10, "fund-collectible-"+collectibleTaskID.String()))
+	if _, matched := collectibleFundResult.(ledger.TaskFunded); !matched {
+		t.Fatalf("fund result for a collectible-reward task = %T, want TaskFunded", collectibleFundResult)
+	}
+	collectibleRewardKind, collectibleRewardAmount := taskRewardRow(t, pool, collectibleTaskID)
+	if collectibleRewardKind != "bundle" || collectibleRewardAmount != 10 {
+		t.Fatalf("reward row after funding a collectible-reward task = (%q, %d), want (bundle, 10)", collectibleRewardKind, collectibleRewardAmount)
+	}
+}
+
 func TestFundAcceptRefundPersist(t *testing.T) {
 	pool := newPool(t)
 	store := db.NewLedgerStore(pool)
@@ -335,6 +362,29 @@ func insertTask(t *testing.T, pool *pgxpool.Pool, owner core.UserID, state strin
 		t.Fatalf("insert task: %v", err)
 	}
 	return taskID
+}
+
+func insertTaskWithRewardKind(t *testing.T, pool *pgxpool.Pool, owner core.UserID, state string, rewardKind string) core.TaskID {
+	t.Helper()
+	taskID := newTaskID(t)
+	_, err := pool.Exec(context.Background(), `
+		insert into tasks (id, owner_kind, user_id, title, description, reward_kind, reward_credit_amount, state, response_schema_json, data_payload_kind, created_by_user_id)
+		values ($1, 'user', $2, 'Integration task', 'Integration task description', $3, null, $4, '{}'::jsonb, 'none', $2)
+	`, taskID.String(), owner.String(), rewardKind, state)
+	if err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+	return taskID
+}
+
+func taskRewardRow(t *testing.T, pool *pgxpool.Pool, taskID core.TaskID) (string, int64) {
+	t.Helper()
+	var rewardKind string
+	var rewardCreditAmount int64
+	if err := pool.QueryRow(context.Background(), "select reward_kind, reward_credit_amount from tasks where id = $1", taskID.String()).Scan(&rewardKind, &rewardCreditAmount); err != nil {
+		t.Fatalf("read task reward row: %v", err)
+	}
+	return rewardKind, rewardCreditAmount
 }
 
 func setTaskState(t *testing.T, pool *pgxpool.Pool, taskID core.TaskID, state string) {

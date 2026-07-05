@@ -1,5 +1,39 @@
 # What We Did
 
+`task/fund-any-reward-kind-and-open-on-create` covered two of a batch of
+related feature requests. (1) A draft task is now always fundable by its
+creator regardless of the reward kind it was created with: funding a
+none-reward task transitions it to `credit`, funding a collectible-only task
+transitions it to `bundle`, both with the funded amount becoming the
+declared credit amount. Previously `requireCreditRewardFunding` rejected
+funding outright unless the task already declared `credit`/`bundle`.
+Implemented as a new `requireFundableTask` helper in
+`internal/db/ledger_store_helpers.go` (combining the draft-state check,
+reward validation, and the reward_kind transition in one place shared by
+personal and organization funding — extracted after `jscpd` correctly
+flagged the two call sites duplicating that logic when first written
+separately), mirrored in `internal/wasmdemo/request_handler.go`'s funding
+case for the demo backend, and in the Elm client by simplifying the fund
+panel's visibility gate (`canFund`) from "draft task with credit/bundle
+reward" down to just "draft task." New regression coverage: a Go
+integration test (`TestFundTaskWithoutADeclaredRewardTransitionsRewardKind`)
+and Playwright tests against both the real and demo backends.
+(2) Creating a task now opens it in the UI for further editing, with the
+browser URL updating to `#/tasks/{id}` (`Main.elm`'s `CreateTaskReceived`
+now calls `enterPage` + `Nav.pushUrl` instead of resetting the create form
+and staying on it) — this changed the assumption behind roughly 13 existing
+Playwright tests that expected to remain on the create page after
+submission, all updated to check the new detail page instead.
+
+Not started in this task, from the same request: creator adds collectibles
+to an existing task's reward via UI (backend route already exists); admin
+UI for awarding collectibles to any user (backend route already exists,
+platform-admin-gated, catalog-only); org admin awarding org-owned
+collectibles to an org member (needs authorization-model verification
+first).
+
+---
+
 `task/fix-fund-panel-and-demo-status-codes` fixed a user-reported bug found
 by live reproduction, not by guessing: funding a task from its detail page
 returned "status 500" against the demo (WASM) backend. Traced to

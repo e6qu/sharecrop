@@ -1,7 +1,7 @@
 # Status
 
-The repository contains pull request 1 through pull request 130 work, merged
-into `main`, plus the current `task/fix-fund-panel-and-demo-status-codes`
+The repository contains pull request 1 through pull request 132 work, merged
+into `main`, plus the current `task/fund-any-reward-kind-and-open-on-create`
 branch. PR 108's GitHub Pages deployment failed three times in a row after
 merge for what looked like a transient GitHub-side Pages backend issue
 (build/artifact steps always succeeded; only `deploy-pages` failed or hung,
@@ -13,33 +13,41 @@ occasionally live, not fully resolved.
 
 The 5-phase RBAC + API-token effort (PRs 115-121), two clean-up passes
 (PRs 122, 124), a docs refresh (PR 123), the WASI production-hosting spike's
-plan + Phase 0/1 (PR 125) and ecosystem research (PR 126), a Go 1.26.4
-upgrade (PR 127), a strengthened "at most one open PR at a time" rule in
-`AGENTS.md` (PR 128), and the `site/demo/backend.js` deprecation (PR 129:
-replacement CI coverage; PR 130: deletion) are complete.
+plan + Phase 0/1 (PR 125), ecosystem research (PR 126), and deployment-shape
+requirements (PR 132), a Go 1.26.4 upgrade (PR 127), a strengthened
+"at most one open PR at a time" rule in `AGENTS.md` (PR 128), the
+`site/demo/backend.js` deprecation (PR 129: replacement CI coverage; PR 130:
+deletion), and a fix for the demo (WASM) backend collapsing every rejection
+to HTTP 500 plus a corrected fund-panel visibility gate (PR 131) are
+complete.
 
-Active task: `task/fix-fund-panel-and-demo-status-codes` fixes a real,
-user-reported bug — funding a task from its detail page failed with
-"status 500" against the demo (WASM) backend. Root cause, found by live
-reproduction rather than guessing: `cmd/sharecrop-wasm/main_js_wasm.go`
-unconditionally mapped **every** `wasmdemo.RequestHandleRejected` (all 316
-call sites across `internal/wasmdemo/{interaction_handler,request_handler,
-runtime_handlers}.go` and `main_js_wasm.go` itself) to HTTP 500, regardless
-of the actual rejection reason — a plain validation rejection like "task is
-already funded" looked identical to a genuine server crash. Fixed by
-changing `RequestHandleRejected.Reason` from a plain `string` to
-`core.DomainError` (reusing the real backend's existing `core.ErrorCode`
-taxonomy rather than inventing a parallel one), classifying every call site
-by keyword into the correct code, and adding a `statusForError` mapping in
-`main_js_wasm.go` mirroring `internal/http/server.go`'s. Verified live: the
-same repro now returns 409, not 500. Also fixed, per the user's explicit
-request: removed the task-list row's "Fund" shortcut link entirely (funding
-now only happens from a task's own detail page); the detail page's
-"Fund this task" panel now only shows for a **draft** task with a
-**credit/bundle** reward (it previously showed for any draft-or-open task
-regardless of reward kind, including already-funded open tasks and
-none/collectible-only tasks that can never accept credit funding at all,
-guaranteeing a rejection either way).
+Active task: `task/fund-any-reward-kind-and-open-on-create` addresses a set
+of related feature requests. Two are done here:
+
+1. **A draft task is always fundable by its creator, regardless of the
+   reward kind it was created with.** Previously funding required
+   reward_kind credit/bundle; a none/collectible-only task now transitions
+   to credit/bundle on first funding (`internal/db/ledger_store_helpers.go`'s
+   new `requireFundableTask`, shared by personal and organization funding;
+   mirrored in `internal/wasmdemo/request_handler.go`'s funding case). The
+   Elm fund panel's visibility gate (`canFund` in `View.elm`) is now just
+   "task is draft," not reward-kind-restricted.
+2. **Creating a task now opens it in the UI for further editing**, with the
+   browser URL updating to `#/tasks/{id}` (`Main.elm`'s `CreateTaskReceived`
+   now calls `enterPage (TaskDetailPage created.id)` plus `Nav.pushUrl`,
+   instead of clearing the create form and staying on it). This changed the
+   assumption behind ~13 existing Playwright tests that expected to stay on
+   the create page after submission — all updated to check `detail-title`
+   instead of the old `create-message` text.
+
+Still to do from the same request, not started in this branch: a creator
+adding collectibles to an existing (not just brand-new) task's reward from
+the task detail page UI; an admin UI for awarding collectibles to any user
+(the backend route `POST /api/collectibles/award` already exists,
+platform-admin-gated, catalog-only); an org admin awarding org-owned
+collectibles to an org member (needs more design — the existing transfer
+mechanism's permission model requires verifying it supports "org owns it,
+org admin acts on the org's behalf" rather than only personal ownership).
 including the two items PR 122 had flagged rather than fixed — plus any
 other bug/UI/API/performance/concurrency issue found along the way,
 regardless of relation to the RBAC effort. Used parallel review agents

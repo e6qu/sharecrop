@@ -40,11 +40,8 @@ func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreC
 	if !taskMatched {
 		return ledger.FundRejected{Reason: taskResult.(taskLockRejected).reason}
 	}
-	if taskRow.state != "draft" {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be funded")}
-	}
-	if rejected, matched := requireCreditRewardFunding(taskRow, command.Amount).(fundingRewardRejected); matched {
-		return ledger.FundRejected{Reason: rejected.reason}
+	if rejected := requireFundableTask(ctx, tx, command.TaskID, taskRow, command.Amount); rejected != nil {
+		return rejected
 	}
 
 	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient credits to fund the task")
@@ -72,11 +69,8 @@ func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command l
 	if !taskMatched {
 		return ledger.FundRejected{Reason: taskResult.(taskLockRejected).reason}
 	}
-	if taskRow.state != "draft" {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be funded")}
-	}
-	if rejected, matched := requireCreditRewardFunding(taskRow, command.Amount).(fundingRewardRejected); matched {
-		return ledger.FundRejected{Reason: rejected.reason}
+	if rejected := requireFundableTask(ctx, tx, command.TaskID, taskRow, command.Amount); rejected != nil {
+		return rejected
 	}
 
 	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient organization credits to fund the task")
