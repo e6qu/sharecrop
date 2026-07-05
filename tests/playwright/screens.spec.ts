@@ -208,6 +208,12 @@ test("requesters configure reservations and workers include reserved tasks", asy
     "scrop_agent_",
   );
 
+  // The worker who holds this reservation must see their own reservation row
+  // (with a Cancel button) without being the task's owner - the list
+  // endpoint used to reject anyone but the owner outright, so a worker's own
+  // reservation was never visible to them at all, leaving no way to cancel it.
+  await expect(page.getByTestId("reservation-row")).toHaveCount(1);
+
   // Navigating to an unrelated task must not leak this task's one-time secret.
   await page.getByTestId("nav-tasks").click();
   const otherWorkerRow = page.getByTestId("discovery-task-row").filter({
@@ -231,6 +237,53 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await expect(
     page.getByTestId("discovery-task-row").filter({ hasText: title }),
   ).toHaveCount(1);
+});
+
+test("a worker cancels their own active reservation", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "reservation-cancel-owner");
+  const title = `Reservation cancel ${crypto.randomUUID()}`;
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill(
+    "Reservation cancel from the browser.",
+  );
+  await page.getByTestId("create-task-ownership").click();
+  await page.getByTestId("create-participation-reservation_required").click();
+  await page.getByTestId("create-visibility-public").click();
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("detail-title")).toBeVisible();
+  await page.getByTestId("open-task").click();
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "Task opened",
+  );
+
+  const worker = await registerViaApi(request, "reservation-cancel-worker");
+  await page.getByTestId("nav-account-menu").click();
+  await page.getByTestId("logout").click();
+  await loginViaUi(page, worker.email);
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("discovery-task-row").filter({ hasText: title })
+    .getByTestId("discovery-view").click();
+  await page.getByTestId("reserve-task").click();
+  await expect(page.getByTestId("reservation-message")).toContainText(
+    "active",
+  );
+
+  // The worker sees their own reservation with a Cancel button, and cancelling
+  // it releases the task back to "reserve" for themselves (and, per the
+  // assertion above this test, anyone else).
+  await expect(page.getByTestId("reservation-row")).toHaveCount(1);
+  await page.getByTestId("cancel-reservation").click();
+  await expect(page.getByTestId("reservation-message")).toContainText(
+    "cancelled",
+  );
+  // The row stays (a cancelled reservation is still shown, as a record) but
+  // its Cancel button goes away, and the task becomes reservable again.
+  await expect(page.getByTestId("cancel-reservation")).toHaveCount(0);
+  await expect(page.getByTestId("reserve-task")).toBeVisible();
 });
 
 test("an owner approves a worker's reservation request from the task detail page", async ({ page, request }) => {
@@ -548,6 +601,35 @@ test("org admins mint and revoke an organization-wide credential", async ({ page
 
   await credentialRow.getByTestId("revoke-org-credential").click();
   await expect(credentialRow).toContainText("revoked");
+});
+
+test("a task's reward shows as its own badge in the task list", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "reward-badge-owner");
+  const title = `Reward badge ${crypto.randomUUID()}`;
+
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "default", 20),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+  await request.post(`/api/tasks/${task.id}/funding`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { amount: 20, idempotency_key: `reward-badge:${task.id}` },
+  });
+
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-tasks").click();
+  const row = page.getByTestId("task-row").filter({ hasText: title });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("20 credits");
+  // The reward renders as its own icon-prefixed badge (a rounded pill),
+  // distinct from the plain trailing text it used to be.
+  const rewardBadge = row.locator("span.rounded-full", {
+    hasText: "20 credits",
+  });
+  await expect(rewardBadge).toHaveCount(1);
+  await expect(rewardBadge).toContainText("◆");
 });
 
 test("requesters filter their task list by state", async ({ page, request }) => {

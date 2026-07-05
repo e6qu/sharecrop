@@ -1,16 +1,15 @@
 # Status
 
-The repository contains pull request 1 through pull request 134 work, merged
-into `main`, plus the current
-`task/task-visual-language-and-multiselect-filter` branch. PR 108's GitHub
-Pages deployment failed three times in a row after merge for what looked
-like a transient GitHub-side Pages backend issue (build/artifact steps
-always succeeded; only `deploy-pages` failed or hung, with a different
-symptom each time); most later PRs' deployments succeeded on the first try
-with no code or workflow changes, confirming it was not a code problem —
-though PR 127's deployment hit the same transient failure again and
-cleared on a manual retry, so this class of flakiness is still occasionally
-live, not fully resolved.
+The repository contains pull request 1 through pull request 135 work, merged
+into `main`, plus the current `task/reservation-fixes-and-reward-badges`
+branch. PR 108's GitHub Pages deployment failed three times in a row after
+merge for what looked like a transient GitHub-side Pages backend issue
+(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
+with a different symptom each time); most later PRs' deployments succeeded
+on the first try with no code or workflow changes, confirming it was not a
+code problem — though PR 127's deployment hit the same transient failure
+again and cleared on a manual retry, so this class of flakiness is still
+occasionally live, not fully resolved.
 
 The 5-phase RBAC + API-token effort (PRs 115-121), two clean-up passes
 (PRs 122, 124), a docs refresh (PR 123), the WASI production-hosting
@@ -22,45 +21,46 @@ PR 130: deletion), a fix for the demo (WASM) backend collapsing every
 rejection to HTTP 500 plus a corrected fund-panel visibility gate
 (PR 131), a batch of task-funding/creation UX fixes (PR 133: fund any
 reward kind, open a task after creating it; PR 134: collectible-reward UI,
-org-admin collectible awards) are complete.
+org-admin collectible awards), and a task visual-language pass (PR 135:
+state color-coding, "mine" highlighting, a funding-discoverability
+callout, required-field validation, a multi-select state filter) are
+complete.
 
-Active task: `task/task-visual-language-and-multiselect-filter` covers a
-follow-up batch of task UI requests, grounded in a design proposal the user
-reviewed and approved first (color palette, WCAG contrast checks, and
-mockups for each change, before any code was written):
+Active task: `task/reservation-fixes-and-reward-badges` fixes two reservation
+bugs the user hit live (reported as "I can't cancel reservation" and "the
+reservation drawer is not visible when toggled off"), confirmed by real
+browser reproduction rather than assumption, plus a follow-up request to
+show the reward as its own badge in task lists with small icons on all
+badges:
 
-- **Task state color-coding.** Task list rows (My tasks, Discover public
-  tasks) now show state as a colored badge (`taskStateBadge`, reusing
-  `Ui.badgeVariant`'s existing 4-tone system) instead of plain text. Added
-  a 5th tone, `info` (blue), for the `Closed` state, which previously
-  shared "neutral" with `Draft` and wasn't visually distinct. All 5
-  tones checked against WCAG AA (6.49:1 to 9.45:1 contrast).
-- **"Mine" highlighting.** A task the viewer created or is the active
-  assignee on gets a blue left-accent border and a small "MINE" tag,
-  in both the My-tasks and Discover-public-tasks lists.
-- **Funding discoverability fix**, reproduced live before fixing: the
-  "Fund this task" control existed but was one unstyled collapsed
-  disclosure line, visually identical to unrelated sections like
-  "API & MCP" and "Report task" — easy to miss entirely. A brand-new,
-  unfunded draft task now shows an open-by-default blue callout
-  ("Before you open this task...") instead of a collapsed disclosure;
-  once funded, or for a task that already declared some reward, the
-  original on-demand disclosure is used as before.
-- **Required-field validation on the create-task form.** Title/description
-  now get a muted-red border + inline error message when a submit attempt
-  fails with them empty, clearing per-field as each is filled in. Found a
-  real WCAG tension: a genuinely muted border can't hit the 3:1 non-text
-  contrast target alone (neither do this app's existing borders), so color
-  is paired with an icon + explicit text rather than relying on hue alone
-  (WCAG 1.4.1).
-- **Multi-select task-state filter**, replacing single-select buttons that
-  only covered 3 of 5 states. Required a real backend change, not just a
-  UI change: the server only supported one `state=` value
-  (`task.StateEquals`); added `task.StateIn` plus a `tasks.state = some(@filter_states)`
-  SQL clause (`internal/db/task_store.go`), and `internal/http/tasks.go`
-  now reads repeated `state=` query params. Mirrored in
-  `internal/wasmdemo`'s `ListTasks` (now takes `[]string`).
+- **A worker could never see or cancel their own reservation.**
+  `task.Service.ListReservations` (`internal/task/service.go`) rejected
+  anyone but the task owner outright, so a worker who reserved a task got
+  an empty reservation list back — their own reservation (and its Cancel
+  button) simply never rendered. Widened it: the owner still sees every
+  reservation; anyone else sees only their own.
+- **Even once visible, Cancel 403'd.** `CancelReservation` shared its
+  permission check with `ApproveReservation`/`DeclineReservation`
+  (owner-only), but cancelling is meant to be available to the reservation's
+  own holder too, not just the owner force-cancelling it. Gave
+  `CancelReservation` its own permission path: owner, or the actor who
+  requested that specific reservation.
+- **The "Reserve" button never went away after reserving.** The task
+  detail page's `viewer_action` (`internal/http/tasks.go`) was computed
+  purely from the task's own state/policy, never checking whether the
+  viewer already held a reservation — so the Reserve/Request-approval
+  button stayed forever, inviting a pointless second (server-rejected)
+  attempt. `taskToResponseForActor` now overrides it to `wait` once the
+  actor already has a requested/active reservation on the task.
+- **Reward badges + state icons.** The reward now renders as its own
+  small badge (new "reward"/purple tone, 7.39:1 contrast, `◆` icon) next
+  to the state badge in task list rows, instead of muted trailing text.
+  Each of the 5 state badges also got a small decorative icon
+  (`aria-hidden`, since the badge's own text already names the state per
+  WCAG 1.4.1): `●` open, `○` draft, `✓` closed, `✕` cancelled, `⏳` expired.
 
-All changes covered by new tests (Go integration/http_e2e for the
-reward-kind and multi-state backend changes; Playwright for the visual
-changes) and a full local check-suite + Playwright run before commit.
+All changes covered by new tests (a Go http_e2e case for the
+list/viewer_action fixes; Playwright for the cancel flow and the reward
+badge) and a full local check-suite + Playwright run before commit. Found
+via live reproduction with real browser screenshots per the user's request
+("take screenshots to debug and fix"), not guessed at.

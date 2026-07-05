@@ -158,6 +158,26 @@ func TestReservationRequiredTaskDiscoveryAndSubmission(t *testing.T) {
 		t.Fatalf("reservation assignee = %q, want %q", reservationBody.AssigneeID, worker.SubjectID)
 	}
 
+	// The worker who now holds the reservation shouldn't still see "reserve"
+	// as their next action - that invites a pointless second reservation
+	// attempt the server would just reject. A different viewer (who has no
+	// reservation of their own) still sees "reserve", since the task itself
+	// still needs a worker to claim it.
+	workerDetailResponse := getWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID, worker.AccessToken)
+	defer workerDetailResponse.Body.Close()
+	assertStatus(t, workerDetailResponse, http.StatusOK)
+	workerDetailBody := decodeTaskHTTPResponse(t, workerDetailResponse)
+	if workerDetailBody.ViewerAction != "wait" {
+		t.Fatalf("reserving worker's viewer_action = %q, want wait", workerDetailBody.ViewerAction)
+	}
+	otherDetailResponse := getWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID, other.AccessToken)
+	defer otherDetailResponse.Body.Close()
+	assertStatus(t, otherDetailResponse, http.StatusOK)
+	otherDetailBody := decodeTaskHTTPResponse(t, otherDetailResponse)
+	if otherDetailBody.ViewerAction != "reserve" {
+		t.Fatalf("other viewer's viewer_action = %q, want reserve", otherDetailBody.ViewerAction)
+	}
+
 	otherSubmitResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskBody.ID+"/submissions", []byte(`{"response_json":"{\"answer\":\"done\"}"}`), other.AccessToken)
 	defer otherSubmitResponse.Body.Close()
 	assertStatus(t, otherSubmitResponse, http.StatusForbidden)
@@ -561,6 +581,7 @@ type taskHTTPResponse struct {
 	ParticipationPolicy    string `json:"participation_policy"`
 	ActiveAssigneeKind     string `json:"active_assignee_kind"`
 	ActiveAssigneeID       string `json:"active_assignee_id"`
+	ViewerAction           string `json:"viewer_action"`
 }
 
 type tasksHTTPResponse struct {
