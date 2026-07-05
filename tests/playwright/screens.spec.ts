@@ -567,14 +567,23 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   const row = page.getByTestId("task-row").filter({ hasText: title });
   await expect(row).toHaveCount(1);
 
-  // The new task is a draft, so filtering to Open hides it and Draft shows it.
+  // The new task is a draft, so filtering to Open alone hides it.
   await page.getByTestId("tasks-filters").click();
   await page.getByTestId("task-filter-open").click();
   await expect(page.getByTestId("task-row").filter({ hasText: title }))
     .toHaveCount(0);
+
+  // Adding Draft alongside Open (both active at once) shows it again - a
+  // multi-select filter, not a single radio choice.
   await page.getByTestId("task-filter-draft").click();
   await expect(page.getByTestId("task-row").filter({ hasText: title }))
     .toHaveCount(1);
+
+  // Deselecting Open, leaving only Draft active, still shows it.
+  await page.getByTestId("task-filter-open").click();
+  await expect(page.getByTestId("task-row").filter({ hasText: title }))
+    .toHaveCount(1);
+
   await page.getByTestId("tasks-query").fill("not " + title);
   await expect(page.getByTestId("task-row").filter({ hasText: title }))
     .toHaveCount(0);
@@ -1076,6 +1085,45 @@ test("the create-task template menu prefills the schema, and Freeform shows the 
   await expect(page.getByTestId("create-response-schema")).toHaveValue(
     /freeform/,
   );
+});
+
+test("submitting the create-task form with missing fields highlights them, and typing clears it", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "create-validation");
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+
+  // Neither field is flagged before a submit attempt.
+  await expect(page.getByTestId("create-title")).not.toHaveClass(
+    /border-red-400/,
+  );
+  await expect(page.getByTestId("create-description")).not.toHaveClass(
+    /border-red-400/,
+  );
+
+  // Both empty: submitting flags both fields, each with its own message.
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-title")).toHaveClass(/border-red-400/);
+  await expect(page.getByTestId("create-description")).toHaveClass(
+    /border-red-400/,
+  );
+  await expect(page.getByText("Title is required")).toBeVisible();
+  await expect(page.getByText("Description is required")).toBeVisible();
+
+  // Filling in the title alone clears just that field's flag.
+  await page.getByTestId("create-title").fill("A real title");
+  await expect(page.getByTestId("create-title")).not.toHaveClass(
+    /border-red-400/,
+  );
+  await expect(page.getByTestId("create-description")).toHaveClass(
+    /border-red-400/,
+  );
+
+  // Filling in the description and submitting succeeds.
+  await page.getByTestId("create-description").fill("A real description.");
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("detail-title")).toHaveText("A real title");
 });
 
 test("owner and worker exchange comments on a submission", async ({ page, request }) => {

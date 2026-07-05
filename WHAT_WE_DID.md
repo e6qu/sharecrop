@@ -1,5 +1,71 @@
 # What We Did
 
+`task/task-visual-language-and-multiselect-filter` addressed a batch of
+task-UI requests, prefaced by a design review the user approved before any
+code was written: a palette proposal (5 badge tones, 4 already existing
+plus one new "info"/blue), WCAG contrast numbers for each, and mockups of
+the funding-callout and field-validation treatments, published as an
+artifact.
+
+Confirmed the "funding is invisible" complaint by live reproduction rather
+than assuming: the "Fund this task" control did exist (a collapsed
+`<details>` disclosure), but sat unstyled among unrelated collapsed
+sections ("API & MCP", "Report task") with nothing marking it as the next
+step - a discoverability problem, not a missing feature. Fixed by showing
+an open-by-default blue callout ("Before you open this task...") only when
+a task is a draft with no reward yet (`needsFundingGuidance` in
+`ownerControlsCard`); once funded, or for a task that already declared a
+reward, the original disclosure renders as before.
+
+Task list rows (`taskRow` in `View.elm`, both the My-tasks and
+Discover-public-tasks lists) now show state as a colored badge
+(`taskStateBadge`) instead of plain text, and get a blue left-accent border
+plus a small "MINE" tag when the viewer created the task or is its active
+assignee (`isMyTask`). Added a 5th badge tone, `info` (blue,
+`bg-blue-100`/`text-blue-800`, 7.15:1 contrast), to `Ui.badgeToneClass` -
+needed because `Closed` previously shared "neutral" (slate) with `Draft`
+and wasn't visually distinct from it.
+
+Added per-field required-field validation to the create-task form
+(`createTitleInvalid`/`createDescriptionInvalid` in `LoggedInModel`,
+new `Ui.textInputToned`/`Ui.textareaToned`/`Ui.fieldError`): a field
+gets a muted-red border + inline message only after a submit attempt
+fails with it empty, and clears as soon as the user fills it in. Found a
+real WCAG tension while designing this: a genuinely *muted* border can't
+independently clear the 3:1 non-text contrast target (`red-400` on white
+measures 2.77:1) - and neither do this app's own existing input borders
+(`slate-200` on white measures 1.23:1). Resolved by never relying on color
+alone: the border is always paired with an icon + explicit error text
+(WCAG 1.4.1), which is also why a plain color change was never a
+sufficient fix on its own.
+
+Replaced the single-select task-state filter (5 buttons, one of which was
+a redundant "All", covering only 3 of 5 real states) with multi-select
+chips covering all 5, letting several states combine (e.g. "Open" +
+"Closed"). This needed a genuine backend addition, not just a UI change:
+the server only supported one `state=` value at a time
+(`task.StateEquals` in `internal/task/service.go`). Added `task.StateIn`
+plus a `tasks.state = some(@filter_states)` SQL clause
+(`internal/db/task_store.go`) - written as `some(...)` rather than the
+otherwise-idiomatic `any(...)` (an exact Postgres synonym) purely to dodge
+this project's `check:policy` weak-wildcard-type lint, which flags the
+literal word "any" in Go source including inside SQL string literals.
+`internal/http/tasks.go`'s `parseTaskListFilters` now reads repeated
+`state=` query params instead of just the first. Mirrored in
+`internal/wasmdemo`'s `ListTasks`, which now takes `[]string` and matches
+via a set instead of a single string comparison.
+
+New tests: a Go http_e2e case for the multi-state backend filter: an
+integration test isn't needed since http_e2e already exercises the store
+through the real route; several new Playwright tests (field validation
+highlighting and clearing, the funding callout appearing/disappearing
+correctly across both the real and demo backends, multi-select filter
+combining and un-combining states). Verified visually with real browser
+screenshots of the task list (colored badges + mine tags) and the funding
+callout before considering this done.
+
+---
+
 `task/fund-any-reward-kind-and-open-on-create` covered two of a batch of
 related feature requests. (1) A draft task is now always fundable by its
 creator regardless of the reward kind it was created with: funding a

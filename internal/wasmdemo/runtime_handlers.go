@@ -177,7 +177,7 @@ func (handler UsersHandler) Handle(request Request) HandleResult {
 		// {id, tasks: [...tasks this user created...]}, not the stored user
 		// record itself; the browser's profile page decodes exactly that
 		// shape and fails otherwise.
-		listResult := ListTasks(handler.storage, "", "user", userID, "", "", DefaultStoredListPage())
+		listResult := ListTasks(handler.storage, "", "user", userID, "", nil, DefaultStoredListPage())
 		listed, listedMatched := listResult.(TasksStored)
 		if !listedMatched {
 			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(TaskStorageRejected).Reason)}

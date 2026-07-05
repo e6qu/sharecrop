@@ -167,9 +167,53 @@ textInput attrs =
     input (class fieldClass :: attrs) []
 
 
+{-| Like textInput, but switches to the invalid-field style when the first
+argument is True - a required field the user tried to submit empty. Color
+alone never carries this signal (WCAG 1.4.1): pair it with fieldError below
+the input, not with this alone.
+-}
+textInputToned : Bool -> List (Attribute msg) -> Html msg
+textInputToned invalid attrs =
+    input (class (fieldToneClass invalid) :: attrs) []
+
+
 textarea_ : List (Attribute msg) -> Html msg
 textarea_ attrs =
     textarea (class textareaClass :: attrs) []
+
+
+textareaToned : Bool -> List (Attribute msg) -> Html msg
+textareaToned invalid attrs =
+    textarea (class (textareaToneClass invalid) :: attrs) []
+
+
+fieldToneClass : Bool -> String
+fieldToneClass invalid =
+    if invalid then
+        "w-full min-h-[44px] rounded-md border border-red-400 bg-red-50 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1"
+
+    else
+        fieldClass
+
+
+textareaToneClass : Bool -> String
+textareaToneClass invalid =
+    if invalid then
+        "w-full rounded-md border border-red-400 bg-red-50 px-3 py-2 font-mono text-sm focus:border-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1"
+
+    else
+        textareaClass
+
+
+{-| An inline required-field error: paired with textInputToned/textareaToned
+so the field is never identified by color alone, per WCAG 1.4.1.
+-}
+fieldError : String -> Html msg
+fieldError message =
+    p [ class "flex items-center gap-1.5 text-xs text-red-700" ]
+        [ span [ class "inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-red-700 text-center text-[9px] font-bold leading-[13px]" ] [ text "!" ]
+        , text message
+        ]
 
 
 badge : String -> Html msg
@@ -198,6 +242,9 @@ badgeToneClass tone =
     case tone of
         "success" ->
             "bg-green-100 text-green-800"
+
+        "info" ->
+            "bg-blue-100 text-blue-800"
 
         "warning" ->
             "bg-amber-100 text-amber-900"

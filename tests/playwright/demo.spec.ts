@@ -315,6 +315,7 @@ test("the fund panel does not appear on an already-funded, open demo task", asyn
 
   await expect(page.getByTestId("detail-title")).toBeVisible();
   await expect(page.getByTestId("fund-task-panel")).toHaveCount(0);
+  await expect(page.getByTestId("fund-task-callout")).toHaveCount(0);
 });
 
 test("demo owner funds a draft task created with no declared reward", async ({ page }) => {
@@ -335,7 +336,10 @@ test("demo owner funds a draft task created with no declared reward", async ({ p
     "Fund this fresh draft task",
   );
 
-  await page.getByTestId("fund-task-panel").click();
+  // A brand-new, unfunded draft shows the funding callout open by default.
+  await expect(page.getByTestId("fund-task-callout")).toContainText(
+    "This draft has no reward yet",
+  );
   await page.getByTestId("fund-amount").fill("25");
   await page.getByTestId("fund").click();
   await expect(page.getByTestId("fund-message")).toContainText(

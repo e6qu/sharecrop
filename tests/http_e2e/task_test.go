@@ -371,6 +371,12 @@ func TestTaskListFiltersByStateAndParticipation(t *testing.T) {
 	invalidResponse := getWithBearer(t, server.URL+"/api/tasks?scope=user&state=bogus", owner.AccessToken)
 	defer invalidResponse.Body.Close()
 	assertStatus(t, invalidResponse, http.StatusBadRequest)
+
+	// Repeating state= selects a set of states at once (a multi-select
+	// filter), not just one - both tasks show up together.
+	multiListing := decodeTasksHTTPResponse(t, mustGet(t, server, owner.AccessToken, "/api/tasks?scope=user&state=open&state=draft"))
+	assertTaskPresent(t, multiListing, openTaskID)
+	assertTaskPresent(t, multiListing, draftTaskID)
 }
 
 func TestTaskListFiltersBySearchQuery(t *testing.T) {

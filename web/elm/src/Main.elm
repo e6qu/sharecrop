@@ -70,7 +70,9 @@ emptyLoggedIn response =
     , entries = []
     , ledgerOffset = 0
     , createTitle = ""
+    , createTitleInvalid = False
     , createDescription = ""
+    , createDescriptionInvalid = False
     , createResponseSchema = "{\"kind\":\"freeform\"}"
     , createSchemaFields = []
     , createPayloadJson = ""
@@ -92,7 +94,7 @@ emptyLoggedIn response =
     , fundMessage = Nothing
     , fundNonce = 0
     , tasks = []
-    , taskStateFilter = ""
+    , taskStateFilter = []
     , taskListOffset = 0
     , taskListQuery = ""
     , taskListTypeFilter = ""
@@ -559,7 +561,7 @@ enterPageFields page state =
             -- My-tasks ones.
             { state
                 | page = page
-                , taskStateFilter = ""
+                , taskStateFilter = []
                 , taskListOffset = 0
                 , taskListQuery = ""
                 , taskListTypeFilter = ""
@@ -618,7 +620,7 @@ enterPageFields page state =
 
         CreateTaskPage ->
             -- Clear a half-finished draft and any stale create message on entry.
-            { state | page = page, createTitle = "", createDescription = "", createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardCollectibleIds = [], createAttachments = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
+            { state | page = page, createTitle = "", createTitleInvalid = False, createDescription = "", createDescriptionInvalid = False, createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardCollectibleIds = [], createAttachments = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
 
         FundingPage ->
             { state | page = page, fundMessage = Nothing }
@@ -734,12 +736,19 @@ update msg model =
         TasksReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | tasks = Api.tasksFromResult result }), Cmd.none )
 
-        TaskStateFilterChanged value ->
+        TaskStateFilterToggled value ->
             let
+                toggle current =
+                    if List.member value current then
+                        List.filter ((/=) value) current
+
+                    else
+                        value :: current
+
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | taskStateFilter = value, taskListOffset = 0 })
+                    Api.updateLoggedIn model (\state -> { state | taskStateFilter = toggle state.taskStateFilter, taskListOffset = 0 })
             in
-            Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken value state.taskListTypeFilter state.taskListSort 0 ))
+            Api.withSession updated (\state -> ( updated, Api.fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort 0 ))
 
         TaskListQueryChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | taskListQuery = value }), Cmd.none )
@@ -779,10 +788,10 @@ update msg model =
                 )
 
         CreateTitleChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | createTitle = value }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | createTitle = value, createTitleInvalid = state.createTitleInvalid && String.isEmpty (String.trim value) }), Cmd.none )
 
         CreateDescriptionChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | createDescription = value }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | createDescription = value, createDescriptionInvalid = state.createDescriptionInvalid && String.isEmpty (String.trim value) }), Cmd.none )
 
         CreateResponseSchemaChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createResponseSchema = value }), Cmd.none )
@@ -901,7 +910,9 @@ update msg model =
                     enterPage (TaskDetailPage created.id)
                         { state
                             | createTitle = ""
+                            , createTitleInvalid = False
                             , createDescription = ""
+                            , createDescriptionInvalid = False
                             , createResponseSchema = "{\"kind\":\"freeform\"}"
                             , createSchemaFields = []
                             , createPayloadJson = ""

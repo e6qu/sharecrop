@@ -754,13 +754,21 @@ func parseTaskListFilters(r *http.Request) taskListFiltersResult {
 	query := r.URL.Query()
 	filters := task.NoListFilters()
 
-	if rawState := query.Get("state"); rawState != "" {
-		stateResult := task.ParseState(rawState)
-		stateAccepted, matched := stateResult.(task.StateAccepted)
-		if !matched {
-			return taskListFiltersRejected{reason: stateResult.(task.StateRejected).Reason}
+	if rawStates := query["state"]; len(rawStates) > 0 {
+		states := make([]task.State, len(rawStates))
+		for index, rawState := range rawStates {
+			stateResult := task.ParseState(rawState)
+			stateAccepted, matched := stateResult.(task.StateAccepted)
+			if !matched {
+				return taskListFiltersRejected{reason: stateResult.(task.StateRejected).Reason}
+			}
+			states[index] = stateAccepted.Value
 		}
-		filters.State = task.StateEquals{Value: stateAccepted.Value}
+		if len(states) == 1 {
+			filters.State = task.StateEquals{Value: states[0]}
+		} else {
+			filters.State = task.StateIn{Values: states}
+		}
 	}
 
 	if rawPolicy := query.Get("participation_policy"); rawPolicy != "" {

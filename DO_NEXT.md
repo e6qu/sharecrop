@@ -5,24 +5,19 @@ Current priority from
 
 Active branch:
 
-1. `task/fund-any-reward-kind-and-open-on-create` is in progress, covering
-   a batch of related feature requests (see `STATUS.md` for the full
-   writeup). All five requested items are now addressed:
-   - A draft task is always fundable by its creator regardless of reward
-     kind (both real and demo backends); creating a task opens it in the
-     UI with the URL updated to `#/tasks/{id}`.
-   - A creator can add a collectible to an existing task's reward from the
-     task detail page.
-   - An admin awarding collectibles to any user was already fully built
-     (no new work needed).
-   - An org admin can award an org-owned collectible to an active member
-     (new backend + HTTP route + Elm UI).
-   - Not covered: `internal/wasmdemo` doesn't yet implement the new
-     org-collectible-award endpoint (item 5), so that specific flow only
-     works against the real backend, not the browser demo.
-   - Also trimmed `STATUS.md` from 576 to ~70 lines — most of it was stale
-     historical narrative from long-merged PRs, already duplicated in
-     `WHAT_WE_DID.md`, that had never been cleaned up.
+1. `task/task-visual-language-and-multiselect-filter` is in progress (see
+   `STATUS.md` for the full writeup): task state color-coding (badges in
+   list rows, a new "info"/blue tone), "mine" highlighting, a funding-
+   discoverability fix (open-by-default callout instead of a buried
+   disclosure for a brand-new unfunded draft), required-field validation
+   on the create-task form (muted-red + inline message, WCAG-checked), and
+   a genuine multi-select task-state filter (new backend
+   `task.StateIn`/`= some(...)` support, not just a UI change). All
+   grounded in a design proposal reviewed and approved by the user before
+   any code was written.
+   - Not covered: `internal/wasmdemo`'s org-collectible-award flow (from
+     the prior task, PR 134) still isn't implemented — only the real
+     backend supports it.
 
 2. Two large infrastructure efforts are confirmed as wanted but explicitly
    deferred (see memory for full detail, including empirical research

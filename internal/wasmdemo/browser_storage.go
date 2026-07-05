@@ -808,7 +808,7 @@ type TasksStored struct {
 
 func (TasksStored) taskStorageResult() {}
 
-func ListTasks(storage BrowserStorage, query string, scope string, userID string, organizationID string, state string, page StoredListPage) TaskStorageResult {
+func ListTasks(storage BrowserStorage, query string, scope string, userID string, organizationID string, states []string, page StoredListPage) TaskStorageResult {
 	idsResult := loadStringIndex(storage, "task:index", "task")
 	ids, idsMatched := idsResult.(stringIndexLoaded)
 	if !idsMatched {
@@ -818,7 +818,13 @@ func ListTasks(storage BrowserStorage, query string, scope string, userID string
 	cleanScope := strings.TrimSpace(scope)
 	cleanUserID := strings.TrimSpace(userID)
 	cleanOrganizationID := strings.TrimSpace(organizationID)
-	cleanState := strings.TrimSpace(state)
+	cleanStates := make(map[string]bool, len(states))
+	for _, state := range states {
+		trimmed := strings.TrimSpace(state)
+		if trimmed != "" {
+			cleanStates[trimmed] = true
+		}
+	}
 	values := make([]StoredTask, 0, len(ids.values))
 	for index := range ids.values {
 		loadResult := LoadTask(storage, ids.values[index])
@@ -841,7 +847,7 @@ func ListTasks(storage BrowserStorage, query string, scope string, userID string
 				continue
 			}
 		}
-		if cleanState != "" && task.State != cleanState {
+		if len(cleanStates) > 0 && !cleanStates[task.State] {
 			continue
 		}
 		if cleanQuery != "" && !strings.Contains(strings.ToLower(task.Title), cleanQuery) && !strings.Contains(strings.ToLower(task.Description), cleanQuery) && !strings.Contains(strings.ToLower(task.ID), cleanQuery) {
