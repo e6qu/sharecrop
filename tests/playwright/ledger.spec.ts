@@ -100,6 +100,11 @@ test("a task created with no declared reward is still fundable by its creator", 
     "Escrowed 30 credits",
   );
 
+  // The task's reward kind transitioned from none to credit, so the owner
+  // controls refresh to offer the credit refund action without needing a
+  // manual page reload.
+  await expect(page.getByTestId("refund-task")).toBeVisible();
+
   await page.getByTestId("nav-overview").click();
   await expect(page.getByTestId("balance")).toHaveText("70 credits");
 });

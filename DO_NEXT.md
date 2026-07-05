@@ -6,21 +6,23 @@ Current priority from
 Active branch:
 
 1. `task/fund-any-reward-kind-and-open-on-create` is in progress, covering
-   part of a batch of related feature requests (see `STATUS.md` for the
-   full writeup and what's still not started):
-   - Done: a draft task is always fundable by its creator regardless of
-     reward kind (none/collectible transitions to credit/bundle on first
-     funding, both real and demo backends); creating a task now opens it in
-     the UI with the URL updated to `#/tasks/{id}`.
-   - Not started, same request: creator adds collectibles to an existing
-     task's reward via UI (backend route already exists:
-     `POST /api/tasks/{task_id}/collectible-reward`); admin UI for awarding
-     collectibles to any user (backend already exists:
-     `POST /api/collectibles/award`, platform-admin-gated, catalog-only);
-     org admin awarding org-owned collectibles to an org member (needs
-     design — verify whether the existing transfer mechanism's permission
-     model can be extended to "org admin acts on the org's behalf," or
-     needs new logic).
+   a batch of related feature requests (see `STATUS.md` for the full
+   writeup). All five requested items are now addressed:
+   - A draft task is always fundable by its creator regardless of reward
+     kind (both real and demo backends); creating a task opens it in the
+     UI with the URL updated to `#/tasks/{id}`.
+   - A creator can add a collectible to an existing task's reward from the
+     task detail page.
+   - An admin awarding collectibles to any user was already fully built
+     (no new work needed).
+   - An org admin can award an org-owned collectible to an active member
+     (new backend + HTTP route + Elm UI).
+   - Not covered: `internal/wasmdemo` doesn't yet implement the new
+     org-collectible-award endpoint (item 5), so that specific flow only
+     works against the real backend, not the browser demo.
+   - Also trimmed `STATUS.md` from 576 to ~70 lines — most of it was stale
+     historical narrative from long-merged PRs, already duplicated in
+     `WHAT_WE_DID.md`, that had never been cleaned up.
 
 2. Two large infrastructure efforts are confirmed as wanted but explicitly
    deferred (see memory for full detail, including empirical research

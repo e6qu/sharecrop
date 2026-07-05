@@ -320,6 +320,24 @@ refreshLedger model =
             Cmd.none
 
 
+{-| Like refreshLedger, but also re-fetches the currently-viewed task's own
+detail record. Funding/awarding a collectible to a task from its own detail
+page changes fields (reward kind, owner-controls buttons) that live on that
+record, not just the ledger - without this, those buttons stay stale until
+the user navigates away and back. Harmless no-op refetch if fundTaskId
+happens not to be the task actually being viewed (e.g. picked on the
+standalone Funding page instead).
+-}
+refreshLedgerAndTaskDetail : Model -> Cmd Msg
+refreshLedgerAndTaskDetail model =
+    case model.session of
+        LoggedIn state ->
+            Cmd.batch [ fetchBalance state.accessToken, fetchLedger state.accessToken state.ledgerOffset, fetchPublicTaskDetail state.accessToken state.fundTaskId ]
+
+        LoggedOut ->
+            Cmd.none
+
+
 refreshTasksAndLedger : Model -> Cmd Msg
 refreshTasksAndLedger model =
     case model.session of
@@ -1368,6 +1386,15 @@ postCollectibleReward token taskId collectibleId =
         ("/api/tasks/" ++ taskId ++ "/collectible-reward")
         (Http.jsonBody (collectibleRewardRequestBody collectibleId))
         (Http.expectJson AwardReceived Collectible.collectibleResponseDecoder)
+
+
+postAwardOrganizationCollectible : String -> String -> String -> String -> Cmd Msg
+postAwardOrganizationCollectible token organizationId collectibleId recipientId =
+    authorizedRequest "POST"
+        token
+        ("/api/organizations/" ++ organizationId ++ "/collectibles/" ++ collectibleId ++ "/award")
+        (Http.jsonBody (Encode.object [ ( "recipient_id", Encode.string recipientId ) ]))
+        (Http.expectJson AwardOrgCollectibleReceived Collectible.collectibleResponseDecoder)
 
 
 revokeAgent : String -> String -> Cmd Msg

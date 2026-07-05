@@ -116,6 +116,7 @@ type AssetService interface {
 	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
 	GiftCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult
+	AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult
 }
 
 type SubmissionService interface {
@@ -360,6 +361,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("GET /api/notifications", server.listNotifications)
 	mux.HandleFunc("POST /api/notifications/{notification_id}/read", server.markNotificationRead)
 	mux.HandleFunc("GET /api/organizations/{id}/collectibles", server.listOrganizationCollectibles)
+	mux.HandleFunc("POST /api/organizations/{organization_id}/collectibles/{id}/award", server.awardOrganizationCollectible)
 	mux.HandleFunc("GET /api/teams/{id}/collectibles", server.listTeamCollectibles)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-refund", server.refundCollectibleReward)

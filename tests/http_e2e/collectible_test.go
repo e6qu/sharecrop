@@ -439,6 +439,66 @@ func decodeCollectiblesHTTPResponse(t *testing.T, response *http.Response) []col
 	return body.Collectibles
 }
 
+func TestOrganizationAdminAwardsOrganizationCollectibleToAMember(t *testing.T) {
+	bootstrap := newAuthHTTPServer(t, t.Context())
+	admin := registerUser(t, bootstrap, "org-collectible-admin")
+	owner := registerUser(t, bootstrap, "org-collectible-owner")
+	bootstrap.Close()
+
+	t.Setenv("SHARECROP_ADMIN_USER_IDS", admin.SubjectID)
+	server := newAuthHTTPServer(t, t.Context())
+	defer server.Close()
+
+	organizationID := createOrganization(t, server, owner, "Collectible Org")
+
+	memberEmail := "org-collectible-member-" + uniqueTestSuffix(t) + "@example.com"
+	member := registerUserWithEmail(t, server, memberEmail)
+	provisionOrganizationMember(t, server, owner.AccessToken, organizationID, memberEmail, `["member"]`)
+
+	outsiderEmail := "org-collectible-outsider-" + uniqueTestSuffix(t) + "@example.com"
+	outsider := registerUserWithEmail(t, server, outsiderEmail)
+
+	awardResponse := postJSONWithBearer(t, server.URL+"/api/collectibles/award",
+		[]byte(`{"slug":"harvest-star","recipient_kind":"organization","recipient_id":"`+organizationID+`"}`), admin.AccessToken)
+	defer awardResponse.Body.Close()
+	assertStatus(t, awardResponse, http.StatusCreated)
+	orgCollectible := decodeCollectibleHTTPResponse(t, awardResponse)
+	if orgCollectible.OwnerKind != "organization" {
+		t.Fatalf("org-awarded owner kind = %q, want organization", orgCollectible.OwnerKind)
+	}
+
+	// A non-admin member cannot award the organization's collectible.
+	forbidden := postJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/collectibles/"+orgCollectible.ID+"/award",
+		[]byte(`{"recipient_id":"`+member.SubjectID+`"}`), member.AccessToken)
+	defer forbidden.Body.Close()
+	assertStatus(t, forbidden, http.StatusForbidden)
+
+	// The org owner cannot award it to someone outside the organization.
+	notMember := postJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/collectibles/"+orgCollectible.ID+"/award",
+		[]byte(`{"recipient_id":"`+outsider.SubjectID+`"}`), owner.AccessToken)
+	defer notMember.Body.Close()
+	assertStatus(t, notMember, http.StatusBadRequest)
+
+	// The org owner awards it to an active member.
+	awardToMember := postJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/collectibles/"+orgCollectible.ID+"/award",
+		[]byte(`{"recipient_id":"`+member.SubjectID+`"}`), owner.AccessToken)
+	defer awardToMember.Body.Close()
+	assertStatus(t, awardToMember, http.StatusOK)
+	memberCollectible := decodeCollectibleHTTPResponse(t, awardToMember)
+	if memberCollectible.OwnerKind != "user" || memberCollectible.OwnerID != member.SubjectID {
+		t.Fatalf("collectible after org award = %+v, want owned by member %s", memberCollectible, member.SubjectID)
+	}
+	if held := listCollectibles(t, server, member.AccessToken); len(held) != 1 || held[0].ID != orgCollectible.ID {
+		t.Fatalf("member holdings = %+v, want the org-awarded collectible", held)
+	}
+
+	// It no longer belongs to the organization, so a second award attempt fails.
+	alreadyAwarded := postJSONWithBearer(t, server.URL+"/api/organizations/"+organizationID+"/collectibles/"+orgCollectible.ID+"/award",
+		[]byte(`{"recipient_id":"`+member.SubjectID+`"}`), owner.AccessToken)
+	defer alreadyAwarded.Body.Close()
+	assertStatus(t, alreadyAwarded, http.StatusBadRequest)
+}
+
 func decodeCollectibleHTTPResponse(t *testing.T, response *http.Response) collectibleHTTPResponse {
 	t.Helper()
 	var body collectibleHTTPResponse

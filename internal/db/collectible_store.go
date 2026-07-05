@@ -5,6 +5,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -105,6 +106,23 @@ func (store CollectibleStore) FundCollectibleReward(ctx context.Context, command
 	}
 	if taskRow.state != "draft" {
 		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft tasks can be funded")}
+	}
+
+	// A draft task is always fundable with a collectible by its creator,
+	// regardless of the reward kind it was created with: none -> collectible,
+	// credit -> bundle. A task already declaring a collectible component
+	// (collectible/bundle) keeps its reward kind as-is.
+	var rewardKindUpdate string
+	switch taskRow.rewardKind {
+	case "none":
+		rewardKindUpdate = "collectible"
+	case "credit":
+		rewardKindUpdate = "bundle"
+	}
+	if rewardKindUpdate != "" {
+		if _, err := tx.Exec(ctx, "update tasks set reward_kind = $1 where id = $2", rewardKindUpdate, command.TaskID.String()); err != nil {
+			return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update task reward kind failed")}
+		}
 	}
 
 	rewardIDResult := core.NewTaskCollectibleRewardID()
@@ -284,6 +302,52 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 	gifted.OwnerKind = assets.CollectibleOwnerKindUser
 	gifted.OwnerID = command.ToUserID.String()
 	return assets.CollectibleGifted{Value: gifted}
+}
+
+func (store CollectibleStore) AwardOrganizationCollectible(ctx context.Context, command assets.AwardOrganizationCollectibleStoreCommand) assets.GiftResult {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin award organization collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to award")}
+	}
+	if collectible.value.OwnerKind != assets.CollectibleOwnerKindOrganization || collectible.value.OrganizationID != command.OrganizationID.String() {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible does not belong to this organization")}
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to award")}
+	}
+
+	var isActiveMember bool
+	if err := tx.QueryRow(ctx, `
+		select exists(
+			select 1 from organization_memberships
+			where organization_id = $1 and user_id = $2 and status = $3
+		)
+	`, command.OrganizationID.String(), command.RecipientUserID.String(), org.MembershipStatusActive.String()).Scan(&isActiveMember); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check organization membership failed")}
+	}
+	if !isActiveMember {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "recipient is not an active member of this organization")}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, owner_kind = 'user', organization_id = null, state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.RecipientUserID.String()); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer organization collectible failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit award organization collectible failed")}
+	}
+
+	awarded := collectible.value
+	awarded.OwnerKind = assets.CollectibleOwnerKindUser
+	awarded.OwnerID = command.RecipientUserID.String()
+	awarded.OrganizationID = ""
+	return assets.CollectibleGifted{Value: awarded}
 }
 
 func requireSharedCollectibleOrganization(ctx context.Context, tx pgx.Tx, collectible assets.Collectible, from core.UserID, to core.UserID) (core.DomainError, bool) {

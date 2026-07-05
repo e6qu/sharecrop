@@ -392,6 +392,10 @@ func (healthAssetService) GiftCollectible(context.Context, core.UserID, core.Use
 	return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthAssetService) AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult {
+	return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthAgentService) Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult {
 	return agent.RevokeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

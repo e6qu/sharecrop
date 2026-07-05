@@ -8,6 +8,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/org"
 )
 
 type mintCollectibleRequest struct {
@@ -57,6 +58,10 @@ type awardCollectibleRequest struct {
 }
 
 type transferCollectibleRequest struct {
+	RecipientID string `json:"recipient_id"`
+}
+
+type awardOrganizationCollectibleRequest struct {
 	RecipientID string `json:"recipient_id"`
 }
 
@@ -313,6 +318,53 @@ func (server Server) listOrganizationCollectibles(w http.ResponseWriter, r *http
 
 func (server Server) listTeamCollectibles(w http.ResponseWriter, r *http.Request) {
 	server.listOwnerCollectibles(w, r, assets.CollectibleOwnerKindTeam)
+}
+
+func (server Server) awardOrganizationCollectible(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, actorMatched := actorResult.(userSubjectAccepted)
+	if !actorMatched {
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	organizationIDResult := parseOrganizationPathValue(r)
+	organizationID, organizationMatched := organizationIDResult.(organizationIDAccepted)
+	if !organizationMatched {
+		writeError(w, http.StatusBadRequest, organizationIDResult.(organizationIDRejected).reason)
+		return
+	}
+	collectibleIDResult := core.ParseCollectibleID(r.PathValue("id"))
+	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
+	if !collectibleMatched {
+		writeDomainError(w, collectibleIDResult.(core.CollectibleIDRejected).Reason)
+		return
+	}
+
+	check := server.organizationService.CheckOrganizationPermission(r.Context(), organizationID.value, actor.subject.ID, org.PermissionManageMembers)
+	if rejected, denied := check.(org.PermissionDenied); denied {
+		writeDomainError(w, rejected.Reason)
+		return
+	}
+
+	var request awardOrganizationCollectibleRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	recipientResult := core.ParseUserID(request.RecipientID)
+	recipient, recipientMatched := recipientResult.(core.UserIDCreated)
+	if !recipientMatched {
+		writeDomainError(w, recipientResult.(core.UserIDRejected).Reason)
+		return
+	}
+
+	result := server.assetService.AwardOrganizationCollectible(r.Context(), organizationID.value, collectibleID.Value, recipient.Value)
+	awarded, matched := result.(assets.CollectibleGifted)
+	if !matched {
+		writeDomainError(w, result.(assets.GiftRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusOK, collectibleToResponse(awarded.Value))
 }
 
 func (server Server) listOwnerCollectibles(w http.ResponseWriter, r *http.Request, ownerKind string) {

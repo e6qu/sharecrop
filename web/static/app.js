@@ -8257,6 +8257,8 @@ var $author$project$Main$enterPageFields = F2(
 					state,
 					{
 						activeOrgId: organizationId,
+						awardOrgCollectibleMessage: $elm$core$Maybe$Nothing,
+						awardOrgCollectibleRecipientId: '',
 						orgAuditEvents: _List_Nil,
 						orgAuditMessage: $elm$core$Maybe$Nothing,
 						orgBalance: $elm$core$Maybe$Nothing,
@@ -8317,6 +8319,8 @@ var $author$project$Main$enterPageFields = F2(
 					state,
 					{
 						activeSubmissionCommentsID: $elm$core$Maybe$Nothing,
+						awardMessage: $elm$core$Maybe$Nothing,
+						awardTaskId: taskId,
 						detail: $elm$core$Maybe$Nothing,
 						detailError: $elm$core$Maybe$Nothing,
 						fundAmount: '',
@@ -9091,6 +9095,19 @@ var $author$project$Sharecrop$Api$fetchOrgTeams = F2(
 	function (token, organizationId) {
 		return A4($author$project$Sharecrop$Api$fetchOrgTeamsPage, token, organizationId, '', 0);
 	});
+var $author$project$Sharecrop$Types$OrgCollectiblesReceived = function (a) {
+	return {$: 'OrgCollectiblesReceived', a: a};
+};
+var $author$project$Sharecrop$Api$fetchOrganizationCollectibles = F2(
+	function (token, orgId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/organizations/' + (orgId + '/collectibles'),
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$OrgLedgerReceived = function (a) {
 	return {$: 'OrgLedgerReceived', a: a};
 };
@@ -9159,6 +9176,23 @@ var $author$project$Sharecrop$Api$fetchPlatformAdmins = F2(
 			'/api/admin/platform-admins?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
 			$elm$http$Http$emptyBody,
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminsReceived, $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder));
+	});
+var $author$project$Sharecrop$Types$DetailReceived = function (a) {
+	return {$: 'DetailReceived', a: a};
+};
+var $author$project$Sharecrop$Api$publicTaskDetailFromResponse = function (response) {
+	return $author$project$Sharecrop$Api$taskDetailFromResponse(response);
+};
+var $author$project$Sharecrop$Api$publicTaskDetailDecoder = A2($elm$json$Json$Decode$map, $author$project$Sharecrop$Api$publicTaskDetailFromResponse, $author$project$Sharecrop$Generated$Task$taskResponseDecoder);
+var $author$project$Sharecrop$Api$fetchPublicTaskDetail = F2(
+	function (token, taskId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'GET',
+			token,
+			'/api/tasks/' + taskId,
+			$elm$http$Http$emptyBody,
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$DetailReceived, $author$project$Sharecrop$Api$publicTaskDetailDecoder));
 	});
 var $author$project$Sharecrop$Types$StandaloneTeamsReceived = function (a) {
 	return {$: 'StandaloneTeamsReceived', a: a};
@@ -9751,6 +9785,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		auditSubjectKindFilter: '',
 		awardDefaultMessage: $elm$core$Maybe$Nothing,
 		awardMessage: $elm$core$Maybe$Nothing,
+		awardOrgCollectibleMessage: $elm$core$Maybe$Nothing,
+		awardOrgCollectibleRecipientId: '',
 		awardRecipientId: '',
 		awardRecipientKind: 'user',
 		awardTaskId: '',
@@ -10311,6 +10347,26 @@ var $author$project$Sharecrop$Api$postAuth = F2(
 				url: url
 			});
 	});
+var $author$project$Sharecrop$Types$AwardOrgCollectibleReceived = function (a) {
+	return {$: 'AwardOrgCollectibleReceived', a: a};
+};
+var $author$project$Sharecrop$Api$postAwardOrganizationCollectible = F4(
+	function (token, organizationId, collectibleId, recipientId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/organizations/' + (organizationId + ('/collectibles/' + (collectibleId + '/award'))),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'recipient_id',
+							$elm$json$Json$Encode$string(recipientId))
+						]))),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AwardOrgCollectibleReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
+	});
 var $author$project$Sharecrop$Types$CancelTaskReceived = function (a) {
 	return {$: 'CancelTaskReceived', a: a};
 };
@@ -10734,23 +10790,6 @@ var $author$project$Sharecrop$Types$SubmitAttachmentSelected = F4(
 var $author$project$Main$readSubmitAttachment = function (file) {
 	return A3($author$project$Main$readAttachment, file, $author$project$Sharecrop$Types$SubmitAttachmentSelected, $author$project$Sharecrop$Types$SubmitAttachmentRejected);
 };
-var $author$project$Sharecrop$Types$DetailReceived = function (a) {
-	return {$: 'DetailReceived', a: a};
-};
-var $author$project$Sharecrop$Api$publicTaskDetailFromResponse = function (response) {
-	return $author$project$Sharecrop$Api$taskDetailFromResponse(response);
-};
-var $author$project$Sharecrop$Api$publicTaskDetailDecoder = A2($elm$json$Json$Decode$map, $author$project$Sharecrop$Api$publicTaskDetailFromResponse, $author$project$Sharecrop$Generated$Task$taskResponseDecoder);
-var $author$project$Sharecrop$Api$fetchPublicTaskDetail = F2(
-	function (token, taskId) {
-		return A5(
-			$author$project$Sharecrop$Api$authorizedRequest,
-			'GET',
-			token,
-			'/api/tasks/' + taskId,
-			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$DetailReceived, $author$project$Sharecrop$Api$publicTaskDetailDecoder));
-	});
 var $author$project$Sharecrop$Types$ReservationsReceived = function (a) {
 	return {$: 'ReservationsReceived', a: a};
 };
@@ -10871,7 +10910,7 @@ var $author$project$Sharecrop$Api$refreshDetailSubmissions = function (model) {
 		return $elm$core$Platform$Cmd$none;
 	}
 };
-var $author$project$Sharecrop$Api$refreshLedger = function (model) {
+var $author$project$Sharecrop$Api$refreshLedgerAndTaskDetail = function (model) {
 	var _v0 = model.session;
 	if (_v0.$ === 'LoggedIn') {
 		var state = _v0.a;
@@ -10879,7 +10918,8 @@ var $author$project$Sharecrop$Api$refreshLedger = function (model) {
 			_List_fromArray(
 				[
 					$author$project$Sharecrop$Api$fetchBalance(state.accessToken),
-					A2($author$project$Sharecrop$Api$fetchLedger, state.accessToken, state.ledgerOffset)
+					A2($author$project$Sharecrop$Api$fetchLedger, state.accessToken, state.ledgerOffset),
+					A2($author$project$Sharecrop$Api$fetchPublicTaskDetail, state.accessToken, state.fundTaskId)
 				]));
 	} else {
 		return $elm$core$Platform$Cmd$none;
@@ -11408,19 +11448,6 @@ var $author$project$Sharecrop$Api$fetchDetailCommands = F3(
 					A2($author$project$Sharecrop$Api$fetchUserSubmissions, token, subjectId),
 					$author$project$Sharecrop$Api$fetchOrganizations(token)
 				]));
-	});
-var $author$project$Sharecrop$Types$OrgCollectiblesReceived = function (a) {
-	return {$: 'OrgCollectiblesReceived', a: a};
-};
-var $author$project$Sharecrop$Api$fetchOrganizationCollectibles = F2(
-	function (token, orgId) {
-		return A5(
-			$author$project$Sharecrop$Api$authorizedRequest,
-			'GET',
-			token,
-			'/api/organizations/' + (orgId + '/collectibles'),
-			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$SeriesDetailReceived = function (a) {
 	return {$: 'SeriesDetailReceived', a: a};
@@ -13110,7 +13137,7 @@ var $author$project$Main$update = F2(
 											$author$project$Sharecrop$View$fundSuccessLabel(escrow))
 									});
 							}),
-						$author$project$Sharecrop$Api$refreshLedger(model));
+						$author$project$Sharecrop$Api$refreshLedgerAndTaskDetail(model));
 				} else {
 					var error = msg.a.a;
 					return _Utils_Tuple2(
@@ -14446,7 +14473,8 @@ var $author$project$Main$update = F2(
 									_List_fromArray(
 										[
 											$author$project$Sharecrop$Api$fetchCollectibles(state.accessToken),
-											A5($author$project$Sharecrop$Api$fetchTasks, state.accessToken, state.taskStateFilter, state.taskListTypeFilter, state.taskListSort, state.taskListOffset)
+											A5($author$project$Sharecrop$Api$fetchTasks, state.accessToken, state.taskStateFilter, state.taskListTypeFilter, state.taskListSort, state.taskListOffset),
+											A2($author$project$Sharecrop$Api$fetchPublicTaskDetail, state.accessToken, state.awardTaskId)
 										])));
 						});
 				} else {
@@ -14460,6 +14488,85 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										awardMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AwardOrgCollectibleRecipientIdChanged':
+				var value = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{awardOrgCollectibleRecipientId: value});
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'AwardOrgCollectibleClicked':
+				var collectibleId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return $elm$core$String$isEmpty(
+							$elm$core$String$trim(state.awardOrgCollectibleRecipientId)) ? _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{
+											awardOrgCollectibleMessage: $elm$core$Maybe$Just('Choose a member first.')
+										});
+								}),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{awardOrgCollectibleMessage: $elm$core$Maybe$Nothing});
+								}),
+							A4($author$project$Sharecrop$Api$postAwardOrganizationCollectible, state.accessToken, state.activeOrgId, collectibleId, state.awardOrgCollectibleRecipientId));
+					});
+			case 'AwardOrgCollectibleReceived':
+				if (msg.a.$ === 'Ok') {
+					var collectible = msg.a.a;
+					var updated = A2(
+						$author$project$Sharecrop$Api$updateLoggedIn,
+						model,
+						function (state) {
+							return _Utils_update(
+								state,
+								{
+									awardOrgCollectibleMessage: $elm$core$Maybe$Just(
+										$author$project$Sharecrop$View$awardSuccessLabel(collectible))
+								});
+						});
+					return A2(
+						$author$project$Sharecrop$Api$withSession,
+						updated,
+						function (state) {
+							return _Utils_Tuple2(
+								updated,
+								A2($author$project$Sharecrop$Api$fetchOrganizationCollectibles, state.accessToken, state.activeOrgId));
+						});
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										awardOrgCollectibleMessage: $elm$core$Maybe$Just(
 											$author$project$Sharecrop$Labels$httpErrorLabel(error))
 									});
 							}),
@@ -22491,6 +22598,9 @@ var $author$project$Sharecrop$View$inboxView = function (state) {
 				A2($author$project$Sharecrop$View$maybeNote, state.inboxMessage, 'inbox-message')
 			]));
 };
+var $author$project$Sharecrop$Types$AwardOrgCollectibleRecipientIdChanged = function (a) {
+	return {$: 'AwardOrgCollectibleRecipientIdChanged', a: a};
+};
 var $author$project$Sharecrop$Types$CreateOrgCredentialClicked = {$: 'CreateOrgCredentialClicked'};
 var $author$project$Sharecrop$Types$CreateOrgTeamClicked = {$: 'CreateOrgTeamClicked'};
 var $author$project$Sharecrop$Types$CreateOrgTeamNameChanged = function (a) {
@@ -22559,6 +22669,53 @@ var $author$project$Sharecrop$View$collectiblesHoldingsList = F2(
 					$author$project$Sharecrop$Ui$testId(idPrefix)
 				]),
 			A2($elm$core$List$map, $author$project$Sharecrop$View$collectibleHoldingRow, collectibles));
+	});
+var $author$project$Sharecrop$Types$AwardOrgCollectibleClicked = function (a) {
+	return {$: 'AwardOrgCollectibleClicked', a: a};
+};
+var $author$project$Sharecrop$View$orgCollectibleAwardRow = F2(
+	function (recipientId, collectible) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex flex-wrap items-center justify-between gap-2 py-2'),
+					$author$project$Sharecrop$Ui$testId('org-collectible-award-row')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('flex min-w-0 flex-wrap items-center gap-2')
+						]),
+					_List_fromArray(
+						[
+							A2($author$project$Sharecrop$Sprites$pixel, collectible.art, 5),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm font-medium break-words')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(collectible.name)
+								]))
+						])),
+					A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick(
+							$author$project$Sharecrop$Types$AwardOrgCollectibleClicked(collectible.id)),
+							$elm$html$Html$Attributes$disabled(recipientId === ''),
+							$author$project$Sharecrop$Ui$testId('award-org-collectible')
+						]),
+					'Award to member')
+				]));
 	});
 var $author$project$Sharecrop$Types$RevokeOrgCredentialClicked = function (a) {
 	return {$: 'RevokeOrgCredentialClicked', a: a};
@@ -22641,6 +22798,40 @@ var $author$project$Sharecrop$View$orgCredentialsList = function (credentials) {
 			]),
 		A2($elm$core$List$map, $author$project$Sharecrop$View$orgCredentialRow, credentials));
 };
+var $author$project$Sharecrop$View$orgMemberOption = F2(
+	function (selectedUserId, member) {
+		return A2(
+			$elm$html$Html$option,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$value(member.userID),
+					$elm$html$Html$Attributes$selected(
+					_Utils_eq(selectedUserId, member.userID))
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(member.userID)
+				]));
+	});
+var $author$project$Sharecrop$View$orgMemberPicker = F4(
+	function (identifier, selectedUserId, change, members) {
+		return A2(
+			$elm$html$Html$select,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$fieldClass),
+					$elm$html$Html$Attributes$value(selectedUserId),
+					$elm$html$Html$Events$onInput(change),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			A2(
+				$elm$core$List$cons,
+				$author$project$Sharecrop$View$blankOption('Select member'),
+				A2(
+					$elm$core$List$map,
+					$author$project$Sharecrop$View$orgMemberOption(selectedUserId),
+					members)));
+	});
 var $author$project$Sharecrop$Types$DeactivateMemberClicked = function (a) {
 	return {$: 'DeactivateMemberClicked', a: a};
 };
@@ -23732,7 +23923,30 @@ var $author$project$Sharecrop$View$activeOrganizationView = function (state) {
 					_List_fromArray(
 						[
 							A2($author$project$Sharecrop$View$collectiblesHoldingsList, 'org-collectibles', state.orgCollectibles),
-							A2($author$project$Sharecrop$View$maybeNote, state.orgCollectiblesMessage, 'org-collectibles-message')
+							A2($author$project$Sharecrop$View$maybeNote, state.orgCollectiblesMessage, 'org-collectibles-message'),
+							$elm$core$List$isEmpty(state.orgCollectibles) ? $elm$html$Html$text('') : A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('mt-3 space-y-2')
+								]),
+							_List_fromArray(
+								[
+									$author$project$Sharecrop$Ui$label_('Award a collectible to a member'),
+									A4($author$project$Sharecrop$View$orgMemberPicker, 'award-org-collectible-recipient', state.awardOrgCollectibleRecipientId, $author$project$Sharecrop$Types$AwardOrgCollectibleRecipientIdChanged, state.orgMembers),
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('divide-y divide-slate-100'),
+											$author$project$Sharecrop$Ui$testId('org-collectible-award-rows')
+										]),
+									A2(
+										$elm$core$List$map,
+										$author$project$Sharecrop$View$orgCollectibleAwardRow(state.awardOrgCollectibleRecipientId),
+										state.orgCollectibles))
+								])),
+							A2($author$project$Sharecrop$View$maybeNote, state.awardOrgCollectibleMessage, 'award-org-collectible-message')
 						])),
 					A4(
 					$author$project$Sharecrop$Ui$disclosure,
@@ -25549,6 +25763,16 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 								]),
 							'Fund task'),
 							A2($author$project$Sharecrop$View$maybeNote, state.fundMessage, 'fund-message')
+						])) : $elm$html$Html$text(''),
+					canFund ? A4(
+					$author$project$Sharecrop$Ui$disclosure,
+					'add-collectible-reward-panel',
+					false,
+					'Add a collectible to this task\'s reward',
+					_List_fromArray(
+						[
+							$author$project$Sharecrop$View$collectiblesList(state),
+							A2($author$project$Sharecrop$View$maybeNote, state.awardMessage, 'award-message')
 						])) : $elm$html$Html$text('')
 				]));
 	} else {

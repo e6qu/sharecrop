@@ -105,6 +105,10 @@ func (store *memoryStore) GiftCollectible(_ context.Context, command GiftStoreCo
 	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindUser, OwnerID: command.ToUserID.String()}}
 }
 
+func (store *memoryStore) AwardOrganizationCollectible(_ context.Context, command AwardOrganizationCollectibleStoreCommand) GiftResult {
+	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindUser, OwnerID: command.RecipientUserID.String()}}
+}
+
 func name(t *testing.T, raw string) CollectibleName {
 	t.Helper()
 	accepted, matched := NewCollectibleName(raw).(CollectibleNameAccepted)
