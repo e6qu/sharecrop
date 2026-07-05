@@ -653,7 +653,7 @@ type runtimeResponseValue interface {
 func marshalResponse[T runtimeResponseValue](value T, status int, label string) HandleResult {
 	encoded, err := json.Marshal(value)
 	if err != nil {
-		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, label + " response encoding failed")}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, label+" response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
