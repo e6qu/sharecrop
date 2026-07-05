@@ -202,6 +202,8 @@ type alias LoggedInModel =
     , orgTaskSavedViews : List QueueView
     , orgCollectibles : List Collectible.CollectibleResponse
     , orgCollectiblesMessage : Maybe String
+    , awardOrgCollectibleRecipientId : String
+    , awardOrgCollectibleMessage : Maybe String
     , orgCredentials : List Agent.OrgCredentialResponse
     , orgCredentialLabel : String
     , orgCredentialScopes : List Agent.AgentScope
@@ -481,6 +483,9 @@ type Msg
     | AwardTaskIdChanged String
     | AwardClicked String
     | AwardReceived (Result Http.Error Collectible.CollectibleResponse)
+    | AwardOrgCollectibleRecipientIdChanged String
+    | AwardOrgCollectibleClicked String
+    | AwardOrgCollectibleReceived (Result Http.Error Collectible.CollectibleResponse)
     | CollectibleCatalogReceived (Result Http.Error Collectible.CollectibleCatalogResponse)
     | AwardRecipientKindChanged String
     | AwardRecipientIdChanged String

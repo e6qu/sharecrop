@@ -381,7 +381,7 @@ func taskRewardRow(t *testing.T, pool *pgxpool.Pool, taskID core.TaskID) (string
 	t.Helper()
 	var rewardKind string
 	var rewardCreditAmount int64
-	if err := pool.QueryRow(context.Background(), "select reward_kind, reward_credit_amount from tasks where id = $1", taskID.String()).Scan(&rewardKind, &rewardCreditAmount); err != nil {
+	if err := pool.QueryRow(context.Background(), "select reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1", taskID.String()).Scan(&rewardKind, &rewardCreditAmount); err != nil {
 		t.Fatalf("read task reward row: %v", err)
 	}
 	return rewardKind, rewardCreditAmount

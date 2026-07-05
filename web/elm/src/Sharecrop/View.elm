@@ -1491,6 +1491,19 @@ activeOrganizationView state =
             , Ui.disclosure "org-collectibles-section" False ("Collectibles (" ++ String.fromInt (List.length state.orgCollectibles) ++ ")") <|
                 [ collectiblesHoldingsList "org-collectibles" state.orgCollectibles
                 , maybeNote state.orgCollectiblesMessage "org-collectibles-message"
+                , if List.isEmpty state.orgCollectibles then
+                    text ""
+
+                  else
+                    div [ Html.Attributes.class "mt-3 space-y-2" ]
+                        [ Ui.label_ "Award a collectible to a member"
+                        , orgMemberPicker "award-org-collectible-recipient" state.awardOrgCollectibleRecipientId AwardOrgCollectibleRecipientIdChanged state.orgMembers
+                        , div [ Html.Attributes.class "divide-y divide-slate-100", testId "org-collectible-award-rows" ] (List.map (orgCollectibleAwardRow state.awardOrgCollectibleRecipientId) state.orgCollectibles)
+                        ]
+                , -- Kept outside the isEmpty branch above: a successful award empties
+                  -- state.orgCollectibles when it was the org's last one, which would
+                  -- otherwise make this confirmation disappear the instant it's shown.
+                  maybeNote state.awardOrgCollectibleMessage "award-org-collectible-message"
                 ]
             , Ui.disclosure "org-credentials-section" False ("Credentials (" ++ String.fromInt (List.length state.orgCredentials) ++ ")") <|
                 [ orgCredentialsList state.orgCredentials
@@ -2336,6 +2349,33 @@ taskOption selectedTaskId item =
         [ text (item.title ++ " · " ++ taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount) ]
 
 
+orgMemberPicker : String -> String -> (String -> Msg) -> List Organization.OrganizationMemberResponse -> Html Msg
+orgMemberPicker identifier selectedUserId change members =
+    select
+        [ Html.Attributes.class Ui.fieldClass
+        , value selectedUserId
+        , onInput change
+        , testId identifier
+        ]
+        (blankOption "Select member" :: List.map (orgMemberOption selectedUserId) members)
+
+
+orgMemberOption : String -> Organization.OrganizationMemberResponse -> Html Msg
+orgMemberOption selectedUserId member =
+    option [ value member.userID, selected (selectedUserId == member.userID) ] [ text member.userID ]
+
+
+orgCollectibleAwardRow : String -> Collectible.CollectibleResponse -> Html Msg
+orgCollectibleAwardRow recipientId collectible =
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "org-collectible-award-row" ]
+        [ div [ Html.Attributes.class "flex min-w-0 flex-wrap items-center gap-2" ]
+            [ Sprites.pixel collectible.art 5
+            , span [ Html.Attributes.class "text-sm font-medium break-words" ] [ text collectible.name ]
+            ]
+        , Ui.secondaryButton [ type_ "button", onClick (AwardOrgCollectibleClicked collectible.id), disabled (recipientId == ""), testId "award-org-collectible" ] "Award to member"
+        ]
+
+
 {-| The Tasks hub: the single destination for everything task-related.
 Merges what used to be four separate nav-reachable pages/menu items (Tasks,
 Discovery, the Work menu's Submissions and Series) into one page, plus a
@@ -3132,6 +3172,20 @@ ownerControlsCard state =
                         , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset
                         , Ui.primaryButton [ type_ "button", onClick FundClicked, testId "fund" ] "Fund task"
                         , maybeNote state.fundMessage "fund-message"
+                        ]
+
+                  else
+                    text ""
+                , if canFund then
+                    -- state.awardTaskId is kept synced to the currently-viewed
+                    -- task on entering this page (see enterPage), so this
+                    -- reuses the exact same AwardClicked/award-* plumbing as
+                    -- the Collectibles page without a separate Msg.
+                    Ui.disclosure "add-collectible-reward-panel"
+                        False
+                        "Add a collectible to this task's reward"
+                        [ collectiblesList state
+                        , maybeNote state.awardMessage "award-message"
                         ]
 
                   else

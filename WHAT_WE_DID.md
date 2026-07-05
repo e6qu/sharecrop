@@ -25,12 +25,72 @@ and staying on it) — this changed the assumption behind roughly 13 existing
 Playwright tests that expected to remain on the create page after
 submission, all updated to check the new detail page instead.
 
-Not started in this task, from the same request: creator adds collectibles
-to an existing task's reward via UI (backend route already exists); admin
-UI for awarding collectibles to any user (backend route already exists,
-platform-admin-gated, catalog-only); org admin awarding org-owned
-collectibles to an org member (needs authorization-model verification
-first).
+The same task continued with the remaining three items from that batch.
+(3) A creator can add a collectible to an existing task's reward from the
+task detail page: the backend route
+(`POST /api/tasks/{task_id}/collectible-reward`) and its Elm API wrapper
+(`postCollectibleReward`/`AwardReceived`) already existed but were never
+wired to any UI trigger. Added a draft-only "Add a collectible to this
+task's reward" panel that reuses the existing plumbing, syncing
+`awardTaskId` to the viewed task the same way `fundTaskId` already was.
+This surfaced two real bugs, fixed the same way as the credit-funding
+transition: `internal/db/collectible_store.go`'s `FundCollectibleReward`
+never transitioned the task's `reward_kind` (none -> collectible,
+credit -> bundle), so a task that received its first collectible via this
+path would still show "No reward" in the UI despite holding an escrowed
+collectible; and neither the fund nor the award success handlers
+re-fetched the viewed task's own detail record, so the owner-controls
+buttons (e.g. a refund button appearing) stayed stale until a manual page
+reload — added `Api.refreshLedgerAndTaskDetail` and used it from both
+`FundReceived`/`AwardReceived`. Caught the staleness bug by manually
+driving a real browser through the flow and noticing the confirmation
+message disappeared the instant the org's collectible count hit zero (see
+item 5 below) — not by an automated test, though one now covers it.
+
+(4) Checked whether an admin can award collectibles to any user: already
+fully built, both backend (`POST /api/collectibles/award`, platform-admin
+gated, catalog-only, supports user/team/organization recipients) and Elm
+UI ("Admin: award a default collectible" on the Collectibles page). No
+work needed.
+
+(5) An org admin can award an org-owned collectible to an active member —
+genuinely new, unlike items 3/4. The existing collectible-transfer
+mechanism (`GiftCollectible`) hard-requires personal (`owner_kind: user`)
+ownership, so it couldn't be reused for an org-owned collectible. Added
+`assets.Service.AwardOrganizationCollectible` /
+`CollectibleStore.AwardOrganizationCollectible`
+(`internal/db/collectible_store.go`), gated by `org.PermissionManageMembers`
+at the HTTP boundary (new route
+`POST /api/organizations/{organization_id}/collectibles/{id}/award`,
+`internal/http/collectibles.go`), verifying in the same transaction that
+the collectible actually belongs to that org and the recipient is an
+active member (`organization_memberships` query). New Elm UI on the
+organization detail page: a member picker plus an "Award to member" button
+per org-owned collectible, added to the existing "Collectibles (N)"
+disclosure. Covered by a new HTTP e2e test
+(`TestOrganizationAdminAwardsOrganizationCollectibleToAMember`: permission
+denied for a non-admin member, rejected for a non-member recipient, happy
+path, and rejected on a second award attempt since the collectible no
+longer belongs to the org). Not covered by an automated Playwright test —
+the shared Playwright server has no platform admin bootstrapped (needed to
+get a collectible into org ownership in the first place, since minting
+directly to an org isn't exposed to non-admins), so this was verified
+manually instead: started a separate server with `SHARECROP_ADMIN_USER_IDS`
+set, drove a real Chromium browser through mint -> award-to-org -> award-to-
+member, and confirmed the success message ("Awarded Golden Sickle
+(minted).") renders correctly even after the org's collectible count drops
+to zero.
+
+`internal/wasmdemo` does not implement item 5's new endpoint — the demo
+supports item 3 (adding a collectible to a task's reward) but not the
+org-admin-awards-to-member flow. Not addressed in this task.
+
+Also trimmed `STATUS.md` from 576 to about 70 lines: nearly all of the
+removed content was stale historical narrative from long-merged PRs
+(the RBAC effort, PR 122's clean-up pass, an old task-series bug fix),
+already captured in this file, that had accumulated without ever being
+trimmed — contrary to `AGENTS.md`'s own instruction to keep `STATUS.md`
+short and current-state-only.
 
 ---
 

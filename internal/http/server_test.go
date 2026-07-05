@@ -1090,6 +1090,10 @@ func (testAssetService) GiftCollectible(context.Context, core.UserID, core.UserI
 	return assets.CollectibleGifted{}
 }
 
+func (testAssetService) AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult {
+	return assets.CollectibleGifted{}
+}
+
 func (testAgentService) Revoke(_ context.Context, owner core.UserID, id core.AgentCredentialID) agent.RevokeResult {
 	labelAccepted := agent.NewLabel("Test agent").(agent.LabelAccepted)
 	return agent.CredentialRevoked{Value: agent.Credential{ID: id, UserID: owner, Label: labelAccepted.Value, Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateRevoked}}

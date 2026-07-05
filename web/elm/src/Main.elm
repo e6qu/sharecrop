@@ -163,6 +163,8 @@ emptyLoggedIn response =
     , orgTaskSavedViews = []
     , orgCollectibles = []
     , orgCollectiblesMessage = Nothing
+    , awardOrgCollectibleRecipientId = ""
+    , awardOrgCollectibleMessage = Nothing
     , orgCredentials = []
     , orgCredentialLabel = ""
     , orgCredentialScopes = [ Agent.AgentScopeOrgRead ]
@@ -571,7 +573,7 @@ enterPageFields page state =
             }
 
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgLedgerOffset = 0, orgAuditEvents = [], orgAuditMessage = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgLedgerOffset = 0, orgAuditEvents = [], orgAuditMessage = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, awardOrgCollectibleRecipientId = "", awardOrgCollectibleMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing }
@@ -602,11 +604,12 @@ enterPageFields page state =
             -- not briefly show the prior task's badges, submissions, or comments.
             -- Review form fields are reset here too so the prior submission's
             -- note / partial credit / tip / ban does not carry over to the next.
-            -- fundTaskId is synced to the task being viewed so the inline
-            -- "Fund this task" panel (see ownerControlsCard) always targets
-            -- *this* task when submitted, regardless of whatever task was
-            -- last selected on the standalone Funding page.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing }
+            -- fundTaskId/awardTaskId are synced to the task being viewed so the
+            -- inline "Fund this task" and "Award a collectible" panels (see
+            -- ownerControlsCard) always target *this* task when submitted,
+            -- regardless of whatever task was last selected on the standalone
+            -- Funding/Collectibles pages.
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, awardTaskId = taskId, awardMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -937,7 +940,7 @@ update msg model =
             Api.withSession bumped (\state -> Api.fundTaskCommand bumped state)
 
         FundReceived (Ok escrow) ->
-            ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (View.fundSuccessLabel escrow) }), Api.refreshLedger model )
+            ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (View.fundSuccessLabel escrow) }), Api.refreshLedgerAndTaskDetail model )
 
         FundReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (httpErrorLabel error) }), Cmd.none )
@@ -1360,10 +1363,44 @@ update msg model =
                 updated =
                     Api.updateLoggedIn model (\state -> { state | awardMessage = Just (View.awardSuccessLabel collectible) })
             in
-            Api.withSession updated (\state -> ( updated, Cmd.batch [ Api.fetchCollectibles state.accessToken, Api.fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset ] ))
+            Api.withSession updated
+                (\state ->
+                    ( updated
+                    , Cmd.batch
+                        [ Api.fetchCollectibles state.accessToken
+                        , Api.fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset
+                        , Api.fetchPublicTaskDetail state.accessToken state.awardTaskId
+                        ]
+                    )
+                )
 
         AwardReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
+
+        AwardOrgCollectibleRecipientIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleRecipientId = value }), Cmd.none )
+
+        AwardOrgCollectibleClicked collectibleId ->
+            Api.withSession model
+                (\state ->
+                    if String.isEmpty (String.trim state.awardOrgCollectibleRecipientId) then
+                        ( Api.updateLoggedIn model (\current -> { current | awardOrgCollectibleMessage = Just "Choose a member first." }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | awardOrgCollectibleMessage = Nothing })
+                        , Api.postAwardOrganizationCollectible state.accessToken state.activeOrgId collectibleId state.awardOrgCollectibleRecipientId
+                        )
+                )
+
+        AwardOrgCollectibleReceived (Ok collectible) ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleMessage = Just (View.awardSuccessLabel collectible) })
+            in
+            Api.withSession updated (\state -> ( updated, Api.fetchOrganizationCollectibles state.accessToken state.activeOrgId ))
+
+        AwardOrgCollectibleReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleMessage = Just (httpErrorLabel error) }), Cmd.none )
 
         CollectibleCatalogReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | collectibleCatalog = response.entries }), Cmd.none )

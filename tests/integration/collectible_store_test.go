@@ -65,6 +65,29 @@ func TestMultipleCollectiblesAwardedOnAccept(t *testing.T) {
 	}
 }
 
+func TestFundCollectibleRewardTransitionsRewardKind(t *testing.T) {
+	pool := newPool(t)
+	collectibleStore := db.NewCollectibleStore(pool)
+
+	owner := createUser(t, pool, "collectible-fund-none")
+
+	noneTaskID := insertTaskWithRewardKind(t, pool, owner, "draft", "none")
+	noneCollectible := mintIntegrationCollectible(t, collectibleStore, owner, "None to collectible medal")
+	fundCollectible(t, collectibleStore, owner, noneTaskID, noneCollectible)
+	rewardKind, _ := taskRewardRow(t, pool, noneTaskID)
+	if rewardKind != "collectible" {
+		t.Fatalf("reward kind after funding a none-reward task with a collectible = %q, want collectible", rewardKind)
+	}
+
+	creditTaskID := insertTask(t, pool, owner, "draft", 15)
+	creditCollectible := mintIntegrationCollectible(t, collectibleStore, owner, "Credit to bundle medal")
+	fundCollectible(t, collectibleStore, owner, creditTaskID, creditCollectible)
+	bundleRewardKind, bundleRewardAmount := taskRewardRow(t, pool, creditTaskID)
+	if bundleRewardKind != "bundle" || bundleRewardAmount != 15 {
+		t.Fatalf("reward row after funding a credit-reward task with a collectible = (%q, %d), want (bundle, 15)", bundleRewardKind, bundleRewardAmount)
+	}
+}
+
 func TestMultipleCollectibleRefundReturnsAll(t *testing.T) {
 	pool := newPool(t)
 	collectibleStore := db.NewCollectibleStore(pool)

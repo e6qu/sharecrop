@@ -2237,6 +2237,80 @@
         }
       }
     },
+    "/api/organizations/{organization_id}/collectibles/{id}/award": {
+      "post": {
+        "operationId": "awardOrganizationCollectible",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "recipient_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "recipient_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "art": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "organization_id": {
+                      "type": "string"
+                    },
+                    "owner_id": {
+                      "type": "string"
+                    },
+                    "owner_kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "transfer_policy": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "state",
+                    "transfer_policy",
+                    "owner_id",
+                    "owner_kind",
+                    "organization_id",
+                    "art"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/organizations/{organization_id}/credentials": {
       "get": {
         "operationId": "listOrgCredentials",

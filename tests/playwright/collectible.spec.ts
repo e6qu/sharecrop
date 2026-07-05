@@ -10,9 +10,13 @@ interface TaskBody {
   id: string;
 }
 
-test("minting a collectible and awarding it to a task through the browser", async ({ page, request }) => {
-  const email = uniqueEmail("ui-collectible");
-
+async function registerLoginAndCreateTask(
+  page: import("@playwright/test").Page,
+  request: import("@playwright/test").APIRequestContext,
+  emailPrefix: string,
+  title: string,
+): Promise<TaskBody> {
+  const email = uniqueEmail(emailPrefix);
   const registerResponse = await request.post("/api/auth/register", {
     data: { email, password },
   });
@@ -21,11 +25,7 @@ test("minting a collectible and awarding it to a task through the browser", asyn
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },
-    data: taskRequest(
-      "Collectible reward task",
-      registerBody.subject_id,
-      "default",
-    ),
+    data: taskRequest(title, registerBody.subject_id, "default"),
   });
   expect(taskResponse.ok()).toBeTruthy();
   const task = (await taskResponse.json()) as TaskBody;
@@ -35,6 +35,17 @@ test("minting a collectible and awarding it to a task through the browser", asyn
   await page.getByTestId("password").fill(password);
   await page.getByTestId("login").click();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
+
+  return task;
+}
+
+test("minting a collectible and awarding it to a task through the browser", async ({ page, request }) => {
+  const task = await registerLoginAndCreateTask(
+    page,
+    request,
+    "ui-collectible",
+    "Collectible reward task",
+  );
 
   await page.getByTestId("nav-manage-menu").click();
   await page.getByTestId("nav-collectibles").click();
@@ -68,26 +79,13 @@ test("minting a collectible and awarding it to a task through the browser", asyn
 });
 
 test("awarding multiple collectibles shows the count on the task", async ({ page, request }) => {
-  const email = uniqueEmail("ui-multi-collectible");
-  const registerResponse = await request.post("/api/auth/register", {
-    data: { email, password },
-  });
-  expect(registerResponse.ok()).toBeTruthy();
-  const registerBody = (await registerResponse.json()) as AuthBody;
-
   const title = `Multi collectible ${crypto.randomUUID()}`;
-  const taskResponse = await request.post("/api/tasks", {
-    headers: { Authorization: `Bearer ${registerBody.access_token}` },
-    data: taskRequest(title, registerBody.subject_id, "default"),
-  });
-  expect(taskResponse.ok()).toBeTruthy();
-  const task = (await taskResponse.json()) as TaskBody;
-
-  await page.goto("/");
-  await page.getByTestId("email").fill(email);
-  await page.getByTestId("password").fill(password);
-  await page.getByTestId("login").click();
-  await expect(page.getByTestId("balance")).toHaveText("100 credits");
+  const task = await registerLoginAndCreateTask(
+    page,
+    request,
+    "ui-multi-collectible",
+    title,
+  );
 
   await page.getByTestId("nav-manage-menu").click();
   await page.getByTestId("nav-collectibles").click();
@@ -109,4 +107,35 @@ test("awarding multiple collectibles shows the count on the task", async ({ page
   await expect(
     page.getByTestId("task-row").filter({ hasText: title }),
   ).toContainText("2 collectibles");
+});
+
+test("a creator adds a collectible to a task's reward from the task detail page", async ({ page, request }) => {
+  const task = await registerLoginAndCreateTask(
+    page,
+    request,
+    "ui-detail-award",
+    `Detail-page award ${crypto.randomUUID()}`,
+  );
+
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByTestId("nav-collectibles").click();
+  await page.getByTestId("collectibles-mint").click();
+  const name = `Detail-page medal ${crypto.randomUUID()}`;
+  await page.getByTestId("collectible-name").fill(name);
+  await page.getByTestId("mint-collectible").click();
+  await expect(page.getByTestId("collectible-row").filter({ hasText: name }))
+    .toHaveCount(1);
+
+  await page.goto(`/#/tasks/${task.id}`);
+  await page.getByTestId("add-collectible-reward-panel").click();
+  await page
+    .getByTestId("collectible-row")
+    .filter({ hasText: name })
+    .getByTestId("award-collectible")
+    .click();
+  await expect(page.getByTestId("award-message")).toBeVisible();
+
+  // The task's reward kind transitioned from none to collectible, so the
+  // owner controls now offer the collectible-specific refund action.
+  await expect(page.getByTestId("refund-collectible")).toBeVisible();
 });

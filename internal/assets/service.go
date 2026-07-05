@@ -14,6 +14,15 @@ type Store interface {
 	FundCollectibleReward(context.Context, FundRewardStoreCommand) FundRewardResult
 	RefundCollectibleReward(context.Context, RefundRewardStoreCommand) RefundRewardResult
 	GiftCollectible(context.Context, GiftStoreCommand) GiftResult
+	AwardOrganizationCollectible(context.Context, AwardOrganizationCollectibleStoreCommand) GiftResult
+}
+
+// AwardOrganizationCollectibleStoreCommand carries a validated request to
+// transfer an organization-owned collectible to one of its active members.
+type AwardOrganizationCollectibleStoreCommand struct {
+	OrganizationID  core.OrganizationID
+	CollectibleID   core.CollectibleID
+	RecipientUserID core.UserID
 }
 
 // GiftStoreCommand carries a validated collectible tip (a voluntary transfer of
@@ -157,6 +166,19 @@ type GiftRejected struct {
 func (CollectibleGifted) giftResult() {}
 
 func (GiftRejected) giftResult() {}
+
+// AwardOrganizationCollectible transfers a collectible owned by an
+// organization to one of its active members. Caller-permission (an org
+// admin/owner) is checked by the HTTP layer before this is called;
+// ownership, org match, and membership are enforced in the store
+// transaction.
+func (service Service) AwardOrganizationCollectible(ctx context.Context, organizationID core.OrganizationID, collectibleID core.CollectibleID, recipientUserID core.UserID) GiftResult {
+	return service.store.AwardOrganizationCollectible(ctx, AwardOrganizationCollectibleStoreCommand{
+		OrganizationID:  organizationID,
+		CollectibleID:   collectibleID,
+		RecipientUserID: recipientUserID,
+	})
+}
 
 // GiftCollectible transfers an owned, transferable collectible to another user
 // (a review tip). Ownership, availability, and transfer policy are enforced in
