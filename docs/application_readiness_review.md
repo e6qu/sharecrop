@@ -386,13 +386,13 @@ Missing or partial:
   `org` (for `org.Permission`), so the reverse import would be a cycle. A
   future change to `authz`'s semantics won't automatically apply here unless
   someone extracts a shared lower-level package both can import.
-- `site/demo/backend.js` (the hand-maintained JS mock backend) is now
-  orphaned from the live browser demo — `site/demo/index.html` defaults to
-  the compiled Go/WASM backend and no longer has a code path that loads
-  `backend.js` at all — but it's still exercised directly by
-  `tests/deno/demo_backend_test.ts` and `tests/deno/scenario_parity_test.ts`.
-  Worth an explicit decision: restore a way to select it in the browser, or
-  deprecate it and its Deno tests now that WASM is authoritative.
+- Resolved: `site/demo/backend.js` (the hand-maintained JS mock backend) has
+  been removed, along with its two Deno tests, now that
+  `deno task check:scenario-parity:wasm` is CI-enforced replacement coverage
+  against the real, deployed WASM backend. The one accepted gap: no
+  equivalent exists for `backend.js`'s former route-drift-detection test
+  (real REST routes vs. a mock's route table) against the WASM dispatch
+  path.
 
 ## Suggested Delivery Sequence
 

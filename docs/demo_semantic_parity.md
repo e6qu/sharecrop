@@ -5,14 +5,18 @@ loads the real Elm client, `wasm-host.js`, Go's `wasm_exec.js`, and
 `sharecrop-wasm-backend.wasm`; `/api/*` requests are handled by the exported Go
 WASM request adapter and explicit browser host adapters.
 
-`site/demo/backend.js` is no longer loaded by `site/demo/index.html`. It remains
-legacy parity/test material until the old Deno route/shape checks are retired.
-It must not be treated as a fallback for the deployed demo.
+`site/demo/backend.js`, the hand-maintained JS mock backend the demo used
+before the WASM path, is removed. It was never loaded by `site/demo/index.html`
+after the WASM backend became the default, and its two Deno tests (a
+route-drift check and a scenario-parity run) were retired once
+`deno task check:scenario-parity:wasm` (below) was proven as CI-enforced
+replacement coverage against the real, deployed WASM backend. There is no
+current equivalent of `backend.js`'s route-drift check (real REST routes vs.
+a mock's route table) for the WASM dispatch path — that specific coverage
+is gone, a known and accepted trade-off, not an oversight.
 
 ## Current Checks
 
-- `deno test --allow-read tests/deno` still runs legacy demo route/shape checks
-  and shared scenario parity against `site/demo/backend.js`.
 - `deno task check:scenario-parity:wasm -- --wasm site/demo/sharecrop-wasm-backend.wasm`
   loads the compiled Go/WASM artifact, configures explicit host adapters, and
   runs the shared scenario parity suite through `sharecropHandleRequest`.

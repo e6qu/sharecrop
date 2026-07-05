@@ -5,20 +5,18 @@ Current priority from
 
 Active branch:
 
-1. `task/wasm-scenario-parity-ci` is in progress — wires
-   `deno task check:scenario-parity:wasm` into CI (new `wasm-scenario-parity`
-   job, new `make check-wasm-scenario-parity` target) as the replacement for
-   `site/demo/backend.js`'s scenario-parity coverage, *before* deleting
-   `backend.js` itself. The user confirmed: fully deprecate `backend.js`
-   (it's unreachable from the live browser demo, which only supports
-   `backend=wasm`), but build and prove the replacement first rather than
-   deleting and rebuilding after. `backend.js`'s route-drift-detection test
-   (`demo_backend_test.ts`, checking real REST routes against `backend.js`'s
-   route table) has no WASM-path equivalent and will be a real, accepted
-   coverage loss once `backend.js` is deleted in a follow-up task.
-   - Next: once this CI job is green and merged, delete `site/demo/backend.js`
-     and both its Deno tests (`demo_backend_test.ts`, `scenario_parity_test.ts`)
-     in their own task/PR.
+1. `task/deprecate-demo-backend-js` is in progress — deletes
+   `site/demo/backend.js` and its two Deno tests
+   (`tests/deno/demo_backend_test.ts`, `tests/deno/scenario_parity_test.ts`),
+   now that PR 129's `wasm-scenario-parity` CI job is merged and proven as
+   replacement scenario-parity coverage. The user confirmed full
+   deprecation explicitly. Updated docs that described `backend.js` as
+   "legacy, still present" (`docs/demo_semantic_parity.md`,
+   `docs/wasm_demo_backend_spike.md`, `docs/application_readiness_review.md`,
+   `BUGS.md`) to describe it as removed. The one accepted, permanent
+   coverage loss: no equivalent exists for the removed route-drift-detection
+   test (real REST routes vs. a mock's route table) against the WASM
+   dispatch path.
 
 2. Two large infrastructure efforts are confirmed as wanted but explicitly
    deferred (see memory for full detail, including empirical research

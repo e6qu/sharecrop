@@ -20,9 +20,9 @@ host also needs explicit adapters instead of implicit process, filesystem,
 network, or database assumptions.
 
 Current decision: `site/demo/index.html` defaults to the compiled Go/WASM
-backend. `site/demo/backend.js` is no longer loaded by the demo entrypoint; it
-remains only as legacy parity/test material while the compiled WASM path is the
-active static-demo backend. The shared scenario suite covers multi-actor
+backend, and is the only backend it supports — the legacy `site/demo/backend.js`
+JS mock and its Deno tests were removed once `deno task check:scenario-parity:wasm`
+was proven as CI-enforced replacement coverage. The shared scenario suite covers multi-actor
 reservation approval, worker submission, owner acceptance, payouts/tips,
 notifications, organization member provisioning/listing/role/deactivation,
 privacy request resolution, sensitive-field redaction state, moderation report
@@ -270,8 +270,7 @@ loads the compiled Go WASM binary through Go's `wasm_exec.js`, verifies the
 `sharecropHandleRequest` exports, verifies that requests fail before host
 configuration, configures explicit host storage/clock/actor/ID adapters, and
 runs the shared scenario parity suite through the exported request handler. The
-runner does not call `site/demo/backend.js` and does not emulate missing backend
-behavior.
+runner does not emulate missing backend behavior.
 
 `deno task wasm:demo:build` builds `cmd/sharecrop-wasm` into
 `site/demo/sharecrop-wasm-backend.wasm` and copies Go's `wasm_exec.js` into the
