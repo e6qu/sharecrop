@@ -83,6 +83,19 @@ jobs:
       - name: Build frontend and binary
         run: make build
 
+  wasm-scenario-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+      - uses: denoland/setup-deno@v2.0.4
+        with:
+          deno-version: v2.8.3
+      - name: WASM demo backend scenario parity
+        run: make check-wasm-scenario-parity
+
   db-checks:
     runs-on: ubuntu-latest
     services:

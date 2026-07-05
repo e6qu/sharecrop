@@ -5,47 +5,34 @@ Current priority from
 
 Active branch:
 
-1. `task/comprehensive-cleanup-boyscout` is in progress — a **second,
-   explicitly more exhaustive** clean-up pass, requested to act on every
-   remaining issue (including the two items the first pass, PR 122, had
-   flagged rather than fixed) plus any other bug/UI/API/performance/
-   concurrency issue found, related to the RBAC effort or not. Boy-scout
-   rule is now standing guidance for all future tasks in this project, not
-   just when explicitly requested (see memory).
-   - Resolved: `internal/org/service.go`'s authz-duplication flag — extracted
-     the shared org-actor-match check into a new `internal/orgactor` leaf
-     package both `internal/authz` and `internal/org` now call, instead of
-     `org` hand-rolling its own copy (fixes the import-cycle constraint
-     correctly rather than working around it).
-   - Fixed: a narrow TOCTOU race in the Postgres rate limiter's first-touch
-     handling of a brand-new key (verified by reasoning about Postgres's
-     `INSERT ... ON CONFLICT` semantics; the race window proved too narrow
-     to reliably reproduce locally even at 200 concurrent goroutines, so no
-     regression test was added rather than shipping one that would pass
-     regardless of the fix); every MCP session-store method panicking on
-     any transient DB error (crashing the whole process — serious given the
-     ~100-concurrent-SSE-session target), now logging and failing closed
-     instead, with a new regression test; two genuinely dead code paths
-     (an Elm `Api.elm` function, and an orphaned WASM-demo moderation
-     handler superseded by a different live implementation) that neither
-     `go tool deadcode` nor the Elm compiler catches on their own.
-   - Confirmed clean: `go test -race` across the whole suite, and the test
-     suite's wiring integrity (no skips, no orphaned build-tagged tests,
-     both Deno and Playwright genuinely live in CI).
-   - **Still open, not resolved**: `site/demo/backend.js`'s
-     restore-or-deprecate decision. A working WASM-based replacement for
-     its scenario-parity coverage was found and verified, but attempting
-     the deletion was correctly blocked by the safety classifier as
-     irreversible, and a follow-up clarifying question went unanswered — it
-     remains untouched, flagged for an explicit decision.
-   - Also newly confirmed as **separate, deferred future efforts** (not
-     part of this or any current PR; see memory for full detail): unifying
-     the backend into a single WASI-hosted WASM binary (no more separate
-     `cmd/sharecrop` native server and `internal/wasmdemo` reimplementation);
-     and moving MCP/SSE to HTTP/2 by default (HTTP/3-ready) to genuinely
-     support ~100 concurrent streaming sessions, while keeping HTTP/1.1 as
-     an explicit, supported option for regular UI/API traffic.
-   - See `STATUS.md`/`WHAT_WE_DID.md` for the full writeup.
+1. `task/wasm-scenario-parity-ci` is in progress — wires
+   `deno task check:scenario-parity:wasm` into CI (new `wasm-scenario-parity`
+   job, new `make check-wasm-scenario-parity` target) as the replacement for
+   `site/demo/backend.js`'s scenario-parity coverage, *before* deleting
+   `backend.js` itself. The user confirmed: fully deprecate `backend.js`
+   (it's unreachable from the live browser demo, which only supports
+   `backend=wasm`), but build and prove the replacement first rather than
+   deleting and rebuilding after. `backend.js`'s route-drift-detection test
+   (`demo_backend_test.ts`, checking real REST routes against `backend.js`'s
+   route table) has no WASM-path equivalent and will be a real, accepted
+   coverage loss once `backend.js` is deleted in a follow-up task.
+   - Next: once this CI job is green and merged, delete `site/demo/backend.js`
+     and both its Deno tests (`demo_backend_test.ts`, `scenario_parity_test.ts`)
+     in their own task/PR.
+
+2. Two large infrastructure efforts are confirmed as wanted but explicitly
+   deferred (see memory for full detail, including empirical research
+   already done): (a) unifying the backend into a single WASI-hosted WASM
+   binary compiled from the real domain services (mainline Go, not
+   TinyGo/Spin — TinyGo's `encoding/json` support is unreliable and this
+   codebase uses `encoding/json` pervasively), replacing `cmd/sharecrop`'s
+   native server and `internal/wasmdemo`'s separate reimplementation; a
+   spike plan exists at `docs/wasi_production_hosting_spike_plan.md` with
+   Phase 0/1 already verified (Phase 2, wiring one real store method through
+   the bridge to real Postgres, is the next step whenever this resumes);
+   (b) moving MCP/SSE to HTTP/2 by default (HTTP/3-ready) to genuinely
+   support ~100 concurrent streaming sessions, keeping HTTP/1.1 as an
+   explicit, supported option for regular UI/API traffic.
 
 2. `task/task-detail-reorder-profile-links-uiux` (PR 114, merged) refined
    the task detail and profile pages for usability at the user's explicit
