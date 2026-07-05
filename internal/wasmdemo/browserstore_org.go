@@ -65,52 +65,79 @@ func teamOrgIndexKey(organizationID string) string {
 func teamUserIndexKey(userID string) string { return "team:user_index:" + userID }
 func teamMembersKey(teamID string) string   { return "team:members:" + teamID }
 
-func (store OrgBrowserStore) putJSON(rawKey string, value any) bool {
-	encoded, err := json.Marshal(value)
+func putStoredOrganizationJSON(storage BrowserStorage, rawKey string, record storedOrganization) bool {
+	encoded, err := json.Marshal(record)
 	if err != nil {
 		return false
 	}
-	keyResult := NewStorageKey(rawKey)
-	key, keyMatched := keyResult.(StorageKeyAccepted)
-	if !keyMatched {
-		return false
-	}
-	_, matched := store.storage.Put(key.Value, string(encoded)).(StorageWritten)
-	return matched
+	return putStorageString(storage, rawKey, string(encoded))
 }
 
-func (store OrgBrowserStore) getJSON(rawKey string, out any) (bool, bool) {
-	keyResult := NewStorageKey(rawKey)
-	key, keyMatched := keyResult.(StorageKeyAccepted)
-	if !keyMatched {
-		return false, false
+func getStoredOrganizationJSON(storage BrowserStorage, rawKey string) (storedOrganization, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedOrganization{}, found, ok
 	}
-	readResult := store.storage.Get(key.Value)
-	if _, missing := readResult.(StorageMissing); missing {
-		return false, true
+	var record storedOrganization
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedOrganization{}, false, false
 	}
-	read, readMatched := readResult.(StorageRead)
-	if !readMatched {
-		return false, false
+	return record, true, true
+}
+
+// putStoredMembershipJSON/getStoredMembershipJSON are package-level (not
+// OrgBrowserStore methods) since AssetBrowserStore.AwardOrganizationCollectible
+// also reads membership records directly, sharing this one storage format.
+func putStoredMembershipJSON(storage BrowserStorage, rawKey string, record storedMembership) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
 	}
-	if err := json.Unmarshal([]byte(read.Value), out); err != nil {
-		return false, false
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredMembershipJSON(storage BrowserStorage, rawKey string) (storedMembership, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedMembership{}, found, ok
 	}
-	return true, true
+	var record storedMembership
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedMembership{}, false, false
+	}
+	return record, true, true
+}
+
+func putStoredTeamJSON(storage BrowserStorage, rawKey string, record storedTeam) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredTeamJSON(storage BrowserStorage, rawKey string) (storedTeam, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedTeam{}, found, ok
+	}
+	var record storedTeam
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedTeam{}, false, false
+	}
+	return record, true, true
 }
 
 // lookupUserIDByEmail reuses AuthBrowserStore's own email index directly
 // (same underlying BrowserStorage, same package) rather than duplicating a
 // second user-directory concept.
 func (store OrgBrowserStore) lookupUserIDByEmail(email string) (string, bool, bool) {
-	var userID string
-	found, ok := store.getJSON(authUserEmailKey(email), &userID)
-	return userID, found, ok
+	return getStorageString(store.storage, authUserEmailKey(email))
 }
 
 func (store OrgBrowserStore) CreateOrganization(_ context.Context, organizationID core.OrganizationID, name org.OrganizationName, createdBy core.UserID, membershipID core.OrganizationMembershipID) org.CreateOrganizationStoreResult {
 	record := storedOrganization{ID: organizationID.String(), Name: name.String(), CreatedBy: createdBy.String()}
-	if !store.putJSON(orgRecordKey(record.ID), record) {
+	if !putStoredOrganizationJSON(store.storage, orgRecordKey(record.ID), record) {
 		return org.CreateOrganizationStoreRejected{Reason: invalidState("insert organization failed")}
 	}
 
@@ -149,7 +176,7 @@ func (store OrgBrowserStore) insertOrganizationCreditGrant(organizationID string
 }
 
 func (store OrgBrowserStore) saveMembership(membership storedMembership) bool {
-	if !store.putJSON(orgMembershipKey(membership.ID), membership) {
+	if !putStoredMembershipJSON(store.storage, orgMembershipKey(membership.ID), membership) {
 		return false
 	}
 	if _, matched := appendStringIndex(store.storage, orgMembershipIndexKey(membership.OrganizationID), membership.ID, "organization membership").(stringIndexStored); !matched {
@@ -158,7 +185,7 @@ func (store OrgBrowserStore) saveMembership(membership storedMembership) bool {
 	if _, matched := appendStringIndex(store.storage, orgUserOrgsIndexKey(membership.UserID), membership.OrganizationID, "user organization").(stringIndexStored); !matched {
 		return false
 	}
-	if !store.putJSON(orgActiveMembershipKey(membership.OrganizationID, membership.UserID), membership.ID) {
+	if !putStorageString(store.storage, orgActiveMembershipKey(membership.OrganizationID, membership.UserID), membership.ID) {
 		return false
 	}
 	return true
@@ -180,16 +207,14 @@ func (store OrgBrowserStore) ListOrganizationsForUser(_ context.Context, userID 
 		}
 		seen[organizationID] = true
 
-		var membershipID string
-		found, ok := store.getJSON(orgActiveMembershipKey(organizationID, userID.String()), &membershipID)
+		membershipID, found, ok := getStorageString(store.storage, orgActiveMembershipKey(organizationID, userID.String()))
 		if !ok {
 			return org.ListOrganizationsRejected{Reason: invalidState("find active membership failed")}
 		}
 		if !found {
 			continue
 		}
-		var membership storedMembership
-		membershipFound, membershipOK := store.getJSON(orgMembershipKey(membershipID), &membership)
+		membership, membershipFound, membershipOK := getStoredMembershipJSON(store.storage, orgMembershipKey(membershipID))
 		if !membershipOK {
 			return org.ListOrganizationsRejected{Reason: invalidState("read membership failed")}
 		}
@@ -197,8 +222,7 @@ func (store OrgBrowserStore) ListOrganizationsForUser(_ context.Context, userID 
 			continue
 		}
 
-		var record storedOrganization
-		orgFound, orgOK := store.getJSON(orgRecordKey(organizationID), &record)
+		record, orgFound, orgOK := getStoredOrganizationJSON(store.storage, orgRecordKey(organizationID))
 		if !orgOK {
 			return org.ListOrganizationsRejected{Reason: invalidState("read organization failed")}
 		}
@@ -295,16 +319,14 @@ func parseStoredMembership(record storedMembership) (org.OrganizationMember, *co
 }
 
 func (store OrgBrowserStore) FindMemberRoles(_ context.Context, organizationID core.OrganizationID, userID core.UserID) org.MemberRolesResult {
-	var membershipID string
-	found, ok := store.getJSON(orgActiveMembershipKey(organizationID.String(), userID.String()), &membershipID)
+	membershipID, found, ok := getStorageString(store.storage, orgActiveMembershipKey(organizationID.String(), userID.String()))
 	if !ok {
 		return org.MemberRolesRejected{Reason: invalidState("find member roles failed")}
 	}
 	if !found {
 		return org.MemberRolesMissing{}
 	}
-	var membership storedMembership
-	membershipFound, membershipOK := store.getJSON(orgMembershipKey(membershipID), &membership)
+	membership, membershipFound, membershipOK := getStoredMembershipJSON(store.storage, orgMembershipKey(membershipID))
 	if !membershipOK {
 		return org.MemberRolesRejected{Reason: invalidState("read membership failed")}
 	}
@@ -332,8 +354,7 @@ func (store OrgBrowserStore) ListMembers(_ context.Context, organizationID core.
 
 	values := make([]org.OrganizationMember, 0, len(loaded.values))
 	for _, membershipID := range loaded.values {
-		var record storedMembership
-		found, ok := store.getJSON(orgMembershipKey(membershipID), &record)
+		record, found, ok := getStoredMembershipJSON(store.storage, orgMembershipKey(membershipID))
 		if !ok {
 			return org.ListMembersRejected{Reason: invalidState("read membership failed")}
 		}
@@ -390,16 +411,14 @@ func (store OrgBrowserStore) ProvisionMember(_ context.Context, membershipID cor
 }
 
 func (store OrgBrowserStore) DeactivateMember(_ context.Context, organizationID core.OrganizationID, userID core.UserID) org.DeactivateMemberStoreResult {
-	var membershipID string
-	found, ok := store.getJSON(orgActiveMembershipKey(organizationID.String(), userID.String()), &membershipID)
+	membershipID, found, ok := getStorageString(store.storage, orgActiveMembershipKey(organizationID.String(), userID.String()))
 	if !ok {
 		return org.DeactivateMemberStoreRejected{Reason: invalidState("deactivate member failed")}
 	}
 	if !found {
 		return org.DeactivateMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "active organization member was not found")}
 	}
-	var membership storedMembership
-	membershipFound, membershipOK := store.getJSON(orgMembershipKey(membershipID), &membership)
+	membership, membershipFound, membershipOK := getStoredMembershipJSON(store.storage, orgMembershipKey(membershipID))
 	if !membershipOK {
 		return org.DeactivateMemberStoreRejected{Reason: invalidState("read membership failed")}
 	}
@@ -407,23 +426,21 @@ func (store OrgBrowserStore) DeactivateMember(_ context.Context, organizationID 
 		return org.DeactivateMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "active organization member was not found")}
 	}
 	membership.Status = org.MembershipStatusDeactivated.String()
-	if !store.putJSON(orgMembershipKey(membershipID), membership) {
+	if !putStoredMembershipJSON(store.storage, orgMembershipKey(membershipID), membership) {
 		return org.DeactivateMemberStoreRejected{Reason: invalidState("deactivate member failed")}
 	}
 	return org.MemberDeactivated{}
 }
 
 func (store OrgBrowserStore) UpdateMemberRoles(_ context.Context, organizationID core.OrganizationID, userID core.UserID, roles []org.Role) org.UpdateMemberRolesStoreResult {
-	var membershipID string
-	found, ok := store.getJSON(orgActiveMembershipKey(organizationID.String(), userID.String()), &membershipID)
+	membershipID, found, ok := getStorageString(store.storage, orgActiveMembershipKey(organizationID.String(), userID.String()))
 	if !ok {
 		return org.UpdateMemberRolesStoreRejected{Reason: invalidState("update member roles failed")}
 	}
 	if !found {
 		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "active organization member was not found")}
 	}
-	var membership storedMembership
-	membershipFound, membershipOK := store.getJSON(orgMembershipKey(membershipID), &membership)
+	membership, membershipFound, membershipOK := getStoredMembershipJSON(store.storage, orgMembershipKey(membershipID))
 	if !membershipOK {
 		return org.UpdateMemberRolesStoreRejected{Reason: invalidState("read membership failed")}
 	}
@@ -435,7 +452,7 @@ func (store OrgBrowserStore) UpdateMemberRoles(_ context.Context, organizationID
 		rawRoles[index] = role.String()
 	}
 	membership.Roles = rawRoles
-	if !store.putJSON(orgMembershipKey(membershipID), membership) {
+	if !putStoredMembershipJSON(store.storage, orgMembershipKey(membershipID), membership) {
 		return org.UpdateMemberRolesStoreRejected{Reason: invalidState("update member roles failed")}
 	}
 	member, parseErr := parseStoredMembership(membership)
@@ -446,7 +463,7 @@ func (store OrgBrowserStore) UpdateMemberRoles(_ context.Context, organizationID
 }
 
 func (store OrgBrowserStore) saveTeam(record storedTeam) bool {
-	if !store.putJSON(teamRecordKey(record.ID), record) {
+	if !putStoredTeamJSON(store.storage, teamRecordKey(record.ID), record) {
 		return false
 	}
 	if record.OwnerKind == "organization" {
@@ -562,8 +579,7 @@ func (store OrgBrowserStore) listTeams(indexKey string, query string, page core.
 	cleanQuery := strings.ToLower(strings.TrimSpace(query))
 	values := make([]org.Team, 0, len(loaded.values))
 	for _, teamID := range loaded.values {
-		var record storedTeam
-		found, ok := store.getJSON(teamRecordKey(teamID), &record)
+		record, found, ok := getStoredTeamJSON(store.storage, teamRecordKey(teamID))
 		if !ok {
 			return org.TeamListRejected{Reason: invalidState("read team failed")}
 		}
@@ -604,8 +620,7 @@ func (store OrgBrowserStore) ListStandaloneTeams(_ context.Context, ownerUserID 
 }
 
 func (store OrgBrowserStore) FindTeam(_ context.Context, teamID core.TeamID) org.FindTeamResult {
-	var record storedTeam
-	found, ok := store.getJSON(teamRecordKey(teamID.String()), &record)
+	record, found, ok := getStoredTeamJSON(store.storage, teamRecordKey(teamID.String()))
 	if !ok {
 		return org.TeamMissing{Reason: invalidState("find team failed")}
 	}

@@ -47,43 +47,60 @@ func taskUserIndexKey(userID string) string {
 }
 func taskPublicIndexKey() string { return "task:public_index" }
 
-func putTaskJSON(storage BrowserStorage, rawKey string, value any) bool {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return false
-	}
+// putStorageString and getStorageString are the shared, type-free byte-level
+// primitives every typed put*/get* helper below builds on - kept to plain
+// strings (not a generic helper over an unconstrained type) so each stored
+// type gets its own small, explicit marshal/unmarshal wrapper instead of one
+// generic one.
+func putStorageString(storage BrowserStorage, rawKey string, value string) bool {
 	keyResult := NewStorageKey(rawKey)
 	key, keyMatched := keyResult.(StorageKeyAccepted)
 	if !keyMatched {
 		return false
 	}
-	_, matched := storage.Put(key.Value, string(encoded)).(StorageWritten)
+	_, matched := storage.Put(key.Value, value).(StorageWritten)
 	return matched
 }
 
-func getTaskJSON(storage BrowserStorage, rawKey string, out any) (bool, bool) {
+func getStorageString(storage BrowserStorage, rawKey string) (string, bool, bool) {
 	keyResult := NewStorageKey(rawKey)
 	key, keyMatched := keyResult.(StorageKeyAccepted)
 	if !keyMatched {
-		return false, false
+		return "", false, false
 	}
 	readResult := storage.Get(key.Value)
 	if _, missing := readResult.(StorageMissing); missing {
-		return false, true
+		return "", false, true
 	}
 	read, readMatched := readResult.(StorageRead)
 	if !readMatched {
-		return false, false
+		return "", false, false
 	}
-	if err := json.Unmarshal([]byte(read.Value), out); err != nil {
-		return false, false
+	return read.Value, true, true
+}
+
+func putStoredTaskRecordJSON(storage BrowserStorage, rawKey string, record storedTaskRecord) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
 	}
-	return true, true
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredTaskRecordJSON(storage BrowserStorage, rawKey string) (storedTaskRecord, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedTaskRecord{}, found, ok
+	}
+	var record storedTaskRecord
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedTaskRecord{}, false, false
+	}
+	return record, true, true
 }
 
 func loadStoredTaskRecord(storage BrowserStorage, taskID string) (storedTaskRecord, bool, *core.DomainError) {
-	var record storedTaskRecord
-	found, ok := getTaskJSON(storage, taskRecordKey(taskID), &record)
+	record, found, ok := getStoredTaskRecordJSON(storage, taskRecordKey(taskID))
 	if !ok {
 		reason := invalidState("task lookup failed")
 		return storedTaskRecord{}, false, &reason
@@ -95,7 +112,7 @@ func loadStoredTaskRecord(storage BrowserStorage, taskID string) (storedTaskReco
 }
 
 func saveStoredTaskRecord(storage BrowserStorage, record storedTaskRecord) bool {
-	return putTaskJSON(storage, taskRecordKey(record.ID), record)
+	return putStoredTaskRecordJSON(storage, taskRecordKey(record.ID), record)
 }
 
 func ownerSQLColumnsBrowser(owner task.Owner) (kind string, userID string, teamID string, organizationID string) {

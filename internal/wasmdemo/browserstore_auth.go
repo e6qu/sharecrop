@@ -16,7 +16,7 @@ import (
 // auth.Service (the same code cmd/sharecrop runs against Postgres, including
 // real password hashing/verification and real refresh-token rotation with
 // reuse detection) can serve the browser demo directly, instead of
-// internal/wasmdemo's own simplified auth handling (which today accepts any
+// internal/wasmdemo's own simplified auth handling (which today accepts every
 // password and never rotates refresh tokens).
 type AuthBrowserStore struct {
 	storage BrowserStorage
@@ -62,40 +62,67 @@ func authAccountTokenActiveKey(userID string, kind string) string {
 	return "auth:account_token_active:" + userID + ":" + kind
 }
 
-func (store AuthBrowserStore) putJSON(rawKey string, value any) bool {
-	encoded, err := json.Marshal(value)
+func putStoredAuthUserJSON(storage BrowserStorage, rawKey string, record storedAuthUser) bool {
+	encoded, err := json.Marshal(record)
 	if err != nil {
 		return false
 	}
-	keyResult := NewStorageKey(rawKey)
-	key, keyMatched := keyResult.(StorageKeyAccepted)
-	if !keyMatched {
-		return false
-	}
-	_, matched := store.storage.Put(key.Value, string(encoded)).(StorageWritten)
-	return matched
+	return putStorageString(storage, rawKey, string(encoded))
 }
 
-// getJSON returns (found, ok) - found is false for a missing key (not an
-// error); ok is false only for a genuine storage/decoding failure.
-func (store AuthBrowserStore) getJSON(rawKey string, out any) (bool, bool) {
-	keyResult := NewStorageKey(rawKey)
-	key, keyMatched := keyResult.(StorageKeyAccepted)
-	if !keyMatched {
-		return false, false
+// getStoredAuthUserJSON returns (record, found, ok) - found is false for a
+// missing key (not an error); ok is false only for a genuine storage/
+// decoding failure.
+func getStoredAuthUserJSON(storage BrowserStorage, rawKey string) (storedAuthUser, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedAuthUser{}, found, ok
 	}
-	readResult := store.storage.Get(key.Value)
-	if _, missing := readResult.(StorageMissing); missing {
-		return false, true
+	var record storedAuthUser
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedAuthUser{}, false, false
 	}
-	read, readMatched := readResult.(StorageRead)
-	if !readMatched {
-		return false, false
+	return record, true, true
+}
+
+func putStoredRefreshTokenJSON(storage BrowserStorage, rawKey string, record storedRefreshToken) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
 	}
-	if err := json.Unmarshal([]byte(read.Value), out); err != nil {
-		return false, false
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredRefreshTokenJSON(storage BrowserStorage, rawKey string) (storedRefreshToken, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedRefreshToken{}, found, ok
 	}
-	return true, true
+	var record storedRefreshToken
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedRefreshToken{}, false, false
+	}
+	return record, true, true
+}
+
+func putStoredAccountTokenJSON(storage BrowserStorage, rawKey string, record storedAccountToken) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredAccountTokenJSON(storage BrowserStorage, rawKey string) (storedAccountToken, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedAccountToken{}, found, ok
+	}
+	var record storedAccountToken
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedAccountToken{}, false, false
+	}
+	return record, true, true
 }
 
 func invalidState(reason string) core.DomainError {
@@ -104,8 +131,7 @@ func invalidState(reason string) core.DomainError {
 
 func (store AuthBrowserStore) CreateUserCredential(_ context.Context, id core.UserID, email auth.EmailAddress, passwordHash auth.PasswordHash) auth.StoreUserResult {
 	emailKey := authUserEmailKey(email.String())
-	var existingID string
-	found, ok := store.getJSON(emailKey, &existingID)
+	_, found, ok := getStorageString(store.storage, emailKey)
 	if !ok {
 		return auth.StoreUserRejected{Reason: invalidState("user email lookup failed")}
 	}
@@ -114,10 +140,10 @@ func (store AuthBrowserStore) CreateUserCredential(_ context.Context, id core.Us
 	}
 
 	record := storedAuthUser{ID: id.String(), Email: email.String(), PasswordHash: passwordHash.String(), Status: "active"}
-	if !store.putJSON(authUserKey(id.String()), record) {
+	if !putStoredAuthUserJSON(store.storage, authUserKey(id.String()), record) {
 		return auth.StoreUserRejected{Reason: invalidState("insert user failed")}
 	}
-	if !store.putJSON(emailKey, id.String()) {
+	if !putStorageString(store.storage, emailKey, id.String()) {
 		return auth.StoreUserRejected{Reason: invalidState("insert user email index failed")}
 	}
 	indexResult := appendStringIndex(store.storage, authUserIndexKey(), id.String(), "user")
@@ -151,8 +177,7 @@ func (store AuthBrowserStore) insertSignupGrant(ownerKind string, ownerID string
 }
 
 func (store AuthBrowserStore) FindCredentialByEmail(_ context.Context, email auth.EmailAddress) auth.CredentialLookupResult {
-	var userID string
-	found, ok := store.getJSON(authUserEmailKey(email.String()), &userID)
+	userID, found, ok := getStorageString(store.storage, authUserEmailKey(email.String()))
 	if !ok {
 		return auth.CredentialLookupRejected{Reason: invalidState("user email lookup failed")}
 	}
@@ -167,8 +192,7 @@ func (store AuthBrowserStore) FindCredentialByUserID(_ context.Context, userID c
 }
 
 func (store AuthBrowserStore) findCredentialByUserID(rawUserID string) auth.CredentialLookupResult {
-	var record storedAuthUser
-	found, ok := store.getJSON(authUserKey(rawUserID), &record)
+	record, found, ok := getStoredAuthUserJSON(store.storage, authUserKey(rawUserID))
 	if !ok {
 		return auth.CredentialLookupRejected{Reason: invalidState("user lookup failed")}
 	}
@@ -208,8 +232,7 @@ func (store AuthBrowserStore) ListUsers(_ context.Context, query string, page co
 	cleanQuery := strings.ToLower(strings.TrimSpace(query))
 	matching := make([]auth.UserDirectoryEntry, 0, len(loaded.values))
 	for _, id := range loaded.values {
-		var record storedAuthUser
-		found, ok := store.getJSON(authUserKey(id), &record)
+		record, found, ok := getStoredAuthUserJSON(store.storage, authUserKey(id))
 		if !ok {
 			return auth.UserDirectoryRejected{Reason: invalidState("user lookup failed")}
 		}
@@ -248,8 +271,7 @@ func (store AuthBrowserStore) ListUsers(_ context.Context, query string, page co
 }
 
 func (store AuthBrowserStore) updateUser(userID string, mutate func(*storedAuthUser)) auth.AccountMutationResult {
-	var record storedAuthUser
-	found, ok := store.getJSON(authUserKey(userID), &record)
+	record, found, ok := getStoredAuthUserJSON(store.storage, authUserKey(userID))
 	if !ok {
 		return auth.AccountMutationRejected{Reason: invalidState("user lookup failed")}
 	}
@@ -257,7 +279,7 @@ func (store AuthBrowserStore) updateUser(userID string, mutate func(*storedAuthU
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "user was not found")}
 	}
 	mutate(&record)
-	if !store.putJSON(authUserKey(userID), record) {
+	if !putStoredAuthUserJSON(store.storage, authUserKey(userID), record) {
 		return auth.AccountMutationRejected{Reason: invalidState("update user failed")}
 	}
 	return auth.AccountMutationAccepted{}
@@ -276,7 +298,7 @@ func (store AuthBrowserStore) DeactivateUser(_ context.Context, userID core.User
 }
 
 func (store AuthBrowserStore) CreateGuestSubject(_ context.Context, id core.GuestID) auth.StoreGuestResult {
-	if !store.putJSON(authGuestKey(id.String()), map[string]string{"id": id.String()}) {
+	if !putStorageString(store.storage, authGuestKey(id.String()), id.String()) {
 		return auth.StoreGuestRejected{Reason: invalidState("insert guest subject failed")}
 	}
 	return auth.StoreGuestAccepted{}
@@ -303,7 +325,7 @@ func (store AuthBrowserStore) StoreRefreshToken(_ context.Context, record auth.R
 		Status:      "active",
 		ExpiresAt:   record.ExpiresAt.UnixNano(),
 	}
-	if !store.putJSON(authRefreshKey(record.Hash.String()), stored) {
+	if !putStoredRefreshTokenJSON(store.storage, authRefreshKey(record.Hash.String()), stored) {
 		return auth.StoreRefreshTokenRejected{Reason: invalidState("insert refresh token failed")}
 	}
 	indexResult := appendStringIndex(store.storage, authFamilyIndexKey(stored.FamilyID), record.Hash.String(), "refresh token family")
@@ -314,8 +336,7 @@ func (store AuthBrowserStore) StoreRefreshToken(_ context.Context, record auth.R
 }
 
 func (store AuthBrowserStore) RevokeRefreshFamily(_ context.Context, hash auth.RefreshTokenHash) auth.RevokeRefreshFamilyResult {
-	var presented storedRefreshToken
-	found, ok := store.getJSON(authRefreshKey(hash.String()), &presented)
+	presented, found, ok := getStoredRefreshTokenJSON(store.storage, authRefreshKey(hash.String()))
 	if !ok {
 		return auth.RevokeRefreshFamilyRejected{Reason: invalidState("revoke refresh family failed")}
 	}
@@ -338,8 +359,7 @@ func (store AuthBrowserStore) revokeFamily(familyID string) bool {
 		return false
 	}
 	for _, hash := range loaded.values {
-		var token storedRefreshToken
-		found, ok := store.getJSON(authRefreshKey(hash), &token)
+		token, found, ok := getStoredRefreshTokenJSON(store.storage, authRefreshKey(hash))
 		if !ok {
 			return false
 		}
@@ -347,7 +367,7 @@ func (store AuthBrowserStore) revokeFamily(familyID string) bool {
 			continue
 		}
 		token.Status = "revoked"
-		if !store.putJSON(authRefreshKey(hash), token) {
+		if !putStoredRefreshTokenJSON(store.storage, authRefreshKey(hash), token) {
 			return false
 		}
 	}
@@ -357,8 +377,7 @@ func (store AuthBrowserStore) revokeFamily(familyID string) bool {
 func authFamilyIndexKey(familyID string) string { return "auth:refresh_family:" + familyID }
 
 func (store AuthBrowserStore) ConsumeRefreshToken(_ context.Context, hash auth.RefreshTokenHash, consumedAt time.Time) auth.ConsumeRefreshTokenResult {
-	var token storedRefreshToken
-	found, ok := store.getJSON(authRefreshKey(hash.String()), &token)
+	token, found, ok := getStoredRefreshTokenJSON(store.storage, authRefreshKey(hash.String()))
 	if !ok {
 		return auth.ConsumeRefreshTokenRejected{Reason: invalidState("consume refresh token failed")}
 	}
@@ -379,7 +398,7 @@ func (store AuthBrowserStore) ConsumeRefreshToken(_ context.Context, hash auth.R
 	}
 
 	token.Status = "consumed"
-	if !store.putJSON(authRefreshKey(hash.String()), token) {
+	if !putStoredRefreshTokenJSON(store.storage, authRefreshKey(hash.String()), token) {
 		return auth.ConsumeRefreshTokenRejected{Reason: invalidState("consume refresh token failed")}
 	}
 
@@ -411,20 +430,18 @@ func (store AuthBrowserStore) ConsumeRefreshToken(_ context.Context, hash auth.R
 
 func (store AuthBrowserStore) StoreAccountToken(_ context.Context, userID core.UserID, kind auth.AccountTokenKind, token auth.AccountToken) auth.AccountTokenStoreResult {
 	activeKey := authAccountTokenActiveKey(userID.String(), kind.String())
-	var previousHash string
-	found, ok := store.getJSON(activeKey, &previousHash)
+	previousHash, found, ok := getStorageString(store.storage, activeKey)
 	if !ok {
 		return auth.AccountTokenStoreRejected{Reason: invalidState("revoke previous account tokens failed")}
 	}
 	if found {
-		var previous storedAccountToken
-		previousFound, previousOK := store.getJSON(authAccountTokenKey(previousHash), &previous)
+		previous, previousFound, previousOK := getStoredAccountTokenJSON(store.storage, authAccountTokenKey(previousHash))
 		if !previousOK {
 			return auth.AccountTokenStoreRejected{Reason: invalidState("revoke previous account tokens failed")}
 		}
 		if previousFound {
 			previous.Status = "revoked"
-			if !store.putJSON(authAccountTokenKey(previousHash), previous) {
+			if !putStoredAccountTokenJSON(store.storage, authAccountTokenKey(previousHash), previous) {
 				return auth.AccountTokenStoreRejected{Reason: invalidState("revoke previous account tokens failed")}
 			}
 		}
@@ -437,18 +454,17 @@ func (store AuthBrowserStore) StoreAccountToken(_ context.Context, userID core.U
 		Status:    "active",
 		ExpiresAt: token.ExpiresAt.UnixNano(),
 	}
-	if !store.putJSON(authAccountTokenKey(token.Hash.String()), stored) {
+	if !putStoredAccountTokenJSON(store.storage, authAccountTokenKey(token.Hash.String()), stored) {
 		return auth.AccountTokenStoreRejected{Reason: invalidState("store account token failed")}
 	}
-	if !store.putJSON(activeKey, token.Hash.String()) {
+	if !putStorageString(store.storage, activeKey, token.Hash.String()) {
 		return auth.AccountTokenStoreRejected{Reason: invalidState("store account token failed")}
 	}
 	return auth.AccountTokenStored{}
 }
 
 func (store AuthBrowserStore) ConsumeAccountToken(_ context.Context, kind auth.AccountTokenKind, hash auth.AccountTokenHash, now time.Time) auth.AccountTokenConsumeResult {
-	var token storedAccountToken
-	found, ok := store.getJSON(authAccountTokenKey(hash.String()), &token)
+	token, found, ok := getStoredAccountTokenJSON(store.storage, authAccountTokenKey(hash.String()))
 	if !ok {
 		return auth.AccountTokenConsumeRejected{Reason: invalidState("account token lookup failed")}
 	}
@@ -459,7 +475,7 @@ func (store AuthBrowserStore) ConsumeAccountToken(_ context.Context, kind auth.A
 		return auth.AccountTokenNotConsumed{}
 	}
 	token.Status = "consumed"
-	if !store.putJSON(authAccountTokenKey(hash.String()), token) {
+	if !putStoredAccountTokenJSON(store.storage, authAccountTokenKey(hash.String()), token) {
 		return auth.AccountTokenConsumeRejected{Reason: invalidState("consume account token failed")}
 	}
 	if kind == auth.AccountTokenKindEmailVerification {

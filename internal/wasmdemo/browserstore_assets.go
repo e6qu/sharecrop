@@ -2,6 +2,7 @@ package wasmdemo
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -42,9 +43,28 @@ func taskCollectibleRewardIndexKey(taskID string) string {
 	return "assets:task_reward_index:" + taskID
 }
 
-func (store AssetBrowserStore) loadCollectible(id string) (storedCollectible, bool, *core.DomainError) {
+func putStoredCollectibleJSON(storage BrowserStorage, rawKey string, record storedCollectible) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredCollectibleJSON(storage BrowserStorage, rawKey string) (storedCollectible, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedCollectible{}, found, ok
+	}
 	var record storedCollectible
-	found, ok := getTaskJSON(store.storage, collectibleRecordKey(id), &record)
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedCollectible{}, false, false
+	}
+	return record, true, true
+}
+
+func (store AssetBrowserStore) loadCollectible(id string) (storedCollectible, bool, *core.DomainError) {
+	record, found, ok := getStoredCollectibleJSON(store.storage, collectibleRecordKey(id))
 	if !ok {
 		reason := invalidState("collectible lookup failed")
 		return storedCollectible{}, false, &reason
@@ -53,7 +73,7 @@ func (store AssetBrowserStore) loadCollectible(id string) (storedCollectible, bo
 }
 
 func (store AssetBrowserStore) saveCollectible(record storedCollectible) bool {
-	return putTaskJSON(store.storage, collectibleRecordKey(record.ID), record)
+	return putStoredCollectibleJSON(store.storage, collectibleRecordKey(record.ID), record)
 }
 
 func parseStoredCollectible(record storedCollectible) (assets.Collectible, *core.DomainError) {
@@ -239,7 +259,7 @@ func (store AssetBrowserStore) RefundCollectibleReward(_ context.Context, comman
 // task to "minted" and reports the released collectibles - shared by
 // RefundCollectibleReward (a genuine collectible-reward refund request) and
 // LedgerBrowserStore.RefundTask (a credit refund on a bundle task, which
-// must also release any collectible half).
+// must also release its collectible half).
 func (store AssetBrowserStore) releaseHeldCollectibleReward(taskID string) ([]assets.Collectible, *core.DomainError) {
 	indexResult := loadStringIndex(store.storage, taskCollectibleRewardIndexKey(taskID), "task collectible reward")
 	loaded, matched := indexResult.(stringIndexLoaded)
@@ -325,15 +345,13 @@ func (store AssetBrowserStore) AwardOrganizationCollectible(_ context.Context, c
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to award")}
 	}
 
-	var membershipID string
-	memberFound, ok := getTaskJSON(store.storage, orgActiveMembershipKey(command.OrganizationID.String(), command.RecipientUserID.String()), &membershipID)
+	membershipID, memberFound, ok := getStorageString(store.storage, orgActiveMembershipKey(command.OrganizationID.String(), command.RecipientUserID.String()))
 	if !ok {
 		return assets.GiftRejected{Reason: invalidState("check organization membership failed")}
 	}
 	isActiveMember := false
 	if memberFound {
-		var membership storedMembership
-		membershipFound, membershipOK := getTaskJSON(store.storage, orgMembershipKey(membershipID), &membership)
+		membership, membershipFound, membershipOK := getStoredMembershipJSON(store.storage, orgMembershipKey(membershipID))
 		isActiveMember = membershipOK && membershipFound && membership.Status == org.MembershipStatusActive.String()
 	}
 	if !isActiveMember {

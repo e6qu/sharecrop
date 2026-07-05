@@ -127,7 +127,7 @@ func TestTaskBrowserStoreOpenSucceedsAfterFunding(t *testing.T) {
 	ownerSubject := auth.UserSubject{ID: owner}
 
 	// No explicit signup grant needed: LedgerBalance (interaction_storage.go)
-	// already returns a 100-credit baseline for any user-kind owner even
+	// already returns a 100-credit baseline for every user-kind owner even
 	// with zero entries (the same quirk documented in
 	// browserstore_ledger_test.go) - enough to fund 30 credits below.
 	rewardResult := task.NewCreditRewardAmount(30)

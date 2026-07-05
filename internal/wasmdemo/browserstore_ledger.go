@@ -2,6 +2,7 @@ package wasmdemo
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/e6qu/sharecrop/internal/core"
@@ -46,9 +47,28 @@ type storedTaskEscrow struct {
 
 func taskEscrowKey(taskID string) string { return "ledger:escrow:" + taskID }
 
-func (store LedgerBrowserStore) loadEscrow(taskID string) (storedTaskEscrow, bool, *core.DomainError) {
+func putStoredTaskEscrowJSON(storage BrowserStorage, rawKey string, record storedTaskEscrow) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredTaskEscrowJSON(storage BrowserStorage, rawKey string) (storedTaskEscrow, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedTaskEscrow{}, found, ok
+	}
 	var record storedTaskEscrow
-	found, ok := getTaskJSON(store.storage, taskEscrowKey(taskID), &record)
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedTaskEscrow{}, false, false
+	}
+	return record, true, true
+}
+
+func (store LedgerBrowserStore) loadEscrow(taskID string) (storedTaskEscrow, bool, *core.DomainError) {
+	record, found, ok := getStoredTaskEscrowJSON(store.storage, taskEscrowKey(taskID))
 	if !ok {
 		reason := invalidState("read task escrow failed")
 		return storedTaskEscrow{}, false, &reason
@@ -57,7 +77,7 @@ func (store LedgerBrowserStore) loadEscrow(taskID string) (storedTaskEscrow, boo
 }
 
 func (store LedgerBrowserStore) saveEscrow(record storedTaskEscrow) bool {
-	return putTaskJSON(store.storage, taskEscrowKey(record.TaskID), record)
+	return putStoredTaskEscrowJSON(store.storage, taskEscrowKey(record.TaskID), record)
 }
 
 // findEntryByIdempotencyKey scans a ledger owner's entries for one already

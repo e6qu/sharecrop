@@ -36,38 +36,24 @@ func orgCredentialIndexKey(organizationID string) string {
 	return "orgcred:credential_index:" + organizationID
 }
 
-func (store OrgCredentialBrowserStore) putJSON(rawKey string, value any) bool {
-	encoded, err := json.Marshal(value)
+func putStoredOrgCredentialJSON(storage BrowserStorage, rawKey string, record storedOrgCredential) bool {
+	encoded, err := json.Marshal(record)
 	if err != nil {
 		return false
 	}
-	keyResult := NewStorageKey(rawKey)
-	key, keyMatched := keyResult.(StorageKeyAccepted)
-	if !keyMatched {
-		return false
-	}
-	_, matched := store.storage.Put(key.Value, string(encoded)).(StorageWritten)
-	return matched
+	return putStorageString(storage, rawKey, string(encoded))
 }
 
-func (store OrgCredentialBrowserStore) getJSON(rawKey string, out any) (bool, bool) {
-	keyResult := NewStorageKey(rawKey)
-	key, keyMatched := keyResult.(StorageKeyAccepted)
-	if !keyMatched {
-		return false, false
+func getStoredOrgCredentialJSON(storage BrowserStorage, rawKey string) (storedOrgCredential, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedOrgCredential{}, found, ok
 	}
-	readResult := store.storage.Get(key.Value)
-	if _, missing := readResult.(StorageMissing); missing {
-		return false, true
+	var record storedOrgCredential
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedOrgCredential{}, false, false
 	}
-	read, readMatched := readResult.(StorageRead)
-	if !readMatched {
-		return false, false
-	}
-	if err := json.Unmarshal([]byte(read.Value), out); err != nil {
-		return false, false
-	}
-	return true, true
+	return record, true, true
 }
 
 func (store OrgCredentialBrowserStore) CreateCredential(_ context.Context, credential orgcred.Credential, hash orgcred.SecretHash) orgcred.CreateStoreResult {
@@ -89,10 +75,10 @@ func (store OrgCredentialBrowserStore) CreateCredential(_ context.Context, crede
 		ExpiresAt:      expiresAt,
 		Scopes:         rawScopes,
 	}
-	if !store.putJSON(orgCredentialKey(record.ID), record) {
+	if !putStoredOrgCredentialJSON(store.storage, orgCredentialKey(record.ID), record) {
 		return orgcred.CreateStoreRejected{Reason: invalidState("insert org credential failed")}
 	}
-	if !store.putJSON(orgCredentialHashKey(hash.String()), record.ID) {
+	if !putStorageString(store.storage, orgCredentialHashKey(hash.String()), record.ID) {
 		return orgcred.CreateStoreRejected{Reason: invalidState("insert org credential hash index failed")}
 	}
 	indexResult := appendStringIndex(store.storage, orgCredentialIndexKey(record.OrganizationID), record.ID, "org credential")
@@ -103,8 +89,7 @@ func (store OrgCredentialBrowserStore) CreateCredential(_ context.Context, crede
 }
 
 func (store OrgCredentialBrowserStore) loadCredential(id string) (orgcred.Credential, bool, *core.DomainError) {
-	var record storedOrgCredential
-	found, ok := store.getJSON(orgCredentialKey(id), &record)
+	record, found, ok := getStoredOrgCredentialJSON(store.storage, orgCredentialKey(id))
 	if !ok {
 		reason := invalidState("org credential lookup failed")
 		return orgcred.Credential{}, false, &reason
@@ -164,8 +149,7 @@ func (store OrgCredentialBrowserStore) loadCredential(id string) (orgcred.Creden
 }
 
 func (store OrgCredentialBrowserStore) VerifyCredential(_ context.Context, hash orgcred.SecretHash) orgcred.VerifyStoreResult {
-	var id string
-	found, ok := store.getJSON(orgCredentialHashKey(hash.String()), &id)
+	id, found, ok := getStorageString(store.storage, orgCredentialHashKey(hash.String()))
 	if !ok {
 		return orgcred.VerifyStoreRejected{Reason: invalidState("verify org credential failed")}
 	}
@@ -221,12 +205,12 @@ func (store OrgCredentialBrowserStore) RevokeCredential(_ context.Context, organ
 	}
 	credential.State = agent.StateRevoked
 
-	var record storedOrgCredential
-	if _, ok := store.getJSON(orgCredentialKey(id.String()), &record); !ok {
+	record, _, ok := getStoredOrgCredentialJSON(store.storage, orgCredentialKey(id.String()))
+	if !ok {
 		return orgcred.RevokeStoreRejected{Reason: invalidState("revoke org credential failed")}
 	}
 	record.State = agent.StateRevoked.String()
-	if !store.putJSON(orgCredentialKey(id.String()), record) {
+	if !putStoredOrgCredentialJSON(store.storage, orgCredentialKey(id.String()), record) {
 		return orgcred.RevokeStoreRejected{Reason: invalidState("revoke org credential failed")}
 	}
 	return orgcred.RevokeStoreRevoked{Value: credential}

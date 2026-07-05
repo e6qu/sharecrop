@@ -37,38 +37,24 @@ func agentCredentialIndexKey(userID string) string {
 	return "agent:credential_index:" + userID
 }
 
-func (store AgentBrowserStore) putJSON(rawKey string, value any) bool {
-	encoded, err := json.Marshal(value)
+func putStoredAgentCredentialJSON(storage BrowserStorage, rawKey string, record storedAgentCredential) bool {
+	encoded, err := json.Marshal(record)
 	if err != nil {
 		return false
 	}
-	keyResult := NewStorageKey(rawKey)
-	key, keyMatched := keyResult.(StorageKeyAccepted)
-	if !keyMatched {
-		return false
-	}
-	_, matched := store.storage.Put(key.Value, string(encoded)).(StorageWritten)
-	return matched
+	return putStorageString(storage, rawKey, string(encoded))
 }
 
-func (store AgentBrowserStore) getJSON(rawKey string, out any) (bool, bool) {
-	keyResult := NewStorageKey(rawKey)
-	key, keyMatched := keyResult.(StorageKeyAccepted)
-	if !keyMatched {
-		return false, false
+func getStoredAgentCredentialJSON(storage BrowserStorage, rawKey string) (storedAgentCredential, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedAgentCredential{}, found, ok
 	}
-	readResult := store.storage.Get(key.Value)
-	if _, missing := readResult.(StorageMissing); missing {
-		return false, true
+	var record storedAgentCredential
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedAgentCredential{}, false, false
 	}
-	read, readMatched := readResult.(StorageRead)
-	if !readMatched {
-		return false, false
-	}
-	if err := json.Unmarshal([]byte(read.Value), out); err != nil {
-		return false, false
-	}
-	return true, true
+	return record, true, true
 }
 
 func (store AgentBrowserStore) CreateCredential(_ context.Context, credential agent.Credential, hash agent.SecretHash) agent.CreateStoreResult {
@@ -96,10 +82,10 @@ func (store AgentBrowserStore) CreateCredential(_ context.Context, credential ag
 		TaskID:    rawTaskID,
 		Scopes:    rawScopes,
 	}
-	if !store.putJSON(agentCredentialKey(record.ID), record) {
+	if !putStoredAgentCredentialJSON(store.storage, agentCredentialKey(record.ID), record) {
 		return agent.CreateStoreRejected{Reason: invalidState("insert agent credential failed")}
 	}
-	if !store.putJSON(agentCredentialHashKey(hash.String()), record.ID) {
+	if !putStorageString(store.storage, agentCredentialHashKey(hash.String()), record.ID) {
 		return agent.CreateStoreRejected{Reason: invalidState("insert agent credential hash index failed")}
 	}
 	indexResult := appendStringIndex(store.storage, agentCredentialIndexKey(record.UserID), record.ID, "agent credential")
@@ -110,8 +96,7 @@ func (store AgentBrowserStore) CreateCredential(_ context.Context, credential ag
 }
 
 func (store AgentBrowserStore) loadCredential(id string) (agent.Credential, bool, *core.DomainError) {
-	var record storedAgentCredential
-	found, ok := store.getJSON(agentCredentialKey(id), &record)
+	record, found, ok := getStoredAgentCredentialJSON(store.storage, agentCredentialKey(id))
 	if !ok {
 		reason := invalidState("agent credential lookup failed")
 		return agent.Credential{}, false, &reason
@@ -182,8 +167,7 @@ func (store AgentBrowserStore) loadCredential(id string) (agent.Credential, bool
 }
 
 func (store AgentBrowserStore) VerifyCredential(_ context.Context, hash agent.SecretHash) agent.VerifyStoreResult {
-	var id string
-	found, ok := store.getJSON(agentCredentialHashKey(hash.String()), &id)
+	id, found, ok := getStorageString(store.storage, agentCredentialHashKey(hash.String()))
 	if !ok {
 		return agent.VerifyStoreRejected{Reason: invalidState("verify agent credential failed")}
 	}
@@ -239,12 +223,12 @@ func (store AgentBrowserStore) RevokeCredential(_ context.Context, owner core.Us
 	}
 	credential.State = agent.StateRevoked
 
-	var record storedAgentCredential
-	if _, ok := store.getJSON(agentCredentialKey(id.String()), &record); !ok {
+	record, _, ok := getStoredAgentCredentialJSON(store.storage, agentCredentialKey(id.String()))
+	if !ok {
 		return agent.RevokeStoreRejected{Reason: invalidState("revoke agent credential failed")}
 	}
 	record.State = agent.StateRevoked.String()
-	if !store.putJSON(agentCredentialKey(id.String()), record) {
+	if !putStoredAgentCredentialJSON(store.storage, agentCredentialKey(id.String()), record) {
 		return agent.RevokeStoreRejected{Reason: invalidState("revoke agent credential failed")}
 	}
 	return agent.RevokeStoreRevoked{Value: credential}

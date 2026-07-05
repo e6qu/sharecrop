@@ -2,6 +2,7 @@ package wasmdemo
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 
@@ -334,6 +335,26 @@ func reservationTaskIndexKey(taskID string) string {
 	return "task:reservation_index:" + taskID
 }
 
+func putStoredReservationJSON(storage BrowserStorage, rawKey string, record storedReservation) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredReservationJSON(storage BrowserStorage, rawKey string) (storedReservation, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedReservation{}, found, ok
+	}
+	var record storedReservation
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedReservation{}, false, false
+	}
+	return record, true, true
+}
+
 func (store TaskBrowserStore) loadReservations(taskID string) ([]task.Reservation, *core.DomainError) {
 	indexResult := loadStringIndex(store.storage, reservationTaskIndexKey(taskID), "reservation")
 	loaded, matched := indexResult.(stringIndexLoaded)
@@ -343,8 +364,7 @@ func (store TaskBrowserStore) loadReservations(taskID string) ([]task.Reservatio
 	}
 	values := make([]task.Reservation, 0, len(loaded.values))
 	for _, id := range loaded.values {
-		var record storedReservation
-		found, ok := getTaskJSON(store.storage, reservationRecordKey(id), &record)
+		record, found, ok := getStoredReservationJSON(store.storage, reservationRecordKey(id))
 		if !ok {
 			reason := invalidState("read reservation failed")
 			return nil, &reason
@@ -469,7 +489,7 @@ func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID
 		AssigneeUserID: assigneeUserID, AssigneeTeamID: assigneeTeamID, AssigneeOrgID: assigneeOrgID,
 		State: initialState.String(), RequestedByUser: command.RequestedBy.String(),
 	}
-	if !putTaskJSON(store.storage, reservationRecordKey(stored.ID), stored) {
+	if !putStoredReservationJSON(store.storage, reservationRecordKey(stored.ID), stored) {
 		return task.CreateReservationStoreRejected{Reason: invalidState("insert reservation failed")}
 	}
 	if _, matched := appendStringIndex(store.storage, reservationTaskIndexKey(command.TaskID.String()), stored.ID, "reservation").(stringIndexStored); !matched {
@@ -497,8 +517,7 @@ func assigneeSQLColumnsBrowser(assignee task.Assignee) (kind string, userID stri
 }
 
 func (store TaskBrowserStore) ChangeReservationState(_ context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState) task.ChangeReservationStateStoreResult {
-	var record storedReservation
-	found, ok := getTaskJSON(store.storage, reservationRecordKey(reservationID.String()), &record)
+	record, found, ok := getStoredReservationJSON(store.storage, reservationRecordKey(reservationID.String()))
 	if !ok {
 		return task.ChangeReservationStateStoreRejected{Reason: invalidState("read reservation failed")}
 	}
@@ -509,7 +528,7 @@ func (store TaskBrowserStore) ChangeReservationState(_ context.Context, taskID c
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation is not pending or active")}
 	}
 	record.State = state.String()
-	if !putTaskJSON(store.storage, reservationRecordKey(reservationID.String()), record) {
+	if !putStoredReservationJSON(store.storage, reservationRecordKey(reservationID.String()), record) {
 		return task.ChangeReservationStateStoreRejected{Reason: invalidState("change reservation state failed")}
 	}
 	value, parseErr := parseStoredReservation(record)

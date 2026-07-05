@@ -2,6 +2,7 @@ package wasmdemo
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -62,9 +63,28 @@ func submissionSubmitterIndexKey(submitterID string) string {
 	return "submission:submitter_index:" + submitterID
 }
 
-func (store SubmissionBrowserStore) loadSubmission(id string) (storedSubmission, bool, *core.DomainError) {
+func putStoredSubmissionJSON(storage BrowserStorage, rawKey string, record storedSubmission) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredSubmissionJSON(storage BrowserStorage, rawKey string) (storedSubmission, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedSubmission{}, found, ok
+	}
 	var record storedSubmission
-	found, ok := getTaskJSON(store.storage, submissionRecordKey(id), &record)
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedSubmission{}, false, false
+	}
+	return record, true, true
+}
+
+func (store SubmissionBrowserStore) loadSubmission(id string) (storedSubmission, bool, *core.DomainError) {
+	record, found, ok := getStoredSubmissionJSON(store.storage, submissionRecordKey(id))
 	if !ok {
 		reason := invalidState("submission lookup failed")
 		return storedSubmission{}, false, &reason
@@ -153,10 +173,10 @@ func (store SubmissionBrowserStore) CreateSubmission(_ context.Context, submissi
 		})
 	}
 
-	if !putTaskJSON(store.storage, submissionRecordKey(record.ID), record) {
+	if !putStoredSubmissionJSON(store.storage, submissionRecordKey(record.ID), record) {
 		return submission.CreateSubmissionStoreRejected{Reason: invalidState("insert submission failed")}
 	}
-	if !putTaskJSON(store.storage, submissionReceiptKey(receiptHash.String()), record.ID) {
+	if !putStorageString(store.storage, submissionReceiptKey(receiptHash.String()), record.ID) {
 		return submission.CreateSubmissionStoreRejected{Reason: invalidState("insert submission receipt token failed")}
 	}
 	if _, matched := appendStringIndex(store.storage, submissionTaskIndexKey(record.TaskID), record.ID, "submission").(stringIndexStored); !matched {
@@ -195,14 +215,13 @@ func (store SubmissionBrowserStore) markActiveReservationSubmitted(taskID string
 		if !matched || userAssignee.UserID.String() != submitterID {
 			continue
 		}
-		var record storedReservation
-		found, ok := getTaskJSON(store.storage, reservationRecordKey(reservation.ID.String()), &record)
+		record, found, ok := getStoredReservationJSON(store.storage, reservationRecordKey(reservation.ID.String()))
 		if !ok || !found {
 			reason := invalidState("mark task reservation submitted failed")
 			return &reason
 		}
 		record.State = "submitted"
-		if !putTaskJSON(store.storage, reservationRecordKey(reservation.ID.String()), record) {
+		if !putStoredReservationJSON(store.storage, reservationRecordKey(reservation.ID.String()), record) {
 			reason := invalidState("mark task reservation submitted failed")
 			return &reason
 		}
@@ -211,8 +230,7 @@ func (store SubmissionBrowserStore) markActiveReservationSubmitted(taskID string
 }
 
 func (store SubmissionBrowserStore) FindByReceiptToken(_ context.Context, hash submission.ReceiptTokenHash) submission.FindReceiptStoreResult {
-	var submissionID string
-	found, ok := getTaskJSON(store.storage, submissionReceiptKey(hash.String()), &submissionID)
+	submissionID, found, ok := getStorageString(store.storage, submissionReceiptKey(hash.String()))
 	if !ok {
 		return submission.ReceiptMissing{Reason: invalidState("find submission receipt failed")}
 	}
@@ -300,12 +318,32 @@ func submissionCommentIndexKey(submissionID string) string {
 	return "submission:comment_index:" + submissionID
 }
 
+func putStoredSubmissionCommentJSON(storage BrowserStorage, rawKey string, record storedSubmissionComment) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredSubmissionCommentJSON(storage BrowserStorage, rawKey string) (storedSubmissionComment, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedSubmissionComment{}, found, ok
+	}
+	var record storedSubmissionComment
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedSubmissionComment{}, false, false
+	}
+	return record, true, true
+}
+
 func (store SubmissionBrowserStore) CreateSubmissionComment(_ context.Context, comment submission.SubmissionComment) submission.CreateSubmissionCommentStoreResult {
 	record := storedSubmissionComment{
 		ID: comment.ID.String(), SubmissionID: comment.SubmissionID.String(),
 		AuthorID: comment.AuthorID.String(), Body: comment.Body.String(),
 	}
-	if !putTaskJSON(store.storage, submissionCommentRecordKey(record.ID), record) {
+	if !putStoredSubmissionCommentJSON(store.storage, submissionCommentRecordKey(record.ID), record) {
 		return submission.CreateSubmissionCommentStoreRejected{Reason: invalidState("insert submission comment failed")}
 	}
 	if _, matched := appendStringIndex(store.storage, submissionCommentIndexKey(record.SubmissionID), record.ID, "submission comment").(stringIndexStored); !matched {
@@ -354,8 +392,7 @@ func (store SubmissionBrowserStore) ListSubmissionComments(_ context.Context, su
 	}
 	values := make([]submission.SubmissionComment, 0, len(loaded.values))
 	for _, id := range loaded.values {
-		var record storedSubmissionComment
-		found, ok := getTaskJSON(store.storage, submissionCommentRecordKey(id), &record)
+		record, found, ok := getStoredSubmissionCommentJSON(store.storage, submissionCommentRecordKey(id))
 		if !ok {
 			return submission.ListSubmissionCommentsStoreRejected{Reason: invalidState("read submission comment failed")}
 		}
