@@ -106,22 +106,40 @@ async function main(): Promise<void> {
   const instantiateMillis = performance.now() - instantiateStart;
 
   const requestExport = wasmFunction("sharecropHandleRequest");
-  const configuredHost = createHost();
+  const host = createHost();
   const configureExport = wasmFunction("sharecropConfigureHost");
   const configureStart = performance.now();
   const configure = callJSON<WasmConfigureResponse>(
     configureExport,
     "sharecropConfigureHost",
-    configuredHost.host,
+    host,
   );
   if (
     requiredString(configure as Record<string, unknown>, "status") !==
       "configured"
   ) {
-    throw new Error("WASM host did not configure");
+    throw new Error(`WASM host did not configure: ${configure.error}`);
   }
   const configureMillis = performance.now() - configureStart;
   const memoryAfterConfigure = Deno.memoryUsage();
+
+  // sharecropConfigureHost already seeded the demo scenario and
+  // pre-authenticated its admin user, so refresh (relying on the WASM
+  // binary's own internally-held cookie) is enough to get a real access
+  // token for the protected routes measured below.
+  const refresh = request(
+    requestExport,
+    "POST",
+    "/api/auth/refresh",
+    "",
+    "refresh",
+  );
+  assertStatus(refresh, 200, "refresh");
+  const accessToken = requiredString(
+    responseBody(refresh, "refresh"),
+    "access_token",
+  );
+  const authorization = `Bearer ${accessToken}`;
 
   const organization = request(
     requestExport,
@@ -129,15 +147,22 @@ async function main(): Promise<void> {
     "/api/organizations",
     JSON.stringify({ name: "Measurement Org" }),
     "create organization",
+    authorization,
   );
   assertStatus(organization, 201, "create organization");
 
   const taskBody = JSON.stringify({
-    owner: { kind: "user", user_id: "user-requester" },
+    owner: {
+      kind: "user",
+      user_id: requiredString(
+        responseBody(refresh, "refresh"),
+        "subject_id",
+      ),
+    },
     title: "Measurement task",
     description:
       "Exercise configured Go WASM request handling for measurement.",
-    reward: { kind: "credit", credit_amount: 25, collectible_ids: [] },
+    reward: { kind: "none" },
     participation: {
       policy: "approval_required",
       assignee_scope: "user",
@@ -156,6 +181,7 @@ async function main(): Promise<void> {
     "/api/tasks",
     taskBody,
     "create task",
+    authorization,
   );
   assertStatus(createTask, 201, "create task");
   const taskID = requiredString(responseBody(createTask, "create task"), "id");
@@ -170,7 +196,12 @@ async function main(): Promise<void> {
       body: "",
       label: "GET /api/organizations",
     },
-    { method: "GET", path: "/api/tasks", body: "", label: "GET /api/tasks" },
+    {
+      method: "GET",
+      path: "/api/tasks?scope=public",
+      body: "",
+      label: "GET /api/tasks",
+    },
     {
       method: "GET",
       path: `/api/tasks/${taskID}`,
@@ -195,6 +226,7 @@ async function main(): Promise<void> {
         route.path,
         route.body,
         route.label,
+        authorization,
       );
       const elapsed = performance.now() - start;
       assertStatus(response, 200, route.label);

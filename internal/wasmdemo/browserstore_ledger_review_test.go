@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -21,12 +22,22 @@ func newReviewTestEnv(t *testing.T) (task.Service, ledger.Service, submission.Se
 	return taskService, ledgerService, submissionService, storage
 }
 
+// grantFunderBalance gives a funder a real signup-grant balance to fund
+// tasks from, the same way registering through AuthBrowserStore would.
+func grantFunderBalance(t *testing.T, storage BrowserStorage, funderID core.UserID) {
+	t.Helper()
+	if !NewAuthBrowserStore(storage, &counterLedgerIDs{}).insertSignupGrant("user", funderID.String()) {
+		t.Fatalf("grant funder balance failed")
+	}
+}
+
 func TestLedgerBrowserStoreAcceptSubmissionPaysCreditAndTip(t *testing.T) {
-	taskService, ledgerService, submissionService, _ := newReviewTestEnv(t)
+	taskService, ledgerService, submissionService, storage := newReviewTestEnv(t)
 	ctx := context.Background()
 	owner := testUserID(t, "owner")
 	ownerSubject := auth.UserSubject{ID: owner}
 	worker := testUserID(t, "worker")
+	grantFunderBalance(t, storage, owner)
 
 	rewardResult := task.NewCreditRewardAmount(30)
 	reward := rewardResult.(task.CreditRewardAmountAccepted).Value
@@ -52,9 +63,9 @@ func TestLedgerBrowserStoreAcceptSubmissionPaysCreditAndTip(t *testing.T) {
 	}
 
 	workerBalance := ledgerService.Balance(ctx, worker).(ledger.BalanceFound)
-	// +100 baseline quirk (see browserstore_ledger_test.go) + 30 payout + 5 tip.
-	if workerBalance.Value.Int64() != 135 {
-		t.Fatalf("worker balance after accept = %d, want 135", workerBalance.Value.Int64())
+	// 30 payout + 5 tip (worker has no signup grant in this test).
+	if workerBalance.Value.Int64() != 35 {
+		t.Fatalf("worker balance after accept = %d, want 35", workerBalance.Value.Int64())
 	}
 
 	taskAfter := taskService.Get(ctx, ownerSubject, created.Value.ID).(task.TaskGot)
@@ -120,11 +131,12 @@ func TestLedgerBrowserStoreRequestChangesReactivatesReservation(t *testing.T) {
 }
 
 func TestLedgerBrowserStoreRejectSubmissionCancelsReservation(t *testing.T) {
-	taskService, ledgerService, submissionService, _ := newReviewTestEnv(t)
+	taskService, ledgerService, submissionService, storage := newReviewTestEnv(t)
 	ctx := context.Background()
 	owner := testUserID(t, "owner")
 	ownerSubject := auth.UserSubject{ID: owner}
 	worker := auth.UserSubject{ID: testUserID(t, "worker")}
+	grantFunderBalance(t, storage, owner)
 
 	rewardResult := task.NewCreditRewardAmount(20)
 	reward := rewardResult.(task.CreditRewardAmountAccepted).Value

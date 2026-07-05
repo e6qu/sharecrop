@@ -10,7 +10,7 @@ import (
 )
 
 func TestTaskBrowserStoreCreateSeriesAndList(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 
@@ -51,7 +51,7 @@ func TestTaskBrowserStoreCreateSeriesAndList(t *testing.T) {
 }
 
 func TestTaskBrowserStoreSeriesAddRemoveReorderTasks(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 
@@ -94,7 +94,7 @@ func TestTaskBrowserStoreSeriesAddRemoveReorderTasks(t *testing.T) {
 }
 
 func TestTaskBrowserStoreSeriesUpdateTitleAndState(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 
@@ -124,7 +124,7 @@ func TestTaskBrowserStoreSeriesUpdateTitleAndState(t *testing.T) {
 }
 
 func TestTaskBrowserStoreRemoveTaskFromSeries(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 
@@ -145,7 +145,7 @@ func TestTaskBrowserStoreRemoveTaskFromSeries(t *testing.T) {
 }
 
 func TestTaskBrowserStoreCreateTaskWithNewSeriesPlacement(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := testUserID(t, "owner")
 	ownerSubject := auth.UserSubject{ID: owner}

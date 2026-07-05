@@ -357,7 +357,6 @@ type tasksResponse struct {
 	Tasks []taskListItemResponse `json:"tasks"`
 }
 
-
 type reservationResponse struct {
 	ID           string `json:"id"`
 	TaskID       string `json:"task_id"`

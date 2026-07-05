@@ -217,9 +217,13 @@ const (
 	MCPRateRefillPerSec = 10
 )
 
-func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService) http.Handler {
-	bootstrapAdmins := parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
-	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, RuntimeState{
+// DefaultRuntimeState builds the same in-memory RuntimeState New() uses,
+// exported so a caller that needs the real domain services + real mux but
+// wants to override just one or two RuntimeState fields (e.g. a persistent
+// NotificationService) doesn't have to reimplement the other in-memory
+// defaults - cmd/sharecrop-wasm does exactly this for the browser demo.
+func DefaultRuntimeState(bootstrapAdmins map[string]bool) RuntimeState {
+	return RuntimeState{
 		IPRateLimiter:       newRateLimiter(IPRateCapacity, IPRateRefillPerSec),
 		SubjectRateLimiter:  newRateLimiter(MCPRateCapacity, MCPRateRefillPerSec),
 		MCPSessions:         newMCPHTTPSessionStore(),
@@ -229,7 +233,12 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 		PrivacyService:      newMemoryPrivacyService(),
 		PlatformAdmins:      newMemoryPlatformAdminService(bootstrapAdmins),
 		ModerationTriage:    newMemoryModerationTriageService(),
-	})
+	}
+}
+
+func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService) http.Handler {
+	bootstrapAdmins := parseAdminUserIDs(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
+	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, DefaultRuntimeState(bootstrapAdmins))
 }
 
 func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService, runtime RuntimeState) http.Handler {

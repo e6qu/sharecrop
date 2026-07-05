@@ -3,8 +3,8 @@ package wasmdemo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
-	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -38,6 +38,7 @@ type storedSubmission struct {
 	SensitiveFields        []storedSensitiveField  `json:"sensitive_fields,omitempty"`
 	AcceptedIdempotencyKey string                  `json:"accepted_idempotency_key,omitempty"`
 	ReviewIdempotencyKey   string                  `json:"review_idempotency_key,omitempty"`
+	Attachments            []storedTaskAttachment  `json:"attachments,omitempty"`
 }
 
 type storedValidationError struct {
@@ -149,9 +150,14 @@ func parseStoredSubmission(record storedSubmission) (submission.Submission, *cor
 		})
 	}
 
+	attachments, attachmentsErr := parseStoredTaskAttachments(record.Attachments)
+	if attachmentsErr != nil {
+		return submission.Submission{}, attachmentsErr
+	}
+
 	return submission.Submission{
 		ID: id.Value, TaskID: taskID.Value, SubmitterID: submitter.Value, State: state.Value,
-		ResponseSource: source.Value, Attachments: []attachment.Attachment{}, Validation: outcome,
+		ResponseSource: source.Value, Attachments: attachments, Validation: outcome,
 		SensitiveFields: sensitiveFields, ReviewNote: note.Value,
 	}, nil
 }
@@ -160,6 +166,7 @@ func (store SubmissionBrowserStore) CreateSubmission(_ context.Context, submissi
 	record := storedSubmission{
 		ID: submissionID.String(), TaskID: command.TaskID.String(), SubmitterID: command.SubmitterID.String(),
 		State: state.String(), ResponseJSON: command.ResponseSource.String(), ReceiptHash: receiptHash.String(),
+		Attachments: storedTaskAttachmentsFrom(command.Attachments),
 	}
 	if failed, matched := outcome.(submission.ValidationFailed); matched {
 		for _, entry := range failed.Errors {
@@ -408,4 +415,40 @@ func (store SubmissionBrowserStore) ListSubmissionComments(_ context.Context, su
 		values = append(values, value)
 	}
 	return submission.ListSubmissionCommentsStoreAccepted{Values: values}
+}
+
+// RedactSensitiveFields implements internal/http's SensitiveFieldRedactor,
+// giving the in-memory privacy service (which has no submission data of its
+// own) a way to actually perform "delete on request" redaction - mirrors
+// internal/db's PrivacyStore.Resolve: every active, delete-on-request
+// sensitive field across the user's own submissions is marked redacted.
+func (store SubmissionBrowserStore) RedactSensitiveFields(_ context.Context, userID core.UserID) (int, error) {
+	indexResult := loadStringIndex(store.storage, submissionSubmitterIndexKey(userID.String()), "submission")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		return 0, errors.New(indexResult.(stringIndexRejected).reason)
+	}
+	redacted := 0
+	for _, id := range loaded.values {
+		record, found, ok := getStoredSubmissionJSON(store.storage, submissionRecordKey(id))
+		if !ok {
+			return redacted, errors.New("read submission failed")
+		}
+		if !found {
+			continue
+		}
+		changed := false
+		for index := range record.SensitiveFields {
+			field := &record.SensitiveFields[index]
+			if field.Retention == "delete_on_request" && field.State == "active" {
+				field.State = "redacted"
+				changed = true
+				redacted++
+			}
+		}
+		if changed && !putStoredSubmissionJSON(store.storage, submissionRecordKey(id), record) {
+			return redacted, errors.New("update submission failed")
+		}
+	}
+	return redacted, nil
 }

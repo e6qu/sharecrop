@@ -3,15 +3,34 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"syscall/js"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	httpserver "github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/notification"
+	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/orgcred"
+	"github.com/e6qu/sharecrop/internal/submission"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasmdemo"
+	"github.com/e6qu/sharecrop/web"
 )
+
+// wasmAccessTokenSecret is a fixed, demo-only HMAC secret for signing access
+// tokens inside the browser. It never leaves the browser tab and protects
+// nothing a user with devtools access doesn't already fully control, so a
+// random per-session secret would add ceremony without adding security.
+const wasmAccessTokenSecret = "sharecrop-wasm-demo-access-token-secret-not-for-production-use"
 
 type wasmStatus struct {
 	Name    string `json:"name"`
@@ -23,7 +42,6 @@ type wasmHandleResponse struct {
 	Status int    `json:"status"`
 	Body   string `json:"body"`
 	Error  string `json:"error"`
-	Route  string `json:"route"`
 }
 
 type wasmConfigureResponse struct {
@@ -43,16 +61,15 @@ type jsHostClock struct {
 	host js.Value
 }
 
-type jsHostActor struct {
-	host js.Value
-}
-
 type jsHostIDs struct {
 	host js.Value
 }
 
-var configuredHost jsHost
-var hostConfigured bool
+var (
+	configuredMux        http.Handler
+	hostConfigured       bool
+	currentRefreshCookie *http.Cookie
+)
 
 func main() {
 	js.Global().Set("sharecropWasmBackendStatus", js.FuncOf(func(js.Value, []js.Value) interface{} {
@@ -66,151 +83,96 @@ func main() {
 		if reason := validateJSHost(host.value); reason != "" {
 			return encodeConfigureResponse(wasmConfigureResponse{Error: reason})
 		}
-		configuredHost = host
+		mux, err := buildConfiguredMux(host)
+		if err != "" {
+			return encodeConfigureResponse(wasmConfigureResponse{Error: err})
+		}
+		configuredMux = mux
 		hostConfigured = true
 		return encodeConfigureResponse(wasmConfigureResponse{Status: "configured"})
 	}))
 	js.Global().Set("sharecropHandleRequest", js.FuncOf(func(_ js.Value, args []js.Value) interface{} {
-		if len(args) != 3 {
-			return encodeHandleResponse(wasmHandleResponse{Status: 400, Error: "method, path, and body arguments are required"})
+		if len(args) != 4 {
+			return encodeHandleResponse(wasmHandleResponse{Status: 400, Error: "method, path, body, and authorization arguments are required"})
 		}
-		requestResult := wasmdemo.NewRequest(args[0].String(), args[1].String(), args[2].String())
-		request, requestMatched := requestResult.(wasmdemo.RequestAccepted)
-		if !requestMatched {
-			return encodeHandleResponse(wasmHandleResponse{Status: 400, Error: requestResult.(wasmdemo.RequestRejected).Reason})
+		if !hostConfigured || configuredMux == nil {
+			return encodeHandleResponse(wasmHandleResponse{Status: 500, Error: "host runtime is not configured"})
 		}
-		adaptResult := wasmdemo.Adapt(request.Value)
-		adapted, adaptedMatched := adaptResult.(wasmdemo.RequestAdapted)
-		if !adaptedMatched {
-			return encodeHandleResponse(wasmHandleResponse{Status: 404, Error: adaptResult.(wasmdemo.RequestUnsupported).Reason})
+		method, path, body, authorization := args[0].String(), args[1].String(), args[2].String(), args[3].String()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if authorization != "" {
+			req.Header.Set("Authorization", authorization)
 		}
-		if !hostConfigured {
-			return encodeHandleResponse(wasmHandleResponse{Status: 500, Error: "host runtime is not configured", Route: adapted.Route.String()})
+		if currentRefreshCookie != nil {
+			req.AddCookie(currentRefreshCookie)
 		}
-		handleResult := handleWithConfiguredHost(request.Value, adapted.Route)
-		handled, handledMatched := handleResult.(wasmdemo.RequestHandled)
-		if !handledMatched {
-			rejected := handleResult.(wasmdemo.RequestHandleRejected)
-			return encodeHandleResponse(wasmHandleResponse{Status: statusForError(rejected.Reason), Error: rejected.Reason.Description(), Route: adapted.Route.String()})
+		recorder := httptest.NewRecorder()
+		configuredMux.ServeHTTP(recorder, req)
+		for _, cookie := range recorder.Result().Cookies() {
+			if cookie.Name == "sharecrop_refresh_token" {
+				currentRefreshCookie = cookie
+			}
 		}
-		return encodeHandleResponse(wasmHandleResponse{Status: handled.Value.Status, Body: handled.Value.Body, Route: adapted.Route.String()})
+		return encodeHandleResponse(wasmHandleResponse{Status: recorder.Code, Body: recorder.Body.String()})
 	}))
 	select {}
 }
 
-func handleWithConfiguredHost(request wasmdemo.Request, route wasmdemo.Route) wasmdemo.HandleResult {
-	runtimeResult := wasmdemo.ValidateHostRuntime(configuredHost)
-	runtime, runtimeMatched := runtimeResult.(wasmdemo.HostRuntimeAccepted)
-	if !runtimeMatched {
-		return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, runtimeResult.(wasmdemo.HostRuntimeRejected).Reason)}
+// buildConfiguredMux constructs the real internal/http mux over browser-
+// storage-backed domain services (the same services cmd/sharecrop wires
+// against Postgres), seeds the demo scenario the first time it runs against
+// fresh storage, and pre-authenticates the seeded admin user so the demo
+// loads already logged in - matching the UX of the browser demo's original
+// hand-rolled backend, now backed by real business logic end to end.
+func buildConfiguredMux(host jsHost) (http.Handler, string) {
+	storage := host.Storage()
+	ids := host.InteractionIDs()
+	clock := host.Clock()
+
+	tokenSecretResult := auth.NewAccessTokenSecret(wasmAccessTokenSecret)
+	tokenSecret, tokenSecretMatched := tokenSecretResult.(auth.AccessTokenSecretAccepted)
+	if !tokenSecretMatched {
+		return nil, tokenSecretResult.(auth.AccessTokenSecretRejected).Reason.Description()
 	}
-	switch route.String() {
-	case wasmdemo.RouteAuth.String():
-		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
-		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
-		}
-		handler := wasmdemo.NewAuthHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
-		return handler.Handle(request)
-	case wasmdemo.RouteAccount.String():
-		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
-		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
-		}
-		handler := wasmdemo.NewAccountHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
-		return handler.Handle(request)
-	case wasmdemo.RouteUsers.String():
-		handler := wasmdemo.NewUsersHandler(runtime.Storage)
-		return handler.Handle(request)
-	case wasmdemo.RouteTasks.String():
-		taskIDs, taskIDMatched := runtime.InteractionIDs.(wasmdemo.TaskIDSource)
-		if !taskIDMatched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host task id adapter is required")}
-		}
-		handler := wasmdemo.NewTaskHandler(runtime.Storage, runtime.Actor, taskIDs)
-		return handler.Handle(request)
-	case wasmdemo.RoutePrivacyRequests.String(), wasmdemo.RouteAdminPrivacyRequests.String():
-		privacyIDs, privacyIDMatched := runtime.InteractionIDs.(wasmdemo.PrivacyRequestIDSource)
-		if !privacyIDMatched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host privacy request id adapter is required")}
-		}
-		handler := wasmdemo.NewPrivacyRequestHandler(runtime.Storage, runtime.Clock, runtime.Actor, privacyIDs)
-		return handler.Handle(request)
-	case wasmdemo.RouteAdminPrivacyRetention.String(),
-		wasmdemo.RouteAdminOperations.String(),
-		wasmdemo.RoutePlatformAdmins.String(),
-		wasmdemo.RouteAuditEvents.String():
-		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
-		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
-		}
-		handler := wasmdemo.NewAdminHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
-		return handler.Handle(request, route)
-	case wasmdemo.RouteModerationReports.String():
-		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
-		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
-		}
-		handler := wasmdemo.NewModerationReportHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
-		return handler.Handle(request)
-	case wasmdemo.RouteAdminModerationReports.String():
-		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
-		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
-		}
-		handler := wasmdemo.NewAdminHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtimeIDs)
-		return handler.Handle(request, route)
-	case wasmdemo.RouteSavedQueueViews.String():
-		savedQueueIDs, savedQueueIDMatched := runtime.InteractionIDs.(wasmdemo.SavedQueueViewIDSource)
-		if !savedQueueIDMatched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host saved queue view id adapter is required")}
-		}
-		handler := wasmdemo.NewSavedQueueViewHandler(runtime.Storage, runtime.Actor, savedQueueIDs)
-		return handler.Handle(request)
-	case wasmdemo.RouteNotifications.String():
-		handler := wasmdemo.NewNotificationHandler(runtime.Storage, runtime.Actor)
-		return handler.Handle(request)
-	case wasmdemo.RouteOrganizations.String(),
-		wasmdemo.RouteOrganizationMembers.String(),
-		wasmdemo.RouteOrganizationTeams.String(),
-		wasmdemo.RouteStandaloneTeams.String():
-		organizationIDs, organizationIDMatched := runtime.InteractionIDs.(wasmdemo.OrganizationIDSource)
-		if !organizationIDMatched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host organization id adapter is required")}
-		}
-		handler := wasmdemo.NewOrganizationHandler(runtime.Storage, runtime.Actor, organizationIDs, configuredHost)
-		return handler.Handle(request)
-	case wasmdemo.RouteTaskComments.String(),
-		wasmdemo.RouteSubmissionComments.String(),
-		wasmdemo.RouteTaskReservations.String(),
-		wasmdemo.RouteSubmissions.String(),
-		wasmdemo.RouteLedger.String():
-		handler := wasmdemo.NewInteractionHandler(runtime.Storage, runtime.Clock, runtime.Actor, runtime.InteractionIDs)
-		return handler.Handle(request)
-	case wasmdemo.RouteCollectibles.String():
-		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
-		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
-		}
-		handler := wasmdemo.NewCollectibleHandler(runtime.Storage, runtime.Actor, runtimeIDs)
-		return handler.Handle(request)
-	case wasmdemo.RouteAgentCredentials.String():
-		runtimeIDs, matched := runtime.InteractionIDs.(wasmdemo.RuntimeIDSource)
-		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "runtime id source is required")}
-		}
-		handler := wasmdemo.NewAgentCredentialHandler(runtime.Storage, runtime.Actor, runtimeIDs)
-		return handler.Handle(request)
-	case wasmdemo.RouteTaskSeries.String():
-		seriesIDs, matched := runtime.InteractionIDs.(wasmdemo.TaskSeriesIDSource)
-		if !matched {
-			return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "host task series id adapter is required")}
-		}
-		handler := wasmdemo.NewTaskSeriesHandler(runtime.Storage, runtime.Actor, seriesIDs)
-		return handler.Handle(request)
-	default:
-		return wasmdemo.RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "configured WASM host does not execute this route")}
+
+	authServiceResult := auth.NewService(wasmdemo.NewAuthBrowserStore(storage, ids), tokenSecret.Value, clock)
+	authService, authServiceMatched := authServiceResult.(auth.ServiceCreated)
+	if !authServiceMatched {
+		return nil, authServiceResult.(auth.ServiceRejected).Reason.Description()
 	}
+	tokenVerifier := auth.NewAccessTokenVerifier(tokenSecret.Value, clock)
+
+	organizationService := org.NewService(wasmdemo.NewOrgBrowserStore(storage, ids))
+	agentService := agent.NewService(wasmdemo.NewAgentBrowserStore(storage))
+	orgCredentialService := orgcred.NewService(wasmdemo.NewOrgCredentialBrowserStore(storage))
+	taskStore := wasmdemo.NewTaskBrowserStore(storage, ids)
+	taskService := task.NewService(taskStore, organizationService, agentService)
+	submissionStore := wasmdemo.NewSubmissionBrowserStore(storage, ids)
+	submissionService := submission.NewService(submissionStore, taskStore, organizationService)
+	ledgerService := ledger.NewService(wasmdemo.NewLedgerBrowserStore(storage, ids))
+	assetService := assets.NewService(wasmdemo.NewAssetBrowserStore(storage, ids))
+	notificationService := notification.NewService(wasmdemo.NewNotificationBrowserStore(storage))
+
+	staticFiles, staticErr := web.StaticFiles()
+	if staticErr != nil {
+		return nil, staticErr.Error()
+	}
+
+	runtime := httpserver.DefaultRuntimeState(map[string]bool{})
+	runtime.NotificationService = notificationService
+	runtime.PrivacyService = httpserver.NewMemoryPrivacyService(submissionStore)
+
+	seedResult := wasmdemo.SeedDemoScenario(context.Background(), authService.Value, organizationService, taskService, ledgerService)
+	if seedResult.Err != "" {
+		return nil, seedResult.Err
+	}
+	runtime.PlatformAdmins.Grant(context.Background(), seedResult.AdminUserID, seedResult.AdminUserID)
+
+	mux := httpserver.NewWithRuntimeState(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, runtime)
+
+	currentRefreshCookie = seedResult.AdminRefreshToken
+
+	return mux, ""
 }
 
 func (host jsHost) Storage() wasmdemo.BrowserStorage {
@@ -221,24 +183,8 @@ func (host jsHost) Clock() wasmdemo.HandlerClock {
 	return jsHostClock{host: host.value}
 }
 
-func (host jsHost) Actor() wasmdemo.HandlerActor {
-	return jsHostActor{host: host.value}
-}
-
 func (host jsHost) InteractionIDs() wasmdemo.InteractionIDSource {
 	return jsHostIDs{host: host.value}
-}
-
-func (host jsHost) UserIDForEmail(email string) (string, bool) {
-	result := host.value.Get("userIDForEmail").Invoke(email)
-	if result.Type() != js.TypeString {
-		return "", false
-	}
-	userID := strings.TrimSpace(result.String())
-	if userID == "" {
-		return "", false
-	}
-	return userID, true
 }
 
 func (storage jsHostStorage) Put(key wasmdemo.StorageKey, value string) wasmdemo.StorageWriteResult {
@@ -273,80 +219,22 @@ func (clock jsHostClock) Now() time.Time {
 	return value
 }
 
-func (actor jsHostActor) UserID() string {
-	return strings.TrimSpace(actor.host.Get("actorID").Invoke().String())
-}
+func (ids jsHostIDs) NextSubmissionID() string  { return ids.next("submission") }
+func (ids jsHostIDs) NextCommentID() string     { return ids.next("comment") }
+func (ids jsHostIDs) NextReservationID() string { return ids.next("reservation") }
 
-func (ids jsHostIDs) NextSubmissionID() string {
-	return ids.next("submission")
-}
-
-func (ids jsHostIDs) NextCommentID() string {
-	return ids.next("comment")
-}
-
-func (ids jsHostIDs) NextReservationID() string {
-	return ids.next("reservation")
-}
-
+// NextLedgerEntryID generates a real UUID directly in Go rather than
+// delegating to the host's counter-based nextID: ledger entries round-trip
+// through core.ParseLedgerEntryID when listed back (ListEntries/
+// ListOrganizationEntries), which requires UUID-shaped ids - a "ledger-1"
+// style counter id would fail to parse.
 func (ids jsHostIDs) NextLedgerEntryID() string {
-	return ids.next("ledger")
-}
-
-func (ids jsHostIDs) NextTaskID() string {
-	return ids.next("task")
-}
-
-func (ids jsHostIDs) NextPrivacyRequestID() string {
-	return ids.next("privacy")
-}
-
-func (ids jsHostIDs) NextSavedQueueViewID() string {
-	return ids.next("saved_view")
-}
-
-func (ids jsHostIDs) NextTaskSeriesID() string {
-	return ids.next("task_series")
-}
-
-func (ids jsHostIDs) NextOrganizationID() string {
-	return ids.next("organization")
-}
-
-func (ids jsHostIDs) NextOrganizationMemberID() string {
-	return ids.next("organization_member")
-}
-
-func (ids jsHostIDs) NextTeamID() string {
-	return ids.next("team")
-}
-
-func (ids jsHostIDs) NextUserID() string {
-	return ids.next("user")
-}
-
-func (ids jsHostIDs) NextAuditEventID() string {
-	return ids.next("audit")
-}
-
-func (ids jsHostIDs) NextAccountToken() string {
-	return ids.next("account_token")
-}
-
-func (ids jsHostIDs) NextCollectibleID() string {
-	return ids.next("collectible")
-}
-
-func (ids jsHostIDs) NextNotificationID() string {
-	return ids.next("notification")
-}
-
-func (ids jsHostIDs) NextAgentCredentialID() string {
-	return ids.next("agent_credential")
-}
-
-func (ids jsHostIDs) NextAgentCredentialSecret() string {
-	return "scrop_agent_" + ids.next("agent_secret")
+	result := core.NewLedgerEntryID()
+	created, matched := result.(core.LedgerEntryIDCreated)
+	if !matched {
+		panic("generate ledger entry id failed")
+	}
+	return created.Value.String()
 }
 
 func (ids jsHostIDs) next(kind string) string {
@@ -357,7 +245,7 @@ func validateJSHost(host js.Value) string {
 	if host.Type() != js.TypeObject {
 		return "host configuration must be an object"
 	}
-	requiredFunctions := []string{"storageHas", "storageGet", "storagePut", "now", "actorID", "nextID", "userIDForEmail"}
+	requiredFunctions := []string{"storageHas", "storageGet", "storagePut", "now", "nextID"}
 	for index := range requiredFunctions {
 		if host.Get(requiredFunctions[index]).Type() != js.TypeFunction {
 			return "host function is missing: " + requiredFunctions[index]
@@ -392,25 +280,4 @@ func encodeHandleResponse(response wasmHandleResponse) string {
 		panic("wasm response encoding failed")
 	}
 	return string(encoded)
-}
-
-// statusForError mirrors internal/http/server.go's statusForError so a
-// domain rejection maps to the same HTTP status the real backend would use
-// for the same DomainError code, instead of collapsing every rejection to
-// 500 regardless of cause.
-func statusForError(reason core.DomainError) int {
-	switch reason.Code() {
-	case core.ErrorCodeInvalidID, core.ErrorCodeInvalidEnum, core.ErrorCodeInvalidArgument:
-		return http.StatusBadRequest
-	case core.ErrorCodeInvalidState:
-		return http.StatusConflict
-	case core.ErrorCodeNotFound:
-		return http.StatusNotFound
-	case core.ErrorCodePermissionDenied:
-		return http.StatusForbidden
-	case core.ErrorCodeConflict:
-		return http.StatusConflict
-	default:
-		return http.StatusInternalServerError
-	}
 }

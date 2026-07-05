@@ -20,7 +20,6 @@ export type WasmHandleResponse = {
   status: number;
   body: string;
   error: string;
-  route: string;
 };
 
 export type HostFunctions = {
@@ -28,15 +27,7 @@ export type HostFunctions = {
   storageGet(key: string): string;
   storagePut(key: string, value: string): boolean;
   now(): string;
-  actorID(): string;
   nextID(kind: string): string;
-  userIDForEmail(email: string): string;
-};
-
-export type ConfiguredHost = {
-  host: HostFunctions;
-  setActor(id: string): void;
-  rememberUser(email: string, userID: string): void;
 };
 
 export async function goRoot(): Promise<string> {
@@ -153,52 +144,22 @@ export function recordField(
   return value as Record<string, unknown>;
 }
 
-function seedHostStorage(storage: Map<string, string>): void {
-  const seededUsers = [
-    { id: "user-requester", email: "requester@example.com", status: "active" },
-    { id: "user-worker", email: "worker@example.com", status: "active" },
-    { id: "user-reviewer", email: "reviewer@example.com", status: "active" },
-    { id: "user-mara", email: "mara@sharecrop.demo", status: "active" },
-  ];
-  seededUsers.forEach((user) => {
-    storage.set(`user:${user.id}`, JSON.stringify(user));
-    storage.set(`user_email:${user.email}`, JSON.stringify(user.id));
-  });
-  storage.set("user:index", JSON.stringify(seededUsers.map((user) => user.id)));
-  storage.set(
-    "platform_admin:user-requester",
-    JSON.stringify({
-      user_id: "user-requester",
-      source: "bootstrap",
-      state: "active",
-      created_at: "2026-07-01T00:00:00Z",
-    }),
-  );
-  storage.set("platform_admin:index", JSON.stringify(["user-requester"]));
-}
-
 /**
  * createHost builds the reference non-browser host adapter set: an
  * in-memory, deterministic implementation of the same `HostFunctions`
  * contract that `site/demo/wasm-host.js` satisfies with browser
  * `localStorage`/`Date`. It is the documented starting point for a
  * non-browser WASM host (see docs/wasm_demo_backend_spike.md), not a
- * production-ready host: storage is process-local and unpersisted, the
- * clock is fixed, and IDs/secrets are sequential rather than
- * cryptographically random.
+ * production-ready host: storage is process-local and unpersisted, and IDs
+ * are sequential rather than cryptographically random. No user pre-seeding
+ * is needed here - the WASM binary seeds its own fixed demo cast (real
+ * accounts, real UUIDs) on `sharecropConfigureHost`, the same as the
+ * browser demo does.
  */
-export function createHost(nowValue = "2026-07-01T10:00:00Z"): ConfiguredHost {
+export function createHost(nowValue = "2026-07-01T10:00:00Z"): HostFunctions {
   const storage = new Map<string, string>();
   const counters = new Map<string, number>();
-  const users = new Map<string, string>([
-    ["requester@example.com", "user-requester"],
-    ["worker@example.com", "user-worker"],
-    ["reviewer@example.com", "user-reviewer"],
-    ["mara@sharecrop.demo", "user-mara"],
-  ]);
-  let actor = "user-requester";
-  seedHostStorage(storage);
-  const host: HostFunctions = {
+  return {
     storageHas(key: string): boolean {
       return storage.has(key);
     },
@@ -216,26 +177,11 @@ export function createHost(nowValue = "2026-07-01T10:00:00Z"): ConfiguredHost {
     now(): string {
       return nowValue;
     },
-    actorID(): string {
-      return actor;
-    },
     nextID(kind: string): string {
       const current = counters.get(kind) ?? 0;
       const next = current + 1;
       counters.set(kind, next);
       return `${kind}-${next}`;
-    },
-    userIDForEmail(email: string): string {
-      return users.get(email) ?? "";
-    },
-  };
-  return {
-    host,
-    setActor(id: string): void {
-      actor = id;
-    },
-    rememberUser(email: string, userID: string): void {
-      users.set(email, userID);
     },
   };
 }
@@ -266,6 +212,7 @@ export function request(
   path: string,
   body: string,
   label: string,
+  authorization = "",
 ): WasmHandleResponse {
   const response = callJSON<WasmHandleResponse>(
     fn,
@@ -273,11 +220,11 @@ export function request(
     method,
     path,
     body,
+    authorization,
   );
   requiredNumber(response as Record<string, unknown>, "status");
   stringField(response as Record<string, unknown>, "body");
   stringField(response as Record<string, unknown>, "error");
-  stringField(response as Record<string, unknown>, "route");
   return response;
 }
 

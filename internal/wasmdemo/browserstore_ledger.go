@@ -8,6 +8,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -555,13 +556,40 @@ func reactivateWorkerReservation(storage BrowserStorage, taskID string, workerID
 	return nil
 }
 
+// requireTaskReviewPermission mirrors internal/db's lockTaskForReview: the
+// task's literal creator is always authorized; for an organization-owned
+// task, a member holding the review-submissions permission is authorized
+// too, so an org's designated reviewer (not just its task's creator) can
+// accept/reject/request changes on its behalf.
+func requireTaskReviewPermission(storage BrowserStorage, record storedTaskRecord, requesterID core.UserID, action string) *core.DomainError {
+	if record.CreatedBy == requesterID.String() {
+		return nil
+	}
+	if record.OwnerOrganizationID != "" {
+		organizationIDResult := core.ParseOrganizationID(record.OwnerOrganizationID)
+		if organizationID, matched := organizationIDResult.(core.OrganizationIDCreated); matched {
+			rolesResult := (OrgBrowserStore{storage: storage}).FindMemberRoles(context.Background(), organizationID.Value, requesterID)
+			if found, matched := rolesResult.(org.MemberRolesFound); matched {
+				if _, granted := org.CheckPermission(found.Roles, org.PermissionReviewSubmissions).(org.PermissionGranted); granted {
+					return nil
+				}
+			}
+		}
+	}
+	reason := core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or an organization reviewer can "+action+" the task")
+	return &reason
+}
+
 func (store LedgerBrowserStore) AcceptSubmission(_ context.Context, command ledger.AcceptStoreCommand) ledger.AcceptResult {
 	taskRecord, taskFound, taskErr := loadStoredTaskRecord(store.storage, command.TaskID.String())
 	if taskErr != nil {
 		return ledger.AcceptRejected{Reason: *taskErr}
 	}
-	if !taskFound || (taskRecord.CreatedBy != command.RequesterUserID.String()) {
-		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner can accept submissions for the task")}
+	if !taskFound {
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if err := requireTaskReviewPermission(store.storage, taskRecord, command.RequesterUserID, "accept submissions for"); err != nil {
+		return ledger.AcceptRejected{Reason: *err}
 	}
 
 	submission, submissionFound, ok := getStoredSubmissionJSON(store.storage, submissionRecordKey(command.SubmissionID.String()))
@@ -638,8 +666,11 @@ func (store LedgerBrowserStore) RequestChanges(_ context.Context, command ledger
 	if taskErr != nil {
 		return ledger.RequestChangesRejected{Reason: *taskErr}
 	}
-	if !taskFound || taskRecord.CreatedBy != command.RequesterUserID.String() {
-		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner can review submissions for the task")}
+	if !taskFound {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if err := requireTaskReviewPermission(store.storage, taskRecord, command.RequesterUserID, "review submissions for"); err != nil {
+		return ledger.RequestChangesRejected{Reason: *err}
 	}
 	if taskRecord.State != "open" {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can request submission changes")}
@@ -673,8 +704,11 @@ func (store LedgerBrowserStore) RejectSubmission(_ context.Context, command ledg
 	if taskErr != nil {
 		return ledger.RejectRejected{Reason: *taskErr}
 	}
-	if !taskFound || taskRecord.CreatedBy != command.RequesterUserID.String() {
-		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner can review submissions for the task")}
+	if !taskFound {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if err := requireTaskReviewPermission(store.storage, taskRecord, command.RequesterUserID, "review submissions for"); err != nil {
+		return ledger.RejectRejected{Reason: *err}
 	}
 	if taskRecord.State != "open" {
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can reject submissions")}
@@ -735,4 +769,174 @@ func (store LedgerBrowserStore) RejectSubmission(_ context.Context, command ledg
 func refundHeldCollectibleRewardBrowser(storage BrowserStorage, ids InteractionIDSource, taskID string) *core.DomainError {
 	_, err := (AssetBrowserStore{storage: storage, ids: ids}).releaseHeldCollectibleReward(taskID)
 	return err
+}
+
+type StoredLedgerEntry struct {
+	ID        string `json:"id"`
+	OwnerKind string `json:"owner_kind"`
+	OwnerID   string `json:"owner_id"`
+	Kind      string `json:"kind"`
+	Amount    int64  `json:"amount"`
+	TaskID    string `json:"task_id"`
+}
+
+type LedgerStorageResult interface {
+	ledgerStorageResult()
+}
+
+type LedgerEntryStored struct {
+	Value StoredLedgerEntry
+}
+
+type LedgerEntriesStored struct {
+	Values []StoredLedgerEntry
+}
+
+type LedgerBalanceStored struct {
+	Amount int64
+}
+
+type LedgerStorageRejected struct {
+	Reason string
+}
+
+func (LedgerEntryStored) ledgerStorageResult()     {}
+func (LedgerEntriesStored) ledgerStorageResult()   {}
+func (LedgerBalanceStored) ledgerStorageResult()   {}
+func (LedgerStorageRejected) ledgerStorageResult() {}
+
+func SaveLedgerEntry(storage BrowserStorage, entry StoredLedgerEntry) LedgerStorageResult {
+	cleaned := cleanStoredLedgerEntry(entry)
+	if reason := validateStoredLedgerEntry(cleaned); reason != "" {
+		return LedgerStorageRejected{Reason: reason}
+	}
+	keyResult := NewStorageKey("ledger:" + cleaned.ID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return LedgerStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return LedgerStorageRejected{Reason: "ledger entry encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return LedgerStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	indexResult := appendStringIndex(storage, "ledger:index:"+cleaned.OwnerKind+":"+cleaned.OwnerID, cleaned.ID, "ledger entry")
+	if _, matched := indexResult.(stringIndexStored); !matched {
+		return LedgerStorageRejected{Reason: indexResult.(stringIndexRejected).reason}
+	}
+	return LedgerEntryStored{Value: cleaned}
+}
+
+func ListLedgerEntries(storage BrowserStorage, ownerKind string, ownerID string, page StoredListPage) LedgerStorageResult {
+	cleanKind := strings.TrimSpace(ownerKind)
+	cleanID := strings.TrimSpace(ownerID)
+	if !validStoredLedgerOwnerKind(cleanKind) {
+		return LedgerStorageRejected{Reason: "ledger owner kind is invalid"}
+	}
+	if cleanID == "" {
+		return LedgerStorageRejected{Reason: "ledger owner id is required"}
+	}
+	idsResult := loadStringIndex(storage, "ledger:index:"+cleanKind+":"+cleanID, "ledger entry")
+	ids, idsMatched := idsResult.(stringIndexLoaded)
+	if !idsMatched {
+		return LedgerStorageRejected{Reason: idsResult.(stringIndexRejected).reason}
+	}
+	start, end := pageBounds(len(ids.values), page)
+	values := make([]StoredLedgerEntry, 0, end-start)
+	for index := start; index < end; index++ {
+		loadResult := loadLedgerEntry(storage, ids.values[index])
+		loaded, loadedMatched := loadResult.(LedgerEntryStored)
+		if !loadedMatched {
+			return loadResult
+		}
+		if loaded.Value.OwnerKind != cleanKind || loaded.Value.OwnerID != cleanID {
+			return LedgerStorageRejected{Reason: "ledger index contains mismatched record"}
+		}
+		values = append(values, loaded.Value)
+	}
+	return LedgerEntriesStored{Values: values}
+}
+
+// LedgerBalance sums an owner's ledger entries directly. It used to add a
+// hardcoded +100 baseline for user-kind owners, on the assumption that the
+// signup grant was implicit and never had its own ledger entry - true only
+// for the pre-cutover demo's simplified auth handler. Now that every real
+// user (via AuthBrowserStore.insertSignupGrant) and organization (via
+// OrgBrowserStore.insertOrganizationCreditGrant) gets an explicit signup-
+// grant ledger entry, the baseline would double-count it.
+func LedgerBalance(storage BrowserStorage, ownerKind string, ownerID string) LedgerStorageResult {
+	entriesResult := ListLedgerEntries(storage, ownerKind, ownerID, StoredListPage{limit: 1000000, offset: 0})
+	entries, entriesMatched := entriesResult.(LedgerEntriesStored)
+	if !entriesMatched {
+		return entriesResult
+	}
+	var amount int64
+	for index := range entries.Values {
+		amount += entries.Values[index].Amount
+	}
+	return LedgerBalanceStored{Amount: amount}
+}
+
+func loadLedgerEntry(storage BrowserStorage, ledgerID string) LedgerStorageResult {
+	keyResult := NewStorageKey("ledger:" + strings.TrimSpace(ledgerID))
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return LedgerStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return LedgerStorageRejected{Reason: storageReadReason(readResult, "ledger entry")}
+	}
+	var entry StoredLedgerEntry
+	if err := json.Unmarshal([]byte(read.Value), &entry); err != nil {
+		return LedgerStorageRejected{Reason: "ledger entry decoding failed"}
+	}
+	cleaned := cleanStoredLedgerEntry(entry)
+	if cleaned.ID != strings.TrimSpace(ledgerID) {
+		return LedgerStorageRejected{Reason: "ledger storage key contains mismatched record"}
+	}
+	if reason := validateStoredLedgerEntry(cleaned); reason != "" {
+		return LedgerStorageRejected{Reason: reason}
+	}
+	return LedgerEntryStored{Value: cleaned}
+}
+
+func cleanStoredLedgerEntry(entry StoredLedgerEntry) StoredLedgerEntry {
+	return StoredLedgerEntry{
+		ID:        strings.TrimSpace(entry.ID),
+		OwnerKind: strings.TrimSpace(entry.OwnerKind),
+		OwnerID:   strings.TrimSpace(entry.OwnerID),
+		Kind:      strings.TrimSpace(entry.Kind),
+		Amount:    entry.Amount,
+		TaskID:    strings.TrimSpace(entry.TaskID),
+	}
+}
+
+func validateStoredLedgerEntry(entry StoredLedgerEntry) string {
+	if entry.ID == "" {
+		return "ledger entry id is required"
+	}
+	if !validStoredLedgerOwnerKind(entry.OwnerKind) {
+		return "ledger owner kind is invalid"
+	}
+	if entry.OwnerID == "" {
+		return "ledger owner id is required"
+	}
+	if entry.Kind == "" {
+		return "ledger entry kind is required"
+	}
+	return ""
+}
+
+func validStoredLedgerOwnerKind(value string) bool {
+	switch value {
+	case "user", "organization":
+		return true
+	default:
+		return false
+	}
 }

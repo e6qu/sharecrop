@@ -46,7 +46,8 @@ func (store TaskBrowserStore) CreateTask(_ context.Context, seriesID core.TaskSe
 		Participation: command.Participation.String(), AssigneeScope: command.AssigneeScope.String(), ReservationTTLHours: command.ReservationTTL.Hours(),
 		State: task.StateDraft.String(), VisibilityKind: visibilityKind, VisibilityUserID: visibilityUserID, VisibilityTeamID: visibilityTeamID, VisibilityOrgID: visibilityOrgID,
 		ResponseSchemaJSON: command.ResponseSchema.String(), PayloadKind: payloadKind, PayloadJSON: payloadSource,
-		CreatedBy: command.Actor.ID.String(),
+		CreatedBy:   command.Actor.ID.String(),
+		Attachments: storedTaskAttachmentsFrom(command.Attachments),
 	}
 
 	switch placement := command.Placement.(type) {
@@ -81,6 +82,16 @@ func (store TaskBrowserStore) CreateTask(_ context.Context, seriesID core.TaskSe
 	if visibilityKind == task.VisibilityKindPublic.String() {
 		if _, matched := appendStringIndex(store.storage, taskPublicIndexKey(), record.ID, "task").(stringIndexStored); !matched {
 			return task.CreateTaskStoreRejected{Reason: invalidState("update public task index failed")}
+		}
+	}
+	if visibilityOrgID != "" {
+		if _, matched := appendStringIndex(store.storage, taskOrganizationVisibilityIndexKey(visibilityOrgID), record.ID, "task").(stringIndexStored); !matched {
+			return task.CreateTaskStoreRejected{Reason: invalidState("update organization task index failed")}
+		}
+	}
+	if visibilityTeamID != "" {
+		if _, matched := appendStringIndex(store.storage, taskTeamVisibilityIndexKey(visibilityTeamID), record.ID, "task").(stringIndexStored); !matched {
+			return task.CreateTaskStoreRejected{Reason: invalidState("update team task index failed")}
 		}
 	}
 	if record.SeriesID != "" {
@@ -230,8 +241,21 @@ func (store TaskBrowserStore) ListTasks(_ context.Context, scope task.ListScope,
 			return task.ListTasksStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
 		}
 		candidateIDs = loaded.values
+	case task.OrganizationListScope:
+		indexResult := loadStringIndex(store.storage, taskOrganizationVisibilityIndexKey(typed.OrganizationID.String()), "task")
+		loaded, matched := indexResult.(stringIndexLoaded)
+		if !matched {
+			return task.ListTasksStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
+		}
+		candidateIDs = loaded.values
+	case task.TeamListScope:
+		indexResult := loadStringIndex(store.storage, taskTeamVisibilityIndexKey(typed.TeamID.String()), "task")
+		loaded, matched := indexResult.(stringIndexLoaded)
+		if !matched {
+			return task.ListTasksStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
+		}
+		candidateIDs = loaded.values
 	default:
-		// OrganizationListScope/TeamListScope are not yet implemented.
 		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "this task list scope is not yet implemented in the browser demo")}
 	}
 
@@ -601,20 +625,109 @@ func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, task
 	return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task requires an active reservation for the submitter")}
 }
 
-// Task series live in browserstore_task_series.go. Series comments are not
-// yet implemented in the browser store - no current WASM-demo test exercises
-// them (unlike task comments, task series themselves, and everything else),
-// so they're deferred rather than built speculatively.
-func (store TaskBrowserStore) CreateSeriesComment(context.Context, task.SeriesComment) task.CreateSeriesCommentStoreResult {
-	return task.CreateSeriesCommentStoreRejected{Reason: notImplementedSeriesComments()}
+// Task series live in browserstore_task_series.go. Series comments below -
+// turns out every series mutation response (create/update/publish/...)
+// embeds the series' comment thread (internal/http's writeSeriesDetailStatus
+// always calls ListSeriesComments), so this is not an optional, deferred
+// feature the way it first looked: without it, every series operation fails.
+
+type storedSeriesComment struct {
+	ID       string `json:"id"`
+	SeriesID string `json:"series_id"`
+	AuthorID string `json:"author_id"`
+	Body     string `json:"body"`
 }
 
-func (store TaskBrowserStore) ListSeriesComments(context.Context, core.TaskSeriesID) task.ListSeriesCommentsStoreResult {
-	return task.ListSeriesCommentsStoreRejected{Reason: notImplementedSeriesComments()}
+func seriesCommentRecordKey(id string) string { return "task:series_comment:" + id }
+func seriesCommentIndexKey(seriesID string) string {
+	return "task:series_comment_index:" + seriesID
 }
 
-func notImplementedSeriesComments() core.DomainError {
-	return core.NewDomainError(core.ErrorCodeInvalidState, "task series comments are not yet implemented in the browser demo")
+func putStoredSeriesCommentJSON(storage BrowserStorage, rawKey string, record storedSeriesComment) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredSeriesCommentJSON(storage BrowserStorage, rawKey string) (storedSeriesComment, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedSeriesComment{}, found, ok
+	}
+	var record storedSeriesComment
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedSeriesComment{}, false, false
+	}
+	return record, true, true
+}
+
+func parseStoredSeriesComment(record storedSeriesComment) (task.SeriesComment, *core.DomainError) {
+	idResult := core.ParseSeriesCommentID(record.ID)
+	id, idMatched := idResult.(core.SeriesCommentIDCreated)
+	if !idMatched {
+		reason := idResult.(core.SeriesCommentIDRejected).Reason
+		return task.SeriesComment{}, &reason
+	}
+	seriesIDResult := core.ParseTaskSeriesID(record.SeriesID)
+	seriesID, seriesIDMatched := seriesIDResult.(core.TaskSeriesIDCreated)
+	if !seriesIDMatched {
+		reason := seriesIDResult.(core.TaskSeriesIDRejected).Reason
+		return task.SeriesComment{}, &reason
+	}
+	authorResult := core.ParseUserID(record.AuthorID)
+	author, authorMatched := authorResult.(core.UserIDCreated)
+	if !authorMatched {
+		reason := authorResult.(core.UserIDRejected).Reason
+		return task.SeriesComment{}, &reason
+	}
+	bodyResult := task.NewCommentBody(record.Body)
+	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
+	if !bodyMatched {
+		reason := bodyResult.(task.CommentBodyRejected).Reason
+		return task.SeriesComment{}, &reason
+	}
+	return task.SeriesComment{ID: id.Value, SeriesID: seriesID.Value, AuthorID: author.Value, Body: body.Value}, nil
+}
+
+func (store TaskBrowserStore) CreateSeriesComment(_ context.Context, comment task.SeriesComment) task.CreateSeriesCommentStoreResult {
+	record := storedSeriesComment{ID: comment.ID.String(), SeriesID: comment.SeriesID.String(), AuthorID: comment.AuthorID.String(), Body: comment.Body.String()}
+	if !putStoredSeriesCommentJSON(store.storage, seriesCommentRecordKey(record.ID), record) {
+		return task.CreateSeriesCommentStoreRejected{Reason: invalidState("insert series comment failed")}
+	}
+	if _, matched := appendStringIndex(store.storage, seriesCommentIndexKey(record.SeriesID), record.ID, "series comment").(stringIndexStored); !matched {
+		return task.CreateSeriesCommentStoreRejected{Reason: invalidState("update series comment index failed")}
+	}
+	value, parseErr := parseStoredSeriesComment(record)
+	if parseErr != nil {
+		return task.CreateSeriesCommentStoreRejected{Reason: *parseErr}
+	}
+	return task.CreateSeriesCommentStoreAccepted{Value: value}
+}
+
+func (store TaskBrowserStore) ListSeriesComments(_ context.Context, seriesID core.TaskSeriesID) task.ListSeriesCommentsStoreResult {
+	indexResult := loadStringIndex(store.storage, seriesCommentIndexKey(seriesID.String()), "series comment")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		return task.ListSeriesCommentsStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
+	}
+	values := make([]task.SeriesComment, 0, len(loaded.values))
+	for _, id := range loaded.values {
+		record, found, ok := getStoredSeriesCommentJSON(store.storage, seriesCommentRecordKey(id))
+		if !ok {
+			return task.ListSeriesCommentsStoreRejected{Reason: invalidState("read series comment failed")}
+		}
+		if !found {
+			continue
+		}
+		value, parseErr := parseStoredSeriesComment(record)
+		if parseErr != nil {
+			return task.ListSeriesCommentsStoreRejected{Reason: *parseErr}
+		}
+		values = append(values, value)
+	}
+	return task.ListSeriesCommentsStoreAccepted{Values: values}
 }
 
 type storedTaskComment struct {

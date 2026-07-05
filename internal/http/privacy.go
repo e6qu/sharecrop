@@ -83,13 +83,31 @@ type PrivacyRetentionRejected struct {
 func (PrivacyRetentionRun) privacyRetentionResult()      {}
 func (PrivacyRetentionRejected) privacyRetentionResult() {}
 
+// SensitiveFieldRedactor performs the actual "delete on request" sensitive
+// field redaction across a user's submissions - the in-memory
+// memoryPrivacyService only tracks privacy *requests*, it has no submission
+// data of its own, so redaction is delegated to whatever store (Postgres or,
+// for the browser demo, browser storage) actually holds submissions.
+type SensitiveFieldRedactor interface {
+	RedactSensitiveFields(ctx context.Context, userID core.UserID) (int, error)
+}
+
 type memoryPrivacyService struct {
 	mu       sync.Mutex
 	requests []PrivacyRequestRecord
+	redactor SensitiveFieldRedactor
 }
 
 func newMemoryPrivacyService() *memoryPrivacyService {
 	return &memoryPrivacyService{requests: []PrivacyRequestRecord{}}
+}
+
+// NewMemoryPrivacyService is newMemoryPrivacyService exported for callers
+// (e.g. cmd/sharecrop-wasm) that need in-memory privacy-request tracking
+// wired to a real SensitiveFieldRedactor instead of DefaultRuntimeState's
+// zero-redactor default.
+func NewMemoryPrivacyService(redactor SensitiveFieldRedactor) PrivacyService {
+	return &memoryPrivacyService{requests: []PrivacyRequestRecord{}, redactor: redactor}
 }
 
 func (service *memoryPrivacyService) Create(_ context.Context, requester core.UserID, kind string) PrivacyMutationResult {
@@ -125,7 +143,7 @@ func (service *memoryPrivacyService) ListAll(_ context.Context, page core.Page) 
 	return PrivacyRequestsListed{Values: privacyPage(values, page)}
 }
 
-func (service *memoryPrivacyService) Resolve(_ context.Context, requestID string, note string) PrivacyMutationResult {
+func (service *memoryPrivacyService) Resolve(ctx context.Context, requestID string, note string) PrivacyMutationResult {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	for index := range service.requests {
@@ -146,6 +164,13 @@ func (service *memoryPrivacyService) Resolve(_ context.Context, requestID string
 			}
 			record.ExportJSON = string(exportBytes)
 		}
+		if record.Kind == privacyKindSensitiveFieldDeletion && service.redactor != nil {
+			count, err := service.redactor.RedactSensitiveFields(ctx, record.RequestedBy)
+			if err != nil {
+				return PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "redact sensitive fields failed")}
+			}
+			record.RedactedFieldCount = count
+		}
 		service.requests[index] = record
 		return PrivacyRequestSaved{Value: record}
 	}
@@ -156,7 +181,14 @@ func (service *memoryPrivacyService) RecordSensitiveFieldAccess(_ context.Contex
 	return PrivacyRequestSaved{Value: PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
 }
 
-func (service *memoryPrivacyService) RunRetention(_ context.Context, _ core.UserID) PrivacyRetentionResult {
+func (service *memoryPrivacyService) RunRetention(ctx context.Context, actor core.UserID) PrivacyRetentionResult {
+	if service.redactor != nil {
+		count, err := service.redactor.RedactSensitiveFields(ctx, actor)
+		if err != nil {
+			return PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "redact sensitive fields failed")}
+		}
+		return PrivacyRetentionRun{RedactedFieldCount: count}
+	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	return PrivacyRetentionRun{RedactedFieldCount: 0}

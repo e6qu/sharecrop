@@ -705,6 +705,7 @@ func parseReservationPathValue(r *http.Request) reservationIDResult {
 	}
 	return reservationIDAccepted{value: accepted.Value}
 }
+
 // parseTaskListScope builds the list scope for the request. scope=organization
 // works for either a UserSubject or an OrgSubject (an org token omits the
 // viewer-personalization UserID, which only affects include_reserved

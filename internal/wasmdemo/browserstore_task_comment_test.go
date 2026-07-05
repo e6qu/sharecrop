@@ -9,7 +9,7 @@ import (
 )
 
 func TestTaskBrowserStoreAddAndListTaskComments(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 
@@ -36,7 +36,7 @@ func TestTaskBrowserStoreAddAndListTaskComments(t *testing.T) {
 }
 
 func TestTaskBrowserStoreListTaskCommentsRejectsOutsider(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 	outsider := auth.UserSubject{ID: testUserID(t, "outsider")}
