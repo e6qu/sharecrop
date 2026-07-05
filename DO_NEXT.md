@@ -5,17 +5,28 @@ Current priority from
 
 Active branch:
 
-1. `task/reservation-fixes-and-reward-badges` is in progress (see
-   `STATUS.md` for the full writeup): fixed a worker never being able to see
-   or cancel their own reservation (`ListReservations` was owner-only;
-   `CancelReservation` shared its permission check with the owner-only
-   approve/decline actions), fixed the Reserve button never disappearing
-   once used (`viewer_action` never checked the viewer's own reservations),
-   and added a reward badge + small icons on all task-state badges in list
-   rows. Found by live browser reproduction with real screenshots, not
-   assumption, per the user's explicit request.
+1. `task/unpublish-escape-hatch-and-scenario-parity-ci` is in progress (see
+   `STATUS.md` for the full writeup): traced "task view has no way to
+   change funding on an open task" to its root cause (the
+   funded-before-open invariant lives only in the Postgres store, not the
+   shared domain layer, so `internal/wasmdemo` never enforced it), fixed
+   the missing invariant in the demo, added a real UI escape hatch
+   (Unpublish button on individual tasks — the backend action already
+   existed, just wasn't wired up), and wired the real-backend scenario
+   parity check into CI (it previously only ever ran against the WASM
+   demo, never the real backend, so a bad assertion there could pass CI
+   silently).
    - Not covered: `internal/wasmdemo`'s org-collectible-award flow (from
      PR 134) still isn't implemented — only the real backend supports it.
+   - Open decision, raised directly by the user: whether to unify onto a
+     single WASM-compiled backend (browser demo + multi-replica production)
+     instead of two independent implementations that can silently diverge
+     on invariants like the one just fixed. This connects to the two
+     already-deferred large infra efforts in memory
+     (`project_wasm_and_http2_future_effort`). Asked a clarifying scope
+     question (full unification now / a scoped-down stepping stone first /
+     tactical-only for now) with no response yet — surface this again
+     next session if the user hasn't already redirected.
 
 2. Two large infrastructure efforts are confirmed as wanted but explicitly
    deferred (see memory for full detail, including empirical research

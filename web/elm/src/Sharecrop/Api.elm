@@ -807,6 +807,15 @@ postOpenTask token taskId =
         (Http.expectJson OpenTaskReceived taskDetailDecoder)
 
 
+postUnpublishTask : String -> String -> Cmd Msg
+postUnpublishTask token taskId =
+    authorizedRequest "POST"
+        token
+        ("/api/tasks/" ++ taskId ++ "/unpublish")
+        (Http.jsonBody (Encode.object []))
+        (Http.expectJson UnpublishTaskReceived taskDetailDecoder)
+
+
 postRefundTask : String -> String -> Cmd Msg
 postRefundTask token taskId =
     authorizedRequest "POST"

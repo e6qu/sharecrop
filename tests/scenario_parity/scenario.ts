@@ -1398,6 +1398,21 @@ export async function runSharedScenarioParity(
     "multi-actor task must be created by owner actor",
   );
 
+  // A credit reward must actually be escrowed before the task can open -
+  // declaring the reward at creation is not the same as funding it. Checked
+  // on both backends since this invariant previously lived only in the real
+  // backend's store layer and was silently missing from the WASM demo.
+  const openedBeforeFunding = await owner.client.request(
+    "POST",
+    `/api/tasks/${multiActorTaskID}/open`,
+    {},
+  );
+  assertStatus(
+    openedBeforeFunding,
+    409,
+    "open multi-actor task before funding must be rejected",
+  );
+
   const funded = await owner.client.request(
     "POST",
     `/api/tasks/${multiActorTaskID}/funding`,

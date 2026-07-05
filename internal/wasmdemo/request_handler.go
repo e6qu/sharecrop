@@ -574,6 +574,12 @@ func (handler TaskHandler) handleTaskAction(request Request, action taskActionRo
 		if task.State != "draft" {
 			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be opened")}
 		}
+		if (task.RewardKind == "credit" || task.RewardKind == "bundle") && task.EscrowAmount != task.RewardCreditAmount {
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward must be funded before opening")}
+		}
+		if (task.RewardKind == "collectible" || task.RewardKind == "bundle") && task.RewardCollectibleCount < 1 {
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible reward must be funded before opening")}
+		}
 		task.State = "open"
 	case "cancel":
 		if task.State != "draft" && task.State != "open" {

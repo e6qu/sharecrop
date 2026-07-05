@@ -10672,6 +10672,20 @@ var $author$project$Sharecrop$Api$postTaskComment = F3(
 						]))),
 			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TaskCommentReceived, $author$project$Sharecrop$Generated$Task$taskCommentResponseDecoder));
 	});
+var $author$project$Sharecrop$Types$UnpublishTaskReceived = function (a) {
+	return {$: 'UnpublishTaskReceived', a: a};
+};
+var $author$project$Sharecrop$Api$postUnpublishTask = F2(
+	function (token, taskId) {
+		return A5(
+			$author$project$Sharecrop$Api$authorizedRequest,
+			'POST',
+			token,
+			'/api/tasks/' + (taskId + '/unpublish'),
+			$elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(_List_Nil)),
+			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UnpublishTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+	});
 var $author$project$Sharecrop$Types$ProvisionMemberReceived = function (a) {
 	return {$: 'ProvisionMemberReceived', a: a};
 };
@@ -13213,6 +13227,48 @@ var $author$project$Main$update = F2(
 									{
 										detail: $elm$core$Maybe$Just(detail),
 										taskActionMessage: $elm$core$Maybe$Just('Task opened.')
+									});
+							}),
+						$author$project$Sharecrop$Api$refreshTasksAndDiscovery(model));
+				} else {
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										taskActionMessage: $elm$core$Maybe$Just(
+											$author$project$Sharecrop$Labels$httpErrorLabel(error))
+									});
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'UnpublishTaskClicked':
+				var taskId = msg.a;
+				return A2(
+					$author$project$Sharecrop$Api$withSession,
+					model,
+					function (state) {
+						return _Utils_Tuple2(
+							model,
+							A2($author$project$Sharecrop$Api$postUnpublishTask, state.accessToken, taskId));
+					});
+			case 'UnpublishTaskReceived':
+				if (msg.a.$ === 'Ok') {
+					var detail = msg.a.a;
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Sharecrop$Api$updateLoggedIn,
+							model,
+							function (state) {
+								return _Utils_update(
+									state,
+									{
+										detail: $elm$core$Maybe$Just(detail),
+										taskActionMessage: $elm$core$Maybe$Just('Task moved back to draft.')
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshTasksAndDiscovery(model));
@@ -25759,6 +25815,9 @@ var $author$project$Sharecrop$Types$RefundCollectibleRewardClicked = function (a
 var $author$project$Sharecrop$Types$RefundTaskClicked = function (a) {
 	return {$: 'RefundTaskClicked', a: a};
 };
+var $author$project$Sharecrop$Types$UnpublishTaskClicked = function (a) {
+	return {$: 'UnpublishTaskClicked', a: a};
+};
 var $author$project$Sharecrop$Labels$taskStateGuidance = function (state) {
 	switch (state.$) {
 		case 'TaskStateDraft':
@@ -25827,6 +25886,17 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 								$author$project$Sharecrop$Ui$testId('open-task')
 							]),
 						'Open')) : $elm$core$Maybe$Nothing,
+					_Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen) ? $elm$core$Maybe$Just(
+					A2(
+						$author$project$Sharecrop$Ui$secondaryButton,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Sharecrop$Types$UnpublishTaskClicked(detail.id)),
+								$author$project$Sharecrop$Ui$testId('unpublish-task')
+							]),
+						'Unpublish')) : $elm$core$Maybe$Nothing,
 					(_Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || (_Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen) && (detail.rewardKind === 'none'))) ? $elm$core$Maybe$Just(
 					A2(
 						$author$project$Sharecrop$Ui$secondaryButton,

@@ -1,8 +1,9 @@
 # Status
 
-The repository contains pull request 1 through pull request 135 work, merged
-into `main`, plus the current `task/reservation-fixes-and-reward-badges`
-branch. PR 108's GitHub Pages deployment failed three times in a row after
+The repository contains pull request 1 through pull request 136 work, merged
+into `main`, plus the current
+`task/unpublish-escape-hatch-and-scenario-parity-ci` branch. PR 108's
+GitHub Pages deployment failed three times in a row after
 merge for what looked like a transient GitHub-side Pages backend issue
 (build/artifact steps always succeeded; only `deploy-pages` failed or hung,
 with a different symptom each time); most later PRs' deployments succeeded
@@ -26,41 +27,57 @@ state color-coding, "mine" highlighting, a funding-discoverability
 callout, required-field validation, a multi-select state filter) are
 complete.
 
-Active task: `task/reservation-fixes-and-reward-badges` fixes two reservation
-bugs the user hit live (reported as "I can't cancel reservation" and "the
-reservation drawer is not visible when toggled off"), confirmed by real
-browser reproduction rather than assumption, plus a follow-up request to
-show the reward as its own badge in task lists with small icons on all
-badges:
+PR 136 fixed two reservation bugs the user hit live (reported as "I can't
+cancel reservation" and "the reservation drawer is not visible when
+toggled off"), confirmed by real browser reproduction rather than
+assumption, plus a follow-up request to show the reward as its own badge
+in task lists with small icons on all badges. See its `WHAT_WE_DID.md`
+entry for the full writeup (a worker couldn't see or cancel their own
+reservation; the "Reserve" button never went away after reserving; new
+reward badges + state-badge icons).
 
-- **A worker could never see or cancel their own reservation.**
-  `task.Service.ListReservations` (`internal/task/service.go`) rejected
-  anyone but the task owner outright, so a worker who reserved a task got
-  an empty reservation list back — their own reservation (and its Cancel
-  button) simply never rendered. Widened it: the owner still sees every
-  reservation; anyone else sees only their own.
-- **Even once visible, Cancel 403'd.** `CancelReservation` shared its
-  permission check with `ApproveReservation`/`DeclineReservation`
-  (owner-only), but cancelling is meant to be available to the reservation's
-  own holder too, not just the owner force-cancelling it. Gave
-  `CancelReservation` its own permission path: owner, or the actor who
-  requested that specific reservation.
-- **The "Reserve" button never went away after reserving.** The task
-  detail page's `viewer_action` (`internal/http/tasks.go`) was computed
-  purely from the task's own state/policy, never checking whether the
-  viewer already held a reservation — so the Reserve/Request-approval
-  button stayed forever, inviting a pointless second (server-rejected)
-  attempt. `taskToResponseForActor` now overrides it to `wait` once the
-  actor already has a requested/active reservation on the task.
-- **Reward badges + state icons.** The reward now renders as its own
-  small badge (new "reward"/purple tone, 7.39:1 contrast, `◆` icon) next
-  to the state badge in task list rows, instead of muted trailing text.
-  Each of the 5 state badges also got a small decorative icon
-  (`aria-hidden`, since the badge's own text already names the state per
-  WCAG 1.4.1): `●` open, `○` draft, `✓` closed, `✕` cancelled, `⏳` expired.
+Active task: `task/unpublish-escape-hatch-and-scenario-parity-ci` traces
+the user's next report ("the task view still! still! does not have a
+visible drawer to change funding of a task") to its actual root cause,
+verified live against the deployed demo, not guessed at:
 
-All changes covered by new tests (a Go http_e2e case for the
-list/viewer_action fixes; Playwright for the cancel flow and the reward
-badge) and a full local check-suite + Playwright run before commit. Found
-via live reproduction with real browser screenshots per the user's request
-("take screenshots to debug and fix"), not guessed at.
+- **Root cause found**: "a credit/bundle reward must be funded before a
+  task can open" is enforced only in `internal/db/task_store.go`'s
+  `requireOpenableReward` (the Postgres store layer) — never in the
+  shared `internal/task/service.go` domain layer. `internal/wasmdemo` is a
+  wholly separate reimplementation of task logic with its own storage and
+  its own state-transition checks, and it never got this invariant added,
+  so a demo task could reach "open" with a declared-but-unescrowed
+  reward. Confirmed empirically (curl against a live local server) that
+  this invariant is missing on the demo and present on the real backend
+  before writing any fix.
+- **Fixed the missing invariant** in `internal/wasmdemo/request_handler.go`'s
+  "open" action, mirroring the real backend's check exactly (credit/bundle
+  needs escrow matching the declared amount; collectible/bundle needs at
+  least one held collectible).
+- **Added a real escape hatch**: `Task.Unpublish` (`open` → `draft`) already
+  existed on both backends (`POST /api/tasks/{id}/unpublish`) but was never
+  wired to a UI button for individual tasks (only for task series) — an
+  owner had no way to move a task back to draft to fix its funding and
+  reopen it. Added the button, the Msg/Api/View wiring, and a Playwright
+  test covering the full recovery flow (declare reward → reject premature
+  open → fund → open → unpublish → fund panel available again → reopen).
+- **Closed the systemic gap the user pushed on directly**: the shared
+  `tests/scenario_parity/scenario.ts` script (meant to prove the two
+  backends behave identically) was, until now, only ever run against the
+  WASM demo in CI (`check-wasm-scenario-parity`) — `check:scenario-parity`
+  (the real-backend variant) had no CI job at all, so a new assertion
+  added there could silently diverge from real-backend behavior with
+  nothing automated to catch it. Wired it into `tools/run_db_checks.sh`
+  (spins up a real DB-backed server, runs the shared scenario against it)
+  and added Deno setup to the `db-checks` CI job. Verified the new
+  assertion is real, not vacuous, by reverting the fix and confirming the
+  check actually fails (200 instead of 409) before restoring it.
+- Bigger open question, raised by the user directly and not yet resolved:
+  whether to unify onto a single WASM-compiled backend (used for both the
+  browser demo and a multi-replica production deployment) so this class of
+  invariant-duplication bug becomes structurally impossible rather than
+  something each new check has to catch. Asked a clarifying scope question
+  with no response yet; proceeded with the concrete, verified, low-risk fix
+  above in the meantime rather than guessing at scope for a multi-session
+  rewrite. See `DO_NEXT.md`.
