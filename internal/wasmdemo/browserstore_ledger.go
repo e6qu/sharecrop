@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/task"
 )
 
 // LedgerBrowserStore implements ledger.Store against BrowserStorage. It
@@ -24,10 +27,13 @@ import (
 // display; escrow state itself is tracked as a small additional record per
 // task since those existing helpers only model entries, not held escrow.
 //
-// Submission-review flows (AcceptSubmission/RequestChanges/RejectSubmission
-// - tips, partial-credit selection, bans) are not yet implemented; they
-// return a clear "not yet implemented" rejection rather than silently doing
-// the wrong thing.
+// Submission-review flows (AcceptSubmission/RequestChanges/RejectSubmission)
+// cover credit/collectible/bundle payouts and credit/collectible tips, same
+// as internal/db. Implementor bans (BanSelection) are not modeled - no
+// held ban state exists yet in the browser stores - so a ban selection is
+// silently treated as "no ban" rather than rejected outright, since a ban
+// is an additional restriction on top of the review outcome, not something
+// the reviewer depends on succeeding.
 type LedgerBrowserStore struct {
 	storage BrowserStorage
 	ids     InteractionIDSource
@@ -357,19 +363,403 @@ func (store LedgerBrowserStore) ListOrganizationEntries(_ context.Context, organ
 	return store.listEntries("organization", organizationID.String(), page)
 }
 
-// Submission-review flows are not yet implemented in the browser store -
-// they involve tips, partial-credit selection, and bans on top of the same
-// task/escrow mechanics above, deferred to keep this change reviewable.
-func (store LedgerBrowserStore) AcceptSubmission(context.Context, ledger.AcceptStoreCommand) ledger.AcceptResult {
-	return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "accepting a submission through the browser demo is not yet implemented")}
+// reviewEscrowOutcome mirrors internal/db's payReviewEscrow: pays out the
+// task's held credit escrow (full or partial) to the worker, refunding the
+// leftover remainder to the funder when closeTask is true (accept - the
+// task is closing, nothing more will be paid from this escrow) or leaving
+// the remainder held when false (reject - a future submission could still
+// be accepted against it).
+func (store LedgerBrowserStore) reviewEscrowOutcome(taskID core.TaskID, workerID core.UserID, payoutEntryID core.LedgerEntryID, refundEntryID core.LedgerEntryID, key ledger.IdempotencyKey, selection ledger.CreditReviewSelection, closeTask bool) (ledger.PayoutOutcome, *core.DomainError) {
+	if _, noPayout := selection.(ledger.NoCreditReviewSelection); noPayout {
+		return ledger.NoPayout{}, nil
+	}
+	escrow, found, err := store.loadEscrow(taskID.String())
+	if err != nil {
+		return nil, err
+	}
+	_, partial := selection.(ledger.PartialCreditReviewSelection)
+	if !found {
+		if partial {
+			reason := core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")
+			return nil, &reason
+		}
+		return ledger.NoPayout{}, nil
+	}
+	if escrow.State != ledger.EscrowStateHeld.String() {
+		if partial {
+			reason := core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is not held")
+			return nil, &reason
+		}
+		return ledger.NoPayout{}, nil
+	}
+
+	payoutAmount := escrow.Amount
+	if selected, matched := selection.(ledger.PartialCreditReviewSelection); matched {
+		payoutAmount = selected.Amount.Int64()
+	}
+	if payoutAmount > escrow.Amount {
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "credit payout cannot exceed held escrow")
+		return nil, &reason
+	}
+
+	entryResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
+		ID: payoutEntryID.String(), OwnerKind: "user", OwnerID: workerID.String(),
+		Kind: ledger.EntryKindTaskPayout.String(), Amount: payoutAmount, TaskID: taskID.String(),
+	})
+	if _, matched := entryResult.(LedgerEntryStored); !matched {
+		reason := invalidState("insert task payout ledger entry failed")
+		return nil, &reason
+	}
+
+	remaining := escrow.Amount - payoutAmount
+	if closeTask {
+		if remaining > 0 {
+			refundResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
+				ID: refundEntryID.String(), OwnerKind: escrow.FunderOwnerKind, OwnerID: escrow.FunderOwnerID,
+				Kind: ledger.EntryKindTaskRefund.String(), Amount: remaining, TaskID: taskID.String(),
+			})
+			if _, matched := refundResult.(LedgerEntryStored); !matched {
+				reason := invalidState("insert partial accept refund ledger entry failed")
+				return nil, &reason
+			}
+		}
+		escrow.Amount = payoutAmount
+		escrow.State = ledger.EscrowStateReleased.String()
+	} else {
+		escrow.State = ledger.EscrowStateHeld.String()
+		escrow.Amount = remaining
+		if remaining == 0 {
+			escrow.State = ledger.EscrowStateReleased.String()
+			escrow.Amount = payoutAmount
+		}
+	}
+	if !store.saveEscrow(escrow) {
+		reason := invalidState("update task escrow after review payout failed")
+		return nil, &reason
+	}
+
+	amountResult := ledger.NewCreditAmount(payoutAmount)
+	amount, amountMatched := amountResult.(ledger.CreditAmountAccepted)
+	if !amountMatched {
+		reason := amountResult.(ledger.CreditAmountRejected).Reason
+		return nil, &reason
+	}
+	return ledger.CreditPayout{WorkerUserID: workerID, Amount: amount.Value}, nil
 }
 
-func (store LedgerBrowserStore) RequestChanges(context.Context, ledger.RequestChangesStoreCommand) ledger.RequestChangesResult {
-	return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "requesting submission changes through the browser demo is not yet implemented")}
+// creditTipOutcome mirrors internal/db's payCreditTip: debits the requester
+// and credits the worker for a voluntary tip on top of the review outcome.
+func (store LedgerBrowserStore) creditTipOutcome(taskID core.TaskID, requesterID core.UserID, workerID core.UserID, debitEntryID core.LedgerEntryID, creditEntryID core.LedgerEntryID, selection ledger.TipSelection) (ledger.TipOutcome, *core.DomainError) {
+	tip, matched := selection.(ledger.CreditTipSelection)
+	if !matched {
+		return ledger.NoTip{}, nil
+	}
+	balanceResult := LedgerBalance(store.storage, "user", requesterID.String())
+	balanceStored, balanceMatched := balanceResult.(LedgerBalanceStored)
+	if !balanceMatched {
+		reason := invalidState("read requester balance failed")
+		return nil, &reason
+	}
+	if balanceStored.Amount < tip.Amount.Int64() {
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "insufficient credits to tip the implementor")
+		return nil, &reason
+	}
+	debitResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
+		ID: debitEntryID.String(), OwnerKind: "user", OwnerID: requesterID.String(),
+		Kind: ledger.EntryKindTaskTip.String(), Amount: -tip.Amount.Int64(), TaskID: taskID.String(),
+	})
+	if _, matched := debitResult.(LedgerEntryStored); !matched {
+		reason := invalidState("insert task tip debit failed")
+		return nil, &reason
+	}
+	creditResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
+		ID: creditEntryID.String(), OwnerKind: "user", OwnerID: workerID.String(),
+		Kind: ledger.EntryKindTaskTip.String(), Amount: tip.Amount.Int64(), TaskID: taskID.String(),
+	})
+	if _, matched := creditResult.(LedgerEntryStored); !matched {
+		reason := invalidState("insert task tip credit failed")
+		return nil, &reason
+	}
+	return ledger.CreditTip{WorkerUserID: workerID, Amount: tip.Amount}, nil
 }
 
-func (store LedgerBrowserStore) RejectSubmission(context.Context, ledger.RejectStoreCommand) ledger.RejectResult {
-	return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "rejecting a submission through the browser demo is not yet implemented")}
+// collectibleTipOutcome mirrors internal/db's payCollectibleTip, reusing
+// AssetBrowserStore.GiftCollectible directly since a voluntary tip is
+// exactly a gift from requester to worker (same ownership/policy/idempotent
+// -replay checks).
+func (store LedgerBrowserStore) collectibleTipOutcome(requesterID core.UserID, workerID core.UserID, selection ledger.CollectibleTipSelection) (ledger.TipOutcome, *core.DomainError) {
+	selected, matched := selection.(ledger.CollectibleTipSelected)
+	if !matched {
+		return ledger.NoTip{}, nil
+	}
+	assetStore := AssetBrowserStore{storage: store.storage, ids: store.ids}
+	giftResult := assetStore.GiftCollectible(context.Background(), assets.GiftStoreCommand{FromUserID: requesterID, ToUserID: workerID, CollectibleID: selected.ID})
+	if rejected, matched := giftResult.(assets.GiftRejected); matched {
+		reason := rejected.Reason
+		return nil, &reason
+	}
+	return ledger.CollectibleTip{WorkerUserID: workerID, CollectibleID: selected.ID}, nil
+}
+
+func combinePayoutsBrowser(first ledger.PayoutOutcome, second ledger.PayoutOutcome) ledger.PayoutOutcome {
+	credit, hasCredit := first.(ledger.CreditPayout)
+	collectible, hasCollectible := second.(ledger.CollectiblePayout)
+	if hasCredit && hasCollectible && credit.WorkerUserID == collectible.WorkerUserID {
+		return ledger.BundlePayout{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleIDs: collectible.CollectibleIDs}
+	}
+	if _, firstNone := first.(ledger.NoPayout); firstNone {
+		return second
+	}
+	return first
+}
+
+func combineTipsBrowser(first ledger.TipOutcome, second ledger.TipOutcome) ledger.TipOutcome {
+	credit, hasCredit := first.(ledger.CreditTip)
+	collectible, hasCollectible := second.(ledger.CollectibleTip)
+	if hasCredit && hasCollectible && credit.WorkerUserID == collectible.WorkerUserID {
+		return ledger.BundleTip{WorkerUserID: credit.WorkerUserID, Amount: credit.Amount, CollectibleID: collectible.CollectibleID}
+	}
+	if _, firstNone := first.(ledger.NoTip); firstNone {
+		return second
+	}
+	return first
+}
+
+// reactivateWorkerReservation and cancelWorkerReservation mirror internal/db's
+// reservation side effects of RequestChanges/RejectSubmission - a worker's
+// submitted reservation goes back to active on changes requested, or is
+// cancelled outright on rejection, so a fresh reservation could be made.
+func reactivateWorkerReservation(storage BrowserStorage, taskID string, workerID string, fromState string, toState string) *core.DomainError {
+	indexResult := loadStringIndex(storage, reservationTaskIndexKey(taskID), "reservation")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return &reason
+	}
+	for _, id := range loaded.values {
+		record, found, ok := getStoredReservationJSON(storage, reservationRecordKey(id))
+		if !ok || !found {
+			continue
+		}
+		if record.AssigneeKind != task.AssigneeScopeUser.String() || record.AssigneeUserID != workerID {
+			continue
+		}
+		if record.State != fromState {
+			continue
+		}
+		record.State = toState
+		if !putStoredReservationJSON(storage, reservationRecordKey(id), record) {
+			reason := invalidState("update task reservation failed")
+			return &reason
+		}
+	}
+	return nil
+}
+
+// requireTaskReviewPermission mirrors internal/db's lockTaskForReview: the
+// task's literal creator is always authorized; for an organization-owned
+// task, a member holding the review-submissions permission is authorized
+// too, so an org's designated reviewer (not just its task's creator) can
+// accept/reject/request changes on its behalf.
+func requireTaskReviewPermission(storage BrowserStorage, record storedTaskRecord, requesterID core.UserID, action string) *core.DomainError {
+	if record.CreatedBy == requesterID.String() {
+		return nil
+	}
+	if record.OwnerOrganizationID != "" {
+		organizationIDResult := core.ParseOrganizationID(record.OwnerOrganizationID)
+		if organizationID, matched := organizationIDResult.(core.OrganizationIDCreated); matched {
+			rolesResult := (OrgBrowserStore{storage: storage}).FindMemberRoles(context.Background(), organizationID.Value, requesterID)
+			if found, matched := rolesResult.(org.MemberRolesFound); matched {
+				if _, granted := org.CheckPermission(found.Roles, org.PermissionReviewSubmissions).(org.PermissionGranted); granted {
+					return nil
+				}
+			}
+		}
+	}
+	reason := core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or an organization reviewer can "+action+" the task")
+	return &reason
+}
+
+func (store LedgerBrowserStore) AcceptSubmission(_ context.Context, command ledger.AcceptStoreCommand) ledger.AcceptResult {
+	taskRecord, taskFound, taskErr := loadStoredTaskRecord(store.storage, command.TaskID.String())
+	if taskErr != nil {
+		return ledger.AcceptRejected{Reason: *taskErr}
+	}
+	if !taskFound {
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if err := requireTaskReviewPermission(store.storage, taskRecord, command.RequesterUserID, "accept submissions for"); err != nil {
+		return ledger.AcceptRejected{Reason: *err}
+	}
+
+	submission, submissionFound, ok := getStoredSubmissionJSON(store.storage, submissionRecordKey(command.SubmissionID.String()))
+	if !ok {
+		return ledger.AcceptRejected{Reason: invalidState("read submission failed")}
+	}
+	if !submissionFound || submission.TaskID != command.TaskID.String() {
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
+	}
+	workerIDResult := core.ParseUserID(submission.SubmitterID)
+	workerID, workerIDMatched := workerIDResult.(core.UserIDCreated)
+	if !workerIDMatched {
+		return ledger.AcceptRejected{Reason: workerIDResult.(core.UserIDRejected).Reason}
+	}
+
+	if submission.State == "accepted" {
+		if submission.AcceptedIdempotencyKey != command.IdempotencyKey.String() {
+			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "submission was already accepted with a different idempotency key")}
+		}
+		return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
+	}
+	if submission.State != "submitted" {
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only valid submissions can be accepted")}
+	}
+	if taskRecord.State != "open" {
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can accept submissions")}
+	}
+
+	payout, payoutErr := store.reviewEscrowOutcome(command.TaskID, workerID.Value, command.PayoutEntryID, command.RefundEntryID, command.IdempotencyKey, command.CreditSelection, true)
+	if payoutErr != nil {
+		return ledger.AcceptRejected{Reason: *payoutErr}
+	}
+	assetStore := AssetBrowserStore{storage: store.storage, ids: store.ids}
+	collectibleIDs, collectibleErr := assetStore.payOutHeldCollectibleReward(command.TaskID.String(), workerID.Value.String())
+	if collectibleErr != nil {
+		return ledger.AcceptRejected{Reason: *collectibleErr}
+	}
+	var collectiblePayout ledger.PayoutOutcome = ledger.NoPayout{}
+	if len(collectibleIDs) > 0 {
+		collectiblePayout = ledger.CollectiblePayout{WorkerUserID: workerID.Value, CollectibleIDs: collectibleIDs}
+	}
+	outcome := combinePayoutsBrowser(payout, collectiblePayout)
+	if _, noPayout := outcome.(ledger.NoPayout); noPayout {
+		if taskRecord.RewardKind == "credit" || taskRecord.RewardKind == "bundle" {
+			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")}
+		}
+	}
+
+	tip, tipErr := store.creditTipOutcome(command.TaskID, command.RequesterUserID, workerID.Value, command.TipDebitEntryID, command.TipCreditEntryID, command.TipSelection)
+	if tipErr != nil {
+		return ledger.AcceptRejected{Reason: *tipErr}
+	}
+	collectibleTip, collectibleTipErr := store.collectibleTipOutcome(command.RequesterUserID, workerID.Value, command.CollectibleTip)
+	if collectibleTipErr != nil {
+		return ledger.AcceptRejected{Reason: *collectibleTipErr}
+	}
+	tipOutcome := combineTipsBrowser(tip, collectibleTip)
+
+	submission.State = "accepted"
+	submission.AcceptedIdempotencyKey = command.IdempotencyKey.String()
+	if !putStoredSubmissionJSON(store.storage, submissionRecordKey(submission.ID), submission) {
+		return ledger.AcceptRejected{Reason: invalidState("accept submission failed")}
+	}
+	taskRecord.State = "closed"
+	if !saveStoredTaskRecord(store.storage, taskRecord) {
+		return ledger.AcceptRejected{Reason: invalidState("close task failed")}
+	}
+
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: tipOutcome}
+}
+
+func (store LedgerBrowserStore) RequestChanges(_ context.Context, command ledger.RequestChangesStoreCommand) ledger.RequestChangesResult {
+	taskRecord, taskFound, taskErr := loadStoredTaskRecord(store.storage, command.TaskID.String())
+	if taskErr != nil {
+		return ledger.RequestChangesRejected{Reason: *taskErr}
+	}
+	if !taskFound {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if err := requireTaskReviewPermission(store.storage, taskRecord, command.RequesterUserID, "review submissions for"); err != nil {
+		return ledger.RequestChangesRejected{Reason: *err}
+	}
+	if taskRecord.State != "open" {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can request submission changes")}
+	}
+
+	submission, submissionFound, ok := getStoredSubmissionJSON(store.storage, submissionRecordKey(command.SubmissionID.String()))
+	if !ok {
+		return ledger.RequestChangesRejected{Reason: invalidState("read submission failed")}
+	}
+	if !submissionFound || submission.TaskID != command.TaskID.String() {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
+	}
+	if submission.State != "submitted" {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only submitted work can receive requested changes")}
+	}
+
+	submission.State = "changes_requested"
+	submission.ReviewNote = command.ReviewNote.String()
+	if !putStoredSubmissionJSON(store.storage, submissionRecordKey(submission.ID), submission) {
+		return ledger.RequestChangesRejected{Reason: invalidState("request submission changes failed")}
+	}
+	if err := reactivateWorkerReservation(store.storage, command.TaskID.String(), submission.SubmitterID, "submitted", "active"); err != nil {
+		return ledger.RequestChangesRejected{Reason: *err}
+	}
+
+	return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, ReviewNote: command.ReviewNote.String()}
+}
+
+func (store LedgerBrowserStore) RejectSubmission(_ context.Context, command ledger.RejectStoreCommand) ledger.RejectResult {
+	taskRecord, taskFound, taskErr := loadStoredTaskRecord(store.storage, command.TaskID.String())
+	if taskErr != nil {
+		return ledger.RejectRejected{Reason: *taskErr}
+	}
+	if !taskFound {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if err := requireTaskReviewPermission(store.storage, taskRecord, command.RequesterUserID, "review submissions for"); err != nil {
+		return ledger.RejectRejected{Reason: *err}
+	}
+	if taskRecord.State != "open" {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can reject submissions")}
+	}
+
+	submission, submissionFound, ok := getStoredSubmissionJSON(store.storage, submissionRecordKey(command.SubmissionID.String()))
+	if !ok {
+		return ledger.RejectRejected{Reason: invalidState("read submission failed")}
+	}
+	if !submissionFound || submission.TaskID != command.TaskID.String() {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
+	}
+	workerIDResult := core.ParseUserID(submission.SubmitterID)
+	workerID, workerIDMatched := workerIDResult.(core.UserIDCreated)
+	if !workerIDMatched {
+		return ledger.RejectRejected{Reason: workerIDResult.(core.UserIDRejected).Reason}
+	}
+
+	if submission.State == "rejected" {
+		if submission.ReviewIdempotencyKey == command.IdempotencyKey.String() {
+			return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
+		}
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "submission was already rejected with a different idempotency key")}
+	}
+	if submission.State != "submitted" {
+		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only submitted work can be rejected")}
+	}
+
+	payout, payoutErr := store.reviewEscrowOutcome(command.TaskID, workerID.Value, command.PayoutEntryID, core.LedgerEntryID{}, command.IdempotencyKey, command.CreditSelection, false)
+	if payoutErr != nil {
+		return ledger.RejectRejected{Reason: *payoutErr}
+	}
+	tip, tipErr := store.creditTipOutcome(command.TaskID, command.RequesterUserID, workerID.Value, command.TipDebitEntryID, command.TipCreditEntryID, command.TipSelection)
+	if tipErr != nil {
+		return ledger.RejectRejected{Reason: *tipErr}
+	}
+
+	submission.State = "rejected"
+	submission.ReviewNote = command.ReviewNote.String()
+	submission.ReviewIdempotencyKey = command.IdempotencyKey.String()
+	if !putStoredSubmissionJSON(store.storage, submissionRecordKey(submission.ID), submission) {
+		return ledger.RejectRejected{Reason: invalidState("reject submission failed")}
+	}
+	if err := reactivateWorkerReservation(store.storage, command.TaskID.String(), submission.SubmitterID, "active", "cancelled_by_requester"); err != nil {
+		return ledger.RejectRejected{Reason: *err}
+	}
+	if err := reactivateWorkerReservation(store.storage, command.TaskID.String(), submission.SubmitterID, "submitted", "cancelled_by_requester"); err != nil {
+		return ledger.RejectRejected{Reason: *err}
+	}
+
+	return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: payout, Tip: tip}
 }
 
 // refundHeldCollectibleRewardBrowser mirrors internal/db's
@@ -379,4 +769,174 @@ func (store LedgerBrowserStore) RejectSubmission(context.Context, ledger.RejectS
 func refundHeldCollectibleRewardBrowser(storage BrowserStorage, ids InteractionIDSource, taskID string) *core.DomainError {
 	_, err := (AssetBrowserStore{storage: storage, ids: ids}).releaseHeldCollectibleReward(taskID)
 	return err
+}
+
+type StoredLedgerEntry struct {
+	ID        string `json:"id"`
+	OwnerKind string `json:"owner_kind"`
+	OwnerID   string `json:"owner_id"`
+	Kind      string `json:"kind"`
+	Amount    int64  `json:"amount"`
+	TaskID    string `json:"task_id"`
+}
+
+type LedgerStorageResult interface {
+	ledgerStorageResult()
+}
+
+type LedgerEntryStored struct {
+	Value StoredLedgerEntry
+}
+
+type LedgerEntriesStored struct {
+	Values []StoredLedgerEntry
+}
+
+type LedgerBalanceStored struct {
+	Amount int64
+}
+
+type LedgerStorageRejected struct {
+	Reason string
+}
+
+func (LedgerEntryStored) ledgerStorageResult()     {}
+func (LedgerEntriesStored) ledgerStorageResult()   {}
+func (LedgerBalanceStored) ledgerStorageResult()   {}
+func (LedgerStorageRejected) ledgerStorageResult() {}
+
+func SaveLedgerEntry(storage BrowserStorage, entry StoredLedgerEntry) LedgerStorageResult {
+	cleaned := cleanStoredLedgerEntry(entry)
+	if reason := validateStoredLedgerEntry(cleaned); reason != "" {
+		return LedgerStorageRejected{Reason: reason}
+	}
+	keyResult := NewStorageKey("ledger:" + cleaned.ID)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return LedgerStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		return LedgerStorageRejected{Reason: "ledger entry encoding failed"}
+	}
+	writeResult := storage.Put(key.Value, string(encoded))
+	if _, matched := writeResult.(StorageWritten); !matched {
+		return LedgerStorageRejected{Reason: writeResult.(StorageWriteRejected).Reason}
+	}
+	indexResult := appendStringIndex(storage, "ledger:index:"+cleaned.OwnerKind+":"+cleaned.OwnerID, cleaned.ID, "ledger entry")
+	if _, matched := indexResult.(stringIndexStored); !matched {
+		return LedgerStorageRejected{Reason: indexResult.(stringIndexRejected).reason}
+	}
+	return LedgerEntryStored{Value: cleaned}
+}
+
+func ListLedgerEntries(storage BrowserStorage, ownerKind string, ownerID string, page StoredListPage) LedgerStorageResult {
+	cleanKind := strings.TrimSpace(ownerKind)
+	cleanID := strings.TrimSpace(ownerID)
+	if !validStoredLedgerOwnerKind(cleanKind) {
+		return LedgerStorageRejected{Reason: "ledger owner kind is invalid"}
+	}
+	if cleanID == "" {
+		return LedgerStorageRejected{Reason: "ledger owner id is required"}
+	}
+	idsResult := loadStringIndex(storage, "ledger:index:"+cleanKind+":"+cleanID, "ledger entry")
+	ids, idsMatched := idsResult.(stringIndexLoaded)
+	if !idsMatched {
+		return LedgerStorageRejected{Reason: idsResult.(stringIndexRejected).reason}
+	}
+	start, end := pageBounds(len(ids.values), page)
+	values := make([]StoredLedgerEntry, 0, end-start)
+	for index := start; index < end; index++ {
+		loadResult := loadLedgerEntry(storage, ids.values[index])
+		loaded, loadedMatched := loadResult.(LedgerEntryStored)
+		if !loadedMatched {
+			return loadResult
+		}
+		if loaded.Value.OwnerKind != cleanKind || loaded.Value.OwnerID != cleanID {
+			return LedgerStorageRejected{Reason: "ledger index contains mismatched record"}
+		}
+		values = append(values, loaded.Value)
+	}
+	return LedgerEntriesStored{Values: values}
+}
+
+// LedgerBalance sums an owner's ledger entries directly. It used to add a
+// hardcoded +100 baseline for user-kind owners, on the assumption that the
+// signup grant was implicit and never had its own ledger entry - true only
+// for the pre-cutover demo's simplified auth handler. Now that every real
+// user (via AuthBrowserStore.insertSignupGrant) and organization (via
+// OrgBrowserStore.insertOrganizationCreditGrant) gets an explicit signup-
+// grant ledger entry, the baseline would double-count it.
+func LedgerBalance(storage BrowserStorage, ownerKind string, ownerID string) LedgerStorageResult {
+	entriesResult := ListLedgerEntries(storage, ownerKind, ownerID, StoredListPage{limit: 1000000, offset: 0})
+	entries, entriesMatched := entriesResult.(LedgerEntriesStored)
+	if !entriesMatched {
+		return entriesResult
+	}
+	var amount int64
+	for index := range entries.Values {
+		amount += entries.Values[index].Amount
+	}
+	return LedgerBalanceStored{Amount: amount}
+}
+
+func loadLedgerEntry(storage BrowserStorage, ledgerID string) LedgerStorageResult {
+	keyResult := NewStorageKey("ledger:" + strings.TrimSpace(ledgerID))
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return LedgerStorageRejected{Reason: keyResult.(StorageKeyRejected).Reason}
+	}
+	readResult := storage.Get(key.Value)
+	read, readMatched := readResult.(StorageRead)
+	if !readMatched {
+		return LedgerStorageRejected{Reason: storageReadReason(readResult, "ledger entry")}
+	}
+	var entry StoredLedgerEntry
+	if err := json.Unmarshal([]byte(read.Value), &entry); err != nil {
+		return LedgerStorageRejected{Reason: "ledger entry decoding failed"}
+	}
+	cleaned := cleanStoredLedgerEntry(entry)
+	if cleaned.ID != strings.TrimSpace(ledgerID) {
+		return LedgerStorageRejected{Reason: "ledger storage key contains mismatched record"}
+	}
+	if reason := validateStoredLedgerEntry(cleaned); reason != "" {
+		return LedgerStorageRejected{Reason: reason}
+	}
+	return LedgerEntryStored{Value: cleaned}
+}
+
+func cleanStoredLedgerEntry(entry StoredLedgerEntry) StoredLedgerEntry {
+	return StoredLedgerEntry{
+		ID:        strings.TrimSpace(entry.ID),
+		OwnerKind: strings.TrimSpace(entry.OwnerKind),
+		OwnerID:   strings.TrimSpace(entry.OwnerID),
+		Kind:      strings.TrimSpace(entry.Kind),
+		Amount:    entry.Amount,
+		TaskID:    strings.TrimSpace(entry.TaskID),
+	}
+}
+
+func validateStoredLedgerEntry(entry StoredLedgerEntry) string {
+	if entry.ID == "" {
+		return "ledger entry id is required"
+	}
+	if !validStoredLedgerOwnerKind(entry.OwnerKind) {
+		return "ledger owner kind is invalid"
+	}
+	if entry.OwnerID == "" {
+		return "ledger owner id is required"
+	}
+	if entry.Kind == "" {
+		return "ledger entry kind is required"
+	}
+	return ""
+}
+
+func validStoredLedgerOwnerKind(value string) bool {
+	switch value {
+	case "user", "organization":
+		return true
+	default:
+		return false
+	}
 }

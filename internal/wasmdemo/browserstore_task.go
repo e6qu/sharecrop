@@ -33,7 +33,7 @@ func NewTaskBrowserStore(storage BrowserStorage, ids InteractionIDSource) TaskBr
 	return TaskBrowserStore{storage: storage, ids: ids}
 }
 
-func (store TaskBrowserStore) CreateTask(_ context.Context, _ core.TaskSeriesID, taskID core.TaskID, command task.CreateCommand) task.CreateTaskStoreResult {
+func (store TaskBrowserStore) CreateTask(_ context.Context, seriesID core.TaskSeriesID, taskID core.TaskID, command task.CreateCommand) task.CreateTaskStoreResult {
 	ownerKind, ownerUserID, ownerTeamID, ownerOrganizationID := ownerSQLColumnsBrowser(command.Owner)
 	visibilityKind, visibilityUserID, visibilityTeamID, visibilityOrgID := visibilitySQLColumnsBrowser(command.Visibility)
 	rewardKind, rewardCreditAmount, rewardCollectibleCount := rewardSQLColumnsBrowser(command.Reward)
@@ -46,8 +46,33 @@ func (store TaskBrowserStore) CreateTask(_ context.Context, _ core.TaskSeriesID,
 		Participation: command.Participation.String(), AssigneeScope: command.AssigneeScope.String(), ReservationTTLHours: command.ReservationTTL.Hours(),
 		State: task.StateDraft.String(), VisibilityKind: visibilityKind, VisibilityUserID: visibilityUserID, VisibilityTeamID: visibilityTeamID, VisibilityOrgID: visibilityOrgID,
 		ResponseSchemaJSON: command.ResponseSchema.String(), PayloadKind: payloadKind, PayloadJSON: payloadSource,
-		CreatedBy: command.Actor.ID.String(),
+		CreatedBy:   command.Actor.ID.String(),
+		Attachments: storedTaskAttachmentsFrom(command.Attachments),
 	}
+
+	switch placement := command.Placement.(type) {
+	case task.StandalonePlacement:
+		// No series linkage.
+	case task.NewSeriesPlacement:
+		seriesRecord := storedSeries{
+			ID: seriesID.String(), OwnerKind: ownerKind, OwnerUserID: ownerUserID, OwnerTeamID: ownerTeamID, OwnerOrganizationID: ownerOrganizationID,
+			Title: placement.Title.String(), Description: "", State: task.SeriesStateDraft.String(), CreatedBy: command.Actor.ID.String(),
+		}
+		if !putStoredSeriesJSON(store.storage, seriesRecordKey(seriesRecord.ID), seriesRecord) {
+			return task.CreateTaskStoreRejected{Reason: invalidState("insert task series failed")}
+		}
+		if _, matched := appendStringIndex(store.storage, seriesCreatorIndexKey(seriesRecord.CreatedBy), seriesRecord.ID, "task series").(stringIndexStored); !matched {
+			return task.CreateTaskStoreRejected{Reason: invalidState("update task series index failed")}
+		}
+		record.SeriesID = seriesID.String()
+		record.SeriesPosition = placement.Position.Int()
+	case task.ExistingSeriesPlacement:
+		record.SeriesID = placement.SeriesID.String()
+		record.SeriesPosition = placement.Position.Int()
+	default:
+		return task.CreateTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series placement is invalid")}
+	}
+
 	if !saveStoredTaskRecord(store.storage, record) {
 		return task.CreateTaskStoreRejected{Reason: invalidState("insert task failed")}
 	}
@@ -57,6 +82,21 @@ func (store TaskBrowserStore) CreateTask(_ context.Context, _ core.TaskSeriesID,
 	if visibilityKind == task.VisibilityKindPublic.String() {
 		if _, matched := appendStringIndex(store.storage, taskPublicIndexKey(), record.ID, "task").(stringIndexStored); !matched {
 			return task.CreateTaskStoreRejected{Reason: invalidState("update public task index failed")}
+		}
+	}
+	if visibilityOrgID != "" {
+		if _, matched := appendStringIndex(store.storage, taskOrganizationVisibilityIndexKey(visibilityOrgID), record.ID, "task").(stringIndexStored); !matched {
+			return task.CreateTaskStoreRejected{Reason: invalidState("update organization task index failed")}
+		}
+	}
+	if visibilityTeamID != "" {
+		if _, matched := appendStringIndex(store.storage, taskTeamVisibilityIndexKey(visibilityTeamID), record.ID, "task").(stringIndexStored); !matched {
+			return task.CreateTaskStoreRejected{Reason: invalidState("update team task index failed")}
+		}
+	}
+	if record.SeriesID != "" {
+		if _, matched := appendStringIndex(store.storage, taskSeriesTaskIndexKey(record.SeriesID), record.ID, "task series task").(stringIndexStored); !matched {
+			return task.CreateTaskStoreRejected{Reason: invalidState("update task series task index failed")}
 		}
 	}
 
@@ -201,8 +241,21 @@ func (store TaskBrowserStore) ListTasks(_ context.Context, scope task.ListScope,
 			return task.ListTasksStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
 		}
 		candidateIDs = loaded.values
+	case task.OrganizationListScope:
+		indexResult := loadStringIndex(store.storage, taskOrganizationVisibilityIndexKey(typed.OrganizationID.String()), "task")
+		loaded, matched := indexResult.(stringIndexLoaded)
+		if !matched {
+			return task.ListTasksStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
+		}
+		candidateIDs = loaded.values
+	case task.TeamListScope:
+		indexResult := loadStringIndex(store.storage, taskTeamVisibilityIndexKey(typed.TeamID.String()), "task")
+		loaded, matched := indexResult.(stringIndexLoaded)
+		if !matched {
+			return task.ListTasksStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
+		}
+		candidateIDs = loaded.values
 	default:
-		// OrganizationListScope/TeamListScope are not yet implemented.
 		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "this task list scope is not yet implemented in the browser demo")}
 	}
 
@@ -572,55 +625,206 @@ func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, task
 	return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task requires an active reservation for the submitter")}
 }
 
-// Task series and comments are not yet implemented in the browser store.
-func (store TaskBrowserStore) ListSeries(context.Context, core.UserID, core.Page) task.ListSeriesStoreResult {
-	return task.ListSeriesStoreRejected{Reason: notImplementedTaskSeries()}
+// Task series live in browserstore_task_series.go. Series comments below -
+// turns out every series mutation response (create/update/publish/...)
+// embeds the series' comment thread (internal/http's writeSeriesDetailStatus
+// always calls ListSeriesComments), so this is not an optional, deferred
+// feature the way it first looked: without it, every series operation fails.
+
+type storedSeriesComment struct {
+	ID       string `json:"id"`
+	SeriesID string `json:"series_id"`
+	AuthorID string `json:"author_id"`
+	Body     string `json:"body"`
 }
 
-func (store TaskBrowserStore) FindSeries(context.Context, core.TaskSeriesID) task.FindSeriesStoreResult {
-	return task.FindSeriesStoreRejected{Reason: notImplementedTaskSeries()}
+func seriesCommentRecordKey(id string) string { return "task:series_comment:" + id }
+func seriesCommentIndexKey(seriesID string) string {
+	return "task:series_comment_index:" + seriesID
 }
 
-func (store TaskBrowserStore) CreateSeries(context.Context, task.Series) task.SeriesMutationStoreResult {
-	return task.SeriesMutationStoreRejected{Reason: notImplementedTaskSeries()}
+func putStoredSeriesCommentJSON(storage BrowserStorage, rawKey string, record storedSeriesComment) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
 }
 
-func (store TaskBrowserStore) UpdateSeries(context.Context, core.TaskSeriesID, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationStoreResult {
-	return task.SeriesMutationStoreRejected{Reason: notImplementedTaskSeries()}
+func getStoredSeriesCommentJSON(storage BrowserStorage, rawKey string) (storedSeriesComment, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedSeriesComment{}, found, ok
+	}
+	var record storedSeriesComment
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedSeriesComment{}, false, false
+	}
+	return record, true, true
 }
 
-func (store TaskBrowserStore) UpdateSeriesState(context.Context, core.TaskSeriesID, task.SeriesState) task.SeriesMutationStoreResult {
-	return task.SeriesMutationStoreRejected{Reason: notImplementedTaskSeries()}
+func parseStoredSeriesComment(record storedSeriesComment) (task.SeriesComment, *core.DomainError) {
+	idResult := core.ParseSeriesCommentID(record.ID)
+	id, idMatched := idResult.(core.SeriesCommentIDCreated)
+	if !idMatched {
+		reason := idResult.(core.SeriesCommentIDRejected).Reason
+		return task.SeriesComment{}, &reason
+	}
+	seriesIDResult := core.ParseTaskSeriesID(record.SeriesID)
+	seriesID, seriesIDMatched := seriesIDResult.(core.TaskSeriesIDCreated)
+	if !seriesIDMatched {
+		reason := seriesIDResult.(core.TaskSeriesIDRejected).Reason
+		return task.SeriesComment{}, &reason
+	}
+	authorResult := core.ParseUserID(record.AuthorID)
+	author, authorMatched := authorResult.(core.UserIDCreated)
+	if !authorMatched {
+		reason := authorResult.(core.UserIDRejected).Reason
+		return task.SeriesComment{}, &reason
+	}
+	bodyResult := task.NewCommentBody(record.Body)
+	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
+	if !bodyMatched {
+		reason := bodyResult.(task.CommentBodyRejected).Reason
+		return task.SeriesComment{}, &reason
+	}
+	return task.SeriesComment{ID: id.Value, SeriesID: seriesID.Value, AuthorID: author.Value, Body: body.Value}, nil
 }
 
-func (store TaskBrowserStore) AddTaskToSeries(context.Context, core.TaskSeriesID, core.TaskID) task.SeriesMutationStoreResult {
-	return task.SeriesMutationStoreRejected{Reason: notImplementedTaskSeries()}
+func (store TaskBrowserStore) CreateSeriesComment(_ context.Context, comment task.SeriesComment) task.CreateSeriesCommentStoreResult {
+	record := storedSeriesComment{ID: comment.ID.String(), SeriesID: comment.SeriesID.String(), AuthorID: comment.AuthorID.String(), Body: comment.Body.String()}
+	if !putStoredSeriesCommentJSON(store.storage, seriesCommentRecordKey(record.ID), record) {
+		return task.CreateSeriesCommentStoreRejected{Reason: invalidState("insert series comment failed")}
+	}
+	if _, matched := appendStringIndex(store.storage, seriesCommentIndexKey(record.SeriesID), record.ID, "series comment").(stringIndexStored); !matched {
+		return task.CreateSeriesCommentStoreRejected{Reason: invalidState("update series comment index failed")}
+	}
+	value, parseErr := parseStoredSeriesComment(record)
+	if parseErr != nil {
+		return task.CreateSeriesCommentStoreRejected{Reason: *parseErr}
+	}
+	return task.CreateSeriesCommentStoreAccepted{Value: value}
 }
 
-func (store TaskBrowserStore) RemoveTaskFromSeries(context.Context, core.TaskSeriesID, core.TaskID) task.SeriesMutationStoreResult {
-	return task.SeriesMutationStoreRejected{Reason: notImplementedTaskSeries()}
+func (store TaskBrowserStore) ListSeriesComments(_ context.Context, seriesID core.TaskSeriesID) task.ListSeriesCommentsStoreResult {
+	indexResult := loadStringIndex(store.storage, seriesCommentIndexKey(seriesID.String()), "series comment")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		return task.ListSeriesCommentsStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
+	}
+	values := make([]task.SeriesComment, 0, len(loaded.values))
+	for _, id := range loaded.values {
+		record, found, ok := getStoredSeriesCommentJSON(store.storage, seriesCommentRecordKey(id))
+		if !ok {
+			return task.ListSeriesCommentsStoreRejected{Reason: invalidState("read series comment failed")}
+		}
+		if !found {
+			continue
+		}
+		value, parseErr := parseStoredSeriesComment(record)
+		if parseErr != nil {
+			return task.ListSeriesCommentsStoreRejected{Reason: *parseErr}
+		}
+		values = append(values, value)
+	}
+	return task.ListSeriesCommentsStoreAccepted{Values: values}
 }
 
-func (store TaskBrowserStore) ReorderSeries(context.Context, core.TaskSeriesID, []core.TaskID) task.SeriesMutationStoreResult {
-	return task.SeriesMutationStoreRejected{Reason: notImplementedTaskSeries()}
+type storedTaskComment struct {
+	ID       string `json:"id"`
+	TaskID   string `json:"task_id"`
+	AuthorID string `json:"author_id"`
+	Body     string `json:"body"`
 }
 
-func (store TaskBrowserStore) CreateSeriesComment(context.Context, task.SeriesComment) task.CreateSeriesCommentStoreResult {
-	return task.CreateSeriesCommentStoreRejected{Reason: notImplementedTaskSeries()}
+func taskCommentRecordKey(id string) string { return "task:comment:" + id }
+func taskCommentIndexKey(taskID string) string {
+	return "task:comment_index:" + taskID
 }
 
-func (store TaskBrowserStore) ListSeriesComments(context.Context, core.TaskSeriesID) task.ListSeriesCommentsStoreResult {
-	return task.ListSeriesCommentsStoreRejected{Reason: notImplementedTaskSeries()}
+func putStoredTaskCommentJSON(storage BrowserStorage, rawKey string, record storedTaskComment) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
 }
 
-func (store TaskBrowserStore) CreateTaskComment(context.Context, task.TaskComment) task.CreateTaskCommentStoreResult {
-	return task.CreateTaskCommentStoreRejected{Reason: notImplementedTaskSeries()}
+func getStoredTaskCommentJSON(storage BrowserStorage, rawKey string) (storedTaskComment, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedTaskComment{}, found, ok
+	}
+	var record storedTaskComment
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedTaskComment{}, false, false
+	}
+	return record, true, true
 }
 
-func (store TaskBrowserStore) ListTaskComments(context.Context, core.TaskID) task.ListTaskCommentsStoreResult {
-	return task.ListTaskCommentsStoreRejected{Reason: notImplementedTaskSeries()}
+func parseStoredTaskComment(record storedTaskComment) (task.TaskComment, *core.DomainError) {
+	idResult := core.ParseTaskCommentID(record.ID)
+	id, idMatched := idResult.(core.TaskCommentIDCreated)
+	if !idMatched {
+		reason := idResult.(core.TaskCommentIDRejected).Reason
+		return task.TaskComment{}, &reason
+	}
+	taskIDResult := core.ParseTaskID(record.TaskID)
+	taskID, taskIDMatched := taskIDResult.(core.TaskIDCreated)
+	if !taskIDMatched {
+		reason := taskIDResult.(core.TaskIDRejected).Reason
+		return task.TaskComment{}, &reason
+	}
+	authorResult := core.ParseUserID(record.AuthorID)
+	author, authorMatched := authorResult.(core.UserIDCreated)
+	if !authorMatched {
+		reason := authorResult.(core.UserIDRejected).Reason
+		return task.TaskComment{}, &reason
+	}
+	bodyResult := task.NewCommentBody(record.Body)
+	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
+	if !bodyMatched {
+		reason := bodyResult.(task.CommentBodyRejected).Reason
+		return task.TaskComment{}, &reason
+	}
+	return task.TaskComment{ID: id.Value, TaskID: taskID.Value, AuthorID: author.Value, Body: body.Value}, nil
 }
 
-func notImplementedTaskSeries() core.DomainError {
-	return core.NewDomainError(core.ErrorCodeInvalidState, "task series and comments are not yet implemented in the browser demo")
+func (store TaskBrowserStore) CreateTaskComment(_ context.Context, comment task.TaskComment) task.CreateTaskCommentStoreResult {
+	record := storedTaskComment{ID: comment.ID.String(), TaskID: comment.TaskID.String(), AuthorID: comment.AuthorID.String(), Body: comment.Body.String()}
+	if !putStoredTaskCommentJSON(store.storage, taskCommentRecordKey(record.ID), record) {
+		return task.CreateTaskCommentStoreRejected{Reason: invalidState("insert task comment failed")}
+	}
+	if _, matched := appendStringIndex(store.storage, taskCommentIndexKey(record.TaskID), record.ID, "task comment").(stringIndexStored); !matched {
+		return task.CreateTaskCommentStoreRejected{Reason: invalidState("update task comment index failed")}
+	}
+	value, parseErr := parseStoredTaskComment(record)
+	if parseErr != nil {
+		return task.CreateTaskCommentStoreRejected{Reason: *parseErr}
+	}
+	return task.CreateTaskCommentStoreAccepted{Value: value}
+}
+
+func (store TaskBrowserStore) ListTaskComments(_ context.Context, taskID core.TaskID) task.ListTaskCommentsStoreResult {
+	indexResult := loadStringIndex(store.storage, taskCommentIndexKey(taskID.String()), "task comment")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		return task.ListTaskCommentsStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
+	}
+	values := make([]task.TaskComment, 0, len(loaded.values))
+	for _, id := range loaded.values {
+		record, found, ok := getStoredTaskCommentJSON(store.storage, taskCommentRecordKey(id))
+		if !ok {
+			return task.ListTaskCommentsStoreRejected{Reason: invalidState("read task comment failed")}
+		}
+		if !found {
+			continue
+		}
+		value, parseErr := parseStoredTaskComment(record)
+		if parseErr != nil {
+			return task.ListTaskCommentsStoreRejected{Reason: *parseErr}
+		}
+		values = append(values, value)
+	}
+	return task.ListTaskCommentsStoreAccepted{Values: values}
 }

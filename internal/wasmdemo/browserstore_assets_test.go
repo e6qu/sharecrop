@@ -127,6 +127,7 @@ func TestAssetBrowserStoreCreditRefundOnBundleTaskReleasesCollectible(t *testing
 	minted := assetService.Mint(ctx, assets.CollectibleOwnerKindUser, owner.String(), "", testCollectibleName(t, "Golden Badge"), assets.CollectibleKindBadge, assets.TransferPolicyTransferableBetweenUsers, "art-1").(assets.CollectibleMinted)
 	taskID := core.NewTaskID().(core.TaskIDCreated).Value
 	seedDraftTask(t, storage, taskID.String(), owner.String(), "none", 0)
+	NewAuthBrowserStore(storage, ids).insertSignupGrant("user", owner.String())
 
 	assetService.FundReward(ctx, owner, taskID, minted.Value.ID)
 	fundResult := ledgerService.FundTask(ctx, owner, taskID, testCreditAmount(t, 20), testIdempotencyKey(t, "fund-1"))

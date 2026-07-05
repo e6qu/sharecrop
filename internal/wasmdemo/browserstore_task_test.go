@@ -69,17 +69,17 @@ func testCreateCommand(t *testing.T, actorID core.UserID, reward task.RewardSpec
 	}
 }
 
-func newTaskTestEnv(t *testing.T) (task.Service, ledger.Service, *counterLedgerIDs) {
+func newTaskTestEnv(t *testing.T) (task.Service, ledger.Service, *counterLedgerIDs, BrowserStorage) {
 	t.Helper()
 	storage := newTestBrowserStorage()
 	ids := &counterLedgerIDs{}
 	taskService := task.NewService(NewTaskBrowserStore(storage, ids), noopOrganizationPermissions{}, nil)
 	ledgerService := ledger.NewService(NewLedgerBrowserStore(storage, ids))
-	return taskService, ledgerService, ids
+	return taskService, ledgerService, ids, storage
 }
 
 func TestTaskBrowserStoreCreateAndGet(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 
@@ -106,7 +106,7 @@ func TestTaskBrowserStoreCreateAndGet(t *testing.T) {
 // session's investigation started from: a credit reward must actually be
 // escrowed before the task can open, not just declared.
 func TestTaskBrowserStoreOpenRequiresFunding(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 
@@ -121,15 +121,12 @@ func TestTaskBrowserStoreOpenRequiresFunding(t *testing.T) {
 }
 
 func TestTaskBrowserStoreOpenSucceedsAfterFunding(t *testing.T) {
-	taskService, ledgerService, _ := newTaskTestEnv(t)
+	taskService, ledgerService, ids, storage := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := testUserID(t, "owner")
 	ownerSubject := auth.UserSubject{ID: owner}
+	NewAuthBrowserStore(storage, ids).insertSignupGrant("user", owner.String())
 
-	// No explicit signup grant needed: LedgerBalance (interaction_storage.go)
-	// already returns a 100-credit baseline for every user-kind owner even
-	// with zero entries (the same quirk documented in
-	// browserstore_ledger_test.go) - enough to fund 30 credits below.
 	rewardResult := task.NewCreditRewardAmount(30)
 	reward := rewardResult.(task.CreditRewardAmountAccepted).Value
 	created := taskService.Create(ctx, testCreateCommand(t, owner, task.CreditRewardSpec{Amount: reward}, task.ParticipationPolicyOpen)).(task.TaskCreated)
@@ -150,10 +147,11 @@ func TestTaskBrowserStoreOpenSucceedsAfterFunding(t *testing.T) {
 }
 
 func TestTaskBrowserStoreCancelRejectsWithHeldEscrow(t *testing.T) {
-	taskService, ledgerService, _ := newTaskTestEnv(t)
+	taskService, ledgerService, ids, storage := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := testUserID(t, "owner")
 	ownerSubject := auth.UserSubject{ID: owner}
+	NewAuthBrowserStore(storage, ids).insertSignupGrant("user", owner.String())
 
 	rewardResult := task.NewCreditRewardAmount(30)
 	reward := rewardResult.(task.CreditRewardAmountAccepted).Value
@@ -167,7 +165,7 @@ func TestTaskBrowserStoreCancelRejectsWithHeldEscrow(t *testing.T) {
 }
 
 func TestTaskBrowserStoreReservationRequiredLifecycle(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 	worker := auth.UserSubject{ID: testUserID(t, "worker")}
@@ -209,7 +207,7 @@ func TestTaskBrowserStoreReservationRequiredLifecycle(t *testing.T) {
 }
 
 func TestTaskBrowserStoreApprovalRequiredLifecycle(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 	worker := auth.UserSubject{ID: testUserID(t, "worker")}
@@ -237,7 +235,7 @@ func TestTaskBrowserStoreApprovalRequiredLifecycle(t *testing.T) {
 }
 
 func TestTaskBrowserStoreListTasksPublicScope(t *testing.T) {
-	taskService, _, _ := newTaskTestEnv(t)
+	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
 

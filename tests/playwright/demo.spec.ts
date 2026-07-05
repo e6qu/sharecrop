@@ -12,7 +12,7 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
   await page.goto(`${demoOrigin}/index.html`);
 
   // Boots straight into the seeded account (refresh auto-succeeds in the shim).
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
   // Ledger + My-tasks decode and populate (seed enum values must match the real
   // client's decoders, else Decode.list blanks the whole section).
   await expect(page.getByText("Signup grant")).toBeVisible();
@@ -31,14 +31,23 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
   await expect(
     page.getByText("Extract line items from 6 vendor invoices"),
   ).toBeVisible();
-  await expect(page.getByText("Classify 8 support tickets by category"))
-    .toBeVisible();
+  // This task is organization-owned AND public, and mara belongs to that
+  // organization, so it also appears in both sections — scope to Discover.
+  await expect(
+    page.getByTestId("discovery-tasks").getByText(
+      "Classify 8 support tickets by category",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Write release notes for 5 changelog entries"))
     .toBeVisible();
 
   // Opening a task shows the real detail view with its instructions, the
   // self-contained Task input (all data embedded), and the response schema.
-  await page.getByTestId("discovery-view").first().click();
+  await page
+    .getByTestId("discovery-task-row")
+    .filter({ hasText: "Extract line items from 6 vendor invoices" })
+    .getByTestId("discovery-view")
+    .click();
   await expect(
     page.getByText("OCR'd text of 6 vendor invoices", { exact: false }),
   )
@@ -51,13 +60,26 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
 
   // Reserve-then-submit, with the response validated against the task schema
   // (the demo enforces the schema like the real backend): a malformed response
-  // is recorded "invalid", a schema-correct one "submitted".
+  // is recorded "invalid", a schema-correct one "submitted". Any submission
+  // (valid or not) consumes the active reservation, so a resubmission needs a
+  // fresh reservation first, matching the real backend's eligibility check.
   await page.getByTestId("reserve-task").click();
   await page.getByTestId("detail-submit-input").fill("{}");
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toContainText(
     "invalid",
   );
+  // The detail view doesn't refetch reservation state after a submit, so
+  // navigate away and back (SPA routing, not a page reload - a reload would
+  // wipe and reseed the whole demo) to see the now-consumed reservation and
+  // the fresh "reserve" control it exposes.
+  await page.goBack();
+  await page
+    .getByTestId("discovery-task-row")
+    .filter({ hasText: "Extract line items from 6 vendor invoices" })
+    .getByTestId("discovery-view")
+    .click();
+  await page.getByTestId("reserve-task").click();
   await page.getByTestId("detail-submit-input").fill(
     '{"invoices":[{"invoice_id":"INV-1041","vendor":"Birch Supply Co","total":"1240.55","due_date":"2026-07-12"}]}',
   );
@@ -69,7 +91,7 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
 
 test("demo uploads small task and submission attachments", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("new-task-button").click();
@@ -124,7 +146,7 @@ test("demo uploads small task and submission attachments", async ({ page }) => {
 
 test("demo organization page shows a funded balance, not a stuck spinner", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Organizations" }).click();
@@ -132,13 +154,13 @@ test("demo organization page shows a funded balance, not a stuck spinner", async
 
   // The WASM backend serves a per-organization balance, so the label resolves
   // to a real number instead of being stuck on "Loading…".
-  await expect(page.getByText("Balance: 7200 credits")).toBeVisible();
+  await expect(page.getByText("Balance: 100 credits")).toBeVisible();
   await expect(page.getByText("Balance: Loading…")).toHaveCount(0);
 });
 
 test("demo admin resolves privacy requests from the browser", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-profile").click();
@@ -168,43 +190,53 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
   await expect(page.getByTestId("admin-message")).toContainText(
     "Privacy request resolved.",
   );
+  // The export includes the requester's real (randomly-generated) user id,
+  // not a fixed fake one - just check the export shape is present.
   await expect(page.getByTestId("admin-privacy-export")).toContainText(
-    "user-mara",
+    "user_id",
   );
 });
 
 test("demo admin config grants and revokes platform admins", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
   await page.getByTestId("admin-section-platform-admins").click();
-  await page.getByTestId("admin-platform-user").selectOption("user-jules");
+  // The dropdown is labeled by email but valued by the user's real
+  // (randomly-generated) id - capture it so it can be matched against the
+  // platform-admins list below, which is keyed by id, not email.
+  const julesUserID = await page.getByTestId("admin-platform-user").locator(
+    'option:has-text("jules@sharecrop.demo")',
+  ).getAttribute("value");
+  await page.getByTestId("admin-platform-user").selectOption({
+    label: "jules@sharecrop.demo",
+  });
   await page.getByTestId("admin-grant-platform-admin").click();
   await expect(page.getByTestId("admin-message")).toContainText(
     "Platform admin granted.",
   );
   await expect(page.getByTestId("admin-platform-admins")).toContainText(
-    "user-jules",
+    julesUserID!,
   );
 
   await page
     .getByTestId("admin-platform-admin")
-    .filter({ hasText: "user-jules" })
+    .filter({ hasText: julesUserID! })
     .getByTestId("admin-revoke-platform-admin")
     .click();
   await expect(page.getByTestId("admin-message")).toContainText(
     "Platform admin revoked.",
   );
   await expect(page.getByTestId("admin-platform-admins")).not.toContainText(
-    "user-jules",
+    julesUserID!,
   );
 });
 
 test("demo admin runs privacy retention from the browser", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
@@ -220,7 +252,7 @@ test("demo admin runs privacy retention from the browser", async ({ page }) => {
 
 test("demo task reports appear in the admin moderation panel", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
@@ -245,7 +277,7 @@ test("demo task reports appear in the admin moderation panel", async ({ page }) 
 
 test("demo admin triages moderation reports from the browser", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
@@ -285,7 +317,7 @@ test("demo admin triages moderation reports from the browser", async ({ page }) 
 
 test("demo owner can refund a funded task they own", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByRole("link", { name: "Tasks", exact: true }).click();
   await page
@@ -304,7 +336,7 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
 
 test("the fund panel does not appear on an already-funded, open demo task", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByRole("link", { name: "Tasks", exact: true }).click();
   await page
@@ -320,7 +352,7 @@ test("the fund panel does not appear on an already-funded, open demo task", asyn
 
 test("demo owner funds a draft task created with no declared reward", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("new-task-button").click();
@@ -349,7 +381,7 @@ test("demo owner funds a draft task created with no declared reward", async ({ p
 
 test("the collectibles catalog renders sprites, awards a default, and trades it", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
   await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Collectibles", exact: true }).click();
 
@@ -381,7 +413,7 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
 
 test("demo creates and opens a task series", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   // A real bug found by hand-testing the demo: /api/task-series was entirely
   // unclassified in the WASM backend (a 404), so this whole flow was broken.
@@ -406,7 +438,7 @@ test("demo creates and opens a task series", async ({ page }) => {
 
 test("the demo shows a Reset button and hash routing keeps a stable URL on refresh", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("1250 credits")).toBeVisible();
+  await expect(page.getByText("70 credits")).toBeVisible();
 
   // The demo-only Reset control is present.
   await page.getByTestId("nav-account-menu").click();

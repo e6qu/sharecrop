@@ -87,12 +87,9 @@ func TestLedgerBrowserStoreFundTaskFirstTime(t *testing.T) {
 	if !matched {
 		t.Fatalf("balance: want BalanceFound, got %#v", balanceResult)
 	}
-	// LedgerBalance (interaction_storage.go) hardcodes an extra +100 baseline
-	// for every user-kind owner (see browserstore_auth_test.go's signup-bonus
-	// test comment for why) - actual entries here sum to 70 (100 signup
-	// grant - 30 escrowed), plus that baseline.
-	if balance.Value.Int64() != 170 {
-		t.Fatalf("funder balance = %d, want 170 (100 baseline + 100 signup grant - 30 escrowed)", balance.Value.Int64())
+	// 100 signup grant - 30 escrowed.
+	if balance.Value.Int64() != 70 {
+		t.Fatalf("funder balance = %d, want 70 (100 signup grant - 30 escrowed)", balance.Value.Int64())
 	}
 }
 
@@ -142,9 +139,8 @@ func TestLedgerBrowserStoreFundTaskIdempotentRetry(t *testing.T) {
 	}
 
 	balanceResult := store.Balance(ctx, funder).(ledger.BalanceFound)
-	// +100 baseline quirk, same as above.
-	if balanceResult.Value.Int64() != 170 {
-		t.Fatalf("funder balance after retry = %d, want 170 (not double-charged)", balanceResult.Value.Int64())
+	if balanceResult.Value.Int64() != 70 {
+		t.Fatalf("funder balance after retry = %d, want 70 (not double-charged)", balanceResult.Value.Int64())
 	}
 }
 
@@ -186,10 +182,9 @@ func TestLedgerBrowserStoreRefundTaskReturnsCreditsAndCancelsTask(t *testing.T) 
 	}
 
 	balance := store.Balance(ctx, funder).(ledger.BalanceFound)
-	// +100 baseline quirk, same as above: entries sum to 100 (fully
-	// restored signup grant), plus the baseline.
-	if balance.Value.Int64() != 200 {
-		t.Fatalf("funder balance after refund = %d, want 200 (fully restored)", balance.Value.Int64())
+	// Entries sum to 100 (fully restored signup grant).
+	if balance.Value.Int64() != 100 {
+		t.Fatalf("funder balance after refund = %d, want 100 (fully restored)", balance.Value.Int64())
 	}
 
 	record, found, _ := loadStoredTaskRecord(storage, taskID.String())

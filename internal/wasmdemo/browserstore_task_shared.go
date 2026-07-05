@@ -3,6 +3,7 @@ package wasmdemo
 import (
 	"encoding/json"
 
+	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -15,30 +16,64 @@ import (
 // their browser-store equivalents share one underlying record too, rather
 // than each keeping an independent, driftable copy of task state.
 type storedTaskRecord struct {
-	ID                     string `json:"id"`
-	OwnerKind              string `json:"owner_kind"`
-	OwnerUserID            string `json:"owner_user_id,omitempty"`
-	OwnerTeamID            string `json:"owner_team_id,omitempty"`
-	OwnerOrganizationID    string `json:"owner_organization_id,omitempty"`
-	Title                  string `json:"title"`
-	Description            string `json:"description"`
-	TaskType               string `json:"task_type"`
-	ReferenceURL           string `json:"reference_url"`
-	RewardKind             string `json:"reward_kind"`
-	RewardCreditAmount     int64  `json:"reward_credit_amount"`
-	RewardCollectibleCount int    `json:"reward_collectible_count"`
-	Participation          string `json:"participation_policy"`
-	AssigneeScope          string `json:"assignee_scope"`
-	ReservationTTLHours    int    `json:"reservation_ttl_hours"`
-	State                  string `json:"state"`
-	VisibilityKind         string `json:"visibility_kind"`
-	VisibilityUserID       string `json:"visibility_user_id,omitempty"`
-	VisibilityTeamID       string `json:"visibility_team_id,omitempty"`
-	VisibilityOrgID        string `json:"visibility_organization_id,omitempty"`
-	ResponseSchemaJSON     string `json:"response_schema_json"`
-	PayloadKind            string `json:"payload_kind"`
-	PayloadJSON            string `json:"payload_json,omitempty"`
-	CreatedBy              string `json:"created_by"`
+	ID                     string                 `json:"id"`
+	OwnerKind              string                 `json:"owner_kind"`
+	OwnerUserID            string                 `json:"owner_user_id,omitempty"`
+	OwnerTeamID            string                 `json:"owner_team_id,omitempty"`
+	OwnerOrganizationID    string                 `json:"owner_organization_id,omitempty"`
+	Title                  string                 `json:"title"`
+	Description            string                 `json:"description"`
+	TaskType               string                 `json:"task_type"`
+	ReferenceURL           string                 `json:"reference_url"`
+	RewardKind             string                 `json:"reward_kind"`
+	RewardCreditAmount     int64                  `json:"reward_credit_amount"`
+	RewardCollectibleCount int                    `json:"reward_collectible_count"`
+	Participation          string                 `json:"participation_policy"`
+	AssigneeScope          string                 `json:"assignee_scope"`
+	ReservationTTLHours    int                    `json:"reservation_ttl_hours"`
+	State                  string                 `json:"state"`
+	VisibilityKind         string                 `json:"visibility_kind"`
+	VisibilityUserID       string                 `json:"visibility_user_id,omitempty"`
+	VisibilityTeamID       string                 `json:"visibility_team_id,omitempty"`
+	VisibilityOrgID        string                 `json:"visibility_organization_id,omitempty"`
+	ResponseSchemaJSON     string                 `json:"response_schema_json"`
+	PayloadKind            string                 `json:"payload_kind"`
+	PayloadJSON            string                 `json:"payload_json,omitempty"`
+	CreatedBy              string                 `json:"created_by"`
+	SeriesID               string                 `json:"series_id,omitempty"`
+	SeriesPosition         int                    `json:"series_position,omitempty"`
+	Attachments            []storedTaskAttachment `json:"attachments,omitempty"`
+}
+
+// storedTaskAttachment persists a task attachment as its base64 data URL,
+// the same round-trippable shape attachment.Attachment.DataURL()/
+// attachment.NewAttachment() already use for the wire format.
+type storedTaskAttachment struct {
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	DataURL     string `json:"data_url"`
+}
+
+func storedTaskAttachmentsFrom(values []attachment.Attachment) []storedTaskAttachment {
+	stored := make([]storedTaskAttachment, 0, len(values))
+	for _, value := range values {
+		stored = append(stored, storedTaskAttachment{Name: value.Name.String(), ContentType: value.ContentType.String(), DataURL: value.DataURL()})
+	}
+	return stored
+}
+
+func parseStoredTaskAttachments(stored []storedTaskAttachment) ([]attachment.Attachment, *core.DomainError) {
+	values := make([]attachment.Attachment, 0, len(stored))
+	for _, entry := range stored {
+		result := attachment.NewAttachment(entry.Name, entry.ContentType, entry.DataURL)
+		accepted, matched := result.(attachment.AttachmentAccepted)
+		if !matched {
+			reason := result.(attachment.AttachmentRejected).Reason
+			return nil, &reason
+		}
+		values = append(values, accepted.Value)
+	}
+	return values, nil
 }
 
 func taskRecordKey(id string) string { return "task:record:" + id }
@@ -46,6 +81,15 @@ func taskUserIndexKey(userID string) string {
 	return "task:user_index:" + userID
 }
 func taskPublicIndexKey() string { return "task:public_index" }
+func taskSeriesTaskIndexKey(seriesID string) string {
+	return "task:series_task_index:" + seriesID
+}
+func taskOrganizationVisibilityIndexKey(organizationID string) string {
+	return "task:org_visibility_index:" + organizationID
+}
+func taskTeamVisibilityIndexKey(teamID string) string {
+	return "task:team_visibility_index:" + teamID
+}
 
 // putStorageString and getStorageString are the shared, type-free byte-level
 // primitives every typed put*/get* helper below builds on - kept to plain
@@ -276,6 +320,16 @@ func parseStoredTaskRecord(record storedTaskRecord) (task.Task, *core.DomainErro
 		return task.Task{}, &reason
 	}
 
+	placement, placementErr := parseStoredSeriesPlacement(record.SeriesID, record.SeriesPosition)
+	if placementErr != nil {
+		return task.Task{}, placementErr
+	}
+
+	attachments, attachmentsErr := parseStoredTaskAttachments(record.Attachments)
+	if attachmentsErr != nil {
+		return task.Task{}, attachmentsErr
+	}
+
 	return task.Task{
 		ID:             id.Value,
 		Owner:          owner,
@@ -289,10 +343,10 @@ func parseStoredTaskRecord(record storedTaskRecord) (task.Task, *core.DomainErro
 		ReservationTTL: ttl.Value,
 		State:          state.Value,
 		Visibility:     visibility,
-		Placement:      task.StandalonePlacement{},
+		Placement:      placement,
 		ResponseSchema: responseSchema.Value,
 		Payload:        payload,
-		Attachments:    nil,
+		Attachments:    attachments,
 		CreatedBy:      createdBy.Value,
 	}, nil
 }
