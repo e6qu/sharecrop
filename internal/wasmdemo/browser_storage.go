@@ -2059,6 +2059,33 @@ func appendStringIndex(storage BrowserStorage, rawKey string, id string, label s
 	return stringIndexStored{}
 }
 
+// removeFromStringIndex drops id from the index if present, otherwise it's a
+// no-op success (removing something already absent is not an error).
+func removeFromStringIndex(storage BrowserStorage, rawKey string, id string) bool {
+	loadedResult := loadStringIndex(storage, rawKey, "index")
+	loaded, loadedMatched := loadedResult.(stringIndexLoaded)
+	if !loadedMatched {
+		return false
+	}
+	remaining := make([]string, 0, len(loaded.values))
+	for _, value := range loaded.values {
+		if value != id {
+			remaining = append(remaining, value)
+		}
+	}
+	encoded, err := json.Marshal(remaining)
+	if err != nil {
+		return false
+	}
+	keyResult := NewStorageKey(rawKey)
+	key, keyMatched := keyResult.(StorageKeyAccepted)
+	if !keyMatched {
+		return false
+	}
+	_, matched := storage.Put(key.Value, string(encoded)).(StorageWritten)
+	return matched
+}
+
 func storageReadReason(result StorageReadResult, label string) string {
 	switch rejected := result.(type) {
 	case StorageMissing:

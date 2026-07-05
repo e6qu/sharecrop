@@ -39,6 +39,8 @@ type storedTaskRecord struct {
 	PayloadKind            string `json:"payload_kind"`
 	PayloadJSON            string `json:"payload_json,omitempty"`
 	CreatedBy              string `json:"created_by"`
+	SeriesID               string `json:"series_id,omitempty"`
+	SeriesPosition         int    `json:"series_position,omitempty"`
 }
 
 func taskRecordKey(id string) string { return "task:record:" + id }
@@ -46,6 +48,9 @@ func taskUserIndexKey(userID string) string {
 	return "task:user_index:" + userID
 }
 func taskPublicIndexKey() string { return "task:public_index" }
+func taskSeriesTaskIndexKey(seriesID string) string {
+	return "task:series_task_index:" + seriesID
+}
 
 // putStorageString and getStorageString are the shared, type-free byte-level
 // primitives every typed put*/get* helper below builds on - kept to plain
@@ -276,6 +281,11 @@ func parseStoredTaskRecord(record storedTaskRecord) (task.Task, *core.DomainErro
 		return task.Task{}, &reason
 	}
 
+	placement, placementErr := parseStoredSeriesPlacement(record.SeriesID, record.SeriesPosition)
+	if placementErr != nil {
+		return task.Task{}, placementErr
+	}
+
 	return task.Task{
 		ID:             id.Value,
 		Owner:          owner,
@@ -289,7 +299,7 @@ func parseStoredTaskRecord(record storedTaskRecord) (task.Task, *core.DomainErro
 		ReservationTTL: ttl.Value,
 		State:          state.Value,
 		Visibility:     visibility,
-		Placement:      task.StandalonePlacement{},
+		Placement:      placement,
 		ResponseSchema: responseSchema.Value,
 		Payload:        payload,
 		Attachments:    nil,

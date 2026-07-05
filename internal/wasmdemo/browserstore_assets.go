@@ -290,6 +290,44 @@ func (store AssetBrowserStore) releaseHeldCollectibleReward(taskID string) ([]as
 	return released, nil
 }
 
+// payOutHeldCollectibleReward transfers every held collectible reward on a
+// task to the accepted worker, mirroring internal/db's payOutCollectible -
+// used by LedgerBrowserStore.AcceptSubmission for collectible/bundle reward
+// tasks.
+func (store AssetBrowserStore) payOutHeldCollectibleReward(taskID string, workerUserID string) ([]core.CollectibleID, *core.DomainError) {
+	indexResult := loadStringIndex(store.storage, taskCollectibleRewardIndexKey(taskID), "task collectible reward")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return nil, &reason
+	}
+	awarded := make([]core.CollectibleID, 0, len(loaded.values))
+	for _, collectibleID := range loaded.values {
+		collectible, found, err := store.loadCollectible(collectibleID)
+		if err != nil {
+			return nil, err
+		}
+		if !found || collectible.State != assets.CollectibleStateEscrowed.String() {
+			continue
+		}
+		collectible.State = assets.CollectibleStateAwarded.String()
+		collectible.OwnerKind = assets.CollectibleOwnerKindUser
+		collectible.OwnerID = workerUserID
+		if !store.saveCollectible(collectible) {
+			reason := invalidState("award collectible failed")
+			return nil, &reason
+		}
+		idResult := core.ParseCollectibleID(collectibleID)
+		id, idMatched := idResult.(core.CollectibleIDCreated)
+		if !idMatched {
+			reason := idResult.(core.CollectibleIDRejected).Reason
+			return nil, &reason
+		}
+		awarded = append(awarded, id.Value)
+	}
+	return awarded, nil
+}
+
 func (store AssetBrowserStore) GiftCollectible(_ context.Context, command assets.GiftStoreCommand) assets.GiftResult {
 	collectible, found, err := store.loadCollectible(command.CollectibleID.String())
 	if err != nil {

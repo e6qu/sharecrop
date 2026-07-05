@@ -26,16 +26,18 @@ func NewSubmissionBrowserStore(storage BrowserStorage, ids InteractionIDSource) 
 }
 
 type storedSubmission struct {
-	ID              string                  `json:"id"`
-	TaskID          string                  `json:"task_id"`
-	SubmitterID     string                  `json:"submitter_id"`
-	State           string                  `json:"state"`
-	ResponseJSON    string                  `json:"response_json"`
-	ReviewNote      string                  `json:"review_note"`
-	ReceiptHash     string                  `json:"receipt_hash"`
-	ValidationOK    bool                    `json:"validation_ok"`
-	ValidationErrs  []storedValidationError `json:"validation_errors,omitempty"`
-	SensitiveFields []storedSensitiveField  `json:"sensitive_fields,omitempty"`
+	ID                     string                  `json:"id"`
+	TaskID                 string                  `json:"task_id"`
+	SubmitterID            string                  `json:"submitter_id"`
+	State                  string                  `json:"state"`
+	ResponseJSON           string                  `json:"response_json"`
+	ReviewNote             string                  `json:"review_note"`
+	ReceiptHash            string                  `json:"receipt_hash"`
+	ValidationOK           bool                    `json:"validation_ok"`
+	ValidationErrs         []storedValidationError `json:"validation_errors,omitempty"`
+	SensitiveFields        []storedSensitiveField  `json:"sensitive_fields,omitempty"`
+	AcceptedIdempotencyKey string                  `json:"accepted_idempotency_key,omitempty"`
+	ReviewIdempotencyKey   string                  `json:"review_idempotency_key,omitempty"`
 }
 
 type storedValidationError struct {
