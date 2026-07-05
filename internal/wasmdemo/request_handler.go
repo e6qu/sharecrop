@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/e6qu/sharecrop/internal/core"
 )
 
 type Response struct {
@@ -23,7 +25,7 @@ type RequestHandled struct {
 }
 
 type RequestHandleRejected struct {
-	Reason string
+	Reason core.DomainError
 }
 
 func (RequestHandled) handleResult()        {}
@@ -82,13 +84,13 @@ func NewPrivacyRequestHandler(storage BrowserStorage, clock HandlerClock, actor 
 
 func (handler PrivacyRequestHandler) Handle(request Request) HandleResult {
 	if handler.storage == nil {
-		return RequestHandleRejected{Reason: "browser storage is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "browser storage is required")}
 	}
 	if handler.clock == nil {
-		return RequestHandleRejected{Reason: "handler clock is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler clock is required")}
 	}
 	if handler.actor == nil {
-		return RequestHandleRejected{Reason: "handler actor is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler actor is required")}
 	}
 	if request.Path == "/api/privacy-requests" {
 		if request.Method.String() == MethodPost.String() {
@@ -97,7 +99,7 @@ func (handler PrivacyRequestHandler) Handle(request Request) HandleResult {
 		if request.Method.String() == MethodGet.String() {
 			return handler.handleListUser(request)
 		}
-		return RequestHandleRejected{Reason: "request method is unsupported for privacy requests"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for privacy requests")}
 	}
 	if strings.SplitN(request.Path, "?", 2)[0] == "/api/admin/privacy-requests" {
 		return handler.handleList(request)
@@ -105,19 +107,19 @@ func (handler PrivacyRequestHandler) Handle(request Request) HandleResult {
 	if requestID := adminPrivacyResolvePathID(request.Path); requestID != "" {
 		return handler.handleResolve(request, requestID)
 	}
-	return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 }
 
 func (handler PrivacyRequestHandler) handleCreate(request Request) HandleResult {
 	if request.Method.String() != MethodPost.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for privacy request creation"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for privacy request creation")}
 	}
 	if handler.ids == nil {
-		return RequestHandleRejected{Reason: "privacy request id source is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "privacy request id source is required")}
 	}
 	var body privacyRequestBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "privacy request body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "privacy request body is invalid")}
 	}
 	stored := StoredPrivacyRequest{
 		ID:                 strings.TrimSpace(handler.ids.NextPrivacyRequestID()),
@@ -133,7 +135,7 @@ func (handler PrivacyRequestHandler) handleCreate(request Request) HandleResult 
 	saveResult := SavePrivacyRequest(handler.storage, stored)
 	saved, savedMatched := saveResult.(PrivacyRequestStored)
 	if !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(PrivacyRequestStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(PrivacyRequestStorageRejected).Reason)}
 	}
 	if runtimeIDs, matched := handler.ids.(RuntimeIDSource); matched {
 		if err := SaveAuditEvent(handler.storage, StoredAuditEvent{
@@ -145,28 +147,28 @@ func (handler PrivacyRequestHandler) handleCreate(request Request) HandleResult 
 			MetadataJSON: `{"kind":"` + stored.Kind + `"}`,
 			CreatedAt:    handler.clock.Now().UTC().Format(time.RFC3339),
 		}); err != nil {
-			return RequestHandleRejected{Reason: err.Error()}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 		}
 	}
 	encoded, err := json.Marshal(saved.Value)
 	if err != nil {
-		return RequestHandleRejected{Reason: "privacy request response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "privacy request response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 201, Body: string(encoded)}}
 }
 
 func (handler PrivacyRequestHandler) handleList(request Request) HandleResult {
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for privacy request listing"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for privacy request listing")}
 	}
 	listResult := ListPrivacyRequests(handler.storage)
 	listed, listedMatched := listResult.(PrivacyRequestsStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(PrivacyRequestStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(PrivacyRequestStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(privacyRequestsBody{Requests: listed.Values})
 	if err != nil {
-		return RequestHandleRejected{Reason: "privacy requests response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "privacy requests response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -175,7 +177,7 @@ func (handler PrivacyRequestHandler) handleListUser(request Request) HandleResul
 	listResult := ListPrivacyRequests(handler.storage)
 	listed, listedMatched := listResult.(PrivacyRequestsStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(PrivacyRequestStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(PrivacyRequestStorageRejected).Reason)}
 	}
 	userID := strings.TrimSpace(handler.actor.UserID())
 	values := make([]StoredPrivacyRequest, 0, len(listed.Values))
@@ -186,29 +188,29 @@ func (handler PrivacyRequestHandler) handleListUser(request Request) HandleResul
 	}
 	encoded, err := json.Marshal(privacyRequestsBody{Requests: values})
 	if err != nil {
-		return RequestHandleRejected{Reason: "privacy requests response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "privacy requests response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
 
 func (handler PrivacyRequestHandler) handleResolve(request Request, requestID string) HandleResult {
 	if request.Method.String() != MethodPost.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for privacy request resolution"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for privacy request resolution")}
 	}
 	listResult := ListPrivacyRequests(handler.storage)
 	listed, listedMatched := listResult.(PrivacyRequestsStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(PrivacyRequestStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(PrivacyRequestStorageRejected).Reason)}
 	}
 	var body privacyResolutionBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "privacy resolution body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "privacy resolution body is invalid")}
 	}
 	for index := range listed.Values {
 		if listed.Values[index].ID == strings.TrimSpace(requestID) {
 			privacy := listed.Values[index]
 			if privacy.Status != "queued" {
-				return RequestHandleRejected{Reason: "privacy request is already resolved"}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "privacy request is already resolved")}
 			}
 			privacy.Status = "resolved"
 			privacy.ResolutionNote = strings.TrimSpace(body.ResolutionNote)
@@ -219,23 +221,23 @@ func (handler PrivacyRequestHandler) handleResolve(request Request, requestID st
 			if privacy.Kind == "sensitive_field_deletion" {
 				count, err := redactSensitiveFieldsForUser(handler.storage, privacy.RequestedBy, privacy.ResolvedAt)
 				if err != nil {
-					return RequestHandleRejected{Reason: err.Error()}
+					return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 				}
 				privacy.RedactedFieldCount = count
 			}
 			saveResult := SavePrivacyRequest(handler.storage, privacy)
 			saved, savedMatched := saveResult.(PrivacyRequestStored)
 			if !savedMatched {
-				return RequestHandleRejected{Reason: saveResult.(PrivacyRequestStorageRejected).Reason}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(PrivacyRequestStorageRejected).Reason)}
 			}
 			encoded, err := json.Marshal(saved.Value)
 			if err != nil {
-				return RequestHandleRejected{Reason: "privacy resolution response encoding failed"}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "privacy resolution response encoding failed")}
 			}
 			return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 		}
 	}
-	return RequestHandleRejected{Reason: "privacy request was not found"}
+	return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "privacy request was not found")}
 }
 
 func redactSensitiveFieldsForUser(storage BrowserStorage, userID string, redactedAt string) (int, error) {
@@ -293,31 +295,31 @@ func NewSavedQueueViewHandler(storage BrowserStorage, actor HandlerActor, ids Sa
 
 func (handler SavedQueueViewHandler) Handle(request Request) HandleResult {
 	if handler.storage == nil {
-		return RequestHandleRejected{Reason: "browser storage is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "browser storage is required")}
 	}
 	if handler.actor == nil {
-		return RequestHandleRejected{Reason: "handler actor is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler actor is required")}
 	}
 	if savedQueueViewPathOnly(request.Path) != "/api/saved-queue-views" {
-		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 	}
 	switch request.Method.String() {
 	case MethodPost.String():
 		if handler.ids == nil {
-			return RequestHandleRejected{Reason: "saved queue view id source is required"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "saved queue view id source is required")}
 		}
 		return handler.handleUpsert(request)
 	case MethodGet.String():
 		return handler.handleList(request)
 	default:
-		return RequestHandleRejected{Reason: "request method is unsupported for saved queue views"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for saved queue views")}
 	}
 }
 
 func (handler SavedQueueViewHandler) handleUpsert(request Request) HandleResult {
 	var body savedQueueViewBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "saved queue view body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "saved queue view body is invalid")}
 	}
 	view := StoredSavedQueueView{
 		ID:          strings.TrimSpace(handler.ids.NextSavedQueueViewID()),
@@ -332,11 +334,11 @@ func (handler SavedQueueViewHandler) handleUpsert(request Request) HandleResult 
 	saveResult := SaveSavedQueueView(handler.storage, view)
 	saved, savedMatched := saveResult.(SavedQueueViewStored)
 	if !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(SavedQueueViewStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(SavedQueueViewStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(saved.Value)
 	if err != nil {
-		return RequestHandleRejected{Reason: "saved queue view response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "saved queue view response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -346,11 +348,11 @@ func (handler SavedQueueViewHandler) handleList(request Request) HandleResult {
 	listResult := ListSavedQueueViews(handler.storage, handler.actor.UserID(), scope)
 	listed, listedMatched := listResult.(SavedQueueViewsStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(SavedQueueViewStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(SavedQueueViewStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(savedQueueViewsBody{Views: listed.Values})
 	if err != nil {
-		return RequestHandleRejected{Reason: "saved queue views response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "saved queue views response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -406,22 +408,22 @@ func NewTaskHandler(storage BrowserStorage, actor HandlerActor, ids TaskIDSource
 
 func (handler TaskHandler) Handle(request Request) HandleResult {
 	if handler.storage == nil {
-		return RequestHandleRejected{Reason: "browser storage is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "browser storage is required")}
 	}
 	if handler.actor == nil {
-		return RequestHandleRejected{Reason: "handler actor is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler actor is required")}
 	}
 	if tasksPathOnly(request.Path) == "/api/tasks" {
 		switch request.Method.String() {
 		case MethodPost.String():
 			if handler.ids == nil {
-				return RequestHandleRejected{Reason: "task id source is required"}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task id source is required")}
 			}
 			return handler.handleCreateTask(request)
 		case MethodGet.String():
 			return handler.handleListTasks(request)
 		default:
-			return RequestHandleRejected{Reason: "request method is unsupported for tasks"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for tasks")}
 		}
 	}
 	if teamID := teamWorkPathID(request.Path); teamID != "" {
@@ -435,31 +437,31 @@ func (handler TaskHandler) Handle(request Request) HandleResult {
 	}
 	taskID := taskDetailPathID(request.Path)
 	if taskID == "" {
-		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 	}
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for task detail"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for task detail")}
 	}
 	return handler.handleGetTask(taskID)
 }
 
 func (handler TaskHandler) handleTeamWork(request Request, teamID string) HandleResult {
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for team work"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for team work")}
 	}
 	pageResult := storedListPageFromPath(request.Path, "team work")
 	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 	if !pageMatched {
-		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 	}
 	values, err := url.ParseQuery(queryStringFromPath(request.Path))
 	if err != nil {
-		return RequestHandleRejected{Reason: "team work query is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "team work query is invalid")}
 	}
 	listResult := ListTasks(handler.storage, values.Get("query"), "", handler.actor.UserID(), "", "", DefaultStoredListPage())
 	listed, listedMatched := listResult.(TasksStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(TaskStorageRejected).Reason)}
 	}
 	tasks := make([]StoredTask, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -471,7 +473,7 @@ func (handler TaskHandler) handleTeamWork(request Request, teamID string) Handle
 	start, end := pageBounds(len(tasks), page.value)
 	encoded, err := json.Marshal(tasksResponseBody{Tasks: taskSummaries(tasks[start:end])})
 	if err != nil {
-		return RequestHandleRejected{Reason: "team work response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "team work response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -482,17 +484,17 @@ func (handler TaskHandler) handleTeamWork(request Request, teamID string) Handle
 // rather than a direct lookup; acceptable at the demo's in-memory scale.
 func (handler TaskHandler) handleUserWork(request Request, userID string) HandleResult {
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for user work"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for user work")}
 	}
 	pageResult := storedListPageFromPath(request.Path, "user work")
 	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 	if !pageMatched {
-		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 	}
 	idsResult := loadStringIndex(handler.storage, "task:index", "task")
 	ids, idsMatched := idsResult.(stringIndexLoaded)
 	if !idsMatched {
-		return RequestHandleRejected{Reason: idsResult.(stringIndexRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, idsResult.(stringIndexRejected).reason)}
 	}
 	cleanUserID := strings.TrimSpace(userID)
 	tasks := make([]StoredTask, 0)
@@ -522,7 +524,7 @@ func (handler TaskHandler) handleUserWork(request Request, userID string) Handle
 	start, end := pageBounds(len(tasks), page.value)
 	encoded, err := json.Marshal(tasksResponseBody{Tasks: taskSummaries(tasks[start:end])})
 	if err != nil {
-		return RequestHandleRejected{Reason: "user work response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "user work response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -531,11 +533,11 @@ func (handler TaskHandler) handleListTasks(request Request) HandleResult {
 	pageResult := storedListPageFromPath(request.Path, "task")
 	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 	if !pageMatched {
-		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 	}
 	values, err := url.ParseQuery(queryStringFromPath(request.Path))
 	if err != nil {
-		return RequestHandleRejected{Reason: "task query is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task query is invalid")}
 	}
 	listResult := ListTasks(
 		handler.storage,
@@ -548,63 +550,63 @@ func (handler TaskHandler) handleListTasks(request Request) HandleResult {
 	)
 	listed, listedMatched := listResult.(TasksStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(TaskStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(tasksResponseBody{Tasks: taskSummaries(listed.Values)})
 	if err != nil {
-		return RequestHandleRejected{Reason: "tasks response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "tasks response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
 
 func (handler TaskHandler) handleTaskAction(request Request, action taskActionRoute) HandleResult {
 	if request.Method.String() != MethodPost.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for task action"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for task action")}
 	}
 	loadResult := LoadTask(handler.storage, action.taskID)
 	loaded, loadedMatched := loadResult.(TaskStored)
 	if !loadedMatched {
-		return RequestHandleRejected{Reason: loadResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, loadResult.(TaskStorageRejected).Reason)}
 	}
 	task := loaded.Value
 	switch action.action {
 	case "open":
 		if task.State != "draft" {
-			return RequestHandleRejected{Reason: "only draft tasks can be opened"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be opened")}
 		}
 		task.State = "open"
 	case "cancel":
 		if task.State != "draft" && task.State != "open" {
-			return RequestHandleRejected{Reason: "only draft or open tasks can be cancelled"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft or open tasks can be cancelled")}
 		}
 		if task.EscrowAmount > 0 || task.RewardCollectibleCount > 0 {
-			return RequestHandleRejected{Reason: "refund the task's held escrow before cancelling"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "refund the task's held escrow before cancelling")}
 		}
 		task.State = "cancelled"
 	case "unpublish":
 		if task.State != "open" {
-			return RequestHandleRejected{Reason: "only open tasks can be unpublished"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can be unpublished")}
 		}
 		task.State = "draft"
 	case "funding":
 		var body taskFundingBody
 		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-			return RequestHandleRejected{Reason: "task funding body is invalid"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task funding body is invalid")}
 		}
 		if body.Amount < 1 {
-			return RequestHandleRejected{Reason: "task funding amount is invalid"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task funding amount is invalid")}
 		}
 		if task.EscrowAmount > 0 {
-			return RequestHandleRejected{Reason: "task is already funded"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task is already funded")}
 		}
 		task.EscrowAmount = body.Amount
 		task.FundedOrganizationID = strings.TrimSpace(body.OrganizationID)
 	case "refund":
 		if task.State != "draft" && task.State != "open" {
-			return RequestHandleRejected{Reason: "only draft or open tasks can be refunded"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft or open tasks can be refunded")}
 		}
 		if task.EscrowAmount == 0 && task.RewardCollectibleCount == 0 {
-			return RequestHandleRejected{Reason: "task has no escrow to refund"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task has no escrow to refund")}
 		}
 		amount := task.EscrowAmount
 		task.EscrowAmount = 0
@@ -617,26 +619,26 @@ func (handler TaskHandler) handleTaskAction(request Request, action taskActionRo
 		task.State = "cancelled"
 		saveResult := SaveTask(handler.storage, task)
 		if _, savedMatched := saveResult.(TaskStored); !savedMatched {
-			return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(TaskStorageRejected).Reason)}
 		}
 		encoded, err := json.Marshal(taskRefundBody{TaskID: task.ID, Amount: amount, State: "refunded"})
 		if err != nil {
-			return RequestHandleRejected{Reason: "task refund response encoding failed"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task refund response encoding failed")}
 		}
 		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 	case "collectible-refund":
 		if task.RewardCollectibleCount == 0 {
-			return RequestHandleRejected{Reason: "task has no escrowed collectibles to refund"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task has no escrowed collectibles to refund")}
 		}
 		refunded := make([]StoredCollectible, 0, len(task.RewardCollectibleIDs))
 		for index := range task.RewardCollectibleIDs {
 			collectible, err := LoadCollectible(handler.storage, task.RewardCollectibleIDs[index])
 			if err != nil {
-				return RequestHandleRejected{Reason: err.Error()}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 			}
 			collectible.State = "minted"
 			if err := SaveCollectible(handler.storage, collectible); err != nil {
-				return RequestHandleRejected{Reason: err.Error()}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 			}
 			refunded = append(refunded, collectible)
 		}
@@ -649,11 +651,11 @@ func (handler TaskHandler) handleTaskAction(request Request, action taskActionRo
 		}
 		saveResult := SaveTask(handler.storage, task)
 		if _, savedMatched := saveResult.(TaskStored); !savedMatched {
-			return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(TaskStorageRejected).Reason)}
 		}
 		encoded, err := json.Marshal(collectibleRefundBody{Collectibles: refunded})
 		if err != nil {
-			return RequestHandleRejected{Reason: "collectible refund response encoding failed"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible refund response encoding failed")}
 		}
 		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 	case "collectible-reward":
@@ -664,17 +666,17 @@ func (handler TaskHandler) handleTaskAction(request Request, action taskActionRo
 			task.RewardKind = "collectible"
 		}
 	default:
-		return RequestHandleRejected{Reason: "task action is unsupported"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task action is unsupported")}
 	}
 	saveResult := SaveTask(handler.storage, task)
 	saved, savedMatched := saveResult.(TaskStored)
 	if !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(TaskStorageRejected).Reason)}
 	}
 	if action.action == "funding" {
 		encoded, err := json.Marshal(taskFundingResponseBody{TaskID: task.ID, Amount: task.EscrowAmount, State: "held"})
 		if err != nil {
-			return RequestHandleRejected{Reason: "task funding response encoding failed"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task funding response encoding failed")}
 		}
 		return RequestHandled{Value: Response{Status: 201, Body: string(encoded)}}
 	}
@@ -684,7 +686,7 @@ func (handler TaskHandler) handleTaskAction(request Request, action taskActionRo
 func (handler TaskHandler) handleCreateTask(request Request) HandleResult {
 	var body taskBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "task request body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task request body is invalid")}
 	}
 	taskID := strings.TrimSpace(handler.ids.NextTaskID())
 	owner := taskOwnerFromBody(body.Owner, handler.actor.UserID())
@@ -728,27 +730,27 @@ func (handler TaskHandler) handleCreateTask(request Request) HandleResult {
 	attachmentsResult := attachmentsFromTaskBody(body.Attachments, task.ID)
 	attachments, attachmentsMatched := attachmentsResult.(taskAttachmentsAccepted)
 	if !attachmentsMatched {
-		return RequestHandleRejected{Reason: attachmentsResult.(taskAttachmentsRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, attachmentsResult.(taskAttachmentsRejected).reason)}
 	}
 	saveResult := SaveTask(handler.storage, task)
 	saved, savedMatched := saveResult.(TaskStored)
 	if !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(TaskStorageRejected).Reason)}
 	}
 	for index := range saved.Value.RewardCollectibleIDs {
 		collectible, err := LoadCollectible(handler.storage, saved.Value.RewardCollectibleIDs[index])
 		if err != nil {
-			return RequestHandleRejected{Reason: err.Error()}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 		}
 		collectible.State = "escrowed"
 		if err := SaveCollectible(handler.storage, collectible); err != nil {
-			return RequestHandleRejected{Reason: err.Error()}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 		}
 	}
 	saveAttachmentsResult := SaveAttachments(handler.storage, "task", saved.Value.ID, attachments.values)
 	savedAttachments, savedAttachmentsMatched := saveAttachmentsResult.(AttachmentsStored)
 	if !savedAttachmentsMatched {
-		return RequestHandleRejected{Reason: saveAttachmentsResult.(AttachmentStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveAttachmentsResult.(AttachmentStorageRejected).Reason)}
 	}
 	return taskResponseResult(saved.Value, savedAttachments.Values, 201)
 }
@@ -757,12 +759,12 @@ func (handler TaskHandler) handleGetTask(taskID string) HandleResult {
 	loadResult := LoadTask(handler.storage, taskID)
 	loaded, loadedMatched := loadResult.(TaskStored)
 	if !loadedMatched {
-		return RequestHandleRejected{Reason: loadResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, loadResult.(TaskStorageRejected).Reason)}
 	}
 	attachmentsResult := ListAttachments(handler.storage, "task", taskID)
 	attachments, attachmentsMatched := attachmentsResult.(AttachmentsStored)
 	if !attachmentsMatched {
-		return RequestHandleRejected{Reason: attachmentsResult.(AttachmentStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, attachmentsResult.(AttachmentStorageRejected).Reason)}
 	}
 	return taskResponseResult(loaded.Value, attachments.Values, 200)
 }
@@ -778,7 +780,7 @@ func taskResponseResult(task StoredTask, attachments []StoredAttachment, status 
 		ActiveAssigneeID:   "",
 	})
 	if err != nil {
-		return RequestHandleRejected{Reason: "task response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
@@ -1083,23 +1085,23 @@ func NewNotificationHandler(storage BrowserStorage, actor HandlerActor) Notifica
 
 func (handler NotificationHandler) Handle(request Request) HandleResult {
 	if handler.storage == nil {
-		return RequestHandleRejected{Reason: "browser storage is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "browser storage is required")}
 	}
 	if handler.actor == nil {
-		return RequestHandleRejected{Reason: "handler actor is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler actor is required")}
 	}
 	if notificationsPathOnly(request.Path) == "/api/notifications" {
 		if request.Method.String() != MethodGet.String() {
-			return RequestHandleRejected{Reason: "request method is unsupported for notification listing"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for notification listing")}
 		}
 		return handler.handleList(request)
 	}
 	notificationID := notificationReadPathID(request.Path)
 	if notificationID == "" {
-		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 	}
 	if request.Method.String() != MethodPost.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for notification mark-read"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for notification mark-read")}
 	}
 	return handler.handleMarkRead(notificationID)
 }
@@ -1108,16 +1110,16 @@ func (handler NotificationHandler) handleList(request Request) HandleResult {
 	pageResult := notificationPageFromPath(request.Path)
 	page, pageMatched := pageResult.(notificationPageAccepted)
 	if !pageMatched {
-		return RequestHandleRejected{Reason: pageResult.(notificationPageRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(notificationPageRejected).reason)}
 	}
 	listResult := ListNotifications(handler.storage, handler.actor.UserID(), page.value)
 	listed, listedMatched := listResult.(NotificationsStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(NotificationStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(NotificationStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(notificationsBody{Notifications: listed.Values})
 	if err != nil {
-		return RequestHandleRejected{Reason: "notifications response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "notifications response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -1126,11 +1128,11 @@ func (handler NotificationHandler) handleMarkRead(notificationID string) HandleR
 	markResult := MarkNotificationRead(handler.storage, notificationID, handler.actor.UserID())
 	marked, markedMatched := markResult.(NotificationStored)
 	if !markedMatched {
-		return RequestHandleRejected{Reason: markResult.(NotificationStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, markResult.(NotificationStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(marked.Value)
 	if err != nil {
-		return RequestHandleRejected{Reason: "notification response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "notification response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -1204,10 +1206,10 @@ func NewOrganizationHandler(storage BrowserStorage, actor HandlerActor, ids Orga
 
 func (handler OrganizationHandler) Handle(request Request) HandleResult {
 	if handler.storage == nil {
-		return RequestHandleRejected{Reason: "browser storage is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "browser storage is required")}
 	}
 	if handler.actor == nil {
-		return RequestHandleRejected{Reason: "handler actor is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler actor is required")}
 	}
 	switch {
 	case organizationCollectionPathOnly(request.Path) == "/api/organizations":
@@ -1221,7 +1223,7 @@ func (handler OrganizationHandler) Handle(request Request) HandleResult {
 	case organizationMemberRoute(request.Path) != "":
 		return handler.handleOrganizationMembers(request)
 	default:
-		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 	}
 }
 
@@ -1229,11 +1231,11 @@ func (handler OrganizationHandler) handleOrganizations(request Request) HandleRe
 	switch request.Method.String() {
 	case MethodPost.String():
 		if handler.ids == nil {
-			return RequestHandleRejected{Reason: "organization id source is required"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization id source is required")}
 		}
 		var body organizationBody
 		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-			return RequestHandleRejected{Reason: "organization request body is invalid"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization request body is invalid")}
 		}
 		organization := StoredOrganization{
 			ID:        strings.TrimSpace(handler.ids.NextOrganizationID()),
@@ -1243,7 +1245,7 @@ func (handler OrganizationHandler) handleOrganizations(request Request) HandleRe
 		saveResult := SaveOrganization(handler.storage, organization)
 		saved, savedMatched := saveResult.(OrganizationStored)
 		if !savedMatched {
-			return RequestHandleRejected{Reason: saveResult.(OrganizationStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(OrganizationStorageRejected).Reason)}
 		}
 		memberResult := SaveOrganizationMember(handler.storage, StoredOrganizationMember{
 			ID:             strings.TrimSpace(handler.ids.NextOrganizationMemberID()),
@@ -1253,42 +1255,42 @@ func (handler OrganizationHandler) handleOrganizations(request Request) HandleRe
 			Roles:          []string{"owner"},
 		})
 		if _, matched := memberResult.(OrganizationMemberStored); !matched {
-			return RequestHandleRejected{Reason: memberResult.(OrganizationMemberStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, memberResult.(OrganizationMemberStorageRejected).Reason)}
 		}
 		return organizationResponseResult(saved.Value, 201)
 	case MethodGet.String():
 		pageResult := storedListPageFromPath(request.Path, "organization")
 		page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 		if !pageMatched {
-			return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 		}
 		listResult := ListOrganizations(handler.storage, queryValueFromPath(request.Path), page.value)
 		listed, listedMatched := listResult.(OrganizationsStored)
 		if !listedMatched {
-			return RequestHandleRejected{Reason: listResult.(OrganizationStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(OrganizationStorageRejected).Reason)}
 		}
 		encoded, err := json.Marshal(organizationsBody{Organizations: listed.Values})
 		if err != nil {
-			return RequestHandleRejected{Reason: "organizations response encoding failed"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organizations response encoding failed")}
 		}
 		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 	default:
-		return RequestHandleRejected{Reason: "request method is unsupported for organizations"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for organizations")}
 	}
 }
 
 func (handler OrganizationHandler) handleOrganizationTeams(request Request, organizationID string) HandleResult {
 	if strings.TrimSpace(organizationID) == "" {
-		return RequestHandleRejected{Reason: "organization id is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization id is required")}
 	}
 	switch request.Method.String() {
 	case MethodPost.String():
 		if handler.ids == nil {
-			return RequestHandleRejected{Reason: "organization id source is required"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization id source is required")}
 		}
 		var body teamBody
 		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-			return RequestHandleRejected{Reason: "team request body is invalid"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "team request body is invalid")}
 		}
 		team := StoredTeam{
 			ID:             strings.TrimSpace(handler.ids.NextTeamID()),
@@ -1301,23 +1303,23 @@ func (handler OrganizationHandler) handleOrganizationTeams(request Request, orga
 		saveResult := SaveTeam(handler.storage, team)
 		saved, savedMatched := saveResult.(TeamStored)
 		if !savedMatched {
-			return RequestHandleRejected{Reason: saveResult.(TeamStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(TeamStorageRejected).Reason)}
 		}
 		return teamResponseResult(saved.Value, 201)
 	case MethodGet.String():
 		pageResult := storedListPageFromPath(request.Path, "organization team")
 		page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 		if !pageMatched {
-			return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 		}
 		listResult := ListOrganizationTeams(handler.storage, organizationID, queryValueFromPath(request.Path), page.value)
 		listed, listedMatched := listResult.(TeamsStored)
 		if !listedMatched {
-			return RequestHandleRejected{Reason: listResult.(TeamStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(TeamStorageRejected).Reason)}
 		}
 		return teamsResponseResult(listed.Values)
 	default:
-		return RequestHandleRejected{Reason: "request method is unsupported for organization teams"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for organization teams")}
 	}
 }
 
@@ -1325,11 +1327,11 @@ func (handler OrganizationHandler) handleStandaloneTeams(request Request) Handle
 	switch request.Method.String() {
 	case MethodPost.String():
 		if handler.ids == nil {
-			return RequestHandleRejected{Reason: "organization id source is required"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization id source is required")}
 		}
 		var body teamBody
 		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-			return RequestHandleRejected{Reason: "team request body is invalid"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "team request body is invalid")}
 		}
 		team := StoredTeam{
 			ID:             strings.TrimSpace(handler.ids.NextTeamID()),
@@ -1342,23 +1344,23 @@ func (handler OrganizationHandler) handleStandaloneTeams(request Request) Handle
 		saveResult := SaveTeam(handler.storage, team)
 		saved, savedMatched := saveResult.(TeamStored)
 		if !savedMatched {
-			return RequestHandleRejected{Reason: saveResult.(TeamStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(TeamStorageRejected).Reason)}
 		}
 		return teamResponseResult(saved.Value, 201)
 	case MethodGet.String():
 		pageResult := storedListPageFromPath(request.Path, "standalone team")
 		page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 		if !pageMatched {
-			return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 		}
 		listResult := ListStandaloneTeams(handler.storage, handler.actor.UserID(), queryValueFromPath(request.Path), page.value)
 		listed, listedMatched := listResult.(TeamsStored)
 		if !listedMatched {
-			return RequestHandleRejected{Reason: listResult.(TeamStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(TeamStorageRejected).Reason)}
 		}
 		return teamsResponseResult(listed.Values)
 	default:
-		return RequestHandleRejected{Reason: "request method is unsupported for standalone teams"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for standalone teams")}
 	}
 }
 
@@ -1371,16 +1373,16 @@ func (handler OrganizationHandler) handleStandaloneTeams(request Request) Handle
 // real backend.
 func (handler OrganizationHandler) handleTeamDetail(request Request, teamID string) HandleResult {
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for team detail"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for team detail")}
 	}
 	loadResult := LoadTeam(handler.storage, teamID)
 	loaded, loadedMatched := loadResult.(TeamStored)
 	if !loadedMatched {
-		return RequestHandleRejected{Reason: loadResult.(TeamStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, loadResult.(TeamStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(teamDetailBody{Team: loaded.Value, Members: []string{}})
 	if err != nil {
-		return RequestHandleRejected{Reason: "team detail response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "team detail response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -1388,7 +1390,7 @@ func (handler OrganizationHandler) handleTeamDetail(request Request, teamID stri
 func (handler OrganizationHandler) handleOrganizationMembers(request Request) HandleResult {
 	route := parseOrganizationMemberRoute(request.Path)
 	if route.organizationID == "" {
-		return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 	}
 	if route.userID == "" {
 		switch request.Method.String() {
@@ -1398,65 +1400,65 @@ func (handler OrganizationHandler) handleOrganizationMembers(request Request) Ha
 			pageResult := storedListPageFromPath(request.Path, "organization member")
 			page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 			if !pageMatched {
-				return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 			}
 			listResult := ListOrganizationMembers(handler.storage, route.organizationID, page.value)
 			listed, listedMatched := listResult.(OrganizationMembersStored)
 			if !listedMatched {
-				return RequestHandleRejected{Reason: listResult.(OrganizationMemberStorageRejected).Reason}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(OrganizationMemberStorageRejected).Reason)}
 			}
 			return organizationMembersResponseResult(listed.Values, 200)
 		default:
-			return RequestHandleRejected{Reason: "request method is unsupported for organization members"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for organization members")}
 		}
 	}
 	if route.action == "roles" {
 		if request.Method.String() != MethodPatch.String() {
-			return RequestHandleRejected{Reason: "request method is unsupported for organization member roles"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for organization member roles")}
 		}
 		var body organizationRolesBody
 		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-			return RequestHandleRejected{Reason: "organization member roles body is invalid"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization member roles body is invalid")}
 		}
 		updateResult := UpdateOrganizationMemberRoles(handler.storage, route.organizationID, route.userID, body.Roles)
 		updated, updatedMatched := updateResult.(OrganizationMemberStored)
 		if !updatedMatched {
-			return RequestHandleRejected{Reason: updateResult.(OrganizationMemberStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, updateResult.(OrganizationMemberStorageRejected).Reason)}
 		}
 		return organizationMemberResponseResult(updated.Value, 200)
 	}
 	if route.action == "deactivate" {
 		if request.Method.String() != MethodPatch.String() {
-			return RequestHandleRejected{Reason: "request method is unsupported for organization member deactivation"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for organization member deactivation")}
 		}
 		deactivateResult := DeactivateOrganizationMember(handler.storage, route.organizationID, route.userID)
 		if _, deactivated := deactivateResult.(OrganizationMemberStored); !deactivated {
-			return RequestHandleRejected{Reason: deactivateResult.(OrganizationMemberStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, deactivateResult.(OrganizationMemberStorageRejected).Reason)}
 		}
 		encoded, err := json.Marshal(statusBody{Status: "deactivated"})
 		if err != nil {
-			return RequestHandleRejected{Reason: "organization member deactivation response encoding failed"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization member deactivation response encoding failed")}
 		}
 		return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 	}
-	return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 }
 
 func (handler OrganizationHandler) handleProvisionOrganizationMember(request Request, organizationID string) HandleResult {
 	if handler.ids == nil {
-		return RequestHandleRejected{Reason: "organization id source is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization id source is required")}
 	}
 	if handler.resolver == nil {
-		return RequestHandleRejected{Reason: "organization user resolver is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization user resolver is required")}
 	}
 	var body provisionOrganizationMemberBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "organization member request body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization member request body is invalid")}
 	}
 	email := strings.TrimSpace(body.Email)
 	userID, resolved := handler.resolver.UserIDForEmail(email)
 	if !resolved || strings.TrimSpace(userID) == "" {
-		return RequestHandleRejected{Reason: "organization member user was not found"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "organization member user was not found")}
 	}
 	member := StoredOrganizationMember{
 		ID:             strings.TrimSpace(handler.ids.NextOrganizationMemberID()),
@@ -1468,7 +1470,7 @@ func (handler OrganizationHandler) handleProvisionOrganizationMember(request Req
 	saveResult := SaveOrganizationMember(handler.storage, member)
 	saved, savedMatched := saveResult.(OrganizationMemberStored)
 	if !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(OrganizationMemberStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(OrganizationMemberStorageRejected).Reason)}
 	}
 	return organizationMemberResponseResult(saved.Value, 201)
 }
@@ -1528,7 +1530,7 @@ type organizationMemberRouteParts struct {
 func organizationResponseResult(organization StoredOrganization, status int) HandleResult {
 	encoded, err := json.Marshal(organization)
 	if err != nil {
-		return RequestHandleRejected{Reason: "organization response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
@@ -1536,7 +1538,7 @@ func organizationResponseResult(organization StoredOrganization, status int) Han
 func teamResponseResult(team StoredTeam, status int) HandleResult {
 	encoded, err := json.Marshal(team)
 	if err != nil {
-		return RequestHandleRejected{Reason: "team response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "team response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
@@ -1544,7 +1546,7 @@ func teamResponseResult(team StoredTeam, status int) HandleResult {
 func teamsResponseResult(teams []StoredTeam) HandleResult {
 	encoded, err := json.Marshal(teamsBody{Teams: teams})
 	if err != nil {
-		return RequestHandleRejected{Reason: "teams response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "teams response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -1552,7 +1554,7 @@ func teamsResponseResult(teams []StoredTeam) HandleResult {
 func organizationMemberResponseResult(member StoredOrganizationMember, status int) HandleResult {
 	encoded, err := json.Marshal(organizationMemberToBody(member))
 	if err != nil {
-		return RequestHandleRejected{Reason: "organization member response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization member response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
@@ -1564,7 +1566,7 @@ func organizationMembersResponseResult(members []StoredOrganizationMember, statu
 	}
 	encoded, err := json.Marshal(organizationMembersBody{Members: values})
 	if err != nil {
-		return RequestHandleRejected{Reason: "organization members response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization members response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
@@ -1698,28 +1700,28 @@ func NewTaskSeriesHandler(storage BrowserStorage, actor HandlerActor, ids TaskSe
 
 func (handler TaskSeriesHandler) Handle(request Request) HandleResult {
 	if handler.storage == nil {
-		return RequestHandleRejected{Reason: "browser storage is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "browser storage is required")}
 	}
 	if handler.actor == nil {
-		return RequestHandleRejected{Reason: "handler actor is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler actor is required")}
 	}
 	if taskSeriesPathOnly(request.Path) == "/api/task-series" {
 		switch request.Method.String() {
 		case MethodPost.String():
 			if handler.ids == nil {
-				return RequestHandleRejected{Reason: "task series id source is required"}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task series id source is required")}
 			}
 			return handler.handleCreate(request)
 		case MethodGet.String():
 			return handler.handleList(request)
 		default:
-			return RequestHandleRejected{Reason: "request method is unsupported for task series"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for task series")}
 		}
 	}
 	if seriesID := taskSeriesDetailPathID(request.Path); seriesID != "" {
 		return handler.handleDetail(request, seriesID)
 	}
-	return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 }
 
 func (handler TaskSeriesHandler) handleCreate(request Request) HandleResult {
@@ -1728,7 +1730,7 @@ func (handler TaskSeriesHandler) handleCreate(request Request) HandleResult {
 		Description string `json:"description"`
 	}
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "task series request body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task series request body is invalid")}
 	}
 	series := StoredTaskSeries{
 		ID:          strings.TrimSpace(handler.ids.NextTaskSeriesID()),
@@ -1741,13 +1743,13 @@ func (handler TaskSeriesHandler) handleCreate(request Request) HandleResult {
 	saveResult := SaveTaskSeries(handler.storage, series)
 	saved, savedMatched := saveResult.(TaskSeriesStored)
 	if !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(TaskSeriesStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(TaskSeriesStorageRejected).Reason)}
 	}
 	// internal/http's createTaskSeries writes the full detail shape
 	// ({series, tasks, comments}), not a bare series object.
 	encoded, err := json.Marshal(taskSeriesDetailResponseBody{Series: taskSeriesToBody(saved.Value), Tasks: []taskResponseBody{}, Comments: []struct{}{}})
 	if err != nil {
-		return RequestHandleRejected{Reason: "task series response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 201, Body: string(encoded)}}
 }
@@ -1756,12 +1758,12 @@ func (handler TaskSeriesHandler) handleList(request Request) HandleResult {
 	pageResult := storedListPageFromPath(request.Path, "task series")
 	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 	if !pageMatched {
-		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 	}
 	listResult := ListTaskSeries(handler.storage, page.value)
 	listed, listedMatched := listResult.(TaskSeriesListStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(TaskSeriesStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(TaskSeriesStorageRejected).Reason)}
 	}
 	bodies := make([]taskSeriesResponseBody, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -1769,23 +1771,23 @@ func (handler TaskSeriesHandler) handleList(request Request) HandleResult {
 	}
 	encoded, err := json.Marshal(taskSeriesListResponseBody{Series: bodies})
 	if err != nil {
-		return RequestHandleRejected{Reason: "task series list response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series list response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
 
 func (handler TaskSeriesHandler) handleDetail(request Request, seriesID string) HandleResult {
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for task series detail"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for task series detail")}
 	}
 	loadResult := LoadTaskSeries(handler.storage, seriesID)
 	loaded, loadedMatched := loadResult.(TaskSeriesStored)
 	if !loadedMatched {
-		return RequestHandleRejected{Reason: loadResult.(TaskSeriesStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, loadResult.(TaskSeriesStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(taskSeriesDetailResponseBody{Series: taskSeriesToBody(loaded.Value), Tasks: []taskResponseBody{}, Comments: []struct{}{}})
 	if err != nil {
-		return RequestHandleRejected{Reason: "task series detail response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task series detail response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }

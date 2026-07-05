@@ -1,5 +1,47 @@
 # What We Did
 
+`task/fix-fund-panel-and-demo-status-codes` fixed a user-reported bug found
+by live reproduction, not by guessing: funding a task from its detail page
+returned "status 500" against the demo (WASM) backend. Traced to
+`cmd/sharecrop-wasm/main_js_wasm.go` unconditionally mapping every
+`wasmdemo.RequestHandleRejected` to HTTP 500 regardless of cause — a plain
+validation rejection like "task is already funded" looked identical to a
+real crash. Fixed by changing `RequestHandleRejected.Reason` from a plain
+`string` to `core.DomainError` (reusing the real backend's existing
+`core.ErrorCode` taxonomy rather than inventing a parallel one), classifying
+all 316 call sites across `internal/wasmdemo/{interaction_handler,
+request_handler,runtime_handlers}.go` and `main_js_wasm.go` by keyword into
+the correct code (`invalid_argument`/400, `not_found`/404, `conflict` or
+`invalid_state`/409, `permission_denied`/403), and adding a `statusForError`
+mapping in `main_js_wasm.go` mirroring `internal/http/server.go`'s.
+Cross-checked one classification against the real backend's own code for the
+same business rule ("task requester cannot reserve their own task" →
+`ErrorCodeConflict` in both) to validate the classification approach.
+Verified live before and after: the exact repro (fund an already-open,
+already-funded demo task) went from "status 500" to "status 409."
+
+Also fixed, per the user's explicit request: removed the task-list row's
+"Fund" shortcut link entirely (it only ever navigated to the task's detail
+page — funding now happens only from there). Fixed the detail page's
+"Fund this task" panel to show only for a **draft** task with a
+**credit/bundle** reward, matching the pattern the adjacent refund button
+already used — it previously showed for any draft-or-open task regardless
+of reward kind, including already-funded open tasks (a credit/bundle
+reward must be funded before a task can be opened at all, so an open one is
+always already funded) and none/collectible-only tasks that can never
+accept credit funding, both of which would always end in a rejection.
+
+Regression tests: `internal/wasmdemo`'s existing suite covers the
+`RequestHandleRejected`/`core.DomainError` change; two new Playwright tests
+(`tests/playwright/ledger.spec.ts`, `tests/playwright/demo.spec.ts`) assert
+the fund panel is absent on an already-funded, open task against both the
+real backend and the demo backend; a new demo test funds a freshly-created
+draft credit task end to end; `tests/playwright/mobile.spec.ts`'s existing
+overflow check now creates its own draft task rather than relying on the
+removed task-list shortcut.
+
+---
+
 `task/deprecate-demo-backend-js` removed `site/demo/backend.js` (the
 hand-maintained JS mock backend used before the demo defaulted to WASM) and
 its two Deno tests (`tests/deno/demo_backend_test.ts`,

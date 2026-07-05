@@ -73,8 +73,8 @@ func rejectedRuntimeResponse(t *testing.T, result HandleResult, expectedReason s
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != expectedReason {
-		t.Fatalf("reason = %q, want %q", rejected.Reason, expectedReason)
+	if rejected.Reason.Description() != expectedReason {
+		t.Fatalf("reason = %q, want %q", rejected.Reason.Description(), expectedReason)
 	}
 }
 

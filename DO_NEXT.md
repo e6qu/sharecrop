@@ -5,18 +5,21 @@ Current priority from
 
 Active branch:
 
-1. `task/deprecate-demo-backend-js` is in progress — deletes
-   `site/demo/backend.js` and its two Deno tests
-   (`tests/deno/demo_backend_test.ts`, `tests/deno/scenario_parity_test.ts`),
-   now that PR 129's `wasm-scenario-parity` CI job is merged and proven as
-   replacement scenario-parity coverage. The user confirmed full
-   deprecation explicitly. Updated docs that described `backend.js` as
-   "legacy, still present" (`docs/demo_semantic_parity.md`,
-   `docs/wasm_demo_backend_spike.md`, `docs/application_readiness_review.md`,
-   `BUGS.md`) to describe it as removed. The one accepted, permanent
-   coverage loss: no equivalent exists for the removed route-drift-detection
-   test (real REST routes vs. a mock's route table) against the WASM
-   dispatch path.
+1. `task/fix-fund-panel-and-demo-status-codes` is in progress — fixes a
+   user-reported bug: funding a task from its detail page failed with
+   "status 500" against the demo (WASM) backend. Root cause: every
+   `wasmdemo.RequestHandleRejected` (316 call sites) unconditionally mapped
+   to HTTP 500 in `cmd/sharecrop-wasm/main_js_wasm.go`, regardless of the
+   actual rejection reason. Fixed by giving `RequestHandleRejected.Reason`
+   a real `core.DomainError` (reusing the real backend's `core.ErrorCode`
+   taxonomy) and adding a `statusForError` mapping mirroring
+   `internal/http/server.go`'s. Also removed the task-list row's "Fund"
+   shortcut link (funding now only happens from a task's own detail page,
+   per the user's explicit request) and fixed the detail page's
+   "Fund this task" panel to only show for a draft task with a
+   credit/bundle reward (it previously showed for any draft-or-open task
+   regardless of reward kind, guaranteeing a rejection in several cases).
+   See `STATUS.md` for the full writeup.
 
 2. Two large infrastructure efforts are confirmed as wanted but explicitly
    deferred (see memory for full detail, including empirical research

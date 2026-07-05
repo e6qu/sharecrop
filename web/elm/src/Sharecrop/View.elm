@@ -2547,17 +2547,9 @@ taskRow item =
             , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
             ]
         , div [ Html.Attributes.class "flex shrink-0 gap-2" ]
-            ((if item.state == Task.TaskStateDraft || item.state == Task.TaskStateOpen then
-                -- Jumps straight to this task's detail page with its "Fund
-                -- this task" panel one click away, instead of making an
-                -- owner pick the task from a dropdown on a separate page.
-                [ a [ href ("#/tasks/" ++ item.id), Html.Attributes.class Ui.secondaryButtonClass, testId "fund-task-row" ] [ text "Fund" ] ]
-
-              else
-                []
-             )
-                ++ [ a [ href ("#/tasks/" ++ item.id), Html.Attributes.class Ui.secondaryButtonClass, testId "view-task" ] [ text "View" ] ]
-            )
+            -- Funding lives only on the task's own detail page (its "Fund
+            -- this task" panel), not as a shortcut from the list row.
+            [ a [ href ("#/tasks/" ++ item.id), Html.Attributes.class Ui.secondaryButtonClass, testId "view-task" ] [ text "View" ] ]
         ]
 
 
@@ -3076,6 +3068,15 @@ ownerControlsCard state =
                 draftOrOpen =
                     detail.state == Task.TaskStateDraft || detail.state == Task.TaskStateOpen
 
+                -- Funding only ever applies to a draft credit/bundle-reward
+                -- task: the backend requires a credit/bundle reward to be
+                -- funded before it can be opened, so an *open* task with
+                -- that reward kind is always already funded, and a task
+                -- with no credit component (none/collectible-only) can
+                -- never accept credit funding at all.
+                canFund =
+                    detail.state == Task.TaskStateDraft && (detail.rewardKind == "credit" || detail.rewardKind == "bundle")
+
                 -- The credit refund endpoint (/refund) is the unified refund: it
                 -- returns held credits AND held collectibles together (so it
                 -- handles bundle rewards in one shot). The collectible-refund
@@ -3118,14 +3119,11 @@ ownerControlsCard state =
                 , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
                 , div [ Html.Attributes.class "flex flex-wrap gap-2" ] buttons
                 , maybeNote state.taskActionMessage "task-action-message"
-                , if draftOrOpen then
+                , if canFund then
                     -- state.fundTaskId is kept synced to the currently-viewed
                     -- task on entering this page (see enterPage), so this
                     -- reuses the exact same FundClicked/fund-* plumbing as
-                    -- the standalone Funding page without a separate Msg —
-                    -- it always targets *this* task regardless of whether
-                    -- the panel was opened via the task-row Fund shortcut or
-                    -- expanded manually.
+                    -- the standalone Funding page without a separate Msg.
                     Ui.disclosure "fund-task-panel"
                         False
                         "Fund this task"

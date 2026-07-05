@@ -1,38 +1,45 @@
 # Status
 
-The repository contains pull request 1 through pull request 129 work, merged
-into `main`, plus the current `task/deprecate-demo-backend-js` branch. PR
-108's GitHub Pages deployment failed three times in a row after merge for
-what looked like a transient GitHub-side Pages backend issue (build/artifact
-steps always succeeded; only `deploy-pages` failed or hung, with a different
-symptom each time); most later PRs' deployments succeeded on the first try
-with no code or workflow changes, confirming it was not a code problem —
-though PR 127's deployment hit the same transient failure again and cleared
-on a manual retry, so this class of flakiness is still occasionally live,
-not fully resolved.
+The repository contains pull request 1 through pull request 130 work, merged
+into `main`, plus the current `task/fix-fund-panel-and-demo-status-codes`
+branch. PR 108's GitHub Pages deployment failed three times in a row after
+merge for what looked like a transient GitHub-side Pages backend issue
+(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
+with a different symptom each time); most later PRs' deployments succeeded
+on the first try with no code or workflow changes, confirming it was not a
+code problem — though PR 127's deployment hit the same transient failure
+again and cleared on a manual retry, so this class of flakiness is still
+occasionally live, not fully resolved.
 
 The 5-phase RBAC + API-token effort (PRs 115-121), two clean-up passes
-(PRs 122, 124), a docs refresh (PR 123), and the start of a WASI
-production-hosting spike (PR 125: plan + Phase 0/1 verified; PR 126:
-ecosystem research) are complete. Also merged: a Go 1.26.4 upgrade (PR 127),
-a strengthened "at most one open PR at a time, no exceptions" rule in
-`AGENTS.md` (PR 128), and a new `wasm-scenario-parity` CI job proving
-`deno task check:scenario-parity:wasm` as replacement coverage (PR 129).
+(PRs 122, 124), a docs refresh (PR 123), the WASI production-hosting spike's
+plan + Phase 0/1 (PR 125) and ecosystem research (PR 126), a Go 1.26.4
+upgrade (PR 127), a strengthened "at most one open PR at a time" rule in
+`AGENTS.md` (PR 128), and the `site/demo/backend.js` deprecation (PR 129:
+replacement CI coverage; PR 130: deletion) are complete.
 
-Active task: `task/deprecate-demo-backend-js` deletes `site/demo/backend.js`
-(the orphaned hand-maintained JS mock backend, unreachable from the live
-browser demo since it defaults to WASM) and its two Deno tests
-(`tests/deno/demo_backend_test.ts`, `tests/deno/scenario_parity_test.ts`),
-now that PR 129's `wasm-scenario-parity` CI job is merged and proven as
-replacement coverage for the scenario-parity half of what `backend.js`
-tested. The user confirmed full deprecation explicitly, having been told the
-one accepted trade-off up front: no equivalent exists for
-`demo_backend_test.ts`'s route-drift-detection test (real REST routes vs. a
-mock's route table) against the WASM dispatch path, so that specific
-coverage is a real, accepted loss, not an oversight. Docs referencing
-`backend.js` (`docs/demo_semantic_parity.md`, `docs/wasm_demo_backend_spike.md`,
-`docs/application_readiness_review.md`, `BUGS.md`) updated to describe it as
-removed rather than "legacy, still present."
+Active task: `task/fix-fund-panel-and-demo-status-codes` fixes a real,
+user-reported bug — funding a task from its detail page failed with
+"status 500" against the demo (WASM) backend. Root cause, found by live
+reproduction rather than guessing: `cmd/sharecrop-wasm/main_js_wasm.go`
+unconditionally mapped **every** `wasmdemo.RequestHandleRejected` (all 316
+call sites across `internal/wasmdemo/{interaction_handler,request_handler,
+runtime_handlers}.go` and `main_js_wasm.go` itself) to HTTP 500, regardless
+of the actual rejection reason — a plain validation rejection like "task is
+already funded" looked identical to a genuine server crash. Fixed by
+changing `RequestHandleRejected.Reason` from a plain `string` to
+`core.DomainError` (reusing the real backend's existing `core.ErrorCode`
+taxonomy rather than inventing a parallel one), classifying every call site
+by keyword into the correct code, and adding a `statusForError` mapping in
+`main_js_wasm.go` mirroring `internal/http/server.go`'s. Verified live: the
+same repro now returns 409, not 500. Also fixed, per the user's explicit
+request: removed the task-list row's "Fund" shortcut link entirely (funding
+now only happens from a task's own detail page); the detail page's
+"Fund this task" panel now only shows for a **draft** task with a
+**credit/bundle** reward (it previously showed for any draft-or-open task
+regardless of reward kind, including already-funded open tasks and
+none/collectible-only tasks that can never accept credit funding at all,
+guaranteeing a rejection either way).
 including the two items PR 122 had flagged rather than fixed — plus any
 other bug/UI/API/performance/concurrency issue found along the way,
 regardless of relation to the RBAC effort. Used parallel review agents

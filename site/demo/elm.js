@@ -25462,6 +25462,7 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 						$author$project$Sharecrop$Ui$testId('refund-collectible')
 					]),
 				'Refund collectible')) : $elm$core$Maybe$Nothing));
+		var canFund = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) && ((detail.rewardKind === 'credit') || (detail.rewardKind === 'bundle'));
 		var buttons = A2(
 			$elm$core$List$filterMap,
 			$elm$core$Basics$identity,
@@ -25515,7 +25516,7 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 						]),
 					buttons),
 					A2($author$project$Sharecrop$View$maybeNote, state.taskActionMessage, 'task-action-message'),
-					draftOrOpen ? A4(
+					canFund ? A4(
 					$author$project$Sharecrop$Ui$disclosure,
 					'fund-task-panel',
 					false,
@@ -26705,37 +26706,21 @@ var $author$project$Sharecrop$View$taskRow = function (item) {
 					[
 						$elm$html$Html$Attributes$class('flex shrink-0 gap-2')
 					]),
-				_Utils_ap(
-					(_Utils_eq(item.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || _Utils_eq(item.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen)) ? _List_fromArray(
-						[
-							A2(
-							$elm$html$Html$a,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$href('#/tasks/' + item.id),
-									$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
-									$author$project$Sharecrop$Ui$testId('fund-task-row')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Fund')
-								]))
-						]) : _List_Nil,
-					_List_fromArray(
-						[
-							A2(
-							$elm$html$Html$a,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$href('#/tasks/' + item.id),
-									$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
-									$author$project$Sharecrop$Ui$testId('view-task')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text('View')
-								]))
-						])))
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$a,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$href('#/tasks/' + item.id),
+								$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+								$author$project$Sharecrop$Ui$testId('view-task')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('View')
+							]))
+					]))
 			]));
 };
 var $author$project$Sharecrop$View$tasksList = function (tasks) {

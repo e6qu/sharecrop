@@ -167,8 +167,8 @@ func TestPrivacyRequestHandlerRejectsMissingIDSource(t *testing.T) {
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != "privacy request id source is required" {
-		t.Fatalf("reason = %q", rejected.Reason)
+	if rejected.Reason.Description() != "privacy request id source is required" {
+		t.Fatalf("reason = %q", rejected.Reason.Description())
 	}
 }
 
@@ -201,8 +201,8 @@ func TestPrivacyRequestHandlerRejectsInvalidKind(t *testing.T) {
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != "privacy request kind is invalid" {
-		t.Fatalf("reason = %q", rejected.Reason)
+	if rejected.Reason.Description() != "privacy request kind is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason.Description())
 	}
 }
 
@@ -254,8 +254,8 @@ func TestSavedQueueViewHandlerRejectsMissingIDSourceForUpsert(t *testing.T) {
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != "saved queue view id source is required" {
-		t.Fatalf("reason = %q", rejected.Reason)
+	if rejected.Reason.Description() != "saved queue view id source is required" {
+		t.Fatalf("reason = %q", rejected.Reason.Description())
 	}
 }
 
@@ -488,8 +488,8 @@ func TestInteractionHandlerRejectsMissingIDSourceForMutation(t *testing.T) {
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != "interaction id source is required" {
-		t.Fatalf("reason = %q", rejected.Reason)
+	if rejected.Reason.Description() != "interaction id source is required" {
+		t.Fatalf("reason = %q", rejected.Reason.Description())
 	}
 }
 
@@ -500,8 +500,8 @@ func TestTaskHandlerRejectsMissingIDSourceForCreate(t *testing.T) {
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != "task id source is required" {
-		t.Fatalf("reason = %q", rejected.Reason)
+	if rejected.Reason.Description() != "task id source is required" {
+		t.Fatalf("reason = %q", rejected.Reason.Description())
 	}
 }
 
@@ -516,8 +516,8 @@ func TestTaskHandlerRejectsTooManyAttachments(t *testing.T) {
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != "too many attachments" {
-		t.Fatalf("reason = %q", rejected.Reason)
+	if rejected.Reason.Description() != "too many attachments" {
+		t.Fatalf("reason = %q", rejected.Reason.Description())
 	}
 }
 
@@ -575,8 +575,8 @@ func TestNotificationHandlerRejectsInvalidPagination(t *testing.T) {
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != "notification limit is invalid" {
-		t.Fatalf("reason = %q", rejected.Reason)
+	if rejected.Reason.Description() != "notification limit is invalid" {
+		t.Fatalf("reason = %q", rejected.Reason.Description())
 	}
 }
 
@@ -721,8 +721,8 @@ func TestOrganizationHandlerRejectsMissingResolverForProvision(t *testing.T) {
 	if !matched {
 		t.Fatalf("result = %T, want RequestHandleRejected", result)
 	}
-	if rejected.Reason != "organization user resolver is required" {
-		t.Fatalf("reason = %q", rejected.Reason)
+	if rejected.Reason.Description() != "organization user resolver is required" {
+		t.Fatalf("reason = %q", rejected.Reason.Description())
 	}
 }
 

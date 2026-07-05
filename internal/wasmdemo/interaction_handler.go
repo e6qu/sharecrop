@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/e6qu/sharecrop/internal/core"
 )
 
 type InteractionIDSource interface {
@@ -27,13 +29,13 @@ func NewInteractionHandler(storage BrowserStorage, clock HandlerClock, actor Han
 
 func (handler InteractionHandler) Handle(request Request) HandleResult {
 	if handler.storage == nil {
-		return RequestHandleRejected{Reason: "browser storage is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "browser storage is required")}
 	}
 	if handler.clock == nil {
-		return RequestHandleRejected{Reason: "handler clock is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler clock is required")}
 	}
 	if handler.actor == nil {
-		return RequestHandleRejected{Reason: "handler actor is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "handler actor is required")}
 	}
 	switch {
 	case taskCommentsPathID(request.Path) != "":
@@ -59,18 +61,18 @@ func (handler InteractionHandler) Handle(request Request) HandleResult {
 			return handler.handleLedgerEntries(request, "organization", route.organizationID)
 		}
 	}
-	return RequestHandleRejected{Reason: "request route is not implemented by the WASM demo handler"}
+	return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "request route is not implemented by the WASM demo handler")}
 }
 
 func (handler InteractionHandler) handleTaskComments(request Request, taskID string) HandleResult {
 	switch request.Method.String() {
 	case MethodPost.String():
 		if handler.ids == nil {
-			return RequestHandleRejected{Reason: "interaction id source is required"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "interaction id source is required")}
 		}
 		var body commentBody
 		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-			return RequestHandleRejected{Reason: "task comment body is invalid"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task comment body is invalid")}
 		}
 		comment := StoredComment{
 			ID:           strings.TrimSpace(handler.ids.NextCommentID()),
@@ -83,18 +85,18 @@ func (handler InteractionHandler) handleTaskComments(request Request, taskID str
 		saveResult := SaveComment(handler.storage, comment)
 		saved, savedMatched := saveResult.(CommentStored)
 		if !savedMatched {
-			return RequestHandleRejected{Reason: saveResult.(CommentStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(CommentStorageRejected).Reason)}
 		}
 		return taskCommentResponseResult(saved.Value, 201)
 	case MethodGet.String():
 		listResult := ListComments(handler.storage, "task", taskID)
 		listed, listedMatched := listResult.(CommentsStored)
 		if !listedMatched {
-			return RequestHandleRejected{Reason: listResult.(CommentStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(CommentStorageRejected).Reason)}
 		}
 		return taskCommentsResponseResult(listed.Values)
 	default:
-		return RequestHandleRejected{Reason: "request method is unsupported for task comments"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for task comments")}
 	}
 }
 
@@ -102,14 +104,14 @@ func (handler InteractionHandler) handleSubmissionComments(request Request, subm
 	switch request.Method.String() {
 	case MethodPost.String():
 		if handler.ids == nil {
-			return RequestHandleRejected{Reason: "interaction id source is required"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "interaction id source is required")}
 		}
 		if _, matched := LoadSubmission(handler.storage, submissionID).(SubmissionStored); !matched {
-			return RequestHandleRejected{Reason: "submission was not found"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found")}
 		}
 		var body commentBody
 		if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-			return RequestHandleRejected{Reason: "submission comment body is invalid"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "submission comment body is invalid")}
 		}
 		comment := StoredComment{
 			ID:           strings.TrimSpace(handler.ids.NextCommentID()),
@@ -122,21 +124,21 @@ func (handler InteractionHandler) handleSubmissionComments(request Request, subm
 		saveResult := SaveComment(handler.storage, comment)
 		saved, savedMatched := saveResult.(CommentStored)
 		if !savedMatched {
-			return RequestHandleRejected{Reason: saveResult.(CommentStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(CommentStorageRejected).Reason)}
 		}
 		if err := handler.notifySubmissionComment(submissionID); err != nil {
-			return RequestHandleRejected{Reason: err.Error()}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 		}
 		return submissionCommentResponseResult(saved.Value, 201)
 	case MethodGet.String():
 		listResult := ListComments(handler.storage, "submission", submissionID)
 		listed, listedMatched := listResult.(CommentsStored)
 		if !listedMatched {
-			return RequestHandleRejected{Reason: listResult.(CommentStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(CommentStorageRejected).Reason)}
 		}
 		return submissionCommentsResponseResult(listed.Values)
 	default:
-		return RequestHandleRejected{Reason: "request method is unsupported for submission comments"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for submission comments")}
 	}
 }
 
@@ -200,48 +202,48 @@ func (handler InteractionHandler) handleReservations(request Request, route task
 			pageResult := storedListPageFromPath(request.Path, "reservation")
 			page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 			if !pageMatched {
-				return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 			}
 			listResult := ListTaskReservations(handler.storage, route.taskID, page.value)
 			listed, listedMatched := listResult.(ReservationsStored)
 			if !listedMatched {
-				return RequestHandleRejected{Reason: listResult.(ReservationStorageRejected).Reason}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(ReservationStorageRejected).Reason)}
 			}
 			return reservationsResponseResult(listed.Values)
 		default:
-			return RequestHandleRejected{Reason: "request method is unsupported for reservations"}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for reservations")}
 		}
 	}
 	if request.Method.String() != MethodPost.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for reservation transition"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for reservation transition")}
 	}
 	nextState := reservationActionState(route.action)
 	if nextState == "" {
-		return RequestHandleRejected{Reason: "reservation action is unsupported"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "reservation action is unsupported")}
 	}
 	transitionResult := TransitionReservation(handler.storage, route.taskID, route.reservationID, nextState)
 	transitioned, transitionedMatched := transitionResult.(ReservationStored)
 	if !transitionedMatched {
-		return RequestHandleRejected{Reason: transitionResult.(ReservationStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, transitionResult.(ReservationStorageRejected).Reason)}
 	}
 	return reservationResponseResult(transitioned.Value, 200)
 }
 
 func (handler InteractionHandler) handleCreateReservation(request Request, taskID string) HandleResult {
 	if handler.ids == nil {
-		return RequestHandleRejected{Reason: "interaction id source is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "interaction id source is required")}
 	}
 	loadResult := LoadTask(handler.storage, taskID)
 	loaded, loadedMatched := loadResult.(TaskStored)
 	if !loadedMatched {
-		return RequestHandleRejected{Reason: loadResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, loadResult.(TaskStorageRejected).Reason)}
 	}
 	if loaded.Value.CreatedBy == handler.actor.UserID() {
-		return RequestHandleRejected{Reason: "task requester cannot reserve their own task"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task requester cannot reserve their own task")}
 	}
 	var body reservationBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "reservation body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "reservation body is invalid")}
 	}
 	assignee := reservationAssigneeFromBody(body, handler.actor.UserID())
 	state := "active"
@@ -259,7 +261,7 @@ func (handler InteractionHandler) handleCreateReservation(request Request, taskI
 	saveResult := SaveReservation(handler.storage, reservation)
 	saved, savedMatched := saveResult.(ReservationStored)
 	if !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(ReservationStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(ReservationStorageRejected).Reason)}
 	}
 	return reservationResponseResult(saved.Value, 201)
 }
@@ -268,11 +270,11 @@ func (handler InteractionHandler) handleTaskSubmissions(request Request, route t
 	if route.submissionID != "" {
 		if route.action == "accept" {
 			if request.Method.String() != MethodPost.String() {
-				return RequestHandleRejected{Reason: "request method is unsupported for submission acceptance"}
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for submission acceptance")}
 			}
 			return handler.handleAcceptSubmission(request, route.taskID, route.submissionID)
 		}
-		return RequestHandleRejected{Reason: "submission action is unsupported"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "submission action is unsupported")}
 	}
 	switch request.Method.String() {
 	case MethodPost.String():
@@ -281,37 +283,37 @@ func (handler InteractionHandler) handleTaskSubmissions(request Request, route t
 		pageResult := storedListPageFromPath(request.Path, "submission")
 		page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 		if !pageMatched {
-			return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 		}
 		listResult := ListTaskSubmissions(handler.storage, route.taskID, page.value)
 		listed, listedMatched := listResult.(SubmissionsStored)
 		if !listedMatched {
-			return RequestHandleRejected{Reason: listResult.(SubmissionStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(SubmissionStorageRejected).Reason)}
 		}
 		return submissionsResponseResult(listed.Values)
 	default:
-		return RequestHandleRejected{Reason: "request method is unsupported for submissions"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for submissions")}
 	}
 }
 
 func (handler InteractionHandler) handleCreateSubmission(request Request, taskID string) HandleResult {
 	if handler.ids == nil {
-		return RequestHandleRejected{Reason: "interaction id source is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "interaction id source is required")}
 	}
 	taskResult := LoadTask(handler.storage, taskID)
 	taskLoaded, taskMatched := taskResult.(TaskStored)
 	if !taskMatched {
-		return RequestHandleRejected{Reason: taskResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, taskResult.(TaskStorageRejected).Reason)}
 	}
 	var body submissionBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "submission body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "submission body is invalid")}
 	}
 	submissionID := strings.TrimSpace(handler.ids.NextSubmissionID())
 	attachmentsResult := attachmentsFromSubmissionBody(body.Attachments, submissionID)
 	attachments, attachmentsMatched := attachmentsResult.(submissionAttachmentsAccepted)
 	if !attachmentsMatched {
-		return RequestHandleRejected{Reason: attachmentsResult.(submissionAttachmentsRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, attachmentsResult.(submissionAttachmentsRejected).reason)}
 	}
 	submission := StoredSubmission{
 		ID:               submissionID,
@@ -327,18 +329,18 @@ func (handler InteractionHandler) handleCreateSubmission(request Request, taskID
 	saveResult := SaveSubmission(handler.storage, submission)
 	saved, savedMatched := saveResult.(SubmissionStored)
 	if !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(SubmissionStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(SubmissionStorageRejected).Reason)}
 	}
 	saveAttachmentsResult := SaveAttachments(handler.storage, "submission", saved.Value.ID, attachments.values)
 	if _, matched := saveAttachmentsResult.(AttachmentsStored); !matched {
-		return RequestHandleRejected{Reason: saveAttachmentsResult.(AttachmentStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveAttachmentsResult.(AttachmentStorageRejected).Reason)}
 	}
 	if err := handler.notifySubmissionCreated(saved.Value); err != nil {
-		return RequestHandleRejected{Reason: err.Error()}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 	}
 	encoded, err := json.Marshal(submissionCreatedBody{Submission: saved.Value, ReceiptToken: "wasm-" + saved.Value.ID})
 	if err != nil {
-		return RequestHandleRejected{Reason: "submission response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 201, Body: string(encoded)}}
 }
@@ -425,24 +427,24 @@ func sensitiveFieldsForTask(task StoredTask) []StoredSubmissionSensitiveField {
 
 func (handler InteractionHandler) handleAcceptSubmission(request Request, taskID string, submissionID string) HandleResult {
 	if handler.ids == nil {
-		return RequestHandleRejected{Reason: "interaction id source is required"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "interaction id source is required")}
 	}
 	loadResult := LoadSubmission(handler.storage, submissionID)
 	loaded, loadedMatched := loadResult.(SubmissionStored)
 	if !loadedMatched {
-		return RequestHandleRejected{Reason: loadResult.(SubmissionStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, loadResult.(SubmissionStorageRejected).Reason)}
 	}
 	if loaded.Value.TaskID != strings.TrimSpace(taskID) {
-		return RequestHandleRejected{Reason: "submission does not belong to task"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "submission does not belong to task")}
 	}
 	var body acceptSubmissionBody
 	if err := json.Unmarshal([]byte(request.Body), &body); err != nil {
-		return RequestHandleRejected{Reason: "submission acceptance body is invalid"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "submission acceptance body is invalid")}
 	}
 	taskResult := LoadTask(handler.storage, taskID)
 	taskLoaded, taskMatched := taskResult.(TaskStored)
 	if !taskMatched {
-		return RequestHandleRejected{Reason: taskResult.(TaskStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, taskResult.(TaskStorageRejected).Reason)}
 	}
 	payout := body.PayoutAmount
 	if payout == 0 {
@@ -451,7 +453,7 @@ func (handler InteractionHandler) handleAcceptSubmission(request Request, taskID
 	loaded.Value.State = "accepted"
 	saveResult := SaveSubmission(handler.storage, loaded.Value)
 	if _, savedMatched := saveResult.(SubmissionStored); !savedMatched {
-		return RequestHandleRejected{Reason: saveResult.(SubmissionStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, saveResult.(SubmissionStorageRejected).Reason)}
 	}
 	total := payout + body.TipAmount
 	if total > 0 {
@@ -464,11 +466,11 @@ func (handler InteractionHandler) handleAcceptSubmission(request Request, taskID
 			TaskID:    taskID,
 		})
 		if _, ledgerMatched := ledgerResult.(LedgerEntryStored); !ledgerMatched {
-			return RequestHandleRejected{Reason: ledgerResult.(LedgerStorageRejected).Reason}
+			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, ledgerResult.(LedgerStorageRejected).Reason)}
 		}
 	}
 	if err := handler.notifySubmissionAccepted(loaded.Value); err != nil {
-		return RequestHandleRejected{Reason: err.Error()}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, err.Error())}
 	}
 	encoded, err := json.Marshal(acceptSubmissionResultBody{
 		TaskID:         taskID,
@@ -480,7 +482,7 @@ func (handler InteractionHandler) handleAcceptSubmission(request Request, taskID
 		TipAmount:      body.TipAmount,
 	})
 	if err != nil {
-		return RequestHandleRejected{Reason: "submission acceptance response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission acceptance response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -505,54 +507,54 @@ func (handler InteractionHandler) notifySubmissionAccepted(submission StoredSubm
 
 func (handler InteractionHandler) handleUserSubmissions(request Request, userID string) HandleResult {
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for user submissions"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for user submissions")}
 	}
 	pageResult := storedListPageFromPath(request.Path, "submission")
 	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 	if !pageMatched {
-		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 	}
 	listResult := ListUserSubmissions(handler.storage, userID, page.value)
 	listed, listedMatched := listResult.(SubmissionsStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(SubmissionStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(SubmissionStorageRejected).Reason)}
 	}
 	return submissionsResponseResult(listed.Values)
 }
 
 func (handler InteractionHandler) handleLedgerBalance(request Request, ownerKind string, ownerID string) HandleResult {
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for ledger balance"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for ledger balance")}
 	}
 	balanceResult := LedgerBalance(handler.storage, ownerKind, ownerID)
 	balance, balanceMatched := balanceResult.(LedgerBalanceStored)
 	if !balanceMatched {
-		return RequestHandleRejected{Reason: balanceResult.(LedgerStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, balanceResult.(LedgerStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(balanceBody{Amount: balance.Amount})
 	if err != nil {
-		return RequestHandleRejected{Reason: "ledger balance response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "ledger balance response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
 
 func (handler InteractionHandler) handleLedgerEntries(request Request, ownerKind string, ownerID string) HandleResult {
 	if request.Method.String() != MethodGet.String() {
-		return RequestHandleRejected{Reason: "request method is unsupported for ledger entries"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "request method is unsupported for ledger entries")}
 	}
 	pageResult := storedListPageFromPath(request.Path, "ledger")
 	page, pageMatched := pageResult.(storedListPageFromPathAccepted)
 	if !pageMatched {
-		return RequestHandleRejected{Reason: pageResult.(storedListPageFromPathRejected).reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, pageResult.(storedListPageFromPathRejected).reason)}
 	}
 	listResult := ListLedgerEntries(handler.storage, ownerKind, ownerID, page.value)
 	listed, listedMatched := listResult.(LedgerEntriesStored)
 	if !listedMatched {
-		return RequestHandleRejected{Reason: listResult.(LedgerStorageRejected).Reason}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(LedgerStorageRejected).Reason)}
 	}
 	encoded, err := json.Marshal(ledgerEntriesBody{Entries: listed.Values})
 	if err != nil {
-		return RequestHandleRejected{Reason: "ledger entries response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "ledger entries response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -718,7 +720,7 @@ func taskCommentResponseResult(comment StoredComment, status int) HandleResult {
 		CreatedAt:    comment.CreatedAt,
 	})
 	if err != nil {
-		return RequestHandleRejected{Reason: "task comment response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task comment response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
@@ -736,7 +738,7 @@ func taskCommentsResponseResult(comments []StoredComment) HandleResult {
 	}
 	encoded, err := json.Marshal(taskCommentsBody{Comments: values})
 	if err != nil {
-		return RequestHandleRejected{Reason: "task comments response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task comments response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -750,7 +752,7 @@ func submissionCommentResponseResult(comment StoredComment, status int) HandleRe
 		CreatedAt:    comment.CreatedAt,
 	})
 	if err != nil {
-		return RequestHandleRejected{Reason: "submission comment response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission comment response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
@@ -768,7 +770,7 @@ func submissionCommentsResponseResult(comments []StoredComment) HandleResult {
 	}
 	encoded, err := json.Marshal(submissionCommentsBody{Comments: values})
 	if err != nil {
-		return RequestHandleRejected{Reason: "submission comments response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission comments response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -776,7 +778,7 @@ func submissionCommentsResponseResult(comments []StoredComment) HandleResult {
 func reservationResponseResult(reservation StoredReservation, status int) HandleResult {
 	encoded, err := json.Marshal(reservation)
 	if err != nil {
-		return RequestHandleRejected{Reason: "reservation response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reservation response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: status, Body: string(encoded)}}
 }
@@ -784,7 +786,7 @@ func reservationResponseResult(reservation StoredReservation, status int) Handle
 func reservationsResponseResult(reservations []StoredReservation) HandleResult {
 	encoded, err := json.Marshal(reservationsBody{Reservations: reservations})
 	if err != nil {
-		return RequestHandleRejected{Reason: "reservations response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reservations response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
@@ -792,7 +794,7 @@ func reservationsResponseResult(reservations []StoredReservation) HandleResult {
 func submissionsResponseResult(submissions []StoredSubmission) HandleResult {
 	encoded, err := json.Marshal(submissionsBody{Submissions: submissions})
 	if err != nil {
-		return RequestHandleRejected{Reason: "submissions response encoding failed"}
+		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "submissions response encoding failed")}
 	}
 	return RequestHandled{Value: Response{Status: 200, Body: string(encoded)}}
 }
