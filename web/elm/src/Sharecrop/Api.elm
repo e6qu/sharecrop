@@ -192,14 +192,30 @@ expiresHoursIsValid raw =
 
 createTaskCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 createTaskCommand model state =
-    if String.isEmpty (String.trim state.createTitle) || String.isEmpty (String.trim state.createDescription) then
-        ( updateLoggedIn model (\current -> { current | createMessage = Just "Title and description are required." }), Cmd.none )
+    let
+        titleMissing =
+            String.isEmpty (String.trim state.createTitle)
+
+        descriptionMissing =
+            String.isEmpty (String.trim state.createDescription)
+    in
+    if titleMissing || descriptionMissing then
+        ( updateLoggedIn model
+            (\current ->
+                { current
+                    | createTitleInvalid = titleMissing
+                    , createDescriptionInvalid = descriptionMissing
+                    , createMessage = Just "Fill in the required fields below."
+                }
+            )
+        , Cmd.none
+        )
 
     else if participationUsesReservation state.createParticipationPolicy && (reservationHoursValue state.createReservationHours < 1 || reservationHoursValue state.createReservationHours > 720) then
         ( updateLoggedIn model (\current -> { current | createMessage = Just "Reservation expiry must be between 1 and 720 hours." }), Cmd.none )
 
     else
-        ( updateLoggedIn model (\current -> { current | createMessage = Nothing })
+        ( updateLoggedIn model (\current -> { current | createTitleInvalid = False, createDescriptionInvalid = False, createMessage = Nothing })
         , postCreateTask state
         )
 
@@ -297,7 +313,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchTasks token "" "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token, fetchSavedQueueViews token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchTasks token [] "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token, fetchSavedQueueViews token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -369,7 +385,7 @@ routeLoadCmd token subjectId page =
             -- submissions, and Series all on one page, so entering it loads
             -- data for all four sections at once.
             Cmd.batch
-                [ fetchTasks token "" "" "newest" 0
+                [ fetchTasks token [] "" "newest" 0
                 , fetchDiscovery token False 0
                 , fetchUserSubmissionsPage token subjectId 0
                 , fetchSeriesList token
@@ -382,13 +398,13 @@ routeLoadCmd token subjectId page =
             fetchDetailCommands token subjectId taskId
 
         FundingPage ->
-            Cmd.batch [ fetchTasks token "" "" "newest" 0, fetchOrganizations token ]
+            Cmd.batch [ fetchTasks token [] "" "newest" 0, fetchOrganizations token ]
 
         AgentsPage ->
             fetchCredentials token
 
         CollectiblesPage ->
-            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token "" "" "newest" 0, fetchOrganizations token ]
+            Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token [] "" "newest" 0, fetchOrganizations token ]
 
         OrganizationsPage ->
             fetchOrganizations token
@@ -660,18 +676,16 @@ fetchLedger token offset =
     authorizedRequest "GET" token ("/api/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson LedgerReceived Ledger.ledgerResponseDecoder)
 
 
-fetchTasks : String -> String -> String -> String -> Int -> Cmd Msg
+fetchTasks : String -> List String -> String -> String -> Int -> Cmd Msg
 fetchTasks token stateFilter typeFilter sortOrder offset =
     let
         pageQuery =
             "limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset
 
         stateQuery =
-            if stateFilter == "" then
-                ""
-
-            else
-                "&state=" ++ Url.percentEncode stateFilter
+            stateFilter
+                |> List.map (\state -> "&state=" ++ Url.percentEncode state)
+                |> String.concat
 
         typeQuery =
             if typeFilter == "" then

@@ -79,10 +79,11 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
   await expect(page.getByTestId("integration-token")).toBeVisible();
   await expectNoHorizontalOverflow("task detail with API & MCP panel");
 
-  // The owned task's inline "Fund this task" panel (organization picker plus
-  // an amount input) is new content and its own overflow risk. Create a
-  // draft task fresh rather than relying on a seeded task's state; creating
-  // a task now opens it directly in the UI for further editing.
+  // The owned task's inline funding callout (organization picker plus an
+  // amount input) is new content and its own overflow risk. Create a draft
+  // task fresh rather than relying on a seeded task's state; creating a
+  // task now opens it directly in the UI for further editing, and a
+  // brand-new unfunded draft shows the funding callout open by default.
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill("Mobile overflow fund check");
@@ -93,8 +94,8 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
   await expect(page.getByTestId("detail-title")).toHaveText(
     "Mobile overflow fund check",
   );
-  await page.getByTestId("fund-task-panel").click();
-  await expectNoHorizontalOverflow("task detail with fund panel expanded");
+  await expect(page.getByTestId("fund-task-callout")).toBeVisible();
+  await expectNoHorizontalOverflow("task detail with fund callout expanded");
 
   // The user's own profile page mints a personal token with long MCP commands.
   await page.getByTestId("nav-account-menu").click();

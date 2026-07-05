@@ -458,7 +458,7 @@ func (handler TaskHandler) handleTeamWork(request Request, teamID string) Handle
 	if err != nil {
 		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "team work query is invalid")}
 	}
-	listResult := ListTasks(handler.storage, values.Get("query"), "", handler.actor.UserID(), "", "", DefaultStoredListPage())
+	listResult := ListTasks(handler.storage, values.Get("query"), "", handler.actor.UserID(), "", nil, DefaultStoredListPage())
 	listed, listedMatched := listResult.(TasksStored)
 	if !listedMatched {
 		return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, listResult.(TaskStorageRejected).Reason)}
@@ -545,7 +545,7 @@ func (handler TaskHandler) handleListTasks(request Request) HandleResult {
 		values.Get("scope"),
 		handler.actor.UserID(),
 		values.Get("organization_id"),
-		values.Get("state"),
+		values["state"],
 		page.value,
 	)
 	listed, listedMatched := listResult.(TasksStored)

@@ -772,6 +772,13 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 	case task.StateEquals:
 		arguments["filter_state"] = stateFilter.Value.String()
 		where += " and tasks.state = @filter_state"
+	case task.StateIn:
+		rawStates := make([]string, len(stateFilter.Values))
+		for index := range stateFilter.Values {
+			rawStates[index] = stateFilter.Values[index].String()
+		}
+		arguments["filter_states"] = rawStates
+		where += " and tasks.state = some(@filter_states)"
 	case task.AnyStateFilter:
 	default:
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task state filter is invalid")}

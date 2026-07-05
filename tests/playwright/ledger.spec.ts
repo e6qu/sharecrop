@@ -93,7 +93,11 @@ test("a task created with no declared reward is still fundable by its creator", 
   await page.getByTestId("create-task").click();
   await expect(page.getByTestId("detail-title")).toHaveText("Fund me later");
 
-  await page.getByTestId("fund-task-panel").click();
+  // A brand-new, unfunded draft shows the funding callout open by default -
+  // no need to expand a disclosure first.
+  await expect(page.getByTestId("fund-task-callout")).toContainText(
+    "This draft has no reward yet",
+  );
   await page.getByTestId("fund-amount").fill("30");
   await page.getByTestId("fund").click();
   await expect(page.getByTestId("fund-message")).toContainText(
@@ -158,4 +162,5 @@ test("the fund panel does not appear on an already-funded, open task", async ({ 
   await page.goto(`/#/tasks/${taskBody.id}`);
   await expect(page.getByTestId("detail-title")).toBeVisible();
   await expect(page.getByTestId("fund-task-panel")).toHaveCount(0);
+  await expect(page.getByTestId("fund-task-callout")).toHaveCount(0);
 });

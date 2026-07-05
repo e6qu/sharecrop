@@ -620,9 +620,9 @@ teamWorkDashboard teamId state =
                 }
             ]
         , paginationControls "team-work-page" PreviousTeamWorkPageClicked NextTeamWorkPageClicked state.teamWorkOffset
-        , teamWorkSection "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
-        , teamWorkSection "Ready for team" "team-ready-work" "No team-visible tasks are ready for action." readyForTeam
-        , teamWorkSection "Assigned to team" "team-assigned-work" "No tasks are currently assigned to this team." assignedToTeam
+        , teamWorkSection state.subjectId "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
+        , teamWorkSection state.subjectId "Ready for team" "team-ready-work" "No team-visible tasks are ready for action." readyForTeam
+        , teamWorkSection state.subjectId "Assigned to team" "team-assigned-work" "No tasks are currently assigned to this team." assignedToTeam
         , maybeNote state.teamWorkMessage "team-work-message"
         ]
 
@@ -787,15 +787,15 @@ teamCanActOnTask item =
             False
 
 
-teamWorkSection : String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
-teamWorkSection title identifier emptyMessage tasks =
+teamWorkSection : String -> String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
+teamWorkSection subjectId title identifier emptyMessage tasks =
     div [ Html.Attributes.class "space-y-2", testId identifier ]
         [ Ui.sectionTitleWithCount title (List.length tasks) (identifier ++ "-heading")
         , if List.isEmpty tasks then
             p [ Html.Attributes.class "text-sm text-slate-500", testId (identifier ++ "-empty") ] [ text emptyMessage ]
 
           else
-            div [ Html.Attributes.class "divide-y divide-slate-100" ] (List.map taskRow tasks)
+            div [ Html.Attributes.class "divide-y divide-slate-100" ] (List.map (taskRow subjectId) tasks)
         ]
 
 
@@ -939,7 +939,7 @@ taskStateBadge state =
                     "neutral"
 
                 Task.TaskStateClosed ->
-                    "neutral"
+                    "info"
 
                 Task.TaskStateCancelled ->
                     "danger"
@@ -1866,9 +1866,25 @@ createTaskView state =
     in
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit CreateTaskClicked ]
         [ Ui.sectionTitle "Create a task"
-        , Ui.fieldLabel "Title" [ Ui.textInput [ type_ "text", placeholder "Short, descriptive title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ] ]
+        , Ui.fieldLabel "Title *"
+            (Ui.textInputToned state.createTitleInvalid [ type_ "text", placeholder "Short, descriptive title", value state.createTitle, onInput CreateTitleChanged, testId "create-title" ]
+                :: (if state.createTitleInvalid then
+                        [ Ui.fieldError "Title is required" ]
+
+                    else
+                        []
+                   )
+            )
         , Ui.fieldLabel "Template" [ taskTypeSelect state.createTaskType ]
-        , Ui.fieldLabel "Description" [ Ui.textarea_ [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ] ]
+        , Ui.fieldLabel "Description *"
+            (Ui.textareaToned state.createDescriptionInvalid [ placeholder "What the worker should do", value state.createDescription, onInput CreateDescriptionChanged, Html.Attributes.rows 3, testId "create-description" ]
+                :: (if state.createDescriptionInvalid then
+                        [ Ui.fieldError "Description is required" ]
+
+                    else
+                        []
+                   )
+            )
         , if state.createTaskType == "general" then
             schemaDesignerView state
 
@@ -2394,7 +2410,7 @@ tasksView origin state =
             filterTasksByQuery state.taskListQuery state.tasks
 
         filtersActive =
-            state.taskStateFilter /= "" || state.taskListQuery /= "" || state.taskListTypeFilter /= "" || state.taskListSort /= "newest"
+            state.taskStateFilter /= [] || state.taskListQuery /= "" || state.taskListTypeFilter /= "" || state.taskListSort /= "newest"
     in
     Ui.card
         ([ a [ href ("#" ++ pageToPath CreateTaskPage), Html.Attributes.class Ui.primaryButtonClass, testId "new-task-button" ] [ text "+ New task" ]
@@ -2402,15 +2418,15 @@ tasksView origin state =
          , Ui.disclosure "tasks-filters"
             filtersActive
             "Filters"
-            [ Ui.label_ "Filter by state"
-            , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterButton state.taskStateFilter) taskStateFilterOptions)
+            [ Ui.label_ "Filter by state (select any number)"
+            , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterChip state.taskStateFilter) taskStateFilterOptions)
             , Ui.fieldLabel "Search loaded tasks"
                 [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.taskListQuery, onInput TaskListQueryChanged, testId "tasks-query" ] ]
             , taskTypeFilterSelect "tasks-type" state.taskListTypeFilter TaskListTypeFilterChanged
             , taskSortSelect "tasks-sort" state.taskListSort TaskListSortChanged
             ]
          , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset
-         , tasksList visibleTasks
+         , tasksList state.subjectId visibleTasks
          ]
             ++ discoverySection state
             ++ [ Ui.disclosure "tasks-submissions" False "My submissions" (userSubmissionsSection state)
@@ -2421,26 +2437,21 @@ tasksView origin state =
 
 taskStateFilterOptions : List ( String, String )
 taskStateFilterOptions =
-    [ ( "", "All" )
-    , ( "open", "Open" )
+    [ ( "open", "Open" )
     , ( "draft", "Draft" )
     , ( "closed", "Closed" )
+    , ( "expired", "Expired" )
+    , ( "cancelled", "Cancelled" )
     ]
 
 
-taskFilterButton : String -> ( String, String ) -> Html Msg
-taskFilterButton selected ( tag, labelText ) =
-    Ui.chooserButton (selected == tag)
-        (TaskStateFilterChanged tag)
-        ("task-filter-"
-            ++ (if tag == "" then
-                    "all"
-
-                else
-                    tag
-               )
-        )
-        labelText
+{-| Multiple chips can be active at once (e.g. Open + Closed), unlike the
+single-select buttons this replaced - no chip selected means no filter
+("All"), rather than "All" being its own selectable option.
+-}
+taskFilterChip : List String -> ( String, String ) -> Html Msg
+taskFilterChip selected ( tag, labelText ) =
+    Ui.chooserButton (List.member tag selected) (TaskStateFilterToggled tag) ("task-filter-" ++ tag) labelText
 
 
 taskTypeFilterSelect : String -> String -> (String -> Msg) -> Html Msg
@@ -2570,21 +2581,56 @@ filterTasksByQuery query tasks =
             tasks
 
 
-tasksList : List Task.TaskListItemResponse -> Html Msg
-tasksList tasks =
+tasksList : String -> List Task.TaskListItemResponse -> Html Msg
+tasksList subjectId tasks =
     if List.isEmpty tasks then
         p [ Html.Attributes.class "text-sm text-slate-500", testId "tasks-empty" ] [ text "No tasks yet." ]
 
     else
-        div [ Html.Attributes.class "divide-y divide-slate-100", testId "tasks" ] (List.map taskRow tasks)
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "tasks" ] (List.map (taskRow subjectId) tasks)
 
 
-taskRow : Task.TaskListItemResponse -> Html Msg
-taskRow item =
-    div [ Html.Attributes.class "flex items-center justify-between gap-3 py-2", testId "task-row" ]
+{-| A task is "mine" if I created it, or if I'm the active assignee (reserved
+or submitted) on it - either way it's something I'm personally involved in,
+not just something I happen to be looking at.
+-}
+isMyTask : String -> Task.TaskListItemResponse -> Bool
+isMyTask subjectId item =
+    item.createdBy == subjectId || (item.activeAssigneeKind == "user" && item.activeAssigneeID == subjectId)
+
+
+taskRow : String -> Task.TaskListItemResponse -> Html Msg
+taskRow subjectId item =
+    let
+        mine =
+            isMyTask subjectId item
+    in
+    div
+        [ Html.Attributes.class
+            ("flex items-center justify-between gap-3 py-2"
+                ++ (if mine then
+                        " border-l-2 border-blue-300 pl-3 -ml-3.5"
+
+                    else
+                        ""
+                   )
+            )
+        , testId "task-row"
+        ]
         [ div [ Html.Attributes.class "min-w-0" ]
-            [ p [ Html.Attributes.class "font-medium break-words" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
+            [ p [ Html.Attributes.class "flex flex-wrap items-center gap-2 font-medium break-words" ]
+                (text item.title
+                    :: (if mine then
+                            [ span [ Html.Attributes.class "rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-blue-700", testId "mine-flag" ] [ text "MINE" ] ]
+
+                        else
+                            []
+                       )
+                )
+            , p [ Html.Attributes.class "flex flex-wrap items-center gap-1.5 text-xs text-slate-500 break-words" ]
+                [ taskStateBadge item.state
+                , text ("· " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item)
+                ]
             ]
         , div [ Html.Attributes.class "flex shrink-0 gap-2" ]
             -- Funding lives only on the task's own detail page (its "Fund
@@ -2840,25 +2886,51 @@ discoverySection state =
             [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.discoveryQuery, onInput DiscoveryQueryChanged, testId "discovery-query" ] ]
         ]
     , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset
-    , discoveryList visibleTasks
+    , discoveryList state.subjectId visibleTasks
     ]
 
 
-discoveryList : List Task.TaskListItemResponse -> Html Msg
-discoveryList tasks =
+discoveryList : String -> List Task.TaskListItemResponse -> Html Msg
+discoveryList subjectId tasks =
     if List.isEmpty tasks then
         p [ Html.Attributes.class "text-sm text-slate-500", testId "discovery-empty" ] [ text "No public tasks available." ]
 
     else
-        div [ Html.Attributes.class "divide-y divide-slate-100", testId "discovery-tasks" ] (List.map discoveryRow tasks)
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "discovery-tasks" ] (List.map (discoveryRow subjectId) tasks)
 
 
-discoveryRow : Task.TaskListItemResponse -> Html Msg
-discoveryRow item =
-    div [ Html.Attributes.class "flex items-center justify-between gap-3 py-2", testId "discovery-task-row" ]
+discoveryRow : String -> Task.TaskListItemResponse -> Html Msg
+discoveryRow subjectId item =
+    let
+        mine =
+            isMyTask subjectId item
+    in
+    div
+        [ Html.Attributes.class
+            ("flex items-center justify-between gap-3 py-2"
+                ++ (if mine then
+                        " border-l-2 border-blue-300 pl-3 -ml-3.5"
+
+                    else
+                        ""
+                   )
+            )
+        , testId "discovery-task-row"
+        ]
         [ div [ Html.Attributes.class "min-w-0" ]
-            [ p [ Html.Attributes.class "font-medium break-words" ] [ text item.title ]
-            , p [ Html.Attributes.class "text-xs text-slate-500 break-words" ] [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item) ]
+            [ p [ Html.Attributes.class "flex flex-wrap items-center gap-2 font-medium break-words" ]
+                (text item.title
+                    :: (if mine then
+                            [ span [ Html.Attributes.class "rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-blue-700", testId "mine-flag" ] [ text "MINE" ] ]
+
+                        else
+                            []
+                       )
+                )
+            , p [ Html.Attributes.class "flex flex-wrap items-center gap-1.5 text-xs text-slate-500 break-words" ]
+                [ taskStateBadge item.state
+                , text ("· " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item)
+                ]
             ]
         , div [ Html.Attributes.class "shrink-0" ] [ Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View" ]
         ]
@@ -3118,6 +3190,14 @@ ownerControlsCard state =
                 canFund =
                     detail.state == Task.TaskStateDraft
 
+                -- A brand-new, unfunded draft is the one case where funding
+                -- is genuinely the next step, not just an available option -
+                -- surfaced as an open-by-default callout instead of a
+                -- same-weight collapsed disclosure next to unrelated
+                -- housekeeping sections (API & MCP, Report task).
+                needsFundingGuidance =
+                    canFund && detail.rewardKind == "none"
+
                 -- The credit refund endpoint (/refund) is the unified refund: it
                 -- returns held credits AND held collectibles together (so it
                 -- handles bundle rewards in one shot). The collectible-refund
@@ -3160,11 +3240,24 @@ ownerControlsCard state =
                 , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
                 , div [ Html.Attributes.class "flex flex-wrap gap-2" ] buttons
                 , maybeNote state.taskActionMessage "task-action-message"
-                , if canFund then
+                , if needsFundingGuidance then
                     -- state.fundTaskId is kept synced to the currently-viewed
                     -- task on entering this page (see enterPage), so this
                     -- reuses the exact same FundClicked/fund-* plumbing as
                     -- the standalone Funding page without a separate Msg.
+                    -- A brand-new unfunded draft gets an open-by-default
+                    -- callout instead of a collapsed disclosure, since
+                    -- funding is genuinely the next step here.
+                    div [ Html.Attributes.class "space-y-3 rounded-md border border-blue-200 bg-blue-50 p-4", testId "fund-task-callout" ]
+                        [ p [ Html.Attributes.class "text-xs font-semibold tracking-wide text-blue-700" ] [ text "BEFORE YOU OPEN THIS TASK" ]
+                        , p [ Html.Attributes.class "text-sm text-blue-900" ] [ text "This draft has no reward yet. Fund it with credits, a collectible, or both - or open it unfunded if that's intentional." ]
+                        , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
+                        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset
+                        , Ui.primaryButton [ type_ "button", onClick FundClicked, testId "fund" ] "Fund task"
+                        , maybeNote state.fundMessage "fund-message"
+                        ]
+
+                  else if canFund then
                     Ui.disclosure "fund-task-panel"
                         False
                         "Fund this task"

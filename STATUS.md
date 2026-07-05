@@ -1,71 +1,66 @@
 # Status
 
-The repository contains pull request 1 through pull request 133 work, merged
-into `main`, plus the current `task/fund-any-reward-kind-and-open-on-create`
-branch. PR 108's GitHub Pages deployment failed three times in a row after
-merge for what looked like a transient GitHub-side Pages backend issue
-(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
-with a different symptom each time); most later PRs' deployments succeeded
-on the first try with no code or workflow changes, confirming it was not a
-code problem — though PR 127's deployment hit the same transient failure
-again and cleared on a manual retry, so this class of flakiness is still
-occasionally live, not fully resolved.
+The repository contains pull request 1 through pull request 134 work, merged
+into `main`, plus the current
+`task/task-visual-language-and-multiselect-filter` branch. PR 108's GitHub
+Pages deployment failed three times in a row after merge for what looked
+like a transient GitHub-side Pages backend issue (build/artifact steps
+always succeeded; only `deploy-pages` failed or hung, with a different
+symptom each time); most later PRs' deployments succeeded on the first try
+with no code or workflow changes, confirming it was not a code problem —
+though PR 127's deployment hit the same transient failure again and
+cleared on a manual retry, so this class of flakiness is still occasionally
+live, not fully resolved.
 
 The 5-phase RBAC + API-token effort (PRs 115-121), two clean-up passes
-(PRs 122, 124), a docs refresh (PR 123), the WASI production-hosting spike's
-plan + Phase 0/1 (PR 125), ecosystem research (PR 126), and deployment-shape
-requirements (PR 132), a Go 1.26.4 upgrade (PR 127), a strengthened
-"at most one open PR at a time" rule in `AGENTS.md` (PR 128), the
-`site/demo/backend.js` deprecation (PR 129: replacement CI coverage; PR 130:
-deletion), a fix for the demo (WASM) backend collapsing every rejection to
-HTTP 500 plus a corrected fund-panel visibility gate (PR 131), and making a
-draft task always fundable regardless of reward kind plus opening a task in
-the UI after creating it (PR 133) are complete.
+(PRs 122, 124), a docs refresh (PR 123), the WASI production-hosting
+spike's plan + Phase 0/1 (PR 125), ecosystem research (PR 126), and
+deployment-shape requirements (PR 132), a Go 1.26.4 upgrade (PR 127), a
+strengthened "at most one open PR at a time" rule in `AGENTS.md` (PR 128),
+the `site/demo/backend.js` deprecation (PR 129: replacement CI coverage;
+PR 130: deletion), a fix for the demo (WASM) backend collapsing every
+rejection to HTTP 500 plus a corrected fund-panel visibility gate
+(PR 131), a batch of task-funding/creation UX fixes (PR 133: fund any
+reward kind, open a task after creating it; PR 134: collectible-reward UI,
+org-admin collectible awards) are complete.
 
-Active task: `task/fund-any-reward-kind-and-open-on-create` continues a
-batch of related feature requests started in PR 133. Since that PR merged:
+Active task: `task/task-visual-language-and-multiselect-filter` covers a
+follow-up batch of task UI requests, grounded in a design proposal the user
+reviewed and approved first (color palette, WCAG contrast checks, and
+mockups for each change, before any code was written):
 
-3. **A creator can add a collectible to an existing task's reward from the
-   task detail page.** The backend route
-   (`POST /api/tasks/{task_id}/collectible-reward`) and its Elm API wrapper
-   already existed but were never wired to any UI trigger. Added a
-   draft-only "Add a collectible to this task's reward" panel (reuses the
-   Collectibles page's existing `AwardClicked`/`awardTaskId` plumbing, now
-   synced to the viewed task the same way `fundTaskId` already was).
-   Fixing this also surfaced that `internal/db/collectible_store.go`'s
-   `FundCollectibleReward` never transitioned the task's `reward_kind`
-   (none -> collectible, credit -> bundle) the way the credit-funding path
-   now does — fixed the same way, with a new integration test. Separately
-   fixed a real staleness bug this surfaced: neither the fund nor the
-   award success handlers re-fetched the viewed task's own detail record,
-   so the owner-controls buttons (e.g. the refund button appearing) stayed
-   stale until a manual page reload — added `Api.refreshLedgerAndTaskDetail`
-   and used it from both.
-5. **An org admin can award an org-owned collectible to an active member**
-   (backend + HTTP route + Elm UI all new — this one didn't already exist).
-   New `assets.Service.AwardOrganizationCollectible` /
-   `CollectibleStore.AwardOrganizationCollectible`, gated by
-   `org.PermissionManageMembers` at the HTTP boundary
-   (`POST /api/organizations/{organization_id}/collectibles/{id}/award`),
-   verifying in the same transaction that the collectible actually belongs
-   to that org and the recipient is an active member. New Elm UI on the
-   organization detail page: a member picker plus an "Award to member"
-   button per org-owned collectible. Covered by a new HTTP e2e test
-   (permission-denied, non-member-recipient, and happy-path cases); not
-   yet covered by a Playwright regression test since the shared Playwright
-   server has no platform-admin bootstrapped (needed to get a collectible
-   into org ownership in the first place) — verified manually instead by
-   driving a real browser against a separately-started server with
-   `SHARECROP_ADMIN_USER_IDS` set.
+- **Task state color-coding.** Task list rows (My tasks, Discover public
+  tasks) now show state as a colored badge (`taskStateBadge`, reusing
+  `Ui.badgeVariant`'s existing 4-tone system) instead of plain text. Added
+  a 5th tone, `info` (blue), for the `Closed` state, which previously
+  shared "neutral" with `Draft` and wasn't visually distinct. All 5
+  tones checked against WCAG AA (6.49:1 to 9.45:1 contrast).
+- **"Mine" highlighting.** A task the viewer created or is the active
+  assignee on gets a blue left-accent border and a small "MINE" tag,
+  in both the My-tasks and Discover-public-tasks lists.
+- **Funding discoverability fix**, reproduced live before fixing: the
+  "Fund this task" control existed but was one unstyled collapsed
+  disclosure line, visually identical to unrelated sections like
+  "API & MCP" and "Report task" — easy to miss entirely. A brand-new,
+  unfunded draft task now shows an open-by-default blue callout
+  ("Before you open this task...") instead of a collapsed disclosure;
+  once funded, or for a task that already declared some reward, the
+  original on-demand disclosure is used as before.
+- **Required-field validation on the create-task form.** Title/description
+  now get a muted-red border + inline error message when a submit attempt
+  fails with them empty, clearing per-field as each is filled in. Found a
+  real WCAG tension: a genuinely muted border can't hit the 3:1 non-text
+  contrast target alone (neither do this app's existing borders), so color
+  is paired with an icon + explicit text rather than relying on hue alone
+  (WCAG 1.4.1).
+- **Multi-select task-state filter**, replacing single-select buttons that
+  only covered 3 of 5 states. Required a real backend change, not just a
+  UI change: the server only supported one `state=` value
+  (`task.StateEquals`); added `task.StateIn` plus a `tasks.state = some(@filter_states)`
+  SQL clause (`internal/db/task_store.go`), and `internal/http/tasks.go`
+  now reads repeated `state=` query params. Mirrored in
+  `internal/wasmdemo`'s `ListTasks` (now takes `[]string`).
 
-Confirmed already done, no work needed: **4. an admin can award
-collectibles to any user** — `POST /api/collectibles/award` (platform-admin
-gated, catalog-only) already exists, with a full Elm UI
-("Admin: award a default collectible" on the Collectibles page, recipient
-kind user/team/organization).
-
-`internal/wasmdemo` does not yet implement item 5's new endpoint (org
-collectible award) — the demo can add collectibles to a task's reward
-(item 3) but not the org-admin-awards-to-member flow. Not addressed in this
-branch.
-
+All changes covered by new tests (Go integration/http_e2e for the
+reward-kind and multi-state backend changes; Playwright for the visual
+changes) and a full local check-suite + Playwright run before commit.

@@ -295,8 +295,10 @@ type ListScope interface {
 	listScope()
 }
 
-// StateFilter is an optional task-state filter for task listing. AnyStateFilter
-// means no state restriction; StateEquals restricts the listing to a single state.
+// StateFilter is an optional task-state filter for task listing.
+// AnyStateFilter means no state restriction; StateEquals restricts the
+// listing to a single state; StateIn restricts the listing to a set of
+// several states.
 type StateFilter interface {
 	stateFilter()
 }
@@ -307,9 +309,15 @@ type StateEquals struct {
 	Value State
 }
 
+type StateIn struct {
+	Values []State
+}
+
 func (AnyStateFilter) stateFilter() {}
 
 func (StateEquals) stateFilter() {}
+
+func (StateIn) stateFilter() {}
 
 // ParticipationPolicyFilter is an optional participation-policy filter for task
 // listing. AnyParticipationPolicyFilter means no restriction; ParticipationPolicyEquals

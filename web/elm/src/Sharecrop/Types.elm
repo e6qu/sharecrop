@@ -109,7 +109,9 @@ type alias LoggedInModel =
     , entries : List Ledger.LedgerEntryResponse
     , ledgerOffset : Int
     , createTitle : String
+    , createTitleInvalid : Bool
     , createDescription : String
+    , createDescriptionInvalid : Bool
     , createResponseSchema : String
     , createSchemaFields : List SchemaFieldDraft
     , createPayloadJson : String
@@ -131,7 +133,7 @@ type alias LoggedInModel =
     , fundMessage : Maybe String
     , fundNonce : Int
     , tasks : List Task.TaskListItemResponse
-    , taskStateFilter : String
+    , taskStateFilter : List String
     , taskListOffset : Int
     , taskListQuery : String
     , taskListTypeFilter : String
@@ -364,7 +366,7 @@ type Msg
     | PreviousLedgerPageClicked
     | NextLedgerPageClicked
     | TasksReceived (Result Http.Error Task.TasksResponse)
-    | TaskStateFilterChanged String
+    | TaskStateFilterToggled String
     | TaskListQueryChanged String
     | TaskListTypeFilterChanged String
     | TaskListSortChanged String
