@@ -3238,6 +3238,16 @@ ownerControlsCard state =
 
                           else
                             Nothing
+                        , -- Moves an open task back to draft - the escape hatch for a task
+                          -- that reached "open" without its declared reward actually being
+                          -- funded (e.g. a backend that didn't enforce that invariant): back
+                          -- to draft, fund it through the normal draft funding panel, then
+                          -- reopen. Also just generally useful to un-publish a mistake.
+                          if detail.state == Task.TaskStateOpen then
+                            Just (Ui.secondaryButton [ type_ "button", onClick (UnpublishTaskClicked detail.id), testId "unpublish-task" ] "Unpublish")
+
+                          else
+                            Nothing
                         , -- Cancel ends the task. Offered for drafts (any reward) and for
                           -- open tasks with no reward. Reward-bearing OPEN tasks are ended
                           -- via Refund instead, since Cancel of a funded task would orphan

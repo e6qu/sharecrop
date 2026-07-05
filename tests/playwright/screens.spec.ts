@@ -1256,6 +1256,58 @@ test("owner and worker exchange comments on a submission", async ({ page, reques
   );
 });
 
+test("an owner unpublishes an open task back to draft to fix its funding", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "unpublish-owner");
+  const title = `Unpublish recovery ${crypto.randomUUID()}`;
+
+  // A task that declares a credit reward at creation is not automatically
+  // funded - opening it before funding must be rejected on the real backend.
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "default", 20),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+  const prematureOpen = await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+  expect(prematureOpen.status()).toBe(409);
+
+  // Fund it properly, then open it for real.
+  const fundResponse = await request.post(`/api/tasks/${task.id}/funding`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { amount: 20, idempotency_key: `unpublish-test:${task.id}` },
+  });
+  expect(fundResponse.ok()).toBeTruthy();
+  const openResponse = await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+  expect(openResponse.ok()).toBeTruthy();
+
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.goto(`/#/tasks/${task.id}`);
+  await expect(page.getByTestId("detail-title")).toBeVisible();
+
+  // Unpublish moves it back to draft - the escape hatch for a task that
+  // somehow reached "open" without matching funding (e.g. a backend that
+  // didn't enforce that invariant): back to draft, the normal funding
+  // panel is available again, and it can be reopened.
+  await page.getByTestId("unpublish-task").click();
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "back to draft",
+  );
+  await expect(page.getByTestId("open-task")).toBeVisible();
+  await expect(page.getByTestId("fund-task-panel")).toBeVisible();
+  await page.getByTestId("open-task").click();
+  await expect(page.getByTestId("task-action-message")).toContainText(
+    "Task opened",
+  );
+  await expect(page.getByTestId("unpublish-task")).toBeVisible();
+});
+
 test("an owner cancels a no-reward task through the owner controls", async ({ page, request }) => {
   const owner = await registerViaApi(request, "cancel-owner");
   const title = `Cancellable ${crypto.randomUUID()}`;

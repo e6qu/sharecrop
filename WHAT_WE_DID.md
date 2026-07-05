@@ -1,5 +1,95 @@
 # What We Did
 
+`task/unpublish-escape-hatch-and-scenario-parity-ci` traced the user's
+report ("the task view still! still! does not have a visible drawer to
+change funding of a task") to a real architectural root cause, verified
+live against the actual deployed demo rather than assumed.
+
+Read `taskRow`'s canFund logic (`web/elm/src/Sharecrop/View.elm`): it only
+offers funding for a task in `draft` state, on the stated assumption that
+"once a task is open, a credit/bundle reward is always already funded (the
+backend requires funding before opening)". Checked that assumption by
+directly reading `internal/task/service.go`'s `Open`/`OpenState` - neither
+checks reward or escrow at all. Verified empirically (curl against a real
+local server, not just code reading) that the *actual* enforcement lives
+in `internal/db/task_store.go`'s `requireOpenableReward`, called from
+`ChangeTaskState` - a Postgres store-layer check, not something in the
+shared `internal/task` domain package. `internal/wasmdemo` is a wholly
+separate reimplementation of task state transitions (its own storage, its
+own checks) and its "open" handler
+(`internal/wasmdemo/request_handler.go`) never got this invariant added -
+confirmed by creating a task with a declared-but-unfunded credit reward
+against a local demo build and successfully opening it, which the real
+backend rejects with 409.
+
+Took a real screenshot of the live deployed demo
+(`https://e6qu.github.io/sharecrop/demo/`) to check whether the specific
+seeded task the user pointed at ("Verify 10 ledger transfers for fraud
+signals") was actually in this broken state. It wasn't: reading
+`site/demo/wasm-host.js`'s seed script showed every seeded task's
+`reward_credit_amount`/`escrow_amount` pair matches (explicit values, or
+both falling back to the same `|| 25` default) - so the seed data itself
+is internally consistent. The user's actual need was simpler and more
+general: there was no way to add or change funding on *any* open task
+through the UI at all, regardless of whether it happened to be correctly
+funded.
+
+Fixed both things:
+
+1. Added the missing invariant to `internal/wasmdemo/request_handler.go`'s
+   "open" case, mirroring the real backend's check exactly - so a *new*
+   task created through normal demo interaction (not seed data) can no
+   longer reach "open" without its reward actually being funded, closing
+   the gap for the future.
+2. Found and wired up a real escape hatch that already existed
+   server-side on both backends but had no UI: `Task.Unpublish`
+   (`open` → `draft`, `POST /api/tasks/{id}/unpublish`) was fully
+   implemented and even had a UI button for task *series* - just never for
+   individual tasks. Added the button plus the
+   `UnpublishTaskClicked`/`UnpublishTaskReceived`/`Api.postUnpublishTask`
+   chain. An owner can now move an open task back to draft, use the
+   already-existing draft-only funding panel, and reopen - solving the
+   user's stated need directly, independent of the underlying invariant
+   question.
+
+Verified the reward/escrow invariant fix is a real check, not vacuous: ran
+the shared `tests/scenario_parity/scenario.ts` (a new assertion added
+there: attempt to open before funding, expect 409) against a build of the
+WASM demo *without* the fix first, confirmed it actually fails
+(200 instead of 409), then restored the fix and confirmed it passes. This
+directly answered the user's "I think we might be doing fake checks"
+concern for this specific check.
+
+That investigation surfaced a bigger, systemic gap the user pushed on
+directly: `check-wasm-scenario-parity` (the CI job that runs the shared
+scenario script) only ever ran it against the WASM demo -
+`check:scenario-parity`, the same script's real-backend variant, had *no
+CI job at all*. A new assertion could be added to the shared script,
+verified once locally against whichever backend was handy, and never
+checked against the other one in automation again - exactly how a
+divergence like the missing invariant could persist unnoticed. Wired
+`tools/run_local_real_scenario_parity.ts` into `tools/run_db_checks.sh`
+(spins up a real DB-backed server in the background, waits for health,
+runs the shared scenario against it, tears down) and added the missing
+Deno setup step to the `db-checks` CI job. Hit a real bug while wiring
+this up: an unredirected backgrounded `go run ... serve &` inside the
+script left its compiled-binary child process holding the script's output
+pipe open indefinitely after a plain `kill` on the `go run` wrapper PID -
+redirected its output to a temp file and added `pkill -P` cleanup for the
+child process too.
+
+The user separately raised a much bigger architectural question directly
+tied to this bug class: unifying onto a single WASM-compiled backend for
+both the browser demo and a multi-replica production deployment, instead
+of two independently-reimplemented backends that can silently diverge on
+invariants like this one. Asked a clarifying scope question (full
+unification now vs. a scoped-down stepping stone vs. tactical-only) and
+got no response within the session; proceeded with the concrete, verified
+fixes above rather than guessing at scope for what would be a
+multi-session rewrite. Flagged as still open in `DO_NEXT.md`.
+
+---
+
 `task/reservation-fixes-and-reward-badges` fixed two reservation bugs the
 user hit live ("I can't cancel reservation", "the reservation drawer is not
 visible when toggled off") plus a follow-up request for reward badges with

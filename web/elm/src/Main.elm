@@ -967,6 +967,17 @@ update msg model =
         OpenTaskReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
 
+        UnpublishTaskClicked taskId ->
+            Api.withSession model (\state -> ( model, Api.postUnpublishTask state.accessToken taskId ))
+
+        UnpublishTaskReceived (Ok detail) ->
+            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just "Task moved back to draft." })
+            , Api.refreshTasksAndDiscovery model
+            )
+
+        UnpublishTaskReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
+
         RefundTaskClicked taskId ->
             Api.withSession model (\state -> ( model, Api.postRefundTask state.accessToken taskId ))
 

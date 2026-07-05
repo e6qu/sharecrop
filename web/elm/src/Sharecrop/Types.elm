@@ -408,6 +408,8 @@ type Msg
     | FundReceived (Result Http.Error Ledger.TaskEscrowResponse)
     | OpenTaskClicked String
     | OpenTaskReceived (Result Http.Error TaskDetail)
+    | UnpublishTaskClicked String
+    | UnpublishTaskReceived (Result Http.Error TaskDetail)
     | RefundTaskClicked String
     | RefundTaskReceived (Result Http.Error Ledger.TaskEscrowResponse)
     | CancelTaskClicked String
