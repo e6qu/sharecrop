@@ -33,6 +33,42 @@ plan for the full effort; see "Non-goals" below.
   tooling/tests that make drift structurally hard, not just a promise to
   be careful.
 
+## Deployment shapes this must support (clarified in chat, 2026-07-05)
+
+The one compiled artifact has to work correctly in two genuinely different
+deployment shapes, not just compile once and "mostly work" in whichever one
+gets tested first:
+
+1. **The browser demo** (`internal/wasmdemo` today, eventually the same
+   compiled guest once this effort completes) — single effective user,
+   localStorage-backed, runs on the browser's main thread.
+2. **Real production** — presumably **multiple replicas** (horizontally
+   scaled, likely behind a load balancer), plus explicit attention to
+   **threads or web workers if the implementation ever uses them**. Neither
+   is used today: the demo runs WASM on the main thread with no Worker
+   offload, and the verified-safe production bridge design (Phase 1, below)
+   deliberately never shares one WASM instance across goroutines in the
+   first place.
+
+The architecture already chosen for this effort (fresh WASM instance per
+unit of work, exactly one driving goroutine per instance, all cross-request
+state via real Postgres rather than in-process memory — see "Verified
+findings" below) is inherently replica-safe *by construction*: each replica
+is an independent OS process with no cross-replica in-memory state to keep
+in sync, and anything that must be shared already goes through Postgres,
+which is designed for concurrent multi-client access. The one already-known
+gap this doesn't cover for free: `mcpHTTPSessionStore`'s in-memory
+subscriber channels (see the deferred HTTP/2+3/100-session effort) would
+need a pub/sub mechanism or sticky sessions to work correctly across
+multiple replicas for MCP/SSE streaming specifically. Every other code path
+(regular request/response against Postgres-backed state) is already
+replica-agnostic with no extra work.
+
+This isn't a new phase or deliverable — it's a constraint every later
+architectural decision in this spike should be checked against, the same
+way Phase 2 should be checked against "does this still work single-user in
+a browser," not just "does this work against a real Postgres."
+
 ## Ecosystem research: is HTTP/networking really a WASI gap, and what should host it?
 
 Researched with real web search (not just training-knowledge recall) after
