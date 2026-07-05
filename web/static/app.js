@@ -18589,6 +18589,8 @@ var $author$project$Sharecrop$Ui$badgeToneClass = function (tone) {
 			return 'bg-amber-100 text-amber-900';
 		case 'danger':
 			return 'bg-red-100 text-red-800';
+		case 'reward':
+			return 'bg-purple-100 text-purple-800';
 		default:
 			return 'bg-slate-100 text-slate-700';
 	}
@@ -25159,24 +25161,51 @@ var $author$project$Sharecrop$View$taskIntegration = F3(
 					A3($author$project$Sharecrop$View$taskIntegrationBody, origin, taskId, state)
 				]));
 	});
+var $author$project$Sharecrop$Ui$badgeVariantWithIcon = F3(
+	function (tone, icon, value) {
+		return A2(
+			$elm$html$Html$span,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class(
+					'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ' + $author$project$Sharecrop$Ui$badgeToneClass(tone))
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$span,
+					_List_fromArray(
+						[
+							A2($elm$html$Html$Attributes$attribute, 'aria-hidden', 'true')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(icon)
+						])),
+					$elm$html$Html$text(value)
+				]));
+	});
 var $author$project$Sharecrop$View$taskStateBadge = function (state) {
-	var tone = function () {
+	var _v0 = function () {
 		switch (state.$) {
 			case 'TaskStateOpen':
-				return 'success';
+				return _Utils_Tuple2('success', '●');
 			case 'TaskStateDraft':
-				return 'neutral';
+				return _Utils_Tuple2('neutral', '○');
 			case 'TaskStateClosed':
-				return 'info';
+				return _Utils_Tuple2('info', '✓');
 			case 'TaskStateCancelled':
-				return 'danger';
+				return _Utils_Tuple2('danger', '✕');
 			default:
-				return 'warning';
+				return _Utils_Tuple2('warning', '⏳');
 		}
 	}();
-	return A2(
-		$author$project$Sharecrop$Ui$badgeVariant,
+	var tone = _v0.a;
+	var icon = _v0.b;
+	return A3(
+		$author$project$Sharecrop$Ui$badgeVariantWithIcon,
 		tone,
+		icon,
 		$author$project$Sharecrop$Labels$taskStateLabel(state));
 };
 var $author$project$Sharecrop$View$taskTypeBadge = function (detail) {
@@ -26748,6 +26777,14 @@ var $author$project$Sharecrop$View$isMyTask = F2(
 	function (subjectId, item) {
 		return _Utils_eq(item.createdBy, subjectId) || ((item.activeAssigneeKind === 'user') && _Utils_eq(item.activeAssigneeID, subjectId));
 	});
+var $author$project$Sharecrop$View$taskRewardBadge = F3(
+	function (rewardKind, rewardCreditAmount, rewardCollectibleCount) {
+		return (rewardKind === 'none') ? $elm$html$Html$text('') : A3(
+			$author$project$Sharecrop$Ui$badgeVariantWithIcon,
+			'reward',
+			'◆',
+			A3($author$project$Sharecrop$Labels$rewardLabel, rewardKind, rewardCreditAmount, rewardCollectibleCount));
+	});
 var $author$project$Sharecrop$View$discoveryRow = F2(
 	function (subjectId, item) {
 		var mine = A2($author$project$Sharecrop$View$isMyTask, subjectId, item);
@@ -26801,8 +26838,9 @@ var $author$project$Sharecrop$View$discoveryRow = F2(
 							_List_fromArray(
 								[
 									$author$project$Sharecrop$View$taskStateBadge(item.state),
+									A3($author$project$Sharecrop$View$taskRewardBadge, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount),
 									$elm$html$Html$text(
-									'· ' + (A3($author$project$Sharecrop$Labels$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + (' · ' + ($author$project$Sharecrop$Labels$participationPolicyLabel(item.participationPolicy) + $author$project$Sharecrop$View$activeAssigneeSuffix(item)))))
+									'· ' + ($author$project$Sharecrop$Labels$participationPolicyLabel(item.participationPolicy) + $author$project$Sharecrop$View$activeAssigneeSuffix(item)))
 								]))
 						])),
 					A2(
@@ -27117,8 +27155,9 @@ var $author$project$Sharecrop$View$taskRow = F2(
 							_List_fromArray(
 								[
 									$author$project$Sharecrop$View$taskStateBadge(item.state),
+									A3($author$project$Sharecrop$View$taskRewardBadge, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount),
 									$elm$html$Html$text(
-									'· ' + (A3($author$project$Sharecrop$Labels$rewardLabel, item.rewardKind, item.rewardCreditAmount, item.rewardCollectibleCount) + $author$project$Sharecrop$View$activeAssigneeSuffix(item)))
+									$author$project$Sharecrop$View$activeAssigneeSuffix(item))
 								]))
 						])),
 					A2(

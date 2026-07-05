@@ -223,20 +223,36 @@ badge value =
 
 {-| A status pill in one of a small set of semantic tones, so state is
 conveyed by more than color alone (the text itself still names the state).
-Each tone's Tailwind pair is chosen to keep the pill's text at or above a
-4.5:1 contrast ratio against its own background (WCAG AA for normal text):
-
-  - neutral: `slate-700` (#334155) on `slate-100` (#f1f5f9) — ~8.4:1
-  - success: `green-800` (#166534) on `green-100` (#dcfce7) — ~7.4:1
-  - warning: `amber-900` (#78350f) on `amber-100` (#fef3c7) — ~8.9:1
-  - danger: `red-800` (#991b1b) on `red-100` (#fee2e2) — ~6.8:1
-
+See badgeToneClass for the tone-to-contrast-ratio breakdown.
 -}
 badgeVariant : String -> String -> Html msg
 badgeVariant tone value =
     span [ class ("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium " ++ badgeToneClass tone) ] [ text value ]
 
 
+{-| Like badgeVariant, with a small leading glyph. The glyph is
+`aria-hidden` and purely decorative - the badge's own text already names
+the state, so nothing is conveyed by the icon alone (WCAG 1.4.1).
+-}
+badgeVariantWithIcon : String -> String -> String -> Html msg
+badgeVariantWithIcon tone icon value =
+    span [ class ("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium " ++ badgeToneClass tone) ]
+        [ span [ attribute "aria-hidden" "true" ] [ text icon ]
+        , text value
+        ]
+
+
+{-| Tone-to-class pairs, each kept at or above a 4.5:1 contrast ratio
+against its own background (WCAG AA for normal text):
+
+  - neutral: `slate-700` (#334155) on `slate-100` (#f1f5f9) — ~8.4:1
+  - success: `green-800` (#166534) on `green-100` (#dcfce7) — ~7.4:1
+  - info: `blue-800` (#1e40af) on `blue-100` (#dbeafe) — ~7.15:1
+  - warning: `amber-900` (#78350f) on `amber-100` (#fef3c7) — ~8.9:1
+  - danger: `red-800` (#991b1b) on `red-100` (#fee2e2) — ~6.8:1
+  - reward: `purple-800` (#6b21a8) on `purple-100` (#f3e8ff) — ~7.39:1
+
+-}
 badgeToneClass : String -> String
 badgeToneClass tone =
     case tone of
@@ -251,6 +267,9 @@ badgeToneClass tone =
 
         "danger" ->
             "bg-red-100 text-red-800"
+
+        "reward" ->
+            "bg-purple-100 text-purple-800"
 
         _ ->
             "bg-slate-100 text-slate-700"

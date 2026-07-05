@@ -639,8 +639,48 @@ func (service Service) DeclineReservation(ctx context.Context, actor auth.Subjec
 	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateDeclined)
 }
 
+// CancelReservation, unlike Approve/Decline, isn't owner-only: the worker who
+// holds the reservation needs to be able to release it themselves, not just
+// have the task's owner force-cancel it on their behalf.
 func (service Service) CancelReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
-	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateCancelledByRequester)
+	taskResult := service.store.FindTask(ctx, taskID)
+	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
+	if !taskMatched {
+		rejected := taskResult.(FindTaskStoreRejected)
+		return ReservationStateChangeRejected{Reason: rejected.Reason}
+	}
+
+	ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
+	if _, matched := ownerPermission.(ownerPermissionAccepted); !matched {
+		listResult := service.store.ListReservations(ctx, taskID)
+		listed, listMatched := listResult.(ListReservationsStoreAccepted)
+		if !listMatched {
+			rejected := listResult.(ListReservationsStoreRejected)
+			return ReservationStateChangeRejected{Reason: rejected.Reason}
+		}
+		requester, isUser := actor.(auth.UserSubject)
+		holdsReservation := false
+		for _, value := range listed.Values {
+			if value.ID == reservationID && isUser && value.RequestedBy == requester.ID {
+				holdsReservation = true
+				break
+			}
+		}
+		if !holdsReservation {
+			return ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or the reservation holder can cancel this reservation")}
+		}
+	}
+
+	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, ReservationStateCancelledByRequester)
+	changed, matched := storeResult.(ChangeReservationStateStoreAccepted)
+	if !matched {
+		rejected := storeResult.(ChangeReservationStateStoreRejected)
+		return ReservationStateChangeRejected{Reason: rejected.Reason}
+	}
+	if changed.Value.TaskID != taskID {
+		return ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "reservation was not found for the task")}
+	}
+	return ReservationStateChanged{Value: changed.Value}
 }
 
 func (service Service) changeReservationByRequester(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState) ReservationStateChangeResult {
@@ -686,16 +726,17 @@ func (ReservationsListed) reservationsListResult() {}
 
 func (ReservationsListRejected) reservationsListResult() {}
 
+// ListReservations returns every reservation on the task to its owner, but
+// only the requesting user's own reservation(s) to anyone else - a worker
+// who reserved (or requested to reserve) the task needs to see that
+// reservation to act on it (e.g. cancel it), without being handed visibility
+// into other workers' reservation attempts on the same task.
 func (service Service) ListReservations(ctx context.Context, actor auth.Subject, taskID core.TaskID) ReservationsListResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
 		rejected := taskResult.(FindTaskStoreRejected)
 		return ReservationsListRejected{Reason: rejected.Reason}
-	}
-	ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
-	if rejected, matched := ownerPermission.(ownerPermissionRejected); matched {
-		return ReservationsListRejected{Reason: rejected.reason}
 	}
 
 	storeResult := service.store.ListReservations(ctx, taskID)
@@ -704,7 +745,23 @@ func (service Service) ListReservations(ctx context.Context, actor auth.Subject,
 		rejected := storeResult.(ListReservationsStoreRejected)
 		return ReservationsListRejected{Reason: rejected.Reason}
 	}
-	return ReservationsListed{Values: listed.Values}
+
+	ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
+	if _, matched := ownerPermission.(ownerPermissionAccepted); matched {
+		return ReservationsListed{Values: listed.Values}
+	}
+
+	requester, isUser := actor.(auth.UserSubject)
+	if !isUser {
+		return ReservationsListed{Values: []Reservation{}}
+	}
+	own := make([]Reservation, 0, len(listed.Values))
+	for _, value := range listed.Values {
+		if value.RequestedBy == requester.ID {
+			own = append(own, value)
+		}
+	}
+	return ReservationsListed{Values: own}
 }
 
 func (service Service) CheckSubmissionEligibility(ctx context.Context, taskID core.TaskID, submitterID core.UserID) SubmissionEligibilityStoreResult {

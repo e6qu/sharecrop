@@ -930,24 +930,37 @@ sighted users, e.g. skimming a long task list for anything that needs review.
 taskStateBadge : Task.TaskState -> Html Msg
 taskStateBadge state =
     let
-        tone =
+        ( tone, icon ) =
             case state of
                 Task.TaskStateOpen ->
-                    "success"
+                    ( "success", "●" )
 
                 Task.TaskStateDraft ->
-                    "neutral"
+                    ( "neutral", "○" )
 
                 Task.TaskStateClosed ->
-                    "info"
+                    ( "info", "✓" )
 
                 Task.TaskStateCancelled ->
-                    "danger"
+                    ( "danger", "✕" )
 
                 Task.TaskStateExpired ->
-                    "warning"
+                    ( "warning", "⏳" )
     in
-    Ui.badgeVariant tone (taskStateLabel state)
+    Ui.badgeVariantWithIcon tone icon (taskStateLabel state)
+
+
+{-| The task's reward as its own small badge, so a scannable list surfaces
+"what's it worth" at a glance rather than as muted trailing text. Skipped
+entirely for a "none" reward - there's nothing to highlight.
+-}
+taskRewardBadge : String -> Int -> Int -> Html Msg
+taskRewardBadge rewardKind rewardCreditAmount rewardCollectibleCount =
+    if rewardKind == "none" then
+        text ""
+
+    else
+        Ui.badgeVariantWithIcon "reward" "◆" (rewardLabel rewardKind rewardCreditAmount rewardCollectibleCount)
 
 
 submissionStateBadge : Submission.SubmissionState -> Html Msg
@@ -2629,7 +2642,8 @@ taskRow subjectId item =
                 )
             , p [ Html.Attributes.class "flex flex-wrap items-center gap-1.5 text-xs text-slate-500 break-words" ]
                 [ taskStateBadge item.state
-                , text ("· " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item)
+                , taskRewardBadge item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount
+                , text (activeAssigneeSuffix item)
                 ]
             ]
         , div [ Html.Attributes.class "flex shrink-0 gap-2" ]
@@ -2929,7 +2943,8 @@ discoveryRow subjectId item =
                 )
             , p [ Html.Attributes.class "flex flex-wrap items-center gap-1.5 text-xs text-slate-500 break-words" ]
                 [ taskStateBadge item.state
-                , text ("· " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ " · " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item)
+                , taskRewardBadge item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount
+                , text ("· " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item)
                 ]
             ]
         , div [ Html.Attributes.class "shrink-0" ] [ Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View" ]

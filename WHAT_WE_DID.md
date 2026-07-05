@@ -1,5 +1,59 @@
 # What We Did
 
+`task/reservation-fixes-and-reward-badges` fixed two reservation bugs the
+user hit live ("I can't cancel reservation", "the reservation drawer is not
+visible when toggled off") plus a follow-up request for reward badges with
+icons. Debugged entirely by real browser reproduction with screenshots
+before touching any code, per explicit instruction not to guess.
+
+Reproducing "can't cancel reservation" surfaced two independent, stacked
+bugs, both in `internal/task/service.go`:
+
+1. `ListReservations` called `requireOwnerPermission` unconditionally,
+   rejecting anyone who wasn't the task's owner. A worker who reserved a
+   task got an empty list back from `GET /api/tasks/{id}/reservations` -
+   their own reservation (and its Cancel button) never rendered at all,
+   even though `reservationButtons` already had `isHolder`-based logic
+   ready to show it. Fixed by widening the permission: the owner still sees
+   every reservation; anyone else sees only the reservation(s) they
+   themselves requested (not other workers' attempts on the same task -
+   privacy, not just unblocking).
+2. Once the row *was* visible (after fix 1), clicking Cancel still 403'd:
+   `CancelReservation` reused `changeReservationByRequester`, the same
+   owner-only helper as `ApproveReservation`/`DeclineReservation`. But
+   cancelling isn't meant to be owner-only - the worker who holds the
+   reservation needs to release it themselves. Gave `CancelReservation` its
+   own permission path (owner, or the reservation's own requester) instead
+   of sharing the approve/decline helper.
+
+A live screenshot taken while verifying fix 1 turned up a third, related
+bug: after reserving, the "Reserve" button never disappeared, and the top
+badge still read "reserve" instead of reflecting the reservation just
+made. Traced to `taskViewerAction` (`internal/http/tasks.go`), which
+computes `viewer_action` purely from the task's own state/participation
+policy - it has no notion of *which viewer* is asking, so every viewer
+sees the same "reserve" action regardless of whether they already used
+it. `taskToResponseForActor` (already used by `getTask`, the exact
+endpoint the browser's task-detail page calls) now overrides
+`viewer_action` to `wait` when the actor already holds a requested/active
+reservation on that task - reusing the same widened `ListReservations` to
+check. Verified with a real Go http_e2e test since this needed checking
+from two different viewers' perspectives at once (the reserving worker
+sees `wait`; an uninvolved viewer still sees `reserve`), not just a
+Playwright screenshot.
+
+Separately, per boy-scout rule, added a reward badge to task list rows: the
+reward previously rendered as muted trailing text ("· 20 credits"); it's
+now its own small badge (new `reward` tone, purple, verified at 7.39:1
+contrast) with a `◆` icon, matching the treatment task-state badges
+already got in the prior PR. Also gave all 5 state badges a small
+decorative icon (`●`/`○`/`✓`/`✕`/`⏳`, `aria-hidden` since the badge's own
+text already names the state - WCAG 1.4.1 still holds, the icon adds
+nothing load-bearing) - this was the "mini icons for the badges" half of
+the same follow-up request.
+
+---
+
 `task/task-visual-language-and-multiselect-filter` addressed a batch of
 task-UI requests, prefaced by a design review the user approved before any
 code was written: a palette proposal (5 badge tones, 4 already existing

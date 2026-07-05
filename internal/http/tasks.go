@@ -887,7 +887,31 @@ func taskToResponse(value task.Task) taskResponse {
 func (server Server) taskToResponseForActor(ctx context.Context, actor auth.UserSubject, value task.Task) taskResponse {
 	response := taskToResponse(value)
 	response.ReviewerAction = server.taskReviewerAction(ctx, actor, value).String()
+	response.ViewerAction = server.taskViewerActionForActor(ctx, actor, value).String()
 	return response
+}
+
+// taskViewerActionForActor overrides the viewer-independent "reserve" /
+// "request approval" action once this specific actor already has a pending
+// or active reservation on the task - otherwise the Reserve/Request-approval
+// button never goes away after successfully using it, inviting a pointless
+// (and server-rejected) second attempt.
+func (server Server) taskViewerActionForActor(ctx context.Context, actor auth.UserSubject, value task.Task) task.ViewerAction {
+	base := taskViewerAction(value)
+	if base != task.ViewerActionReserve && base != task.ViewerActionRequestApproval {
+		return base
+	}
+	listResult := server.taskService.ListReservations(ctx, actor, value.ID)
+	listed, matched := listResult.(task.ReservationsListed)
+	if !matched {
+		return base
+	}
+	for _, reservation := range listed.Values {
+		if reservation.RequestedBy == actor.ID && (reservation.State == task.ReservationStateRequested || reservation.State == task.ReservationStateActive) {
+			return task.ViewerActionWait
+		}
+	}
+	return base
 }
 
 func (server Server) taskReviewerAction(ctx context.Context, actor auth.UserSubject, value task.Task) task.ReviewerAction {

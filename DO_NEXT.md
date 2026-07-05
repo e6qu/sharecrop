@@ -5,19 +5,17 @@ Current priority from
 
 Active branch:
 
-1. `task/task-visual-language-and-multiselect-filter` is in progress (see
-   `STATUS.md` for the full writeup): task state color-coding (badges in
-   list rows, a new "info"/blue tone), "mine" highlighting, a funding-
-   discoverability fix (open-by-default callout instead of a buried
-   disclosure for a brand-new unfunded draft), required-field validation
-   on the create-task form (muted-red + inline message, WCAG-checked), and
-   a genuine multi-select task-state filter (new backend
-   `task.StateIn`/`= some(...)` support, not just a UI change). All
-   grounded in a design proposal reviewed and approved by the user before
-   any code was written.
+1. `task/reservation-fixes-and-reward-badges` is in progress (see
+   `STATUS.md` for the full writeup): fixed a worker never being able to see
+   or cancel their own reservation (`ListReservations` was owner-only;
+   `CancelReservation` shared its permission check with the owner-only
+   approve/decline actions), fixed the Reserve button never disappearing
+   once used (`viewer_action` never checked the viewer's own reservations),
+   and added a reward badge + small icons on all task-state badges in list
+   rows. Found by live browser reproduction with real screenshots, not
+   assumption, per the user's explicit request.
    - Not covered: `internal/wasmdemo`'s org-collectible-award flow (from
-     the prior task, PR 134) still isn't implemented — only the real
-     backend supports it.
+     PR 134) still isn't implemented — only the real backend supports it.
 
 2. Two large infrastructure efforts are confirmed as wanted but explicitly
    deferred (see memory for full detail, including empirical research
