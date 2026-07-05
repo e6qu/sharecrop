@@ -1,7 +1,7 @@
 # Status
 
-The repository contains pull request 1 through pull request 128 work, merged
-into `main`, plus the current `task/wasm-scenario-parity-ci` branch. PR
+The repository contains pull request 1 through pull request 129 work, merged
+into `main`, plus the current `task/deprecate-demo-backend-js` branch. PR
 108's GitHub Pages deployment failed three times in a row after merge for
 what looked like a transient GitHub-side Pages backend issue (build/artifact
 steps always succeeded; only `deploy-pages` failed or hung, with a different
@@ -14,25 +14,25 @@ not fully resolved.
 The 5-phase RBAC + API-token effort (PRs 115-121), two clean-up passes
 (PRs 122, 124), a docs refresh (PR 123), and the start of a WASI
 production-hosting spike (PR 125: plan + Phase 0/1 verified; PR 126:
-ecosystem research) are complete. Also merged: a Go 1.26.4 upgrade (PR 127)
-and a strengthened "at most one open PR at a time, no exceptions" rule in
-`AGENTS.md` (PR 128) after that rule was violated once this session.
+ecosystem research) are complete. Also merged: a Go 1.26.4 upgrade (PR 127),
+a strengthened "at most one open PR at a time, no exceptions" rule in
+`AGENTS.md` (PR 128), and a new `wasm-scenario-parity` CI job proving
+`deno task check:scenario-parity:wasm` as replacement coverage (PR 129).
 
-Active task: `task/wasm-scenario-parity-ci` wires
-`deno task check:scenario-parity:wasm` (runs the shared scenario-parity
-suite against the real, deployed Go/WASM demo backend) into CI as a new
-`wasm-scenario-parity` job, via a new `make check-wasm-scenario-parity`
-target. This is deliberately sequenced *before*, not combined with,
-deprecating `site/demo/backend.js` (the orphaned hand-maintained JS mock
-backend) — the user asked to "fully build the alternative first," so the
-replacement coverage lands and proves itself in CI before the old thing it
-replaces is deleted. `backend.js` and its two Deno tests are untouched by
-this task; deleting them is explicitly a separate, later task. Note this
-new check does **not** replace `demo_backend_test.ts`'s route-drift
-detection (real REST routes vs. `backend.js`'s route table) — no
-equivalent exists for the WASM dispatch path — so that specific coverage
-will still be lost when `backend.js` is eventually deleted; the trade-off
-was surfaced to and accepted by the user in chat before starting this.
+Active task: `task/deprecate-demo-backend-js` deletes `site/demo/backend.js`
+(the orphaned hand-maintained JS mock backend, unreachable from the live
+browser demo since it defaults to WASM) and its two Deno tests
+(`tests/deno/demo_backend_test.ts`, `tests/deno/scenario_parity_test.ts`),
+now that PR 129's `wasm-scenario-parity` CI job is merged and proven as
+replacement coverage for the scenario-parity half of what `backend.js`
+tested. The user confirmed full deprecation explicitly, having been told the
+one accepted trade-off up front: no equivalent exists for
+`demo_backend_test.ts`'s route-drift-detection test (real REST routes vs. a
+mock's route table) against the WASM dispatch path, so that specific
+coverage is a real, accepted loss, not an oversight. Docs referencing
+`backend.js` (`docs/demo_semantic_parity.md`, `docs/wasm_demo_backend_spike.md`,
+`docs/application_readiness_review.md`, `BUGS.md`) updated to describe it as
+removed rather than "legacy, still present."
 including the two items PR 122 had flagged rather than fixed — plus any
 other bug/UI/API/performance/concurrency issue found along the way,
 regardless of relation to the RBAC effort. Used parallel review agents

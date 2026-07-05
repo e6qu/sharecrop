@@ -1,5 +1,23 @@
 # What We Did
 
+`task/deprecate-demo-backend-js` removed `site/demo/backend.js` (the
+hand-maintained JS mock backend used before the demo defaulted to WASM) and
+its two Deno tests (`tests/deno/demo_backend_test.ts`,
+`tests/deno/scenario_parity_test.ts`), sequenced deliberately: PR 129 first
+wired `deno task check:scenario-parity:wasm` into CI as a new
+`wasm-scenario-parity` job and proved it green, *then* this task deleted
+what it replaces — the user explicitly asked to build the alternative
+before removing the old thing, not the reverse. Updated four docs that
+described `backend.js` as "legacy, still present" to describe it as
+removed instead: `docs/demo_semantic_parity.md`,
+`docs/wasm_demo_backend_spike.md`, `docs/application_readiness_review.md`,
+and `BUGS.md`. One coverage gap is permanent and was explicitly accepted
+rather than solved: `backend.js`'s route-drift-detection test (checking
+real REST routes against a mock's route table) has no equivalent for the
+WASM dispatch path, so that specific check is simply gone now.
+
+---
+
 `task/comprehensive-cleanup-boyscout` is a **second, explicitly more
 exhaustive** clean-up pass, requested right after the first one (PR 122,
 described below) merged: "act on all issues... any bugs or UI issues or API

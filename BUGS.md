@@ -66,12 +66,11 @@ Known risks:
   a rare funded-draft Cancel attempt now surfaces that 409 with the Refund
   action alongside.
 
-- `site/demo/backend.js` remains legacy parity/test material and still
-  re-implements API behavior in JS. The deployed static demo defaults to the
-  compiled Go/WASM backend path and does not load `backend.js` as a fallback.
-  The old Deno checks still compare its route surface with the real HTTP router
-  and run shared scenario parity flows, but those checks do not prove every
-  legacy JS handler has identical domain semantics.
+- `site/demo/backend.js` (the legacy JS mock backend) and its Deno tests have
+  been removed; `deno task check:scenario-parity:wasm` is now CI-enforced
+  replacement coverage against the real, deployed WASM backend. No equivalent
+  exists for the removed route-drift-detection test (real REST routes vs. a
+  mock's route table) against the WASM dispatch path — a known, accepted gap.
 - Go/WASM is a first-class backend execution target, not only a demo mechanism.
   Go code compiles to `js/wasm` for representative packages, the main command,
   and `cmd/sharecrop-wasm`. `internal/wasmdemo` classifies and handles current
