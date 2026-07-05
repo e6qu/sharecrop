@@ -93,9 +93,8 @@ test("task creation uses directory selectors and funds selected collectible rewa
     label: targetEmail,
   });
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toHaveText(title);
 
   await page.getByTestId("nav-tasks").click();
   await expect(page.getByTestId("task-row").filter({ hasText: title }))

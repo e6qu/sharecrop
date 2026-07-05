@@ -3068,14 +3068,15 @@ ownerControlsCard state =
                 draftOrOpen =
                     detail.state == Task.TaskStateDraft || detail.state == Task.TaskStateOpen
 
-                -- Funding only ever applies to a draft credit/bundle-reward
-                -- task: the backend requires a credit/bundle reward to be
-                -- funded before it can be opened, so an *open* task with
-                -- that reward kind is always already funded, and a task
-                -- with no credit component (none/collectible-only) can
-                -- never accept credit funding at all.
+                -- A draft task is always fundable by its creator, regardless
+                -- of the reward kind it was created with - funding a
+                -- none/collectible-only task adds a credit component
+                -- (transitioning it to credit/bundle server-side). Once a
+                -- task is open, a credit/bundle reward is always already
+                -- funded (the backend requires funding before opening), so
+                -- funding is draft-only.
                 canFund =
-                    detail.state == Task.TaskStateDraft && (detail.rewardKind == "credit" || detail.rewardKind == "bundle")
+                    detail.state == Task.TaskStateDraft
 
                 -- The credit refund endpoint (/refund) is the unified refund: it
                 -- returns held credits AND held collectibles together (so it

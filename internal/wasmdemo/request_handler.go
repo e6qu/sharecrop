@@ -599,6 +599,23 @@ func (handler TaskHandler) handleTaskAction(request Request, action taskActionRo
 		if task.EscrowAmount > 0 {
 			return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task is already funded")}
 		}
+		// A task is always fundable by its creator, regardless of the
+		// reward kind it was created with: none/collectible-only tasks
+		// transition to credit/bundle on first funding, matching the real
+		// backend. A task that already declares a credit component keeps
+		// its declared amount authoritative.
+		switch task.RewardKind {
+		case "credit", "bundle":
+			if task.RewardCreditAmount != body.Amount {
+				return RequestHandleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "funding amount must match the declared credit reward")}
+			}
+		case "collectible":
+			task.RewardKind = "bundle"
+			task.RewardCreditAmount = body.Amount
+		default:
+			task.RewardKind = "credit"
+			task.RewardCreditAmount = body.Amount
+		}
 		task.EscrowAmount = body.Amount
 		task.FundedOrganizationID = strings.TrimSpace(body.OrganizationID)
 	case "refund":

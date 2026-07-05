@@ -58,6 +58,52 @@ test("funding a task escrows credits and lowers the balance", async ({ page, req
   await expect(page.getByTestId("balance")).toHaveText("60 credits");
 });
 
+test("creating a task opens it in the UI and updates the URL", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("email").fill(uniqueEmail("ui-create-nav"));
+  await page.getByTestId("password").fill(password);
+  await page.getByTestId("register").click();
+
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+  const title = `Created and opened ${crypto.randomUUID()}`;
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill(
+    "Created to check the post-create navigation and URL.",
+  );
+  await page.getByTestId("create-task").click();
+
+  await expect(page.getByTestId("detail-title")).toHaveText(title);
+  await expect(page).toHaveURL(/#\/tasks\/.+/);
+});
+
+test("a task created with no declared reward is still fundable by its creator", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("email").fill(uniqueEmail("ui-fund-none"));
+  await page.getByTestId("password").fill(password);
+  await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("100 credits");
+
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+  await page.getByTestId("create-title").fill("Fund me later");
+  await page.getByTestId("create-description").fill(
+    "Created with no reward, funded afterward.",
+  );
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("detail-title")).toHaveText("Fund me later");
+
+  await page.getByTestId("fund-task-panel").click();
+  await page.getByTestId("fund-amount").fill("30");
+  await page.getByTestId("fund").click();
+  await expect(page.getByTestId("fund-message")).toContainText(
+    "Escrowed 30 credits",
+  );
+
+  await page.getByTestId("nav-overview").click();
+  await expect(page.getByTestId("balance")).toHaveText("70 credits");
+});
+
 test("the fund panel does not appear on an already-funded, open task", async ({ page, request }) => {
   const email = uniqueEmail("ui-fund-open");
 

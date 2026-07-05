@@ -5,21 +5,22 @@ Current priority from
 
 Active branch:
 
-1. `task/fix-fund-panel-and-demo-status-codes` is in progress — fixes a
-   user-reported bug: funding a task from its detail page failed with
-   "status 500" against the demo (WASM) backend. Root cause: every
-   `wasmdemo.RequestHandleRejected` (316 call sites) unconditionally mapped
-   to HTTP 500 in `cmd/sharecrop-wasm/main_js_wasm.go`, regardless of the
-   actual rejection reason. Fixed by giving `RequestHandleRejected.Reason`
-   a real `core.DomainError` (reusing the real backend's `core.ErrorCode`
-   taxonomy) and adding a `statusForError` mapping mirroring
-   `internal/http/server.go`'s. Also removed the task-list row's "Fund"
-   shortcut link (funding now only happens from a task's own detail page,
-   per the user's explicit request) and fixed the detail page's
-   "Fund this task" panel to only show for a draft task with a
-   credit/bundle reward (it previously showed for any draft-or-open task
-   regardless of reward kind, guaranteeing a rejection in several cases).
-   See `STATUS.md` for the full writeup.
+1. `task/fund-any-reward-kind-and-open-on-create` is in progress, covering
+   part of a batch of related feature requests (see `STATUS.md` for the
+   full writeup and what's still not started):
+   - Done: a draft task is always fundable by its creator regardless of
+     reward kind (none/collectible transitions to credit/bundle on first
+     funding, both real and demo backends); creating a task now opens it in
+     the UI with the URL updated to `#/tasks/{id}`.
+   - Not started, same request: creator adds collectibles to an existing
+     task's reward via UI (backend route already exists:
+     `POST /api/tasks/{task_id}/collectible-reward`); admin UI for awarding
+     collectibles to any user (backend already exists:
+     `POST /api/collectibles/award`, platform-admin-gated, catalog-only);
+     org admin awarding org-owned collectibles to an org member (needs
+     design — verify whether the existing transfer mechanism's permission
+     model can be extended to "org admin acts on the org's behalf," or
+     needs new logic).
 
 2. Two large infrastructure efforts are confirmed as wanted but explicitly
    deferred (see memory for full detail, including empirical research

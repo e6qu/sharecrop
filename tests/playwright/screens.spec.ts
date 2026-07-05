@@ -154,9 +154,8 @@ test("requesters configure reservations and workers include reserved tasks", asy
   await page.getByTestId("create-participation-reservation_required").click();
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   const ownerRow = page.getByTestId("task-row").filter({ hasText: title });
@@ -177,9 +176,8 @@ test("requesters configure reservations and workers include reserved tasks", asy
   );
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
   await page.getByTestId("nav-tasks").click();
   const otherOwnerRow = page.getByTestId("task-row").filter({
     hasText: otherTitle,
@@ -250,9 +248,8 @@ test("an owner approves a worker's reservation request from the task detail page
   await page.getByTestId("create-participation-approval_required").click();
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
     "view-task",
@@ -321,9 +318,8 @@ test("requesters upload small task attachments through the real backend", async 
   );
 
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
   await page.getByTestId("nav-tasks").click();
   const row = page.getByTestId("task-row").filter({ hasText: title });
   await expect(row).toHaveCount(1);
@@ -564,9 +560,8 @@ test("requesters filter their task list by state", async ({ page, request }) => 
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Filter from the browser.");
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   const row = page.getByTestId("task-row").filter({ hasText: title });
@@ -715,9 +710,8 @@ test("requesters scope a task to a standalone team", async ({ page, request }) =
   await page.getByTestId("create-visibility-team").click();
   await page.getByTestId("create-scope-team").selectOption(team.id);
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await expect(
@@ -737,9 +731,8 @@ test("requesters set a task's assignee scope to a team", async ({ page, request 
   await page.getByTestId("create-task-ownership").click();
   await page.getByTestId("create-assignee-organization_team").click();
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
 
   // Open it so a worker can discover and view it.
   await page.getByTestId("nav-tasks").click();
@@ -846,9 +839,8 @@ test("requesters author a response schema and task input that the detail surface
   );
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   const ownerRow = page.getByTestId("task-row").filter({ hasText: title });
@@ -932,9 +924,8 @@ test("a requester uses a code-review template with a PR link and comments on the
   await page.getByTestId("create-reference-url").fill(prURL);
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   const ownerRow = page.getByTestId("task-row").filter({ hasText: title });
@@ -991,9 +982,8 @@ test("a requester builds a response schema with the structured designer", async 
 
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toContainText(
-    "Created task",
-  );
+  // Creating a task now opens it in the UI for further editing.
+  await expect(page.getByTestId("detail-title")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
