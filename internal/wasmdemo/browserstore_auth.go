@@ -61,6 +61,24 @@ func authAccountTokenKey(hash string) string { return "auth:account_token:" + ha
 func authAccountTokenActiveKey(userID string, kind string) string {
 	return "auth:account_token_active:" + userID + ":" + kind
 }
+func authUserFamiliesIndexKey(userID string) string { return "auth:user_families:" + userID }
+
+// knownAccountTokenKinds is every auth.AccountTokenKind the demo needs to be
+// able to enumerate without a real per-user index (there are only two).
+var knownAccountTokenKinds = []auth.AccountTokenKind{auth.AccountTokenKindEmailVerification, auth.AccountTokenKindPasswordReset}
+
+// emailIndexTaken reports whether an email index key currently resolves to a
+// real user id. BrowserStorage has no delete operation, so freeing an email
+// (UpdateUserEmail/DeactivateUser) overwrites its index entry with an empty
+// string rather than removing the key - Get would still report the key as
+// found, so "taken" means "found with a non-empty value", not just "found".
+func emailIndexTaken(storage BrowserStorage, emailKey string) (taken bool, ok bool) {
+	value, found, ok := getStorageString(storage, emailKey)
+	if !ok {
+		return false, false
+	}
+	return found && value != "", true
+}
 
 func putStoredAuthUserJSON(storage BrowserStorage, rawKey string, record storedAuthUser) bool {
 	encoded, err := json.Marshal(record)
@@ -131,11 +149,11 @@ func invalidState(reason string) core.DomainError {
 
 func (store AuthBrowserStore) CreateUserCredential(_ context.Context, id core.UserID, email auth.EmailAddress, passwordHash auth.PasswordHash) auth.StoreUserResult {
 	emailKey := authUserEmailKey(email.String())
-	_, found, ok := getStorageString(store.storage, emailKey)
+	taken, ok := emailIndexTaken(store.storage, emailKey)
 	if !ok {
 		return auth.StoreUserRejected{Reason: invalidState("user email lookup failed")}
 	}
-	if found {
+	if taken {
 		return auth.StoreUserRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "email address is already registered")}
 	}
 
@@ -285,16 +303,88 @@ func (store AuthBrowserStore) updateUser(userID string, mutate func(*storedAuthU
 	return auth.AccountMutationAccepted{}
 }
 
+// UpdateUserEmail mirrors internal/db's equivalent: the new email must not
+// already be registered, email_verified_at resets (a changed address is
+// unverified again), and - the part missing before this fix - the old
+// email's index entry is freed so it becomes registerable again and no
+// longer resolves to this account, while the new email's index entry is
+// created so login/password-reset by the new address actually works.
 func (store AuthBrowserStore) UpdateUserEmail(_ context.Context, userID core.UserID, email auth.EmailAddress) auth.AccountMutationResult {
-	return store.updateUser(userID.String(), func(record *storedAuthUser) { record.Email = email.String() })
+	record, found, ok := getStoredAuthUserJSON(store.storage, authUserKey(userID.String()))
+	if !ok {
+		return auth.AccountMutationRejected{Reason: invalidState("user lookup failed")}
+	}
+	if !found {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
+	newEmailKey := authUserEmailKey(email.String())
+	taken, ok := emailIndexTaken(store.storage, newEmailKey)
+	if !ok {
+		return auth.AccountMutationRejected{Reason: invalidState("user email lookup failed")}
+	}
+	if taken {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "email address is already registered")}
+	}
+	oldEmailKey := authUserEmailKey(record.Email)
+	record.Email = email.String()
+	record.EmailVerifiedAt = 0
+	if !putStoredAuthUserJSON(store.storage, authUserKey(userID.String()), record) {
+		return auth.AccountMutationRejected{Reason: invalidState("update user failed")}
+	}
+	if !putStorageString(store.storage, newEmailKey, userID.String()) {
+		return auth.AccountMutationRejected{Reason: invalidState("update user email index failed")}
+	}
+	if oldEmailKey != newEmailKey && !putStorageString(store.storage, oldEmailKey, "") {
+		return auth.AccountMutationRejected{Reason: invalidState("free previous user email index failed")}
+	}
+	return auth.AccountMutationAccepted{}
 }
 
+// UpdatePassword mirrors internal/db's equivalent, which also revokes every
+// active refresh token for the user in the same statement - otherwise a
+// password change wouldn't actually end existing sessions.
 func (store AuthBrowserStore) UpdatePassword(_ context.Context, userID core.UserID, passwordHash auth.PasswordHash) auth.AccountMutationResult {
-	return store.updateUser(userID.String(), func(record *storedAuthUser) { record.PasswordHash = passwordHash.String() })
+	result := store.updateUser(userID.String(), func(record *storedAuthUser) { record.PasswordHash = passwordHash.String() })
+	if _, matched := result.(auth.AccountMutationAccepted); !matched {
+		return result
+	}
+	if !store.revokeAllSessionsForUser(userID.String()) {
+		return auth.AccountMutationRejected{Reason: invalidState("revoke account sessions failed")}
+	}
+	return auth.AccountMutationAccepted{}
 }
 
+// DeactivateUser mirrors internal/db's equivalent: tombstones the email (and
+// frees its index entry, matching UpdateUserEmail above), clears the
+// password hash so login can never succeed again, and revokes every active
+// session and account token - none of which the pre-fix version did, so a
+// deactivated demo user could keep refreshing access tokens indefinitely.
 func (store AuthBrowserStore) DeactivateUser(_ context.Context, userID core.UserID) auth.AccountMutationResult {
-	return store.updateUser(userID.String(), func(record *storedAuthUser) { record.Status = "deactivated" })
+	record, found, ok := getStoredAuthUserJSON(store.storage, authUserKey(userID.String()))
+	if !ok {
+		return auth.AccountMutationRejected{Reason: invalidState("user lookup failed")}
+	}
+	if !found {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
+	oldEmailKey := authUserEmailKey(record.Email)
+	record.Email = "deactivated+" + userID.String() + "@sharecrop.invalid"
+	record.EmailVerifiedAt = 0
+	record.PasswordHash = ""
+	record.Status = "deactivated"
+	if !putStoredAuthUserJSON(store.storage, authUserKey(userID.String()), record) {
+		return auth.AccountMutationRejected{Reason: invalidState("deactivate account failed")}
+	}
+	if !putStorageString(store.storage, oldEmailKey, "") {
+		return auth.AccountMutationRejected{Reason: invalidState("free previous user email index failed")}
+	}
+	if !store.revokeAllSessionsForUser(userID.String()) {
+		return auth.AccountMutationRejected{Reason: invalidState("revoke account sessions failed")}
+	}
+	if !store.revokeAllAccountTokensForUser(userID.String()) {
+		return auth.AccountMutationRejected{Reason: invalidState("revoke account tokens failed")}
+	}
+	return auth.AccountMutationAccepted{}
 }
 
 func (store AuthBrowserStore) CreateGuestSubject(_ context.Context, id core.GuestID) auth.StoreGuestResult {
@@ -332,7 +422,61 @@ func (store AuthBrowserStore) StoreRefreshToken(_ context.Context, record auth.R
 	if _, matched := indexResult.(stringIndexStored); !matched {
 		return auth.StoreRefreshTokenRejected{Reason: invalidState("update refresh token family index failed")}
 	}
+	if subjectKind == "user" {
+		userFamilyIndexResult := appendStringIndex(store.storage, authUserFamiliesIndexKey(subjectID), stored.FamilyID, "user refresh token family")
+		if _, matched := userFamilyIndexResult.(stringIndexStored); !matched {
+			return auth.StoreRefreshTokenRejected{Reason: invalidState("update user refresh token family index failed")}
+		}
+	}
 	return auth.StoreRefreshTokenAccepted{}
+}
+
+// revokeAllSessionsForUser revokes every refresh-token family ever issued to
+// userID (via authUserFamiliesIndexKey, populated by StoreRefreshToken),
+// mirroring internal/db's "update refresh_tokens set status = 'revoked'
+// where user_id = $1" - required so a password change or account
+// deactivation actually ends existing sessions instead of leaving them
+// silently valid until they'd have expired anyway.
+func (store AuthBrowserStore) revokeAllSessionsForUser(userID string) bool {
+	indexResult := loadStringIndex(store.storage, authUserFamiliesIndexKey(userID), "user refresh token family")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		return false
+	}
+	for _, familyID := range loaded.values {
+		if !store.revokeFamily(familyID) {
+			return false
+		}
+	}
+	return true
+}
+
+// revokeAllAccountTokensForUser revokes every currently-active account token
+// (password reset, email verification) for userID, mirroring internal/db's
+// "update account_tokens set status = 'revoked' where user_id = $1 and
+// status = 'active'".
+func (store AuthBrowserStore) revokeAllAccountTokensForUser(userID string) bool {
+	for _, kind := range knownAccountTokenKinds {
+		hash, found, ok := getStorageString(store.storage, authAccountTokenActiveKey(userID, kind.String()))
+		if !ok {
+			return false
+		}
+		if !found {
+			continue
+		}
+		token, tokenFound, tokenOK := getStoredAccountTokenJSON(store.storage, authAccountTokenKey(hash))
+		if !tokenOK {
+			return false
+		}
+		if !tokenFound || token.Status != "active" {
+			continue
+		}
+		token.Status = "revoked"
+		if !putStoredAccountTokenJSON(store.storage, authAccountTokenKey(hash), token) {
+			return false
+		}
+	}
+	return true
 }
 
 func (store AuthBrowserStore) RevokeRefreshFamily(_ context.Context, hash auth.RefreshTokenHash) auth.RevokeRefreshFamilyResult {

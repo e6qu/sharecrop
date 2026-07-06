@@ -58,6 +58,25 @@ func orgMembershipIndexKey(organizationID string) string {
 func orgActiveMembershipKey(organizationID string, userID string) string {
 	return "org:active_membership:" + organizationID + ":" + userID
 }
+
+// isActiveOrgMember reports whether userID currently holds an active
+// membership in organizationID. Shared by any browser store that needs to
+// verify org membership without going through org.Service (e.g. a
+// within-organization collectible transfer/award).
+func isActiveOrgMember(storage BrowserStorage, organizationID string, userID string) (bool, bool) {
+	membershipID, found, ok := getStorageString(storage, orgActiveMembershipKey(organizationID, userID))
+	if !ok {
+		return false, false
+	}
+	if !found {
+		return false, true
+	}
+	membership, membershipFound, membershipOK := getStoredMembershipJSON(storage, orgMembershipKey(membershipID))
+	if !membershipOK {
+		return false, false
+	}
+	return membershipFound && membership.Status == org.MembershipStatusActive.String(), true
+}
 func teamRecordKey(id string) string { return "team:record:" + id }
 func teamOrgIndexKey(organizationID string) string {
 	return "team:org_index:" + organizationID
