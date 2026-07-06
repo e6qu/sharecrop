@@ -429,12 +429,79 @@ func (service Service) DeactivateMember(ctx context.Context, actor auth.Subject,
 		return DeactivateMemberRejected{Reason: rejected.Reason}
 	}
 
+	targetRolesResult := service.store.FindMemberRoles(ctx, organizationID, userID)
+	targetRolesFound, targetFound := targetRolesResult.(MemberRolesFound)
+	if targetFound && containsRole(targetRolesFound.Roles, RoleOwner) {
+		if reason := service.requireOwnerTierActor(ctx, actor, organizationID); reason != nil {
+			return DeactivateMemberRejected{Reason: *reason}
+		}
+		if reason := service.requireNotLastActiveOwner(ctx, organizationID, userID); reason != nil {
+			return DeactivateMemberRejected{Reason: *reason}
+		}
+	}
+
 	storeResult := service.store.DeactivateMember(ctx, organizationID, userID)
 	if rejected, matched := storeResult.(DeactivateMemberStoreRejected); matched {
 		return DeactivateMemberRejected{Reason: rejected.Reason}
 	}
 
 	return MemberDeactivationAccepted{}
+}
+
+// requireOwnerTierActor gates an action that touches the owner role itself
+// (granting it, revoking it, or deactivating a current owner): PermissionManageMembers
+// alone (which RoleAdmin already holds) is not enough, since that would let an
+// admin promote themselves to owner or remove the org's actual owners. An org-wide
+// credential is deliberately not treated as owner-tier here even though it gets
+// full admin parity elsewhere (requirePermissionForActor) - owner-level trust is
+// reserved for a real member holding the role, not an API credential.
+func (service Service) requireOwnerTierActor(ctx context.Context, actor auth.Subject, organizationID core.OrganizationID) *core.DomainError {
+	userActor, isUser := actor.(auth.UserSubject)
+	if !isUser {
+		reason := core.NewDomainError(core.ErrorCodePermissionDenied, "only an organization owner can change ownership")
+		return &reason
+	}
+	rolesResult := service.store.FindMemberRoles(ctx, organizationID, userActor.ID)
+	rolesFound, matched := rolesResult.(MemberRolesFound)
+	if !matched || !containsRole(rolesFound.Roles, RoleOwner) {
+		reason := core.NewDomainError(core.ErrorCodePermissionDenied, "only an organization owner can change ownership")
+		return &reason
+	}
+	return nil
+}
+
+// requireNotLastActiveOwner rejects removing owner status from userID if they
+// are the organization's only remaining active owner, so an organization can
+// never be left without one. Limited to the first page of members (the
+// pagination maximum, 200) - sufficient in practice since owners are a small
+// subset of any organization's roster.
+func (service Service) requireNotLastActiveOwner(ctx context.Context, organizationID core.OrganizationID, excludeUserID core.UserID) *core.DomainError {
+	page := core.NewPage(200, 0).(core.PageAccepted).Value
+	membersResult := service.store.ListMembers(ctx, organizationID, page)
+	listed, matched := membersResult.(MembersListed)
+	if !matched {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "list organization members failed")
+		return &reason
+	}
+	for _, member := range listed.Values {
+		if member.UserID == excludeUserID || member.Status != MembershipStatusActive {
+			continue
+		}
+		if containsRole(member.Roles, RoleOwner) {
+			return nil
+		}
+	}
+	reason := core.NewDomainError(core.ErrorCodeConflict, "organization must have at least one owner")
+	return &reason
+}
+
+func containsRole(roles []Role, target Role) bool {
+	for _, role := range roles {
+		if role == target {
+			return true
+		}
+	}
+	return false
 }
 
 type UpdateMemberRolesResult interface {
@@ -460,6 +527,21 @@ func (service Service) UpdateMemberRoles(ctx context.Context, actor auth.Subject
 	}
 	if len(roles) == 0 {
 		return UpdateMemberRolesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization member roles are required")}
+	}
+
+	targetRolesResult := service.store.FindMemberRoles(ctx, organizationID, userID)
+	targetRolesFound, targetFound := targetRolesResult.(MemberRolesFound)
+	targetIsCurrentlyOwner := targetFound && containsRole(targetRolesFound.Roles, RoleOwner)
+	grantingOwner := containsRole(roles, RoleOwner)
+	if targetIsCurrentlyOwner || grantingOwner {
+		if reason := service.requireOwnerTierActor(ctx, actor, organizationID); reason != nil {
+			return UpdateMemberRolesRejected{Reason: *reason}
+		}
+	}
+	if targetIsCurrentlyOwner && !grantingOwner {
+		if reason := service.requireNotLastActiveOwner(ctx, organizationID, userID); reason != nil {
+			return UpdateMemberRolesRejected{Reason: *reason}
+		}
 	}
 
 	storeResult := service.store.UpdateMemberRoles(ctx, organizationID, userID, roles)

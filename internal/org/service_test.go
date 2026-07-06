@@ -44,6 +44,90 @@ func TestServiceDeniesProvisionWithoutPermission(t *testing.T) {
 	}
 }
 
+func TestServiceAdminCannotSelfPromoteToOwner(t *testing.T) {
+	store := newMemoryStore()
+	service := NewService(store)
+	owner := testUserSubject(t)
+	organization := createTestOrganization(t, service, owner)
+
+	admin := provisionTestMember(t, service, owner, organization, "admin@example.com", RoleAdmin)
+
+	result := service.UpdateMemberRoles(context.Background(), admin, organization, admin.ID, []Role{RoleAdmin, RoleOwner})
+	if _, matched := result.(UpdateMemberRolesRejected); !matched {
+		t.Fatalf("admin self-promote to owner result = %T, want UpdateMemberRolesRejected", result)
+	}
+
+	// The real owner granting the same admin RoleOwner is allowed.
+	grantResult := service.UpdateMemberRoles(context.Background(), owner, organization, admin.ID, []Role{RoleAdmin, RoleOwner})
+	if _, matched := grantResult.(MemberRolesUpdatedResult); !matched {
+		t.Fatalf("owner grants owner role result = %T, want MemberRolesUpdatedResult", grantResult)
+	}
+}
+
+func TestServiceAdminCannotDemoteOrDeactivateOwner(t *testing.T) {
+	store := newMemoryStore()
+	service := NewService(store)
+	owner := testUserSubject(t)
+	organization := createTestOrganization(t, service, owner)
+	admin := provisionTestMember(t, service, owner, organization, "admin@example.com", RoleAdmin)
+
+	demoteResult := service.UpdateMemberRoles(context.Background(), admin, organization, owner.ID, []Role{RoleAdmin})
+	if _, matched := demoteResult.(UpdateMemberRolesRejected); !matched {
+		t.Fatalf("admin demotes owner result = %T, want UpdateMemberRolesRejected", demoteResult)
+	}
+
+	deactivateResult := service.DeactivateMember(context.Background(), admin, organization, owner.ID)
+	if _, matched := deactivateResult.(DeactivateMemberRejected); !matched {
+		t.Fatalf("admin deactivates owner result = %T, want DeactivateMemberRejected", deactivateResult)
+	}
+}
+
+func TestServiceCannotRemoveLastOwner(t *testing.T) {
+	store := newMemoryStore()
+	service := NewService(store)
+	owner := testUserSubject(t)
+	organization := createTestOrganization(t, service, owner)
+
+	demoteResult := service.UpdateMemberRoles(context.Background(), owner, organization, owner.ID, []Role{RoleAdmin})
+	if _, matched := demoteResult.(UpdateMemberRolesRejected); !matched {
+		t.Fatalf("demote last owner result = %T, want UpdateMemberRolesRejected", demoteResult)
+	}
+
+	deactivateResult := service.DeactivateMember(context.Background(), owner, organization, owner.ID)
+	if _, matched := deactivateResult.(DeactivateMemberRejected); !matched {
+		t.Fatalf("deactivate last owner result = %T, want DeactivateMemberRejected", deactivateResult)
+	}
+
+	// A second active owner makes demoting/deactivating the first one fine.
+	second := provisionTestMember(t, service, owner, organization, "co-owner@example.com", RoleOwner)
+	okDemote := service.UpdateMemberRoles(context.Background(), owner, organization, owner.ID, []Role{RoleAdmin})
+	if _, matched := okDemote.(MemberRolesUpdatedResult); !matched {
+		t.Fatalf("demote owner with a co-owner present result = %T, want MemberRolesUpdatedResult", okDemote)
+	}
+	_ = second
+}
+
+func createTestOrganization(t *testing.T, service Service, owner auth.UserSubject) core.OrganizationID {
+	t.Helper()
+	name := acceptedOrganizationName(t, "Sharecrop Labs")
+	result := service.CreateOrganization(context.Background(), owner, name)
+	created, matched := result.(OrganizationCreated)
+	if !matched {
+		t.Fatalf("create organization result = %T, want OrganizationCreated", result)
+	}
+	return created.Value.ID
+}
+
+func provisionTestMember(t *testing.T, service Service, actor auth.UserSubject, organization core.OrganizationID, email string, roles ...Role) auth.UserSubject {
+	t.Helper()
+	result := service.ProvisionMember(context.Background(), actor, organization, acceptedEmail(t, email), roles)
+	provisioned, matched := result.(MemberProvisioned)
+	if !matched {
+		t.Fatalf("provision member result = %T, want MemberProvisioned", result)
+	}
+	return auth.UserSubject{ID: provisioned.Value.UserID}
+}
+
 func TestServicePassesSelectorQueriesToStore(t *testing.T) {
 	store := newMemoryStore()
 	service := NewService(store)
@@ -152,8 +236,14 @@ func (store *memoryStore) CreateStandaloneTeam(context.Context, core.TeamID, cor
 	return CreateTeamStoreAccepted{}
 }
 
-func (store *memoryStore) ListMembers(context.Context, core.OrganizationID, core.Page) ListMembersResult {
-	return MembersListed{Values: []OrganizationMember{}}
+func (store *memoryStore) ListMembers(_ context.Context, organizationID core.OrganizationID, _ core.Page) ListMembersResult {
+	values := make([]OrganizationMember, 0)
+	for _, member := range store.members {
+		if member.OrganizationID == organizationID {
+			values = append(values, member)
+		}
+	}
+	return MembersListed{Values: values}
 }
 
 func (store *memoryStore) AddTeamMember(context.Context, core.TeamID, core.UserID) AddTeamMemberStoreResult {

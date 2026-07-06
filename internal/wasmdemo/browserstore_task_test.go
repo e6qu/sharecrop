@@ -27,6 +27,10 @@ func (noopOrganizationPermissions) CheckTeamMembership(context.Context, core.Tea
 	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "not implemented in this test")}
 }
 
+func (noopOrganizationPermissions) GetTeam(context.Context, auth.Subject, core.TeamID) org.GetTeamResult {
+	return org.GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "not implemented in this test")}
+}
+
 func testTaskTitle(t *testing.T, raw string) task.Title {
 	t.Helper()
 	result := task.NewTitle(raw)
