@@ -90,6 +90,9 @@ func taskOrganizationVisibilityIndexKey(organizationID string) string {
 func taskTeamVisibilityIndexKey(teamID string) string {
 	return "task:team_visibility_index:" + teamID
 }
+func taskUserVisibilityIndexKey(userID string) string {
+	return "task:user_visibility_index:" + userID
+}
 
 // putStorageString and getStorageString are the shared, type-free byte-level
 // primitives every typed put*/get* helper below builds on - kept to plain

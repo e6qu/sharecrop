@@ -94,6 +94,11 @@ func (store TaskBrowserStore) CreateTask(_ context.Context, seriesID core.TaskSe
 			return task.CreateTaskStoreRejected{Reason: invalidState("update team task index failed")}
 		}
 	}
+	if visibilityUserID != "" {
+		if _, matched := appendStringIndex(store.storage, taskUserVisibilityIndexKey(visibilityUserID), record.ID, "task").(stringIndexStored); !matched {
+			return task.CreateTaskStoreRejected{Reason: invalidState("update user visibility task index failed")}
+		}
+	}
 	if record.SeriesID != "" {
 		if _, matched := appendStringIndex(store.storage, taskSeriesTaskIndexKey(record.SeriesID), record.ID, "task series task").(stringIndexStored); !matched {
 			return task.CreateTaskStoreRejected{Reason: invalidState("update task series task index failed")}
@@ -221,12 +226,20 @@ func (store TaskBrowserStore) ListTasks(_ context.Context, scope task.ListScope,
 		}
 		candidateIDs = loaded.values
 	case task.UserListScope:
-		indexResult := loadStringIndex(store.storage, taskUserIndexKey(typed.UserID.String()), "task")
-		loaded, matched := indexResult.(stringIndexLoaded)
-		if !matched {
-			return task.ListTasksStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
+		// Matches internal/db: visibility.user_id = @user_id or created_by =
+		// @user_id - a task shared directly with this user, not just one
+		// they created, belongs in "their" tasks.
+		createdResult := loadStringIndex(store.storage, taskUserIndexKey(typed.UserID.String()), "task")
+		created, createdMatched := createdResult.(stringIndexLoaded)
+		if !createdMatched {
+			return task.ListTasksStoreRejected{Reason: invalidState(createdResult.(stringIndexRejected).reason)}
 		}
-		candidateIDs = loaded.values
+		sharedResult := loadStringIndex(store.storage, taskUserVisibilityIndexKey(typed.UserID.String()), "task")
+		shared, sharedMatched := sharedResult.(stringIndexLoaded)
+		if !sharedMatched {
+			return task.ListTasksStoreRejected{Reason: invalidState(sharedResult.(stringIndexRejected).reason)}
+		}
+		candidateIDs = unionStringSlices(created.values, shared.values)
 	case task.CreatorListScope:
 		indexResult := loadStringIndex(store.storage, taskUserIndexKey(typed.CreatorID.String()), "task")
 		loaded, matched := indexResult.(stringIndexLoaded)
@@ -274,13 +287,41 @@ func (store TaskBrowserStore) ListTasks(_ context.Context, scope task.ListScope,
 		if !passesTaskFilters(record, filters) {
 			continue
 		}
-		value, parseErr := parseStoredTaskRecord(record)
-		if parseErr != nil {
-			return task.ListTasksStoreRejected{Reason: *parseErr}
-		}
 		activeAssignee, assigneeErr := store.activeAssigneeForTask(id)
 		if assigneeErr != nil {
 			return task.ListTasksStoreRejected{Reason: *assigneeErr}
+		}
+		// Matches internal/db: an actively-reserved task is hidden from the
+		// public/team queue unless the viewer is exempt (already reserved it,
+		// created it, or the caller explicitly asked to include reserved
+		// tasks) - otherwise every reserved task would clutter the discovery
+		// queue for everyone else.
+		if typed, isPublic := scope.(task.PublicListScope); isPublic && !typed.IncludeReserved {
+			if _, isActive := activeAssignee.(task.NoActiveAssignee); !isActive {
+				userAssignee, isUserAssignee := activeAssignee.(task.ActiveUserAssignee)
+				reservedByViewer := isUserAssignee && userAssignee.UserID == typed.ViewerID
+				if !reservedByViewer && record.CreatedBy != typed.ViewerID.String() {
+					continue
+				}
+			}
+		}
+		if typed, isTeam := scope.(task.TeamListScope); isTeam && !typed.IncludeReserved {
+			if _, isActive := activeAssignee.(task.NoActiveAssignee); !isActive {
+				reservedByThisTeam := false
+				switch assignee := activeAssignee.(type) {
+				case task.ActiveTeamAssignee:
+					reservedByThisTeam = assignee.TeamID == typed.TeamID
+				case task.ActiveOrganizationTeamAssignee:
+					reservedByThisTeam = assignee.TeamID == typed.TeamID
+				}
+				if !reservedByThisTeam {
+					continue
+				}
+			}
+		}
+		value, parseErr := parseStoredTaskRecord(record)
+		if parseErr != nil {
+			return task.ListTasksStoreRejected{Reason: *parseErr}
 		}
 		if typed, isAssignee := scope.(task.AssigneeListScope); isAssignee {
 			userAssignee, isUserAssignee := activeAssignee.(task.ActiveUserAssignee)
@@ -302,6 +343,25 @@ func (store TaskBrowserStore) ListTasks(_ context.Context, scope task.ListScope,
 		end = len(values)
 	}
 	return task.ListTasksStoreAccepted{Values: values[start:end]}
+}
+
+// unionStringSlices merges two id slices, preserving first-seen order and
+// dropping duplicates - used where a task can qualify for a list scope via
+// more than one index (e.g. UserListScope: created by this user or visible
+// to them).
+func unionStringSlices(first []string, second []string) []string {
+	seen := make(map[string]bool, len(first)+len(second))
+	merged := make([]string, 0, len(first)+len(second))
+	for _, values := range [][]string{first, second} {
+		for _, value := range values {
+			if seen[value] {
+				continue
+			}
+			seen[value] = true
+			merged = append(merged, value)
+		}
+	}
+	return merged
 }
 
 func passesTaskFilters(record storedTaskRecord, filters task.ListFilters) bool {
@@ -500,6 +560,25 @@ func parseStoredReservation(record storedReservation) (task.Reservation, *core.D
 	return task.Reservation{ID: id.Value, TaskID: taskID.Value, Assignee: assignee, State: state.Value, RequestedBy: requestedBy.Value}, nil
 }
 
+// taskSeriesBlocksExecution mirrors internal/db's method of the same name:
+// a task belonging to a series that is not currently published cannot be
+// reserved or submitted to. A standalone task (no series) is never blocked.
+func taskSeriesBlocksExecution(storage BrowserStorage, seriesID string) *core.DomainError {
+	if seriesID == "" {
+		return nil
+	}
+	series, found, ok := getStoredSeriesJSON(storage, seriesRecordKey(seriesID))
+	if !ok {
+		reason := invalidState("check task series state failed")
+		return &reason
+	}
+	if !found || series.State != task.SeriesStatePublished.String() {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "the task's series is not published")
+		return &reason
+	}
+	return nil
+}
+
 func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID core.TaskReservationID, command task.ReservationCommand) task.CreateReservationStoreResult {
 	record, found, err := loadStoredTaskRecord(store.storage, command.TaskID.String())
 	if err != nil {
@@ -510,6 +589,9 @@ func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID
 	}
 	if record.State != task.StateOpen.String() {
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can be reserved")}
+	}
+	if blocked := taskSeriesBlocksExecution(store.storage, record.SeriesID); blocked != nil {
+		return task.CreateReservationStoreRejected{Reason: *blocked}
 	}
 
 	existing, existingErr := store.loadReservations(command.TaskID.String())
@@ -607,6 +689,9 @@ func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, task
 	if !found {
 		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
+	if blocked := taskSeriesBlocksExecution(store.storage, record.SeriesID); blocked != nil {
+		return task.SubmissionEligibilityRejected{Reason: *blocked}
+	}
 	if record.Participation == task.ParticipationPolicyOpen.String() {
 		return task.SubmissionEligible{}
 	}
@@ -618,11 +703,41 @@ func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, task
 		if reservation.State != task.ReservationStateActive {
 			continue
 		}
-		if userAssignee, matched := reservation.Assignee.(task.UserAssignee); matched && userAssignee.UserID == submitterID {
-			return task.SubmissionEligible{}
+		switch assignee := reservation.Assignee.(type) {
+		case task.UserAssignee:
+			if assignee.UserID == submitterID {
+				return task.SubmissionEligible{}
+			}
+		case task.OrganizationTeamAssignee:
+			if isTeamMember(store.storage, assignee.TeamID.String(), submitterID.String()) {
+				return task.SubmissionEligible{}
+			}
+		case task.TeamAssignee:
+			if isTeamMember(store.storage, assignee.TeamID.String(), submitterID.String()) {
+				return task.SubmissionEligible{}
+			}
 		}
 	}
 	return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task requires an active reservation for the submitter")}
+}
+
+// isTeamMember reports whether userID is recorded as a member of teamID,
+// mirroring internal/db's team_members join used by
+// CheckSubmissionEligibility for a team/organization-team reservation - a
+// submission is eligible from every member of the team the reservation is
+// held by, not just the literal requester.
+func isTeamMember(storage BrowserStorage, teamID string, userID string) bool {
+	indexResult := loadStringIndex(storage, teamMembersKey(teamID), "team member")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		return false
+	}
+	for _, memberID := range loaded.values {
+		if memberID == userID {
+			return true
+		}
+	}
+	return false
 }
 
 // Task series live in browserstore_task_series.go. Series comments below -

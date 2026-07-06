@@ -246,6 +246,61 @@ func TestAuthBrowserStoreDeactivateAccountBlocksLogin(t *testing.T) {
 	}
 }
 
+func TestAuthBrowserStoreChangePasswordRevokesExistingSessions(t *testing.T) {
+	service, _ := newTestAuthService(t)
+	ctx := context.Background()
+	email := testEmail(t, "person@example.com")
+	registered := service.Register(ctx, email, testPassword(t, "correct horse battery staple")).(auth.RegisterAccepted)
+
+	service.ChangePassword(ctx, registered.Subject.ID, testPassword(t, "correct horse battery staple"), testPassword(t, "a brand new password"))
+
+	refreshResult := service.Refresh(ctx, registered.RefreshToken)
+	if _, matched := refreshResult.(auth.RefreshRejected); !matched {
+		t.Fatalf("refresh with pre-password-change token: want RefreshRejected (session revoked), got %#v", refreshResult)
+	}
+}
+
+func TestAuthBrowserStoreDeactivateAccountRevokesExistingSessions(t *testing.T) {
+	service, _ := newTestAuthService(t)
+	ctx := context.Background()
+	email := testEmail(t, "person@example.com")
+	registered := service.Register(ctx, email, testPassword(t, "correct horse battery staple")).(auth.RegisterAccepted)
+
+	service.DeactivateAccount(ctx, registered.Subject.ID)
+
+	refreshResult := service.Refresh(ctx, registered.RefreshToken)
+	if _, matched := refreshResult.(auth.RefreshRejected); !matched {
+		t.Fatalf("refresh after deactivate: want RefreshRejected (session revoked), got %#v", refreshResult)
+	}
+}
+
+func TestAuthBrowserStoreUpdateEmailFreesOldEmailAndRegistersNew(t *testing.T) {
+	service, _ := newTestAuthService(t)
+	ctx := context.Background()
+	oldEmail := testEmail(t, "person@example.com")
+	newEmail := testEmail(t, "person-new@example.com")
+	password := testPassword(t, "correct horse battery staple")
+	registered := service.Register(ctx, oldEmail, password).(auth.RegisterAccepted)
+
+	changeResult := service.UpdateProfile(ctx, registered.Subject.ID, newEmail)
+	if _, matched := changeResult.(auth.AccountActionAccepted); !matched {
+		t.Fatalf("change email: want AccountActionAccepted, got %#v", changeResult)
+	}
+
+	if _, matched := service.Login(ctx, oldEmail, password).(auth.LoginRejected); !matched {
+		t.Fatalf("login with old email after change: want LoginRejected")
+	}
+	if _, matched := service.Login(ctx, newEmail, password).(auth.LoginAccepted); !matched {
+		t.Fatalf("login with new email after change: want LoginAccepted")
+	}
+
+	// The freed old email is available for a brand new registration.
+	reregisterResult := service.Register(ctx, oldEmail, testPassword(t, "another password entirely"))
+	if _, matched := reregisterResult.(auth.RegisterAccepted); !matched {
+		t.Fatalf("register with freed old email: want RegisterAccepted, got %#v", reregisterResult)
+	}
+}
+
 func TestAuthBrowserStorePasswordResetFlow(t *testing.T) {
 	service, _ := newTestAuthService(t)
 	ctx := context.Background()

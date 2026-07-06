@@ -37,6 +37,13 @@ type OrganizationPermissions interface {
 	CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck
 	CheckOrganizationTeamMembership(context.Context, core.OrganizationID, core.TeamID, core.UserID) org.PermissionCheck
 	CheckTeamMembership(context.Context, core.TeamID, core.UserID) org.PermissionCheck
+	// GetTeam mirrors org.Service.GetTeam's own view-access policy (team
+	// membership, team ownership, or - for an organization-owned team - plain
+	// active membership in the owning organization). TeamListScope reuses it
+	// rather than the narrower CheckTeamMembership so GET /api/tasks?scope=team
+	// enforces exactly what GET /api/teams/{id}/work already enforces, instead
+	// of leaving the former ungated (a confirmed cross-tenant listing bypass).
+	GetTeam(context.Context, auth.Subject, core.TeamID) org.GetTeamResult
 }
 
 // TaskCredentialIssuer mints a narrowly-scoped agent credential restricted to
@@ -903,6 +910,10 @@ func (service Service) requireListPermission(ctx context.Context, actor auth.Sub
 	case OrganizationListScope:
 		return listPermissionResultFromDecision(authz.RequireOrganizationAccess(ctx, actor, typed.OrganizationID, service.organizationPermissions, org.PermissionCreateOrganizationTask, core.ErrorCodePermissionDenied, "task list access denied"))
 	case TeamListScope:
+		teamResult := service.organizationPermissions.GetTeam(ctx, actor, typed.TeamID)
+		if rejected, matched := teamResult.(org.GetTeamRejected); matched {
+			return listPermissionRejected{reason: rejected.Reason}
+		}
 		return listPermissionAccepted{}
 	case CreatorListScope:
 		return listPermissionAccepted{}

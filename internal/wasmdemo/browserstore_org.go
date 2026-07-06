@@ -58,6 +58,34 @@ func orgMembershipIndexKey(organizationID string) string {
 func orgActiveMembershipKey(organizationID string, userID string) string {
 	return "org:active_membership:" + organizationID + ":" + userID
 }
+
+// orgAnyMembershipKey points to a (org, user) pair's membership id
+// regardless of its current status, mirroring the real store's
+// `organization_memberships_unique_user` constraint (one membership row per
+// (organization_id, user_id) ever, active or not) - unlike
+// orgActiveMembershipKey, this is never cleared by deactivation.
+func orgAnyMembershipKey(organizationID string, userID string) string {
+	return "org:any_membership:" + organizationID + ":" + userID
+}
+
+// isActiveOrgMember reports whether userID currently holds an active
+// membership in organizationID. Shared by whichever browser store needs to
+// verify org membership without going through org.Service (e.g. a
+// within-organization collectible transfer/award).
+func isActiveOrgMember(storage BrowserStorage, organizationID string, userID string) (bool, bool) {
+	membershipID, found, ok := getStorageString(storage, orgActiveMembershipKey(organizationID, userID))
+	if !ok {
+		return false, false
+	}
+	if !found {
+		return false, true
+	}
+	membership, membershipFound, membershipOK := getStoredMembershipJSON(storage, orgMembershipKey(membershipID))
+	if !membershipOK {
+		return false, false
+	}
+	return membershipFound && membership.Status == org.MembershipStatusActive.String(), true
+}
 func teamRecordKey(id string) string { return "team:record:" + id }
 func teamOrgIndexKey(organizationID string) string {
 	return "team:org_index:" + organizationID
@@ -186,6 +214,9 @@ func (store OrgBrowserStore) saveMembership(membership storedMembership) bool {
 		return false
 	}
 	if !putStorageString(store.storage, orgActiveMembershipKey(membership.OrganizationID, membership.UserID), membership.ID) {
+		return false
+	}
+	if !putStorageString(store.storage, orgAnyMembershipKey(membership.OrganizationID, membership.UserID), membership.ID) {
 		return false
 	}
 	return true
@@ -387,6 +418,13 @@ func (store OrgBrowserStore) ProvisionMember(_ context.Context, membershipID cor
 	}
 	if !found {
 		return org.ProvisionMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "user was not found for email address")}
+	}
+	_, alreadyMember, ok := getStorageString(store.storage, orgAnyMembershipKey(organizationID.String(), userID))
+	if !ok {
+		return org.ProvisionMemberStoreRejected{Reason: invalidState("check existing organization membership failed")}
+	}
+	if alreadyMember {
+		return org.ProvisionMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "user is already a member of this organization")}
 	}
 
 	rawRoles := make([]string, len(roles))

@@ -107,6 +107,48 @@ func TestOrgBrowserStoreProvisionMemberByEmail(t *testing.T) {
 	}
 }
 
+func TestOrgBrowserStoreProvisionMemberRejectsDuplicate(t *testing.T) {
+	orgService, authService, _ := newOrgTestEnv(t)
+	ctx := context.Background()
+	ownerEmail := testEmail(t, "owner@example.com")
+	ownerRegistered := authService.Register(ctx, ownerEmail, testPassword(t, "correct horse battery staple")).(auth.RegisterAccepted)
+	owner := auth.UserSubject{ID: ownerRegistered.Subject.ID}
+
+	memberEmail := testEmail(t, "member@example.com")
+	authService.Register(ctx, memberEmail, testPassword(t, "correct horse battery staple"))
+
+	organization := orgService.CreateOrganization(ctx, owner, testOrgName(t, "Field Labs")).(org.OrganizationCreated)
+	orgService.ProvisionMember(ctx, owner, organization.Value.ID, memberEmail, []org.Role{org.RoleMember})
+
+	duplicateResult := orgService.ProvisionMember(ctx, owner, organization.Value.ID, memberEmail, []org.Role{org.RoleMember})
+	if _, matched := duplicateResult.(org.ProvisionMemberRejected); !matched {
+		t.Fatalf("provision already-member email: want ProvisionMemberRejected, got %#v", duplicateResult)
+	}
+}
+
+func TestOrgBrowserStoreProvisionMemberRejectsReprovisioningDeactivatedMember(t *testing.T) {
+	orgService, authService, _ := newOrgTestEnv(t)
+	ctx := context.Background()
+	ownerEmail := testEmail(t, "owner@example.com")
+	ownerRegistered := authService.Register(ctx, ownerEmail, testPassword(t, "correct horse battery staple")).(auth.RegisterAccepted)
+	owner := auth.UserSubject{ID: ownerRegistered.Subject.ID}
+
+	memberEmail := testEmail(t, "member@example.com")
+	memberRegistered := authService.Register(ctx, memberEmail, testPassword(t, "correct horse battery staple")).(auth.RegisterAccepted)
+
+	organization := orgService.CreateOrganization(ctx, owner, testOrgName(t, "Field Labs")).(org.OrganizationCreated)
+	orgService.ProvisionMember(ctx, owner, organization.Value.ID, memberEmail, []org.Role{org.RoleMember})
+	orgService.DeactivateMember(ctx, owner, organization.Value.ID, memberRegistered.Subject.ID)
+
+	// Even a deactivated membership can't be re-provisioned - it must be
+	// reactivated via role updates, matching the real store's uniqueness
+	// constraint (one membership row per (organization, user), whatever status).
+	reprovisionResult := orgService.ProvisionMember(ctx, owner, organization.Value.ID, memberEmail, []org.Role{org.RoleMember})
+	if _, matched := reprovisionResult.(org.ProvisionMemberRejected); !matched {
+		t.Fatalf("re-provision deactivated member: want ProvisionMemberRejected, got %#v", reprovisionResult)
+	}
+}
+
 func TestOrgBrowserStoreProvisionMemberRejectsUnknownEmail(t *testing.T) {
 	orgService, authService, _ := newOrgTestEnv(t)
 	ctx := context.Background()

@@ -208,6 +208,48 @@ func TestServiceReserveRejectsOrganizationTeamNonMember(t *testing.T) {
 	}
 }
 
+func TestServiceListRejectsTeamScopeForNonMember(t *testing.T) {
+	store := newTaskMemoryStore()
+	permissions := newTaskPermissionStore()
+	service := NewService(store, permissions, nil)
+	outsider := testUserSubject(t)
+	teamID := testTeamID(t)
+
+	page := core.NewPage(20, 0).(core.PageAccepted).Value
+
+	result := service.List(context.Background(), outsider, TeamListScope{TeamID: teamID}, ListFilters{}, page)
+	if _, matched := result.(ListRejected); !matched {
+		t.Fatalf("non-member team list result = %T, want ListRejected", result)
+	}
+
+	permissions.addTeamMember(testOrganizationID(t), teamID, outsider.ID)
+	memberResult := service.List(context.Background(), outsider, TeamListScope{TeamID: teamID}, ListFilters{}, page)
+	if _, matched := memberResult.(TasksListed); !matched {
+		t.Fatalf("member team list result = %T, want TasksListed", memberResult)
+	}
+}
+
+func TestServiceListTeamScopeForOrgCredentialRequiresOwningOrg(t *testing.T) {
+	store := newTaskMemoryStore()
+	permissions := newTaskPermissionStore()
+	service := NewService(store, permissions, nil)
+	owningOrg := testOrganizationID(t)
+	otherOrg := testOrganizationID(t)
+	teamID := testTeamID(t)
+	permissions.addTeamMember(owningOrg, teamID, testUserSubject(t).ID)
+	page := core.NewPage(20, 0).(core.PageAccepted).Value
+
+	unrelatedResult := service.List(context.Background(), auth.OrgSubject{ID: otherOrg}, TeamListScope{TeamID: teamID}, ListFilters{}, page)
+	if _, matched := unrelatedResult.(ListRejected); !matched {
+		t.Fatalf("unrelated org-credential team list result = %T, want ListRejected", unrelatedResult)
+	}
+
+	owningResult := service.List(context.Background(), auth.OrgSubject{ID: owningOrg}, TeamListScope{TeamID: teamID}, ListFilters{}, page)
+	if _, matched := owningResult.(TasksListed); !matched {
+		t.Fatalf("owning org-credential team list result = %T, want TasksListed", owningResult)
+	}
+}
+
 type taskMemoryStore struct {
 	tasks        map[string]Task
 	reservations map[string]Reservation
@@ -446,6 +488,29 @@ func (store *taskPermissionStore) CheckTeamMembership(_ context.Context, teamID 
 		}
 	}
 	return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team membership denied")}
+}
+
+// GetTeam is a minimal fake of org.Service.GetTeam's view-access policy: a
+// user actor may view a team recorded in teamGrants; an org actor may view it
+// if the same organization is recorded against that team.
+func (store *taskPermissionStore) GetTeam(_ context.Context, actor auth.Subject, teamID core.TeamID) org.GetTeamResult {
+	for grantIndex := range store.teamGrants {
+		grant := store.teamGrants[grantIndex]
+		if grant.teamID != teamID {
+			continue
+		}
+		switch typed := actor.(type) {
+		case auth.UserSubject:
+			if grant.userID == typed.ID {
+				return org.TeamGot{Team: org.Team{ID: teamID}}
+			}
+		case auth.OrgSubject:
+			if grant.organizationID == typed.ID {
+				return org.TeamGot{Team: org.Team{ID: teamID}}
+			}
+		}
+	}
+	return org.GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "team access denied")}
 }
 
 func testCreateCommand(t *testing.T, actor auth.UserSubject, owner Owner, visibility Visibility) CreateCommand {

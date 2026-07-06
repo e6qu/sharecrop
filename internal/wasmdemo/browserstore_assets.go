@@ -6,7 +6,6 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
-	"github.com/e6qu/sharecrop/internal/org"
 )
 
 // AssetBrowserStore implements assets.Store against BrowserStorage. Its
@@ -310,11 +309,16 @@ func (store AssetBrowserStore) payOutHeldCollectibleReward(taskID string, worker
 		if !found || collectible.State != assets.CollectibleStateEscrowed.String() {
 			continue
 		}
+		previousOwnerKind, previousOwnerID := collectible.OwnerKind, collectible.OwnerID
 		collectible.State = assets.CollectibleStateAwarded.String()
 		collectible.OwnerKind = assets.CollectibleOwnerKindUser
 		collectible.OwnerID = workerUserID
 		if !store.saveCollectible(collectible) {
 			reason := invalidState("award collectible failed")
+			return nil, &reason
+		}
+		if !store.moveCollectibleOwnerIndex(collectible.ID, previousOwnerKind, previousOwnerID, collectible.OwnerKind, collectible.OwnerID) {
+			reason := invalidState("update collectible index failed")
 			return nil, &reason
 		}
 		idResult := core.ParseCollectibleID(collectibleID)
@@ -358,17 +362,53 @@ func (store AssetBrowserStore) GiftCollectible(_ context.Context, command assets
 	if denied, matched := assets.AllowsTip(policyAccepted.Value).(assets.RewardDenied); matched {
 		return assets.GiftRejected{Reason: denied.Reason}
 	}
+	if policyAccepted.Value == assets.TransferPolicyTransferableWithinOrg {
+		if collectible.OrganizationID == "" {
+			return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "within-organization collectible has no organization")}
+		}
+		for _, userID := range []string{command.FromUserID.String(), command.ToUserID.String()} {
+			active, ok := isActiveOrgMember(store.storage, collectible.OrganizationID, userID)
+			if !ok {
+				return assets.GiftRejected{Reason: invalidState("check collectible organization membership failed")}
+			}
+			if !active {
+				return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "within-organization collectible can only be tipped between organization members")}
+			}
+		}
+	}
 
+	previousOwnerKind, previousOwnerID := collectible.OwnerKind, collectible.OwnerID
 	collectible.OwnerKind = assets.CollectibleOwnerKindUser
 	collectible.OwnerID = command.ToUserID.String()
 	if !store.saveCollectible(collectible) {
 		return assets.GiftRejected{Reason: invalidState("transfer collectible failed")}
+	}
+	if !store.moveCollectibleOwnerIndex(collectible.ID, previousOwnerKind, previousOwnerID, collectible.OwnerKind, collectible.OwnerID) {
+		return assets.GiftRejected{Reason: invalidState("update collectible index failed")}
 	}
 	value, parseErr := parseStoredCollectible(collectible)
 	if parseErr != nil {
 		return assets.GiftRejected{Reason: *parseErr}
 	}
 	return assets.CollectibleGifted{Value: value}
+}
+
+// moveCollectibleOwnerIndex keeps collectibleOwnerIndexKey in sync with a
+// collectible's current owner: every method that changes ownership
+// (GiftCollectible, AwardOrganizationCollectible, reward payout) must remove
+// the id from its previous owner's index and add it to the new owner's,
+// otherwise the collectible silently disappears from every owner's listing
+// (listByOwner filters out index entries whose current owner has since
+// changed - it never re-homes them).
+func (store AssetBrowserStore) moveCollectibleOwnerIndex(collectibleID string, previousOwnerKind string, previousOwnerID string, newOwnerKind string, newOwnerID string) bool {
+	if previousOwnerKind == newOwnerKind && previousOwnerID == newOwnerID {
+		return true
+	}
+	if !removeFromStringIndex(store.storage, collectibleOwnerIndexKey(previousOwnerKind, previousOwnerID), collectibleID) {
+		return false
+	}
+	_, matched := appendStringIndex(store.storage, collectibleOwnerIndexKey(newOwnerKind, newOwnerID), collectibleID, "collectible").(stringIndexStored)
+	return matched
 }
 
 func (store AssetBrowserStore) AwardOrganizationCollectible(_ context.Context, command assets.AwardOrganizationCollectibleStoreCommand) assets.GiftResult {
@@ -383,24 +423,23 @@ func (store AssetBrowserStore) AwardOrganizationCollectible(_ context.Context, c
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to award")}
 	}
 
-	membershipID, memberFound, ok := getStorageString(store.storage, orgActiveMembershipKey(command.OrganizationID.String(), command.RecipientUserID.String()))
+	isActiveMember, ok := isActiveOrgMember(store.storage, command.OrganizationID.String(), command.RecipientUserID.String())
 	if !ok {
 		return assets.GiftRejected{Reason: invalidState("check organization membership failed")}
-	}
-	isActiveMember := false
-	if memberFound {
-		membership, membershipFound, membershipOK := getStoredMembershipJSON(store.storage, orgMembershipKey(membershipID))
-		isActiveMember = membershipOK && membershipFound && membership.Status == org.MembershipStatusActive.String()
 	}
 	if !isActiveMember {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "recipient is not an active member of this organization")}
 	}
 
+	previousOwnerKind, previousOwnerID := collectible.OwnerKind, collectible.OwnerID
 	collectible.OwnerKind = assets.CollectibleOwnerKindUser
 	collectible.OwnerID = command.RecipientUserID.String()
 	collectible.OrganizationID = ""
 	if !store.saveCollectible(collectible) {
 		return assets.GiftRejected{Reason: invalidState("transfer organization collectible failed")}
+	}
+	if !store.moveCollectibleOwnerIndex(collectible.ID, previousOwnerKind, previousOwnerID, collectible.OwnerKind, collectible.OwnerID) {
+		return assets.GiftRejected{Reason: invalidState("update collectible index failed")}
 	}
 	value, parseErr := parseStoredCollectible(collectible)
 	if parseErr != nil {
