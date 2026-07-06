@@ -308,6 +308,101 @@ func TestTaskBrowserStoreSubmissionEligibleForAnyTeamMember(t *testing.T) {
 	}
 }
 
+func TestTaskBrowserStoreListTasksPublicScopeHidesReservedFromOthers(t *testing.T) {
+	taskService, _, _, _ := newTaskTestEnv(t)
+	ctx := context.Background()
+	owner := auth.UserSubject{ID: testUserID(t, "owner")}
+	reserver := auth.UserSubject{ID: testUserID(t, "reserver")}
+	outsider := auth.UserSubject{ID: testUserID(t, "outsider")}
+
+	created := taskService.Create(ctx, testCreateCommand(t, owner.ID, task.NoRewardSpec{}, task.ParticipationPolicyReservationRequired)).(task.TaskCreated)
+	taskService.Open(ctx, owner, created.Value.ID)
+	taskService.Reserve(ctx, reserver, created.Value.ID)
+
+	outsiderListResult := taskService.List(ctx, outsider, task.PublicListScope{ViewerID: outsider.ID}, task.NoListFilters(), testPage(t, 10, 0)).(task.TasksListed)
+	if len(outsiderListResult.Values) != 0 {
+		t.Fatalf("outsider's public list with a reserved task = %+v, want none", outsiderListResult.Values)
+	}
+
+	reserverListResult := taskService.List(ctx, reserver, task.PublicListScope{ViewerID: reserver.ID}, task.NoListFilters(), testPage(t, 10, 0)).(task.TasksListed)
+	if len(reserverListResult.Values) != 1 {
+		t.Fatalf("reserver's public list with their own reserved task = %+v, want one", reserverListResult.Values)
+	}
+
+	ownerListResult := taskService.List(ctx, owner, task.PublicListScope{ViewerID: owner.ID}, task.NoListFilters(), testPage(t, 10, 0)).(task.TasksListed)
+	if len(ownerListResult.Values) != 1 {
+		t.Fatalf("owner's public list with their own reserved task = %+v, want one", ownerListResult.Values)
+	}
+
+	includeReservedResult := taskService.List(ctx, outsider, task.PublicListScope{ViewerID: outsider.ID, IncludeReserved: true}, task.NoListFilters(), testPage(t, 10, 0)).(task.TasksListed)
+	if len(includeReservedResult.Values) != 1 {
+		t.Fatalf("outsider's public list with include_reserved = %+v, want one", includeReservedResult.Values)
+	}
+}
+
+func TestTaskBrowserStoreListTasksUserScopeIncludesSharedVisibility(t *testing.T) {
+	taskService, _, _, _ := newTaskTestEnv(t)
+	ctx := context.Background()
+	creator := auth.UserSubject{ID: testUserID(t, "creator")}
+	recipient := testUserID(t, "recipient")
+
+	command := testCreateCommand(t, creator.ID, task.NoRewardSpec{}, task.ParticipationPolicyOpen)
+	command.Visibility = task.UserVisibility{UserID: recipient}
+	created := taskService.Create(ctx, command).(task.TaskCreated)
+
+	recipientSubject := auth.UserSubject{ID: recipient}
+	listResult := taskService.List(ctx, recipientSubject, task.UserListScope{UserID: recipient}, task.NoListFilters(), testPage(t, 10, 0)).(task.TasksListed)
+	if len(listResult.Values) != 1 || listResult.Values[0].Task.ID != created.Value.ID {
+		t.Fatalf("recipient's user-scoped list = %+v, want just %v (shared, not created by them)", listResult.Values, created.Value.ID)
+	}
+}
+
+func TestTaskBrowserStoreListTasksTeamScopeHidesReservedByOtherTeam(t *testing.T) {
+	storage := newTestBrowserStorage()
+	ids := &counterLedgerIDs{}
+	taskStore := NewTaskBrowserStore(storage, ids)
+	taskService := task.NewService(taskStore, allowAllOrganizationPermissions{}, nil)
+	ctx := context.Background()
+	owner := auth.UserSubject{ID: testUserID(t, "owner")}
+	reserver := auth.UserSubject{ID: testUserID(t, "reserver")}
+	viewer := auth.UserSubject{ID: testUserID(t, "viewer")}
+	teamID := core.NewTeamID().(core.TeamIDCreated).Value
+	otherTeamID := core.NewTeamID().(core.TeamIDCreated).Value
+
+	command := testCreateCommand(t, owner.ID, task.NoRewardSpec{}, task.ParticipationPolicyReservationRequired)
+	command.Visibility = task.TeamVisibility{TeamID: teamID}
+	command.AssigneeScope = task.AssigneeScopeTeam
+	created := taskService.Create(ctx, command).(task.TaskCreated)
+	taskService.Open(ctx, owner, created.Value.ID)
+
+	// TeamVisibility view access is a separate, pre-existing, documented
+	// limitation (task.requireViewPermission denies it unconditionally in
+	// this release), so the reservation is written directly rather than via
+	// taskService.ReserveForTeam - this test is only exercising ListTasks'
+	// team-reservation-visibility filtering, not the view-permission gate.
+	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated).Value
+	reservation := storedReservation{
+		ID: reservationID.String(), TaskID: created.Value.ID.String(), AssigneeKind: task.AssigneeScopeTeam.String(),
+		AssigneeTeamID: otherTeamID.String(), State: task.ReservationStateActive.String(), RequestedByUser: reserver.ID.String(),
+	}
+	if !putStoredReservationJSON(storage, reservationRecordKey(reservation.ID), reservation) {
+		t.Fatalf("write reservation failed")
+	}
+	if _, matched := appendStringIndex(storage, reservationTaskIndexKey(created.Value.ID.String()), reservation.ID, "reservation").(stringIndexStored); !matched {
+		t.Fatalf("write reservation task index failed")
+	}
+
+	hiddenResult := taskService.List(ctx, viewer, task.TeamListScope{TeamID: teamID}, task.NoListFilters(), testPage(t, 10, 0)).(task.TasksListed)
+	if len(hiddenResult.Values) != 0 {
+		t.Fatalf("team's list with a task reserved by a different team = %+v, want none", hiddenResult.Values)
+	}
+
+	includeReservedResult := taskService.List(ctx, viewer, task.TeamListScope{TeamID: teamID, IncludeReserved: true}, task.NoListFilters(), testPage(t, 10, 0)).(task.TasksListed)
+	if len(includeReservedResult.Values) != 1 {
+		t.Fatalf("team's list with include_reserved = %+v, want one", includeReservedResult.Values)
+	}
+}
+
 func TestTaskBrowserStoreApprovalRequiredLifecycle(t *testing.T) {
 	taskService, _, _, _ := newTaskTestEnv(t)
 	ctx := context.Background()
