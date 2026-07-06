@@ -500,6 +500,25 @@ func parseStoredReservation(record storedReservation) (task.Reservation, *core.D
 	return task.Reservation{ID: id.Value, TaskID: taskID.Value, Assignee: assignee, State: state.Value, RequestedBy: requestedBy.Value}, nil
 }
 
+// taskSeriesBlocksExecution mirrors internal/db's method of the same name:
+// a task belonging to a series that is not currently published cannot be
+// reserved or submitted to. A standalone task (no series) is never blocked.
+func taskSeriesBlocksExecution(storage BrowserStorage, seriesID string) *core.DomainError {
+	if seriesID == "" {
+		return nil
+	}
+	series, found, ok := getStoredSeriesJSON(storage, seriesRecordKey(seriesID))
+	if !ok {
+		reason := invalidState("check task series state failed")
+		return &reason
+	}
+	if !found || series.State != task.SeriesStatePublished.String() {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "the task's series is not published")
+		return &reason
+	}
+	return nil
+}
+
 func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID core.TaskReservationID, command task.ReservationCommand) task.CreateReservationStoreResult {
 	record, found, err := loadStoredTaskRecord(store.storage, command.TaskID.String())
 	if err != nil {
@@ -510,6 +529,9 @@ func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID
 	}
 	if record.State != task.StateOpen.String() {
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only open tasks can be reserved")}
+	}
+	if blocked := taskSeriesBlocksExecution(store.storage, record.SeriesID); blocked != nil {
+		return task.CreateReservationStoreRejected{Reason: *blocked}
 	}
 
 	existing, existingErr := store.loadReservations(command.TaskID.String())
@@ -607,6 +629,9 @@ func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, task
 	if !found {
 		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
+	if blocked := taskSeriesBlocksExecution(store.storage, record.SeriesID); blocked != nil {
+		return task.SubmissionEligibilityRejected{Reason: *blocked}
+	}
 	if record.Participation == task.ParticipationPolicyOpen.String() {
 		return task.SubmissionEligible{}
 	}
@@ -618,11 +643,41 @@ func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, task
 		if reservation.State != task.ReservationStateActive {
 			continue
 		}
-		if userAssignee, matched := reservation.Assignee.(task.UserAssignee); matched && userAssignee.UserID == submitterID {
-			return task.SubmissionEligible{}
+		switch assignee := reservation.Assignee.(type) {
+		case task.UserAssignee:
+			if assignee.UserID == submitterID {
+				return task.SubmissionEligible{}
+			}
+		case task.OrganizationTeamAssignee:
+			if isTeamMember(store.storage, assignee.TeamID.String(), submitterID.String()) {
+				return task.SubmissionEligible{}
+			}
+		case task.TeamAssignee:
+			if isTeamMember(store.storage, assignee.TeamID.String(), submitterID.String()) {
+				return task.SubmissionEligible{}
+			}
 		}
 	}
 	return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task requires an active reservation for the submitter")}
+}
+
+// isTeamMember reports whether userID is recorded as a member of teamID,
+// mirroring internal/db's team_members join used by
+// CheckSubmissionEligibility for a team/organization-team reservation - a
+// submission is eligible from any member of the team the reservation is
+// held by, not just the literal requester.
+func isTeamMember(storage BrowserStorage, teamID string, userID string) bool {
+	indexResult := loadStringIndex(storage, teamMembersKey(teamID), "team member")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		return false
+	}
+	for _, memberID := range loaded.values {
+		if memberID == userID {
+			return true
+		}
+	}
+	return false
 }
 
 // Task series live in browserstore_task_series.go. Series comments below -

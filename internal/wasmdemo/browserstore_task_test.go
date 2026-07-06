@@ -31,6 +31,27 @@ func (noopOrganizationPermissions) GetTeam(context.Context, auth.Subject, core.T
 	return org.GetTeamRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "not implemented in this test")}
 }
 
+// allowAllOrganizationPermissions grants every check unconditionally, for
+// tests exercising a team-scoped reservation where the permission-layer
+// check (task.Service.ReserveForTeam etc.) isn't itself under test.
+type allowAllOrganizationPermissions struct{}
+
+func (allowAllOrganizationPermissions) CheckOrganizationPermission(context.Context, core.OrganizationID, core.UserID, org.Permission) org.PermissionCheck {
+	return org.PermissionGranted{}
+}
+
+func (allowAllOrganizationPermissions) CheckOrganizationTeamMembership(context.Context, core.OrganizationID, core.TeamID, core.UserID) org.PermissionCheck {
+	return org.PermissionGranted{}
+}
+
+func (allowAllOrganizationPermissions) CheckTeamMembership(context.Context, core.TeamID, core.UserID) org.PermissionCheck {
+	return org.PermissionGranted{}
+}
+
+func (allowAllOrganizationPermissions) GetTeam(context.Context, auth.Subject, core.TeamID) org.GetTeamResult {
+	return org.TeamGot{}
+}
+
 func testTaskTitle(t *testing.T, raw string) task.Title {
 	t.Helper()
 	result := task.NewTitle(raw)
@@ -207,6 +228,83 @@ func TestTaskBrowserStoreReservationRequiredLifecycle(t *testing.T) {
 	}
 	if cancelled.Value.State != task.ReservationStateCancelledByRequester {
 		t.Fatalf("cancelled reservation state = %v, want cancelled_by_requester", cancelled.Value.State)
+	}
+}
+
+func TestTaskBrowserStoreReservationBlockedByUnpublishedSeries(t *testing.T) {
+	taskService, _, _, _ := newTaskTestEnv(t)
+	ctx := context.Background()
+	owner := auth.UserSubject{ID: testUserID(t, "owner")}
+	worker := auth.UserSubject{ID: testUserID(t, "worker")}
+
+	titleResult := task.NewSeriesTitle("Batch A")
+	seriesTitle := titleResult.(task.SeriesTitleAccepted).Value
+	positionResult := task.NewSeriesPosition(1)
+	position := positionResult.(task.SeriesPositionAccepted).Value
+
+	command := testCreateCommand(t, owner.ID, task.NoRewardSpec{}, task.ParticipationPolicyReservationRequired)
+	command.Placement = task.NewSeriesPlacement{Title: seriesTitle, Position: position}
+	created := taskService.Create(ctx, command).(task.TaskCreated)
+	taskService.Open(ctx, owner, created.Value.ID)
+
+	// The series starts in draft (unpublished) state, so the task inside it
+	// cannot be reserved or submitted to yet.
+	reserveResult := taskService.Reserve(ctx, worker, created.Value.ID)
+	if _, matched := reserveResult.(task.ReservationRejected); !matched {
+		t.Fatalf("reserve task in unpublished series: want ReservationRejected, got %#v", reserveResult)
+	}
+	eligibilityResult := taskService.CheckSubmissionEligibility(ctx, created.Value.ID, worker.ID)
+	if _, matched := eligibilityResult.(task.SubmissionEligibilityRejected); !matched {
+		t.Fatalf("submission eligibility in unpublished series: want SubmissionEligibilityRejected, got %#v", eligibilityResult)
+	}
+
+	placement := created.Value.Placement.(task.ExistingSeriesPlacement)
+	publishResult := taskService.ChangeSeriesState(ctx, owner, placement.SeriesID, task.PublishSeriesState)
+	if _, matched := publishResult.(task.SeriesMutated); !matched {
+		t.Fatalf("publish series: want SeriesMutated, got %#v", publishResult)
+	}
+
+	reservedResult := taskService.Reserve(ctx, worker, created.Value.ID)
+	if _, matched := reservedResult.(task.ReservationCreated); !matched {
+		t.Fatalf("reserve task in published series: want ReservationCreated, got %#v", reservedResult)
+	}
+}
+
+func TestTaskBrowserStoreSubmissionEligibleForAnyTeamMember(t *testing.T) {
+	storage := newTestBrowserStorage()
+	ids := &counterLedgerIDs{}
+	taskStore := NewTaskBrowserStore(storage, ids)
+	taskService := task.NewService(taskStore, allowAllOrganizationPermissions{}, nil)
+	ctx := context.Background()
+	owner := auth.UserSubject{ID: testUserID(t, "owner")}
+	reservingMember := auth.UserSubject{ID: testUserID(t, "reserving-member")}
+	otherMember := testUserID(t, "other-team-member")
+	teamID := core.NewTeamID().(core.TeamIDCreated).Value
+
+	command := testCreateCommand(t, owner.ID, task.NoRewardSpec{}, task.ParticipationPolicyReservationRequired)
+	command.AssigneeScope = task.AssigneeScopeTeam
+	created := taskService.Create(ctx, command).(task.TaskCreated)
+	taskService.Open(ctx, owner, created.Value.ID)
+
+	reserveResult := taskService.ReserveForTeam(ctx, reservingMember, created.Value.ID, teamID)
+	if _, matched := reserveResult.(task.ReservationCreated); !matched {
+		t.Fatalf("reserve for team: want ReservationCreated, got %#v", reserveResult)
+	}
+
+	// Not yet a recorded team member: not eligible.
+	notYetEligible := taskService.CheckSubmissionEligibility(ctx, created.Value.ID, otherMember)
+	if _, matched := notYetEligible.(task.SubmissionEligibilityRejected); !matched {
+		t.Fatalf("submission eligibility before team membership: want SubmissionEligibilityRejected, got %#v", notYetEligible)
+	}
+
+	if _, matched := appendStringIndex(storage, teamMembersKey(teamID.String()), otherMember.String(), "team member").(stringIndexStored); !matched {
+		t.Fatalf("write team member index failed")
+	}
+
+	// Any team member (not just whoever made the reservation) is eligible.
+	eligibleResult := taskService.CheckSubmissionEligibility(ctx, created.Value.ID, otherMember)
+	if _, matched := eligibleResult.(task.SubmissionEligible); !matched {
+		t.Fatalf("submission eligibility for team member: want SubmissionEligible, got %#v", eligibleResult)
 	}
 }
 
