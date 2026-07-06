@@ -611,7 +611,7 @@ enterPageFields page state =
             -- ownerControlsCard) always target *this* task when submitted,
             -- regardless of whatever task was last selected on the standalone
             -- Funding/Collectibles pages.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, awardTaskId = taskId, awardMessage = Nothing }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, fundNonce = state.fundNonce + 1, awardTaskId = taskId, awardMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -944,14 +944,17 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | fundOrganizationId = value }), Cmd.none )
 
         FundClicked ->
-            let
-                bumped =
-                    Api.updateLoggedIn model (\state -> { state | fundNonce = state.fundNonce + 1 })
-            in
-            Api.withSession bumped (\state -> Api.fundTaskCommand bumped state)
+            -- fundNonce is deliberately NOT bumped here: it identifies one
+            -- funding *intent*, not one click. Reusing the same idempotency
+            -- key across retries (e.g. the user clicking again after a
+            -- network timeout that may have actually reached the server)
+            -- lets the server dedupe instead of double-charging. It only
+            -- advances when a new task is opened (see TaskDetailPage) or a
+            -- fund succeeds, both of which start a genuinely new intent.
+            Api.withSession model (\state -> Api.fundTaskCommand model state)
 
         FundReceived (Ok escrow) ->
-            ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (View.fundSuccessLabel escrow) }), Api.refreshLedgerAndTaskDetail model )
+            ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (View.fundSuccessLabel escrow), fundNonce = state.fundNonce + 1 }), Api.refreshLedgerAndTaskDetail model )
 
         FundReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (httpErrorLabel error) }), Cmd.none )

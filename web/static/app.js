@@ -8329,6 +8329,7 @@ var $author$project$Main$enterPageFields = F2(
 						detailError: $elm$core$Maybe$Nothing,
 						fundAmount: '',
 						fundMessage: $elm$core$Maybe$Nothing,
+						fundNonce: state.fundNonce + 1,
 						fundTaskId: taskId,
 						moderationDetails: '',
 						moderationMessage: $elm$core$Maybe$Nothing,
@@ -13158,19 +13159,11 @@ var $author$project$Main$update = F2(
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'FundClicked':
-				var bumped = A2(
-					$author$project$Sharecrop$Api$updateLoggedIn,
-					model,
-					function (state) {
-						return _Utils_update(
-							state,
-							{fundNonce: state.fundNonce + 1});
-					});
 				return A2(
 					$author$project$Sharecrop$Api$withSession,
-					bumped,
+					model,
 					function (state) {
-						return A2($author$project$Sharecrop$Api$fundTaskCommand, bumped, state);
+						return A2($author$project$Sharecrop$Api$fundTaskCommand, model, state);
 					});
 			case 'FundReceived':
 				if (msg.a.$ === 'Ok') {
@@ -13184,7 +13177,8 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										fundMessage: $elm$core$Maybe$Just(
-											$author$project$Sharecrop$View$fundSuccessLabel(escrow))
+											$author$project$Sharecrop$View$fundSuccessLabel(escrow)),
+										fundNonce: state.fundNonce + 1
 									});
 							}),
 						$author$project$Sharecrop$Api$refreshLedgerAndTaskDetail(model));
