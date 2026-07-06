@@ -312,12 +312,28 @@ type actorSubject struct {
 
 // listOrganizationCollectibles and listTeamCollectibles expose the collectibles
 // held by an organization or team (e.g. defaults an admin awarded to them).
+// This is a public "trophy case" view (any authenticated user, not just
+// members, can see what an org/team holds) - deliberately not membership-
+// gated, matching awardOrganizationCollectible's comment about defaults an
+// admin awarded being visible more broadly than the award action itself.
 func (server Server) listOrganizationCollectibles(w http.ResponseWriter, r *http.Request) {
-	server.listOwnerCollectibles(w, r, assets.CollectibleOwnerKindOrganization)
+	organizationIDResult := parseOrganizationPathValue(r)
+	organizationID, organizationMatched := organizationIDResult.(organizationIDAccepted)
+	if !organizationMatched {
+		writeError(w, http.StatusBadRequest, organizationIDResult.(organizationIDRejected).reason)
+		return
+	}
+	server.listOwnerCollectibles(w, r, assets.CollectibleOwnerKindOrganization, organizationID.value.String())
 }
 
 func (server Server) listTeamCollectibles(w http.ResponseWriter, r *http.Request) {
-	server.listOwnerCollectibles(w, r, assets.CollectibleOwnerKindTeam)
+	teamIDResult := core.ParseTeamID(r.PathValue("id"))
+	teamID, teamMatched := teamIDResult.(core.TeamIDCreated)
+	if !teamMatched {
+		writeDomainError(w, teamIDResult.(core.TeamIDRejected).Reason)
+		return
+	}
+	server.listOwnerCollectibles(w, r, assets.CollectibleOwnerKindTeam, teamID.Value.String())
 }
 
 func (server Server) awardOrganizationCollectible(w http.ResponseWriter, r *http.Request) {
@@ -367,15 +383,10 @@ func (server Server) awardOrganizationCollectible(w http.ResponseWriter, r *http
 	writeJSON(w, http.StatusOK, collectibleToResponse(awarded.Value))
 }
 
-func (server Server) listOwnerCollectibles(w http.ResponseWriter, r *http.Request, ownerKind string) {
+func (server Server) listOwnerCollectibles(w http.ResponseWriter, r *http.Request, ownerKind string, ownerID string) {
 	actorResult := server.requireUserSubject(r)
 	if _, matched := actorResult.(userSubjectAccepted); !matched {
 		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
-		return
-	}
-	ownerID := strings.TrimSpace(r.PathValue("id"))
-	if ownerID == "" {
-		writeError(w, http.StatusBadRequest, "owner id is required")
 		return
 	}
 

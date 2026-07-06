@@ -9,6 +9,9 @@ import (
 )
 
 func (server Server) register(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	requestResult := decodeAuthRequest(r)
 	requestAccepted, requestMatched := requestResult.(authRequestAccepted)
 	if !requestMatched {
@@ -112,6 +115,9 @@ func (server Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) guest(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	result := server.authService.CreateGuest(r.Context())
 	accepted, matched := result.(auth.GuestAccepted)
 	if !matched {
@@ -165,6 +171,9 @@ func (server Server) confirmEmailVerification(w http.ResponseWriter, r *http.Req
 }
 
 func (server Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	var request passwordResetRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "request body is invalid")
