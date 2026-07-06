@@ -142,7 +142,7 @@ func TestOrgBrowserStoreProvisionMemberRejectsReprovisioningDeactivatedMember(t 
 
 	// Even a deactivated membership can't be re-provisioned - it must be
 	// reactivated via role updates, matching the real store's uniqueness
-	// constraint (one membership row per (organization, user), any status).
+	// constraint (one membership row per (organization, user), whatever status).
 	reprovisionResult := orgService.ProvisionMember(ctx, owner, organization.Value.ID, memberEmail, []org.Role{org.RoleMember})
 	if _, matched := reprovisionResult.(org.ProvisionMemberRejected); !matched {
 		t.Fatalf("re-provision deactivated member: want ProvisionMemberRejected, got %#v", reprovisionResult)

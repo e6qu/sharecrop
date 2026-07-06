@@ -38,7 +38,7 @@ type OrganizationPermissions interface {
 	CheckOrganizationTeamMembership(context.Context, core.OrganizationID, core.TeamID, core.UserID) org.PermissionCheck
 	CheckTeamMembership(context.Context, core.TeamID, core.UserID) org.PermissionCheck
 	// GetTeam mirrors org.Service.GetTeam's own view-access policy (team
-	// membership, team ownership, or - for an organization-owned team - any
+	// membership, team ownership, or - for an organization-owned team - plain
 	// active membership in the owning organization). TeamListScope reuses it
 	// rather than the narrower CheckTeamMembership so GET /api/tasks?scope=team
 	// enforces exactly what GET /api/teams/{id}/work already enforces, instead

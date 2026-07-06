@@ -474,7 +474,7 @@ func (service Service) requireOwnerTierActor(ctx context.Context, actor auth.Sub
 // are the organization's only remaining active owner, so an organization can
 // never be left without one. Limited to the first page of members (the
 // pagination maximum, 200) - sufficient in practice since owners are a small
-// subset of any organization's roster.
+// subset of an organization's roster.
 func (service Service) requireNotLastActiveOwner(ctx context.Context, organizationID core.OrganizationID, excludeUserID core.UserID) *core.DomainError {
 	page := core.NewPage(200, 0).(core.PageAccepted).Value
 	membersResult := service.store.ListMembers(ctx, organizationID, page)

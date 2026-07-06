@@ -69,7 +69,7 @@ func orgAnyMembershipKey(organizationID string, userID string) string {
 }
 
 // isActiveOrgMember reports whether userID currently holds an active
-// membership in organizationID. Shared by any browser store that needs to
+// membership in organizationID. Shared by whichever browser store needs to
 // verify org membership without going through org.Service (e.g. a
 // within-organization collectible transfer/award).
 func isActiveOrgMember(storage BrowserStorage, organizationID string, userID string) (bool, bool) {

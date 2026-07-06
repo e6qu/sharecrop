@@ -724,7 +724,7 @@ func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, task
 // isTeamMember reports whether userID is recorded as a member of teamID,
 // mirroring internal/db's team_members join used by
 // CheckSubmissionEligibility for a team/organization-team reservation - a
-// submission is eligible from any member of the team the reservation is
+// submission is eligible from every member of the team the reservation is
 // held by, not just the literal requester.
 func isTeamMember(storage BrowserStorage, teamID string, userID string) bool {
 	indexResult := loadStringIndex(storage, teamMembersKey(teamID), "team member")

@@ -312,7 +312,7 @@ type actorSubject struct {
 
 // listOrganizationCollectibles and listTeamCollectibles expose the collectibles
 // held by an organization or team (e.g. defaults an admin awarded to them).
-// This is a public "trophy case" view (any authenticated user, not just
+// This is a public "trophy case" view (every authenticated user, not just
 // members, can see what an org/team holds) - deliberately not membership-
 // gated, matching awardOrganizationCollectible's comment about defaults an
 // admin awarded being visible more broadly than the award action itself.
