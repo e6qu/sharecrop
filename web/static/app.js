@@ -6354,6 +6354,9 @@ var $elm$core$Dict$update = F3(
 		}
 	});
 var $elm$http$Http$emptyBody = _Http_emptyBody;
+var $elm$http$Http$BadBody = function (a) {
+	return {$: 'BadBody', a: a};
+};
 var $elm$json$Json$Decode$decodeString = _Json_runOnString;
 var $elm$core$Basics$composeR = F3(
 	function (f, g, x) {
@@ -6368,20 +6371,6 @@ var $elm$http$Http$expectStringResponse = F2(
 			$elm$core$Basics$identity,
 			A2($elm$core$Basics$composeR, toResult, toMsg));
 	});
-var $elm$core$Result$mapError = F2(
-	function (f, result) {
-		if (result.$ === 'Ok') {
-			var v = result.a;
-			return $elm$core$Result$Ok(v);
-		} else {
-			var e = result.a;
-			return $elm$core$Result$Err(
-				f(e));
-		}
-	});
-var $elm$http$Http$BadBody = function (a) {
-	return {$: 'BadBody', a: a};
-};
 var $elm$http$Http$BadStatus = function (a) {
 	return {$: 'BadStatus', a: a};
 };
@@ -6390,8 +6379,9 @@ var $elm$http$Http$BadUrl = function (a) {
 };
 var $elm$http$Http$NetworkError = {$: 'NetworkError'};
 var $elm$http$Http$Timeout = {$: 'Timeout'};
-var $elm$http$Http$resolve = F2(
-	function (toResult, response) {
+var $author$project$Sharecrop$Api$serverErrorMessageDecoder = A2($elm$json$Json$Decode$field, 'error', $elm$json$Json$Decode$string);
+var $author$project$Sharecrop$Api$responseToServerErrorResult = F2(
+	function (onGoodBody, response) {
 		switch (response.$) {
 			case 'BadUrl_':
 				var url = response.a;
@@ -6403,27 +6393,38 @@ var $elm$http$Http$resolve = F2(
 				return $elm$core$Result$Err($elm$http$Http$NetworkError);
 			case 'BadStatus_':
 				var metadata = response.a;
-				return $elm$core$Result$Err(
-					$elm$http$Http$BadStatus(metadata.statusCode));
+				var body = response.b;
+				var _v1 = A2($elm$json$Json$Decode$decodeString, $author$project$Sharecrop$Api$serverErrorMessageDecoder, body);
+				if (_v1.$ === 'Ok') {
+					var message = _v1.a;
+					return $elm$core$Result$Err(
+						$elm$http$Http$BadBody(message));
+				} else {
+					return $elm$core$Result$Err(
+						$elm$http$Http$BadStatus(metadata.statusCode));
+				}
 			default:
 				var body = response.b;
-				return A2(
-					$elm$core$Result$mapError,
-					$elm$http$Http$BadBody,
-					toResult(body));
+				return onGoodBody(body);
 		}
 	});
-var $elm$http$Http$expectJson = F2(
+var $author$project$Sharecrop$Api$expectJsonWithServerError = F2(
 	function (toMsg, decoder) {
 		return A2(
 			$elm$http$Http$expectStringResponse,
 			toMsg,
-			$elm$http$Http$resolve(
-				function (string) {
-					return A2(
-						$elm$core$Result$mapError,
-						$elm$json$Json$Decode$errorToString,
-						A2($elm$json$Json$Decode$decodeString, decoder, string));
+			$author$project$Sharecrop$Api$responseToServerErrorResult(
+				function (body) {
+					var _v0 = A2($elm$json$Json$Decode$decodeString, decoder, body);
+					if (_v0.$ === 'Ok') {
+						var value = _v0.a;
+						return $elm$core$Result$Ok(value);
+					} else {
+						var error = _v0.a;
+						return $elm$core$Result$Err(
+							$elm$http$Http$BadBody(
+								$elm$json$Json$Decode$errorToString(error)));
+					}
 				}));
 	});
 var $elm$http$Http$Request = function (a) {
@@ -6601,7 +6602,7 @@ var $elm$http$Http$post = function (r) {
 var $author$project$Sharecrop$Api$postRefresh = $elm$http$Http$post(
 	{
 		body: $elm$http$Http$emptyBody,
-		expect: A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$RefreshReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
+		expect: A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$RefreshReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
 		url: '/api/auth/refresh'
 	});
 var $author$project$Sharecrop$Types$CreateAttachmentFileChosen = function (a) {
@@ -6688,19 +6689,11 @@ var $author$project$Sharecrop$Api$authorizedRequest = F5(
 				url: url
 			});
 	});
-var $elm$http$Http$expectBytesResponse = F2(
-	function (toMsg, toResult) {
-		return A3(
-			_Http_expect,
-			'arraybuffer',
-			_Http_toDataView,
-			A2($elm$core$Basics$composeR, toResult, toMsg));
-	});
-var $elm$http$Http$expectWhatever = function (toMsg) {
+var $author$project$Sharecrop$Api$expectWhateverWithServerError = function (toMsg) {
 	return A2(
-		$elm$http$Http$expectBytesResponse,
+		$elm$http$Http$expectStringResponse,
 		toMsg,
-		$elm$http$Http$resolve(
+		$author$project$Sharecrop$Api$responseToServerErrorResult(
 			function (_v0) {
 				return $elm$core$Result$Ok(_Utils_Tuple0);
 			}));
@@ -6720,7 +6713,7 @@ var $author$project$Sharecrop$Api$postAccept = F6(
 			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/accept'))),
 			$elm$http$Http$jsonBody(
 				A4($author$project$Sharecrop$Api$acceptRequestBody, submissionId, payoutAmount, tipAmount, tipCollectibleId)),
-			$elm$http$Http$expectWhatever(
+			$author$project$Sharecrop$Api$expectWhateverWithServerError(
 				$author$project$Sharecrop$Types$ReviewActionReceived(submissionId)));
 	});
 var $author$project$Sharecrop$Api$updateLoggedIn = F2(
@@ -6810,7 +6803,7 @@ var $author$project$Sharecrop$Api$addSeriesCommentCommand = F3(
 								$elm$json$Json$Encode$string(
 									$elm$core$String$trim(state.seriesCommentBody)))
 							]))),
-				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesCommentReceived, $author$project$Sharecrop$Generated$TaskSeries$seriesCommentResponseDecoder)));
+				A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesCommentReceived, $author$project$Sharecrop$Generated$TaskSeries$seriesCommentResponseDecoder)));
 	});
 var $author$project$Sharecrop$Types$SeriesMutationReceived = function (a) {
 	return {$: 'SeriesMutationReceived', a: a};
@@ -6894,7 +6887,7 @@ var $author$project$Sharecrop$Api$addSeriesTaskCommand = F3(
 								$elm$json$Json$Encode$string(
 									$elm$core$String$trim(state.addSeriesTaskId)))
 							]))),
-				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
+				A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
 	});
 var $author$project$Sharecrop$Types$SubmissionCommentAdded = function (a) {
 	return {$: 'SubmissionCommentAdded', a: a};
@@ -6926,7 +6919,7 @@ var $author$project$Sharecrop$Api$addSubmissionComment = F3(
 							'body',
 							$elm$json$Json$Encode$string(body))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SubmissionCommentAdded, $author$project$Sharecrop$Generated$Submission$submissionCommentResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SubmissionCommentAdded, $author$project$Sharecrop$Generated$Submission$submissionCommentResponseDecoder));
 	});
 var $elm$core$List$filter = F2(
 	function (isGood, list) {
@@ -7163,7 +7156,7 @@ var $author$project$Sharecrop$Api$postCollectibleReward = F3(
 			'/api/tasks/' + (taskId + '/collectible-reward'),
 			$elm$http$Http$jsonBody(
 				$author$project$Sharecrop$Api$collectibleRewardRequestBody(collectibleId)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AwardReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AwardReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$awardCommand = F3(
 	function (model, state, collectibleId) {
@@ -7214,7 +7207,7 @@ var $author$project$Sharecrop$Api$awardDefaultCollectible = F4(
 							'recipient_id',
 							$elm$json$Json$Encode$string(recipientId))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AwardDefaultReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AwardDefaultReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
 	});
 var $author$project$Sharecrop$Labels$collectibleStateLabel = function (state) {
 	switch (state.$) {
@@ -7258,7 +7251,7 @@ var $author$project$Sharecrop$Api$changePassword = F3(
 							'new_password',
 							$elm$json$Json$Encode$string(next))
 						]))),
-			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$AccountActionReceived));
+			$author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$AccountActionReceived));
 	});
 var $author$project$Sharecrop$Api$collectiblesFromResult = function (result) {
 	if (result.$ === 'Ok') {
@@ -7283,7 +7276,7 @@ var $author$project$Sharecrop$Api$confirmEmailVerification = F2(
 							'token',
 							$elm$json$Json$Encode$string(accountToken))
 						]))),
-			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$AccountActionReceived));
+			$author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$AccountActionReceived));
 	});
 var $author$project$Sharecrop$Types$PasswordResetConfirmed = function (a) {
 	return {$: 'PasswordResetConfirmed', a: a};
@@ -7302,7 +7295,7 @@ var $author$project$Sharecrop$Api$confirmPasswordReset = function (model) {
 							'password',
 							$elm$json$Json$Encode$string(model.resetPassword))
 						]))),
-			expect: $elm$http$Http$expectWhatever($author$project$Sharecrop$Types$PasswordResetConfirmed),
+			expect: $author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$PasswordResetConfirmed),
 			url: '/api/auth/password-reset/confirm'
 		});
 };
@@ -7422,7 +7415,7 @@ var $author$project$Sharecrop$Api$createOrgCommand = F2(
 								$elm$json$Json$Encode$string(
 									$elm$core$String$trim(state.createOrgName)))
 							]))),
-				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CreateOrgReceived, $author$project$Sharecrop$Generated$Organization$organizationResponseDecoder)));
+				A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$CreateOrgReceived, $author$project$Sharecrop$Generated$Organization$organizationResponseDecoder)));
 	});
 var $author$project$Sharecrop$Types$OrgCredentialExpiresAtResolved = function (a) {
 	return {$: 'OrgCredentialExpiresAtResolved', a: a};
@@ -7526,7 +7519,7 @@ var $author$project$Sharecrop$Api$createOrgTeamCommand = F2(
 								$elm$json$Json$Encode$string(
 									$elm$core$String$trim(state.createOrgTeamName)))
 							]))),
-				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CreateOrgTeamReceived, $author$project$Sharecrop$Generated$Team$teamResponseDecoder)));
+				A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$CreateOrgTeamReceived, $author$project$Sharecrop$Generated$Team$teamResponseDecoder)));
 	});
 var $author$project$Sharecrop$Api$seriesBody = F2(
 	function (title, description) {
@@ -7572,7 +7565,7 @@ var $author$project$Sharecrop$Api$createSeriesCommand = F2(
 				'/api/task-series',
 				$elm$http$Http$jsonBody(
 					A2($author$project$Sharecrop$Api$seriesBody, state.createSeriesTitle, state.createSeriesDescription)),
-				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
+				A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
 	});
 var $author$project$Sharecrop$Labels$participationUsesReservation = function (tag) {
 	return (tag === 'reservation_required') || (tag === 'approval_required');
@@ -8134,7 +8127,7 @@ var $author$project$Sharecrop$Api$postCreateTask = function (state) {
 		'/api/tasks',
 		$elm$http$Http$jsonBody(
 			$author$project$Sharecrop$Api$createTaskRequestBody(state)),
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CreateTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$CreateTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
 };
 var $author$project$Sharecrop$Api$createTaskCommand = F2(
 	function (model, state) {
@@ -8195,7 +8188,7 @@ var $author$project$Sharecrop$Api$deactivateAccount = function (token) {
 		token,
 		'/api/account',
 		$elm$http$Http$emptyBody,
-		$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$DeactivateAccountReceived));
+		$author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$DeactivateAccountReceived));
 };
 var $author$project$Sharecrop$Types$DeactivateMemberReceived = function (a) {
 	return {$: 'DeactivateMemberReceived', a: a};
@@ -8229,7 +8222,7 @@ var $author$project$Sharecrop$Api$deactivateMemberCommand = F3(
 				'/api/organizations/' + (state.activeOrgId + ('/members/' + (userId + '/deactivate'))),
 				$elm$http$Http$jsonBody(
 					$elm$json$Json$Encode$object(_List_Nil)),
-				$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$DeactivateMemberReceived)));
+				$author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$DeactivateMemberReceived)));
 	});
 var $author$project$Sharecrop$Generated$Moderation$ModerationReasonPolicy = {$: 'ModerationReasonPolicy'};
 var $author$project$Sharecrop$Labels$participationPolicyTag = function (policy) {
@@ -8412,6 +8405,53 @@ var $author$project$Sharecrop$Api$entriesFromResult = function (result) {
 		return _List_Nil;
 	}
 };
+var $elm$core$Result$mapError = F2(
+	function (f, result) {
+		if (result.$ === 'Ok') {
+			var v = result.a;
+			return $elm$core$Result$Ok(v);
+		} else {
+			var e = result.a;
+			return $elm$core$Result$Err(
+				f(e));
+		}
+	});
+var $elm$http$Http$resolve = F2(
+	function (toResult, response) {
+		switch (response.$) {
+			case 'BadUrl_':
+				var url = response.a;
+				return $elm$core$Result$Err(
+					$elm$http$Http$BadUrl(url));
+			case 'Timeout_':
+				return $elm$core$Result$Err($elm$http$Http$Timeout);
+			case 'NetworkError_':
+				return $elm$core$Result$Err($elm$http$Http$NetworkError);
+			case 'BadStatus_':
+				var metadata = response.a;
+				return $elm$core$Result$Err(
+					$elm$http$Http$BadStatus(metadata.statusCode));
+			default:
+				var body = response.b;
+				return A2(
+					$elm$core$Result$mapError,
+					$elm$http$Http$BadBody,
+					toResult(body));
+		}
+	});
+var $elm$http$Http$expectJson = F2(
+	function (toMsg, decoder) {
+		return A2(
+			$elm$http$Http$expectStringResponse,
+			toMsg,
+			$elm$http$Http$resolve(
+				function (string) {
+					return A2(
+						$elm$core$Result$mapError,
+						$elm$json$Json$Decode$errorToString,
+						A2($elm$json$Json$Decode$decodeString, decoder, string));
+				}));
+	});
 var $author$project$Sharecrop$Api$monthNumber = function (month) {
 	switch (month.$) {
 		case 'Jan':
@@ -8731,7 +8771,7 @@ var $author$project$Sharecrop$Api$fetchAdminModerationReports = F3(
 			token,
 			'/api/admin/moderation/reports?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + ($elm$core$String$fromInt(offset) + stateQuery))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminModerationReportsReceived, $author$project$Sharecrop$Generated$Moderation$moderationReportsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AdminModerationReportsReceived, $author$project$Sharecrop$Generated$Moderation$moderationReportsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived = function (a) {
 	return {$: 'AdminPrivacyRequestsReceived', a: a};
@@ -8777,7 +8817,7 @@ var $author$project$Sharecrop$Api$fetchAdminPrivacyRequests = F2(
 			token,
 			'/api/admin/privacy-requests?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived, $author$project$Sharecrop$Generated$Privacy$privacyRequestsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AdminPrivacyRequestsReceived, $author$project$Sharecrop$Generated$Privacy$privacyRequestsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$AuditEventsReceived = function (a) {
 	return {$: 'AuditEventsReceived', a: a};
@@ -8821,7 +8861,7 @@ var $author$project$Sharecrop$Api$fetchAuditEvents = F5(
 			token,
 			'/api/admin/audit-events?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + ($elm$core$String$fromInt(offset) + (actionQuery + (subjectKindQuery + subjectIDQuery))))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AuditEventsReceived, $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AuditEventsReceived, $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$CollectiblesReceived = function (a) {
 	return {$: 'CollectiblesReceived', a: a};
@@ -8843,7 +8883,7 @@ var $author$project$Sharecrop$Api$fetchCollectibles = function (token) {
 		token,
 		'/api/collectibles',
 		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$CollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 };
 var $author$project$Sharecrop$Types$DiscoveryReceived = function (a) {
 	return {$: 'DiscoveryReceived', a: a};
@@ -8938,7 +8978,7 @@ var $author$project$Sharecrop$Api$fetchDiscovery = F3(
 			token,
 			'/api/tasks?scope=public&include_reserved=' + ($author$project$Sharecrop$Api$boolQuery(includeReserved) + ('&limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$DiscoveryReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$DiscoveryReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$LedgerReceived = function (a) {
 	return {$: 'LedgerReceived', a: a};
@@ -8999,7 +9039,7 @@ var $author$project$Sharecrop$Api$fetchLedger = F2(
 			token,
 			'/api/credits/ledger?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$LedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$LedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$NotificationsReceived = function (a) {
 	return {$: 'NotificationsReceived', a: a};
@@ -9045,7 +9085,7 @@ var $author$project$Sharecrop$Api$fetchNotifications = F2(
 			token,
 			'/api/notifications?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$NotificationsReceived, $author$project$Sharecrop$Generated$Notification$notificationsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$NotificationsReceived, $author$project$Sharecrop$Generated$Notification$notificationsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$OrgTasksReceived = function (a) {
 	return {$: 'OrgTasksReceived', a: a};
@@ -9067,7 +9107,7 @@ var $author$project$Sharecrop$Api$fetchOrgTasksPage = F7(
 			token,
 			'/api/tasks?scope=organization&organization_id=' + (organizationId + ('&' + (A4($author$project$Sharecrop$Api$taskSearchParams, queryText, typeFilter, sortOrder, offset) + stateQuery))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgTasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgTasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$OrgTeamsReceived = function (a) {
 	return {$: 'OrgTeamsReceived', a: a};
@@ -9096,7 +9136,7 @@ var $author$project$Sharecrop$Api$fetchOrgTeamsPage = F4(
 			token,
 			A3($author$project$Sharecrop$Api$selectorQuery, queryText, offset, '/api/organizations/' + (organizationId + '/teams')),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$fetchOrgTeams = F2(
 	function (token, organizationId) {
@@ -9113,7 +9153,7 @@ var $author$project$Sharecrop$Api$fetchOrganizationCollectibles = F2(
 			token,
 			'/api/organizations/' + (orgId + '/collectibles'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$OrgLedgerReceived = function (a) {
 	return {$: 'OrgLedgerReceived', a: a};
@@ -9126,7 +9166,7 @@ var $author$project$Sharecrop$Api$fetchOrganizationLedgerPage = F3(
 			token,
 			'/api/organizations/' + (organizationId + ('/credits/ledger?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgLedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgLedgerReceived, $author$project$Sharecrop$Generated$Ledger$ledgerResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$OrganizationsReceived = function (a) {
 	return {$: 'OrganizationsReceived', a: a};
@@ -9149,7 +9189,7 @@ var $author$project$Sharecrop$Api$fetchOrganizationsPage = F3(
 			token,
 			A3($author$project$Sharecrop$Api$selectorQuery, queryText, offset, '/api/organizations'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrganizationsReceived, $author$project$Sharecrop$Generated$Organization$organizationsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrganizationsReceived, $author$project$Sharecrop$Generated$Organization$organizationsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$PlatformAdminsReceived = function (a) {
 	return {$: 'PlatformAdminsReceived', a: a};
@@ -9182,7 +9222,7 @@ var $author$project$Sharecrop$Api$fetchPlatformAdmins = F2(
 			token,
 			'/api/admin/platform-admins?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminsReceived, $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$PlatformAdminsReceived, $author$project$Sharecrop$Generated$Admin$platformAdminsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$DetailReceived = function (a) {
 	return {$: 'DetailReceived', a: a};
@@ -9199,7 +9239,7 @@ var $author$project$Sharecrop$Api$fetchPublicTaskDetail = F2(
 			token,
 			'/api/tasks/' + taskId,
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$DetailReceived, $author$project$Sharecrop$Api$publicTaskDetailDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$DetailReceived, $author$project$Sharecrop$Api$publicTaskDetailDecoder));
 	});
 var $author$project$Sharecrop$Types$StandaloneTeamsReceived = function (a) {
 	return {$: 'StandaloneTeamsReceived', a: a};
@@ -9212,7 +9252,7 @@ var $author$project$Sharecrop$Api$fetchStandaloneTeamsPage = F3(
 			token,
 			A3($author$project$Sharecrop$Api$selectorQuery, queryText, offset, '/api/teams'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$StandaloneTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$StandaloneTeamsReceived, $author$project$Sharecrop$Generated$Team$teamsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$SubmissionCommentsReceived = function (a) {
 	return {$: 'SubmissionCommentsReceived', a: a};
@@ -9235,7 +9275,7 @@ var $author$project$Sharecrop$Api$fetchSubmissionComments = F2(
 			token,
 			'/api/submissions/' + (submissionId + '/comments'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SubmissionCommentsReceived, $author$project$Sharecrop$Generated$Submission$submissionCommentsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SubmissionCommentsReceived, $author$project$Sharecrop$Generated$Submission$submissionCommentsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$TasksReceived = function (a) {
 	return {$: 'TasksReceived', a: a};
@@ -9261,7 +9301,7 @@ var $author$project$Sharecrop$Api$fetchTasks = F5(
 			token,
 			'/api/tasks?scope=user&' + (pageQuery + (stateQuery + (typeQuery + sortQuery))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$TasksReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$TeamWorkReceived = function (a) {
 	return {$: 'TeamWorkReceived', a: a};
@@ -9274,7 +9314,7 @@ var $author$project$Sharecrop$Api$fetchTeamWork = F6(
 			token,
 			'/api/teams/' + (teamId + ('/work?' + A4($author$project$Sharecrop$Api$taskSearchParams, queryText, typeFilter, sortOrder, offset))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamWorkReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$TeamWorkReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$UserDirectoryReceived = function (a) {
 	return {$: 'UserDirectoryReceived', a: a};
@@ -9298,7 +9338,7 @@ var $author$project$Sharecrop$Api$fetchUserDirectoryPage = F3(
 			A3($author$project$Sharecrop$Api$selectorQuery, queryText, offset, '/api/users'),
 			$elm$http$Http$emptyBody,
 			A2(
-				$elm$http$Http$expectJson,
+				$author$project$Sharecrop$Api$expectJsonWithServerError,
 				$author$project$Sharecrop$Types$UserDirectoryReceived,
 				A2(
 					$elm$json$Json$Decode$field,
@@ -9415,7 +9455,7 @@ var $author$project$Sharecrop$Api$fetchUserSubmissionsPage = F3(
 			token,
 			'/api/users/' + (userId + ('/submissions?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + ('&offset=' + $elm$core$String$fromInt(offset))))),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserSubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$UserSubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
 	});
 var $author$project$Sharecrop$Labels$escrowStateLabel = function (state) {
 	switch (state.$) {
@@ -9487,7 +9527,7 @@ var $author$project$Sharecrop$Api$postFunding = F5(
 			'/api/tasks/' + (taskId + '/funding'),
 			$elm$http$Http$jsonBody(
 				A4($author$project$Sharecrop$Api$fundingRequestBody, taskId, amount, organizationId, nonce)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$FundReceived, $author$project$Sharecrop$Generated$Ledger$taskEscrowResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$FundReceived, $author$project$Sharecrop$Generated$Ledger$taskEscrowResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$fundTaskCommand = F2(
 	function (model, state) {
@@ -9548,7 +9588,7 @@ var $author$project$Sharecrop$Api$grantPlatformAdmin = F2(
 							'user_id',
 							$elm$json$Json$Encode$string(userID))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminGranted, $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$PlatformAdminGranted, $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder));
 	});
 var $author$project$Sharecrop$Labels$httpErrorLabel = function (error) {
 	switch (error.$) {
@@ -9564,7 +9604,7 @@ var $author$project$Sharecrop$Labels$httpErrorLabel = function (error) {
 			return 'The request failed with status ' + ($elm$core$String$fromInt(status) + '.');
 		default:
 			var message = error.a;
-			return 'The response was unexpected: ' + message;
+			return message;
 	}
 };
 var $author$project$Main$issuedCredentialSecret = F2(
@@ -9589,7 +9629,7 @@ var $author$project$Sharecrop$Api$fetchBalance = function (token) {
 		token,
 		'/api/credits/balance',
 		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$BalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$BalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder));
 };
 var $author$project$Sharecrop$Types$CredentialsReceived = function (a) {
 	return {$: 'CredentialsReceived', a: a};
@@ -9708,7 +9748,7 @@ var $author$project$Sharecrop$Api$fetchCredentials = function (token) {
 		token,
 		'/api/agent-credentials',
 		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CredentialsReceived, $author$project$Sharecrop$Generated$Agent$agentCredentialsResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$CredentialsReceived, $author$project$Sharecrop$Generated$Agent$agentCredentialsResponseDecoder));
 };
 var $author$project$Sharecrop$Api$fetchOrganizations = function (token) {
 	return A3($author$project$Sharecrop$Api$fetchOrganizationsPage, token, '', 0);
@@ -9747,7 +9787,7 @@ var $author$project$Sharecrop$Api$fetchSavedQueueViews = function (token) {
 		token,
 		'/api/saved-queue-views',
 		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SavedQueueViewsReceived, $author$project$Sharecrop$Generated$SavedQueueViews$savedQueueViewsResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SavedQueueViewsReceived, $author$project$Sharecrop$Generated$SavedQueueViews$savedQueueViewsResponseDecoder));
 };
 var $author$project$Sharecrop$Api$fetchStandaloneTeams = function (token) {
 	return A3($author$project$Sharecrop$Api$fetchStandaloneTeamsPage, token, '', 0);
@@ -10007,7 +10047,7 @@ var $author$project$Sharecrop$Api$markNotificationRead = F2(
 			token,
 			'/api/notifications/' + (notificationId + '/read'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$NotificationReadReceived, $author$project$Sharecrop$Generated$Notification$notificationResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$NotificationReadReceived, $author$project$Sharecrop$Generated$Notification$notificationResponseDecoder));
 	});
 var $elm$core$List$any = F2(
 	function (isOkay, list) {
@@ -10097,7 +10137,7 @@ var $author$project$Sharecrop$Api$postCollectible = F4(
 			'/api/collectibles',
 			$elm$http$Http$jsonBody(
 				A3($author$project$Sharecrop$Api$collectibleRequestBody, name, kind, policy)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$MintReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$MintReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$mintCommand = F2(
 	function (model, state) {
@@ -10210,7 +10250,7 @@ var $author$project$Sharecrop$Api$mintTaskToken = function (token) {
 				_List_fromArray(
 					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead]),
 				'')),
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TaskTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$TaskTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
 };
 var $author$project$Sharecrop$Types$UserTokenMinted = function (a) {
 	return {$: 'UserTokenMinted', a: a};
@@ -10228,7 +10268,7 @@ var $author$project$Sharecrop$Api$mintUserToken = function (token) {
 				_List_fromArray(
 					[$author$project$Sharecrop$Generated$Agent$AgentScopeTasksRead, $author$project$Sharecrop$Generated$Agent$AgentScopeTasksWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsRead, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsWrite, $author$project$Sharecrop$Generated$Agent$AgentScopeSubmissionsReview]),
 				'')),
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$UserTokenMinted, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
 };
 var $author$project$Sharecrop$Api$orgCredentialsFromResult = function (result) {
 	if (result.$ === 'Ok') {
@@ -10354,7 +10394,7 @@ var $author$project$Sharecrop$Api$postAddTeamMember = F3(
 							'email',
 							$elm$json$Json$Encode$string(email))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AddTeamMemberReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AddTeamMemberReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$AgentCreated = function (a) {
 	return {$: 'AgentCreated', a: a};
@@ -10368,7 +10408,7 @@ var $author$project$Sharecrop$Api$postAgent = F4(
 			'/api/agent-credentials',
 			$elm$http$Http$jsonBody(
 				A3($author$project$Sharecrop$Api$agentRequestBody, agentLabel, scopes, expiresAt)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AgentCreated, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AgentCreated, $author$project$Sharecrop$Generated$Agent$agentCredentialCreatedResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$AuthReceived = function (a) {
 	return {$: 'AuthReceived', a: a};
@@ -10391,7 +10431,7 @@ var $author$project$Sharecrop$Api$postAuth = F2(
 			{
 				body: $elm$http$Http$jsonBody(
 					$author$project$Sharecrop$Api$authRequestBody(model)),
-				expect: A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AuthReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
+				expect: A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AuthReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
 				url: url
 			});
 	});
@@ -10413,7 +10453,7 @@ var $author$project$Sharecrop$Api$postAwardOrganizationCollectible = F4(
 							'recipient_id',
 							$elm$json$Json$Encode$string(recipientId))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AwardOrgCollectibleReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AwardOrgCollectibleReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$CancelTaskReceived = function (a) {
 	return {$: 'CancelTaskReceived', a: a};
@@ -10427,12 +10467,12 @@ var $author$project$Sharecrop$Api$postCancelTask = F2(
 			'/api/tasks/' + (taskId + '/cancel'),
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CancelTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$CancelTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
 	});
 var $author$project$Sharecrop$Api$postGuest = $elm$http$Http$post(
 	{
 		body: $elm$http$Http$emptyBody,
-		expect: A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AuthReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
+		expect: A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AuthReceived, $author$project$Sharecrop$Generated$Auth$authResponseDecoder),
 		url: '/api/auth/guest'
 	});
 var $author$project$Sharecrop$Types$LogoutReceived = function (a) {
@@ -10441,7 +10481,7 @@ var $author$project$Sharecrop$Types$LogoutReceived = function (a) {
 var $author$project$Sharecrop$Api$postLogout = $elm$http$Http$post(
 	{
 		body: $elm$http$Http$emptyBody,
-		expect: $elm$http$Http$expectWhatever($author$project$Sharecrop$Types$LogoutReceived),
+		expect: $author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$LogoutReceived),
 		url: '/api/auth/logout'
 	});
 var $author$project$Sharecrop$Types$OpenTaskReceived = function (a) {
@@ -10456,7 +10496,7 @@ var $author$project$Sharecrop$Api$postOpenTask = F2(
 			'/api/tasks/' + (taskId + '/open'),
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OpenTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OpenTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
 	});
 var $author$project$Sharecrop$Types$OrgCredentialCreated = function (a) {
 	return {$: 'OrgCredentialCreated', a: a};
@@ -10495,7 +10535,7 @@ var $author$project$Sharecrop$Api$postOrgCredential = F5(
 			'/api/organizations/' + (organizationId + '/credentials'),
 			$elm$http$Http$jsonBody(
 				A3($author$project$Sharecrop$Api$agentRequestBody, label, scopes, expiresAt)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCredentialCreated, $author$project$Sharecrop$Generated$Agent$orgCredentialCreatedResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgCredentialCreated, $author$project$Sharecrop$Generated$Agent$orgCredentialCreatedResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$RefundCollectibleRewardReceived = function (a) {
 	return {$: 'RefundCollectibleRewardReceived', a: a};
@@ -10509,7 +10549,7 @@ var $author$project$Sharecrop$Api$postRefundCollectibleReward = F2(
 			'/api/tasks/' + (taskId + '/collectible-refund'),
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$RefundCollectibleRewardReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$RefundCollectibleRewardReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$RefundTaskReceived = function (a) {
 	return {$: 'RefundTaskReceived', a: a};
@@ -10529,7 +10569,7 @@ var $author$project$Sharecrop$Api$postRefundTask = F2(
 							'idempotency_key',
 							$elm$json$Json$Encode$string('ui-refund:' + taskId))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$RefundTaskReceived, $author$project$Sharecrop$Generated$Ledger$taskEscrowResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$RefundTaskReceived, $author$project$Sharecrop$Generated$Ledger$taskEscrowResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$ReservationReceived = function (a) {
 	return {$: 'ReservationReceived', a: a};
@@ -10625,7 +10665,7 @@ var $author$project$Sharecrop$Api$postReservation = F2(
 			'/api/tasks/' + (taskId + '/reservations'),
 			$elm$http$Http$jsonBody(
 				$author$project$Sharecrop$Api$reservationRequestBody(state)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$ReservationReceived, $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$ReservationReceived, $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$OrgCredentialRevoked = function (a) {
 	return {$: 'OrgCredentialRevoked', a: a};
@@ -10639,7 +10679,7 @@ var $author$project$Sharecrop$Api$postRevokeOrgCredential = F3(
 			'/api/organizations/' + (organizationId + ('/credentials/' + (credentialId + '/revoke'))),
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCredentialRevoked, $author$project$Sharecrop$Generated$Agent$orgCredentialResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgCredentialRevoked, $author$project$Sharecrop$Generated$Agent$orgCredentialResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$TaskCommentReceived = function (a) {
 	return {$: 'TaskCommentReceived', a: a};
@@ -10671,7 +10711,7 @@ var $author$project$Sharecrop$Api$postTaskComment = F3(
 							'body',
 							$elm$json$Json$Encode$string(body))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TaskCommentReceived, $author$project$Sharecrop$Generated$Task$taskCommentResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$TaskCommentReceived, $author$project$Sharecrop$Generated$Task$taskCommentResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$UnpublishTaskReceived = function (a) {
 	return {$: 'UnpublishTaskReceived', a: a};
@@ -10685,7 +10725,7 @@ var $author$project$Sharecrop$Api$postUnpublishTask = F2(
 			'/api/tasks/' + (taskId + '/unpublish'),
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UnpublishTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$UnpublishTaskReceived, $author$project$Sharecrop$Api$taskDetailDecoder));
 	});
 var $author$project$Sharecrop$Types$ProvisionMemberReceived = function (a) {
 	return {$: 'ProvisionMemberReceived', a: a};
@@ -10741,7 +10781,7 @@ var $author$project$Sharecrop$Api$provisionMemberCommand = F2(
 								'roles',
 								A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, state.provisionMemberRoles))
 							]))),
-				$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$ProvisionMemberReceived))));
+				$author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$ProvisionMemberReceived))));
 	});
 var $elm$browser$Browser$Navigation$pushUrl = _Browser_pushUrl;
 var $elm$core$List$head = function (list) {
@@ -10843,7 +10883,7 @@ var $author$project$Sharecrop$Api$fetchReservations = F2(
 			token,
 			'/api/tasks/' + (taskId + '/reservations'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$ReservationsReceived, $author$project$Sharecrop$Generated$Task$taskReservationsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$ReservationsReceived, $author$project$Sharecrop$Generated$Task$taskReservationsResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$SubmissionsReceived = function (a) {
 	return {$: 'SubmissionsReceived', a: a};
@@ -10856,7 +10896,7 @@ var $author$project$Sharecrop$Api$fetchSubmissions = F2(
 			token,
 			'/api/tasks/' + (taskId + '/submissions'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SubmissionsReceived, $author$project$Sharecrop$Generated$Submission$submissionsResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$refreshAfterAccept = function (model) {
 	var _v0 = model.session;
@@ -10978,7 +11018,7 @@ var $author$project$Sharecrop$Api$fetchOrgCredentials = F2(
 			token,
 			'/api/organizations/' + (organizationId + '/credentials'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgCredentialsReceived, $author$project$Sharecrop$Generated$Agent$orgCredentialsResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgCredentialsReceived, $author$project$Sharecrop$Generated$Agent$orgCredentialsResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$refreshOrgCredentials = function (model) {
 	var _v0 = model.session;
@@ -11061,7 +11101,7 @@ var $author$project$Sharecrop$Api$postReject = F7(
 			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/reject'))),
 			$elm$http$Http$jsonBody(
 				A5($author$project$Sharecrop$Api$rejectRequestBody, submissionId, reviewNote, partialCredit, tipAmount, banImplementor)),
-			$elm$http$Http$expectWhatever(
+			$author$project$Sharecrop$Api$expectWhateverWithServerError(
 				$author$project$Sharecrop$Types$ReviewActionReceived(submissionId)));
 	});
 var $author$project$Sharecrop$Api$rejectCommand = F3(
@@ -11123,7 +11163,7 @@ var $author$project$Sharecrop$Api$removeSeriesTaskCommand = F3(
 			token,
 			'/api/task-series/' + (seriesId + ('/tasks/' + taskId)),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
 	});
 var $author$project$Main$replaceModerationReport = F2(
 	function (replacement, reports) {
@@ -11193,7 +11233,7 @@ var $author$project$Sharecrop$Api$reportTask = F4(
 							'details',
 							$elm$json$Json$Encode$string(details))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$ModerationReportReceived, $author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$ModerationReportReceived, $author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$requestChangesBody = function (reviewNote) {
 	return $elm$json$Json$Encode$object(
@@ -11213,7 +11253,7 @@ var $author$project$Sharecrop$Api$postRequestChanges = F4(
 			'/api/tasks/' + (taskId + ('/submissions/' + (submissionId + '/request-changes'))),
 			$elm$http$Http$jsonBody(
 				$author$project$Sharecrop$Api$requestChangesBody(reviewNote)),
-			$elm$http$Http$expectWhatever(
+			$author$project$Sharecrop$Api$expectWhateverWithServerError(
 				$author$project$Sharecrop$Types$ReviewActionReceived(submissionId)));
 	});
 var $author$project$Sharecrop$Api$requestChangesCommand = F3(
@@ -11258,7 +11298,7 @@ var $author$project$Sharecrop$Api$requestEmailVerification = function (token) {
 		'/api/account/email-verification',
 		$elm$http$Http$jsonBody(
 			$elm$json$Json$Encode$object(_List_Nil)),
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$EmailVerificationRequested, $author$project$Sharecrop$Api$tokenDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$EmailVerificationRequested, $author$project$Sharecrop$Api$tokenDecoder));
 };
 var $author$project$Sharecrop$Types$PasswordResetRequested = function (a) {
 	return {$: 'PasswordResetRequested', a: a};
@@ -11274,7 +11314,7 @@ var $author$project$Sharecrop$Api$requestPasswordReset = function (model) {
 							'email',
 							$elm$json$Json$Encode$string(model.resetEmail))
 						]))),
-			expect: A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PasswordResetRequested, $author$project$Sharecrop$Api$tokenDecoder),
+			expect: A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$PasswordResetRequested, $author$project$Sharecrop$Api$tokenDecoder),
 			url: '/api/auth/password-reset/request'
 		});
 };
@@ -11303,7 +11343,7 @@ var $author$project$Sharecrop$Api$requestPrivacy = F2(
 							'kind',
 							$author$project$Sharecrop$Generated$Privacy$privacyRequestKindEncoder(kind))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PrivacyRequestReceived, $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$PrivacyRequestReceived, $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$ReservationChangeReceived = function (a) {
 	return {$: 'ReservationChangeReceived', a: a};
@@ -11317,7 +11357,7 @@ var $author$project$Sharecrop$Api$postReservationChange = F4(
 			'/api/tasks/' + (taskId + ('/reservations/' + (reservationId + ('/' + action)))),
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$ReservationChangeReceived, $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$ReservationChangeReceived, $author$project$Sharecrop$Generated$Task$taskReservationResponseDecoder));
 	});
 var $author$project$Sharecrop$Api$reservationChangeCommand = F4(
 	function (model, state, reservationId, action) {
@@ -11377,7 +11417,7 @@ var $author$project$Sharecrop$Api$resolveAdminPrivacyRequest = F3(
 							'resolution_note',
 							$elm$json$Json$Encode$string(resolutionNote))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminPrivacyRequestResolved, $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AdminPrivacyRequestResolved, $author$project$Sharecrop$Generated$Privacy$privacyRequestResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$AgentRevoked = function (a) {
 	return {$: 'AgentRevoked', a: a};
@@ -11391,7 +11431,7 @@ var $author$project$Sharecrop$Api$revokeAgent = F2(
 			'/api/agent-credentials/' + (credentialId + '/revoke'),
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AgentRevoked, $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AgentRevoked, $author$project$Sharecrop$Generated$Agent$agentCredentialResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$PlatformAdminRevoked = function (a) {
 	return {$: 'PlatformAdminRevoked', a: a};
@@ -11404,7 +11444,7 @@ var $author$project$Sharecrop$Api$revokePlatformAdmin = F2(
 			token,
 			'/api/admin/platform-admins/' + (userID + '/revoke'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PlatformAdminRevoked, $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$PlatformAdminRevoked, $author$project$Sharecrop$Generated$Admin$platformAdminResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$OperationsReceived = function (a) {
 	return {$: 'OperationsReceived', a: a};
@@ -11447,7 +11487,7 @@ var $author$project$Sharecrop$Api$fetchCollectibleCatalog = function (token) {
 		token,
 		'/api/collectibles/catalog',
 		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$CollectibleCatalogReceived, $author$project$Sharecrop$Generated$Collectible$collectibleCatalogResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$CollectibleCatalogReceived, $author$project$Sharecrop$Generated$Collectible$collectibleCatalogResponseDecoder));
 };
 var $author$project$Sharecrop$Types$TaskCommentsReceived = function (a) {
 	return {$: 'TaskCommentsReceived', a: a};
@@ -11461,7 +11501,7 @@ var $author$project$Sharecrop$Api$fetchTaskComments = F2(
 			'/api/tasks/' + (taskId + '/comments'),
 			$elm$http$Http$emptyBody,
 			A2(
-				$elm$http$Http$expectJson,
+				$author$project$Sharecrop$Api$expectJsonWithServerError,
 				$author$project$Sharecrop$Types$TaskCommentsReceived,
 				A2(
 					$elm$json$Json$Decode$field,
@@ -11492,7 +11532,7 @@ var $author$project$Sharecrop$Api$fetchSeriesDetail = F2(
 			token,
 			'/api/task-series/' + seriesId,
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesDetailReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesDetailReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
 	});
 var $author$project$Sharecrop$Types$SeriesListReceived = function (a) {
 	return {$: 'SeriesListReceived', a: a};
@@ -11514,7 +11554,7 @@ var $author$project$Sharecrop$Api$fetchSeriesList = function (token) {
 		token,
 		'/api/task-series',
 		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesListReceived, $author$project$Sharecrop$Generated$TaskSeries$taskSeriesListResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesListReceived, $author$project$Sharecrop$Generated$TaskSeries$taskSeriesListResponseDecoder));
 };
 var $author$project$Sharecrop$Types$TeamCollectiblesReceived = function (a) {
 	return {$: 'TeamCollectiblesReceived', a: a};
@@ -11527,7 +11567,7 @@ var $author$project$Sharecrop$Api$fetchTeamCollectibles = F2(
 			token,
 			'/api/teams/' + (teamId + '/collectibles'),
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$TeamCollectiblesReceived, $author$project$Sharecrop$Generated$Collectible$collectiblesResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$UserProfileReceived = function (a) {
 	return {$: 'UserProfileReceived', a: a};
@@ -11552,7 +11592,7 @@ var $author$project$Sharecrop$Api$fetchUserProfile = F2(
 			token,
 			'/api/users/' + userId,
 			$elm$http$Http$emptyBody,
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserProfileReceived, $author$project$Sharecrop$Generated$Task$userProfileResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$UserProfileReceived, $author$project$Sharecrop$Generated$Task$userProfileResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$OrgAuditEventsReceived = function (a) {
 	return {$: 'OrgAuditEventsReceived', a: a};
@@ -11571,7 +11611,7 @@ var $author$project$Sharecrop$Api$loadOrganization = F2(
 					token,
 					'/api/organizations/' + (organizationId + '/credits/balance'),
 					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgBalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder)),
+					A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgBalanceReceived, $author$project$Sharecrop$Generated$Ledger$balanceResponseDecoder)),
 					A3($author$project$Sharecrop$Api$fetchOrganizationLedgerPage, token, organizationId, 0),
 					A5(
 					$author$project$Sharecrop$Api$authorizedRequest,
@@ -11579,7 +11619,7 @@ var $author$project$Sharecrop$Api$loadOrganization = F2(
 					token,
 					'/api/organizations/' + (organizationId + ('/audit-events?limit=' + ($elm$core$String$fromInt($author$project$Sharecrop$Api$selectorPageSize) + '&offset=0'))),
 					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgAuditEventsReceived, $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder)),
+					A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgAuditEventsReceived, $author$project$Sharecrop$Generated$Admin$auditEventsResponseDecoder)),
 					A2($author$project$Sharecrop$Api$fetchOrgTeams, token, organizationId),
 					A5(
 					$author$project$Sharecrop$Api$authorizedRequest,
@@ -11587,7 +11627,7 @@ var $author$project$Sharecrop$Api$loadOrganization = F2(
 					token,
 					'/api/organizations/' + (organizationId + '/members'),
 					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OrgMembersReceived, $author$project$Sharecrop$Generated$Organization$organizationMembersResponseDecoder)),
+					A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OrgMembersReceived, $author$project$Sharecrop$Generated$Organization$organizationMembersResponseDecoder)),
 					A7($author$project$Sharecrop$Api$fetchOrgTasksPage, token, organizationId, '', '', '', 'newest', 0),
 					A2($author$project$Sharecrop$Api$fetchOrgCredentials, token, organizationId)
 				]));
@@ -11678,7 +11718,7 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 					token,
 					'/api/users/' + (userId + '/work'),
 					$elm$http$Http$emptyBody,
-					A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UserWorkReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
+					A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$UserWorkReceived, $author$project$Sharecrop$Generated$Task$tasksResponseDecoder));
 			case 'UserSubmissionsPage':
 				var userId = page.a;
 				return A3($author$project$Sharecrop$Api$fetchUserSubmissionsPage, token, userId, 0);
@@ -11698,7 +11738,7 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 							token,
 							'/api/teams/' + teamId,
 							$elm$http$Http$emptyBody,
-							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TeamDetailReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder)),
+							A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$TeamDetailReceived, $author$project$Sharecrop$Generated$Team$teamDetailResponseDecoder)),
 							A6($author$project$Sharecrop$Api$fetchTeamWork, token, teamId, '', '', 'newest', 0),
 							A2($author$project$Sharecrop$Api$fetchTeamCollectibles, token, teamId)
 						]));
@@ -11712,7 +11752,7 @@ var $author$project$Sharecrop$Api$routeLoadCmd = F3(
 							token,
 							'/api/admin/operations',
 							$elm$http$Http$emptyBody,
-							A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$OperationsReceived, $author$project$Sharecrop$Generated$Admin$operationsResponseDecoder)),
+							A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$OperationsReceived, $author$project$Sharecrop$Generated$Admin$operationsResponseDecoder)),
 							A5($author$project$Sharecrop$Api$fetchAuditEvents, token, '', '', '', 0),
 							A2($author$project$Sharecrop$Api$fetchPlatformAdmins, token, 0),
 							$author$project$Sharecrop$Api$fetchUserDirectory(token),
@@ -11742,7 +11782,7 @@ var $author$project$Sharecrop$Api$runPrivacyRetention = function (token) {
 		token,
 		'/api/admin/privacy-retention/run',
 		$elm$http$Http$emptyBody,
-		A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$PrivacyRetentionRunReceived, $author$project$Sharecrop$Generated$Privacy$privacyRetentionRunResponseDecoder));
+		A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$PrivacyRetentionRunReceived, $author$project$Sharecrop$Generated$Privacy$privacyRetentionRunResponseDecoder));
 };
 var $author$project$Main$saveQueueView = F2(
 	function (view, views) {
@@ -11789,7 +11829,7 @@ var $author$project$Sharecrop$Api$saveSavedQueueView = F3(
 							'sort',
 							$elm$json$Json$Encode$string(view.sort))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SavedQueueViewSaved, $author$project$Sharecrop$Generated$SavedQueueViews$savedQueueViewResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SavedQueueViewSaved, $author$project$Sharecrop$Generated$SavedQueueViews$savedQueueViewResponseDecoder));
 	});
 var $elm$file$File$Select$file = F2(
 	function (mimes, toMsg) {
@@ -11916,7 +11956,7 @@ var $author$project$Sharecrop$Api$reorderSeriesCommand = F3(
 							'task_ids',
 							A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, taskIds))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
 	});
 var $author$project$Sharecrop$Api$withSession = F2(
 	function (model, run) {
@@ -11958,7 +11998,7 @@ var $author$project$Sharecrop$Api$seriesStateCommand = F3(
 			'/api/task-series/' + (seriesId + ('/' + action)),
 			$elm$http$Http$jsonBody(
 				$elm$json$Json$Encode$object(_List_Nil)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder));
 	});
 var $author$project$Sharecrop$Api$submissionsFromResult = function (result) {
 	if (result.$ === 'Ok') {
@@ -12002,7 +12042,7 @@ var $author$project$Sharecrop$Api$postSubmission = F4(
 			'/api/tasks/' + (taskId + '/submissions'),
 			$elm$http$Http$jsonBody(
 				A2($author$project$Sharecrop$Api$submissionRequestBody, responseJson, attachments)),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SubmitReceived, $author$project$Sharecrop$Generated$Submission$submissionCreatedResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SubmitReceived, $author$project$Sharecrop$Generated$Submission$submissionCreatedResponseDecoder));
 	});
 var $elm$json$Json$Decode$value = _Json_decodeValue;
 var $author$project$Sharecrop$Api$submitCommand = F2(
@@ -12200,7 +12240,7 @@ var $author$project$Sharecrop$Api$transferCollectible = F3(
 							'recipient_id',
 							$elm$json$Json$Encode$string(recipientId))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$TransferCollectibleReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$TransferCollectibleReceived, $author$project$Sharecrop$Generated$Collectible$collectibleResponseDecoder));
 	});
 var $author$project$Sharecrop$Types$AdminModerationReportTriaged = function (a) {
 	return {$: 'AdminModerationReportTriaged', a: a};
@@ -12223,7 +12263,7 @@ var $author$project$Sharecrop$Api$triageModerationReport = F4(
 							'resolution_note',
 							$elm$json$Json$Encode$string(resolutionNote))
 						]))),
-			A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$AdminModerationReportTriaged, $author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder));
+			A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$AdminModerationReportTriaged, $author$project$Sharecrop$Generated$Moderation$moderationReportResponseDecoder));
 	});
 var $author$project$Main$updateFieldAt = F3(
 	function (index, transform, fields) {
@@ -12273,7 +12313,7 @@ var $author$project$Sharecrop$Api$updateMemberRolesCommand = F4(
 								'roles',
 								A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$string, roles))
 							]))),
-				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$UpdateMemberRolesReceived, $author$project$Sharecrop$Generated$Organization$organizationMemberResponseDecoder)));
+				A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$UpdateMemberRolesReceived, $author$project$Sharecrop$Generated$Organization$organizationMemberResponseDecoder)));
 	});
 var $author$project$Sharecrop$Api$updateProfile = F2(
 	function (token, email) {
@@ -12290,7 +12330,7 @@ var $author$project$Sharecrop$Api$updateProfile = F2(
 							'email',
 							$elm$json$Json$Encode$string(email))
 						]))),
-			$elm$http$Http$expectWhatever($author$project$Sharecrop$Types$AccountActionReceived));
+			$author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$AccountActionReceived));
 	});
 var $author$project$Sharecrop$Api$updateSeriesCommand = F3(
 	function (model, state, seriesId) {
@@ -12322,7 +12362,7 @@ var $author$project$Sharecrop$Api$updateSeriesCommand = F3(
 				'/api/task-series/' + seriesId,
 				$elm$http$Http$jsonBody(
 					A2($author$project$Sharecrop$Api$seriesBody, state.seriesRenameTitle, state.seriesRenameDescription)),
-				A2($elm$http$Http$expectJson, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
+				A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$SeriesMutationReceived, $author$project$Sharecrop$Api$seriesDetailDecoder)));
 	});
 var $author$project$Main$update = F2(
 	function (msg, model) {

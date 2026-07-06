@@ -416,7 +416,7 @@ routeLoadCmd token subjectId page =
             fetchUserProfile token userId
 
         UserWorkPage userId ->
-            authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/work") Http.emptyBody (Http.expectJson UserWorkReceived Task.tasksResponseDecoder)
+            authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/work") Http.emptyBody (expectJsonWithServerError UserWorkReceived Task.tasksResponseDecoder)
 
         UserSubmissionsPage userId ->
             fetchUserSubmissionsPage token userId 0
@@ -429,14 +429,14 @@ routeLoadCmd token subjectId page =
 
         TeamDetailPage teamId ->
             Cmd.batch
-                [ authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (Http.expectJson TeamDetailReceived Team.teamDetailResponseDecoder)
+                [ authorizedRequest "GET" token ("/api/teams/" ++ teamId) Http.emptyBody (expectJsonWithServerError TeamDetailReceived Team.teamDetailResponseDecoder)
                 , fetchTeamWork token teamId "" "" "newest" 0
                 , fetchTeamCollectibles token teamId
                 ]
 
         AdminPage ->
             Cmd.batch
-                [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (Http.expectJson OperationsReceived Admin.operationsResponseDecoder)
+                [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (expectJsonWithServerError OperationsReceived Admin.operationsResponseDecoder)
                 , fetchAuditEvents token "" "" "" 0
                 , fetchPlatformAdmins token 0
                 , fetchUserDirectory token
@@ -453,17 +453,17 @@ routeLoadCmd token subjectId page =
 
 fetchOrganizationCollectibles : String -> String -> Cmd Msg
 fetchOrganizationCollectibles token orgId =
-    authorizedRequest "GET" token ("/api/organizations/" ++ orgId ++ "/collectibles") Http.emptyBody (Http.expectJson OrgCollectiblesReceived Collectible.collectiblesResponseDecoder)
+    authorizedRequest "GET" token ("/api/organizations/" ++ orgId ++ "/collectibles") Http.emptyBody (expectJsonWithServerError OrgCollectiblesReceived Collectible.collectiblesResponseDecoder)
 
 
 fetchTeamCollectibles : String -> String -> Cmd Msg
 fetchTeamCollectibles token teamId =
-    authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/collectibles") Http.emptyBody (Http.expectJson TeamCollectiblesReceived Collectible.collectiblesResponseDecoder)
+    authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/collectibles") Http.emptyBody (expectJsonWithServerError TeamCollectiblesReceived Collectible.collectiblesResponseDecoder)
 
 
 fetchUserProfile : String -> String -> Cmd Msg
 fetchUserProfile token userId =
-    authorizedRequest "GET" token ("/api/users/" ++ userId) Http.emptyBody (Http.expectJson UserProfileReceived Task.userProfileResponseDecoder)
+    authorizedRequest "GET" token ("/api/users/" ++ userId) Http.emptyBody (expectJsonWithServerError UserProfileReceived Task.userProfileResponseDecoder)
 
 
 postAddTeamMember : String -> String -> String -> Cmd Msg
@@ -472,7 +472,7 @@ postAddTeamMember token teamId email =
         token
         ("/api/teams/" ++ teamId ++ "/members")
         (Http.jsonBody (Encode.object [ ( "email", Encode.string email ) ]))
-        (Http.expectJson AddTeamMemberReceived Team.teamDetailResponseDecoder)
+        (expectJsonWithServerError AddTeamMemberReceived Team.teamDetailResponseDecoder)
 
 
 refreshCredentials : Model -> Cmd Msg
@@ -537,7 +537,7 @@ fetchUserSubmissions token userId =
 
 fetchUserSubmissionsPage : String -> String -> Int -> Cmd Msg
 fetchUserSubmissionsPage token userId offset =
-    authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson UserSubmissionsReceived Submission.submissionsResponseDecoder)
+    authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/submissions?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError UserSubmissionsReceived Submission.submissionsResponseDecoder)
 
 
 fetchTaskComments : String -> String -> Cmd Msg
@@ -546,7 +546,7 @@ fetchTaskComments token taskId =
         token
         ("/api/tasks/" ++ taskId ++ "/comments")
         Http.emptyBody
-        (Http.expectJson TaskCommentsReceived (Decode.field "comments" (Decode.list Task.taskCommentResponseDecoder)))
+        (expectJsonWithServerError TaskCommentsReceived (Decode.field "comments" (Decode.list Task.taskCommentResponseDecoder)))
 
 
 postTaskComment : String -> String -> String -> Cmd Msg
@@ -555,7 +555,7 @@ postTaskComment token taskId body =
         token
         ("/api/tasks/" ++ taskId ++ "/comments")
         (Http.jsonBody (Encode.object [ ( "body", Encode.string body ) ]))
-        (Http.expectJson TaskCommentReceived Task.taskCommentResponseDecoder)
+        (expectJsonWithServerError TaskCommentReceived Task.taskCommentResponseDecoder)
 
 
 fetchSubmissionComments : String -> String -> Cmd Msg
@@ -564,7 +564,7 @@ fetchSubmissionComments token submissionId =
         token
         ("/api/submissions/" ++ submissionId ++ "/comments")
         Http.emptyBody
-        (Http.expectJson SubmissionCommentsReceived Submission.submissionCommentsResponseDecoder)
+        (expectJsonWithServerError SubmissionCommentsReceived Submission.submissionCommentsResponseDecoder)
 
 
 addSubmissionComment : String -> String -> String -> Cmd Msg
@@ -573,7 +573,7 @@ addSubmissionComment token submissionId body =
         token
         ("/api/submissions/" ++ submissionId ++ "/comments")
         (Http.jsonBody (Encode.object [ ( "body", Encode.string body ) ]))
-        (Http.expectJson SubmissionCommentAdded Submission.submissionCommentResponseDecoder)
+        (expectJsonWithServerError SubmissionCommentAdded Submission.submissionCommentResponseDecoder)
 
 
 refreshAfterAccept : Model -> Cmd Msg
@@ -601,7 +601,7 @@ postAuth url model =
     Http.post
         { url = url
         , body = Http.jsonBody (authRequestBody model)
-        , expect = Http.expectJson AuthReceived Auth.authResponseDecoder
+        , expect = expectJsonWithServerError AuthReceived Auth.authResponseDecoder
         }
 
 
@@ -610,7 +610,7 @@ postGuest =
     Http.post
         { url = "/api/auth/guest"
         , body = Http.emptyBody
-        , expect = Http.expectJson AuthReceived Auth.authResponseDecoder
+        , expect = expectJsonWithServerError AuthReceived Auth.authResponseDecoder
         }
 
 
@@ -619,7 +619,7 @@ requestPasswordReset model =
     Http.post
         { url = "/api/auth/password-reset/request"
         , body = Http.jsonBody (Encode.object [ ( "email", Encode.string model.resetEmail ) ])
-        , expect = Http.expectJson PasswordResetRequested tokenDecoder
+        , expect = expectJsonWithServerError PasswordResetRequested tokenDecoder
         }
 
 
@@ -628,7 +628,7 @@ confirmPasswordReset model =
     Http.post
         { url = "/api/auth/password-reset/confirm"
         , body = Http.jsonBody (Encode.object [ ( "token", Encode.string model.resetToken ), ( "password", Encode.string model.resetPassword ) ])
-        , expect = Http.expectWhatever PasswordResetConfirmed
+        , expect = expectWhateverWithServerError PasswordResetConfirmed
         }
 
 
@@ -645,7 +645,7 @@ postRefresh =
     Http.post
         { url = "/api/auth/refresh"
         , body = Http.emptyBody
-        , expect = Http.expectJson RefreshReceived Auth.authResponseDecoder
+        , expect = expectJsonWithServerError RefreshReceived Auth.authResponseDecoder
         }
 
 
@@ -654,7 +654,7 @@ postLogout =
     Http.post
         { url = "/api/auth/logout"
         , body = Http.emptyBody
-        , expect = Http.expectWhatever LogoutReceived
+        , expect = expectWhateverWithServerError LogoutReceived
         }
 
 
@@ -668,12 +668,12 @@ authRequestBody model =
 
 fetchBalance : String -> Cmd Msg
 fetchBalance token =
-    authorizedRequest "GET" token "/api/credits/balance" Http.emptyBody (Http.expectJson BalanceReceived Ledger.balanceResponseDecoder)
+    authorizedRequest "GET" token "/api/credits/balance" Http.emptyBody (expectJsonWithServerError BalanceReceived Ledger.balanceResponseDecoder)
 
 
 fetchLedger : String -> Int -> Cmd Msg
 fetchLedger token offset =
-    authorizedRequest "GET" token ("/api/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson LedgerReceived Ledger.ledgerResponseDecoder)
+    authorizedRequest "GET" token ("/api/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError LedgerReceived Ledger.ledgerResponseDecoder)
 
 
 fetchTasks : String -> List String -> String -> String -> Int -> Cmd Msg
@@ -697,7 +697,7 @@ fetchTasks token stateFilter typeFilter sortOrder offset =
         sortQuery =
             "&sort=" ++ Url.percentEncode sortOrder
     in
-    authorizedRequest "GET" token ("/api/tasks?scope=user&" ++ pageQuery ++ stateQuery ++ typeQuery ++ sortQuery) Http.emptyBody (Http.expectJson TasksReceived Task.tasksResponseDecoder)
+    authorizedRequest "GET" token ("/api/tasks?scope=user&" ++ pageQuery ++ stateQuery ++ typeQuery ++ sortQuery) Http.emptyBody (expectJsonWithServerError TasksReceived Task.tasksResponseDecoder)
 
 
 taskSearchParams : String -> String -> String -> Int -> String
@@ -728,12 +728,12 @@ taskSearchParams queryText typeFilter sortOrder offset =
 
 fetchTeamWork : String -> String -> String -> String -> String -> Int -> Cmd Msg
 fetchTeamWork token teamId queryText typeFilter sortOrder offset =
-    authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/work?" ++ taskSearchParams queryText typeFilter sortOrder offset) Http.emptyBody (Http.expectJson TeamWorkReceived Task.tasksResponseDecoder)
+    authorizedRequest "GET" token ("/api/teams/" ++ teamId ++ "/work?" ++ taskSearchParams queryText typeFilter sortOrder offset) Http.emptyBody (expectJsonWithServerError TeamWorkReceived Task.tasksResponseDecoder)
 
 
 fetchSavedQueueViews : String -> Cmd Msg
 fetchSavedQueueViews token =
-    authorizedRequest "GET" token "/api/saved-queue-views" Http.emptyBody (Http.expectJson SavedQueueViewsReceived SavedQueueViews.savedQueueViewsResponseDecoder)
+    authorizedRequest "GET" token "/api/saved-queue-views" Http.emptyBody (expectJsonWithServerError SavedQueueViewsReceived SavedQueueViews.savedQueueViewsResponseDecoder)
 
 
 saveSavedQueueView : String -> String -> QueueView -> Cmd Msg
@@ -752,12 +752,12 @@ saveSavedQueueView token scope view =
                 ]
             )
         )
-        (Http.expectJson SavedQueueViewSaved SavedQueueViews.savedQueueViewResponseDecoder)
+        (expectJsonWithServerError SavedQueueViewSaved SavedQueueViews.savedQueueViewResponseDecoder)
 
 
 fetchCredentials : String -> Cmd Msg
 fetchCredentials token =
-    authorizedRequest "GET" token "/api/agent-credentials" Http.emptyBody (Http.expectJson CredentialsReceived Agent.agentCredentialsResponseDecoder)
+    authorizedRequest "GET" token "/api/agent-credentials" Http.emptyBody (expectJsonWithServerError CredentialsReceived Agent.agentCredentialsResponseDecoder)
 
 
 postCreateTask : LoggedInModel -> Cmd Msg
@@ -766,27 +766,27 @@ postCreateTask state =
         state.accessToken
         "/api/tasks"
         (Http.jsonBody (createTaskRequestBody state))
-        (Http.expectJson CreateTaskReceived taskDetailDecoder)
+        (expectJsonWithServerError CreateTaskReceived taskDetailDecoder)
 
 
 fetchDiscovery : String -> Bool -> Int -> Cmd Msg
 fetchDiscovery token includeReserved offset =
-    authorizedRequest "GET" token ("/api/tasks?scope=public&include_reserved=" ++ boolQuery includeReserved ++ "&limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson DiscoveryReceived Task.tasksResponseDecoder)
+    authorizedRequest "GET" token ("/api/tasks?scope=public&include_reserved=" ++ boolQuery includeReserved ++ "&limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError DiscoveryReceived Task.tasksResponseDecoder)
 
 
 fetchPublicTaskDetail : String -> String -> Cmd Msg
 fetchPublicTaskDetail token taskId =
-    authorizedRequest "GET" token ("/api/tasks/" ++ taskId) Http.emptyBody (Http.expectJson DetailReceived publicTaskDetailDecoder)
+    authorizedRequest "GET" token ("/api/tasks/" ++ taskId) Http.emptyBody (expectJsonWithServerError DetailReceived publicTaskDetailDecoder)
 
 
 fetchSubmissions : String -> String -> Cmd Msg
 fetchSubmissions token taskId =
-    authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/submissions") Http.emptyBody (Http.expectJson SubmissionsReceived Submission.submissionsResponseDecoder)
+    authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/submissions") Http.emptyBody (expectJsonWithServerError SubmissionsReceived Submission.submissionsResponseDecoder)
 
 
 fetchReservations : String -> String -> Cmd Msg
 fetchReservations token taskId =
-    authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/reservations") Http.emptyBody (Http.expectJson ReservationsReceived Task.taskReservationsResponseDecoder)
+    authorizedRequest "GET" token ("/api/tasks/" ++ taskId ++ "/reservations") Http.emptyBody (expectJsonWithServerError ReservationsReceived Task.taskReservationsResponseDecoder)
 
 
 postFunding : String -> String -> Int -> String -> Int -> Cmd Msg
@@ -795,7 +795,7 @@ postFunding token taskId amount organizationId nonce =
         token
         ("/api/tasks/" ++ taskId ++ "/funding")
         (Http.jsonBody (fundingRequestBody taskId amount organizationId nonce))
-        (Http.expectJson FundReceived Ledger.taskEscrowResponseDecoder)
+        (expectJsonWithServerError FundReceived Ledger.taskEscrowResponseDecoder)
 
 
 postOpenTask : String -> String -> Cmd Msg
@@ -804,7 +804,7 @@ postOpenTask token taskId =
         token
         ("/api/tasks/" ++ taskId ++ "/open")
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson OpenTaskReceived taskDetailDecoder)
+        (expectJsonWithServerError OpenTaskReceived taskDetailDecoder)
 
 
 postUnpublishTask : String -> String -> Cmd Msg
@@ -813,7 +813,7 @@ postUnpublishTask token taskId =
         token
         ("/api/tasks/" ++ taskId ++ "/unpublish")
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson UnpublishTaskReceived taskDetailDecoder)
+        (expectJsonWithServerError UnpublishTaskReceived taskDetailDecoder)
 
 
 postRefundTask : String -> String -> Cmd Msg
@@ -822,7 +822,7 @@ postRefundTask token taskId =
         token
         ("/api/tasks/" ++ taskId ++ "/refund")
         (Http.jsonBody (Encode.object [ ( "idempotency_key", Encode.string ("ui-refund:" ++ taskId) ) ]))
-        (Http.expectJson RefundTaskReceived Ledger.taskEscrowResponseDecoder)
+        (expectJsonWithServerError RefundTaskReceived Ledger.taskEscrowResponseDecoder)
 
 
 postCancelTask : String -> String -> Cmd Msg
@@ -831,7 +831,7 @@ postCancelTask token taskId =
         token
         ("/api/tasks/" ++ taskId ++ "/cancel")
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson CancelTaskReceived taskDetailDecoder)
+        (expectJsonWithServerError CancelTaskReceived taskDetailDecoder)
 
 
 postRefundCollectibleReward : String -> String -> Cmd Msg
@@ -840,7 +840,7 @@ postRefundCollectibleReward token taskId =
         token
         ("/api/tasks/" ++ taskId ++ "/collectible-refund")
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson RefundCollectibleRewardReceived Collectible.collectiblesResponseDecoder)
+        (expectJsonWithServerError RefundCollectibleRewardReceived Collectible.collectiblesResponseDecoder)
 
 
 postReservation : LoggedInModel -> String -> Cmd Msg
@@ -849,7 +849,7 @@ postReservation state taskId =
         state.accessToken
         ("/api/tasks/" ++ taskId ++ "/reservations")
         (Http.jsonBody (reservationRequestBody state))
-        (Http.expectJson ReservationReceived Task.taskReservationResponseDecoder)
+        (expectJsonWithServerError ReservationReceived Task.taskReservationResponseDecoder)
 
 
 reservationRequestBody : LoggedInModel -> Encode.Value
@@ -883,7 +883,7 @@ postReservationChange token taskId reservationId action =
         token
         ("/api/tasks/" ++ taskId ++ "/reservations/" ++ reservationId ++ "/" ++ action)
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson ReservationChangeReceived Task.taskReservationResponseDecoder)
+        (expectJsonWithServerError ReservationChangeReceived Task.taskReservationResponseDecoder)
 
 
 postAgent : String -> String -> List Agent.AgentScope -> String -> Cmd Msg
@@ -892,7 +892,7 @@ postAgent token agentLabel scopes expiresAt =
         token
         "/api/agent-credentials"
         (Http.jsonBody (agentRequestBody agentLabel scopes expiresAt))
-        (Http.expectJson AgentCreated Agent.agentCredentialCreatedResponseDecoder)
+        (expectJsonWithServerError AgentCreated Agent.agentCredentialCreatedResponseDecoder)
 
 
 mintTaskToken : String -> Cmd Msg
@@ -901,7 +901,7 @@ mintTaskToken token =
         token
         "/api/agent-credentials"
         (Http.jsonBody (agentRequestBody "Task worker token" [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeSubmissionsRead ] ""))
-        (Http.expectJson TaskTokenMinted Agent.agentCredentialCreatedResponseDecoder)
+        (expectJsonWithServerError TaskTokenMinted Agent.agentCredentialCreatedResponseDecoder)
 
 
 mintUserToken : String -> Cmd Msg
@@ -910,7 +910,7 @@ mintUserToken token =
         token
         "/api/agent-credentials"
         (Http.jsonBody (agentRequestBody "Personal agent token" [ Agent.AgentScopeTasksRead, Agent.AgentScopeTasksWrite, Agent.AgentScopeSubmissionsRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeSubmissionsReview ] ""))
-        (Http.expectJson UserTokenMinted Agent.agentCredentialCreatedResponseDecoder)
+        (expectJsonWithServerError UserTokenMinted Agent.agentCredentialCreatedResponseDecoder)
 
 
 postSubmission : String -> String -> String -> List SelectedAttachment -> Cmd Msg
@@ -919,7 +919,7 @@ postSubmission token taskId responseJson attachments =
         token
         ("/api/tasks/" ++ taskId ++ "/submissions")
         (Http.jsonBody (submissionRequestBody responseJson attachments))
-        (Http.expectJson SubmitReceived Submission.submissionCreatedResponseDecoder)
+        (expectJsonWithServerError SubmitReceived Submission.submissionCreatedResponseDecoder)
 
 
 postAccept : String -> String -> String -> String -> String -> String -> Cmd Msg
@@ -928,7 +928,7 @@ postAccept token taskId submissionId payoutAmount tipAmount tipCollectibleId =
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/accept")
         (Http.jsonBody (acceptRequestBody submissionId payoutAmount tipAmount tipCollectibleId))
-        (Http.expectWhatever (ReviewActionReceived submissionId))
+        (expectWhateverWithServerError (ReviewActionReceived submissionId))
 
 
 postRequestChanges : String -> String -> String -> String -> Cmd Msg
@@ -937,7 +937,7 @@ postRequestChanges token taskId submissionId reviewNote =
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/request-changes")
         (Http.jsonBody (requestChangesBody reviewNote))
-        (Http.expectWhatever (ReviewActionReceived submissionId))
+        (expectWhateverWithServerError (ReviewActionReceived submissionId))
 
 
 postReject : String -> String -> String -> String -> String -> String -> Bool -> Cmd Msg
@@ -946,17 +946,17 @@ postReject token taskId submissionId reviewNote partialCredit tipAmount banImple
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/reject")
         (Http.jsonBody (rejectRequestBody submissionId reviewNote partialCredit tipAmount banImplementor))
-        (Http.expectWhatever (ReviewActionReceived submissionId))
+        (expectWhateverWithServerError (ReviewActionReceived submissionId))
 
 
 fetchCollectibles : String -> Cmd Msg
 fetchCollectibles token =
-    authorizedRequest "GET" token "/api/collectibles" Http.emptyBody (Http.expectJson CollectiblesReceived Collectible.collectiblesResponseDecoder)
+    authorizedRequest "GET" token "/api/collectibles" Http.emptyBody (expectJsonWithServerError CollectiblesReceived Collectible.collectiblesResponseDecoder)
 
 
 fetchCollectibleCatalog : String -> Cmd Msg
 fetchCollectibleCatalog token =
-    authorizedRequest "GET" token "/api/collectibles/catalog" Http.emptyBody (Http.expectJson CollectibleCatalogReceived Collectible.collectibleCatalogResponseDecoder)
+    authorizedRequest "GET" token "/api/collectibles/catalog" Http.emptyBody (expectJsonWithServerError CollectibleCatalogReceived Collectible.collectibleCatalogResponseDecoder)
 
 
 awardDefaultCollectible : String -> String -> String -> String -> Cmd Msg
@@ -972,7 +972,7 @@ awardDefaultCollectible token slug recipientKind recipientId =
                 ]
             )
         )
-        (Http.expectJson AwardDefaultReceived Collectible.collectibleResponseDecoder)
+        (expectJsonWithServerError AwardDefaultReceived Collectible.collectibleResponseDecoder)
 
 
 transferCollectible : String -> String -> String -> Cmd Msg
@@ -981,7 +981,7 @@ transferCollectible token collectibleId recipientId =
         token
         ("/api/collectibles/" ++ collectibleId ++ "/transfer")
         (Http.jsonBody (Encode.object [ ( "recipient_id", Encode.string recipientId ) ]))
-        (Http.expectJson TransferCollectibleReceived Collectible.collectibleResponseDecoder)
+        (expectJsonWithServerError TransferCollectibleReceived Collectible.collectibleResponseDecoder)
 
 
 fetchOrganizations : String -> Cmd Msg
@@ -991,7 +991,7 @@ fetchOrganizations token =
 
 fetchOrganizationsPage : String -> String -> Int -> Cmd Msg
 fetchOrganizationsPage token queryText offset =
-    authorizedRequest "GET" token (selectorQuery queryText offset "/api/organizations") Http.emptyBody (Http.expectJson OrganizationsReceived Organization.organizationsResponseDecoder)
+    authorizedRequest "GET" token (selectorQuery queryText offset "/api/organizations") Http.emptyBody (expectJsonWithServerError OrganizationsReceived Organization.organizationsResponseDecoder)
 
 
 userDirectoryEntryDecoder : Decode.Decoder UserDirectoryEntry
@@ -1009,7 +1009,7 @@ fetchUserDirectory token =
 
 fetchUserDirectoryPage : String -> String -> Int -> Cmd Msg
 fetchUserDirectoryPage token queryText offset =
-    authorizedRequest "GET" token (selectorQuery queryText offset "/api/users") Http.emptyBody (Http.expectJson UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))
+    authorizedRequest "GET" token (selectorQuery queryText offset "/api/users") Http.emptyBody (expectJsonWithServerError UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))
 
 
 fetchStandaloneTeams : String -> Cmd Msg
@@ -1019,7 +1019,7 @@ fetchStandaloneTeams token =
 
 fetchStandaloneTeamsPage : String -> String -> Int -> Cmd Msg
 fetchStandaloneTeamsPage token queryText offset =
-    authorizedRequest "GET" token (selectorQuery queryText offset "/api/teams") Http.emptyBody (Http.expectJson StandaloneTeamsReceived Team.teamsResponseDecoder)
+    authorizedRequest "GET" token (selectorQuery queryText offset "/api/teams") Http.emptyBody (expectJsonWithServerError StandaloneTeamsReceived Team.teamsResponseDecoder)
 
 
 refreshOrganizations : Model -> Cmd Msg
@@ -1039,11 +1039,11 @@ loadOrganization token organizationId =
 
     else
         Cmd.batch
-            [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (Http.expectJson OrgBalanceReceived Ledger.balanceResponseDecoder)
+            [ authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/balance") Http.emptyBody (expectJsonWithServerError OrgBalanceReceived Ledger.balanceResponseDecoder)
             , fetchOrganizationLedgerPage token organizationId 0
-            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0") Http.emptyBody (Http.expectJson OrgAuditEventsReceived Admin.auditEventsResponseDecoder)
+            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0") Http.emptyBody (expectJsonWithServerError OrgAuditEventsReceived Admin.auditEventsResponseDecoder)
             , fetchOrgTeams token organizationId
-            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder)
+            , authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/members") Http.emptyBody (expectJsonWithServerError OrgMembersReceived Organization.organizationMembersResponseDecoder)
             , fetchOrgTasksPage token organizationId "" "" "" "newest" 0
             , fetchOrgCredentials token organizationId
             ]
@@ -1051,7 +1051,7 @@ loadOrganization token organizationId =
 
 fetchOrgCredentials : String -> String -> Cmd Msg
 fetchOrgCredentials token organizationId =
-    authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credentials") Http.emptyBody (Http.expectJson OrgCredentialsReceived Agent.orgCredentialsResponseDecoder)
+    authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credentials") Http.emptyBody (expectJsonWithServerError OrgCredentialsReceived Agent.orgCredentialsResponseDecoder)
 
 
 postOrgCredential : String -> String -> String -> List Agent.AgentScope -> String -> Cmd Msg
@@ -1060,7 +1060,7 @@ postOrgCredential token organizationId label scopes expiresAt =
         token
         ("/api/organizations/" ++ organizationId ++ "/credentials")
         (Http.jsonBody (agentRequestBody label scopes expiresAt))
-        (Http.expectJson OrgCredentialCreated Agent.orgCredentialCreatedResponseDecoder)
+        (expectJsonWithServerError OrgCredentialCreated Agent.orgCredentialCreatedResponseDecoder)
 
 
 postRevokeOrgCredential : String -> String -> String -> Cmd Msg
@@ -1069,7 +1069,7 @@ postRevokeOrgCredential token organizationId credentialId =
         token
         ("/api/organizations/" ++ organizationId ++ "/credentials/" ++ credentialId ++ "/revoke")
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson OrgCredentialRevoked Agent.orgCredentialResponseDecoder)
+        (expectJsonWithServerError OrgCredentialRevoked Agent.orgCredentialResponseDecoder)
 
 
 fetchOrgTasksPage : String -> String -> String -> String -> String -> String -> Int -> Cmd Msg
@@ -1082,7 +1082,7 @@ fetchOrgTasksPage token organizationId queryText stateFilter typeFilter sortOrde
             else
                 "&state=" ++ stateFilter
     in
-    authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId ++ "&" ++ taskSearchParams queryText typeFilter sortOrder offset ++ stateQuery) Http.emptyBody (Http.expectJson OrgTasksReceived Task.tasksResponseDecoder)
+    authorizedRequest "GET" token ("/api/tasks?scope=organization&organization_id=" ++ organizationId ++ "&" ++ taskSearchParams queryText typeFilter sortOrder offset ++ stateQuery) Http.emptyBody (expectJsonWithServerError OrgTasksReceived Task.tasksResponseDecoder)
 
 
 fetchAuditEvents : String -> String -> String -> String -> Int -> Cmd Msg
@@ -1109,17 +1109,17 @@ fetchAuditEvents token actionFilter subjectKindFilter subjectIDFilter offset =
             else
                 "&subject_id=" ++ Url.percentEncode (String.trim subjectIDFilter)
     in
-    authorizedRequest "GET" token ("/api/admin/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset ++ actionQuery ++ subjectKindQuery ++ subjectIDQuery) Http.emptyBody (Http.expectJson AuditEventsReceived Admin.auditEventsResponseDecoder)
+    authorizedRequest "GET" token ("/api/admin/audit-events?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset ++ actionQuery ++ subjectKindQuery ++ subjectIDQuery) Http.emptyBody (expectJsonWithServerError AuditEventsReceived Admin.auditEventsResponseDecoder)
 
 
 fetchAdminPrivacyRequests : String -> Int -> Cmd Msg
 fetchAdminPrivacyRequests token offset =
-    authorizedRequest "GET" token ("/api/admin/privacy-requests?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson AdminPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
+    authorizedRequest "GET" token ("/api/admin/privacy-requests?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError AdminPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
 
 
 fetchPlatformAdmins : String -> Int -> Cmd Msg
 fetchPlatformAdmins token offset =
-    authorizedRequest "GET" token ("/api/admin/platform-admins?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson PlatformAdminsReceived Admin.platformAdminsResponseDecoder)
+    authorizedRequest "GET" token ("/api/admin/platform-admins?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError PlatformAdminsReceived Admin.platformAdminsResponseDecoder)
 
 
 grantPlatformAdmin : String -> String -> Cmd Msg
@@ -1128,7 +1128,7 @@ grantPlatformAdmin token userID =
         token
         "/api/admin/platform-admins"
         (Http.jsonBody (Encode.object [ ( "user_id", Encode.string userID ) ]))
-        (Http.expectJson PlatformAdminGranted Admin.platformAdminResponseDecoder)
+        (expectJsonWithServerError PlatformAdminGranted Admin.platformAdminResponseDecoder)
 
 
 revokePlatformAdmin : String -> String -> Cmd Msg
@@ -1137,7 +1137,7 @@ revokePlatformAdmin token userID =
         token
         ("/api/admin/platform-admins/" ++ userID ++ "/revoke")
         Http.emptyBody
-        (Http.expectJson PlatformAdminRevoked Admin.platformAdminResponseDecoder)
+        (expectJsonWithServerError PlatformAdminRevoked Admin.platformAdminResponseDecoder)
 
 
 fetchAdminModerationReports : String -> String -> Int -> Cmd Msg
@@ -1150,7 +1150,7 @@ fetchAdminModerationReports token stateFilter offset =
             else
                 "&state=" ++ Url.percentEncode (String.trim stateFilter)
     in
-    authorizedRequest "GET" token ("/api/admin/moderation/reports?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset ++ stateQuery) Http.emptyBody (Http.expectJson AdminModerationReportsReceived Moderation.moderationReportsResponseDecoder)
+    authorizedRequest "GET" token ("/api/admin/moderation/reports?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset ++ stateQuery) Http.emptyBody (expectJsonWithServerError AdminModerationReportsReceived Moderation.moderationReportsResponseDecoder)
 
 
 triageModerationReport : String -> String -> String -> String -> Cmd Msg
@@ -1159,7 +1159,7 @@ triageModerationReport token reportID stateValue resolutionNote =
         token
         ("/api/admin/moderation/reports/" ++ reportID ++ "/triage")
         (Http.jsonBody (Encode.object [ ( "state", Encode.string stateValue ), ( "resolution_note", Encode.string resolutionNote ) ]))
-        (Http.expectJson AdminModerationReportTriaged Moderation.moderationReportResponseDecoder)
+        (expectJsonWithServerError AdminModerationReportTriaged Moderation.moderationReportResponseDecoder)
 
 
 runPrivacyRetention : String -> Cmd Msg
@@ -1168,7 +1168,7 @@ runPrivacyRetention token =
         token
         "/api/admin/privacy-retention/run"
         Http.emptyBody
-        (Http.expectJson PrivacyRetentionRunReceived Privacy.privacyRetentionRunResponseDecoder)
+        (expectJsonWithServerError PrivacyRetentionRunReceived Privacy.privacyRetentionRunResponseDecoder)
 
 
 resolveAdminPrivacyRequest : String -> String -> String -> Cmd Msg
@@ -1177,7 +1177,7 @@ resolveAdminPrivacyRequest token requestId resolutionNote =
         token
         ("/api/admin/privacy-requests/" ++ requestId ++ "/resolve")
         (Http.jsonBody (Encode.object [ ( "resolution_note", Encode.string resolutionNote ) ]))
-        (Http.expectJson AdminPrivacyRequestResolved Privacy.privacyRequestResponseDecoder)
+        (expectJsonWithServerError AdminPrivacyRequestResolved Privacy.privacyRequestResponseDecoder)
 
 
 fetchOrgTeams : String -> String -> Cmd Msg
@@ -1191,7 +1191,7 @@ fetchOrgTeamsPage token organizationId queryText offset =
         Cmd.none
 
     else
-        authorizedRequest "GET" token (selectorQuery queryText offset ("/api/organizations/" ++ organizationId ++ "/teams")) Http.emptyBody (Http.expectJson OrgTeamsReceived Team.teamsResponseDecoder)
+        authorizedRequest "GET" token (selectorQuery queryText offset ("/api/organizations/" ++ organizationId ++ "/teams")) Http.emptyBody (expectJsonWithServerError OrgTeamsReceived Team.teamsResponseDecoder)
 
 
 requestEmailVerification : String -> Cmd Msg
@@ -1200,7 +1200,7 @@ requestEmailVerification token =
         token
         "/api/account/email-verification"
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson EmailVerificationRequested tokenDecoder)
+        (expectJsonWithServerError EmailVerificationRequested tokenDecoder)
 
 
 confirmEmailVerification : String -> String -> Cmd Msg
@@ -1209,7 +1209,7 @@ confirmEmailVerification token accountToken =
         token
         "/api/auth/email-verification/confirm"
         (Http.jsonBody (Encode.object [ ( "token", Encode.string accountToken ) ]))
-        (Http.expectWhatever AccountActionReceived)
+        (expectWhateverWithServerError AccountActionReceived)
 
 
 updateProfile : String -> String -> Cmd Msg
@@ -1218,7 +1218,7 @@ updateProfile token email =
         token
         "/api/account/profile"
         (Http.jsonBody (Encode.object [ ( "email", Encode.string email ) ]))
-        (Http.expectWhatever AccountActionReceived)
+        (expectWhateverWithServerError AccountActionReceived)
 
 
 changePassword : String -> String -> String -> Cmd Msg
@@ -1227,7 +1227,7 @@ changePassword token current next =
         token
         "/api/account/password"
         (Http.jsonBody (Encode.object [ ( "current_password", Encode.string current ), ( "new_password", Encode.string next ) ]))
-        (Http.expectWhatever AccountActionReceived)
+        (expectWhateverWithServerError AccountActionReceived)
 
 
 deactivateAccount : String -> Cmd Msg
@@ -1236,7 +1236,7 @@ deactivateAccount token =
         token
         "/api/account"
         Http.emptyBody
-        (Http.expectWhatever DeactivateAccountReceived)
+        (expectWhateverWithServerError DeactivateAccountReceived)
 
 
 requestPrivacy : String -> Privacy.PrivacyRequestKind -> Cmd Msg
@@ -1245,7 +1245,7 @@ requestPrivacy token kind =
         token
         "/api/privacy-requests"
         (Http.jsonBody (Encode.object [ ( "kind", Privacy.privacyRequestKindEncoder kind ) ]))
-        (Http.expectJson PrivacyRequestReceived Privacy.privacyRequestResponseDecoder)
+        (expectJsonWithServerError PrivacyRequestReceived Privacy.privacyRequestResponseDecoder)
 
 
 reportTask : String -> String -> Moderation.ModerationReason -> String -> Cmd Msg
@@ -1262,7 +1262,7 @@ reportTask token taskId reason details =
                 ]
             )
         )
-        (Http.expectJson ModerationReportReceived Moderation.moderationReportResponseDecoder)
+        (expectJsonWithServerError ModerationReportReceived Moderation.moderationReportResponseDecoder)
 
 
 createOrgTeamCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
@@ -1276,7 +1276,7 @@ createOrgTeamCommand model state =
             state.accessToken
             ("/api/organizations/" ++ state.activeOrgId ++ "/teams")
             (Http.jsonBody (Encode.object [ ( "name", Encode.string (String.trim state.createOrgTeamName) ) ]))
-            (Http.expectJson CreateOrgTeamReceived Team.teamResponseDecoder)
+            (expectJsonWithServerError CreateOrgTeamReceived Team.teamResponseDecoder)
         )
 
 
@@ -1294,7 +1294,7 @@ provisionMemberCommand model state =
             state.accessToken
             ("/api/organizations/" ++ state.activeOrgId ++ "/members")
             (Http.jsonBody (Encode.object [ ( "email", Encode.string (String.trim state.provisionMemberEmail) ), ( "roles", Encode.list Encode.string state.provisionMemberRoles ) ]))
-            (Http.expectWhatever ProvisionMemberReceived)
+            (expectWhateverWithServerError ProvisionMemberReceived)
         )
 
 
@@ -1309,7 +1309,7 @@ updateMemberRolesCommand model state userId roles =
             state.accessToken
             ("/api/organizations/" ++ state.activeOrgId ++ "/members/" ++ userId ++ "/roles")
             (Http.jsonBody (Encode.object [ ( "roles", Encode.list Encode.string roles ) ]))
-            (Http.expectJson UpdateMemberRolesReceived Organization.organizationMemberResponseDecoder)
+            (expectJsonWithServerError UpdateMemberRolesReceived Organization.organizationMemberResponseDecoder)
         )
 
 
@@ -1324,7 +1324,7 @@ deactivateMemberCommand model state userId =
             state.accessToken
             ("/api/organizations/" ++ state.activeOrgId ++ "/members/" ++ userId ++ "/deactivate")
             (Http.jsonBody (Encode.object []))
-            (Http.expectWhatever DeactivateMemberReceived)
+            (expectWhateverWithServerError DeactivateMemberReceived)
         )
 
 
@@ -1379,7 +1379,7 @@ createOrgCommand model state =
             state.accessToken
             "/api/organizations"
             (Http.jsonBody (Encode.object [ ( "name", Encode.string (String.trim state.createOrgName) ) ]))
-            (Http.expectJson CreateOrgReceived Organization.organizationResponseDecoder)
+            (expectJsonWithServerError CreateOrgReceived Organization.organizationResponseDecoder)
         )
 
 
@@ -1399,7 +1399,7 @@ postCollectible token name kind policy =
         token
         "/api/collectibles"
         (Http.jsonBody (collectibleRequestBody name kind policy))
-        (Http.expectJson MintReceived Collectible.collectibleResponseDecoder)
+        (expectJsonWithServerError MintReceived Collectible.collectibleResponseDecoder)
 
 
 postCollectibleReward : String -> String -> String -> Cmd Msg
@@ -1408,7 +1408,7 @@ postCollectibleReward token taskId collectibleId =
         token
         ("/api/tasks/" ++ taskId ++ "/collectible-reward")
         (Http.jsonBody (collectibleRewardRequestBody collectibleId))
-        (Http.expectJson AwardReceived Collectible.collectibleResponseDecoder)
+        (expectJsonWithServerError AwardReceived Collectible.collectibleResponseDecoder)
 
 
 postAwardOrganizationCollectible : String -> String -> String -> String -> Cmd Msg
@@ -1417,7 +1417,7 @@ postAwardOrganizationCollectible token organizationId collectibleId recipientId 
         token
         ("/api/organizations/" ++ organizationId ++ "/collectibles/" ++ collectibleId ++ "/award")
         (Http.jsonBody (Encode.object [ ( "recipient_id", Encode.string recipientId ) ]))
-        (Http.expectJson AwardOrgCollectibleReceived Collectible.collectibleResponseDecoder)
+        (expectJsonWithServerError AwardOrgCollectibleReceived Collectible.collectibleResponseDecoder)
 
 
 revokeAgent : String -> String -> Cmd Msg
@@ -1426,7 +1426,7 @@ revokeAgent token credentialId =
         token
         ("/api/agent-credentials/" ++ credentialId ++ "/revoke")
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson AgentRevoked Agent.agentCredentialResponseDecoder)
+        (expectJsonWithServerError AgentRevoked Agent.agentCredentialResponseDecoder)
 
 
 fundingRequestBody : String -> Int -> String -> Int -> Encode.Value
@@ -1780,12 +1780,12 @@ seriesFromResult result =
 
 fetchSeriesList : String -> Cmd Msg
 fetchSeriesList token =
-    authorizedRequest "GET" token "/api/task-series" Http.emptyBody (Http.expectJson SeriesListReceived TaskSeries.taskSeriesListResponseDecoder)
+    authorizedRequest "GET" token "/api/task-series" Http.emptyBody (expectJsonWithServerError SeriesListReceived TaskSeries.taskSeriesListResponseDecoder)
 
 
 fetchSeriesDetail : String -> String -> Cmd Msg
 fetchSeriesDetail token seriesId =
-    authorizedRequest "GET" token ("/api/task-series/" ++ seriesId) Http.emptyBody (Http.expectJson SeriesDetailReceived seriesDetailDecoder)
+    authorizedRequest "GET" token ("/api/task-series/" ++ seriesId) Http.emptyBody (expectJsonWithServerError SeriesDetailReceived seriesDetailDecoder)
 
 
 createSeriesCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
@@ -1799,7 +1799,7 @@ createSeriesCommand model state =
             state.accessToken
             "/api/task-series"
             (Http.jsonBody (seriesBody state.createSeriesTitle state.createSeriesDescription))
-            (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+            (expectJsonWithServerError SeriesMutationReceived seriesDetailDecoder)
         )
 
 
@@ -1814,7 +1814,7 @@ updateSeriesCommand model state seriesId =
             state.accessToken
             ("/api/task-series/" ++ seriesId)
             (Http.jsonBody (seriesBody state.seriesRenameTitle state.seriesRenameDescription))
-            (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+            (expectJsonWithServerError SeriesMutationReceived seriesDetailDecoder)
         )
 
 
@@ -1824,7 +1824,7 @@ seriesStateCommand token seriesId action =
         token
         ("/api/task-series/" ++ seriesId ++ "/" ++ action)
         (Http.jsonBody (Encode.object []))
-        (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+        (expectJsonWithServerError SeriesMutationReceived seriesDetailDecoder)
 
 
 addSeriesTaskCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
@@ -1838,7 +1838,7 @@ addSeriesTaskCommand model state seriesId =
             state.accessToken
             ("/api/task-series/" ++ seriesId ++ "/tasks")
             (Http.jsonBody (Encode.object [ ( "task_id", Encode.string (String.trim state.addSeriesTaskId) ) ]))
-            (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+            (expectJsonWithServerError SeriesMutationReceived seriesDetailDecoder)
         )
 
 
@@ -1848,7 +1848,7 @@ removeSeriesTaskCommand token seriesId taskId =
         token
         ("/api/task-series/" ++ seriesId ++ "/tasks/" ++ taskId)
         Http.emptyBody
-        (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+        (expectJsonWithServerError SeriesMutationReceived seriesDetailDecoder)
 
 
 reorderSeriesCommand : String -> String -> List String -> Cmd Msg
@@ -1857,7 +1857,7 @@ reorderSeriesCommand token seriesId taskIds =
         token
         ("/api/task-series/" ++ seriesId ++ "/reorder")
         (Http.jsonBody (Encode.object [ ( "task_ids", Encode.list Encode.string taskIds ) ]))
-        (Http.expectJson SeriesMutationReceived seriesDetailDecoder)
+        (expectJsonWithServerError SeriesMutationReceived seriesDetailDecoder)
 
 
 addSeriesCommentCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
@@ -1871,23 +1871,23 @@ addSeriesCommentCommand model state seriesId =
             state.accessToken
             ("/api/task-series/" ++ seriesId ++ "/comments")
             (Http.jsonBody (Encode.object [ ( "body", Encode.string (String.trim state.seriesCommentBody) ) ]))
-            (Http.expectJson SeriesCommentReceived TaskSeries.seriesCommentResponseDecoder)
+            (expectJsonWithServerError SeriesCommentReceived TaskSeries.seriesCommentResponseDecoder)
         )
 
 
 fetchOrganizationLedgerPage : String -> String -> Int -> Cmd Msg
 fetchOrganizationLedgerPage token organizationId offset =
-    authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson OrgLedgerReceived Ledger.ledgerResponseDecoder)
+    authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError OrgLedgerReceived Ledger.ledgerResponseDecoder)
 
 
 fetchNotifications : String -> Int -> Cmd Msg
 fetchNotifications token offset =
-    authorizedRequest "GET" token ("/api/notifications?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (Http.expectJson NotificationsReceived Notification.notificationsResponseDecoder)
+    authorizedRequest "GET" token ("/api/notifications?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError NotificationsReceived Notification.notificationsResponseDecoder)
 
 
 markNotificationRead : String -> String -> Cmd Msg
 markNotificationRead token notificationId =
-    authorizedRequest "POST" token ("/api/notifications/" ++ notificationId ++ "/read") Http.emptyBody (Http.expectJson NotificationReadReceived Notification.notificationResponseDecoder)
+    authorizedRequest "POST" token ("/api/notifications/" ++ notificationId ++ "/read") Http.emptyBody (expectJsonWithServerError NotificationReadReceived Notification.notificationResponseDecoder)
 
 
 moveSeriesTaskOrder : Bool -> String -> List SeriesTaskEntry -> List String
@@ -1957,6 +1957,64 @@ seriesBody title description =
         , ( "description", Encode.string description )
         ]
 
+
+
+-- Every error response body from internal/http is `{"error": "..."}"`
+-- (see internal/http/server.go's writeError). Plain expectJsonWithServerError/
+-- expectWhatever discard that body entirely on a non-2xx response, leaving
+-- only the numeric status code (see Labels.httpErrorLabel) - these two
+-- helpers read it back out and carry it as Http.BadBody's message instead,
+-- so the UI can show "task requester cannot reserve their own task" rather
+-- than "The request failed with status 409."
+
+
+serverErrorMessageDecoder : Decode.Decoder String
+serverErrorMessageDecoder =
+    Decode.field "error" Decode.string
+
+
+responseToServerErrorResult : (String -> Result Http.Error a) -> Http.Response String -> Result Http.Error a
+responseToServerErrorResult onGoodBody response =
+    case response of
+        Http.BadUrl_ url ->
+            Err (Http.BadUrl url)
+
+        Http.Timeout_ ->
+            Err Http.Timeout
+
+        Http.NetworkError_ ->
+            Err Http.NetworkError
+
+        Http.BadStatus_ metadata body ->
+            case Decode.decodeString serverErrorMessageDecoder body of
+                Ok message ->
+                    Err (Http.BadBody message)
+
+                Err _ ->
+                    Err (Http.BadStatus metadata.statusCode)
+
+        Http.GoodStatus_ _ body ->
+            onGoodBody body
+
+
+expectJsonWithServerError : (Result Http.Error a -> msg) -> Decode.Decoder a -> Http.Expect msg
+expectJsonWithServerError toMsg decoder =
+    Http.expectStringResponse toMsg
+        (responseToServerErrorResult
+            (\body ->
+                case Decode.decodeString decoder body of
+                    Ok value ->
+                        Ok value
+
+                    Err error ->
+                        Err (Http.BadBody (Decode.errorToString error))
+            )
+        )
+
+
+expectWhateverWithServerError : (Result Http.Error () -> msg) -> Http.Expect msg
+expectWhateverWithServerError toMsg =
+    Http.expectStringResponse toMsg (responseToServerErrorResult (\_ -> Ok ()))
 
 
 authorizedRequest : String -> String -> String -> Http.Body -> Http.Expect Msg -> Cmd Msg

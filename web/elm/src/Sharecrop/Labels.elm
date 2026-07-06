@@ -493,4 +493,9 @@ httpErrorLabel error =
             "The request failed with status " ++ String.fromInt status ++ "."
 
         Http.BadBody message ->
-            "The response was unexpected: " ++ message
+            -- Carries either the backend's own error message (the common
+            -- case - see Api.expectJsonWithServerError) or, more rarely, a
+            -- genuine response-decoding failure. Shown as-is either way:
+            -- the former is already a complete, readable reason, and the
+            -- latter is a real bug worth seeing rather than hiding.
+            message
