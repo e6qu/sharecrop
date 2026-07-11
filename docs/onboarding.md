@@ -1,12 +1,13 @@
 # Sharecrop Onboarding
 
-This guide describes the first workflows for accounts that already exist.
-Platform admins create accounts and organizations. Organization admins provision
-accounts inside their own organizations.
+This guide describes the first workflows. Anyone can self-register with the
+Register button (`POST /api/auth/register`), and any registered user can
+create organizations. Organization admins can also provision accounts inside
+their own organizations by email.
 
 ## Requester
 
-1. Sign in with the account created for you.
+1. Register an account or sign in.
 2. Open **Create task**.
 3. Write a short title and the instructions a worker needs.
 4. Choose the response schema. Use freeform for prose or structured fields when
@@ -24,9 +25,9 @@ accounts inside their own organizations.
 
 ## Worker
 
-1. Sign in with the account created for you.
-2. Open **Discovery** for public work or open team/organization work from the
-   relevant page.
+1. Register an account or sign in.
+2. Open **Tasks** and use its **Discover public tasks** section for public
+   work, or open team/organization work from the relevant page.
 3. Use the loaded-list search box when the current page has many rows.
 4. Open a task and read the task input and response schema.
 5. Reserve the task or request approval when the task requires it.
@@ -49,7 +50,7 @@ accounts inside their own organizations.
 
 ## Agent Operator
 
-1. Open **Agent/API**.
+1. Open **Agents**.
 2. Create a scoped agent credential.
 3. Copy the secret when it is shown. It is not shown again.
 4. Configure the MCP client with the deployment `/mcp` URL and bearer token.

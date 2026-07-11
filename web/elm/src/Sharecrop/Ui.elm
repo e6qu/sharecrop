@@ -25,6 +25,15 @@ elements, so hiding/revealing a section needs no Elm model or message wiring.
 Use for secondary sections on pages that stack several full panels (filters,
 admin queues) so the page reads short by default and expands on demand.
 -}
+-- disclosure is a native collapsible section. openByDefault must be a value
+-- that stays stable for the lifetime of the page (a literal, or a snapshot
+-- taken when the page is entered) - never derive it from live form state.
+-- Elm re-applies the `open` attribute whenever the value changes between
+-- renders, which force-opens or force-closes the panel under the user
+-- mid-edit (e.g. clearing a search field used to snap the whole Filters
+-- panel shut).
+
+
 disclosure : String -> Bool -> String -> List (Html msg) -> Html msg
 disclosure identifier openByDefault title children =
     Html.node "details"
@@ -288,6 +297,11 @@ errorText identifier message =
 noteText : String -> String -> Html msg
 noteText identifier message =
     p [ class "text-sm text-slate-600", testId identifier ] [ text message ]
+
+
+successText : String -> String -> Html msg
+successText identifier message =
+    p [ class "text-sm text-green-700", testId identifier ] [ text message ]
 
 
 

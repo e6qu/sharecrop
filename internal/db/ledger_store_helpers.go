@@ -45,42 +45,43 @@ func lockUserAccount(ctx context.Context, tx pgx.Tx, userID core.UserID) account
 	return accountLocked{id: rawID, parsedID: parsed.Value}
 }
 
-// completeFunding holds an escrow against a locked, draft, owner-verified task,
-// debiting the locked funder account. It is shared by user and organization
-// funding so the escrow mechanics live in one place.
+// completeFunding allocates credits against a locked, draft, owner-verified
+// task: it validates the funder's spendable balance, writes a task_fund ledger
+// entry (dropping spendable) and inserts the stateless task_funds row (raising
+// allocated). It is shared by user and organization funding so the mechanics
+// live in one place.
 func completeFunding(ctx context.Context, tx pgx.Tx, account accountLocked, taskID core.TaskID, amount ledger.CreditAmount, entryID core.LedgerEntryID, key ledger.IdempotencyKey, insufficientMessage string) ledger.FundResult {
-	var escrowExists bool
-	if err := tx.QueryRow(ctx, "select exists(select 1 from task_escrows where task_id = $1)", taskID.String()).Scan(&escrowExists); err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check existing escrow failed")}
+	var fundExists bool
+	if err := tx.QueryRow(ctx, "select exists(select 1 from task_funds where task_id = $1)", taskID.String()).Scan(&fundExists); err != nil {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check existing task fund failed")}
 	}
-	if escrowExists {
+	if fundExists {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task is already funded")}
 	}
 
-	var balance int64
-	if err := tx.QueryRow(ctx, "select coalesce(sum(amount), 0) from ledger_entries where account_id = $1", account.id).Scan(&balance); err != nil {
+	var spendable int64
+	if err := tx.QueryRow(ctx, "select coalesce(sum(amount), 0) from ledger_entries where account_id = $1", account.id).Scan(&spendable); err != nil {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read account balance failed")}
 	}
-	if balance < amount.Int64() {
+	if spendable < amount.Int64() {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, insufficientMessage)}
 	}
 
-	if _, err := tx.Exec(ctx, "insert into task_escrows (task_id, funder_account_id, amount, state) values ($1, $2, $3, 'held')", taskID.String(), account.id, amount.Int64()); err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task escrow failed")}
+	if _, err := tx.Exec(ctx, "insert into task_funds (task_id, funder_account_id, credit_amount) values ($1, $2, $3)", taskID.String(), account.id, amount.Int64()); err != nil {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task fund failed")}
 	}
-	if _, err := tx.Exec(ctx, "insert into ledger_entries (id, account_id, kind, amount, task_id, idempotency_key) values ($1, $2, 'task_escrow', $3, $4, $5)", entryID.String(), account.id, -amount.Int64(), taskID.String(), key.String()); err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task escrow ledger entry failed")}
+	if _, err := tx.Exec(ctx, "insert into ledger_entries (id, account_id, kind, amount, task_id, idempotency_key) values ($1, $2, 'task_fund', $3, $4, $5)", entryID.String(), account.id, -amount.Int64(), taskID.String(), key.String()); err != nil {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task fund ledger entry failed")}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit fund task transaction failed")}
 	}
 
-	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{
+	return ledger.TaskFunded{Fund: ledger.TaskFund{
 		TaskID:          taskID,
 		FunderAccountID: account.parsedID,
-		Amount:          amount,
-		State:           ledger.EscrowStateHeld,
+		CreditAmount:    amount,
 	}}
 }
 
@@ -278,39 +279,31 @@ func requireFundableTask(ctx context.Context, tx pgx.Tx, taskID core.TaskID, tas
 	return nil
 }
 
-// findEscrowForKey returns a non-nil FundResult when a fund command with the
-// given idempotency key has already been recorded for the task.
-func findEscrowForKey(ctx context.Context, tx pgx.Tx, key string, taskID core.TaskID) ledger.FundResult {
-	var exists bool
-	if err := tx.QueryRow(ctx, "select exists(select 1 from ledger_entries where idempotency_key = $1)", key).Scan(&exists); err != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check fund idempotency failed")}
-	}
-	if !exists {
-		return nil
-	}
-
+// findFundForKey returns a non-nil FundResult when a fund command with the
+// given idempotency key has already been recorded for the task. The reply is
+// reconstructed from the durable task_fund ledger entry, so it replays even
+// after the task_funds row has been consumed by an award or refund.
+func findFundForKey(ctx context.Context, tx pgx.Tx, key string, taskID core.TaskID) ledger.FundResult {
+	var kind string
 	var rawFunderAccountID string
 	var amount int64
-	var escrowState string
-	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, amount, state from task_escrows where task_id = $1", taskID.String()).Scan(&rawFunderAccountID, &amount, &escrowState)
+	var rawTaskID string
+	scanErr := tx.QueryRow(ctx, "select kind, account_id::text, amount, coalesce(task_id::text, '') from ledger_entries where idempotency_key = $1", key).Scan(&kind, &rawFunderAccountID, &amount, &rawTaskID)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
+		return nil
 	}
 	if scanErr != nil {
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read existing escrow failed")}
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check fund idempotency failed")}
 	}
-
-	stateResult := ledger.ParseEscrowState(escrowState)
-	stateAccepted, matched := stateResult.(ledger.EscrowStateAccepted)
-	if !matched {
-		return ledger.FundRejected{Reason: stateResult.(ledger.EscrowStateRejected).Reason}
+	if kind != ledger.EntryKindTaskFund.String() || rawTaskID != taskID.String() {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
 	}
-	escrowResult := buildEscrow(taskID, rawFunderAccountID, amount, stateAccepted.Value)
-	built, builtMatched := escrowResult.(escrowBuilt)
+	fundResult := buildFund(taskID, rawFunderAccountID, -amount)
+	built, builtMatched := fundResult.(fundBuilt)
 	if !builtMatched {
-		return ledger.FundRejected{Reason: escrowResult.(escrowBuildRejected).reason}
+		return ledger.FundRejected{Reason: fundResult.(fundBuildRejected).reason}
 	}
-	return ledger.TaskFunded{Escrow: built.value}
+	return ledger.TaskFunded{Fund: built.value}
 }
 
 type payoutResult interface {
@@ -330,7 +323,7 @@ func (payoutResolved) payoutResult() {}
 func (payoutRejected) payoutResult() {}
 
 func payOutEscrow(ctx context.Context, tx pgx.Tx, command ledger.AcceptStoreCommand, rawWorkerID string) payoutResult {
-	return payReviewEscrow(ctx, tx, reviewEscrowCommand{
+	return payReviewFund(ctx, tx, reviewFundCommand{
 		taskID:            command.TaskID,
 		rawWorkerID:       rawWorkerID,
 		payoutEntryID:     command.PayoutEntryID,
@@ -342,7 +335,7 @@ func payOutEscrow(ctx context.Context, tx pgx.Tx, command ledger.AcceptStoreComm
 	})
 }
 
-type reviewEscrowCommand struct {
+type reviewFundCommand struct {
 	taskID            core.TaskID
 	rawWorkerID       string
 	payoutEntryID     core.LedgerEntryID
@@ -353,32 +346,32 @@ type reviewEscrowCommand struct {
 	missingIsNoPayout bool
 }
 
-func payReviewEscrow(ctx context.Context, tx pgx.Tx, command reviewEscrowCommand) payoutResult {
+// payReviewFund pays a task's allocated credits (from task_funds) to the worker
+// when a submission is accepted (closeTask) or rejected. On accept it pays the
+// selected amount, refunds the remainder to the funder, and deletes the
+// task_funds row (credits have changed hands). On reject it pays the selected
+// amount and keeps the remainder allocated (updating task_funds) so a later
+// submission can still be accepted against it; a fully-paid reject deletes the
+// row.
+func payReviewFund(ctx context.Context, tx pgx.Tx, command reviewFundCommand) payoutResult {
 	if _, noPayout := command.selection.(ledger.NoCreditReviewSelection); noPayout {
 		return payoutResolved{outcome: ledger.NoPayout{}}
 	}
 
 	var rawFunderAccountID string
 	var amount int64
-	var escrowState string
-	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, amount, state from task_escrows where task_id = $1 for update", command.taskID.String()).Scan(&rawFunderAccountID, &amount, &escrowState)
+	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, credit_amount from task_funds where task_id = $1 for update", command.taskID.String()).Scan(&rawFunderAccountID, &amount)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
 		if _, partial := command.selection.(ledger.PartialCreditReviewSelection); partial {
-			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")}
+			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward fund is missing")}
 		}
 		if command.missingIsNoPayout {
 			return payoutResolved{outcome: ledger.NoPayout{}}
 		}
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")}
+		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward fund is missing")}
 	}
 	if scanErr != nil {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task escrow failed")}
-	}
-	if escrowState != "held" {
-		if _, partial := command.selection.(ledger.PartialCreditReviewSelection); partial {
-			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is not held")}
-		}
-		return payoutResolved{outcome: ledger.NoPayout{}}
+		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task fund failed")}
 	}
 
 	payoutAmount := amount
@@ -386,7 +379,7 @@ func payReviewEscrow(ctx context.Context, tx pgx.Tx, command reviewEscrowCommand
 		payoutAmount = partial.Amount.Int64()
 	}
 	if payoutAmount > amount {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credit payout cannot exceed held escrow")}
+		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credit payout cannot exceed allocated credits")}
 	}
 
 	workerResult := core.ParseUserID(command.rawWorkerID)
@@ -421,20 +414,16 @@ func payReviewEscrow(ctx context.Context, tx pgx.Tx, command reviewEscrowCommand
 				return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert partial accept refund ledger entry failed")}
 			}
 		}
-		if _, err := tx.Exec(ctx, "update task_escrows set amount = $2, state = 'released', state_recorded_at = now() where task_id = $1", command.taskID.String(), payoutAmount); err != nil {
-			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "release task escrow failed")}
+		if _, err := tx.Exec(ctx, "delete from task_funds where task_id = $1", command.taskID.String()); err != nil {
+			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "clear task fund failed")}
+		}
+	} else if remaining == 0 {
+		if _, err := tx.Exec(ctx, "delete from task_funds where task_id = $1", command.taskID.String()); err != nil {
+			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "clear task fund failed")}
 		}
 	} else {
-		nextState := "held"
-		if remaining == 0 {
-			nextState = "released"
-		}
-		nextAmount := remaining
-		if nextAmount == 0 {
-			nextAmount = payoutAmount
-		}
-		if _, err := tx.Exec(ctx, "update task_escrows set amount = $2, state = $3, state_recorded_at = now() where task_id = $1", command.taskID.String(), nextAmount, nextState); err != nil {
-			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "update task escrow after partial payout failed")}
+		if _, err := tx.Exec(ctx, "update task_funds set credit_amount = $2 where task_id = $1", command.taskID.String(), remaining); err != nil {
+			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "update task fund after partial payout failed")}
 		}
 	}
 
@@ -554,10 +543,11 @@ func (tipResolved) tipResult() {}
 func (tipRejected) tipResult() {}
 
 // payOutCollectible transfers every currently-held collectible reward for the
-// task to the accepted worker. A task may bundle more than one collectible, so
-// all held rewards are awarded together.
+// task to the accepted worker (escrowed -> minted, owner = worker) and deletes
+// the task_fund_collectibles rows. A task may bundle more than one collectible,
+// so all held rewards are awarded together.
 func payOutCollectible(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
-	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "held", true)
+	rawCollectibleIDs, scanRejected := heldFundCollectibleIDs(ctx, tx, taskID, true)
 	if scanRejected != nil {
 		return payoutRejected{reason: *scanRejected}
 	}
@@ -570,26 +560,14 @@ func payOutCollectible(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWo
 	}
 
 	for _, rawCollectibleID := range rawCollectibleIDs {
-		if _, err := tx.Exec(ctx, "update collectibles set state = 'awarded', owner_user_id = $2, state_recorded_at = now() where id = $1", rawCollectibleID, rawWorkerID); err != nil {
+		if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', owner_user_id = $2, owner_kind = 'user', state_recorded_at = now() where id = $1", rawCollectibleID, rawWorkerID); err != nil {
 			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "award collectible failed")}
 		}
 	}
-	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'released', state_recorded_at = now() where task_id = $1 and state = 'held'", taskID.String()); err != nil {
-		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "release collectible reward failed")}
+	if _, err := tx.Exec(ctx, "delete from task_fund_collectibles where task_id = $1", taskID.String()); err != nil {
+		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "clear collectible reward failed")}
 	}
 
-	return resolved
-}
-
-func releasedCollectiblePayout(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
-	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "released", false)
-	if scanRejected != nil {
-		return payoutRejected{reason: *scanRejected}
-	}
-	resolved, resolveRejected := resolveCollectiblePayout(rawWorkerID, rawCollectibleIDs)
-	if resolveRejected != nil {
-		return payoutRejected{reason: *resolveRejected}
-	}
 	return resolved
 }
 
@@ -621,14 +599,14 @@ func resolveCollectiblePayout(rawWorkerID string, rawCollectibleIDs []string) (p
 	return payoutResolved{outcome: ledger.CollectiblePayout{WorkerUserID: worker.Value, CollectibleIDs: collectibleIDs}}, nil
 }
 
-// collectibleRewardIDsInState returns the raw collectible IDs for the task's
-// reward rows in the requested state, optionally taking a row lock.
-func collectibleRewardIDsInState(ctx context.Context, tx pgx.Tx, taskID core.TaskID, state string, lock bool) ([]string, *core.DomainError) {
-	query := "select collectible_id::text from task_collectible_rewards where task_id = $1 and state = $2 order by created_at, id"
+// heldFundCollectibleIDs returns the raw collectible IDs currently held for the
+// task's reward (task_fund_collectibles), optionally taking a row lock.
+func heldFundCollectibleIDs(ctx context.Context, tx pgx.Tx, taskID core.TaskID, lock bool) ([]string, *core.DomainError) {
+	query := "select collectible_id::text from task_fund_collectibles where task_id = $1 order by collectible_id"
 	if lock {
 		query += " for update"
 	}
-	rows, err := tx.Query(ctx, query, taskID.String(), state)
+	rows, err := tx.Query(ctx, query, taskID.String())
 	if err != nil {
 		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read collectible reward failed")
 		return nil, &reason
@@ -651,10 +629,11 @@ func collectibleRewardIDsInState(ctx context.Context, tx pgx.Tx, taskID core.Tas
 }
 
 // refundHeldCollectibleReward returns every held collectible reward on the task
-// to its funder. A task may bundle more than one collectible, so all held
-// rewards are returned together.
+// to its funder (escrowed -> minted; the escrowed collectible still records its
+// funder as owner) and deletes the task_fund_collectibles rows. A task may
+// bundle more than one collectible, so all held rewards are returned together.
 func refundHeldCollectibleReward(ctx context.Context, tx pgx.Tx, taskID core.TaskID) (core.DomainError, bool) {
-	rawCollectibleIDs, scanRejected := collectibleRewardIDsInState(ctx, tx, taskID, "held", true)
+	rawCollectibleIDs, scanRejected := heldFundCollectibleIDs(ctx, tx, taskID, true)
 	if scanRejected != nil {
 		return *scanRejected, true
 	}
@@ -666,78 +645,65 @@ func refundHeldCollectibleReward(ctx context.Context, tx pgx.Tx, taskID core.Tas
 			return core.NewDomainError(core.ErrorCodeInvalidState, "return collectible failed"), true
 		}
 	}
-	if _, err := tx.Exec(ctx, "update task_collectible_rewards set state = 'refunded', state_recorded_at = now() where task_id = $1 and state = 'held'", taskID.String()); err != nil {
-		return core.NewDomainError(core.ErrorCodeInvalidState, "update collectible reward failed"), true
+	if _, err := tx.Exec(ctx, "delete from task_fund_collectibles where task_id = $1", taskID.String()); err != nil {
+		return core.NewDomainError(core.ErrorCodeInvalidState, "clear collectible reward failed"), true
 	}
 	return core.DomainError{}, false
 }
 
 // idempotentAccept returns the prior acceptance outcome when a submission is
-// already accepted, so accept commands can be retried safely.
+// already accepted, so accept commands can be retried safely. The stateless
+// task_funds/task_fund_collectibles rows were consumed by the first accept, so
+// the credit payout is reconstructed from the durable task_payout ledger entry
+// keyed on the accept's idempotency key.
 func idempotentAccept(ctx context.Context, tx pgx.Tx, command ledger.AcceptStoreCommand, rawWorkerID string) ledger.AcceptResult {
-	var escrowState string
-	var amount int64
-	scanErr := tx.QueryRow(ctx, "select state, amount from task_escrows where task_id = $1", command.TaskID.String()).Scan(&escrowState, &amount)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
-		collectibleResult := releasedCollectiblePayout(ctx, tx, command.TaskID, rawWorkerID)
-		collectible, matched := collectibleResult.(payoutResolved)
-		if !matched {
-			return ledger.AcceptRejected{Reason: collectibleResult.(payoutRejected).reason}
-		}
-		return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: collectible.outcome, Tip: ledger.NoTip{}}
-	}
-	if scanErr != nil {
-		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task escrow failed")}
-	}
-
 	outcome := ledger.PayoutOutcome(ledger.NoPayout{})
-	worker, workerMatched := core.ParseUserID(rawWorkerID).(core.UserIDCreated)
-	amountAccepted, amountMatched := ledger.NewCreditAmount(amount).(ledger.CreditAmountAccepted)
-	if escrowState == "released" && workerMatched && amountMatched {
-		outcome = ledger.CreditPayout{WorkerUserID: worker.Value, Amount: amountAccepted.Value}
+	var amount int64
+	scanErr := tx.QueryRow(ctx, "select amount from ledger_entries where task_id = $1 and kind = 'task_payout' and idempotency_key = $2", command.TaskID.String(), command.IdempotencyKey.String()).Scan(&amount)
+	if scanErr != nil && !errors.Is(scanErr, pgx.ErrNoRows) {
+		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task payout failed")}
 	}
-
-	collectibleResult := releasedCollectiblePayout(ctx, tx, command.TaskID, rawWorkerID)
-	collectible, collectibleMatched := collectibleResult.(payoutResolved)
-	if !collectibleMatched {
-		return ledger.AcceptRejected{Reason: collectibleResult.(payoutRejected).reason}
+	if scanErr == nil {
+		worker, workerMatched := core.ParseUserID(rawWorkerID).(core.UserIDCreated)
+		amountAccepted, amountMatched := ledger.NewCreditAmount(amount).(ledger.CreditAmountAccepted)
+		if workerMatched && amountMatched {
+			outcome = ledger.CreditPayout{WorkerUserID: worker.Value, Amount: amountAccepted.Value}
+		}
 	}
-	outcome = combinePayouts(outcome, collectible.outcome)
 	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: ledger.NoTip{}}
 }
 
-type escrowBuildResult interface {
-	escrowBuildResult()
+type fundBuildResult interface {
+	fundBuildResult()
 }
 
-type escrowBuilt struct {
-	value ledger.TaskEscrow
+type fundBuilt struct {
+	value ledger.TaskFund
 }
 
-type escrowBuildRejected struct {
+type fundBuildRejected struct {
 	reason core.DomainError
 }
 
-func (escrowBuilt) escrowBuildResult() {}
+func (fundBuilt) fundBuildResult() {}
 
-func (escrowBuildRejected) escrowBuildResult() {}
+func (fundBuildRejected) fundBuildResult() {}
 
-func buildEscrow(taskID core.TaskID, rawFunderAccountID string, amount int64, state ledger.EscrowState) escrowBuildResult {
+func buildFund(taskID core.TaskID, rawFunderAccountID string, amount int64) fundBuildResult {
 	accountResult := core.ParseCreditAccountID(rawFunderAccountID)
 	account, matched := accountResult.(core.CreditAccountIDCreated)
 	if !matched {
-		return escrowBuildRejected{reason: accountResult.(core.CreditAccountIDRejected).Reason}
+		return fundBuildRejected{reason: accountResult.(core.CreditAccountIDRejected).Reason}
 	}
 	amountResult := ledger.NewCreditAmount(amount)
 	amountAccepted, amountMatched := amountResult.(ledger.CreditAmountAccepted)
 	if !amountMatched {
-		return escrowBuildRejected{reason: amountResult.(ledger.CreditAmountRejected).Reason}
+		return fundBuildRejected{reason: amountResult.(ledger.CreditAmountRejected).Reason}
 	}
-	return escrowBuilt{value: ledger.TaskEscrow{
+	return fundBuilt{value: ledger.TaskFund{
 		TaskID:          taskID,
 		FunderAccountID: account.Value,
-		Amount:          amountAccepted.Value,
-		State:           state,
+		CreditAmount:    amountAccepted.Value,
 	}}
 }
 

@@ -1,6 +1,137 @@
 # What We Did
 
-`task/unpublish-escape-hatch-and-scenario-parity-ci` traced the user's
+The `task/journey-review-fixes` branch, after the review pass below, also
+replaced the credit-escrow system with a two-section wallet and switched
+password hashing to Argon2id.
+
+Two-section wallet. Every user and organization credit account now has a
+**spendable** section (still `sum(ledger_entries.amount)`) and an
+**allocated** section (`sum(task_funds.credit_amount)` for tasks the account
+funded). The escrow state machine (`task_escrows` with held/released/refunded
+and the parallel `task_collectible_rewards`) is gone, replaced by stateless
+temp-store tables: `task_funds(task_id, funder_account_id, credit_amount)`
+and `task_fund_collectibles(task_id, collectible_id)` — a row exists while
+the task holds the reward, deleted on award or refund. Funding moves credits
+from spendable to allocated (a `task_fund` ledger entry, formerly
+`task_escrow`), so allocated credits cannot be double-spent; funding
+validates the spendable section only. Accepting a submission moves the
+funder's allocated credits into the worker's spendable balance (a
+`task_payout`, remainder refunded on a partial payout). Refunds are
+auto-granted for the task owner or the user holding the active reservation
+while the task is not yet awarded, returning the allocated credits to the
+funder's spendable balance and cancelling the task; cancelling a funded
+un-awarded task settles the same way. (This intentionally relaxes the
+earlier "block refund while a submission is pending review" guard — the
+requester can refund by default.) Held reward collectibles stay in the
+collectible's `escrowed` lifecycle state as the trade lock. Balance
+endpoints now return `{spendable_credits, allocated_credits}`; the Overview
+and organization pages show spendable plus a locked-to-tasks line. Both
+backends (Postgres and the WASM demo) implement this identically, verified
+by the shared scenario-parity suite.
+
+Password hashing. Replaced PBKDF2-HMAC-SHA256 with Argon2id (OWASP's
+first-choice algorithm, m=19 MiB, t=2, p=1) via
+`golang.org/x/crypto/argon2` — the dependency PLAN.md/AGENTS.md already
+specified for `internal/auth` but which the code had never actually used.
+
+---
+
+The `task/journey-review-fixes` branch was a review-driven fix pass: four
+parallel read-only reviews (security, backend correctness/parity, Elm
+client UX, docs accuracy) plus hands-on browser walking of the demo, then
+fixes for the confirmed findings.
+
+Backend correctness and real-vs-WASM parity (16 findings). Made
+`internal/db` `ChangeTaskState` transactional with an expected-prior-state
+predicate so concurrent cancel/fund/refund can no longer orphan escrow or
+reopen a cancelled task. Added guards, on both backends, that reject
+refund/cancel while a submission is pending review and reject
+self-deactivation while the user owns tasks holding escrow. Closed store
+divergences where `internal/wasmdemo` behaved differently from
+`internal/db`: collectible-reward count derivation (a mismatch had poisoned
+task parsing), opening a funded collectible/bundle task, cancel blocking on
+held collectibles, reservation expiry sweeps, one-active-reservation-per-
+task, implementor bans, three idempotency semantics (refund replay, fund-
+key reuse, accept replay payout reconstruction), ledger pagination past
+idempotency markers, series membership bookkeeping, team scope including
+team-reserved tasks, unknown-task 404 (was 409), member-provision and
+member-role edge cases, and partially-released collectible refunds. Made
+pagination strict across all list endpoints, propagated a swallowed
+session-revocation error in `UpdatePassword`, and added audit events for
+funding. Tests accompany each fix (store unit tests, integration guards,
+and shared scenario-parity assertions that run against both backends).
+
+Security. Account-token delivery now defaults to `log` (fail closed):
+production `serve` no longer returns password-reset or email-verification
+tokens in the HTTP response, closing an account-takeover path where anyone
+knowing a victim's email could reset their password; the browser demo opts
+into `api` explicitly (browser-local, no real accounts). Password-reset
+returns the same neutral response for unknown and known emails, removing an
+account-enumeration oracle. The token-confirm endpoints and the
+email-verification request are now IP rate limited. The user-directory
+search escapes LIKE metacharacters and caps the query length. The demo
+shell rebuilds its `<base href>` from validated path segments so a crafted
+URL cannot point script loads at another origin.
+
+Elm client. Logging in on a deep link now loads that page's data (it stayed
+on "Loading…" before). Added mid-session token refresh with an explicit
+"session expired" logout, so a tab left open past the 15-minute access-token
+lifetime recovers cleanly instead of silently failing every request into
+fake empty states. Added a schema-driven worker response form: a task with a
+structured response schema renders one typed input per field (with a raw-JSON
+escape hatch) instead of a bare `{}` textarea. Fixed a silent reward
+downgrade where a credit/bundle reward with a blank amount was created as
+no-reward (now blocked with inline validation). Stopped `Ui.disclosure`
+panels from snapping shut mid-edit by deriving their open state from live
+form fields. Made successes and failures visually distinct (a typed
+`Note`), replaced false "instructions sent" copy under the no-email scope,
+hid the guest button outside the demo, gated the collectible trade/tip and
+funding pickers to states the server accepts, disabled the Next pagination
+button on the last page, added self-service privacy-request listing, added
+standalone-team creation and browsable team pages, added a deactivate-
+account confirmation step, and surfaced previously-swallowed revoke/award
+errors.
+
+Demo seed. Added review-side data targeting the single demo actor (mara): a
+pending submission on a dedicated review task, an approval-required
+reservation request, a matching inbox notification, and a held collectible —
+so the review, approval, and collectible journeys are demonstrable. The
+funded fraud task is kept free of pending work so the demo refund flow still
+applies to it.
+
+Docs. Refreshed the continuity files and fixed stale/wrong claims across
+`docs/` and `site/` (the MCP scheduling recipe now does the initialize
+handshake; operations/readiness docs corrected about Postgres-backed
+production storage; user-stories/onboarding corrected about the demo and
+self-registration; api_reference route list and counts updated; the deployed
+docs' broken demo link and stale scope list fixed).
+
+Deferred: exposing held-escrow/funding state on the task detail (to hide the
+Refund button on an unfunded task and show funding status) — a separate
+multi-layer change tracked in `DO_NEXT.md`.
+
+PR 140 was an audit pass after the WASM cutover: it fixed authorization
+checks, WASM demo parity gaps, and Elm client issues found by review.
+
+PR 139 cut the browser WASM demo over to the real backend.
+`cmd/sharecrop-wasm/main_js_wasm.go` now builds the real `internal/http`
+mux over the real domain services (the same services `cmd/sharecrop` wires
+against Postgres) and serves every demo request through `mux.ServeHTTP`
+via `httptest` request/recorder pairs, with identity resolved from real
+bearer tokens and the refresh-token cookie replayed in Go.
+`internal/wasmdemo`'s separate request classification/handler layer
+(including `request_handler.go`) was removed; demo seeding goes through
+the real services (`internal/wasmdemo/seed.go`). The demo is no longer a
+parallel reimplementation of routing, validation, or business rules.
+
+PR 138 added browser-storage-backed `Store` implementations for all 9
+domain packages (`internal/wasmdemo/browserstore_*.go`): auth,
+notification, agent credentials, organization credentials,
+organizations/teams, ledger, tasks/reservations/comments/series, assets,
+and submissions — all built on the shared `BrowserStorage` key/value
+primitives so the real, unmodified domain services can run in the browser.
+
+`task/unpublish-escape-hatch-and-scenario-parity-ci` (PR 137) traced the user's
 report ("the task view still! still! does not have a visible drawer to
 change funding of a task") to a real architectural root cause, verified
 live against the actual deployed demo rather than assumed.

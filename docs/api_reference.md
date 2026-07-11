@@ -4,7 +4,7 @@ This reference lists the stable application routes used by the Elm UI, external 
 
 All protected routes require `Authorization: Bearer <access_token>` unless the route is explicitly public. Browser sessions also use the refresh-token cookie for `/api/auth/refresh`.
 
-[docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Request/response body schemas are derived from the actual Go DTO struct each handler decodes/writes, resolved through `internal/openapi`'s `go/ast`-based analysis of `internal/http`; a route whose handler does not match one of the standard decode/write patterns (raw MCP JSON-RPC passthrough, or a route with no real DTO such as `logout`/`healthz`) gets a generic `{"type": "object"}` (or empty) placeholder rather than a guess. As of this writing 99/106 responses and 39/61 request bodies resolve to a typed schema. This document remains the source for prose per-route request/response descriptions where the generated schema is generic. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
+[docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Request/response body schemas are derived from the actual Go DTO struct each handler decodes/writes, resolved through `internal/openapi`'s `go/ast`-based analysis of `internal/http`; a route whose handler does not match one of the standard decode/write patterns (raw MCP JSON-RPC passthrough, or a route with no real DTO such as `logout`/`healthz`) gets a generic `{"type": "object"}` (or empty) placeholder rather than a guess. As of this writing 102/109 responses and 41/63 request bodies resolve to a typed schema. This document remains the source for prose per-route request/response descriptions where the generated schema is generic. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
 
 ## Authentication
 
@@ -25,6 +25,7 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `DELETE /api/account`: deactivate the authenticated account.
 - `POST /api/privacy-requests`: create an audited privacy request. Accepted `kind` values are `data_export` and `sensitive_field_deletion`; the response includes `kind`, `status`, `requested_by`, timestamps, `export_json`, `resolution_note`, and `redacted_field_count`.
 - `GET /api/privacy-requests`: list the authenticated user's privacy requests.
+- `POST /api/moderation/reports`: report a task, submission, comment, user, organization, team, or collectible for moderation review. Requires `subject_kind`, `subject_id`, and a `reason` enum value; `details` is optional and length-limited. Any authenticated user can report; triage is admin-only (see the admin routes below).
 
 ## Agent Credentials
 
@@ -49,9 +50,9 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/tasks/{task_id}/cancel`: cancel an unfunded draft or open no-reward task.
 - `POST /api/tasks/{task_id}/unpublish`: move an open task back to draft.
 - `POST /api/tasks/{task_id}/funding`: fund a task from a user or organization balance.
-- `POST /api/tasks/{task_id}/refund`: refund held credit or bundle escrow.
+- `POST /api/tasks/{task_id}/refund`: return a credit or bundle task's allocated credits to the funder's spendable balance and cancel the task. Allowed for the task owner or the holder of the active reservation while the task is not yet awarded.
 - `POST /api/tasks/{task_id}/collectible-reward`: fund a task with a collectible.
-- `POST /api/tasks/{task_id}/collectible-refund`: refund held collectible escrow.
+- `POST /api/tasks/{task_id}/collectible-refund`: return a task's held collectible reward to the funder and cancel the task.
 
 ## Reservations And Submissions
 
@@ -64,6 +65,9 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
   may include the same small `attachments` shape and limits as task creation.
 - `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer.
 - `GET /api/users/{user_id}/submissions`: list the authenticated user's own submissions. Supports `limit` and `offset`.
+- `GET /api/users`: search the user directory with `query`, `limit`, and `offset`; returns id/email/status entries for selector-backed flows.
+- `GET /api/users/{user_id}`: read a user's profile: the tasks they created that are visible to the caller.
+- `GET /api/users/{user_id}/work`: list the tasks currently assigned to a user that are visible to the caller.
 - `GET /api/submission-receipts/{receipt_token}`: read receipt status by receipt token.
 - `POST /api/tasks/{task_id}/submissions/{submission_id}/accept`: accept a submission and settle reward/tips.
 - `POST /api/tasks/{task_id}/submissions/{submission_id}/request-changes`: request changes and keep the task active.
@@ -104,16 +108,19 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 
 ## Collectibles, Ledger, Notifications, Admin
 
-- `GET /api/credits/balance`: read authenticated-user credit balance.
+- `GET /api/credits/balance`: read the authenticated user's credit balance. The account has two sections: `spendable_credits` (credits that can be spent or used to fund tasks) and `allocated_credits` (credits currently locked to funded tasks).
 - `GET /api/credits/ledger`: list authenticated-user ledger entries.
-- `GET /api/organizations/{organization_id}/credits/balance`: read organization credit balance.
+- `GET /api/organizations/{organization_id}/credits/balance`: read the organization credit balance, with the same `spendable_credits` and `allocated_credits` sections.
+- `GET /api/organizations/{organization_id}/credits/ledger`: list organization ledger entries. Requires billing permission on the organization.
+- `GET /api/organizations/{organization_id}/audit-events`: list audit events whose subject is the organization. Requires membership-management permission on the organization. Supports `limit` and `offset`.
 - `GET /api/collectibles`: list authenticated-user collectible holdings.
 - `POST /api/collectibles`: mint a collectible owned by the authenticated user.
 - `GET /api/collectibles/catalog`: list platform default collectibles.
 - `POST /api/collectibles/award`: platform-admin award of a catalog collectible to a user, team, or organization.
-- `POST /api/collectibles/{collectible_id}/transfer`: transfer a collectible to another user.
-- `GET /api/organizations/{organization_id}/collectibles`: list organization collectible holdings.
-- `GET /api/teams/{team_id}/collectibles`: list team collectible holdings.
+- `POST /api/collectibles/{id}/transfer`: transfer a collectible to another user.
+- `GET /api/organizations/{id}/collectibles`: list organization collectible holdings.
+- `POST /api/organizations/{organization_id}/collectibles/{id}/award`: award one of the organization's held collectibles to a user (`recipient_id`). Requires membership-management permission on the organization.
+- `GET /api/teams/{id}/collectibles`: list team collectible holdings.
 - `GET /api/notifications`: list authenticated-user notifications.
 - `POST /api/notifications/{notification_id}/read`: mark a notification read.
 - `GET /api/admin/operations`: platform-admin runtime status.

@@ -430,7 +430,11 @@ func (server Server) listAgentCredentials(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result := server.agentService.List(r.Context(), actor.subject.ID, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.agentService.List(r.Context(), actor.subject.ID, page)
 	listed, matched := result.(agent.CredentialsListed)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(agent.ListRejected).Reason.Description())

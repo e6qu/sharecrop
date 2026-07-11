@@ -2,6 +2,7 @@ port module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Nav
+import Dict
 import File
 import File.Select as FileSelect
 import Http
@@ -15,11 +16,13 @@ import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
 import Sharecrop.Generated.Privacy as Privacy
 import Sharecrop.Generated.SavedQueueViews as SavedQueueViews
+import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Labels exposing (httpErrorLabel, participationPolicyTag)
 import Sharecrop.Types exposing (..)
 import Sharecrop.View as View
 import Task as ElmTask
+import Time
 import Url exposing (Url)
 
 
@@ -30,7 +33,18 @@ main =
     Browser.application
         { init = \flags url key -> ( initialModel flags key url, Api.postRefresh )
         , update = update
-        , subscriptions = \_ -> Sub.none
+        , subscriptions =
+            -- Access tokens expire after 15 minutes; rotate every 10 so a
+            -- tab left open does not silently start failing every request.
+            -- Only while logged in - the refresh endpoint would just 401
+            -- on the auth screen.
+            \model ->
+                case model.session of
+                    LoggedIn _ ->
+                        Time.every (10 * 60 * 1000) SessionRefreshTick
+
+                    LoggedOut ->
+                        Sub.none
         , view = View.view
         , onUrlRequest = LinkClicked
         , onUrlChange = UrlChanged
@@ -55,6 +69,7 @@ initialModel flags key url =
     , resetToken = ""
     , resetPassword = ""
     , authError = Nothing
+    , authNotice = Nothing
     , session = LoggedOut
     }
 
@@ -78,6 +93,7 @@ emptyLoggedIn response =
     , createPayloadJson = ""
     , createRewardKind = "none"
     , createRewardAmount = ""
+    , createRewardAmountInvalid = False
     , createRewardCollectibleIds = []
     , createVisibility = visibilityDefaultTag
     , createScopeUserId = ""
@@ -118,6 +134,8 @@ emptyLoggedIn response =
     , reservationSecret = Nothing
     , submissions = []
     , submitInput = ""
+    , submitFieldValues = Dict.empty
+    , submitRawMode = False
     , submitAttachments = []
     , submitMessage = Nothing
     , moderationReason = Moderation.ModerationReasonPolicy
@@ -153,6 +171,8 @@ emptyLoggedIn response =
     , orgAuditMessage = Nothing
     , orgTeams = []
     , standaloneTeams = []
+    , createTeamName = ""
+    , createTeamMessage = Nothing
     , orgMembers = []
     , orgTasks = []
     , orgTaskQuery = ""
@@ -229,6 +249,8 @@ emptyLoggedIn response =
     , emailVerificationToken = ""
     , emailVerificationInput = ""
     , accountMessage = Nothing
+    , deactivateConfirming = False
+    , myPrivacyRequests = []
     , userDirectory = []
     , userDirectoryQuery = ""
     , userDirectoryOffset = 0
@@ -611,7 +633,7 @@ enterPageFields page state =
             -- ownerControlsCard) always target *this* task when submitted,
             -- regardless of whatever task was last selected on the standalone
             -- Funding/Collectibles pages.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, fundNonce = state.fundNonce + 1, awardTaskId = taskId, awardMessage = Nothing }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitFieldValues = Dict.empty, submitRawMode = revisionDraftFor taskId state /= "", submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, fundNonce = state.fundNonce + 1, awardTaskId = taskId, awardMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -620,13 +642,23 @@ enterPageFields page state =
 
         CreateTaskPage ->
             -- Clear a half-finished draft and any stale create message on entry.
-            { state | page = page, createTitle = "", createTitleInvalid = False, createDescription = "", createDescriptionInvalid = False, createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardCollectibleIds = [], createAttachments = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
+            { state | page = page, createTitle = "", createTitleInvalid = False, createDescription = "", createDescriptionInvalid = False, createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardAmountInvalid = False, createRewardCollectibleIds = [], createAttachments = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
 
         FundingPage ->
             { state | page = page, fundMessage = Nothing }
 
         _ ->
             { state | page = page }
+
+
+submissionOutcomeNote : Submission.SubmissionCreatedResponse -> Note
+submissionOutcomeNote created =
+    case created.submission.state of
+        Submission.SubmissionStateInvalid ->
+            FailureNote (View.submitSuccessLabel created)
+
+        _ ->
+            SuccessNote (View.submitSuccessLabel created)
 
 
 revisionDraftFor : String -> LoggedInModel -> String
@@ -648,21 +680,26 @@ update msg model =
             ( { model | password = value }, Cmd.none )
 
         RegisterClicked ->
-            ( { model | authError = Nothing }, Api.postAuth "/api/auth/register" model )
+            ( { model | authError = Nothing, authNotice = Nothing }, Api.postAuth "/api/auth/register" model )
 
         LoginClicked ->
-            ( { model | authError = Nothing }, Api.postAuth "/api/auth/login" model )
+            ( { model | authError = Nothing, authNotice = Nothing }, Api.postAuth "/api/auth/login" model )
 
         GuestClicked ->
-            ( { model | authError = Nothing }, Api.postGuest )
+            ( { model | authError = Nothing, authNotice = Nothing }, Api.postGuest )
 
         AuthReceived (Ok response) ->
             let
                 state =
                     loggedInForPage response model.route
             in
+            -- Load the current route's page data too, exactly like the
+            -- refresh path below: someone who logs in while sitting on a
+            -- deep link (a task, org, or profile URL) would otherwise stay
+            -- on "Loading..." forever, since loadAfterAuth only fetches the
+            -- shared dashboard data.
             ( { model | password = "", authError = Nothing, session = LoggedIn { state | accountEmail = model.email } }
-            , Api.loadAfterAuth response.accessToken
+            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID model.route ]
             )
 
         AuthReceived (Err error) ->
@@ -676,6 +713,23 @@ update msg model =
         RefreshReceived (Err _) ->
             ( model, Cmd.none )
 
+        SessionRefreshTick _ ->
+            ( model, Api.postSessionRefresh )
+
+        SessionRefreshed (Ok response) ->
+            -- Swap only the rotated token (and any changed role) into the
+            -- existing state: rebuilding the page here would wipe whatever
+            -- the user is in the middle of typing.
+            ( Api.updateLoggedIn model (\state -> { state | accessToken = response.accessToken, subjectId = response.subjectID, isAdmin = response.role == "admin" }), Cmd.none )
+
+        SessionRefreshed (Err _) ->
+            -- The refresh cookie is gone or revoked: the session is over.
+            -- Land on the auth screen with an explanation instead of letting
+            -- every later click fail into fake empty states.
+            ( { model | session = LoggedOut, authError = Just "Your session expired. Log in again." }
+            , Nav.pushUrl model.key "#/"
+            )
+
         PasswordResetEmailChanged value ->
             ( { model | resetEmail = value }, Cmd.none )
 
@@ -686,23 +740,26 @@ update msg model =
             ( { model | resetPassword = value }, Cmd.none )
 
         RequestPasswordResetClicked ->
-            ( { model | authError = Nothing }, Api.requestPasswordReset model )
+            ( { model | authError = Nothing, authNotice = Nothing }, Api.requestPasswordReset model )
 
         ConfirmPasswordResetClicked ->
-            ( { model | authError = Nothing }, Api.confirmPasswordReset model )
+            ( { model | authError = Nothing, authNotice = Nothing }, Api.confirmPasswordReset model )
 
         PasswordResetRequested (Ok token) ->
             if token == "" then
-                ( { model | authError = Just "Password reset instructions sent." }, Cmd.none )
+                -- This deployment does not send email: the token went to the
+                -- server operator's log. "Instructions sent" would leave the
+                -- user waiting for an email that never comes.
+                ( { model | authNotice = Just "Password reset requested. This deployment does not send email - ask an operator for the reset token from the server log, then enter it below." }, Cmd.none )
 
             else
-                ( { model | resetToken = token, authError = Just "Password reset token created." }, Cmd.none )
+                ( { model | resetToken = token, authNotice = Just "Password reset token created and filled in below." }, Cmd.none )
 
         PasswordResetRequested (Err error) ->
             ( { model | authError = Just (httpErrorLabel error) }, Cmd.none )
 
         PasswordResetConfirmed (Ok ()) ->
-            ( { model | resetPassword = "", resetToken = "", authError = Just "Password reset. Log in with the new password." }, Cmd.none )
+            ( { model | resetPassword = "", resetToken = "", authNotice = Just "Password reset. Log in with the new password." }, Cmd.none )
 
         PasswordResetConfirmed (Err error) ->
             ( { model | authError = Just (httpErrorLabel error) }, Cmd.none )
@@ -850,10 +907,10 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | createPayloadJson = value }), Cmd.none )
 
         CreateRewardKindChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | createRewardKind = value, createRewardCollectibleIds = [] }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | createRewardKind = value, createRewardCollectibleIds = [], createRewardAmountInvalid = state.createRewardAmountInvalid && Api.rewardAmountMissing value state.createRewardAmount }), Cmd.none )
 
         CreateRewardAmountChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | createRewardAmount = value }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | createRewardAmount = value, createRewardAmountInvalid = state.createRewardAmountInvalid && Api.rewardAmountMissing state.createRewardKind value }), Cmd.none )
 
         ToggleCreateRewardCollectible collectibleId ->
             ( Api.updateLoggedIn model (\state -> { state | createRewardCollectibleIds = toggleString collectibleId state.createRewardCollectibleIds }), Cmd.none )
@@ -883,7 +940,7 @@ update msg model =
             Api.withSession model
                 (\state ->
                     if List.length state.createAttachments >= attachmentMaxCount then
-                        ( Api.updateLoggedIn model (\current -> { current | createMessage = Just "Attach up to 5 files." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | createMessage = Just (FailureNote "Attach up to 5 files.") }), Cmd.none )
 
                     else
                         ( model, selectAttachment CreateAttachmentFileChosen )
@@ -896,7 +953,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | createAttachments = state.createAttachments ++ [ { name = name, contentType = contentType, sizeBytes = sizeBytes, dataURL = dataURL } ], createMessage = Nothing }), Cmd.none )
 
         CreateAttachmentRejected message ->
-            ( Api.updateLoggedIn model (\state -> { state | createMessage = Just message }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | createMessage = Just (FailureNote message) }), Cmd.none )
 
         RemoveCreateAttachmentClicked index ->
             ( Api.updateLoggedIn model (\state -> { state | createAttachments = removeAt index state.createAttachments }), Cmd.none )
@@ -922,14 +979,14 @@ update msg model =
                             , createAttachments = []
                             , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
                             , createReservationHours = "48"
-                            , createMessage = Just ("Created task " ++ created.id)
+                            , createMessage = Just (SuccessNote ("Created task " ++ created.id))
                         }
                 )
             , Cmd.batch [ Api.refreshTasksAndLedger model, Nav.pushUrl model.key ("#/tasks/" ++ created.id) ]
             )
 
         CreateTaskReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | createMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | createMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CredentialsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | credentials = Api.credentialsFromResult result }), Cmd.none )
@@ -953,66 +1010,66 @@ update msg model =
             -- fund succeeds, both of which start a genuinely new intent.
             Api.withSession model (\state -> Api.fundTaskCommand model state)
 
-        FundReceived (Ok escrow) ->
-            ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (View.fundSuccessLabel escrow), fundNonce = state.fundNonce + 1 }), Api.refreshLedgerAndTaskDetail model )
+        FundReceived (Ok fund) ->
+            ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (SuccessNote (View.fundSuccessLabel fund)), fundNonce = state.fundNonce + 1 }), Api.refreshLedgerAndTaskDetail model )
 
         FundReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | fundMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OpenTaskClicked taskId ->
             Api.withSession model (\state -> ( model, Api.postOpenTask state.accessToken taskId ))
 
         OpenTaskReceived (Ok detail) ->
-            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just "Task opened." })
+            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just (SuccessNote "Task opened.") })
             , Api.refreshTasksAndDiscovery model
             )
 
         OpenTaskReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         UnpublishTaskClicked taskId ->
             Api.withSession model (\state -> ( model, Api.postUnpublishTask state.accessToken taskId ))
 
         UnpublishTaskReceived (Ok detail) ->
-            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just "Task moved back to draft." })
+            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just (SuccessNote "Task moved back to draft.") })
             , Api.refreshTasksAndDiscovery model
             )
 
         UnpublishTaskReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         RefundTaskClicked taskId ->
             Api.withSession model (\state -> ( model, Api.postRefundTask state.accessToken taskId ))
 
         RefundTaskReceived (Ok _) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just "Task refunded and cancelled." })
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (SuccessNote "Task refunded and cancelled.") })
             , Cmd.batch [ Api.refreshTasksAndLedger model, Api.refreshAfterAccept model ]
             )
 
         RefundTaskReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CancelTaskClicked taskId ->
             Api.withSession model (\state -> ( model, Api.postCancelTask state.accessToken taskId ))
 
         CancelTaskReceived (Ok detail) ->
-            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just "Task cancelled." })
+            ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just (SuccessNote "Task cancelled.") })
             , Api.refreshTasksAndDiscovery model
             )
 
         CancelTaskReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         RefundCollectibleRewardClicked taskId ->
             Api.withSession model (\state -> ( model, Api.postRefundCollectibleReward state.accessToken taskId ))
 
         RefundCollectibleRewardReceived (Ok _) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just "Collectible reward refunded." })
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (SuccessNote "Collectible reward refunded.") })
             , Cmd.batch [ Api.refreshAfterAccept model, Api.refreshCollectibles model ]
             )
 
         RefundCollectibleRewardReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AgentLabelChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | agentLabel = value }), Cmd.none )
@@ -1033,10 +1090,14 @@ update msg model =
                 )
 
         AgentCreated (Ok created) ->
-            ( Api.updateLoggedIn model (\state -> { state | newCredential = Just created, agentMessage = Nothing, agentLabel = "", agentScopes = [], agentExpiresHours = "" }), Api.refreshCredentials model )
+            -- Reset the scope checkboxes to the same defaults a fresh session
+            -- starts with, not to none - an all-unchecked form right after a
+            -- successful create otherwise fails "Select at least one scope."
+            -- on the next attempt.
+            ( Api.updateLoggedIn model (\state -> { state | newCredential = Just created, agentMessage = Nothing, agentLabel = "", agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ], agentExpiresHours = "" }), Api.refreshCredentials model )
 
         AgentCreated (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | agentMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | agentMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         MintTaskTokenClicked ->
             Api.withSession model (\state -> ( model, Api.mintTaskToken state.accessToken ))
@@ -1045,7 +1106,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | taskAgentToken = Just created.secret }), Cmd.none )
 
         TaskTokenMinted (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just ("Could not create agent token: " ++ httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (FailureNote ("Could not create agent token: " ++ httpErrorLabel error)) }), Cmd.none )
 
         MintUserTokenClicked ->
             Api.withSession model (\state -> ( model, Api.mintUserToken state.accessToken ))
@@ -1054,7 +1115,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | userAgentToken = Just created.secret }), Cmd.none )
 
         UserTokenMinted (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just ("Could not create agent token: " ++ httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (FailureNote ("Could not create agent token: " ++ httpErrorLabel error)) }), Cmd.none )
 
         CopyClicked clipboardText ->
             ( model, copyToClipboard clipboardText )
@@ -1062,8 +1123,14 @@ update msg model =
         RevokeClicked credentialId ->
             Api.withSession model (\state -> ( model, Api.revokeAgent state.accessToken credentialId ))
 
-        AgentRevoked _ ->
-            ( model, Api.refreshCredentials model )
+        AgentRevoked (Ok _) ->
+            ( Api.updateLoggedIn model (\state -> { state | agentMessage = Nothing }), Api.refreshCredentials model )
+
+        AgentRevoked (Err error) ->
+            -- A failed revoke must not look like a success: without an error
+            -- note the list refresh shows the credential still active with no
+            -- explanation.
+            ( Api.updateLoggedIn model (\state -> { state | agentMessage = Just (FailureNote ("Could not revoke the credential: " ++ httpErrorLabel error)) }), Cmd.none )
 
         OrgCredentialsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgCredentials = Api.orgCredentialsFromResult result }), Cmd.none )
@@ -1090,7 +1157,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | newOrgCredential = Just created, orgCredentialMessage = Nothing, orgCredentialLabel = "", orgCredentialScopes = [], orgCredentialExpiresHours = "" }), Api.refreshOrgCredentials model )
 
         OrgCredentialCreated (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgCredentialMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentialMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         RevokeOrgCredentialClicked credentialId ->
             Api.withSession model (\state -> ( model, Api.postRevokeOrgCredential state.accessToken state.activeOrgId credentialId ))
@@ -1099,7 +1166,7 @@ update msg model =
             ( model, Api.refreshOrgCredentials model )
 
         OrgCredentialRevoked (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgCredentialMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentialMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         LogoutClicked ->
             ( { model | session = LoggedOut, email = "", password = "" }
@@ -1155,6 +1222,8 @@ update msg model =
                         , reservationMessage = Nothing
                         , submissions = []
                         , submitInput = ""
+                        , submitFieldValues = Dict.empty
+                        , submitRawMode = False
                         , submitMessage = Nothing
                         , reviewNote = ""
                         , reviewPartialCredit = ""
@@ -1201,7 +1270,7 @@ update msg model =
             ( Api.updateLoggedIn model
                 (\state ->
                     { state
-                        | reservationMessage = Just (View.reservationSuccessLabel reservation)
+                        | reservationMessage = Just (SuccessNote (View.reservationSuccessLabel reservation))
                         , reservationSecret = issuedCredentialSecret reservation.issuedWorkerCredential state.reservationSecret
                     }
                 )
@@ -1209,7 +1278,7 @@ update msg model =
             )
 
         ReservationReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | reservationMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | reservationMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         ReservationsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | reservations = response.reservations }), Cmd.none )
@@ -1230,7 +1299,7 @@ update msg model =
             ( Api.updateLoggedIn model
                 (\state ->
                     { state
-                        | reservationMessage = Just (View.reservationSuccessLabel reservation)
+                        | reservationMessage = Just (SuccessNote (View.reservationSuccessLabel reservation))
                         , reservationSecret = issuedCredentialSecret reservation.issuedWorkerCredential state.reservationSecret
                     }
                 )
@@ -1238,22 +1307,28 @@ update msg model =
             )
 
         ReservationChangeReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | reservationMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | reservationMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         SubmissionsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | submissions = response.submissions }), Cmd.none )
 
         SubmissionsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | submissions = [], reviewMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | submissions = [], reviewMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         SubmitInputChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | submitInput = value }), Cmd.none )
+
+        SubmitFieldChanged name value ->
+            ( Api.updateLoggedIn model (\state -> { state | submitFieldValues = Dict.insert name value state.submitFieldValues }), Cmd.none )
+
+        SubmitRawModeToggled enabled ->
+            ( Api.updateLoggedIn model (\state -> { state | submitRawMode = enabled }), Cmd.none )
 
         PickSubmitAttachmentClicked ->
             Api.withSession model
                 (\state ->
                     if List.length state.submitAttachments >= attachmentMaxCount then
-                        ( Api.updateLoggedIn model (\current -> { current | submitMessage = Just "Attach up to 5 files." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | submitMessage = Just (FailureNote "Attach up to 5 files.") }), Cmd.none )
 
                     else
                         ( model, selectAttachment SubmitAttachmentFileChosen )
@@ -1266,7 +1341,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | submitAttachments = state.submitAttachments ++ [ { name = name, contentType = contentType, sizeBytes = sizeBytes, dataURL = dataURL } ], submitMessage = Nothing }), Cmd.none )
 
         SubmitAttachmentRejected message ->
-            ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just message }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just (FailureNote message) }), Cmd.none )
 
         RemoveSubmitAttachmentClicked index ->
             ( Api.updateLoggedIn model (\state -> { state | submitAttachments = removeAt index state.submitAttachments }), Cmd.none )
@@ -1277,7 +1352,10 @@ update msg model =
         SubmitReceived (Ok created) ->
             Api.withSession model
                 (\state ->
-                    ( Api.updateLoggedIn model (\current -> { current | submitInput = "", submitAttachments = [], submitMessage = Just (View.submitSuccessLabel created), activeSubmissionCommentsID = Just created.submission.id, submissionComments = [], submissionCommentMessage = Nothing })
+                    -- A created-but-invalid submission is a failure from the
+                    -- worker's point of view (the validation errors are in
+                    -- the message); anything else reads as success.
+                    ( Api.updateLoggedIn model (\current -> { current | submitInput = "", submitFieldValues = Dict.empty, submitAttachments = [], submitMessage = Just (submissionOutcomeNote created), activeSubmissionCommentsID = Just created.submission.id, submissionComments = [], submissionCommentMessage = Nothing })
                     , Cmd.batch
                         [ Api.refreshDetailSubmissions model
                         , Api.fetchSubmissionComments state.accessToken created.submission.id
@@ -1286,7 +1364,7 @@ update msg model =
                 )
 
         SubmitReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | submitMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         ModerationReasonChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | moderationReason = value }), Cmd.none )
@@ -1303,10 +1381,10 @@ update msg model =
                 )
 
         ModerationReportReceived (Ok report) ->
-            ( Api.updateLoggedIn model (\state -> { state | moderationDetails = "", moderationMessage = Just ("Report submitted: " ++ report.reason) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | moderationDetails = "", moderationMessage = Just (SuccessNote ("Report submitted: " ++ report.reason)) }), Cmd.none )
 
         ModerationReportReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | moderationMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | moderationMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         ReviewNoteChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | reviewNote = value }), Cmd.none )
@@ -1337,7 +1415,7 @@ update msg model =
             -- inherit the previous one's note / partial credit / tip / collectible tip / ban.
             Api.withSession model
                 (\state ->
-                    ( Api.updateLoggedIn model (\current -> { current | reviewMessage = Just "Review saved.", reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, activeSubmissionCommentsID = Just submissionId, submissionComments = [], submissionCommentMessage = Nothing })
+                    ( Api.updateLoggedIn model (\current -> { current | reviewMessage = Just (SuccessNote "Review saved."), reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, activeSubmissionCommentsID = Just submissionId, submissionComments = [], submissionCommentMessage = Nothing })
                     , Cmd.batch
                         [ Api.refreshAfterAccept model
                         , Api.fetchSubmissionComments state.accessToken submissionId
@@ -1346,7 +1424,7 @@ update msg model =
                 )
 
         ReviewActionReceived _ (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | reviewMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CollectibleNameChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | collectibleName = value }), Cmd.none )
@@ -1365,14 +1443,14 @@ update msg model =
                 (\state ->
                     { state
                         | collectibleName = ""
-                        , collectibleMessage = Just (View.mintSuccessLabel collectible)
+                        , collectibleMessage = Just (SuccessNote (View.mintSuccessLabel collectible))
                     }
                 )
             , Api.refreshCollectibles model
             )
 
         MintReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | collectibleMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | collectibleMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CollectiblesReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | collectibles = Api.collectiblesFromResult result }), Cmd.none )
@@ -1386,7 +1464,7 @@ update msg model =
         AwardReceived (Ok collectible) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | awardMessage = Just (View.awardSuccessLabel collectible) })
+                    Api.updateLoggedIn model (\state -> { state | awardMessage = Just (SuccessNote (View.awardSuccessLabel collectible)) })
             in
             Api.withSession updated
                 (\state ->
@@ -1400,7 +1478,7 @@ update msg model =
                 )
 
         AwardReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | awardMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | awardMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AwardOrgCollectibleRecipientIdChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleRecipientId = value }), Cmd.none )
@@ -1409,7 +1487,7 @@ update msg model =
             Api.withSession model
                 (\state ->
                     if String.isEmpty (String.trim state.awardOrgCollectibleRecipientId) then
-                        ( Api.updateLoggedIn model (\current -> { current | awardOrgCollectibleMessage = Just "Choose a member first." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | awardOrgCollectibleMessage = Just (FailureNote "Choose a member first.") }), Cmd.none )
 
                     else
                         ( Api.updateLoggedIn model (\current -> { current | awardOrgCollectibleMessage = Nothing })
@@ -1420,12 +1498,12 @@ update msg model =
         AwardOrgCollectibleReceived (Ok collectible) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleMessage = Just (View.awardSuccessLabel collectible) })
+                    Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleMessage = Just (SuccessNote (View.awardSuccessLabel collectible)) })
             in
             Api.withSession updated (\state -> ( updated, Api.fetchOrganizationCollectibles state.accessToken state.activeOrgId ))
 
         AwardOrgCollectibleReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CollectibleCatalogReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | collectibleCatalog = response.entries }), Cmd.none )
@@ -1443,7 +1521,7 @@ update msg model =
             Api.withSession model
                 (\state ->
                     if String.trim state.awardRecipientId == "" then
-                        ( Api.updateLoggedIn model (\current -> { current | awardDefaultMessage = Just "Enter a recipient id first." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | awardDefaultMessage = Just (FailureNote "Enter a recipient id first.") }), Cmd.none )
 
                     else
                         ( model, Api.awardDefaultCollectible state.accessToken slug state.awardRecipientKind state.awardRecipientId )
@@ -1452,12 +1530,16 @@ update msg model =
         AwardDefaultReceived (Ok _) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | awardDefaultMessage = Just "Awarded the collectible." })
+                    Api.updateLoggedIn model (\state -> { state | awardDefaultMessage = Just (SuccessNote "Awarded the collectible.") })
             in
             ( updated, Api.refreshCollectibles updated )
 
-        AwardDefaultReceived (Err _) ->
-            ( Api.updateLoggedIn model (\state -> { state | awardDefaultMessage = Just "Only platform admins can award default collectibles." }), Cmd.none )
+        AwardDefaultReceived (Err error) ->
+            -- Show the actual failure: the award button is already gated to
+            -- platform admins, so hardcoding a permissions explanation here
+            -- told an admin whose request failed for another reason (bad
+            -- recipient, expired session, network) something false.
+            ( Api.updateLoggedIn model (\state -> { state | awardDefaultMessage = Just (FailureNote ("Could not award the collectible: " ++ httpErrorLabel error)) }), Cmd.none )
 
         TransferRecipientIdChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | transferRecipientId = value }), Cmd.none )
@@ -1466,7 +1548,7 @@ update msg model =
             Api.withSession model
                 (\state ->
                     if String.trim state.transferRecipientId == "" then
-                        ( Api.updateLoggedIn model (\current -> { current | transferMessage = Just "Enter a recipient id first." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | transferMessage = Just (FailureNote "Enter a recipient id first.") }), Cmd.none )
 
                     else
                         ( model, Api.transferCollectible state.accessToken collectibleId state.transferRecipientId )
@@ -1475,12 +1557,12 @@ update msg model =
         TransferCollectibleReceived (Ok _) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | transferMessage = Just "Transferred." })
+                    Api.updateLoggedIn model (\state -> { state | transferMessage = Just (SuccessNote "Transferred.") })
             in
             ( updated, Api.refreshCollectibles updated )
 
         TransferCollectibleReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | transferMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | transferMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrganizationsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | organizations = Api.organizationsFromResult result }), Cmd.none )
@@ -1492,10 +1574,10 @@ update msg model =
             Api.withSession model (\state -> Api.createOrgCommand model state)
 
         CreateOrgReceived (Ok organization) ->
-            ( Api.updateLoggedIn model (\state -> { state | createOrgName = "", orgMessage = Just ("Created organization " ++ organization.name) }), Api.refreshOrganizations model )
+            ( Api.updateLoggedIn model (\state -> { state | createOrgName = "", orgMessage = Just (SuccessNote ("Created organization " ++ organization.name)) }), Api.refreshOrganizations model )
 
         CreateOrgReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgBalanceReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgBalance = Api.balanceFromResult result }), Cmd.none )
@@ -1527,13 +1609,37 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = response.events, orgAuditMessage = Nothing }), Cmd.none )
 
         OrgAuditEventsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = [], orgAuditMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = [], orgAuditMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTeamsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgTeams = Api.teamsFromResult result }), Cmd.none )
 
         StandaloneTeamsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | standaloneTeams = Api.teamsFromResult result }), Cmd.none )
+
+        CreateTeamNameChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | createTeamName = value }), Cmd.none )
+
+        CreateTeamClicked ->
+            Api.withSession model
+                (\state ->
+                    if String.trim state.createTeamName == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | createTeamMessage = Just (FailureNote "Enter a team name first.") }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | createTeamMessage = Nothing }), Api.createStandaloneTeam state.accessToken state.createTeamName )
+                )
+
+        TeamCreated (Ok team) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | createTeamName = "", createTeamMessage = Just (SuccessNote ("Created team " ++ team.name ++ ".")) })
+                    , Api.fetchStandaloneTeams state.accessToken
+                    )
+                )
+
+        TeamCreated (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | createTeamMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         UserDirectoryReceived result ->
             ( Api.updateLoggedIn model
@@ -1653,7 +1759,14 @@ update msg model =
         SearchOrgTeamsClicked ->
             Api.withSession model
                 (\state ->
-                    ( Api.updateLoggedIn model (\current -> { current | orgTeamOffset = 0 }), Api.fetchOrgTeamsPage state.accessToken (orgTeamSearchOrganizationID state) state.orgTeamQuery 0 )
+                    -- fetchOrgTeamsPage is a no-op without an organization id
+                    -- (there is nothing to query); say so instead of letting
+                    -- the Search button silently do nothing.
+                    if orgTeamSearchOrganizationID state == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | reservationMessage = Just (FailureNote "Choose an organization first, then search its teams.") }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | orgTeamOffset = 0 }), Api.fetchOrgTeamsPage state.accessToken (orgTeamSearchOrganizationID state) state.orgTeamQuery 0 )
                 )
 
         PreviousOrgTeamsPageClicked ->
@@ -1758,14 +1871,14 @@ update msg model =
                         , addSeriesTaskId = ""
                         , seriesRenameTitle = data.series.title
                         , seriesRenameDescription = data.series.description
-                        , seriesMessage = Just "Series saved."
+                        , seriesMessage = Just (SuccessNote "Series saved.")
                     }
                 )
             , seriesListRefresh model
             )
 
         SeriesMutationReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | seriesMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | seriesMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PublishSeriesClicked seriesId ->
             Api.withSession model (\state -> ( model, Api.seriesStateCommand state.accessToken seriesId "publish" ))
@@ -1812,7 +1925,7 @@ update msg model =
             )
 
         SeriesCommentReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | seriesMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | seriesMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         SeriesRenameTitleChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | seriesRenameTitle = value }), Cmd.none )
@@ -1844,7 +1957,7 @@ update msg model =
                             { state | teamWork = response.tasks, teamWorkMessage = Nothing }
 
                         Err error ->
-                            { state | teamWork = [], teamWorkMessage = Just (httpErrorLabel error) }
+                            { state | teamWork = [], teamWorkMessage = Just (FailureNote (httpErrorLabel error)) }
                 )
             , Cmd.none
             )
@@ -1896,7 +2009,7 @@ update msg model =
                             String.trim state.teamWorkSavedViewName
                     in
                     if name == "" then
-                        ( Api.updateLoggedIn model (\current -> { current | teamWorkMessage = Just "A saved view name is required." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | teamWorkMessage = Just (FailureNote "A saved view name is required.") }), Cmd.none )
 
                     else
                         let
@@ -1924,14 +2037,14 @@ update msg model =
                                         , teamWorkTypeFilter = view.typeFilter
                                         , teamWorkSort = view.sort
                                         , teamWorkOffset = 0
-                                        , teamWorkMessage = Just ("Applied view: " ++ view.name)
+                                        , teamWorkMessage = Just (SuccessNote ("Applied view: " ++ view.name))
                                     }
                                 )
                             , Api.fetchTeamWork state.accessToken detail.team.id view.query view.typeFilter view.sort 0
                             )
 
                         ( _, Nothing ) ->
-                            ( Api.updateLoggedIn model (\current -> { current | teamWorkMessage = Just "Saved view was not found." }), Cmd.none )
+                            ( Api.updateLoggedIn model (\current -> { current | teamWorkMessage = Just (FailureNote "Saved view was not found.") }), Cmd.none )
 
                         ( Nothing, _ ) ->
                             ( model, Cmd.none )
@@ -1989,16 +2102,16 @@ update msg model =
             Api.withSession model (\state -> ( model, Api.postAddTeamMember state.accessToken teamId state.teamMemberEmail ))
 
         AddTeamMemberReceived (Ok detail) ->
-            ( Api.updateLoggedIn model (\state -> { state | teamDetail = Just detail, teamMemberEmail = "", teamMemberMessage = Just "Member added." }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | teamDetail = Just detail, teamMemberEmail = "", teamMemberMessage = Just (SuccessNote "Member added.") }), Cmd.none )
 
         AddTeamMemberReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | teamMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | teamMemberMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTasksReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | orgTasks = response.tasks, orgTaskMessage = Nothing }), Cmd.none )
 
         OrgTasksReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTasks = [], orgTaskMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgTasks = [], orgTaskMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTaskQueryChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | orgTaskQuery = value }), Cmd.none )
@@ -2044,7 +2157,7 @@ update msg model =
                             String.trim state.orgTaskSavedViewName
                     in
                     if name == "" then
-                        ( Api.updateLoggedIn model (\current -> { current | orgTaskMessage = Just "A saved view name is required." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | orgTaskMessage = Just (FailureNote "A saved view name is required.") }), Cmd.none )
 
                     else
                         let
@@ -2072,14 +2185,14 @@ update msg model =
                                         , orgTaskTypeFilter = view.typeFilter
                                         , orgTaskSort = view.sort
                                         , orgTaskOffset = 0
-                                        , orgTaskMessage = Just ("Applied view: " ++ view.name)
+                                        , orgTaskMessage = Just (SuccessNote ("Applied view: " ++ view.name))
                                     }
                                 )
                             , Api.fetchOrgTasksPage state.accessToken state.activeOrgId view.query view.stateFilter view.typeFilter view.sort 0
                             )
 
                         Nothing ->
-                            ( Api.updateLoggedIn model (\current -> { current | orgTaskMessage = Just "Saved view was not found." }), Cmd.none )
+                            ( Api.updateLoggedIn model (\current -> { current | orgTaskMessage = Just (FailureNote "Saved view was not found.") }), Cmd.none )
                 )
 
         SearchOrgTasksClicked ->
@@ -2116,13 +2229,13 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgCollectibles = response.collectibles, orgCollectiblesMessage = Nothing }), Cmd.none )
 
         OrgCollectiblesReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgCollectibles = [], orgCollectiblesMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgCollectibles = [], orgCollectiblesMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         TeamCollectiblesReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | teamCollectibles = response.collectibles, teamCollectiblesMessage = Nothing }), Cmd.none )
 
         TeamCollectiblesReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | teamCollectibles = [], teamCollectiblesMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | teamCollectibles = [], teamCollectiblesMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CreateOrgTeamNameChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createOrgTeamName = value }), Cmd.none )
@@ -2133,12 +2246,12 @@ update msg model =
         CreateOrgTeamReceived (Ok team) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | createOrgTeamName = "", orgTeamMessage = Just ("Created team " ++ team.name) })
+                    Api.updateLoggedIn model (\state -> { state | createOrgTeamName = "", orgTeamMessage = Just (FailureNote ("Created team " ++ team.name)) })
             in
             Api.withSession updated (\state -> ( updated, Api.fetchOrgTeams state.accessToken state.activeOrgId ))
 
         CreateOrgTeamReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTeamMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgTeamMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         ProvisionMemberEmailChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | provisionMemberEmail = value }), Cmd.none )
@@ -2152,12 +2265,12 @@ update msg model =
         ProvisionMemberReceived (Ok ()) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | provisionMemberEmail = "", provisionMemberMessage = Just "Member provisioned." })
+                    Api.updateLoggedIn model (\state -> { state | provisionMemberEmail = "", provisionMemberMessage = Just (SuccessNote "Member provisioned.") })
             in
             Api.withSession updated (\state -> ( updated, Api.authorizedRequest "GET" state.accessToken ("/api/organizations/" ++ state.activeOrgId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder) ))
 
         ProvisionMemberReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         UpdateMemberRolesClicked userId roles ->
             Api.withSession model (\state -> Api.updateMemberRolesCommand model state userId roles)
@@ -2165,12 +2278,12 @@ update msg model =
         UpdateMemberRolesReceived (Ok _) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just "Member roles updated." })
+                    Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (SuccessNote "Member roles updated.") })
             in
             Api.withSession updated (\state -> ( updated, Api.authorizedRequest "GET" state.accessToken ("/api/organizations/" ++ state.activeOrgId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder) ))
 
         UpdateMemberRolesReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         DeactivateMemberClicked userId ->
             Api.withSession model (\state -> Api.deactivateMemberCommand model state userId)
@@ -2178,12 +2291,12 @@ update msg model =
         DeactivateMemberReceived (Ok _) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just "Member deactivated." })
+                    Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (SuccessNote "Member deactivated.") })
             in
             Api.withSession updated (\state -> ( updated, Api.authorizedRequest "GET" state.accessToken ("/api/organizations/" ++ state.activeOrgId ++ "/members") Http.emptyBody (Http.expectJson OrgMembersReceived Organization.organizationMembersResponseDecoder) ))
 
         DeactivateMemberReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | provisionMemberMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CreateTaskOwnerChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createTaskOwner = value }), Cmd.none )
@@ -2215,7 +2328,7 @@ update msg model =
             Api.withSession model
                 (\state ->
                     if String.trim state.taskCommentBody == "" then
-                        ( Api.updateLoggedIn model (\current -> { current | taskCommentMessage = Just "Write a comment first." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | taskCommentMessage = Just (FailureNote "Write a comment first.") }), Cmd.none )
 
                     else
                         ( Api.updateLoggedIn model (\current -> { current | taskCommentMessage = Nothing })
@@ -2227,7 +2340,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | taskComments = state.taskComments ++ [ comment ], taskCommentBody = "", taskCommentMessage = Nothing }), Cmd.none )
 
         TaskCommentReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskCommentMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | taskCommentMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         TaskCommentsReceived (Ok comments) ->
             ( Api.updateLoggedIn model (\state -> { state | taskComments = comments }), Cmd.none )
@@ -2247,7 +2360,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | submissionComments = response.comments }), Cmd.none )
 
         SubmissionCommentsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | submissionCommentMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | submissionCommentMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         SubmissionCommentBodyChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | submissionCommentBody = value }), Cmd.none )
@@ -2256,7 +2369,7 @@ update msg model =
             Api.withSession model
                 (\state ->
                     if String.trim state.submissionCommentBody == "" then
-                        ( Api.updateLoggedIn model (\current -> { current | submissionCommentMessage = Just "Write a comment first." }), Cmd.none )
+                        ( Api.updateLoggedIn model (\current -> { current | submissionCommentMessage = Just (FailureNote "Write a comment first.") }), Cmd.none )
 
                     else
                         ( Api.updateLoggedIn model (\current -> { current | submissionCommentMessage = Nothing })
@@ -2278,7 +2391,7 @@ update msg model =
                 )
 
         SubmissionCommentAdded (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | submissionCommentMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | submissionCommentMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AccountEmailChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | accountEmail = value }), Cmd.none )
@@ -2299,32 +2412,54 @@ update msg model =
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.confirmEmailVerification state.accessToken state.emailVerificationInput ))
 
         UpdateProfileClicked ->
-            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.updateProfile state.accessToken state.accountEmail ))
+            Api.withSession model
+                (\state ->
+                    -- The email field starts blank after a reload (the client
+                    -- has no endpoint that returns the current email), so a
+                    -- blank save would send "" for a guaranteed rejection.
+                    if String.trim state.accountEmail == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | accountMessage = Just (FailureNote "Enter the new email address first.") }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.updateProfile state.accessToken state.accountEmail )
+                )
 
         ChangePasswordClicked ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.changePassword state.accessToken state.currentPassword state.newPassword ))
 
         DeactivateAccountClicked ->
-            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.deactivateAccount state.accessToken ))
+            -- Deactivation is irreversible (credential removal, token
+            -- revocation, email anonymization), so a single stray click must
+            -- not trigger it: the first click arms an explicit confirm step.
+            ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing, deactivateConfirming = True }), Cmd.none )
+
+        ConfirmDeactivateAccountClicked ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing, deactivateConfirming = False }), Api.deactivateAccount state.accessToken ))
+
+        CancelDeactivateAccountClicked ->
+            ( Api.updateLoggedIn model (\current -> { current | deactivateConfirming = False }), Cmd.none )
 
         PrivacyRequestClicked kind ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.requestPrivacy state.accessToken kind ))
 
         EmailVerificationRequested (Ok token) ->
             if token == "" then
-                ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just "Verification instructions sent." }), Cmd.none )
+                -- No email delivery exists in this deployment; the token went
+                -- to the server operator's log (see the matching password-
+                -- reset copy on the auth screen).
+                ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (SuccessNote "Verification requested. This deployment does not send email - ask an operator for the token from the server log, then paste it below.") }), Cmd.none )
 
             else
-                ( Api.updateLoggedIn model (\state -> { state | emailVerificationToken = token, emailVerificationInput = token, accountMessage = Just "Verification token created." }), Cmd.none )
+                ( Api.updateLoggedIn model (\state -> { state | emailVerificationToken = token, emailVerificationInput = token, accountMessage = Just (SuccessNote "Verification token created.") }), Cmd.none )
 
         EmailVerificationRequested (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AccountActionReceived (Ok ()) ->
-            ( Api.updateLoggedIn model (\state -> { state | currentPassword = "", newPassword = "", emailVerificationInput = "", accountMessage = Just "Account updated." }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | currentPassword = "", newPassword = "", emailVerificationInput = "", accountMessage = Just (SuccessNote "Account updated.") }), Cmd.none )
 
         AccountActionReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         DeactivateAccountReceived (Ok ()) ->
             ( { model | session = LoggedOut, email = "", password = "" }
@@ -2332,13 +2467,24 @@ update msg model =
             )
 
         DeactivateAccountReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PrivacyRequestReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just ("Privacy request queued: " ++ response.kind) }), Cmd.none )
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | accountMessage = Just (SuccessNote ("Privacy request queued: " ++ response.kind)) })
+                    , Api.fetchMyPrivacyRequests state.accessToken
+                    )
+                )
 
         PrivacyRequestReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        MyPrivacyRequestsReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | myPrivacyRequests = response.requests }), Cmd.none )
+
+        MyPrivacyRequestsReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (FailureNote ("Could not load your privacy requests: " ++ httpErrorLabel error)) }), Cmd.none )
 
         SavedQueueViewsReceived (Ok response) ->
             let
@@ -2363,34 +2509,34 @@ update msg model =
                     queueViewFromResponse response
             in
             if response.scope == teamWorkSavedViewScope then
-                ( Api.updateLoggedIn model (\state -> { state | teamWorkSavedViews = saveQueueView view state.teamWorkSavedViews, teamWorkSavedViewName = "", teamWorkMessage = Just ("Saved view: " ++ view.name) }), Cmd.none )
+                ( Api.updateLoggedIn model (\state -> { state | teamWorkSavedViews = saveQueueView view state.teamWorkSavedViews, teamWorkSavedViewName = "", teamWorkMessage = Just (FailureNote ("Saved view: " ++ view.name)) }), Cmd.none )
 
             else if response.scope == orgTaskSavedViewScope then
-                ( Api.updateLoggedIn model (\state -> { state | orgTaskSavedViews = saveQueueView view state.orgTaskSavedViews, orgTaskSavedViewName = "", orgTaskMessage = Just ("Saved view: " ++ view.name) }), Cmd.none )
+                ( Api.updateLoggedIn model (\state -> { state | orgTaskSavedViews = saveQueueView view state.orgTaskSavedViews, orgTaskSavedViewName = "", orgTaskMessage = Just (FailureNote ("Saved view: " ++ view.name)) }), Cmd.none )
 
             else
                 ( model, Cmd.none )
 
         SavedQueueViewSaved (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | teamWorkMessage = Just (httpErrorLabel error), orgTaskMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | teamWorkMessage = Just (FailureNote (httpErrorLabel error)), orgTaskMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OperationsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | operations = Just response, adminMessage = Nothing }), Cmd.none )
 
         OperationsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | operations = Nothing, adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | operations = Nothing, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AuditEventsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | auditEvents = response.events, adminMessage = Nothing }), Cmd.none )
 
         AuditEventsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PlatformAdminsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | platformAdmins = response.admins }), Cmd.none )
 
         PlatformAdminsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = [], adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminSelectedUserChanged userId ->
             ( Api.updateLoggedIn model (\state -> { state | adminSelectedUserId = userId }), Cmd.none )
@@ -2399,25 +2545,25 @@ update msg model =
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.grantPlatformAdmin state.accessToken state.adminSelectedUserId ))
 
         PlatformAdminGranted (Ok response) ->
-            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminSelectedUserId = "", adminMessage = Just "Platform admin granted.", platformAdminsOffset = 0 }), Api.fetchPlatformAdmins state.accessToken 0 ))
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminSelectedUserId = "", adminMessage = Just (SuccessNote "Platform admin granted."), platformAdminsOffset = 0 }), Api.fetchPlatformAdmins state.accessToken 0 ))
 
         PlatformAdminGranted (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         RevokePlatformAdminClicked userID ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.revokePlatformAdmin state.accessToken userID ))
 
         PlatformAdminRevoked (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = removePlatformAdmin response.userID state.platformAdmins, adminMessage = Just "Platform admin revoked." }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = removePlatformAdmin response.userID state.platformAdmins, adminMessage = Just (SuccessNote "Platform admin revoked.") }), Cmd.none )
 
         PlatformAdminRevoked (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminModerationReportsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = response.reports, adminMessage = Nothing }), Cmd.none )
 
         AdminModerationReportsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminModerationStateFilterChanged value ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminModerationStateFilter = value, adminModerationOffset = 0 }), Api.fetchAdminModerationReports state.accessToken value 0 ))
@@ -2449,16 +2595,16 @@ update msg model =
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.triageModerationReport state.accessToken reportID stateValue state.adminModerationResolutionNote ))
 
         AdminModerationReportTriaged (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = replaceModerationReport response state.adminModerationReports, adminModerationResolutionNote = "", adminMessage = Just "Moderation report updated." }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = replaceModerationReport response state.adminModerationReports, adminModerationResolutionNote = "", adminMessage = Just (SuccessNote "Moderation report updated.") }), Cmd.none )
 
         AdminModerationReportTriaged (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminPrivacyRequestsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = response.requests, adminMessage = Nothing }), Cmd.none )
 
         AdminPrivacyRequestsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = [], adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = [], adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PreviousAdminPrivacyPageClicked ->
             Api.withSession model
@@ -2487,19 +2633,19 @@ update msg model =
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.runPrivacyRetention state.accessToken ))
 
         PrivacyRetentionRunReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminRetentionRedactedFieldCount = Just response.redactedFieldCount, adminMessage = Just "Privacy retention run finished." }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminRetentionRedactedFieldCount = Just response.redactedFieldCount, adminMessage = Just (SuccessNote "Privacy retention run finished.") }), Cmd.none )
 
         PrivacyRetentionRunReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         ResolveAdminPrivacyRequestClicked requestId ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.resolveAdminPrivacyRequest state.accessToken requestId state.adminPrivacyResolutionNote ))
 
         AdminPrivacyRequestResolved (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = replacePrivacyRequest response state.adminPrivacyRequests, adminPrivacyResolutionNote = "", adminMessage = Just "Privacy request resolved." }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = replacePrivacyRequest response state.adminPrivacyRequests, adminPrivacyResolutionNote = "", adminMessage = Just (SuccessNote "Privacy request resolved.") }), Cmd.none )
 
         AdminPrivacyRequestResolved (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AuditActionFilterChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | auditActionFilter = value }), Cmd.none )
@@ -2557,7 +2703,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | notifications = response.notifications, inboxMessage = Nothing }), Cmd.none )
 
         NotificationsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | notifications = [], inboxMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | notifications = [], inboxMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PreviousNotificationsPageClicked ->
             Api.withSession model
@@ -2586,7 +2732,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | notifications = replaceNotification notification state.notifications, inboxMessage = Nothing }), Cmd.none )
 
         NotificationReadReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | inboxMessage = Just (httpErrorLabel error) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | inboxMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         LinkClicked request ->
             case request of

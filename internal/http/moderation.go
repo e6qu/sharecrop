@@ -177,7 +177,11 @@ func (server Server) listAdminModerationReports(w http.ResponseWriter, r *http.R
 
 	filters := audit.NoListFilters()
 	filters.Action = audit.ActionEquals{Value: audit.ActionModerationReportCreated}
-	result := server.auditService.List(r.Context(), filters, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.auditService.List(r.Context(), filters, page)
 	listed, listedMatched := result.(audit.EventsListed)
 	if !listedMatched {
 		writeDomainError(w, result.(audit.ListRejected).Reason)

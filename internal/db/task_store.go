@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -92,38 +93,61 @@ func (store TaskStore) FindTask(ctx context.Context, taskID core.TaskID) task.Fi
 		return task.FindTaskStoreRejected{Reason: rejected.reason}
 	}
 	if len(values.values) != 1 {
-		return task.FindTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task was not found")}
+		return task.FindTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	return task.FindTaskStoreAccepted{Value: values.values[0]}
 }
 
 func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, state task.State) task.ChangeTaskStateStoreResult {
+	// The invariant checks and the state write run in one transaction, with the
+	// task row locked and the UPDATE predicated on the observed prior state, so
+	// a concurrent Cancel+Fund or Open+Refund cannot interleave between the
+	// checks and the write (orphaning escrow or reopening a cancelled task).
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin change task state transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var priorState string
+	scanErr := tx.QueryRow(ctx, "select state from tasks where id = $1 for update", taskID.String()).Scan(&priorState)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if scanErr != nil {
+		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock task state failed")}
+	}
+
 	if state == task.StateOpen {
-		escrowResult := store.requireOpenableReward(ctx, taskID)
-		if rejected, matched := escrowResult.(openableRewardRejected); matched {
+		fundResult := requireOpenableReward(ctx, tx, taskID)
+		if rejected, matched := fundResult.(openableRewardRejected); matched {
 			return task.ChangeTaskStateStoreRejected{Reason: rejected.reason}
 		}
 	}
 	if state == task.StateCancelled {
-		// Cancelling a task that still holds escrow would orphan it: the task
-		// state transition does not return held credits or collectibles (only
-		// the refund endpoints do). Reject so the caller refunds first.
-		escrowResult := store.requireNoHeldEscrow(ctx, taskID)
-		if rejected, matched := escrowResult.(heldEscrowRejected); matched {
-			return task.ChangeTaskStateStoreRejected{Reason: rejected.reason}
+		// Cancelling a funded task that has not been awarded settles it: the
+		// allocated credits and every held collectible are returned to their
+		// funder before the task is cancelled, so nothing is orphaned.
+		if reason := settleFundedTaskOnCancel(ctx, tx, taskID); reason != nil {
+			return task.ChangeTaskStateStoreRejected{Reason: *reason}
 		}
 	}
-	commandTag, err := store.pool.Exec(ctx, `
+
+	commandTag, err := tx.Exec(ctx, `
 		update tasks
 		set state = $2, state_recorded_at = now()
-		where id = $1
-	`, taskID.String(), state.String())
+		where id = $1 and state = $3
+	`, taskID.String(), state.String(), priorState)
 	if err != nil {
 		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "change task state failed")}
 	}
 	if commandTag.RowsAffected() != 1 {
-		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task state was not changed")}
+		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task state was not changed")}
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit change task state transaction failed")}
+	}
+
 	found := store.FindTask(ctx, taskID)
 	value, matched := found.(task.FindTaskStoreAccepted)
 	if !matched {
@@ -147,27 +171,26 @@ func (openableRewardAccepted) openableRewardResult() {}
 
 func (openableRewardRejected) openableRewardResult() {}
 
-func (store TaskStore) requireOpenableReward(ctx context.Context, taskID core.TaskID) openableRewardResult {
+func requireOpenableReward(ctx context.Context, tx pgx.Tx, taskID core.TaskID) openableRewardResult {
 	var rewardKind string
 	var creditAmount int64
-	err := store.pool.QueryRow(ctx, "select reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1", taskID.String()).Scan(&rewardKind, &creditAmount)
+	err := tx.QueryRow(ctx, "select reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1", taskID.String()).Scan(&rewardKind, &creditAmount)
 	if err != nil {
 		return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	if rewardKind == task.RewardKindCredit.String() || rewardKind == task.RewardKindBundle.String() {
-		var heldAmount int64
-		var escrowState string
-		escrowErr := store.pool.QueryRow(ctx, "select amount, state from task_escrows where task_id = $1", taskID.String()).Scan(&heldAmount, &escrowState)
-		if escrowErr != nil {
+		var allocatedAmount int64
+		fundErr := tx.QueryRow(ctx, "select credit_amount from task_funds where task_id = $1", taskID.String()).Scan(&allocatedAmount)
+		if fundErr != nil {
 			return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward must be funded before opening")}
 		}
-		if escrowState != "held" || heldAmount != creditAmount {
-			return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "held escrow must match the declared credit reward")}
+		if allocatedAmount != creditAmount {
+			return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "allocated credits must match the declared credit reward")}
 		}
 	}
 	if rewardKind == task.RewardKindCollectible.String() || rewardKind == task.RewardKindBundle.String() {
 		var heldCollectibles int
-		err := store.pool.QueryRow(ctx, "select count(*) from task_collectible_rewards where task_id = $1 and state = 'held'", taskID.String()).Scan(&heldCollectibles)
+		err := tx.QueryRow(ctx, "select count(*) from task_fund_collectibles where task_id = $1", taskID.String()).Scan(&heldCollectibles)
 		if err != nil {
 			return openableRewardRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "check collectible reward funding failed")}
 		}
@@ -178,37 +201,41 @@ func (store TaskStore) requireOpenableReward(ctx context.Context, taskID core.Ta
 	return openableRewardAccepted{}
 }
 
-type heldEscrowResult interface {
-	heldEscrowResult()
-}
-
-type heldEscrowNone struct{}
-
-type heldEscrowRejected struct {
-	reason core.DomainError
-}
-
-func (heldEscrowNone) heldEscrowResult() {}
-
-func (heldEscrowRejected) heldEscrowResult() {}
-
-// requireNoHeldEscrow rejects when a task still holds funded credits or
-// collectible rewards. Cancelling such a task would orphan the escrow because
-// the state transition does not return it; the caller must refund first.
-func (store TaskStore) requireNoHeldEscrow(ctx context.Context, taskID core.TaskID) heldEscrowResult {
-	var heldCredits, heldCollectibles int
-	err := store.pool.QueryRow(ctx, `
-		select
-			(select count(*) from task_escrows where task_id = $1 and state = 'held'),
-			(select count(*) from task_collectible_rewards where task_id = $1 and state = 'held')
-	`, taskID.String()).Scan(&heldCredits, &heldCollectibles)
-	if err != nil {
-		return heldEscrowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "check held escrow failed")}
+// settleFundedTaskOnCancel returns a cancelled task's allocated credits and every
+// held collectibles to their funder. It writes a task_refund ledger entry for
+// the credits, returns the collectibles to minted, and deletes the stateless
+// task_funds / task_fund_collectibles rows. An unfunded task settles to nothing.
+func settleFundedTaskOnCancel(ctx context.Context, tx pgx.Tx, taskID core.TaskID) *core.DomainError {
+	var rawFunderAccountID string
+	var amount int64
+	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, credit_amount from task_funds where task_id = $1 for update", taskID.String()).Scan(&rawFunderAccountID, &amount)
+	if scanErr != nil && !errors.Is(scanErr, pgx.ErrNoRows) {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read task fund failed")
+		return &reason
 	}
-	if heldCredits > 0 || heldCollectibles > 0 {
-		return heldEscrowRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "refund the task's held escrow before cancelling")}
+	if scanErr == nil {
+		entryResult := core.NewLedgerEntryID()
+		entryCreated, matched := entryResult.(core.LedgerEntryIDCreated)
+		if !matched {
+			reason := entryResult.(core.LedgerEntryIDRejected).Reason
+			return &reason
+		}
+		if _, err := tx.Exec(ctx, `
+			insert into ledger_entries (id, account_id, kind, amount, task_id)
+			values ($1, $2, 'task_refund', $3, $4)
+		`, entryCreated.Value.String(), rawFunderAccountID, amount, taskID.String()); err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "insert cancel refund ledger entry failed")
+			return &reason
+		}
+		if _, err := tx.Exec(ctx, "delete from task_funds where task_id = $1", taskID.String()); err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "clear task fund failed")
+			return &reason
+		}
 	}
-	return heldEscrowNone{}
+	if reason, rejected := refundHeldCollectibleReward(ctx, tx, taskID); rejected {
+		return &reason
+	}
+	return nil
 }
 
 func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filters task.ListFilters, page core.Page) task.ListTasksStoreResult {
@@ -645,9 +672,8 @@ const taskBaseColumns = `
 		tasks.reward_kind, coalesce(tasks.reward_credit_amount, 0),
 		coalesce((
 			select count(*)
-			from task_collectible_rewards
-			where task_collectible_rewards.task_id = tasks.id
-			and task_collectible_rewards.state in ('held', 'released')
+			from task_fund_collectibles
+			where task_fund_collectibles.task_id = tasks.id
 		), 0),
 		tasks.participation_policy, tasks.assignee_scope, tasks.reservation_expires_after_hours,
 		task_visibility_scopes.visibility_kind, coalesce(task_visibility_scopes.user_id::text, ''),

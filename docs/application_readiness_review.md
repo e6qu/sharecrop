@@ -4,7 +4,7 @@ This review compares the implemented application with the product thesis in
 [PLAN.md](../PLAN.md): Sharecrop coordinates requested work between people,
 organizations, teams, scripts, and local AI agents through a browser UI, HTTP
 API, MCP interface, task discovery, response validation, submissions, scoped
-tokens, escrow accounting, and payout workflow.
+tokens, credit wallet accounting, and payout workflow.
 
 ## Current Implemented Surface
 
@@ -28,9 +28,10 @@ tokens, escrow accounting, and payout workflow.
   submissions, review outcomes, comments, task series, and user profiles.
 - Sharecrop-schema parsing, validation, sensitive-field indexing, and redaction
   for receipt lookups.
-- Credit ledger with signup grants, task funding escrow,
+- Credit ledger with signup grants, task funding,
   accept/reject/request-changes settlement, refunds, partial payouts, tips, and
-  organization funding.
+  organization funding. Each credit account has a spendable section and an
+  allocated section; funding a task moves credits from spendable to allocated.
 - Platform collectibles, catalog awards, user/team/organization ownership, task
   collectible rewards, refunds, transfers, and collectible review tips.
 - Organizations, organization teams, standalone teams, member
@@ -58,7 +59,7 @@ worker:
 3. A worker discovers it.
 4. The worker submits JSON.
 5. The requester reviews the submission.
-6. Credits and/or collectibles settle through escrow.
+6. Credits and/or collectibles settle through the wallet's allocated section.
 
 That loop is well covered by HTTP and Playwright tests. The application is still
 short of ordinary product readiness because several flows are only API-level,
@@ -70,7 +71,7 @@ support surfaces are absent.
 1. **Team and organization work dashboards still need polish.**
    - Organization-team assignment, reservation/request-approval, and team-member
      submission eligibility exist through HTTP, MCP, browser controls, and the
-     backendless demo.
+     WASM demo.
    - Team detail pages split team work into review, ready-for-team, and
      assigned-to-team sections.
    - Team and organization task lists now have server-backed task search,
@@ -124,9 +125,12 @@ support surfaces are absent.
      secret, admin ids, cookie mode, and account-token delivery mode.
    - There is Docker Compose for local Postgres, a systemd service template, and
      an operator runbook.
-   - MCP sessions, SSE replay buffers, and rate-limit buckets are in memory.
-   - Result: one process can be operated, but multi-process state remains design
-     work.
+   - Production `serve` wires Postgres-backed rate-limit buckets, persisted
+     MCP HTTP session identity, and persisted MCP replay events; only live
+     SSE subscriber channels are process-local.
+   - Result: one process can be operated, and most runtime state is already
+     Postgres-backed; cross-process MCP/SSE fan-out remains design work
+     before horizontal scaling.
 
 6. **Docs are still partial.**
    - `README.md` is local-command oriented.
@@ -136,8 +140,8 @@ support surfaces are absent.
    - A generated OpenAPI document (`docs/openapi.json`, `make openapi`) exists
      with an accurate method/path/operationId/bearer-auth inventory parsed from
      `internal/http/server.go`. Request/response body schemas are derived from
-     the actual Go DTO struct each handler decodes/writes (99/106 responses,
-     39/61 request bodies as of this writing); a handler outside the standard
+     the actual Go DTO struct each handler decodes/writes (102/109 responses,
+     41/63 request bodies as of this writing); a handler outside the standard
      decode/write patterns gets a generic placeholder rather than a guess. It is
      browsable on the deployed docs site at `/docs/openapi.html` (raw document
      at `/docs/openapi.json`).
@@ -163,11 +167,12 @@ Missing or partial:
 - The docs page covers the core lifecycle and MCP quickstart, and links to the
   repository API reference, MCP reference, operator runbook, and agent-side
   scheduling recipe.
-- The demo does not execute the full production server graph because browser
-  WASM hosts provide explicit storage, clock, identity/session, and request
-  adapters instead of Postgres and process-local server wiring. No route
-  implemented so far needs a randomness or networking adapter, so neither exists
-  yet in the `HostRuntime` contract.
+- The demo runs the real `internal/http` mux and real domain services, but
+  over browser-storage-backed stores instead of Postgres, with host-supplied
+  storage/clock/id adapters. It is single-actor by nature (one JS thread per
+  browser tab) and its non-persistent `RuntimeState` fields reset on page
+  reload. See
+  [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md).
 
 ### Authentication And User Account
 
@@ -202,7 +207,7 @@ Implemented:
 Missing or partial:
 
 - Collectible-only and bundle tasks can be created from the task form with
-  selected collectibles escrowed at create time.
+  selected collectibles locked to the task at create time.
 - Organization-owned funding can select an accessible organization.
 - Organization visibility, organization-team reservation, default-collectible
   award, collectible transfer, and series add-task flows use selectors where
@@ -290,8 +295,9 @@ Missing or partial:
   page/cursor argument), so an agent can't page past the first page of large
   result sets (tasks, org members, audit events, etc.) the way the REST API
   itself supports.
-- Scheduled/recurring work is intentionally agent-side, but there is no recipe
-  in product docs.
+- Scheduled/recurring work is intentionally agent-side; the recipe is
+  [docs/agent_scheduling.md](./agent_scheduling.md), linked from the hosted
+  docs page.
 
 ### Platform Admin And Economy
 

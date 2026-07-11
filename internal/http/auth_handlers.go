@@ -135,6 +135,9 @@ func (server Server) guest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) requestEmailVerification(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
@@ -151,6 +154,9 @@ func (server Server) requestEmailVerification(w http.ResponseWriter, r *http.Req
 }
 
 func (server Server) confirmEmailVerification(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	var request accountTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "request body is invalid")
@@ -186,15 +192,22 @@ func (server Server) requestPasswordReset(w http.ResponseWriter, r *http.Request
 		return
 	}
 	result := server.authService.RequestPasswordReset(r.Context(), email.Value)
-	issued, ok := result.(auth.AccountTokenIssued)
-	if !ok {
+	switch outcome := result.(type) {
+	case auth.AccountTokenIssued:
+		server.accountTokens.write(w, auth.AccountTokenKindPasswordReset, email.Value.String(), outcome)
+	case auth.AccountTokenIssueIgnored:
+		// Unknown email: respond exactly as a successful log-mode delivery so
+		// the response never reveals whether the account exists.
+		writeJSON(w, http.StatusCreated, accountTokenSentResponse{Status: "sent"})
+	default:
 		writeDomainError(w, result.(auth.AccountTokenIssueRejected).Reason)
-		return
 	}
-	server.accountTokens.write(w, auth.AccountTokenKindPasswordReset, email.Value.String(), issued)
 }
 
 func (server Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
+	if !server.allowByIP(w, r) {
+		return
+	}
 	var request passwordResetConfirmRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "request body is invalid")

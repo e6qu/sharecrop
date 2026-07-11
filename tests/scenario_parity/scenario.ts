@@ -1173,6 +1173,24 @@ export async function runSharedScenarioParity(
     "task comments must include created comment",
   );
 
+  // An unknown task id is a plain 404, not a conflict - checked on both
+  // backends since both stores used to surface it as invalid_state (409).
+  const unknownTask = await client.request(
+    "GET",
+    "/api/tasks/00000000-0000-4000-8000-000000000000",
+    noScenarioBody,
+  );
+  assertStatus(unknownTask, 404, "unknown task detail must be not found");
+
+  // Malformed paging input is rejected outright on every list endpoint; no
+  // endpoint silently coerces it to defaults anymore.
+  const invalidLimit = await client.request(
+    "GET",
+    "/api/notifications?limit=abc",
+    noScenarioBody,
+  );
+  assertStatus(invalidLimit, 400, "invalid list limit must be rejected");
+
   const submissionTaskTitle = uniqueName("Scenario parity submission task");
   const submissionTask = await client.request("POST", "/api/tasks", {
     owner: { kind: "user", user_id: subjectID },
@@ -1422,7 +1440,27 @@ export async function runSharedScenarioParity(
     },
   );
   assertStatus(funded, 201, "fund multi-actor task");
-  requireNumber(funded.json, "amount");
+  assertScenario(
+    requireNumber(funded.json, "credit_amount") === 30,
+    "fund response must report the allocated credit amount",
+  );
+
+  // Funding moves 30 from the owner's spendable section into allocated; the
+  // 100-credit total is conserved and the owner cannot spend the allocated 30.
+  const ownerBalanceAfterFunding = await owner.client.request(
+    "GET",
+    "/api/credits/balance",
+    noScenarioBody,
+  );
+  assertStatus(ownerBalanceAfterFunding, 200, "owner balance after funding");
+  assertScenario(
+    requireNumber(ownerBalanceAfterFunding.json, "spendable_credits") === 70,
+    "owner spendable credits must drop by the funded amount",
+  );
+  assertScenario(
+    requireNumber(ownerBalanceAfterFunding.json, "allocated_credits") === 30,
+    "owner allocated credits must rise by the funded amount",
+  );
 
   const opened = await owner.client.request(
     "POST",
@@ -1542,6 +1580,10 @@ export async function runSharedScenarioParity(
     "worker inbox must include owner submission-comment notification with task metadata",
   );
 
+  // Refunds are auto-granted by default: the owner (or the active implementor)
+  // could refund even now, with a submission pending review - the task would
+  // simply be cancelled and the worker not paid. Here the owner chooses to
+  // accept the work instead, so the task proceeds to payout.
   const acceptedSubmission = await owner.client.request(
     "POST",
     `/api/tasks/${multiActorTaskID}/submissions/${multiActorSubmissionID}/accept`,
@@ -1577,8 +1619,29 @@ export async function runSharedScenarioParity(
   );
   assertStatus(workerBalance, 200, "worker balance after accept");
   assertScenario(
-    requireNumber(workerBalance.json, "amount") === 135,
-    "worker balance must include payout and tip",
+    requireNumber(workerBalance.json, "spendable_credits") === 135,
+    "worker spendable credits must include payout and tip",
+  );
+  assertScenario(
+    requireNumber(workerBalance.json, "allocated_credits") === 0,
+    "worker has no allocated credits",
+  );
+
+  // The award moved the owner's 30 allocated credits to the worker, so the
+  // owner's allocated section is now empty (spendable dropped by the 5 tip).
+  const ownerBalanceAfterAccept = await owner.client.request(
+    "GET",
+    "/api/credits/balance",
+    noScenarioBody,
+  );
+  assertStatus(ownerBalanceAfterAccept, 200, "owner balance after accept");
+  assertScenario(
+    requireNumber(ownerBalanceAfterAccept.json, "allocated_credits") === 0,
+    "owner allocated credits must be zero after the award",
+  );
+  assertScenario(
+    requireNumber(ownerBalanceAfterAccept.json, "spendable_credits") === 65,
+    "owner spendable credits must reflect the 30 payout and 5 tip leaving the account",
   );
 
   const workerLedgerFirstPage = await worker.client.request(

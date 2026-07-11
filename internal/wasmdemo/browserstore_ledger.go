@@ -28,12 +28,10 @@ import (
 // task since those existing helpers only model entries, not held escrow.
 //
 // Submission-review flows (AcceptSubmission/RequestChanges/RejectSubmission)
-// cover credit/collectible/bundle payouts and credit/collectible tips, same
-// as internal/db. Implementor bans (BanSelection) are not modeled - no
-// held ban state exists yet in the browser stores - so a ban selection is
-// silently treated as "no ban" rather than rejected outright, since a ban
-// is an additional restriction on top of the review outcome, not something
-// the reviewer depends on succeeding.
+// cover credit/collectible/bundle payouts, credit/collectible tips, and
+// implementor bans (BanSelection writes a storedImplementorBan record that
+// CreateReservation and CheckSubmissionEligibility enforce), same as
+// internal/db.
 type LedgerBrowserStore struct {
 	storage BrowserStorage
 	ids     InteractionIDSource
@@ -43,17 +41,19 @@ func NewLedgerBrowserStore(storage BrowserStorage, ids InteractionIDSource) Ledg
 	return LedgerBrowserStore{storage: storage, ids: ids}
 }
 
-type storedTaskEscrow struct {
+// storedTaskFund mirrors internal/db's task_funds row: a stateless record that
+// exists iff the task currently holds allocated credits. It is deleted when the
+// task is awarded or refunded, never state-transitioned.
+type storedTaskFund struct {
 	TaskID          string `json:"task_id"`
 	FunderOwnerKind string `json:"funder_owner_kind"`
 	FunderOwnerID   string `json:"funder_owner_id"`
-	Amount          int64  `json:"amount"`
-	State           string `json:"state"`
+	CreditAmount    int64  `json:"credit_amount"`
 }
 
-func taskEscrowKey(taskID string) string { return "ledger:escrow:" + taskID }
+func taskFundKey(taskID string) string { return "ledger:fund:" + taskID }
 
-func putStoredTaskEscrowJSON(storage BrowserStorage, rawKey string, record storedTaskEscrow) bool {
+func putStoredTaskFundJSON(storage BrowserStorage, rawKey string, record storedTaskFund) bool {
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return false
@@ -61,54 +61,137 @@ func putStoredTaskEscrowJSON(storage BrowserStorage, rawKey string, record store
 	return putStorageString(storage, rawKey, string(encoded))
 }
 
-func getStoredTaskEscrowJSON(storage BrowserStorage, rawKey string) (storedTaskEscrow, bool, bool) {
+func getStoredTaskFundJSON(storage BrowserStorage, rawKey string) (storedTaskFund, bool, bool) {
 	raw, found, ok := getStorageString(storage, rawKey)
 	if !ok || !found {
-		return storedTaskEscrow{}, found, ok
+		return storedTaskFund{}, found, ok
 	}
-	var record storedTaskEscrow
+	// A deleted fund is stored as an empty string (delete-by-tombstone,
+	// matching the rest of the demo store), which reads back as "not found".
+	if raw == "" {
+		return storedTaskFund{}, false, true
+	}
+	var record storedTaskFund
 	if err := json.Unmarshal([]byte(raw), &record); err != nil {
-		return storedTaskEscrow{}, false, false
+		return storedTaskFund{}, false, false
 	}
 	return record, true, true
 }
 
-func (store LedgerBrowserStore) loadEscrow(taskID string) (storedTaskEscrow, bool, *core.DomainError) {
-	record, found, ok := getStoredTaskEscrowJSON(store.storage, taskEscrowKey(taskID))
+func (store LedgerBrowserStore) loadFund(taskID string) (storedTaskFund, bool, *core.DomainError) {
+	record, found, ok := getStoredTaskFundJSON(store.storage, taskFundKey(taskID))
 	if !ok {
-		reason := invalidState("read task escrow failed")
-		return storedTaskEscrow{}, false, &reason
+		reason := invalidState("read task fund failed")
+		return storedTaskFund{}, false, &reason
 	}
 	return record, found, nil
 }
 
-func (store LedgerBrowserStore) saveEscrow(record storedTaskEscrow) bool {
-	return putStoredTaskEscrowJSON(store.storage, taskEscrowKey(record.TaskID), record)
+func (store LedgerBrowserStore) saveFund(record storedTaskFund) bool {
+	return putStoredTaskFundJSON(store.storage, taskFundKey(record.TaskID), record)
 }
 
-// findEntryByIdempotencyKey scans a ledger owner's entries for one already
-// recorded under this key, mirroring the real store's idempotency check.
-func (store LedgerBrowserStore) findEntryByIdempotencyKey(ownerKind string, ownerID string, key string) (bool, *core.DomainError) {
-	entriesResult := ListLedgerEntries(store.storage, ownerKind, ownerID, StoredListPage{limit: 1000000, offset: 0})
-	entries, matched := entriesResult.(LedgerEntriesStored)
+// fundOwnerIndexKey indexes the tasks a given owner (user or organization)
+// currently funds, so the allocated section of that owner's wallet can be
+// summed - mirroring internal/db's sum(task_funds.credit_amount) joined on the
+// funder account.
+func fundOwnerIndexKey(ownerKind string, ownerID string) string {
+	return "ledger:fund_index:" + ownerKind + ":" + ownerID
+}
+
+// clearFund removes a task's fund record and drops it from its funder's index,
+// used on award/refund/cancel when the allocated credits change hands.
+func (store LedgerBrowserStore) clearFund(record storedTaskFund) bool {
+	if !removeFromStringIndex(store.storage, fundOwnerIndexKey(record.FunderOwnerKind, record.FunderOwnerID), record.TaskID) {
+		return false
+	}
+	return putStorageString(store.storage, taskFundKey(record.TaskID), "")
+}
+
+// ledgerAllocated sums the credits an owner currently has allocated to tasks.
+func ledgerAllocated(storage BrowserStorage, ownerKind string, ownerID string) (int64, *core.DomainError) {
+	indexResult := loadStringIndex(storage, fundOwnerIndexKey(ownerKind, ownerID), "task fund")
+	loaded, matched := indexResult.(stringIndexLoaded)
 	if !matched {
-		reason := invalidState("check funding idempotency failed")
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return 0, &reason
+	}
+	var total int64
+	for _, taskID := range loaded.values {
+		record, found, ok := getStoredTaskFundJSON(storage, taskFundKey(taskID))
+		if !ok {
+			reason := invalidState("read task fund failed")
+			return 0, &reason
+		}
+		if !found {
+			continue
+		}
+		total += record.CreditAmount
+	}
+	return total, nil
+}
+
+// ledgerIdempotencyKeyMarker is a global (cross-owner, cross-command) key
+// space mirroring internal/db's `exists(select 1 from ledger_entries where
+// idempotency_key = $1)` checks - the real backend's idempotency keys live
+// on ledger entries in one table, so a key spent by one ledger command is
+// visible to every other. Markers are plain storage records outside the
+// per-owner entry index, so they never appear in (or shift the pagination
+// of) a listed ledger.
+func ledgerIdempotencyKeyMarker(key string) string { return "ledger:idempotency_key:" + key }
+
+// storedFundReceipt is the durable idempotency record for a fund or refund
+// command. The real backend reconstructs a replayed fund/refund from its
+// ledger entries; the demo store keeps the equivalent facts under the
+// idempotency key so a replay returns the same TaskFund even after the
+// stateless task_funds record has been consumed.
+type storedFundReceipt struct {
+	TaskID          string `json:"task_id"`
+	FunderOwnerKind string `json:"funder_owner_kind"`
+	FunderOwnerID   string `json:"funder_owner_id"`
+	CreditAmount    int64  `json:"credit_amount"`
+}
+
+func (store LedgerBrowserStore) idempotencyKeyUsed(key string) (bool, *core.DomainError) {
+	raw, found, ok := getStorageString(store.storage, ledgerIdempotencyKeyMarker(key))
+	if !ok {
+		reason := invalidState("check ledger idempotency failed")
 		return false, &reason
 	}
-	for _, entry := range entries.Values {
-		if entry.ID == "idempotency:"+key {
-			return true, nil
-		}
-	}
-	return false, nil
+	return found && raw != "", nil
 }
 
-// requireFundableTask mirrors internal/db's requireFundableTask /
+func (store LedgerBrowserStore) markFundReceipt(key string, receipt storedFundReceipt) bool {
+	encoded, err := json.Marshal(receipt)
+	if err != nil {
+		return false
+	}
+	return putStorageString(store.storage, ledgerIdempotencyKeyMarker(key), string(encoded))
+}
+
+func (store LedgerBrowserStore) loadFundReceipt(key string) (storedFundReceipt, bool, *core.DomainError) {
+	raw, found, ok := getStorageString(store.storage, ledgerIdempotencyKeyMarker(key))
+	if !ok {
+		reason := invalidState("read ledger idempotency failed")
+		return storedFundReceipt{}, false, &reason
+	}
+	if !found || raw == "" {
+		return storedFundReceipt{}, false, nil
+	}
+	var receipt storedFundReceipt
+	if err := json.Unmarshal([]byte(raw), &receipt); err != nil {
+		reason := invalidState("read ledger idempotency failed")
+		return storedFundReceipt{}, false, &reason
+	}
+	return receipt, true, nil
+}
+
+// requireFundableTaskBrowser mirrors internal/db's requireFundableTask /
 // requireCreditRewardFunding: the task must be draft, and a first-time
 // credit funding may flip reward_kind (none -> credit, collectible ->
 // bundle) - a task is always fundable by whoever is authorized to fund it,
 // regardless of the reward kind it was created with.
-func requireFundableTaskBrowser(storage BrowserStorage, record storedTaskRecord, amount int64) (storedTaskRecord, *core.DomainError) {
+func requireFundableTaskBrowser(record storedTaskRecord, amount int64) (storedTaskRecord, *core.DomainError) {
 	if record.State != "draft" {
 		reason := core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be funded")
 		return record, &reason
@@ -130,21 +213,21 @@ func requireFundableTaskBrowser(storage BrowserStorage, record storedTaskRecord,
 }
 
 func (store LedgerBrowserStore) fund(ownerKind string, ownerID string, taskID core.TaskID, amount ledger.CreditAmount, entryID core.LedgerEntryID, key ledger.IdempotencyKey, insufficientMessage string, requireOwnership func(storedTaskRecord) *core.DomainError) ledger.FundResult {
-	existing, existingFound, existingErr := store.loadEscrow(taskID.String())
-	if existingErr != nil {
-		return ledger.FundRejected{Reason: *existingErr}
+	// Mirrors internal/db's findFundForKey: a key seen before replays the
+	// recorded fund from its durable idempotency receipt.
+	keyUsed, keyErr := store.idempotencyKeyUsed(key.String())
+	if keyErr != nil {
+		return ledger.FundRejected{Reason: *keyErr}
 	}
-	if existingFound {
-		// A retry of the exact same request (matching idempotency key) replays
-		// the original result instead of erroring - the real store's behavior.
-		keyUsed, keyErr := store.findEntryByIdempotencyKey(ownerKind, ownerID, key.String())
-		if keyErr != nil {
-			return ledger.FundRejected{Reason: *keyErr}
+	if keyUsed {
+		receipt, receiptFound, receiptErr := store.loadFundReceipt(key.String())
+		if receiptErr != nil {
+			return ledger.FundRejected{Reason: *receiptErr}
 		}
-		if keyUsed {
-			return ledger.TaskFunded{Escrow: buildLedgerTaskEscrow(existing)}
+		if !receiptFound || receipt.TaskID != taskID.String() {
+			return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
 		}
-		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task is already funded")}
+		return ledger.TaskFunded{Fund: buildLedgerTaskFund(receipt.TaskID, receipt.CreditAmount)}
 	}
 
 	record, found, recordErr := loadStoredTaskRecord(store.storage, taskID.String())
@@ -158,9 +241,17 @@ func (store LedgerBrowserStore) fund(ownerKind string, ownerID string, taskID co
 		return ledger.FundRejected{Reason: *reason}
 	}
 
-	updated, fundableErr := requireFundableTaskBrowser(store.storage, record, amount.Int64())
+	updated, fundableErr := requireFundableTaskBrowser(record, amount.Int64())
 	if fundableErr != nil {
 		return ledger.FundRejected{Reason: *fundableErr}
+	}
+
+	_, fundFound, fundErr := store.loadFund(taskID.String())
+	if fundErr != nil {
+		return ledger.FundRejected{Reason: *fundErr}
+	}
+	if fundFound {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task is already funded")}
 	}
 
 	balanceResult := LedgerBalance(store.storage, ownerKind, ownerID)
@@ -175,40 +266,34 @@ func (store LedgerBrowserStore) fund(ownerKind string, ownerID string, taskID co
 	if !saveStoredTaskRecord(store.storage, updated) {
 		return ledger.FundRejected{Reason: invalidState("update task reward kind failed")}
 	}
-	escrow := storedTaskEscrow{TaskID: taskID.String(), FunderOwnerKind: ownerKind, FunderOwnerID: ownerID, Amount: amount.Int64(), State: ledger.EscrowStateHeld.String()}
-	if !store.saveEscrow(escrow) {
-		return ledger.FundRejected{Reason: invalidState("insert task escrow failed")}
+	fundRecord := storedTaskFund{TaskID: taskID.String(), FunderOwnerKind: ownerKind, FunderOwnerID: ownerID, CreditAmount: amount.Int64()}
+	if !store.saveFund(fundRecord) {
+		return ledger.FundRejected{Reason: invalidState("insert task fund failed")}
+	}
+	if _, matched := appendStringIndex(store.storage, fundOwnerIndexKey(ownerKind, ownerID), taskID.String(), "task fund").(stringIndexStored); !matched {
+		return ledger.FundRejected{Reason: invalidState("update task fund index failed")}
 	}
 	entryResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
 		ID: entryID.String(), OwnerKind: ownerKind, OwnerID: ownerID,
-		Kind: ledger.EntryKindTaskEscrow.String(), Amount: -amount.Int64(), TaskID: taskID.String(),
+		Kind: ledger.EntryKindTaskFund.String(), Amount: -amount.Int64(), TaskID: taskID.String(),
+		IdempotencyKey: key.String(),
 	})
 	if _, matched := entryResult.(LedgerEntryStored); !matched {
-		return ledger.FundRejected{Reason: invalidState("insert task escrow ledger entry failed")}
+		return ledger.FundRejected{Reason: invalidState("insert task fund ledger entry failed")}
 	}
-	store.markIdempotencyKeyUsed(ownerKind, ownerID, key.String(), taskID.String())
+	if !store.markFundReceipt(key.String(), storedFundReceipt{TaskID: taskID.String(), FunderOwnerKind: ownerKind, FunderOwnerID: ownerID, CreditAmount: amount.Int64()}) {
+		return ledger.FundRejected{Reason: invalidState("record fund idempotency failed")}
+	}
 
-	return ledger.TaskFunded{Escrow: buildLedgerTaskEscrow(escrow)}
+	return ledger.TaskFunded{Fund: buildLedgerTaskFund(taskID.String(), amount.Int64())}
 }
 
-// markIdempotencyKeyUsed records the key as its own zero-amount ledger entry
-// so findEntryByIdempotencyKey can recognize a repeat call. Kept separate
-// from the real accounting entry so the idempotency marker never affects a
-// displayed balance.
-func (store LedgerBrowserStore) markIdempotencyKeyUsed(ownerKind string, ownerID string, key string, taskID string) {
-	SaveLedgerEntry(store.storage, StoredLedgerEntry{
-		ID: "idempotency:" + key, OwnerKind: ownerKind, OwnerID: ownerID, Kind: "idempotency_marker", Amount: 0, TaskID: taskID,
-	})
-}
-
-func buildLedgerTaskEscrow(record storedTaskEscrow) ledger.TaskEscrow {
-	amountResult := ledger.NewCreditAmount(record.Amount)
-	amount, _ := amountResult.(ledger.CreditAmountAccepted)
-	stateResult := ledger.ParseEscrowState(record.State)
-	state, _ := stateResult.(ledger.EscrowStateAccepted)
-	taskIDResult := core.ParseTaskID(record.TaskID)
+func buildLedgerTaskFund(rawTaskID string, amount int64) ledger.TaskFund {
+	amountResult := ledger.NewCreditAmount(amount)
+	amountAccepted, _ := amountResult.(ledger.CreditAmountAccepted)
+	taskIDResult := core.ParseTaskID(rawTaskID)
 	taskID, _ := taskIDResult.(core.TaskIDCreated)
-	return ledger.TaskEscrow{TaskID: taskID.Value, Amount: amount.Value, State: state.Value}
+	return ledger.TaskFund{TaskID: taskID.Value, CreditAmount: amountAccepted.Value}
 }
 
 func (store LedgerBrowserStore) FundTask(_ context.Context, command ledger.FundStoreCommand) ledger.FundResult {
@@ -239,38 +324,54 @@ func (store LedgerBrowserStore) RefundTask(_ context.Context, command ledger.Ref
 	if !found {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
-	if record.CreatedBy != command.RequesterUserID.String() {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner can refund the task")}
+	if reason := requireRefundAuthorizedBrowser(store.storage, record, command.RequesterUserID); reason != nil {
+		return ledger.RefundRejected{Reason: *reason}
 	}
 	if record.State != "draft" && record.State != "open" {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft or open tasks can be refunded")}
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only tasks that are not yet awarded can be refunded")}
 	}
 
-	escrow, escrowFound, escrowErr := store.loadEscrow(command.TaskID.String())
-	if escrowErr != nil {
-		return ledger.RefundRejected{Reason: *escrowErr}
+	keyUsed, keyErr := store.idempotencyKeyUsed(command.IdempotencyKey.String())
+	if keyErr != nil {
+		return ledger.RefundRejected{Reason: *keyErr}
 	}
-	if !escrowFound {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has no escrow to refund")}
+
+	fund, fundFound, fundErr := store.loadFund(command.TaskID.String())
+	if fundErr != nil {
+		return ledger.RefundRejected{Reason: *fundErr}
 	}
-	if escrow.State == ledger.EscrowStateRefunded.String() {
-		return ledger.TaskRefunded{Escrow: buildLedgerTaskEscrow(escrow)}
+	if !fundFound {
+		// No allocated credits: replay a prior refund from its receipt, else
+		// there is nothing to refund.
+		if keyUsed {
+			receipt, receiptFound, receiptErr := store.loadFundReceipt(command.IdempotencyKey.String())
+			if receiptErr != nil {
+				return ledger.RefundRejected{Reason: *receiptErr}
+			}
+			if receiptFound && receipt.TaskID == command.TaskID.String() {
+				return ledger.TaskRefunded{Fund: buildLedgerTaskFund(receipt.TaskID, receipt.CreditAmount)}
+			}
+			return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
+		}
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has nothing to refund")}
 	}
-	if escrow.State != ledger.EscrowStateHeld.String() {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task escrow is not held")}
+	if keyUsed {
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
 	}
 
 	entryResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
-		ID: command.EntryID.String(), OwnerKind: escrow.FunderOwnerKind, OwnerID: escrow.FunderOwnerID,
-		Kind: ledger.EntryKindTaskRefund.String(), Amount: escrow.Amount, TaskID: command.TaskID.String(),
+		ID: command.EntryID.String(), OwnerKind: fund.FunderOwnerKind, OwnerID: fund.FunderOwnerID,
+		Kind: ledger.EntryKindTaskRefund.String(), Amount: fund.CreditAmount, TaskID: command.TaskID.String(),
+		IdempotencyKey: command.IdempotencyKey.String(),
 	})
 	if _, matched := entryResult.(LedgerEntryStored); !matched {
 		return ledger.RefundRejected{Reason: invalidState("insert task refund ledger entry failed")}
 	}
-
-	escrow.State = ledger.EscrowStateRefunded.String()
-	if !store.saveEscrow(escrow) {
-		return ledger.RefundRejected{Reason: invalidState("update task escrow failed")}
+	if !store.markFundReceipt(command.IdempotencyKey.String(), storedFundReceipt{TaskID: fund.TaskID, FunderOwnerKind: fund.FunderOwnerKind, FunderOwnerID: fund.FunderOwnerID, CreditAmount: fund.CreditAmount}) {
+		return ledger.RefundRejected{Reason: invalidState("record refund idempotency failed")}
+	}
+	if !store.clearFund(fund) {
+		return ledger.RefundRejected{Reason: invalidState("clear task fund failed")}
 	}
 
 	if reason := refundHeldCollectibleRewardBrowser(store.storage, store.ids, command.TaskID.String()); reason != nil {
@@ -282,25 +383,67 @@ func (store LedgerBrowserStore) RefundTask(_ context.Context, command ledger.Ref
 		return ledger.RefundRejected{Reason: invalidState("cancel task failed")}
 	}
 
-	return ledger.TaskRefunded{Escrow: buildLedgerTaskEscrow(escrow)}
+	return ledger.TaskRefunded{Fund: buildLedgerTaskFund(fund.TaskID, fund.CreditAmount)}
+}
+
+// requireRefundAuthorizedBrowser mirrors internal/db's lockTaskRefundable
+// authorization: a refund is permitted for the task owner (its creator) or the
+// user currently holding the active reservation (the implementor).
+func requireRefundAuthorizedBrowser(storage BrowserStorage, record storedTaskRecord, requester core.UserID) *core.DomainError {
+	if record.CreatedBy == requester.String() {
+		return nil
+	}
+	implementor, err := activeImplementorUserID(storage, record.ID)
+	if err != nil {
+		return err
+	}
+	if implementor == requester.String() {
+		return nil
+	}
+	reason := core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or the active implementor can refund the task")
+	return &reason
+}
+
+// activeImplementorUserID returns the user id holding the task's active
+// user reservation, or "" if there is none.
+func activeImplementorUserID(storage BrowserStorage, taskID string) (string, *core.DomainError) {
+	indexResult := loadStringIndex(storage, reservationTaskIndexKey(taskID), "reservation")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return "", &reason
+	}
+	for _, id := range loaded.values {
+		reservation, found, ok := getStoredReservationJSON(storage, reservationRecordKey(id))
+		if !ok || !found {
+			continue
+		}
+		if reservation.State == task.ReservationStateActive.String() && reservation.AssigneeKind == task.AssigneeScopeUser.String() {
+			return reservation.AssigneeUserID, nil
+		}
+	}
+	return "", nil
 }
 
 func (store LedgerBrowserStore) Balance(_ context.Context, owner core.UserID) ledger.BalanceResult {
-	result := LedgerBalance(store.storage, "user", owner.String())
-	stored, matched := result.(LedgerBalanceStored)
-	if !matched {
-		return ledger.BalanceRejected{Reason: invalidState("read balance failed")}
-	}
-	return ledger.BalanceFound{Value: ledger.NewBalance(stored.Amount)}
+	return store.balanceForOwner("user", owner.String(), "read balance failed")
 }
 
 func (store LedgerBrowserStore) OrganizationBalance(_ context.Context, organizationID core.OrganizationID) ledger.BalanceResult {
-	result := LedgerBalance(store.storage, "organization", organizationID.String())
+	return store.balanceForOwner("organization", organizationID.String(), "read organization balance failed")
+}
+
+func (store LedgerBrowserStore) balanceForOwner(ownerKind string, ownerID string, failureMessage string) ledger.BalanceResult {
+	result := LedgerBalance(store.storage, ownerKind, ownerID)
 	stored, matched := result.(LedgerBalanceStored)
 	if !matched {
-		return ledger.BalanceRejected{Reason: invalidState("read organization balance failed")}
+		return ledger.BalanceRejected{Reason: invalidState(failureMessage)}
 	}
-	return ledger.BalanceFound{Value: ledger.NewBalance(stored.Amount)}
+	allocated, allocatedErr := ledgerAllocated(store.storage, ownerKind, ownerID)
+	if allocatedErr != nil {
+		return ledger.BalanceRejected{Reason: *allocatedErr}
+	}
+	return ledger.BalanceFound{Value: ledger.NewBalance(stored.Amount, allocated)}
 }
 
 func (store LedgerBrowserStore) listEntries(ownerKind string, ownerID string, page core.Page) ledger.ListEntriesResult {
@@ -311,6 +454,10 @@ func (store LedgerBrowserStore) listEntries(ownerKind string, ownerID string, pa
 	}
 	values := make([]ledger.LedgerEntry, 0, len(stored.Values))
 	for _, entry := range stored.Values {
+		// Idempotency markers now live in their own key space (see
+		// ledgerIdempotencyKeyMarker) and never enter the entry index; this
+		// skip only shields listings against markers persisted by pre-fix
+		// demo storage.
 		if strings.HasPrefix(entry.ID, "idempotency:") {
 			continue
 		}
@@ -373,49 +520,43 @@ func (store LedgerBrowserStore) reviewEscrowOutcome(taskID core.TaskID, workerID
 	if _, noPayout := selection.(ledger.NoCreditReviewSelection); noPayout {
 		return ledger.NoPayout{}, nil
 	}
-	escrow, found, err := store.loadEscrow(taskID.String())
+	fund, found, err := store.loadFund(taskID.String())
 	if err != nil {
 		return nil, err
 	}
 	_, partial := selection.(ledger.PartialCreditReviewSelection)
 	if !found {
 		if partial {
-			reason := core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")
-			return nil, &reason
-		}
-		return ledger.NoPayout{}, nil
-	}
-	if escrow.State != ledger.EscrowStateHeld.String() {
-		if partial {
-			reason := core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is not held")
+			reason := core.NewDomainError(core.ErrorCodeConflict, "credit reward fund is missing")
 			return nil, &reason
 		}
 		return ledger.NoPayout{}, nil
 	}
 
-	payoutAmount := escrow.Amount
+	payoutAmount := fund.CreditAmount
 	if selected, matched := selection.(ledger.PartialCreditReviewSelection); matched {
 		payoutAmount = selected.Amount.Int64()
 	}
-	if payoutAmount > escrow.Amount {
-		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "credit payout cannot exceed held escrow")
+	if payoutAmount > fund.CreditAmount {
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "credit payout cannot exceed allocated credits")
 		return nil, &reason
 	}
 
 	entryResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
 		ID: payoutEntryID.String(), OwnerKind: "user", OwnerID: workerID.String(),
 		Kind: ledger.EntryKindTaskPayout.String(), Amount: payoutAmount, TaskID: taskID.String(),
+		IdempotencyKey: key.String(),
 	})
 	if _, matched := entryResult.(LedgerEntryStored); !matched {
 		reason := invalidState("insert task payout ledger entry failed")
 		return nil, &reason
 	}
 
-	remaining := escrow.Amount - payoutAmount
+	remaining := fund.CreditAmount - payoutAmount
 	if closeTask {
 		if remaining > 0 {
 			refundResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
-				ID: refundEntryID.String(), OwnerKind: escrow.FunderOwnerKind, OwnerID: escrow.FunderOwnerID,
+				ID: refundEntryID.String(), OwnerKind: fund.FunderOwnerKind, OwnerID: fund.FunderOwnerID,
 				Kind: ledger.EntryKindTaskRefund.String(), Amount: remaining, TaskID: taskID.String(),
 			})
 			if _, matched := refundResult.(LedgerEntryStored); !matched {
@@ -423,19 +564,21 @@ func (store LedgerBrowserStore) reviewEscrowOutcome(taskID core.TaskID, workerID
 				return nil, &reason
 			}
 		}
-		escrow.Amount = payoutAmount
-		escrow.State = ledger.EscrowStateReleased.String()
-	} else {
-		escrow.State = ledger.EscrowStateHeld.String()
-		escrow.Amount = remaining
-		if remaining == 0 {
-			escrow.State = ledger.EscrowStateReleased.String()
-			escrow.Amount = payoutAmount
+		if !store.clearFund(fund) {
+			reason := invalidState("clear task fund failed")
+			return nil, &reason
 		}
-	}
-	if !store.saveEscrow(escrow) {
-		reason := invalidState("update task escrow after review payout failed")
-		return nil, &reason
+	} else if remaining == 0 {
+		if !store.clearFund(fund) {
+			reason := invalidState("clear task fund failed")
+			return nil, &reason
+		}
+	} else {
+		fund.CreditAmount = remaining
+		if !store.saveFund(fund) {
+			reason := invalidState("update task fund after review payout failed")
+			return nil, &reason
+		}
 	}
 
 	amountResult := ledger.NewCreditAmount(payoutAmount)
@@ -609,7 +752,7 @@ func (store LedgerBrowserStore) AcceptSubmission(_ context.Context, command ledg
 		if submission.AcceptedIdempotencyKey != command.IdempotencyKey.String() {
 			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "submission was already accepted with a different idempotency key")}
 		}
-		return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
+		return store.idempotentAcceptOutcome(command, workerID.Value)
 	}
 	if submission.State != "submitted" {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only valid submissions can be accepted")}
@@ -634,7 +777,7 @@ func (store LedgerBrowserStore) AcceptSubmission(_ context.Context, command ledg
 	outcome := combinePayoutsBrowser(payout, collectiblePayout)
 	if _, noPayout := outcome.(ledger.NoPayout); noPayout {
 		if taskRecord.RewardKind == "credit" || taskRecord.RewardKind == "bundle" {
-			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")}
+			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward fund is missing")}
 		}
 	}
 
@@ -659,6 +802,45 @@ func (store LedgerBrowserStore) AcceptSubmission(_ context.Context, command ledg
 	}
 
 	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: tipOutcome}
+}
+
+// idempotentAcceptOutcome mirrors internal/db's idempotentAccept: a retried
+// accept with the original key reconstructs the original payout (the released
+// escrow amount plus the released collectible rewards) instead of reporting
+// NoPayout, so a retry after a lost response reads the same as the first
+// call. Tips are not replayed, matching the real store.
+func (store LedgerBrowserStore) idempotentAcceptOutcome(command ledger.AcceptStoreCommand, workerID core.UserID) ledger.AcceptResult {
+	outcome := ledger.PayoutOutcome(ledger.NoPayout{})
+	payoutAmount, payoutFound, payoutErr := store.taskPayoutForKey(workerID.String(), command.TaskID.String(), command.IdempotencyKey.String())
+	if payoutErr != nil {
+		return ledger.AcceptRejected{Reason: *payoutErr}
+	}
+	if payoutFound {
+		amountResult := ledger.NewCreditAmount(payoutAmount)
+		amount, amountMatched := amountResult.(ledger.CreditAmountAccepted)
+		if amountMatched {
+			outcome = ledger.CreditPayout{WorkerUserID: workerID, Amount: amount.Value}
+		}
+	}
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: ledger.NoTip{}}
+}
+
+// taskPayoutForKey reconstructs the credit payout an accept recorded, from the
+// durable task_payout ledger entry on the worker's account keyed on the
+// accept's idempotency key - mirroring internal/db's idempotentAccept.
+func (store LedgerBrowserStore) taskPayoutForKey(workerID string, taskID string, key string) (int64, bool, *core.DomainError) {
+	result := ListLedgerEntries(store.storage, "user", workerID, StoredListPage{limit: 1000000, offset: 0})
+	stored, matched := result.(LedgerEntriesStored)
+	if !matched {
+		reason := invalidState("read ledger entries failed")
+		return 0, false, &reason
+	}
+	for _, entry := range stored.Values {
+		if entry.Kind == ledger.EntryKindTaskPayout.String() && entry.TaskID == taskID && entry.IdempotencyKey == key {
+			return entry.Amount, true, nil
+		}
+	}
+	return 0, false, nil
 }
 
 func (store LedgerBrowserStore) RequestChanges(_ context.Context, command ledger.RequestChangesStoreCommand) ledger.RequestChangesResult {
@@ -759,6 +941,16 @@ func (store LedgerBrowserStore) RejectSubmission(_ context.Context, command ledg
 		return ledger.RejectRejected{Reason: *err}
 	}
 
+	if _, ban := command.BanSelection.(ledger.BanImplementorSelection); ban {
+		banRecord := storedImplementorBan{
+			TaskID: command.TaskID.String(), AssigneeKind: task.AssigneeScopeUser.String(),
+			UserID: submission.SubmitterID, BannedBy: command.RequesterUserID.String(),
+		}
+		if !saveImplementorBan(store.storage, banRecord) {
+			return ledger.RejectRejected{Reason: invalidState("ban task implementor failed")}
+		}
+	}
+
 	return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: payout, Tip: tip}
 }
 
@@ -772,12 +964,13 @@ func refundHeldCollectibleRewardBrowser(storage BrowserStorage, ids InteractionI
 }
 
 type StoredLedgerEntry struct {
-	ID        string `json:"id"`
-	OwnerKind string `json:"owner_kind"`
-	OwnerID   string `json:"owner_id"`
-	Kind      string `json:"kind"`
-	Amount    int64  `json:"amount"`
-	TaskID    string `json:"task_id"`
+	ID             string `json:"id"`
+	OwnerKind      string `json:"owner_kind"`
+	OwnerID        string `json:"owner_id"`
+	Kind           string `json:"kind"`
+	Amount         int64  `json:"amount"`
+	TaskID         string `json:"task_id"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 type LedgerStorageResult interface {
@@ -907,12 +1100,13 @@ func loadLedgerEntry(storage BrowserStorage, ledgerID string) LedgerStorageResul
 
 func cleanStoredLedgerEntry(entry StoredLedgerEntry) StoredLedgerEntry {
 	return StoredLedgerEntry{
-		ID:        strings.TrimSpace(entry.ID),
-		OwnerKind: strings.TrimSpace(entry.OwnerKind),
-		OwnerID:   strings.TrimSpace(entry.OwnerID),
-		Kind:      strings.TrimSpace(entry.Kind),
-		Amount:    entry.Amount,
-		TaskID:    strings.TrimSpace(entry.TaskID),
+		ID:             strings.TrimSpace(entry.ID),
+		OwnerKind:      strings.TrimSpace(entry.OwnerKind),
+		OwnerID:        strings.TrimSpace(entry.OwnerID),
+		Kind:           strings.TrimSpace(entry.Kind),
+		Amount:         entry.Amount,
+		TaskID:         strings.TrimSpace(entry.TaskID),
+		IdempotencyKey: strings.TrimSpace(entry.IdempotencyKey),
 	}
 }
 

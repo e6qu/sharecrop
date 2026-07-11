@@ -98,7 +98,7 @@ func newTaskTestEnv(t *testing.T) (task.Service, ledger.Service, *counterLedgerI
 	t.Helper()
 	storage := newTestBrowserStorage()
 	ids := &counterLedgerIDs{}
-	taskService := task.NewService(NewTaskBrowserStore(storage, ids), noopOrganizationPermissions{}, nil)
+	taskService := task.NewService(NewTaskBrowserStore(storage, ids, systemTestClock{}), noopOrganizationPermissions{}, nil)
 	ledgerService := ledger.NewService(NewLedgerBrowserStore(storage, ids))
 	return taskService, ledgerService, ids, storage
 }
@@ -171,7 +171,7 @@ func TestTaskBrowserStoreOpenSucceedsAfterFunding(t *testing.T) {
 	}
 }
 
-func TestTaskBrowserStoreCancelRejectsWithHeldEscrow(t *testing.T) {
+func TestTaskBrowserStoreCancelSettlesAllocatedCredits(t *testing.T) {
 	taskService, ledgerService, ids, storage := newTaskTestEnv(t)
 	ctx := context.Background()
 	owner := testUserID(t, "owner")
@@ -183,9 +183,15 @@ func TestTaskBrowserStoreCancelRejectsWithHeldEscrow(t *testing.T) {
 	created := taskService.Create(ctx, testCreateCommand(t, owner, task.CreditRewardSpec{Amount: reward}, task.ParticipationPolicyOpen)).(task.TaskCreated)
 	ledgerService.FundTask(ctx, owner, created.Value.ID, testCreditAmount(t, 30), testIdempotencyKey(t, "fund-1"))
 
+	// Cancelling a funded task settles it: the allocated credits return to the
+	// owner's spendable balance before the task is cancelled.
 	cancelResult := taskService.Cancel(ctx, ownerSubject, created.Value.ID)
-	if _, matched := cancelResult.(task.ChangeStateRejected); !matched {
-		t.Fatalf("cancel with held escrow: want ChangeStateRejected, got %#v", cancelResult)
+	if _, matched := cancelResult.(task.TaskStateChanged); !matched {
+		t.Fatalf("cancel with allocated credits: want TaskStateChanged, got %#v", cancelResult)
+	}
+	balance := ledgerService.Balance(ctx, owner).(ledger.BalanceFound)
+	if balance.Value.Spendable() != 100 || balance.Value.Allocated() != 0 {
+		t.Fatalf("owner balance after cancel = (spendable %d, allocated %d), want (100, 0)", balance.Value.Spendable(), balance.Value.Allocated())
 	}
 }
 
@@ -273,7 +279,7 @@ func TestTaskBrowserStoreReservationBlockedByUnpublishedSeries(t *testing.T) {
 func TestTaskBrowserStoreSubmissionEligibleForAnyTeamMember(t *testing.T) {
 	storage := newTestBrowserStorage()
 	ids := &counterLedgerIDs{}
-	taskStore := NewTaskBrowserStore(storage, ids)
+	taskStore := NewTaskBrowserStore(storage, ids, systemTestClock{})
 	taskService := task.NewService(taskStore, allowAllOrganizationPermissions{}, nil)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}
@@ -360,7 +366,7 @@ func TestTaskBrowserStoreListTasksUserScopeIncludesSharedVisibility(t *testing.T
 func TestTaskBrowserStoreListTasksTeamScopeHidesReservedByOtherTeam(t *testing.T) {
 	storage := newTestBrowserStorage()
 	ids := &counterLedgerIDs{}
-	taskStore := NewTaskBrowserStore(storage, ids)
+	taskStore := NewTaskBrowserStore(storage, ids, systemTestClock{})
 	taskService := task.NewService(taskStore, allowAllOrganizationPermissions{}, nil)
 	ctx := context.Background()
 	owner := auth.UserSubject{ID: testUserID(t, "owner")}

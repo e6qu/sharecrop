@@ -148,6 +148,11 @@ func TestLogoutRevokesSession(t *testing.T) {
 }
 
 func TestAccountLifecycleHTTP(t *testing.T) {
+	// This flow reads verification/reset tokens from the HTTP response, which
+	// only api delivery mode does. Delivery now defaults to log (fail closed),
+	// so opt into api explicitly. TestAccountTokenLogDeliveryAndOperationsStatusHTTP
+	// covers the default log mode.
+	t.Setenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY", "api")
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
 

@@ -8,10 +8,26 @@
       (() => {
         const parts = window.location.pathname.split("/");
         const demoIndex = parts.indexOf("demo");
+        // Rebuild the base path from only the safe path segments up to and
+        // including "demo". Dropping empty segments and forcing a single
+        // leading slash prevents a crafted URL such as //evil.com/demo/ from
+        // producing a protocol-relative <base href> that would load the
+        // demo's scripts from an attacker origin. Segments are also
+        // restricted to a conservative character set as defense in depth.
+        const safe = /^[A-Za-z0-9._~-]+$/;
         const basePath = demoIndex === -1
           ? "./"
-          : parts.slice(0, demoIndex + 1).join("/") + "/";
-        document.write(`<base href="${basePath}">`);
+          : "/" +
+            parts
+              .slice(0, demoIndex + 1)
+              .filter((segment) =>
+                segment !== "" && segment !== "." && segment !== ".." &&
+                safe.test(segment)
+              )
+              .join("/") + "/";
+        const base = document.createElement("base");
+        base.setAttribute("href", basePath);
+        document.head.appendChild(base);
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">

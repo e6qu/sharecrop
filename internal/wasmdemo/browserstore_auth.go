@@ -317,6 +317,11 @@ func (store AuthBrowserStore) UpdateUserEmail(_ context.Context, userID core.Use
 	if !found {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
 	}
+	if record.Status != "active" {
+		// Matches internal/db, whose update is predicated on status = 'active'
+		// and reports 0 rows as not found.
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
 	newEmailKey := authUserEmailKey(email.String())
 	taken, ok := emailIndexTaken(store.storage, newEmailKey)
 	if !ok {
@@ -342,11 +347,20 @@ func (store AuthBrowserStore) UpdateUserEmail(_ context.Context, userID core.Use
 
 // UpdatePassword mirrors internal/db's equivalent, which also revokes every
 // active refresh token for the user in the same statement - otherwise a
-// password change wouldn't actually end existing sessions.
+// password change wouldn't actually end existing sessions. A deactivated
+// account reports not found, matching internal/db (deactivation deletes the
+// password credential row the update would target).
 func (store AuthBrowserStore) UpdatePassword(_ context.Context, userID core.UserID, passwordHash auth.PasswordHash) auth.AccountMutationResult {
-	result := store.updateUser(userID.String(), func(record *storedAuthUser) { record.PasswordHash = passwordHash.String() })
-	if _, matched := result.(auth.AccountMutationAccepted); !matched {
-		return result
+	record, found, ok := getStoredAuthUserJSON(store.storage, authUserKey(userID.String()))
+	if !ok {
+		return auth.AccountMutationRejected{Reason: invalidState("user lookup failed")}
+	}
+	if !found || record.Status != "active" {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
+	record.PasswordHash = passwordHash.String()
+	if !putStoredAuthUserJSON(store.storage, authUserKey(userID.String()), record) {
+		return auth.AccountMutationRejected{Reason: invalidState("update user failed")}
 	}
 	if !store.revokeAllSessionsForUser(userID.String()) {
 		return auth.AccountMutationRejected{Reason: invalidState("revoke account sessions failed")}
@@ -364,8 +378,18 @@ func (store AuthBrowserStore) DeactivateUser(_ context.Context, userID core.User
 	if !ok {
 		return auth.AccountMutationRejected{Reason: invalidState("user lookup failed")}
 	}
-	if !found {
+	if !found || record.Status != "active" {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
+	// Mirror internal/db: a user still holding funded task rewards cannot
+	// deactivate - only the task creator can refund or review, so their held
+	// escrow (credits or collectibles) would be stranded forever.
+	holdsFundedRewards, holdsErr := userHoldsFundedTaskRewards(store.storage, userID.String())
+	if holdsErr != nil {
+		return auth.AccountMutationRejected{Reason: *holdsErr}
+	}
+	if holdsFundedRewards {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "refund or close your funded tasks before deactivating")}
 	}
 	oldEmailKey := authUserEmailKey(record.Email)
 	record.Email = "deactivated+" + userID.String() + "@sharecrop.invalid"
@@ -385,6 +409,36 @@ func (store AuthBrowserStore) DeactivateUser(_ context.Context, userID core.User
 		return auth.AccountMutationRejected{Reason: invalidState("revoke account tokens failed")}
 	}
 	return auth.AccountMutationAccepted{}
+}
+
+// userHoldsFundedTaskRewards reports whether some task created by userID
+// still holds allocated credits or a held collectible reward, mirroring
+// internal/db's deactivation guard query over task_funds and
+// task_fund_collectibles.
+func userHoldsFundedTaskRewards(storage BrowserStorage, userID string) (bool, *core.DomainError) {
+	indexResult := loadStringIndex(storage, taskUserIndexKey(userID), "task")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return false, &reason
+	}
+	for _, taskID := range loaded.values {
+		fund, fundFound, fundErr := (LedgerBrowserStore{storage: storage}).loadFund(taskID)
+		if fundErr != nil {
+			return false, fundErr
+		}
+		if fundFound && fund.CreditAmount > 0 {
+			return true, nil
+		}
+		heldCollectibles, heldErr := countHeldCollectibleRewards(storage, taskID)
+		if heldErr != nil {
+			return false, heldErr
+		}
+		if heldCollectibles > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (store AuthBrowserStore) CreateGuestSubject(_ context.Context, id core.GuestID) auth.StoreGuestResult {

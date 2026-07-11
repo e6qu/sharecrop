@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"syscall/js"
 	"time"
@@ -125,6 +126,15 @@ func main() {
 // loads already logged in - matching the UX of the browser demo's original
 // hand-rolled backend, now backed by real business logic end to end.
 func buildConfiguredMux(host jsHost) (http.Handler, string) {
+	// The browser demo has no email and no accessible server log, so it reads
+	// account tokens (email verification, password reset) straight from the
+	// HTTP response. That is safe here - browser-local storage, no real
+	// accounts - but the default is log delivery (fail closed) for production,
+	// so opt into api delivery explicitly for the demo.
+	if err := os.Setenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY", "api"); err != nil {
+		return nil, "set demo account token delivery: " + err.Error()
+	}
+
 	storage := host.Storage()
 	ids := host.InteractionIDs()
 	clock := host.Clock()
@@ -145,7 +155,7 @@ func buildConfiguredMux(host jsHost) (http.Handler, string) {
 	organizationService := org.NewService(wasmdemo.NewOrgBrowserStore(storage, ids))
 	agentService := agent.NewService(wasmdemo.NewAgentBrowserStore(storage))
 	orgCredentialService := orgcred.NewService(wasmdemo.NewOrgCredentialBrowserStore(storage))
-	taskStore := wasmdemo.NewTaskBrowserStore(storage, ids)
+	taskStore := wasmdemo.NewTaskBrowserStore(storage, ids, clock)
 	taskService := task.NewService(taskStore, organizationService, agentService)
 	submissionStore := wasmdemo.NewSubmissionBrowserStore(storage, ids)
 	submissionService := submission.NewService(submissionStore, taskStore, organizationService)
@@ -162,7 +172,7 @@ func buildConfiguredMux(host jsHost) (http.Handler, string) {
 	runtime.NotificationService = notificationService
 	runtime.PrivacyService = httpserver.NewMemoryPrivacyService(submissionStore)
 
-	seedResult := wasmdemo.SeedDemoScenario(context.Background(), authService.Value, organizationService, taskService, ledgerService)
+	seedResult := wasmdemo.SeedDemoScenario(context.Background(), authService.Value, organizationService, taskService, ledgerService, submissionService, assetService, notificationService)
 	if seedResult.Err != "" {
 		return nil, seedResult.Err
 	}

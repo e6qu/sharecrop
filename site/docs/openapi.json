@@ -1723,12 +1723,16 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "amount": {
+                    "allocated_credits": {
+                      "type": "integer"
+                    },
+                    "spendable_credits": {
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "amount"
+                    "spendable_credits",
+                    "allocated_credits"
                   ]
                 }
               }
@@ -2524,12 +2528,16 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "amount": {
+                    "allocated_credits": {
+                      "type": "integer"
+                    },
+                    "spendable_credits": {
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "amount"
+                    "spendable_credits",
+                    "allocated_credits"
                   ]
                 }
               }
@@ -7020,11 +7028,8 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "amount": {
+                    "credit_amount": {
                       "type": "integer"
-                    },
-                    "state": {
-                      "type": "string"
                     },
                     "task_id": {
                       "type": "string"
@@ -7032,8 +7037,7 @@
                   },
                   "required": [
                     "task_id",
-                    "amount",
-                    "state"
+                    "credit_amount"
                   ]
                 }
               }
@@ -7243,11 +7247,8 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "amount": {
+                    "credit_amount": {
                       "type": "integer"
-                    },
-                    "state": {
-                      "type": "string"
                     },
                     "task_id": {
                       "type": "string"
@@ -7255,8 +7256,7 @@
                   },
                   "required": [
                     "task_id",
-                    "amount",
-                    "state"
+                    "credit_amount"
                   ]
                 }
               }

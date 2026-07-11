@@ -51,7 +51,7 @@ test("funding a task escrows credits and lowers the balance", async ({ page, req
   await page.getByTestId("fund").click();
 
   await expect(page.getByTestId("fund-message")).toContainText(
-    "Escrowed 40 credits",
+    "Allocated 40 credits",
   );
 
   await page.getByTestId("nav-overview").click();
@@ -101,7 +101,7 @@ test("a task created with no declared reward is still fundable by its creator", 
   await page.getByTestId("fund-amount").fill("30");
   await page.getByTestId("fund").click();
   await expect(page.getByTestId("fund-message")).toContainText(
-    "Escrowed 30 credits",
+    "Allocated 30 credits",
   );
 
   // The task's reward kind transitioned from none to credit, so the owner

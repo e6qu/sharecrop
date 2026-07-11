@@ -5,9 +5,9 @@ This document maps the current product surface to user-facing flows for the brow
 ## Demo Visitor
 
 - As a visitor, I can open `/demo/` without a database-backed account so I can understand the product flows from seeded demo data.
-- As a visitor, I can choose a demo user from a visible user selector so I can switch between requester, implementor, reviewer, and agent-operator perspectives.
-- As a visitor, I can choose light mode, dark mode, and visual themes so I can evaluate the product tone.
-- As a visitor, I can clear demo-local state from a visible widget so I can reset local choices and seeded workflow edits.
+- As a visitor, I am signed in automatically as the seeded demo user (mara) so I can use requester, reviewer, and agent-operator flows without registering. There is no demo user selector; the demo is single-actor.
+- As a visitor, I see the demo's arcade visual theme. There is no light/dark or multi-theme chooser.
+- As a visitor, I get a fresh seeded state on every page load, because the demo reseeds deterministically from its seed routine.
 - As a visitor, I can open `/docs/` and read a task lifecycle, REST, and MCP quickstart.
 - As a visitor, I can find the repository API reference, MCP reference, operator runbook, and agent-side scheduling recipe from the hosted docs.
 - As a visitor, I can open the GitHub Pages root and see the main project landing page, with `/demo/` reserved for the interactive demo.
@@ -64,7 +64,7 @@ This document maps the current product surface to user-facing flows for the brow
 ## Platform Reviewer
 
 - As a platform reviewer, I can tell which workflows are implemented and which are placeholders in the demo.
-- As a platform reviewer, I can compare the same workflow across corporate, rustic, blocky, and showcase themes in light and dark modes.
+- As a platform reviewer, I can exercise the same workflows in the demo (arcade theme) and against a real backend deployment.
 - As a platform reviewer, I can verify that API-backed UI flows still map to the HTTP and MCP contracts.
 
 ## Deferred Or Partial Stories
@@ -73,4 +73,4 @@ This document maps the current product surface to user-facing flows for the brow
 - Organization-team reservation now has browser selectors, but broader browser coverage is still useful as team workflows grow.
 - Raw IDs remain visible in protocol surfaces, links, audit/event metadata, and copyable API/MCP examples. No confirmed high-traffic user-entered raw-ID flow is currently listed.
 - Rewards are intentionally limited to Sharecrop credits and admin-minted Sharecrop collectibles. User-issued tokens, organization-issued tokens, per-project tokens, crypto rewards, external wallets, and automated crypto payout are out of scope.
-- MCP HTTP sessions and SSE replay buffers are in-memory and not shared across restarts or multiple app processes.
+- Production `serve` persists MCP HTTP session identity, replay events, and rate-limit buckets in Postgres. Live SSE subscriber channels are process-local, so multi-process MCP/SSE streaming still needs a cross-process fan-out design.

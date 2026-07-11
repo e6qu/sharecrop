@@ -25,7 +25,7 @@ func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreC
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if existing := findEscrowForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID); existing != nil {
+	if existing := findFundForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID); existing != nil {
 		return existing
 	}
 
@@ -54,7 +54,7 @@ func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command l
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if existing := findEscrowForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID); existing != nil {
+	if existing := findFundForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID); existing != nil {
 		return existing
 	}
 
@@ -77,17 +77,16 @@ func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command l
 }
 
 func (store LedgerStore) OrganizationBalance(ctx context.Context, organizationID core.OrganizationID) ledger.BalanceResult {
-	var balance int64
+	var spendable, allocated int64
 	err := store.pool.QueryRow(ctx, `
-		select coalesce(sum(ledger_entries.amount), 0)
-		from ledger_entries
-		join credit_accounts on credit_accounts.id = ledger_entries.account_id
-		where credit_accounts.organization_id = $1
-	`, organizationID.String()).Scan(&balance)
+		select
+			coalesce((select sum(ledger_entries.amount) from ledger_entries join credit_accounts on credit_accounts.id = ledger_entries.account_id where credit_accounts.organization_id = $1), 0),
+			coalesce((select sum(task_funds.credit_amount) from task_funds join credit_accounts on credit_accounts.id = task_funds.funder_account_id where credit_accounts.organization_id = $1), 0)
+	`, organizationID.String()).Scan(&spendable, &allocated)
 	if err != nil {
 		return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read organization balance failed")}
 	}
-	return ledger.BalanceFound{Value: ledger.NewBalance(balance)}
+	return ledger.BalanceFound{Value: ledger.NewBalance(spendable, allocated)}
 }
 
 func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.AcceptStoreCommand) ledger.AcceptResult {
@@ -157,7 +156,7 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	outcome = combinePayouts(outcome, collectible.outcome)
 	if _, noPayout := outcome.(ledger.NoPayout); noPayout {
 		if taskRow.rewardKind == "credit" || taskRow.rewardKind == "bundle" {
-			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward escrow is missing")}
+			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward fund is missing")}
 		}
 	}
 
@@ -302,7 +301,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only submitted work can be rejected")}
 	}
 
-	payoutResult := payReviewEscrow(ctx, tx, reviewEscrowCommand{
+	payoutResult := payReviewFund(ctx, tx, reviewFundCommand{
 		taskID:            command.TaskID,
 		rawWorkerID:       rawWorkerID,
 		payoutEntryID:     command.PayoutEntryID,
@@ -362,13 +361,8 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.RequesterUserID, "refund")
-	taskRow, taskMatched := taskResult.(taskLocked)
-	if !taskMatched {
-		return ledger.RefundRejected{Reason: taskResult.(taskLockRejected).reason}
-	}
-	if taskRow.state != "draft" && taskRow.state != "open" {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft or open tasks can be refunded")}
+	if reason := lockTaskRefundable(ctx, tx, command.TaskID, command.RequesterUserID); reason != nil {
+		return ledger.RefundRejected{Reason: *reason}
 	}
 
 	var keyExists bool
@@ -378,43 +372,32 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 
 	var rawFunderAccountID string
 	var amount int64
-	var escrowState string
-	scanErr := tx.QueryRow(ctx, `
-		select funder_account_id::text, amount, state
-		from task_escrows
-		where task_id = $1
-		for update
-	`, command.TaskID.String()).Scan(&rawFunderAccountID, &amount, &escrowState)
+	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, credit_amount from task_funds where task_id = $1 for update", command.TaskID.String()).Scan(&rawFunderAccountID, &amount)
 	if errors.Is(scanErr, pgx.ErrNoRows) {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has no escrow to refund")}
+		return replayOrRejectRefund(ctx, tx, command, keyExists)
 	}
 	if scanErr != nil {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task escrow failed")}
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task fund failed")}
+	}
+	if keyExists {
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
 	}
 
-	escrowResult := buildEscrow(command.TaskID, rawFunderAccountID, amount, ledger.EscrowStateRefunded)
-	escrowValue, escrowMatched := escrowResult.(escrowBuilt)
-	if !escrowMatched {
-		return ledger.RefundRejected{Reason: escrowResult.(escrowBuildRejected).reason}
+	fundResult := buildFund(command.TaskID, rawFunderAccountID, amount)
+	fundValue, fundMatched := fundResult.(fundBuilt)
+	if !fundMatched {
+		return ledger.RefundRejected{Reason: fundResult.(fundBuildRejected).reason}
 	}
 
-	if keyExists && escrowState == "refunded" {
-		return ledger.TaskRefunded{Escrow: escrowValue.value}
-	}
-	if escrowState != "held" {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task escrow is not held")}
-	}
-
-	_, err = tx.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		insert into ledger_entries (id, account_id, kind, amount, task_id, idempotency_key)
 		values ($1, $2, 'task_refund', $3, $4, $5)
-	`, command.EntryID.String(), rawFunderAccountID, amount, command.TaskID.String(), command.IdempotencyKey.String())
-	if err != nil {
+	`, command.EntryID.String(), rawFunderAccountID, amount, command.TaskID.String(), command.IdempotencyKey.String()); err != nil {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task refund ledger entry failed")}
 	}
 
-	if _, err := tx.Exec(ctx, "update task_escrows set state = 'refunded', state_recorded_at = now() where task_id = $1", command.TaskID.String()); err != nil {
-		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update task escrow failed")}
+	if _, err := tx.Exec(ctx, "delete from task_funds where task_id = $1", command.TaskID.String()); err != nil {
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "clear task fund failed")}
 	}
 
 	if reason, rejected := refundHeldCollectibleReward(ctx, tx, command.TaskID); rejected {
@@ -429,21 +412,83 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit refund task transaction failed")}
 	}
 
-	return ledger.TaskRefunded{Escrow: escrowValue.value}
+	return ledger.TaskRefunded{Fund: fundValue.value}
+}
+
+// lockTaskRefundable locks the task and authorizes the refund. A refund is
+// permitted for the task owner (its creator) or the user currently holding the
+// active reservation (the implementor), and only while the task is not yet
+// awarded (still draft or open).
+func lockTaskRefundable(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID) *core.DomainError {
+	var state string
+	var rawCreatedBy string
+	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawCreatedBy)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		reason := core.NewDomainError(core.ErrorCodeNotFound, "task was not found")
+		return &reason
+	}
+	if scanErr != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "lock task failed")
+		return &reason
+	}
+	if rawCreatedBy != requester.String() {
+		var isActiveImplementor bool
+		if err := tx.QueryRow(ctx, `
+			select exists(
+				select 1 from task_reservations
+				where task_id = $1 and assignee_kind = 'user' and user_id = $2 and state = 'active'
+			)
+		`, taskID.String(), requester.String()).Scan(&isActiveImplementor); err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "check active reservation failed")
+			return &reason
+		}
+		if !isActiveImplementor {
+			reason := core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or the active implementor can refund the task")
+			return &reason
+		}
+	}
+	if state != "draft" && state != "open" {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "only tasks that are not yet awarded can be refunded")
+		return &reason
+	}
+	return nil
+}
+
+// replayOrRejectRefund handles a refund of a task with no task_funds row. If the
+// idempotency key was already used, it replays the recorded refund from the
+// durable task_refund ledger entry; otherwise the task has nothing to refund.
+func replayOrRejectRefund(ctx context.Context, tx pgx.Tx, command ledger.RefundStoreCommand, keyExists bool) ledger.RefundResult {
+	if !keyExists {
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has nothing to refund")}
+	}
+	var rawFunderAccountID string
+	var amount int64
+	scanErr := tx.QueryRow(ctx, "select account_id::text, amount from ledger_entries where task_id = $1 and kind = 'task_refund' and idempotency_key = $2", command.TaskID.String(), command.IdempotencyKey.String()).Scan(&rawFunderAccountID, &amount)
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
+	}
+	if scanErr != nil {
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task refund failed")}
+	}
+	fundResult := buildFund(command.TaskID, rawFunderAccountID, amount)
+	fundValue, fundMatched := fundResult.(fundBuilt)
+	if !fundMatched {
+		return ledger.RefundRejected{Reason: fundResult.(fundBuildRejected).reason}
+	}
+	return ledger.TaskRefunded{Fund: fundValue.value}
 }
 
 func (store LedgerStore) Balance(ctx context.Context, owner core.UserID) ledger.BalanceResult {
-	var balance int64
+	var spendable, allocated int64
 	err := store.pool.QueryRow(ctx, `
-		select coalesce(sum(ledger_entries.amount), 0)
-		from ledger_entries
-		join credit_accounts on credit_accounts.id = ledger_entries.account_id
-		where credit_accounts.user_id = $1
-	`, owner.String()).Scan(&balance)
+		select
+			coalesce((select sum(ledger_entries.amount) from ledger_entries join credit_accounts on credit_accounts.id = ledger_entries.account_id where credit_accounts.user_id = $1), 0),
+			coalesce((select sum(task_funds.credit_amount) from task_funds join credit_accounts on credit_accounts.id = task_funds.funder_account_id where credit_accounts.user_id = $1), 0)
+	`, owner.String()).Scan(&spendable, &allocated)
 	if err != nil {
 		return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read balance failed")}
 	}
-	return ledger.BalanceFound{Value: ledger.NewBalance(balance)}
+	return ledger.BalanceFound{Value: ledger.NewBalance(spendable, allocated)}
 }
 
 func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, page core.Page) ledger.ListEntriesResult {

@@ -247,11 +247,11 @@ func (services fakeServices) CancelTask(_ context.Context, subject auth.Subject,
 }
 
 func (services fakeServices) FundTask(_ context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
-	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
+	return ledger.TaskFunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: amount}}
 }
 
 func (services fakeServices) RefundTask(_ context.Context, _ core.UserID, taskID core.TaskID, _ ledger.IdempotencyKey) ledger.RefundResult {
-	return ledger.TaskRefunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: ledger.NewCreditAmount(0).(ledger.CreditAmountAccepted).Value, State: ledger.EscrowStateRefunded}}
+	return ledger.TaskRefunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: ledger.NewCreditAmount(1).(ledger.CreditAmountAccepted).Value}}
 }
 
 // fakeUserID extracts a core.UserID from an auth.Subject for test-fixture

@@ -104,7 +104,11 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value, page)
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		rejected := result.(submission.ListRejected)

@@ -56,7 +56,10 @@ func (server Server) fundTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, escrowToResponse(funded.Escrow))
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionTaskFunded, audit.Subject{Kind: "task", ID: funded.Fund.TaskID.String()}, audit.EmptyMetadata()) {
+		return
+	}
+	writeJSON(w, http.StatusCreated, fundToResponse(funded.Fund))
 }
 
 func (server Server) refundTask(w http.ResponseWriter, r *http.Request) {
@@ -95,8 +98,8 @@ func (server Server) refundTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionTaskRefunded, audit.Subject{Kind: "task", ID: refunded.Escrow.TaskID.String()}, audit.EmptyMetadata()) {
+	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionTaskRefunded, audit.Subject{Kind: "task", ID: refunded.Fund.TaskID.String()}, audit.EmptyMetadata()) {
 		return
 	}
-	writeJSON(w, http.StatusOK, escrowToResponse(refunded.Escrow))
+	writeJSON(w, http.StatusOK, fundToResponse(refunded.Fund))
 }

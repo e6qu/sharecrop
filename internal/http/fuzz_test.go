@@ -6,12 +6,13 @@ import (
 	"testing"
 )
 
-// FuzzParsePage feeds arbitrary raw query strings to parsePage. However the
-// attacker-controlled limit/offset are spelled, parsePage must return a Page
-// whose limit stays within the configured bounds and whose offset is never
-// negative, so a malformed query can never reach SQL as an out-of-range LIMIT
-// or a negative OFFSET. It must also never panic.
-func FuzzParsePage(f *testing.F) {
+// FuzzParsePageStrict feeds arbitrary raw query strings to parsePageStrict.
+// However the attacker-controlled limit/offset are spelled, the parser must
+// either reject the request outright or return a Page whose limit stays
+// within the configured bounds and whose offset is never negative, so a
+// malformed query can never reach SQL as an out-of-range LIMIT or a negative
+// OFFSET. It must also never panic.
+func FuzzParsePageStrict(f *testing.F) {
 	seeds := []string{
 		"",
 		"limit=10&offset=5",
@@ -30,12 +31,19 @@ func FuzzParsePage(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, rawQuery string) {
 		request := &http.Request{URL: &url.URL{RawQuery: rawQuery}}
-		page := parsePage(request)
-		if page.Limit() < 1 || page.Limit() > 200 {
-			t.Fatalf("limit out of bounds for %q: %d", rawQuery, page.Limit())
+		result := parsePageStrict(request)
+		accepted, matched := result.(pageParseAccepted)
+		if !matched {
+			if result.(pageParseRejected).reason == "" {
+				t.Fatalf("rejected page for %q must carry a reason", rawQuery)
+			}
+			return
 		}
-		if page.Offset() < 0 {
-			t.Fatalf("negative offset for %q: %d", rawQuery, page.Offset())
+		if accepted.value.Limit() < 1 || accepted.value.Limit() > 200 {
+			t.Fatalf("limit out of bounds for %q: %d", rawQuery, accepted.value.Limit())
+		}
+		if accepted.value.Offset() < 0 {
+			t.Fatalf("negative offset for %q: %d", rawQuery, accepted.value.Offset())
 		}
 	})
 }

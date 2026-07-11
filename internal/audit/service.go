@@ -30,6 +30,7 @@ var (
 	ActionSubmissionAccepted          = Action{value: "submission_accepted"}
 	ActionSubmissionChangesRequested  = Action{value: "submission_changes_requested"}
 	ActionSubmissionRejected          = Action{value: "submission_rejected"}
+	ActionTaskFunded                  = Action{value: "task_funded"}
 	ActionTaskRefunded                = Action{value: "task_refunded"}
 	ActionPrivacyRequestCreated       = Action{value: "privacy_request_created"}
 	ActionModerationReportCreated     = Action{value: "moderation_report_created"}

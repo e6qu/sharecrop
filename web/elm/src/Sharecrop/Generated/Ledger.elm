@@ -7,7 +7,7 @@ import Json.Encode as Encode
 
 type LedgerEntryKind
     = LedgerEntryKindSignupGrant
-    | LedgerEntryKindTaskEscrow
+    | LedgerEntryKindTaskFund
     | LedgerEntryKindTaskRefund
     | LedgerEntryKindTaskPayout
     | LedgerEntryKindTaskTip
@@ -22,8 +22,8 @@ ledgerEntryKindDecoder =
                     "signup_grant" ->
                         Decode.succeed LedgerEntryKindSignupGrant
 
-                    "task_escrow" ->
-                        Decode.succeed LedgerEntryKindTaskEscrow
+                    "task_fund" ->
+                        Decode.succeed LedgerEntryKindTaskFund
 
                     "task_refund" ->
                         Decode.succeed LedgerEntryKindTaskRefund
@@ -47,8 +47,8 @@ ledgerEntryKindEncoder ledgerEntryKind =
         LedgerEntryKindSignupGrant ->
             Encode.string "signup_grant"
 
-        LedgerEntryKindTaskEscrow ->
-            Encode.string "task_escrow"
+        LedgerEntryKindTaskFund ->
+            Encode.string "task_fund"
 
         LedgerEntryKindTaskRefund ->
             Encode.string "task_refund"
@@ -63,56 +63,22 @@ ledgerEntryKindEncoder ledgerEntryKind =
             Encode.string "manual_adjustment"
 
 
-type EscrowState
-    = EscrowStateHeld
-    | EscrowStateReleased
-    | EscrowStateRefunded
-
-escrowStateDecoder : Decoder EscrowState
-escrowStateDecoder =
-    Decode.string
-        |> Decode.andThen
-            (\value ->
-                case value of
-                    "held" ->
-                        Decode.succeed EscrowStateHeld
-
-                    "released" ->
-                        Decode.succeed EscrowStateReleased
-
-                    "refunded" ->
-                        Decode.succeed EscrowStateRefunded
-
-                    _ ->
-                        Decode.fail "invalid EscrowState"
-            )
-
-escrowStateEncoder : EscrowState -> Encode.Value
-escrowStateEncoder escrowState =
-    case escrowState of
-        EscrowStateHeld ->
-            Encode.string "held"
-
-        EscrowStateReleased ->
-            Encode.string "released"
-
-        EscrowStateRefunded ->
-            Encode.string "refunded"
-
-
 type alias BalanceResponse =
-    { amount : Int
+    { spendableCredits : Int
+    , allocatedCredits : Int
     }
 
 balanceResponseDecoder : Decoder BalanceResponse
 balanceResponseDecoder =
-    Decode.map BalanceResponse
-        (Decode.field "amount" Decode.int)
+    Decode.map2 BalanceResponse
+        (Decode.field "spendable_credits" Decode.int)
+        (Decode.field "allocated_credits" Decode.int)
 
 balanceResponseEncoder : BalanceResponse -> Encode.Value
 balanceResponseEncoder balanceResponse =
     Encode.object
-        [ ( "amount", Encode.int balanceResponse.amount )
+        [ ( "spendable_credits", Encode.int balanceResponse.spendableCredits )
+        , ( "allocated_credits", Encode.int balanceResponse.allocatedCredits )
         ]
 
 type alias LedgerEntryResponse =
@@ -154,25 +120,22 @@ ledgerResponseEncoder ledgerResponse =
         [ ( "entries", Encode.list ledgerEntryResponseEncoder ledgerResponse.entries )
         ]
 
-type alias TaskEscrowResponse =
+type alias TaskFundResponse =
     { taskID : String
-    , amount : Int
-    , state : EscrowState
+    , creditAmount : Int
     }
 
-taskEscrowResponseDecoder : Decoder TaskEscrowResponse
-taskEscrowResponseDecoder =
-    Decode.map3 TaskEscrowResponse
+taskFundResponseDecoder : Decoder TaskFundResponse
+taskFundResponseDecoder =
+    Decode.map2 TaskFundResponse
         (Decode.field "task_id" Decode.string)
-        (Decode.field "amount" Decode.int)
-        (Decode.field "state" escrowStateDecoder)
+        (Decode.field "credit_amount" Decode.int)
 
-taskEscrowResponseEncoder : TaskEscrowResponse -> Encode.Value
-taskEscrowResponseEncoder taskEscrowResponse =
+taskFundResponseEncoder : TaskFundResponse -> Encode.Value
+taskFundResponseEncoder taskFundResponse =
     Encode.object
-        [ ( "task_id", Encode.string taskEscrowResponse.taskID )
-        , ( "amount", Encode.int taskEscrowResponse.amount )
-        , ( "state", escrowStateEncoder taskEscrowResponse.state )
+        [ ( "task_id", Encode.string taskFundResponse.taskID )
+        , ( "credit_amount", Encode.int taskFundResponse.creditAmount )
         ]
 
 type alias AcceptSubmissionResponse =

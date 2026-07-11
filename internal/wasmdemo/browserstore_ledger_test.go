@@ -73,8 +73,8 @@ func TestLedgerBrowserStoreFundTaskFirstTime(t *testing.T) {
 	if !matched {
 		t.Fatalf("fund task: want TaskFunded, got %#v", result)
 	}
-	if funded.Escrow.Amount.Int64() != 30 || funded.Escrow.State != ledger.EscrowStateHeld {
-		t.Fatalf("escrow = %+v, want amount=30 state=held", funded.Escrow)
+	if funded.Fund.CreditAmount.Int64() != 30 {
+		t.Fatalf("fund = %+v, want credit_amount=30", funded.Fund)
 	}
 
 	record, found, _ := loadStoredTaskRecord(storage, taskID.String())
@@ -87,9 +87,9 @@ func TestLedgerBrowserStoreFundTaskFirstTime(t *testing.T) {
 	if !matched {
 		t.Fatalf("balance: want BalanceFound, got %#v", balanceResult)
 	}
-	// 100 signup grant - 30 escrowed.
-	if balance.Value.Int64() != 70 {
-		t.Fatalf("funder balance = %d, want 70 (100 signup grant - 30 escrowed)", balance.Value.Int64())
+	// Funding moves 30 from spendable into allocated; the 100-credit total is conserved.
+	if balance.Value.Spendable() != 70 || balance.Value.Allocated() != 30 || balance.Value.Total() != 100 {
+		t.Fatalf("funder balance = (spendable %d, allocated %d, total %d), want (70, 30, 100)", balance.Value.Spendable(), balance.Value.Allocated(), balance.Value.Total())
 	}
 }
 
@@ -139,8 +139,8 @@ func TestLedgerBrowserStoreFundTaskIdempotentRetry(t *testing.T) {
 	}
 
 	balanceResult := store.Balance(ctx, funder).(ledger.BalanceFound)
-	if balanceResult.Value.Int64() != 70 {
-		t.Fatalf("funder balance after retry = %d, want 70 (not double-charged)", balanceResult.Value.Int64())
+	if balanceResult.Value.Spendable() != 70 {
+		t.Fatalf("funder balance after retry = %d, want 70 (not double-charged)", balanceResult.Value.Spendable())
 	}
 }
 
@@ -177,14 +177,14 @@ func TestLedgerBrowserStoreRefundTaskReturnsCreditsAndCancelsTask(t *testing.T) 
 	if !matched {
 		t.Fatalf("refund: want TaskRefunded, got %#v", refundResult)
 	}
-	if refunded.Escrow.State != ledger.EscrowStateRefunded {
-		t.Fatalf("refunded escrow state = %v, want refunded", refunded.Escrow.State)
+	if refunded.Fund.CreditAmount.Int64() != 30 {
+		t.Fatalf("refunded fund credit amount = %d, want 30", refunded.Fund.CreditAmount.Int64())
 	}
 
 	balance := store.Balance(ctx, funder).(ledger.BalanceFound)
-	// Entries sum to 100 (fully restored signup grant).
-	if balance.Value.Int64() != 100 {
-		t.Fatalf("funder balance after refund = %d, want 100 (fully restored)", balance.Value.Int64())
+	// The allocated credits return to spendable; total stays 100, allocated 0.
+	if balance.Value.Spendable() != 100 || balance.Value.Allocated() != 0 {
+		t.Fatalf("funder balance after refund = (spendable %d, allocated %d), want (100, 0)", balance.Value.Spendable(), balance.Value.Allocated())
 	}
 
 	record, found, _ := loadStoredTaskRecord(storage, taskID.String())

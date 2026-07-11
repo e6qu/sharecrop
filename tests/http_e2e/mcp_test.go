@@ -79,8 +79,8 @@ func TestMCPAgentDiscoverSubmitAcceptFlow(t *testing.T) {
 		t.Fatalf("accept payout not credit: %s", accept)
 	}
 
-	if balance := getBalance(t, server, worker.AccessToken); balance.Amount != 130 {
-		t.Fatalf("worker balance after MCP payout = %d, want 130", balance.Amount)
+	if balance := getBalance(t, server, worker.AccessToken); balance.SpendableCredits != 130 {
+		t.Fatalf("worker balance after MCP payout = %d, want 130", balance.SpendableCredits)
 	}
 }
 
@@ -110,11 +110,11 @@ func TestMCPAgentCreatesFundsOpensWorkableTask(t *testing.T) {
 		t.Fatalf("created state = %q, want draft", createdDetail.State)
 	}
 
-	// The agent funds the escrow and opens the task.
+	// The agent allocates credits to the task and opens it.
 	funded := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `2`, "sharecrop.fund_task",
 		`{"task_id":"`+createdDetail.ID+`","amount":20,"idempotency_key":"mcp-fund-`+createdDetail.ID+`"}`)))
-	if !strings.Contains(funded, "held") {
-		t.Fatalf("fund payload not held: %s", funded)
+	if !strings.Contains(funded, `"credit_amount":20`) {
+		t.Fatalf("fund payload missing credit amount: %s", funded)
 	}
 	opened := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `3`, "sharecrop.open_task",
 		`{"task_id":"`+createdDetail.ID+`"}`)))
@@ -705,8 +705,8 @@ func TestMCPRefundTask(t *testing.T) {
 
 	refunded := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, session, `1`, "sharecrop.refund_task",
 		`{"task_id":"`+task.ID+`","idempotency_key":"mcp-refund-`+task.ID+`"}`)))
-	if !strings.Contains(refunded, `"state":"refunded"`) {
-		t.Fatalf("refund_task did not report refunded state: %s", refunded)
+	if !strings.Contains(refunded, `"credit_amount":25`) {
+		t.Fatalf("refund_task did not report refunded credit amount: %s", refunded)
 	}
 }
 

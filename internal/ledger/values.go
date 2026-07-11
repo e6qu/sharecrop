@@ -66,17 +66,29 @@ func (amount SignedAmount) Int64() int64 {
 	return amount.value
 }
 
-// Balance is the derived total of an account's ledger entries.
+// Balance is the two-section wallet for a credit account. Spendable is the sum
+// of the account's ledger entries (credits the owner may still spend).
+// Allocated is the sum of credits currently locked to tasks the account funded
+// (they cannot be spent until the task finishes). Total is their sum.
 type Balance struct {
-	value int64
+	spendable int64
+	allocated int64
 }
 
-func NewBalance(value int64) Balance {
-	return Balance{value: value}
+func NewBalance(spendable int64, allocated int64) Balance {
+	return Balance{spendable: spendable, allocated: allocated}
 }
 
-func (balance Balance) Int64() int64 {
-	return balance.value
+func (balance Balance) Spendable() int64 {
+	return balance.spendable
+}
+
+func (balance Balance) Allocated() int64 {
+	return balance.allocated
+}
+
+func (balance Balance) Total() int64 {
+	return balance.spendable + balance.allocated
 }
 
 // IdempotencyKey deduplicates fund, accept, and refund commands.
@@ -121,7 +133,7 @@ type EntryKind struct {
 
 var (
 	EntryKindSignupGrant      = EntryKind{value: "signup_grant"}
-	EntryKindTaskEscrow       = EntryKind{value: "task_escrow"}
+	EntryKindTaskFund         = EntryKind{value: "task_fund"}
 	EntryKindTaskRefund       = EntryKind{value: "task_refund"}
 	EntryKindTaskPayout       = EntryKind{value: "task_payout"}
 	EntryKindTaskTip          = EntryKind{value: "task_tip"}
@@ -148,8 +160,8 @@ func ParseEntryKind(raw string) EntryKindResult {
 	switch raw {
 	case EntryKindSignupGrant.value:
 		return EntryKindAccepted{Value: EntryKindSignupGrant}
-	case EntryKindTaskEscrow.value:
-		return EntryKindAccepted{Value: EntryKindTaskEscrow}
+	case EntryKindTaskFund.value:
+		return EntryKindAccepted{Value: EntryKindTaskFund}
 	case EntryKindTaskRefund.value:
 		return EntryKindAccepted{Value: EntryKindTaskRefund}
 	case EntryKindTaskPayout.value:
@@ -165,50 +177,6 @@ func ParseEntryKind(raw string) EntryKindResult {
 
 func (kind EntryKind) String() string {
 	return kind.value
-}
-
-// EscrowState is the lifecycle of a task escrow.
-type EscrowState struct {
-	value string
-}
-
-var (
-	EscrowStateHeld     = EscrowState{value: "held"}
-	EscrowStateReleased = EscrowState{value: "released"}
-	EscrowStateRefunded = EscrowState{value: "refunded"}
-)
-
-type EscrowStateResult interface {
-	escrowStateResult()
-}
-
-type EscrowStateAccepted struct {
-	Value EscrowState
-}
-
-type EscrowStateRejected struct {
-	Reason core.DomainError
-}
-
-func (EscrowStateAccepted) escrowStateResult() {}
-
-func (EscrowStateRejected) escrowStateResult() {}
-
-func ParseEscrowState(raw string) EscrowStateResult {
-	switch raw {
-	case EscrowStateHeld.value:
-		return EscrowStateAccepted{Value: EscrowStateHeld}
-	case EscrowStateReleased.value:
-		return EscrowStateAccepted{Value: EscrowStateReleased}
-	case EscrowStateRefunded.value:
-		return EscrowStateAccepted{Value: EscrowStateRefunded}
-	default:
-		return EscrowStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task escrow state is invalid")}
-	}
-}
-
-func (state EscrowState) String() string {
-	return state.value
 }
 
 // SignupGrantAmount is the credit grant given to each new registered user.

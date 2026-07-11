@@ -29,8 +29,9 @@ export DATABASE_URL=postgres://sharecrop:sharecrop@localhost:25432/sharecrop?ssl
 export SHARECROP_MIGRATIONS_DIR=$PWD/migrations
 make build
 make test
-make serve
+make docker-up
 make migrate-up
+make serve
 ```
 
 The local app example uses `http://127.0.0.1:29180`.

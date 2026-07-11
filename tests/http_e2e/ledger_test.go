@@ -16,8 +16,8 @@ func TestSignupGrantCreatesBalanceAndLedgerEntry(t *testing.T) {
 	owner := registerUser(t, server, "ledger-signup")
 
 	balance := getBalance(t, server, owner.AccessToken)
-	if balance.Amount != 100 {
-		t.Fatalf("signup balance = %d, want 100", balance.Amount)
+	if balance.SpendableCredits != 100 {
+		t.Fatalf("signup balance = %d, want 100", balance.SpendableCredits)
 	}
 
 	ledgerBody := getLedger(t, server, owner.AccessToken)
@@ -41,12 +41,12 @@ func TestFundAcceptPayoutFlow(t *testing.T) {
 
 	task := createPublicCreditUserTask(t, server, owner, 40)
 
-	escrow := fundTask(t, server, owner.AccessToken, task.ID, 40, "fund-"+task.ID)
-	if escrow.State != "held" {
-		t.Fatalf("escrow state = %q, want held", escrow.State)
+	fund := fundTask(t, server, owner.AccessToken, task.ID, 40, "fund-"+task.ID)
+	if fund.CreditAmount != 40 {
+		t.Fatalf("funded credit amount = %d, want 40", fund.CreditAmount)
 	}
-	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 60 {
-		t.Fatalf("owner balance after funding = %d, want 60", balance.Amount)
+	if balance := getBalance(t, server, owner.AccessToken); balance.SpendableCredits != 60 || balance.AllocatedCredits != 40 {
+		t.Fatalf("owner balance after funding = (spendable %d, allocated %d), want (60, 40)", balance.SpendableCredits, balance.AllocatedCredits)
 	}
 
 	openTask(t, server, owner.AccessToken, task.ID)
@@ -61,11 +61,11 @@ func TestFundAcceptPayoutFlow(t *testing.T) {
 	if accept.PayoutAmount != 40 {
 		t.Fatalf("payout amount = %d, want 40", accept.PayoutAmount)
 	}
-	if balance := getBalance(t, server, worker.AccessToken); balance.Amount != 140 {
-		t.Fatalf("worker balance after payout = %d, want 140", balance.Amount)
+	if balance := getBalance(t, server, worker.AccessToken); balance.SpendableCredits != 140 {
+		t.Fatalf("worker balance after payout = %d, want 140", balance.SpendableCredits)
 	}
-	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 60 {
-		t.Fatalf("owner balance after payout = %d, want 60", balance.Amount)
+	if balance := getBalance(t, server, owner.AccessToken); balance.SpendableCredits != 60 {
+		t.Fatalf("owner balance after payout = %d, want 60", balance.SpendableCredits)
 	}
 
 	// Re-accepting with the same idempotency key must not pay out twice.
@@ -73,8 +73,8 @@ func TestFundAcceptPayoutFlow(t *testing.T) {
 	if repeat.PayoutKind != "credit" {
 		t.Fatalf("idempotent payout kind = %q, want credit", repeat.PayoutKind)
 	}
-	if balance := getBalance(t, server, worker.AccessToken); balance.Amount != 140 {
-		t.Fatalf("worker balance after idempotent accept = %d, want 140", balance.Amount)
+	if balance := getBalance(t, server, worker.AccessToken); balance.SpendableCredits != 140 {
+		t.Fatalf("worker balance after idempotent accept = %d, want 140", balance.SpendableCredits)
 	}
 
 	// A second submission cannot become the accepted one.
@@ -91,20 +91,20 @@ func TestRefundReturnsCredits(t *testing.T) {
 	task := createCreditUserTask(t, server, owner, 30)
 
 	fundTask(t, server, owner.AccessToken, task.ID, 30, "fund-"+task.ID)
-	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 70 {
-		t.Fatalf("owner balance after funding = %d, want 70", balance.Amount)
+	if balance := getBalance(t, server, owner.AccessToken); balance.SpendableCredits != 70 || balance.AllocatedCredits != 30 {
+		t.Fatalf("owner balance after funding = (spendable %d, allocated %d), want (70, 30)", balance.SpendableCredits, balance.AllocatedCredits)
 	}
 
 	refund := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/refund", []byte(`{"idempotency_key":"refund-`+task.ID+`"}`), owner.AccessToken)
 	defer refund.Body.Close()
 	assertStatus(t, refund, http.StatusOK)
-	refundBody := decodeEscrowHTTPResponse(t, refund)
-	if refundBody.State != "refunded" {
-		t.Fatalf("refund state = %q, want refunded", refundBody.State)
+	refundBody := decodeFundHTTPResponse(t, refund)
+	if refundBody.CreditAmount != 30 {
+		t.Fatalf("refunded credit amount = %d, want 30", refundBody.CreditAmount)
 	}
 
-	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 100 {
-		t.Fatalf("owner balance after refund = %d, want 100", balance.Amount)
+	if balance := getBalance(t, server, owner.AccessToken); balance.SpendableCredits != 100 || balance.AllocatedCredits != 0 {
+		t.Fatalf("owner balance after refund = (spendable %d, allocated %d), want (100, 0)", balance.SpendableCredits, balance.AllocatedCredits)
 	}
 }
 
@@ -119,8 +119,8 @@ func TestFundRejectsInsufficientCredits(t *testing.T) {
 	defer response.Body.Close()
 	assertStatus(t, response, http.StatusBadRequest)
 
-	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 100 {
-		t.Fatalf("owner balance after failed funding = %d, want 100", balance.Amount)
+	if balance := getBalance(t, server, owner.AccessToken); balance.SpendableCredits != 100 {
+		t.Fatalf("owner balance after failed funding = %d, want 100", balance.SpendableCredits)
 	}
 }
 
@@ -138,13 +138,14 @@ func TestAcceptWithoutEscrowHasNoPayout(t *testing.T) {
 	if accept.PayoutKind != "none" {
 		t.Fatalf("payout kind = %q, want none", accept.PayoutKind)
 	}
-	if balance := getBalance(t, server, worker.AccessToken); balance.Amount != 100 {
-		t.Fatalf("worker balance after no-reward accept = %d, want 100", balance.Amount)
+	if balance := getBalance(t, server, worker.AccessToken); balance.SpendableCredits != 100 {
+		t.Fatalf("worker balance after no-reward accept = %d, want 100", balance.SpendableCredits)
 	}
 }
 
 type balanceHTTPResponse struct {
-	Amount int64 `json:"amount"`
+	SpendableCredits int64 `json:"spendable_credits"`
+	AllocatedCredits int64 `json:"allocated_credits"`
 }
 
 type ledgerEntryHTTPResponse struct {
@@ -158,10 +159,9 @@ type ledgerHTTPResponse struct {
 	Entries []ledgerEntryHTTPResponse `json:"entries"`
 }
 
-type escrowHTTPResponse struct {
-	TaskID string `json:"task_id"`
-	Amount int64  `json:"amount"`
-	State  string `json:"state"`
+type taskFundHTTPResponse struct {
+	TaskID       string `json:"task_id"`
+	CreditAmount int64  `json:"credit_amount"`
 }
 
 type acceptHTTPResponse struct {
@@ -209,7 +209,7 @@ func submitAuthenticated(t *testing.T, server *httptest.Server, accessToken stri
 	return decodeSubmissionCreatedHTTPResponse(t, response)
 }
 
-func fundTask(t *testing.T, server *httptest.Server, accessToken string, taskID string, amount int64, key string) escrowHTTPResponse {
+func fundTask(t *testing.T, server *httptest.Server, accessToken string, taskID string, amount int64, key string) taskFundHTTPResponse {
 	t.Helper()
 	body, err := json.Marshal(fundingHTTPRequest{Amount: amount, IdempotencyKey: key})
 	if err != nil {
@@ -218,7 +218,16 @@ func fundTask(t *testing.T, server *httptest.Server, accessToken string, taskID 
 	response := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/funding", body, accessToken)
 	defer response.Body.Close()
 	assertStatus(t, response, http.StatusCreated)
-	return decodeEscrowHTTPResponse(t, response)
+	return decodeFundHTTPResponse(t, response)
+}
+
+func decodeFundHTTPResponse(t *testing.T, response *http.Response) taskFundHTTPResponse {
+	t.Helper()
+	var body taskFundHTTPResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode task fund response: %v", err)
+	}
+	return body
 }
 
 func acceptSubmission(t *testing.T, server *httptest.Server, accessToken string, taskID string, submissionID string, key string) acceptHTTPResponse {
@@ -253,15 +262,6 @@ func getLedger(t *testing.T, server *httptest.Server, accessToken string) ledger
 	var body ledgerHTTPResponse
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode ledger response: %v", err)
-	}
-	return body
-}
-
-func decodeEscrowHTTPResponse(t *testing.T, response *http.Response) escrowHTTPResponse {
-	t.Helper()
-	var body escrowHTTPResponse
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-		t.Fatalf("decode escrow response: %v", err)
 	}
 	return body
 }

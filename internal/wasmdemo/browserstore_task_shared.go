@@ -155,6 +155,14 @@ func loadStoredTaskRecord(storage BrowserStorage, taskID string) (storedTaskReco
 	if !found {
 		return storedTaskRecord{}, false, nil
 	}
+	// Mirror internal/db's task select, which derives the collectible-reward
+	// count from live task_fund_collectibles rows rather than trusting a stored
+	// counter that could drift from the actual reward records.
+	count, countErr := countHeldCollectibleRewards(storage, taskID)
+	if countErr != nil {
+		return storedTaskRecord{}, false, countErr
+	}
+	record.RewardCollectibleCount = count
 	return record, true, nil
 }
 
@@ -448,9 +456,17 @@ func parseStoredVisibility(record storedTaskRecord) (task.Visibility, *core.Doma
 	}
 }
 
+// parseStoredReward mirrors internal/db's parseRewardSpec exactly, including
+// its coercions: a none/credit task whose reward-record count is positive
+// surfaces the collectible component, and a collectible/bundle task whose
+// count is 0 (e.g. after a refund emptied the reward set) coerces to 1 so the
+// declared reward kind still parses.
 func parseStoredReward(record storedTaskRecord) (task.RewardSpec, *core.DomainError) {
 	switch record.RewardKind {
 	case task.RewardKindNone.String():
+		if record.RewardCollectibleCount > 0 {
+			return parseStoredCollectibleRewardCount(record.RewardCollectibleCount)
+		}
 		return task.NoRewardSpec{}, nil
 	case task.RewardKindCredit.String():
 		amountResult := task.NewCreditRewardAmount(record.RewardCreditAmount)
@@ -459,15 +475,20 @@ func parseStoredReward(record storedTaskRecord) (task.RewardSpec, *core.DomainEr
 			reason := amountResult.(task.CreditRewardAmountRejected).Reason
 			return nil, &reason
 		}
+		if record.RewardCollectibleCount > 0 {
+			collectible, collectibleErr := parseStoredCollectibleRewardCount(record.RewardCollectibleCount)
+			if collectibleErr != nil {
+				return nil, collectibleErr
+			}
+			return task.BundleRewardSpec{Credit: amount.Value, Collectible: collectible.(task.CollectibleRewardSpec).Count}, nil
+		}
 		return task.CreditRewardSpec{Amount: amount.Value}, nil
 	case task.RewardKindCollectible.String():
-		countResult := task.NewCollectibleRewardCount(record.RewardCollectibleCount)
-		count, matched := countResult.(task.CollectibleRewardCountAccepted)
-		if !matched {
-			reason := countResult.(task.CollectibleRewardCountRejected).Reason
-			return nil, &reason
+		count := record.RewardCollectibleCount
+		if count == 0 {
+			count = 1
 		}
-		return task.CollectibleRewardSpec{Count: count.Value}, nil
+		return parseStoredCollectibleRewardCount(count)
 	case task.RewardKindBundle.String():
 		amountResult := task.NewCreditRewardAmount(record.RewardCreditAmount)
 		amount, amountMatched := amountResult.(task.CreditRewardAmountAccepted)
@@ -475,15 +496,27 @@ func parseStoredReward(record storedTaskRecord) (task.RewardSpec, *core.DomainEr
 			reason := amountResult.(task.CreditRewardAmountRejected).Reason
 			return nil, &reason
 		}
-		countResult := task.NewCollectibleRewardCount(record.RewardCollectibleCount)
-		count, countMatched := countResult.(task.CollectibleRewardCountAccepted)
-		if !countMatched {
-			reason := countResult.(task.CollectibleRewardCountRejected).Reason
-			return nil, &reason
+		count := record.RewardCollectibleCount
+		if count == 0 {
+			count = 1
 		}
-		return task.BundleRewardSpec{Credit: amount.Value, Collectible: count.Value}, nil
+		collectible, collectibleErr := parseStoredCollectibleRewardCount(count)
+		if collectibleErr != nil {
+			return nil, collectibleErr
+		}
+		return task.BundleRewardSpec{Credit: amount.Value, Collectible: collectible.(task.CollectibleRewardSpec).Count}, nil
 	default:
 		reason := core.NewDomainError(core.ErrorCodeInvalidState, "task reward kind is invalid")
 		return nil, &reason
 	}
+}
+
+func parseStoredCollectibleRewardCount(rawCount int) (task.RewardSpec, *core.DomainError) {
+	countResult := task.NewCollectibleRewardCount(rawCount)
+	count, matched := countResult.(task.CollectibleRewardCountAccepted)
+	if !matched {
+		reason := countResult.(task.CollectibleRewardCountRejected).Reason
+		return nil, &reason
+	}
+	return task.CollectibleRewardSpec{Count: count.Value}, nil
 }

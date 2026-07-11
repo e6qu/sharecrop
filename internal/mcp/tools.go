@@ -123,7 +123,7 @@ func coreToolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolAcceptSubmission,
-			Description: "Accept a submission for a task owned by the agent's user, paying the escrowed reward when present. Optional payout_amount pays part of the credit escrow, and optional tip_amount pays extra credits from the requester balance.",
+			Description: "Accept a submission for a task owned by the agent's user, paying the task's allocated reward when present. Optional payout_amount pays part of the allocated credits, and optional tip_amount pays extra credits from the requester balance.",
 			Scope:       agent.ScopeSubmissionsReview,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"},"payout_amount":{"type":"integer","minimum":1},"tip_amount":{"type":"integer","minimum":1}},"required":["task_id","submission_id","idempotency_key"]}`),
 		},
@@ -135,7 +135,7 @@ func coreToolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolRejectSubmission,
-			Description: "Reject submitted work with required notes. Optional partial_credit_amount pays part of held credit escrow, optional tip_amount pays extra credits from requester balance, and ban_implementor prevents the worker from doing the same task again.",
+			Description: "Reject submitted work with required notes. Optional partial_credit_amount pays part of the task's allocated credits, optional tip_amount pays extra credits from requester balance, and ban_implementor prevents the worker from doing the same task again.",
 			Scope:       agent.ScopeSubmissionsReview,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"},"review_note":{"type":"string"},"partial_credit_amount":{"type":"integer","minimum":1},"tip_amount":{"type":"integer","minimum":1},"ban_implementor":{"type":"boolean"}},"required":["task_id","submission_id","idempotency_key","review_note"]}`),
 		},
@@ -273,7 +273,7 @@ func coreToolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolRefundTask,
-			Description: "Refund a task's escrowed credits back to the agent's user. idempotency_key makes a retried refund safe.",
+			Description: "Refund a task's allocated credits back to the agent's user. idempotency_key makes a retried refund safe.",
 			Scope:       agent.ScopeTasksWrite,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"idempotency_key":{"type":"string"}},"required":["task_id","idempotency_key"]}`),
 		},

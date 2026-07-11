@@ -465,7 +465,8 @@ type writableResponse interface {
 }
 
 type balanceResponse struct {
-	Amount int64 `json:"amount"`
+	SpendableCredits int64 `json:"spendable_credits"`
+	AllocatedCredits int64 `json:"allocated_credits"`
 }
 
 type ledgerEntryResponse struct {
@@ -479,10 +480,9 @@ type ledgerListResponse struct {
 	Entries []ledgerEntryResponse `json:"entries"`
 }
 
-type taskEscrowResponse struct {
-	TaskID string `json:"task_id"`
-	Amount int64  `json:"amount"`
-	State  string `json:"state"`
+type taskFundResponse struct {
+	TaskID       string `json:"task_id"`
+	CreditAmount int64  `json:"credit_amount"`
 }
 
 type acceptSubmissionResponse struct {

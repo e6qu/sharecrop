@@ -56,7 +56,11 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.organizationService.ListOrganizations(r.Context(), actor.subject, r.URL.Query().Get("query"), parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.organizationService.ListOrganizations(r.Context(), actor.subject, r.URL.Query().Get("query"), page)
 	listed, matched := result.(org.OrganizationsListed)
 	if !matched {
 		rejected := result.(org.ListOrganizationsRejected)
@@ -88,7 +92,11 @@ func (server Server) listOrganizationMembers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	result := server.organizationService.ListMembers(r.Context(), actor.subject, organizationIDAccepted.value, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.organizationService.ListMembers(r.Context(), actor.subject, organizationIDAccepted.value, page)
 	listed, matched := result.(org.MembersListed)
 	if !matched {
 		writeDomainError(w, result.(org.ListMembersRejected).Reason)
@@ -293,7 +301,11 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value, r.URL.Query().Get("query"), parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value, r.URL.Query().Get("query"), page)
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
@@ -351,7 +363,11 @@ func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result := server.organizationService.ListStandaloneTeams(r.Context(), actor.subject, r.URL.Query().Get("query"), parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.organizationService.ListStandaloneTeams(r.Context(), actor.subject, r.URL.Query().Get("query"), page)
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)

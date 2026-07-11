@@ -13,7 +13,7 @@ func newSubmissionTestEnv(t *testing.T) (submission.Service, task.Service, *coun
 	t.Helper()
 	storage := newTestBrowserStorage()
 	ids := &counterLedgerIDs{}
-	taskStore := NewTaskBrowserStore(storage, ids)
+	taskStore := NewTaskBrowserStore(storage, ids, systemTestClock{})
 	taskService := task.NewService(taskStore, noopOrganizationPermissions{}, nil)
 	submissionService := submission.NewService(NewSubmissionBrowserStore(storage, ids), taskStore, noopOrganizationPermissions{})
 	return submissionService, taskService, ids

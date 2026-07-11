@@ -10,7 +10,7 @@ Test gaps:
   has an accurate method/path/operationId/bearer-auth inventory generated from
   `internal/http/server.go`'s route table and local call graph. Request/
   response body schemas are typed (derived from the actual Go DTO struct a
-  handler decodes/writes) for 99/106 responses and 39/61 request bodies; the
+  handler decodes/writes) for 102/109 responses and 41/63 request bodies; the
   rest are genuinely out of scope (MCP JSON-RPC passthrough, bodyless routes,
   static/index/healthz), not generator gaps.
 - GitHub Pages deployment cannot be observed from pull request CI because the
@@ -22,10 +22,14 @@ Test gaps:
   directory data or no selector-backed flow. The latest audit found IDs still
   visible in links, protocol surfaces, metadata, audit rows, and API/MCP
   examples, but no confirmed high-traffic raw-ID input remains listed.
-- Account verification and password reset support
-  `SHARECROP_ACCOUNT_TOKEN_DELIVERY=log`, which logs tokens and returns a sent
-  status. Provider email delivery is intentionally deferred; admins are expected
-  to set up accounts and organizations directly for now.
+- Account verification and password reset default to
+  `SHARECROP_ACCOUNT_TOKEN_DELIVERY=log` (fail closed), which logs the token
+  and returns a sent status; production `serve` never returns the token in the
+  HTTP response. `api` mode (token returned in the response body) is opt-in and
+  used by the browser demo and tests only. Password-reset returns the same
+  neutral response for unknown and known emails. Provider email delivery is
+  intentionally deferred; admins are expected to set up accounts and
+  organizations directly for now.
 - Account lifecycle semantics are deactivation plus credential/session/token
   revocation and email anonymization. Row removal is not part of the project
   direction because tasks, submissions, comments, ledger entries, and ownership
@@ -51,20 +55,40 @@ Test gaps:
 - DB-backed checks, local real API shared scenario parity, and DB-backed
   Playwright screens passed against an isolated local PostgreSQL 15 data
   directory under `.cache` on non-default local ports: Postgres `25432`, app
-  `29180`, and backendless demo `29181`.
+  `29180`, and the WASM demo `29181`.
 - `tests/playwright/demo.spec.ts` and `tests/playwright/mobile.spec.ts` passed
-  against the Go/WASM default demo on non-default port `29181` after the WASM
-  agent-credential slice was added.
+  against the Go/WASM default demo on non-default port `29181`.
 
 Known risks:
 
-- Cancelling a task that holds escrow is now rejected: the store's
-  `ChangeTaskState` to `cancelled` refuses with 409 "refund the task's held
-  escrow before cancelling" when held credits or collectibles exist, so the
-  state transition can never orphan escrow (previously Cancel left held escrow
-  stranded against a cancelled task). The browser routes funded tasks to Refund;
-  a rare funded-draft Cancel attempt now surfaces that 409 with the Refund
-  action alongside.
+- Credit funding uses a two-section wallet, not an escrow state machine.
+  Funding moves credits from the account's spendable section (still
+  `sum(ledger_entries)`) into its allocated section (a stateless
+  `task_funds` row); allocated credits are not spendable, so they cannot be
+  double-spent. `ChangeTaskState` runs its invariant checks and the state
+  UPDATE in one transaction with an expected-prior-state predicate, so
+  concurrent cancel/fund/refund cannot interleave to orphan allocated
+  credits or reopen a cancelled task. Cancelling a funded un-awarded task
+  returns its allocated credits to the funder's spendable balance
+  automatically.
+
+- Refunds are auto-granted by default: the task owner (requester) or the
+  user holding the active reservation can refund while the task is not yet
+  awarded (no accepted submission). The allocated credits and any held
+  collectible return to the funder, and the task is cancelled. This is a
+  deliberate, permissive policy — a requester can refund even while a
+  submission is pending review (the task is cancelled and the worker is not
+  paid). Self-deactivation is still rejected while the user owns tasks
+  holding allocated credits or held collectibles, so funds that only their
+  owner can refund are not stranded.
+
+- The task detail response still reports only the declared reward, not the
+  live allocated amount, so the browser cannot perfectly tell a funded task
+  from an un-awarded one that merely declares a reward; the Refund button may
+  appear on an unfunded declared-reward task and returns a clear
+  "task has nothing to refund" message when clicked. The Overview/org pages
+  now show the account's allocated total. Exposing per-task funding state on
+  the detail response is still a tracked follow-up (see `DO_NEXT.md`).
 
 - `site/demo/backend.js` (the legacy JS mock backend) and its Deno tests have
   been removed; `deno task check:scenario-parity:wasm` is now CI-enforced
@@ -72,33 +96,29 @@ Known risks:
   exists for the removed route-drift-detection test (real REST routes vs. a
   mock's route table) against the WASM dispatch path — a known, accepted gap.
 - Go/WASM is a first-class backend execution target, not only a demo mechanism.
-  Go code compiles to `js/wasm` for representative packages, the main command,
-  and `cmd/sharecrop-wasm`. `internal/wasmdemo` classifies and handles current
-  shared-scenario slices for auth/account, users, admin operations,
-  platform-admins, audit events, collectibles, agent credentials, privacy,
-  moderation, saved-queue-view, task, task series (create/list/detail only),
-  notification, organization, organization-member, team, comment, reservation,
-  submission, and ledger routes. A Deno WASM runner loads a compiled Go `.wasm`
-  artifact, verifies required exports, configures explicit host adapters, and
-  runs the shared scenario parity suite through the exported request handler.
-  `deno task measure:wasm` reports artifact size, startup time, host-process
-  memory, and request latency against a compiled artifact; see
+  `cmd/sharecrop-wasm` compiles the real `internal/http` mux and the real
+  domain services to `js/wasm`; `internal/wasmdemo` provides
+  browser-storage-backed `Store` implementations for all 9 domain packages
+  (`browserstore_*.go`) plus the seed routine — it no longer classifies or
+  handles requests itself. A Deno WASM runner
+  (`tools/wasm_runtime_loader.ts`) loads a compiled Go `.wasm` artifact,
+  verifies required exports, configures explicit host adapters (storage,
+  clock, id source), and runs the shared scenario parity suite through the
+  exported request handler with real bearer tokens; the mux resolves
+  identity from the bearer token, not the host. `deno task measure:wasm`
+  reports artifact size, startup time, host-process memory, and request
+  latency against a compiled artifact; see
   [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) for a
-  baseline. `tools/wasm_runtime_loader.ts` documents and implements the
-  reference non-browser host. Remaining WASM risk is a genuine production
-  non-browser host: the reference host is in-memory (unpersisted across
-  restarts), uses a fixed clock, lets the caller set the actor with no
-  credential check, and generates IDs/secrets from a sequential counter rather
-  than `crypto/rand`; none of that is safe to reuse for a production non-browser
+  baseline. Remaining WASM risk is a genuine production non-browser host:
+  the reference host is in-memory (unpersisted across restarts), uses a
+  fixed clock, and its `nextID` counter yields sequential
+  submission/comment/reservation ids (ledger entry ids are generated in Go
+  as real UUIDs); none of that is safe to reuse for a production non-browser
   deployment, and no such deployment target exists yet to build a production
-  host against. Continued parity expansion as API surfaces change also remains
-  ongoing work; two confirmed current gaps are team-membership storage (so
-  `GET /api/teams/{team_id}` always returns an empty member list) and task
-  series lifecycle/membership/comments (publish/unpublish/close/reopen,
-  adding/removing/reordering tasks in a series, and series comments all fail
-  with a graceful inline error rather than working). JavaScript
-  reimplementations, generated fake backends, and fallback stores are not valid
-  substitutes for the compiled Go WASM binary.
+  host against. Continued parity expansion as API surfaces change also
+  remains ongoing work. JavaScript reimplementations, generated fake
+  backends, and fallback stores are not valid substitutes for the compiled
+  Go WASM binary.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

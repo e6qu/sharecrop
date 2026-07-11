@@ -106,7 +106,11 @@ func (server Server) listOrgCredentials(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	result := server.orgCredentialService.List(r.Context(), organizationID, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.orgCredentialService.List(r.Context(), organizationID, page)
 	listed, matched := result.(orgcred.CredentialsListed)
 	if !matched {
 		writeError(w, http.StatusBadRequest, result.(orgcred.ListRejected).Reason.Description())

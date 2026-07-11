@@ -59,9 +59,8 @@ type submitPayload struct {
 }
 
 type fundPayload struct {
-	TaskID string `json:"task_id"`
-	Amount int64  `json:"amount"`
-	State  string `json:"state"`
+	TaskID       string `json:"task_id"`
+	CreditAmount int64  `json:"credit_amount"`
 }
 
 type statusPayload struct {
@@ -347,9 +346,8 @@ func (server Server) callFundTask(ctx context.Context, subject auth.UserSubject,
 		return toolFailed{message: result.(ledger.FundRejected).Reason.Description()}
 	}
 	return marshalPayload(fundPayload{
-		TaskID: funded.Escrow.TaskID.String(),
-		Amount: funded.Escrow.Amount.Int64(),
-		State:  funded.Escrow.State.String(),
+		TaskID:       funded.Fund.TaskID.String(),
+		CreditAmount: funded.Fund.CreditAmount.Int64(),
 	})
 }
 
@@ -377,9 +375,8 @@ func (server Server) callRefundTask(ctx context.Context, subject auth.UserSubjec
 		return toolFailed{message: result.(ledger.RefundRejected).Reason.Description()}
 	}
 	return marshalPayload(fundPayload{
-		TaskID: refunded.Escrow.TaskID.String(),
-		Amount: refunded.Escrow.Amount.Int64(),
-		State:  refunded.Escrow.State.String(),
+		TaskID:       refunded.Fund.TaskID.String(),
+		CreditAmount: refunded.Fund.CreditAmount.Int64(),
 	})
 }
 

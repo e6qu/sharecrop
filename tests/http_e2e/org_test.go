@@ -84,8 +84,8 @@ func TestOrganizationReviewerCanReviewSubmissions(t *testing.T) {
 	if accept.SubmissionID != submission.Submission.ID {
 		t.Fatalf("accepted submission id = %q, want %q", accept.SubmissionID, submission.Submission.ID)
 	}
-	if balance := getBalance(t, server, worker.AccessToken); balance.Amount != 130 {
-		t.Fatalf("worker balance after org reviewer payout = %d, want 130", balance.Amount)
+	if balance := getBalance(t, server, worker.AccessToken); balance.SpendableCredits != 130 {
+		t.Fatalf("worker balance after org reviewer payout = %d, want 130", balance.SpendableCredits)
 	}
 }
 

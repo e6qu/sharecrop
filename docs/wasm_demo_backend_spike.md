@@ -29,7 +29,7 @@ The browser demo used to be a from-scratch reimplementation of the API surface
 class of bug happen: an invariant enforced by the real Postgres store (e.g.
 "credit reward must be funded before opening") was never ported to the demo's
 independent reimplementation, so a task could reach "open" in the demo with an
-unescrowed reward.
+unfunded reward.
 
 The demo is now unified onto the same code the production backend runs:
 
@@ -66,8 +66,8 @@ the mux depends on, each exercised through the real, unmodified domain
 `Service`:
 
 - `browserstore_auth.go` — `auth.Store`: real password hashing
-  (`crypto/pbkdf2`), real refresh-token rotation with reuse detection, signup
-  credit grants.
+  (Argon2id via `golang.org/x/crypto/argon2`), real refresh-token rotation
+  with reuse detection, signup credit grants.
 - `browserstore_notification.go` — `notification.Store`.
 - `browserstore_agent.go` — `agent.Store` (agent credentials).
 - `browserstore_orgcred.go` — `orgcred.Store` (organization-wide credentials).
@@ -115,7 +115,7 @@ immediately, preserving the "already logged in" UX.
 
 Because seeding goes through real services, the seeded credit numbers are real
 ledger arithmetic, not chosen constants: the demo's fixed admin account (mara)
-shows a 70-credit balance (100 signup grant − 30 escrowed for a seeded task),
+shows a 70-credit balance (100 signup grant − 30 allocated to a seeded task),
 and "Field Operations" shows a 100-credit organization balance.
 
 ### RuntimeState: what's persistent vs. in-memory

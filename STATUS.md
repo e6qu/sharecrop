@@ -1,83 +1,82 @@
 # Status
 
-The repository contains pull request 1 through pull request 136 work, merged
-into `main`, plus the current
-`task/unpublish-escape-hatch-and-scenario-parity-ci` branch. PR 108's
-GitHub Pages deployment failed three times in a row after
-merge for what looked like a transient GitHub-side Pages backend issue
-(build/artifact steps always succeeded; only `deploy-pages` failed or hung,
-with a different symptom each time); most later PRs' deployments succeeded
-on the first try with no code or workflow changes, confirming it was not a
-code problem — though PR 127's deployment hit the same transient failure
-again and cleared on a manual retry, so this class of flakiness is still
-occasionally live, not fully resolved.
+All work through pull request 140 is merged into `main`.
 
-The 5-phase RBAC + API-token effort (PRs 115-121), two clean-up passes
-(PRs 122, 124), a docs refresh (PR 123), the WASI production-hosting
-spike's plan + Phase 0/1 (PR 125), ecosystem research (PR 126), and
-deployment-shape requirements (PR 132), a Go 1.26.4 upgrade (PR 127), a
-strengthened "at most one open PR at a time" rule in `AGENTS.md` (PR 128),
-the `site/demo/backend.js` deprecation (PR 129: replacement CI coverage;
-PR 130: deletion), a fix for the demo (WASM) backend collapsing every
-rejection to HTTP 500 plus a corrected fund-panel visibility gate
-(PR 131), a batch of task-funding/creation UX fixes (PR 133: fund any
-reward kind, open a task after creating it; PR 134: collectible-reward UI,
-org-admin collectible awards), and a task visual-language pass (PR 135:
-state color-coding, "mine" highlighting, a funding-discoverability
-callout, required-field validation, a multi-select state filter) are
-complete.
+Implemented surface:
 
-PR 136 fixed two reservation bugs the user hit live (reported as "I can't
-cancel reservation" and "the reservation drawer is not visible when
-toggled off"), confirmed by real browser reproduction rather than
-assumption, plus a follow-up request to show the reward as its own badge
-in task lists with small icons on all badges. See its `WHAT_WE_DID.md`
-entry for the full writeup (a worker couldn't see or cancel their own
-reservation; the "Reserve" button never went away after reserving; new
-reward badges + state-badge icons).
+- Go HTTP API (`internal/http`) over Postgres-backed domain services, an Elm
+  browser client, an MCP interface at `/mcp` (Streamable HTTP with SSE
+  replay), scoped agent and organization-wide credentials, and a generated
+  OpenAPI document (`docs/openapi.json`).
+- The browser demo runs the real backend compiled to `js/wasm`. PR 138 added
+  browser-storage-backed `Store` implementations for all 9 domain packages
+  (`internal/wasmdemo/browserstore_*.go`). PR 139 cut the demo over to the
+  real `internal/http` mux and the real domain services
+  (`cmd/sharecrop-wasm/main_js_wasm.go`); `internal/wasmdemo` is no longer a
+  separate request-handling reimplementation — it holds only the browser
+  stores and the seed routine. Architecture details:
+  [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md).
+- PR 140 was an audit pass that fixed authorization checks, WASM demo
+  parity gaps, and Elm client issues found by review.
 
-Active task: `task/unpublish-escape-hatch-and-scenario-parity-ci` traces
-the user's next report ("the task view still! still! does not have a
-visible drawer to change funding of a task") to its actual root cause,
-verified live against the deployed demo, not guessed at:
+Test status: PR CI runs format/contract/policy/type checks, Go unit and
+integration tests, HTTP end-to-end tests, shared scenario parity against
+both the real DB-backed backend and the compiled WASM demo, and Playwright
+browser tests. All green on `main`.
 
-- **Root cause found**: "a credit/bundle reward must be funded before a
-  task can open" is enforced only in `internal/db/task_store.go`'s
-  `requireOpenableReward` (the Postgres store layer) — never in the
-  shared `internal/task/service.go` domain layer. `internal/wasmdemo` is a
-  wholly separate reimplementation of task logic with its own storage and
-  its own state-transition checks, and it never got this invariant added,
-  so a demo task could reach "open" with a declared-but-unescrowed
-  reward. Confirmed empirically (curl against a live local server) that
-  this invariant is missing on the demo and present on the real backend
-  before writing any fix.
-- **Fixed the missing invariant** in `internal/wasmdemo/request_handler.go`'s
-  "open" action, mirroring the real backend's check exactly (credit/bundle
-  needs escrow matching the declared amount; collectible/bundle needs at
-  least one held collectible).
-- **Added a real escape hatch**: `Task.Unpublish` (`open` → `draft`) already
-  existed on both backends (`POST /api/tasks/{id}/unpublish`) but was never
-  wired to a UI button for individual tasks (only for task series) — an
-  owner had no way to move a task back to draft to fix its funding and
-  reopen it. Added the button, the Msg/Api/View wiring, and a Playwright
-  test covering the full recovery flow (declare reward → reject premature
-  open → fund → open → unpublish → fund panel available again → reopen).
-- **Closed the systemic gap the user pushed on directly**: the shared
-  `tests/scenario_parity/scenario.ts` script (meant to prove the two
-  backends behave identically) was, until now, only ever run against the
-  WASM demo in CI (`check-wasm-scenario-parity`) — `check:scenario-parity`
-  (the real-backend variant) had no CI job at all, so a new assertion
-  added there could silently diverge from real-backend behavior with
-  nothing automated to catch it. Wired it into `tools/run_db_checks.sh`
-  (spins up a real DB-backed server, runs the shared scenario against it)
-  and added Deno setup to the `db-checks` CI job. Verified the new
-  assertion is real, not vacuous, by reverting the fix and confirming the
-  check actually fails (200 instead of 409) before restoring it.
-- Bigger open question, raised by the user directly and not yet resolved:
-  whether to unify onto a single WASM-compiled backend (used for both the
-  browser demo and a multi-replica production deployment) so this class of
-  invariant-duplication bug becomes structurally impossible rather than
-  something each new check has to catch. Asked a clarifying scope question
-  with no response yet; proceeded with the concrete, verified, low-risk fix
-  above in the meantime rather than guessing at scope for a multi-session
-  rewrite. See `DO_NEXT.md`.
+Active task: `task/journey-review-fixes` — a review-driven fix pass across
+backend parity, Elm client UX, security, and documentation, ready for a
+pull request. It covers:
+
+- Backend correctness/parity: 16 findings fixed (transactional
+  `ChangeTaskState`, refund/cancel and deactivation guards, and 11
+  real-vs-WASM store divergences — reservation expiry/uniqueness,
+  implementor bans, idempotency semantics, ledger pagination, series
+  bookkeeping, team scope, unknown-task 404, strict pagination, fund audit
+  events). See `WHAT_WE_DID.md`.
+- Two-section wallet (replaces the escrow state machine): every user and
+  organization credit account now has a **spendable** section
+  (`sum(ledger_entries)`) and an **allocated** section
+  (`sum(task_funds.credit_amount)`). Funding moves credits spendable ->
+  allocated (a stateless `task_funds` row, no held/released/refunded state),
+  so allocated credits cannot be double-spent. Finishing a task moves the
+  funder's allocated credits to the worker's spendable balance; refunding or
+  closing an un-awarded task returns them to the funder's spendable balance.
+  Refunds are auto-granted for the task owner or the active reservation
+  holder while the task is not yet awarded. Collectible rewards use the same
+  stateless temp store (`task_fund_collectibles`) and keep the collectible's
+  `escrowed` lifecycle state as the trade lock. Balance endpoints return
+  `{spendable_credits, allocated_credits}`; the ledger kind `task_escrow`
+  was renamed `task_fund`.
+- Password hashing switched from PBKDF2 to Argon2id (OWASP first choice,
+  m=19 MiB/t=2/p=1) via `golang.org/x/crypto/argon2`, matching what
+  AGENTS.md/PLAN.md already documented.
+- Security: password-reset/verification token delivery now defaults to `log`
+  (fail closed) so production no longer returns tokens to anonymous callers;
+  the demo opts into `api` explicitly. Password-reset no longer reveals
+  whether an email is registered. Token-confirm endpoints are rate limited.
+  User-directory search escapes LIKE metacharacters and caps query length.
+  The demo shell's `<base href>` is rebuilt from safe path segments.
+- Elm client: deep-link login now loads the target page; mid-session token
+  refresh (with an explicit expiry logout); a schema-driven worker response
+  form; a fix for the silent reward downgrade on create; disclosure panels
+  no longer snap shut mid-edit; successes and failures are visually
+  distinct; standalone-team create + browsable team pages; self-service
+  privacy-request list; a deactivate-account confirmation step; and a batch
+  of smaller fixes (trade/tip/funding gating, pagination end state, honest
+  no-email copy, agent-scope reset).
+- Demo seed: added a pending submission, an approval-required reservation
+  request, an inbox notification, and a held collectible targeting `mara`
+  so the single-actor demo can exercise the review/approval/collectible
+  journeys.
+
+Deferred follow-up: the Overview/organization pages now show the account's
+allocated total, but the task DETAIL response still does not report a task's
+live allocated amount, so the Refund button can still appear on an unfunded
+declared-reward task (clicking it returns a clear "nothing to refund"
+message). Exposing per-task funding state on the detail response to gate the
+button is a smaller remaining follow-up. See `DO_NEXT.md`.
+
+Blocking issues: none. GitHub Pages `deploy-pages` occasionally fails
+transiently after a merge and clears on retry; it is not caused by
+repository code.

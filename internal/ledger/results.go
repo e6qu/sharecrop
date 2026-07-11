@@ -7,7 +7,7 @@ type FundResult interface {
 }
 
 type TaskFunded struct {
-	Escrow TaskEscrow
+	Fund TaskFund
 }
 
 type FundRejected struct {
@@ -140,7 +140,7 @@ type RefundResult interface {
 }
 
 type TaskRefunded struct {
-	Escrow TaskEscrow
+	Fund TaskFund
 }
 
 type RefundRejected struct {

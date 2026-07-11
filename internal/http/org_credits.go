@@ -3,6 +3,7 @@ package httpserver
 import (
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
@@ -30,7 +31,10 @@ func (server Server) fundTaskFromOrganization(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, escrowToResponse(funded.Escrow))
+	if !server.recordAudit(w, r.Context(), actor.ID, audit.ActionTaskFunded, audit.Subject{Kind: "task", ID: funded.Fund.TaskID.String()}, audit.EmptyMetadata()) {
+		return
+	}
+	writeJSON(w, http.StatusCreated, fundToResponse(funded.Fund))
 }
 
 func (server Server) organizationCreditsBalance(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +50,7 @@ func (server Server) organizationCreditsBalance(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	writeJSON(w, http.StatusOK, balanceResponse{Amount: found.Value.Int64()})
+	writeJSON(w, http.StatusOK, balanceResponse{SpendableCredits: found.Value.Spendable(), AllocatedCredits: found.Value.Allocated()})
 }
 
 func (server Server) organizationCreditsLedger(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +59,11 @@ func (server Server) organizationCreditsLedger(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	result := server.ledgerService.ListOrganizationEntries(r.Context(), organizationID, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.ledgerService.ListOrganizationEntries(r.Context(), organizationID, page)
 	listed, matched := result.(ledger.EntriesListed)
 	if !matched {
 		writeDomainError(w, result.(ledger.ListEntriesRejected).Reason)

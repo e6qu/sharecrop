@@ -24,8 +24,8 @@ func TestSignupGrantPersistsBalance(t *testing.T) {
 
 	store := db.NewLedgerStore(pool)
 	balance := mustBalance(t, store, owner)
-	if balance.Int64() != 100 {
-		t.Fatalf("signup balance = %d, want 100", balance.Int64())
+	if balance.Spendable() != 100 {
+		t.Fatalf("signup balance = %d, want 100", balance.Spendable())
 	}
 
 	listed, matched := store.ListEntries(context.Background(), owner, core.DefaultPage()).(ledger.EntriesListed)
@@ -80,13 +80,22 @@ func TestFundAcceptRefundPersist(t *testing.T) {
 	if _, matched := fundResult.(ledger.TaskFunded); !matched {
 		t.Fatalf("fund result = %T, want TaskFunded", fundResult)
 	}
-	if balance := mustBalance(t, store, owner); balance.Int64() != 60 {
-		t.Fatalf("owner balance after funding = %d, want 60", balance.Int64())
+	// Funding moves 40 from spendable into allocated; the 100-credit total is conserved.
+	if balance := mustBalance(t, store, owner); balance.Spendable() != 60 || balance.Allocated() != 40 || balance.Total() != 100 {
+		t.Fatalf("owner balance after funding = (spendable %d, allocated %d, total %d), want (60, 40, 100)", balance.Spendable(), balance.Allocated(), balance.Total())
 	}
 
-	// Funding the same task twice is rejected (single escrow per task).
+	// Funding the same task twice is rejected (single fund per task).
 	if _, matched := store.FundTask(context.Background(), fundCommand(t, owner, taskID, 10, "fund-again-"+taskID.String())).(ledger.FundRejected); !matched {
 		t.Fatalf("second funding was not rejected")
+	}
+
+	// Allocated credits cannot be spent: with 40 already allocated, funding
+	// another task for more than the remaining 60 spendable is rejected even
+	// though the 100-credit total would cover it.
+	overspendTaskID := insertTask(t, pool, owner, "draft", 80)
+	if _, matched := store.FundTask(context.Background(), fundCommand(t, owner, overspendTaskID, 80, "fund-overspend-"+overspendTaskID.String())).(ledger.FundRejected); !matched {
+		t.Fatalf("funding beyond spendable balance was not rejected")
 	}
 
 	setTaskState(t, pool, taskID, "open")
@@ -100,14 +109,14 @@ func TestFundAcceptRefundPersist(t *testing.T) {
 	if _, paid := accepted.Payout.(ledger.CreditPayout); !paid {
 		t.Fatalf("payout = %T, want CreditPayout", accepted.Payout)
 	}
-	if balance := mustBalance(t, store, worker); balance.Int64() != 140 {
-		t.Fatalf("worker balance after payout = %d, want 140", balance.Int64())
+	if balance := mustBalance(t, store, worker); balance.Spendable() != 140 {
+		t.Fatalf("worker balance after payout = %d, want 140", balance.Spendable())
 	}
 
 	// Idempotent re-accept does not pay twice.
 	store.AcceptSubmission(context.Background(), acceptCommand(t, owner, taskID, submissionID, "accept-"+submissionID.String()))
-	if balance := mustBalance(t, store, worker); balance.Int64() != 140 {
-		t.Fatalf("worker balance after idempotent accept = %d, want 140", balance.Int64())
+	if balance := mustBalance(t, store, worker); balance.Spendable() != 140 {
+		t.Fatalf("worker balance after idempotent accept = %d, want 140", balance.Spendable())
 	}
 
 	// A second funded task refunds back to the owner.
@@ -117,8 +126,8 @@ func TestFundAcceptRefundPersist(t *testing.T) {
 	if _, matched := refundResult.(ledger.TaskRefunded); !matched {
 		t.Fatalf("refund result = %T, want TaskRefunded", refundResult)
 	}
-	if balance := mustBalance(t, store, owner); balance.Int64() != 60 {
-		t.Fatalf("owner balance after refund = %d, want 60", balance.Int64())
+	if balance := mustBalance(t, store, owner); balance.Spendable() != 60 {
+		t.Fatalf("owner balance after refund = %d, want 60", balance.Spendable())
 	}
 }
 
@@ -150,11 +159,11 @@ func TestReviewAcceptCanPayPartialEscrowAndTip(t *testing.T) {
 	if !tipped || tip.Amount.Int64() != 5 {
 		t.Fatalf("tip = %#v, want 5 credit tip", accepted.Tip)
 	}
-	if balance := mustBalance(t, store, owner); balance.Int64() != 70 {
-		t.Fatalf("owner balance = %d, want 70", balance.Int64())
+	if balance := mustBalance(t, store, owner); balance.Spendable() != 70 {
+		t.Fatalf("owner balance = %d, want 70", balance.Spendable())
 	}
-	if balance := mustBalance(t, store, worker); balance.Int64() != 130 {
-		t.Fatalf("worker balance = %d, want 130", balance.Int64())
+	if balance := mustBalance(t, store, worker); balance.Spendable() != 130 {
+		t.Fatalf("worker balance = %d, want 130", balance.Spendable())
 	}
 }
 
@@ -226,11 +235,11 @@ func TestRejectCanPayPartialTipAndBanImplementor(t *testing.T) {
 	if !paid || payout.Amount.Int64() != 10 {
 		t.Fatalf("payout = %#v, want 10 credit payout", rejected.Payout)
 	}
-	if balance := mustBalance(t, store, worker); balance.Int64() != 113 {
-		t.Fatalf("worker balance = %d, want 113", balance.Int64())
+	if balance := mustBalance(t, store, worker); balance.Spendable() != 113 {
+		t.Fatalf("worker balance = %d, want 113", balance.Spendable())
 	}
-	if balance := mustBalance(t, store, owner); balance.Int64() != 57 {
-		t.Fatalf("owner balance = %d, want 57", balance.Int64())
+	if balance := mustBalance(t, store, owner); balance.Spendable() != 57 {
+		t.Fatalf("owner balance = %d, want 57", balance.Spendable())
 	}
 
 	eligibility := db.NewTaskStore(pool).CheckSubmissionEligibility(context.Background(), taskID, worker)
@@ -308,8 +317,8 @@ func TestConcurrentAcceptKeepsSingleAcceptedSubmission(t *testing.T) {
 	}
 
 	// Exactly one worker was paid the 40-credit escrow.
-	balanceA := mustBalance(t, store, workerA).Int64()
-	balanceB := mustBalance(t, store, workerB).Int64()
+	balanceA := mustBalance(t, store, workerA).Spendable()
+	balanceB := mustBalance(t, store, workerB).Spendable()
 	if balanceA+balanceB != 240 {
 		t.Fatalf("worker balances = %d and %d, want one 140 and one 100", balanceA, balanceB)
 	}

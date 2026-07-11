@@ -25,13 +25,13 @@ func TestOrganizationCreditAccountFunding(t *testing.T) {
 	fundResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+taskID+"/funding", []byte(`{"amount":30,"idempotency_key":"org-fund-`+taskID+`","organization_id":"`+organizationID+`"}`), owner.AccessToken)
 	defer fundResponse.Body.Close()
 	assertStatus(t, fundResponse, http.StatusCreated)
-	escrow := decodeEscrowHTTPResponse(t, fundResponse)
-	if escrow.State != "held" {
-		t.Fatalf("escrow state = %q, want held", escrow.State)
+	fund := decodeFundHTTPResponse(t, fundResponse)
+	if fund.CreditAmount != 30 {
+		t.Fatalf("funded credit amount = %d, want 30", fund.CreditAmount)
 	}
 
 	if balance := organizationBalance(t, server, owner.AccessToken, organizationID); balance != 70 {
-		t.Fatalf("organization balance after funding = %d, want 70", balance)
+		t.Fatalf("organization spendable balance after funding = %d, want 70", balance)
 	}
 
 	// Funding an amount that does not match the declared reward is rejected.
@@ -84,5 +84,5 @@ func organizationBalance(t *testing.T, server *httptest.Server, accessToken stri
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode organization balance: %v", err)
 	}
-	return body.Amount
+	return body.SpendableCredits
 }
