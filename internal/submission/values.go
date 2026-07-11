@@ -100,3 +100,11 @@ func (token ReceiptTokenPlain) Hash() ReceiptTokenHash {
 func (hash ReceiptTokenHash) String() string {
 	return hash.value
 }
+
+// ReceiptTokenHashFromString reconstructs a stored hash from its canonical
+// string form without re-hashing, so an adapter that reloads a receipt hash (or
+// the WASI bridge that carries one across a process boundary) restores the exact
+// value that was stored.
+func ReceiptTokenHashFromString(raw string) ReceiptTokenHash {
+	return ReceiptTokenHash{value: raw}
+}

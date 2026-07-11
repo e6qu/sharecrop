@@ -52,6 +52,26 @@ type Store interface {
 	}
 }
 
+func TestGenerateQualifiesSliceElementTypes(t *testing.T) {
+	source, err := Generate(sources(`package submission
+import "context"
+type Store interface {
+	Save(context.Context, core.SubmissionID, core.SubmissionReceiptTokenID, ReceiptTokenHash, SubmitCommand, State, ValidationOutcome, []SensitiveField) CreateSubmissionStoreResult
+}
+`), "submission")
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	// The slice element type must be qualified inside the brackets, so the
+	// generated field carries the registered []sensitiveFieldWire codec.
+	if !strings.Contains(source, "SensitiveFields []sensitiveFieldWire") {
+		t.Errorf("generated source is missing the slice-of-local-type field")
+	}
+	if !strings.Contains(source, "decodeSensitiveFields(decoded.SensitiveFields)") {
+		t.Errorf("generated dispatch does not decode the slice argument")
+	}
+}
+
 func TestGenerateRejectsUnregisteredArgumentType(t *testing.T) {
 	_, err := Generate(sources(`package audit
 import "context"

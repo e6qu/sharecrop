@@ -53,20 +53,29 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-assets` — bridge the `assets` store
-(collectibles: create/list/list-by-owner/fund/refund/gift/award/task-held).
-`internal/wasibridge/assetsbridge` (codecs + generated `bridge_gen.go`) is
-dual-run-verified against real Postgres
-(`tests/integration/assetsbridge_store_test.go`). It drove a **generator
-enhancement**: `ListCollectiblesByOwner(string, string, core.Page)` has two
-same-type arguments, so the generator now suffixes repeated field names
-(`Query`/`Query2`) - backward-compatible (existing bridges unchanged).
-`corewire` gained a `CollectibleID` codec; the collectible comparison helper
-lives in `internal/assets/assetstest`. The generic store guest and `storehost`
-route `assets.*` too. **Six stores bridged: audit, notification, auth, agent,
-orgcred, assets.** **Next**: bridge the big ones (submission, then ledger/task/
-org); then weigh instance pooling and migrate `cmd/sharecrop`. Nothing about
-the native server or browser demo changes.
+Active task: `task/wasi-bridge-submission` — bridge the `submission` store
+(the widest so far: submissions with attachments, validation outcomes, and
+sensitive fields; the receipt-token lookup; per-task and per-submitter lists;
+and the submission comment thread). `internal/wasibridge/submissionbridge`
+(codecs + generated `bridge_gen.go`) is dual-run-verified against real Postgres
+(`tests/integration/submissionbridge_store_test.go`). It drove a second
+**generator enhancement**: `CreateSubmission(..., []SensitiveField)` takes a
+slice of a package-local type, so `qualify` now qualifies the slice *element*
+(`[]submission.SensitiveField`, not the meaningless `submission.[]SensitiveField`)
+- backward-compatible (no existing method has a slice-of-local-type arg).
+`corewire` gained `SubmissionID`/`SubmissionReceiptTokenID`/`SubmissionCommentID`
+codecs; `submission` gained a `ReceiptTokenHashFromString` reconstruction
+constructor (the opaque hash has no other from-string path); the submission and
+comment comparison helpers live in `internal/submission/submissiontest`. The
+generic store guest and `storehost` route `submission.*` too. **Seven stores
+bridged: audit, notification, auth, agent, orgcred, assets, submission.**
+**Next**: bridge the remaining three (ledger - the hardest, nested payout/tip/
+selection unions; task ~20 methods; org ~15); then weigh instance pooling and
+migrate `cmd/sharecrop`. Nothing about the native server or browser demo changes.
+
+Earlier: `task/wasi-bridge-assets` bridged the `assets` store
+(collectibles: create/list/list-by-owner/fund/refund/gift/award/task-held),
+driving the repeated-same-type-argument generator enhancement (`Query`/`Query2`).
 
 Earlier: `task/wasi-bridge-orgcred` bridged the `orgcred` store
 (organization-wide credentials), and extract the agent value-type codecs

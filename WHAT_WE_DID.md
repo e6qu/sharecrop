@@ -1,5 +1,35 @@
 # What We Did
 
+The `task/wasi-bridge-submission` branch bridged the `submission` store - the
+seventh and widest store - and drove a second generator enhancement.
+`submission.Store.CreateSubmission` takes `[]SensitiveField` (a slice of a
+package-local type). The generator's `qualify` only handled bare local names, so
+`[]SensitiveField` would have become the meaningless `submission.[]SensitiveField`;
+it now recurses on the `[]` prefix and qualifies the *element*
+(`[]submission.SensitiveField`). Backward-compatible: no existing store method
+has a slice-of-local-type argument, so every already-generated `bridge_gen.go`
+is unchanged (verified by `check-wasi-bridge`), and a new generator unit test
+covers it. `internal/wasibridge/submissionbridge` has codecs for the whole
+`submission.Submission` (state, response source, attachments as base64,
+validation outcome union, sensitive fields, review note), the `SubmitCommand`,
+the `SubmissionComment`, and six result unions (three of which share
+`submissionResultWire` since they each carry one submission). Opaque value types
+round-trip through their existing reconstruction paths (`ParseState`,
+`NewResponseSource`, `NewStoredReviewNote`, `task.NewCommentBody`,
+`attachment.NewStoredAttachment`); the receipt-token hash - which had no
+from-string path - got a new `submission.ReceiptTokenHashFromString`. `corewire`
+gained `SubmissionID`/`SubmissionReceiptTokenID`/`SubmissionCommentID` codecs;
+the submission/comment comparison helpers live in
+`internal/submission/submissiontest`. The dual-run integration test
+(`tests/integration/submissionbridge_store_test.go`) covers create (with an
+attachment and a sensitive field) / find / find-by-receipt / list-for-task /
+list-for-submitter / the comment thread against real Postgres. The generic store
+guest and `storehost` route `submission.*`. Seven stores bridged (audit,
+notification, auth, agent, orgcred, assets, submission). All gates green.
+Nothing about the native server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-assets` branch bridged the `assets` store (collectibles) -
 the sixth store - and drove a generator enhancement. `assets.Store`'s
 `ListCollectiblesByOwner(context.Context, string, string, core.Page)` has two

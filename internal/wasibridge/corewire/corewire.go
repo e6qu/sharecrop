@@ -122,6 +122,41 @@ func DecodeOrgCredentialID(raw string) (core.OrgCredentialID, error) {
 	return created.Value, nil
 }
 
+// EncodeSubmissionID / DecodeSubmissionID carry a core.SubmissionID.
+func EncodeSubmissionID(id core.SubmissionID) string { return id.String() }
+
+func DecodeSubmissionID(raw string) (core.SubmissionID, error) {
+	created, matched := core.ParseSubmissionID(raw).(core.SubmissionIDCreated)
+	if !matched {
+		return core.SubmissionID{}, fmt.Errorf("invalid submission id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeSubmissionReceiptTokenID / DecodeSubmissionReceiptTokenID carry a
+// core.SubmissionReceiptTokenID.
+func EncodeSubmissionReceiptTokenID(id core.SubmissionReceiptTokenID) string { return id.String() }
+
+func DecodeSubmissionReceiptTokenID(raw string) (core.SubmissionReceiptTokenID, error) {
+	created, matched := core.ParseSubmissionReceiptTokenID(raw).(core.SubmissionReceiptTokenIDCreated)
+	if !matched {
+		return core.SubmissionReceiptTokenID{}, fmt.Errorf("invalid submission receipt token id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeSubmissionCommentID / DecodeSubmissionCommentID carry a
+// core.SubmissionCommentID.
+func EncodeSubmissionCommentID(id core.SubmissionCommentID) string { return id.String() }
+
+func DecodeSubmissionCommentID(raw string) (core.SubmissionCommentID, error) {
+	created, matched := core.ParseSubmissionCommentID(raw).(core.SubmissionCommentIDCreated)
+	if !matched {
+		return core.SubmissionCommentID{}, fmt.Errorf("invalid submission comment id %q", raw)
+	}
+	return created.Value, nil
+}
+
 // EncodeTimePtr / DecodeTimePtr carry a nullable *time.Time as a string that is
 // empty when the pointer is nil.
 func EncodeTimePtr(value *time.Time) string {
