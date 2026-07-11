@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/e6qu/sharecrop/internal/wasibridge/agentbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
@@ -43,6 +44,8 @@ func main() {
 func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 	store, _, _ := strings.Cut(method, ".")
 	switch store {
+	case "assets":
+		return assetsbridge.Dispatch(ctx, assetsbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "audit":
 		return auditbridge.Dispatch(ctx, auditbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "notification":
