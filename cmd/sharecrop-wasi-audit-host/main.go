@@ -8,8 +8,8 @@
 // Usage:
 //
 //	export DATABASE_URL=postgres://...
-//	GOOS=wasip1 GOARCH=wasm go build -o audit-guest.wasm ./cmd/sharecrop-wasi-audit-guest
-//	go run ./cmd/sharecrop-wasi-audit-host -guest audit-guest.wasm -id <audit-event-id>
+//	GOOS=wasip1 GOARCH=wasm go build -o store-guest.wasm ./cmd/sharecrop-wasi-store-guest
+//	go run ./cmd/sharecrop-wasi-audit-host -guest store-guest.wasm -id <audit-event-id>
 package main
 
 import (
@@ -26,7 +26,7 @@ import (
 )
 
 func main() {
-	guestPath := flag.String("guest", "audit-guest.wasm", "path to the compiled wasip1 audit guest module")
+	guestPath := flag.String("guest", "store-guest.wasm", "path to the compiled wasip1 store guest module")
 	rawID := flag.String("id", "", "audit event id to look up through the bridge")
 	flag.Parse()
 

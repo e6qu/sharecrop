@@ -1,14 +1,14 @@
-// Package gen generates the WASI store bridge (the Dispatch host router and the
+// Package gen generates a WASI store bridge (the Dispatch host router and the
 // GuestStore client) from a domain Store interface, so the per-method plumbing
 // can never silently drift from the interface it serves. It introspects the
 // interface's methods via go/ast and emits code that calls the hand-written
-// per-type codecs in the bridge package; a type used by a method but missing
-// from the codec registry is a generation error, not a silent gap.
+// per-type codecs in the bridge package (and the shared codecs in corewire); a
+// type used by a method but missing from the codec registry is a generation
+// error, not a silent gap.
 //
-// This is Phase 3 of the WASI hosting effort and targets exactly one store
-// (internal/audit). The registries below name the codecs the audit types need;
-// broadening to more stores means extending them (and the hand-written codecs)
-// for those stores' types.
+// Each store is described by a storeSpec below. Adding a store means adding a
+// spec (naming its codecs) and the hand-written codecs it references - the
+// generator itself is store-agnostic.
 package gen
 
 import (
@@ -17,12 +17,18 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"sort"
 	"strings"
 )
 
 // argCodec names how one method argument type crosses the bridge: the envelope
-// field it occupies, its wire type, and the encode/decode functions in the
-// bridge package. Decode always returns (T, error) for the audit types.
+// field it occupies, its wire type, and the encode/decode functions (a bare
+// name for a codec local to the bridge package, or a qualified corewire.X for a
+// shared one). Decode returns (T, error).
+//
+// The field name is derived from the type, not the parameter (interface method
+// params are usually unnamed in the AST), so a method with two arguments of the
+// same type is unsupported - none of the bridged stores have one.
 type argCodec struct {
 	field    string
 	goType   string
@@ -40,19 +46,79 @@ type resultCodec struct {
 	rejectedType string
 }
 
-// argCodecs and resultCodecs are the per-type registry for the audit store. A
-// method argument or result type absent here fails generation loudly.
-var argCodecs = map[string]argCodec{
-	"core.AuditEventID": {field: "ID", goType: "core.AuditEventID", wireType: "string", encodeFn: "encodeAuditEventID", decodeFn: "decodeAuditEventID"},
-	"audit.Event":       {field: "Event", goType: "audit.Event", wireType: "eventWire", encodeFn: "encodeEvent", decodeFn: "decodeEvent"},
-	"audit.ListFilters": {field: "Filters", goType: "audit.ListFilters", wireType: "listFiltersWire", encodeFn: "encodeListFilters", decodeFn: "decodeListFilters"},
-	"core.Page":         {field: "Page", goType: "core.Page", wireType: "pageWire", encodeFn: "encodePage", decodeFn: "decodePage"},
+// storeSpec describes one bridge to generate.
+type storeSpec struct {
+	bridgePackage string
+	domainImport  string
+	domainPackage string
+	interfaceName string
+	wirePrefix    string
+	argCodecs     map[string]argCodec
+	resultCodecs  map[string]resultCodec
 }
 
-var resultCodecs = map[string]resultCodec{
-	"audit.RecordResult": {goType: "audit.RecordResult", wireType: "recordResultWire", encodeFn: "encodeRecordResult", decodeFn: "decodeRecordResult", rejectedType: "audit.RecordRejected"},
-	"audit.GetResult":    {goType: "audit.GetResult", wireType: "getResultWire", encodeFn: "encodeGetResult", decodeFn: "decodeGetResult", rejectedType: "audit.GetRejected"},
-	"audit.ListResult":   {goType: "audit.ListResult", wireType: "listResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "audit.ListRejected"},
+// Target names a store to (re)generate: where its interface source lives and
+// where the generated bridge is written. Exported so the generate command can
+// iterate every store without knowing the registry.
+type Target struct {
+	Key        string
+	SourceDir  string
+	OutputPath string
+}
+
+// Targets is the full set of stores the bridge codegen covers.
+func Targets() []Target {
+	return []Target{
+		{Key: "audit", SourceDir: "internal/audit", OutputPath: "internal/wasibridge/auditbridge/bridge_gen.go"},
+		{Key: "notification", SourceDir: "internal/notification", OutputPath: "internal/wasibridge/notificationbridge/bridge_gen.go"},
+	}
+}
+
+func userIDArg() argCodec {
+	return argCodec{field: "UserID", goType: "core.UserID", wireType: "string", encodeFn: "corewire.EncodeUserID", decodeFn: "corewire.DecodeUserID"}
+}
+
+func pageArg() argCodec {
+	return argCodec{field: "Page", goType: "core.Page", wireType: "corewire.PageWire", encodeFn: "corewire.EncodePage", decodeFn: "corewire.DecodePage"}
+}
+
+var specs = map[string]storeSpec{
+	"audit": {
+		bridgePackage: "auditbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/audit",
+		domainPackage: "audit",
+		interfaceName: "Store",
+		wirePrefix:    "audit",
+		argCodecs: map[string]argCodec{
+			"core.AuditEventID": {field: "ID", goType: "core.AuditEventID", wireType: "string", encodeFn: "corewire.EncodeAuditEventID", decodeFn: "corewire.DecodeAuditEventID"},
+			"audit.Event":       {field: "Event", goType: "audit.Event", wireType: "eventWire", encodeFn: "encodeEvent", decodeFn: "decodeEvent"},
+			"audit.ListFilters": {field: "Filters", goType: "audit.ListFilters", wireType: "listFiltersWire", encodeFn: "encodeListFilters", decodeFn: "decodeListFilters"},
+			"core.Page":         pageArg(),
+		},
+		resultCodecs: map[string]resultCodec{
+			"audit.RecordResult": {goType: "audit.RecordResult", wireType: "recordResultWire", encodeFn: "encodeRecordResult", decodeFn: "decodeRecordResult", rejectedType: "audit.RecordRejected"},
+			"audit.GetResult":    {goType: "audit.GetResult", wireType: "getResultWire", encodeFn: "encodeGetResult", decodeFn: "decodeGetResult", rejectedType: "audit.GetRejected"},
+			"audit.ListResult":   {goType: "audit.ListResult", wireType: "listResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "audit.ListRejected"},
+		},
+	},
+	"notification": {
+		bridgePackage: "notificationbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/notification",
+		domainPackage: "notification",
+		interfaceName: "Store",
+		wirePrefix:    "notification",
+		argCodecs: map[string]argCodec{
+			"notification.Notification": {field: "Notification", goType: "notification.Notification", wireType: "notificationWire", encodeFn: "encodeNotification", decodeFn: "decodeNotification"},
+			"core.UserID":               userIDArg(),
+			"core.Page":                 pageArg(),
+			"core.NotificationID":       {field: "ID", goType: "core.NotificationID", wireType: "string", encodeFn: "corewire.EncodeNotificationID", decodeFn: "corewire.DecodeNotificationID"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"notification.CreateStoreResult":   {goType: "notification.CreateStoreResult", wireType: "createResultWire", encodeFn: "encodeCreateResult", decodeFn: "decodeCreateResult", rejectedType: "notification.CreateStoreRejected"},
+			"notification.ListStoreResult":     {goType: "notification.ListStoreResult", wireType: "listResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "notification.ListStoreRejected"},
+			"notification.MarkReadStoreResult": {goType: "notification.MarkReadStoreResult", wireType: "markReadResultWire", encodeFn: "encodeMarkReadResult", decodeFn: "decodeMarkReadResult", rejectedType: "notification.MarkReadStoreRejected"},
+		},
+	},
 }
 
 type method struct {
@@ -61,24 +127,27 @@ type method struct {
 	result resultCodec
 }
 
-// Generate parses the given package sources (path -> content), extracts the
-// named interface's methods, and returns the formatted bridge source. It fails
-// if the interface is not found or a method uses an unregistered type.
-func Generate(sources map[string][]byte, interfaceName string) (string, error) {
-	methods, err := extractMethods(sources, interfaceName)
+// Generate parses the given package sources (path -> content) for the store
+// named by key, extracts its Store interface, and returns the formatted bridge
+// source. It fails if the key is unknown, the interface is not found, or a
+// method uses an unregistered type.
+func Generate(sources map[string][]byte, key string) (string, error) {
+	spec, known := specs[key]
+	if !known {
+		return "", fmt.Errorf("no bridge spec for store %q", key)
+	}
+	methods, err := extractMethods(sources, spec)
 	if err != nil {
 		return "", err
 	}
-	return emit(methods)
+	return emit(spec, methods)
 }
 
-func extractMethods(sources map[string][]byte, interfaceName string) ([]method, error) {
+func extractMethods(sources map[string][]byte, spec storeSpec) ([]method, error) {
 	fset := token.NewFileSet()
 
 	var iface *ast.InterfaceType
 	var packageName string
-	// Sort paths for deterministic parsing order; the interface lives in one
-	// file, but keep the walk stable regardless.
 	for _, path := range sortedKeys(sources) {
 		file, err := parser.ParseFile(fset, path, sources[path], 0)
 		if err != nil {
@@ -86,18 +155,18 @@ func extractMethods(sources map[string][]byte, interfaceName string) ([]method, 
 		}
 		packageName = file.Name.Name
 		ast.Inspect(file, func(node ast.Node) bool {
-			spec, matched := node.(*ast.TypeSpec)
-			if !matched || spec.Name.Name != interfaceName {
+			typeSpec, matched := node.(*ast.TypeSpec)
+			if !matched || typeSpec.Name.Name != spec.interfaceName {
 				return true
 			}
-			if typed, isInterface := spec.Type.(*ast.InterfaceType); isInterface {
+			if typed, isInterface := typeSpec.Type.(*ast.InterfaceType); isInterface {
 				iface = typed
 			}
 			return true
 		})
 	}
 	if iface == nil {
-		return nil, fmt.Errorf("interface %q not found", interfaceName)
+		return nil, fmt.Errorf("interface %q not found", spec.interfaceName)
 	}
 
 	// Types local to the interface's own package appear unqualified in the AST
@@ -126,7 +195,7 @@ func extractMethods(sources map[string][]byte, interfaceName string) ([]method, 
 			if paramType == "context.Context" {
 				continue
 			}
-			codec, known := argCodecs[paramType]
+			codec, known := spec.argCodecs[paramType]
 			if !known {
 				return nil, fmt.Errorf("method %s: no codec registered for argument type %q", name, paramType)
 			}
@@ -137,7 +206,7 @@ func extractMethods(sources map[string][]byte, interfaceName string) ([]method, 
 			return nil, fmt.Errorf("method %s: expected exactly one result", name)
 		}
 		resultType := qualify(typeString(funcType.Results.List[0].Type))
-		result, known := resultCodecs[resultType]
+		result, known := spec.resultCodecs[resultType]
 		if !known {
 			return nil, fmt.Errorf("method %s: no codec registered for result type %q", name, resultType)
 		}
@@ -163,38 +232,40 @@ func typeString(expr ast.Expr) string {
 	}
 }
 
-func constName(method string) string { return "method" + method }
+func constName(methodName string) string { return "method" + methodName }
 
-func argsType(method string) string {
-	return strings.ToLower(method[:1]) + method[1:] + "Args"
+func argsType(methodName string) string {
+	return strings.ToLower(methodName[:1]) + methodName[1:] + "Args"
 }
 
 func paramName(field string) string { return "arg" + field }
 
-func emit(methods []method) (string, error) {
-	var b strings.Builder
-	b.WriteString(`// Code generated by "sharecrop generate wasi-bridge"; DO NOT EDIT.
-
-package auditbridge
-
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-
-	"github.com/e6qu/sharecrop/internal/audit"
-	"github.com/e6qu/sharecrop/internal/core"
-)
-
-// Method names namespace each audit.Store method on the wire.
-const (
-`)
+func emit(spec storeSpec, methods []method) (string, error) {
+	usesCorewire := false
 	for _, m := range methods {
-		fmt.Fprintf(&b, "\t%s = %q\n", constName(m.name), "audit."+m.name)
+		for _, arg := range m.args {
+			if strings.Contains(arg.encodeFn, "corewire.") || strings.Contains(arg.wireType, "corewire.") {
+				usesCorewire = true
+			}
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "// Code generated by \"sharecrop generate wasi-bridge\"; DO NOT EDIT.\n\npackage %s\n\n", spec.bridgePackage)
+	b.WriteString("import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"fmt\"\n\n")
+	fmt.Fprintf(&b, "\t%q\n", spec.domainImport)
+	b.WriteString("\t\"github.com/e6qu/sharecrop/internal/core\"\n")
+	if usesCorewire {
+		b.WriteString("\t\"github.com/e6qu/sharecrop/internal/wasibridge/corewire\"\n")
 	}
 	b.WriteString(")\n\n")
 
-	// Argument envelopes.
+	fmt.Fprintf(&b, "// Method names namespace each %s.%s method on the wire.\nconst (\n", spec.domainPackage, spec.interfaceName)
+	for _, m := range methods {
+		fmt.Fprintf(&b, "\t%s = %q\n", constName(m.name), spec.wirePrefix+"."+m.name)
+	}
+	b.WriteString(")\n\n")
+
 	for _, m := range methods {
 		fmt.Fprintf(&b, "type %s struct {\n", argsType(m.name))
 		for _, arg := range m.args {
@@ -203,8 +274,8 @@ const (
 		b.WriteString("}\n\n")
 	}
 
-	emitDispatch(&b, methods)
-	emitGuestStore(&b, methods)
+	emitDispatch(&b, spec, methods)
+	emitGuestStore(&b, spec, methods)
 
 	formatted, err := format.Source([]byte(b.String()))
 	if err != nil {
@@ -213,18 +284,17 @@ const (
 	return string(formatted), nil
 }
 
-func emitDispatch(b *strings.Builder, methods []method) {
-	b.WriteString(`// Dispatch services one store call against store: decode the arguments, call the
-// real method, encode the result. Every branch is exactly that - no business
-// logic lives here.
-func Dispatch(ctx context.Context, store audit.Store, method string, args []byte) ([]byte, error) {
-	switch method {
-`)
+func emitDispatch(b *strings.Builder, spec storeSpec, methods []method) {
+	fmt.Fprintf(b, "// Dispatch services one store call against store: decode the arguments, call the\n"+
+		"// real method, encode the result. Every branch is exactly that - no business\n"+
+		"// logic lives here.\n"+
+		"func Dispatch(ctx context.Context, store %s.%s, method string, args []byte) ([]byte, error) {\n"+
+		"\tswitch method {\n", spec.domainPackage, spec.interfaceName)
 	for _, m := range methods {
 		fmt.Fprintf(b, "\tcase %s:\n", constName(m.name))
 		fmt.Fprintf(b, "\t\tvar decoded %s\n", argsType(m.name))
 		b.WriteString("\t\tif err := json.Unmarshal(args, &decoded); err != nil {\n")
-		fmt.Fprintf(b, "\t\t\treturn nil, fmt.Errorf(%q, err)\n", "audit bridge: decode "+m.name+" args: %w")
+		fmt.Fprintf(b, "\t\t\treturn nil, fmt.Errorf(%q, err)\n", spec.wirePrefix+" bridge: decode "+m.name+" args: %w")
 		b.WriteString("\t\t}\n")
 		callArgs := []string{"ctx"}
 		for _, arg := range m.args {
@@ -234,32 +304,21 @@ func Dispatch(ctx context.Context, store audit.Store, method string, args []byte
 		}
 		fmt.Fprintf(b, "\t\treturn json.Marshal(%s(store.%s(%s)))\n", m.result.encodeFn, m.name, strings.Join(callArgs, ", "))
 	}
-	b.WriteString(`	default:
-		return nil, fmt.Errorf("audit bridge: unknown method %q", method)
-	}
+	fmt.Fprintf(b, "\tdefault:\n\t\treturn nil, fmt.Errorf(%q, method)\n\t}\n}\n\n", spec.wirePrefix+" bridge: unknown method %q")
 }
 
-`)
-}
+func emitGuestStore(b *strings.Builder, spec storeSpec, methods []method) {
+	fmt.Fprintf(b, "// Invoker sends a store call to the host and returns the serialized result. The\n"+
+		"// guest supplies rpc.Invoke; a test can supply an in-process stand-in.\n"+
+		"type Invoker func(method string, args []byte) ([]byte, error)\n\n"+
+		"// GuestStore implements %s.%s by forwarding each call over an Invoker to\n"+
+		"// the host, which services it against the real store. Context is not carried\n"+
+		"// across the bridge; the host uses its own context for the real call.\n"+
+		"type GuestStore struct {\n\tinvoke Invoker\n}\n\n"+
+		"// NewGuestStore builds a GuestStore over the given invoker.\n"+
+		"func NewGuestStore(invoke Invoker) GuestStore {\n\treturn GuestStore{invoke: invoke}\n}\n\n",
+		spec.domainPackage, spec.interfaceName)
 
-func emitGuestStore(b *strings.Builder, methods []method) {
-	b.WriteString(`// Invoker sends a store call to the host and returns the serialized result. The
-// guest supplies rpc.Invoke; a test can supply an in-process stand-in.
-type Invoker func(method string, args []byte) ([]byte, error)
-
-// GuestStore implements audit.Store by forwarding each call over an Invoker to
-// the host, which services it against the real store. Context is not carried
-// across the bridge; the host uses its own context for the real call.
-type GuestStore struct {
-	invoke Invoker
-}
-
-// NewGuestStore builds a GuestStore over the given invoker.
-func NewGuestStore(invoke Invoker) GuestStore {
-	return GuestStore{invoke: invoke}
-}
-
-`)
 	for _, m := range methods {
 		params := make([]string, 0, len(m.args))
 		fields := make([]string, 0, len(m.args))
@@ -285,16 +344,15 @@ func NewGuestStore(invoke Invoker) GuestStore {
 		b.WriteString("\treturn result\n}\n\n")
 	}
 
-	b.WriteString(`// guestError wraps a transport/serialization failure as a domain rejection so a
-// guest-side call always returns a well-formed result.
-func guestError(err error) core.DomainError {
-	return core.NewDomainError(core.ErrorCodeInvalidState, "audit bridge: "+err.Error())
-}
+	fmt.Fprintf(b, "// guestError wraps a transport/serialization failure as a domain rejection so a\n"+
+		"// guest-side call always returns a well-formed result.\n"+
+		"func guestError(err error) core.DomainError {\n"+
+		"\treturn core.NewDomainError(core.ErrorCodeInvalidState, %q+err.Error())\n}\n\n",
+		spec.wirePrefix+" bridge: ")
 
-// GuestStore must satisfy the real Store interface - if a method is added to
-// audit.Store and the bridge is not regenerated, this fails to compile.
-var _ audit.Store = GuestStore{}
-`)
+	fmt.Fprintf(b, "// GuestStore must satisfy the real Store interface - if a method is added to\n"+
+		"// %s.%s and the bridge is not regenerated, this fails to compile.\n"+
+		"var _ %s.%s = GuestStore{}\n", spec.domainPackage, spec.interfaceName, spec.domainPackage, spec.interfaceName)
 }
 
 func sortedKeys(m map[string][]byte) []string {
@@ -302,11 +360,6 @@ func sortedKeys(m map[string][]byte) []string {
 	for key := range m {
 		keys = append(keys, key)
 	}
-	// insertion sort keeps this dependency-free and deterministic
-	for i := 1; i < len(keys); i++ {
-		for j := i; j > 0 && keys[j-1] > keys[j]; j-- {
-			keys[j-1], keys[j] = keys[j], keys[j-1]
-		}
-	}
+	sort.Strings(keys)
 	return keys
 }

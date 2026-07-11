@@ -1,5 +1,28 @@
 # What We Did
 
+The `task/wasi-bridge-multistore` branch started the post-spike implementation
+effort: generalize the bridge codegen beyond one hard-coded store and prove it
+scales. `internal/wasibridge/gen` is now store-agnostic — each store is a
+`storeSpec` naming its codecs, and `go run ./cmd/sharecrop generate wasi-bridge`
+regenerates every store in `gen.Targets()`. Shared core-type codecs (typed ids,
+page, time) moved to a new `internal/wasibridge/corewire` package so the
+per-store bridges don't duplicate them (the audit bridge was refactored onto it
+and regenerated with no behavior change). `internal/notification.Store` is
+bridged as the second store (`internal/wasibridge/notificationbridge`):
+hand-written round-trip-tested codecs for `Notification` and its three result
+unions, plus a generated `bridge_gen.go`, dual-run-verified against real
+Postgres (`tests/integration/notificationbridge_store_test.go` — create/list/
+mark-read through both the direct-db path and the compiled guest, incl. the
+not-found rejection and the write path). One generic guest
+(`cmd/sharecrop-wasi-store-guest`) now routes every bridged store by method
+prefix, replacing the audit-specific guest. Shared test-comparison helpers moved
+to `internal/audit/audittest` and `internal/notification/notificationtest` to
+avoid duplication. `check-wasi-bridge` regenerates and diffs both bridges. All
+gates green (policy, dead-code, copy-paste, vet). Remaining stores follow the
+same recipe. Nothing about the native server or browser demo changed.
+
+---
+
 The `task/wasi-spike-phase4` branch executed Phase 4 — the final phase of the
 WASI production hosting spike: one real HTTP request end to end through the
 guest. `cmd/sharecrop-wasi-http-host` runs a real `net/http.Server` whose

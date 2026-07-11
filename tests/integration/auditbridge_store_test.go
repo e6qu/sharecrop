@@ -27,7 +27,7 @@ func TestAuditBridgeDualRun(t *testing.T) {
 	pool := newPool(t)
 	dbStore := db.NewAuditStore(pool)
 
-	guestWASM, err := compileWASIGuest(t, "github.com/e6qu/sharecrop/cmd/sharecrop-wasi-audit-guest")
+	guestWASM, err := compileWASIGuest(t, "github.com/e6qu/sharecrop/cmd/sharecrop-wasi-store-guest")
 	if err != nil {
 		t.Fatalf("compile audit guest: %v", err)
 	}

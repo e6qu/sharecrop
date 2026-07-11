@@ -159,31 +159,7 @@ func TestListFiltersRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPageRoundTrip(t *testing.T) {
-	accepted, matched := core.NewPage(20, 40).(core.PageAccepted)
-	if !matched {
-		t.Fatalf("page rejected")
-	}
-	restored, err := decodePage(encodePage(accepted.Value))
-	if err != nil {
-		t.Fatalf("decode page: %v", err)
-	}
-	if restored.Limit() != accepted.Value.Limit() || restored.Offset() != accepted.Value.Offset() {
-		t.Errorf("page: got limit=%d offset=%d, want limit=%d offset=%d",
-			restored.Limit(), restored.Offset(), accepted.Value.Limit(), accepted.Value.Offset())
-	}
-}
-
-func TestDecodeErrors(t *testing.T) {
-	if _, err := decodeAuditEventID("not-an-id"); err == nil {
-		t.Errorf("decodeAuditEventID accepted a bad id")
-	}
-	if _, err := decodeUserID("not-an-id"); err == nil {
-		t.Errorf("decodeUserID accepted a bad id")
-	}
-	if _, err := decodeTime("not-a-time"); err == nil {
-		t.Errorf("decodeTime accepted a bad timestamp")
-	}
+func TestDecodeFilterError(t *testing.T) {
 	if _, err := decodeActionFilter(actionFilterWire{Variant: "bogus"}); err == nil {
 		t.Errorf("decodeActionFilter accepted a bad variant")
 	}

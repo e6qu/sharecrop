@@ -1,0 +1,50 @@
+// Command sharecrop-wasi-store-guest is the WASM guest for the store bridges.
+// Built with GOOS=wasip1 GOARCH=wasm, it receives one store call (method, JSON
+// args) from the host, routes it by method prefix to the matching generated
+// bridge - whose GuestStore RPCs back to the host, which services the call
+// against real Postgres - and reports the serialized result.
+//
+// One guest serves every bridged store; the host picks the store by the method
+// name it sends (e.g. "audit.Get", "notification.List").
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
+)
+
+func main() {
+	method, args, err := rpc.UnitOfWork()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	result, err := dispatch(context.Background(), method, args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := rpc.ReportResult(result); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
+	store, _, _ := strings.Cut(method, ".")
+	switch store {
+	case "audit":
+		return auditbridge.Dispatch(ctx, auditbridge.NewGuestStore(rpc.Invoke), method, args)
+	case "notification":
+		return notificationbridge.Dispatch(ctx, notificationbridge.NewGuestStore(rpc.Invoke), method, args)
+	default:
+		return nil, fmt.Errorf("no bridge for method %q", method)
+	}
+}

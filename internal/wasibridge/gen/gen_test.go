@@ -16,7 +16,7 @@ type Store interface {
 	Get(context.Context, core.AuditEventID) GetResult
 	List(context.Context, ListFilters, core.Page) ListResult
 }
-`), "Store")
+`), "audit")
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -41,7 +41,7 @@ import "context"
 type Store interface {
 	Weird(context.Context, MysteryValue) GetResult
 }
-`), "Store")
+`), "audit")
 	if err == nil {
 		t.Fatalf("expected an error for an unregistered argument type")
 	}
@@ -56,7 +56,7 @@ import "context"
 type Store interface {
 	Get(context.Context, core.AuditEventID) MysteryResult
 }
-`), "Store")
+`), "audit")
 	if err == nil {
 		t.Fatalf("expected an error for an unregistered result type")
 	}
@@ -68,7 +68,7 @@ type Store interface {
 func TestGenerateRequiresTheInterface(t *testing.T) {
 	_, err := Generate(sources(`package audit
 type NotStore struct{}
-`), "Store")
+`), "audit")
 	if err == nil || !strings.Contains(err.Error(), `interface "Store" not found`) {
 		t.Fatalf("expected a not-found error, got: %v", err)
 	}

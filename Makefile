@@ -26,7 +26,7 @@ wasi-bridge:
 
 check-wasi-bridge:
 	go run ./cmd/sharecrop generate wasi-bridge
-	git diff --exit-code -- internal/wasibridge/auditbridge/bridge_gen.go
+	git diff --exit-code -- 'internal/wasibridge/*bridge/bridge_gen.go'
 
 check-format:
 	test -z "$$(gofmt -l cmd internal tests web | grep -E '\\.go$$')"
