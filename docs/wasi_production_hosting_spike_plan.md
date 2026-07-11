@@ -447,12 +447,18 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   `go run ./cmd/sharecrop generate wasi-bridge` regenerates every store in
   `gen.Targets()`. Shared core-type codecs (typed ids, page, time) moved to
   `internal/wasibridge/corewire` so bridges don't duplicate them.
-  **`internal/notification.Store` is bridged** as the second store
-  (`internal/wasibridge/notificationbridge`), dual-run-verified against real
-  Postgres (`tests/integration/notificationbridge_store_test.go`). One generic
+  **`audit`, `notification`, and `auth` are bridged** (each in its own
+  `*bridge` package), dual-run-verified against real Postgres. One generic
   guest (`cmd/sharecrop-wasi-store-guest`) routes every store by method prefix.
-  Remaining stores (auth, ledger, task, org, submission, assets, orgcred) are
-  the same pattern: add a spec + hand-written codecs + a dual-run test.
+  `auth` (the largest - 13 methods, 10 result unions) exercised the pattern's
+  edges: its opaque hash/token types round-trip through reconstruction
+  constructors added to `internal/auth`
+  (`RefreshTokenHashFromString`/`AccountTokenHashFromString`/
+  `AccountTokenKindFromString`, mirroring the existing `ParsePasswordHash`),
+  and shared core codecs grew to cover more id types plus plain strings and
+  timestamps as method arguments (`corewire`). Remaining stores (ledger, task,
+  org, submission, assets, orgcred) are the same pattern: add a spec +
+  hand-written codecs + a dual-run test.
 - **A real authenticated, store-touching route runs end to end through the
   guest** — the Phase 3 + Phase 4 pieces, combined. `GET /api/notifications`
   is served entirely by the wasip1 guest (`cmd/sharecrop-wasi-app-guest`,

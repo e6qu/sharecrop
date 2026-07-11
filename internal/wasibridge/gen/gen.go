@@ -71,6 +71,7 @@ func Targets() []Target {
 	return []Target{
 		{Key: "audit", SourceDir: "internal/audit", OutputPath: "internal/wasibridge/auditbridge/bridge_gen.go"},
 		{Key: "notification", SourceDir: "internal/notification", OutputPath: "internal/wasibridge/notificationbridge/bridge_gen.go"},
+		{Key: "auth", SourceDir: "internal/auth", OutputPath: "internal/wasibridge/authbridge/bridge_gen.go"},
 	}
 }
 
@@ -117,6 +118,39 @@ var specs = map[string]storeSpec{
 			"notification.CreateStoreResult":   {goType: "notification.CreateStoreResult", wireType: "createResultWire", encodeFn: "encodeCreateResult", decodeFn: "decodeCreateResult", rejectedType: "notification.CreateStoreRejected"},
 			"notification.ListStoreResult":     {goType: "notification.ListStoreResult", wireType: "listResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "notification.ListStoreRejected"},
 			"notification.MarkReadStoreResult": {goType: "notification.MarkReadStoreResult", wireType: "markReadResultWire", encodeFn: "encodeMarkReadResult", decodeFn: "decodeMarkReadResult", rejectedType: "notification.MarkReadStoreRejected"},
+		},
+	},
+	"auth": {
+		bridgePackage: "authbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/auth",
+		domainPackage: "auth",
+		interfaceName: "Store",
+		wirePrefix:    "auth",
+		argCodecs: map[string]argCodec{
+			"core.UserID":             userIDArg(),
+			"core.Page":               pageArg(),
+			"core.GuestID":            {field: "GuestID", goType: "core.GuestID", wireType: "string", encodeFn: "corewire.EncodeGuestID", decodeFn: "corewire.DecodeGuestID"},
+			"string":                  {field: "Query", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
+			"time.Time":               {field: "Now", goType: "time.Time", wireType: "string", encodeFn: "corewire.EncodeTime", decodeFn: "corewire.DecodeTime"},
+			"auth.EmailAddress":       {field: "Email", goType: "auth.EmailAddress", wireType: "string", encodeFn: "encodeEmail", decodeFn: "decodeEmail"},
+			"auth.PasswordHash":       {field: "PasswordHash", goType: "auth.PasswordHash", wireType: "string", encodeFn: "encodePasswordHash", decodeFn: "decodePasswordHash"},
+			"auth.RefreshTokenRecord": {field: "Record", goType: "auth.RefreshTokenRecord", wireType: "refreshTokenRecordWire", encodeFn: "encodeRefreshTokenRecord", decodeFn: "decodeRefreshTokenRecord"},
+			"auth.RefreshTokenHash":   {field: "Hash", goType: "auth.RefreshTokenHash", wireType: "string", encodeFn: "encodeRefreshTokenHash", decodeFn: "decodeRefreshTokenHash"},
+			"auth.AccountTokenKind":   {field: "Kind", goType: "auth.AccountTokenKind", wireType: "string", encodeFn: "encodeAccountTokenKind", decodeFn: "decodeAccountTokenKind"},
+			"auth.AccountToken":       {field: "Token", goType: "auth.AccountToken", wireType: "accountTokenWire", encodeFn: "encodeAccountToken", decodeFn: "decodeAccountToken"},
+			"auth.AccountTokenHash":   {field: "Hash", goType: "auth.AccountTokenHash", wireType: "string", encodeFn: "encodeAccountTokenHash", decodeFn: "decodeAccountTokenHash"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"auth.StoreUserResult":           {goType: "auth.StoreUserResult", wireType: "acceptedRejectedWire", encodeFn: "encodeStoreUserResult", decodeFn: "decodeStoreUserResult", rejectedType: "auth.StoreUserRejected"},
+			"auth.CredentialLookupResult":    {goType: "auth.CredentialLookupResult", wireType: "credentialLookupResultWire", encodeFn: "encodeCredentialLookupResult", decodeFn: "decodeCredentialLookupResult", rejectedType: "auth.CredentialLookupRejected"},
+			"auth.UserDirectoryResult":       {goType: "auth.UserDirectoryResult", wireType: "userDirectoryResultWire", encodeFn: "encodeUserDirectoryResult", decodeFn: "decodeUserDirectoryResult", rejectedType: "auth.UserDirectoryRejected"},
+			"auth.AccountMutationResult":     {goType: "auth.AccountMutationResult", wireType: "acceptedRejectedWire", encodeFn: "encodeAccountMutationResult", decodeFn: "decodeAccountMutationResult", rejectedType: "auth.AccountMutationRejected"},
+			"auth.StoreGuestResult":          {goType: "auth.StoreGuestResult", wireType: "acceptedRejectedWire", encodeFn: "encodeStoreGuestResult", decodeFn: "decodeStoreGuestResult", rejectedType: "auth.StoreGuestRejected"},
+			"auth.StoreRefreshTokenResult":   {goType: "auth.StoreRefreshTokenResult", wireType: "acceptedRejectedWire", encodeFn: "encodeStoreRefreshTokenResult", decodeFn: "decodeStoreRefreshTokenResult", rejectedType: "auth.StoreRefreshTokenRejected"},
+			"auth.ConsumeRefreshTokenResult": {goType: "auth.ConsumeRefreshTokenResult", wireType: "consumeRefreshTokenResultWire", encodeFn: "encodeConsumeRefreshTokenResult", decodeFn: "decodeConsumeRefreshTokenResult", rejectedType: "auth.ConsumeRefreshTokenRejected"},
+			"auth.RevokeRefreshFamilyResult": {goType: "auth.RevokeRefreshFamilyResult", wireType: "acceptedRejectedWire", encodeFn: "encodeRevokeRefreshFamilyResult", decodeFn: "decodeRevokeRefreshFamilyResult", rejectedType: "auth.RevokeRefreshFamilyRejected"},
+			"auth.AccountTokenStoreResult":   {goType: "auth.AccountTokenStoreResult", wireType: "acceptedRejectedWire", encodeFn: "encodeAccountTokenStoreResult", decodeFn: "decodeAccountTokenStoreResult", rejectedType: "auth.AccountTokenStoreRejected"},
+			"auth.AccountTokenConsumeResult": {goType: "auth.AccountTokenConsumeResult", wireType: "accountTokenConsumeResultWire", encodeFn: "encodeAccountTokenConsumeResult", decodeFn: "decodeAccountTokenConsumeResult", rejectedType: "auth.AccountTokenConsumeRejected"},
 		},
 	},
 }
@@ -171,8 +205,9 @@ func extractMethods(sources map[string][]byte, spec storeSpec) ([]method, error)
 
 	// Types local to the interface's own package appear unqualified in the AST
 	// (e.g. "Event", not "audit.Event"); qualify them so registry lookups match.
+	// Builtins (string, int, ...) are left alone - they are not package types.
 	qualify := func(typeName string) string {
-		if strings.Contains(typeName, ".") {
+		if strings.Contains(typeName, ".") || isBuiltinType(typeName) {
 			return typeName
 		}
 		return packageName + "." + typeName
@@ -232,6 +267,20 @@ func typeString(expr ast.Expr) string {
 	}
 }
 
+// isBuiltinType reports whether a bare type name is a Go builtin (so it must not
+// be qualified with the interface's package).
+func isBuiltinType(name string) bool {
+	switch name {
+	case "string", "bool", "byte", "rune", "error",
+		"int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"float32", "float64", "complex64", "complex128":
+		return true
+	default:
+		return false
+	}
+}
+
 func constName(methodName string) string { return "method" + methodName }
 
 func argsType(methodName string) string {
@@ -242,17 +291,25 @@ func paramName(field string) string { return "arg" + field }
 
 func emit(spec storeSpec, methods []method) (string, error) {
 	usesCorewire := false
+	usesTime := false
 	for _, m := range methods {
 		for _, arg := range m.args {
 			if strings.Contains(arg.encodeFn, "corewire.") || strings.Contains(arg.wireType, "corewire.") {
 				usesCorewire = true
+			}
+			if arg.goType == "time.Time" {
+				usesTime = true
 			}
 		}
 	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "// Code generated by \"sharecrop generate wasi-bridge\"; DO NOT EDIT.\n\npackage %s\n\n", spec.bridgePackage)
-	b.WriteString("import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"fmt\"\n\n")
+	b.WriteString("import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"fmt\"\n")
+	if usesTime {
+		b.WriteString("\t\"time\"\n")
+	}
+	b.WriteString("\n")
 	fmt.Fprintf(&b, "\t%q\n", spec.domainImport)
 	b.WriteString("\t\"github.com/e6qu/sharecrop/internal/core\"\n")
 	if usesCorewire {

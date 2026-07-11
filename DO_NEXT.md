@@ -34,12 +34,16 @@ Current priority from
      via `cmd/sharecrop-wasi-app-{guest,host}` + `internal/wasibridge/appmux`,
      with stateless in-guest token verification and the notification read
      bridged to real Postgres, byte-identical to the native mux
-     (`tests/integration/approute_test.go`). **Next**: bridge more stores
-     (`auth` first — needed by most routes; then `ledger`, `task`, `org`,
-     `submission`, `assets`, `orgcred`) and wire each into `appmux` to cover
-     more routes. Then weigh the ~2-3ms instance-per-request floor against
-     instance pooling, migrate `cmd/sharecrop` onto the hosted guest, and
-     retire `internal/wasmdemo` once the browser demo can run the same artifact.
+     (`tests/integration/approute_test.go`). Three stores are now bridged:
+     **audit, notification, auth** (auth = the largest, dual-run-verified
+     across all 13 methods; its opaque hash types round-trip via new
+     `*FromString` reconstruction constructors in `internal/auth`). **Next**:
+     wire the auth service into `appmux` and prove an auth/account route end to
+     end; bridge the remaining stores (`ledger`, `task`, `org`, `submission`,
+     `assets`, `orgcred`); then weigh the ~2-3ms instance-per-request floor
+     against instance pooling, migrate `cmd/sharecrop` onto the hosted guest,
+     and retire `internal/wasmdemo` once the browser demo can run the same
+     artifact.
    - (b) Moving MCP/SSE to HTTP/2 by default (HTTP/3-ready) to support about
      100 concurrent streaming sessions, keeping HTTP/1.1 as an explicit,
      supported option for regular UI/API traffic.

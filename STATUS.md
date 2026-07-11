@@ -53,22 +53,21 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-app-route` — tie the Phase 3 store bridge to the
-Phase 4 HTTP hosting: run a **real authenticated, store-touching route
-end to end through the wasip1 guest**. `GET /api/notifications` is served by
-the app guest (`cmd/sharecrop-wasi-app-guest`, building the real mux via
-`internal/wasibridge/appmux` with a live notification service): the stateless
-bearer-token verifier runs in-guest, and the notification read is bridged to
-the host and hits real Postgres. `cmd/sharecrop-wasi-app-host` is the
-production-shaped `net/http.Server` (fresh guest per request, store calls
-dispatched to `internal/db` by prefix, secret handed in via
-`rpc.Host.WithGuestEnv`). The integration test
-(`tests/integration/approute_test.go`) asserts the guest's response is
-byte-identical to the same mux in-process and actually contains the seeded
-row. **Next**: bridge more stores (auth first — needed by most routes) and
-wire them into `appmux` to cover more routes; then weigh instance pooling and
-migrate `cmd/sharecrop`. Nothing about the native server or browser demo
-changes.
+Active task: `task/wasi-bridge-auth` — bridge the `auth` store (the largest:
+13 methods, 10 result unions), so authenticated/account routes can eventually
+run in the guest. `internal/wasibridge/authbridge` (codecs + generated
+`bridge_gen.go`) is dual-run-verified against real Postgres across all 13
+methods (`tests/integration/authbridge_store_test.go`), including the
+refresh-token and account-token flows. The opaque hash/token types needed
+reconstruction constructors added to `internal/auth`
+(`RefreshTokenHashFromString`/`AccountTokenHashFromString`/
+`AccountTokenKindFromString`, mirroring `ParsePasswordHash`), and `corewire`
+grew id/string/time codecs for method arguments. The generic store guest now
+routes `auth.*` too. Three stores bridged: audit, notification, auth.
+**Next**: wire the auth service into `appmux` and prove an auth/account route
+end to end; bridge the remaining stores (ledger, task, org, submission,
+assets, orgcred); then weigh instance pooling and migrate `cmd/sharecrop`.
+Nothing about the native server or browser demo changes.
 
 Blocking issues: none. GitHub Pages `deploy-pages` occasionally fails
 transiently after a merge and clears on retry; it is not caused by
