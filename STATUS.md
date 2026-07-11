@@ -1,10 +1,12 @@
 # Status
 
-All work through pull request 142 is merged into `main`. PR 141 landed the
+All work through pull request 143 is merged into `main`. PR 141 landed the
 review-driven fixes, the two-section credit wallet (replacing the escrow
 state machine), and Argon2id password hashing; PR 142 exposed per-task
 funding on the task detail, gated the Refund button on it, and added a set
-of boy-scout UX/security/data-hygiene fixes.
+of boy-scout UX/security/data-hygiene fixes; PR 143 verified the deployed
+demo, corrected the "two backends" framing to one backend with two storage
+adapters, and made small opportunistic fixes.
 
 Implemented surface:
 
@@ -47,10 +49,22 @@ allocated 30, the ledger shows "Task funding", the funded task shows
 "Allocated to this task: 30 credits" with the Refund button gated correctly,
 inbox and collectibles are populated, and there are no console errors.
 
-Active task: `task/pages-verify-and-boyscout` — verified the deployed demo,
-corrected the imprecise "two backends" framing (there is one backend with
-two storage adapters; see the implemented-surface note above), fixed stale
-escrow wording in the marketing shell, plus small opportunistic fixes.
+Active task: `task/wasi-spike-phase2` — Phase 2 of the WASI production
+hosting spike (see
+[docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
+`internal/wasibridge` wires one real store method
+(`AuthStore.FindCredentialByEmail`) from a `GOOS=wasip1` guest
+(`cmd/sharecrop-wasi-spike-guest`) to real Postgres through a native
+wazero host, over a stdin/stdout length-prefixed-frame RPC — a fresh guest
+instance per unit of work, driven by one goroutine. Proves found/missing/
+rejected all round-trip with real data and the `DomainError` code intact
+across two serialization crossings; measures instance-per-call cost
+(~2.7ms, instantiation-dominated). The bridge carries no business logic.
+Covered by fast unit tests (`internal/wasibridge/protocol_test.go`) and a
+Postgres-backed integration test
+(`tests/integration/wasibridge_store_test.go`). Nothing about the existing
+native server or browser demo changes. Next: Phase 3 (codegen the bridge +
+`check-wasi-bridge` gate + dual-run tests).
 
 Blocking issues: none. GitHub Pages `deploy-pages` occasionally fails
 transiently after a merge and clears on retry; it is not caused by

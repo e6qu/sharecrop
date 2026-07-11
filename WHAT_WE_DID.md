@@ -1,5 +1,32 @@
 # What We Did
 
+The `task/wasi-spike-phase2` branch executed Phase 2 of the WASI production
+hosting spike: proving one real store method round-trips from a `GOOS=wasip1`
+WASM guest to real Postgres and back. New package `internal/wasibridge` holds
+a length-prefixed-JSON stdin/stdout RPC (`protocol.go`), a guest-side client
+that calls the store over that pipe instead of driving pgx (`guest.go`), and a
+native wazero host that instantiates a *fresh* guest per unit of work — driven
+by exactly one goroutine, with a pump goroutine servicing the guest's storage
+calls against the real `db.NewAuthStore(pool)` (`host.go`, `!wasip1`). The
+guest command (`cmd/sharecrop-wasi-spike-guest`, compiled to wasip1) and a
+native host CLI (`cmd/sharecrop-wasi-spike`) exercise it. The bridged method is
+`AuthStore.FindCredentialByEmail` — the smallest real read, chosen so the spike
+covers the found, missing, and rejected (`DomainError`) paths. Fast unit tests
+cover the wire format and the guest transport (`protocol_test.go`); an
+integration test drives the full guest→host→Postgres path
+(`tests/integration/wasibridge_store_test.go`), asserting found matches a
+direct store call field-for-field, missing returns `CredentialMissing`, and
+rejected preserves the `core.ErrorCode` across two serialization crossings. It
+also measures fresh-instance-per-call cost (~2.7ms idle, instantiation-
+dominated). The bridge holds no business logic (anti-drift safeguard #1);
+codegen and dual-run (safeguards #2/#3) come in Phase 3. Nothing about the
+existing native server or browser demo changed. Findings recorded as #7/#8 in
+`docs/wasi_production_hosting_spike_plan.md`, which also marks Phase 2 done and
+resolves the "After Phase 2" decision point (error-shape round-tripping is not
+lossy).
+
+---
+
 The `task/pages-verify-and-boyscout` branch verified the deployment and
 corrected framing. It confirmed the deployed GitHub Pages demo works end to
 end after the #142 merge (spendable/allocated wallet, "Task funding" ledger
