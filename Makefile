@@ -1,6 +1,6 @@
 APP := bin/sharecrop
 
-.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet
+.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts check-wasi-bridge check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet wasi-bridge
 
 build: frontend
 	go build -o $(APP) ./cmd/sharecrop
@@ -20,6 +20,13 @@ check-openapi:
 	go run ./cmd/sharecrop generate openapi
 	deno task site:openapi:copy
 	git diff --exit-code -- docs/openapi.json site/docs/openapi.json
+
+wasi-bridge:
+	go run ./cmd/sharecrop generate wasi-bridge
+
+check-wasi-bridge:
+	go run ./cmd/sharecrop generate wasi-bridge
+	git diff --exit-code -- internal/wasibridge/auditbridge/bridge_gen.go
 
 check-format:
 	test -z "$$(gofmt -l cmd internal tests web | grep -E '\\.go$$')"
@@ -41,7 +48,7 @@ check-wasm-scenario-parity:
 	deno task wasm:demo:build
 	deno task check:scenario-parity:wasm -- --wasm site/demo/sharecrop-wasm-backend.wasm
 
-ci: check-format check-contracts check-openapi check-policy check-ts check-copy-paste check-dead-code lint vet test frontend build test-integration test-http e2e-ui check-wasm-scenario-parity
+ci: check-format check-contracts check-openapi check-policy check-ts check-copy-paste check-dead-code check-wasi-bridge lint vet test frontend build test-integration test-http e2e-ui check-wasm-scenario-parity
 
 css:
 	deno task css:build

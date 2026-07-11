@@ -23,40 +23,15 @@
 package wasibridge
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/wire"
 )
-
-// maxFrameBytes bounds a single frame so a corrupt or hostile length prefix
-// cannot make the reader allocate without limit. Credential frames are a few
-// hundred bytes; 1 MiB is generous headroom.
-const maxFrameBytes = 1 << 20
-
-// errorCodesByString reverses ErrorCode.String so a DomainError serialized as
-// its code string can be rebuilt with the canonical core.ErrorCode value rather
-// than a stringly-typed stand-in. Building it here (not in internal/core) keeps
-// the mapping next to the serialization that needs it.
-var errorCodesByString = func() map[string]core.ErrorCode {
-	codes := []core.ErrorCode{
-		core.ErrorCodeInvalidID,
-		core.ErrorCodeInvalidEnum,
-		core.ErrorCodeInvalidState,
-		core.ErrorCodeInvalidArgument,
-		core.ErrorCodeNotFound,
-		core.ErrorCodePermissionDenied,
-		core.ErrorCodeConflict,
-	}
-	byString := make(map[string]core.ErrorCode, len(codes))
-	for _, code := range codes {
-		byString[code.String()] = code
-	}
-	return byString
-}()
 
 // guestFrame is everything the guest sends to the host over stdout. Exactly one
 // field is populated, selected by Kind: a "store_call" asks the host to service
@@ -98,15 +73,15 @@ type credentialWire struct {
 	ErrorDescription string `json:"error_description,omitempty"`
 }
 
-// writeGuestFrame and writeHostFrame serialize a frame and write it with a
-// length prefix. They are thin typed wrappers over writeFramePayload so no call
-// site has to hand-marshal, and so the transport carries only concrete types.
+// writeGuestFrame and writeHostFrame serialize a frame and write it as one
+// length-prefixed wire frame. They are thin typed wrappers so no call site has
+// to hand-marshal, and so the transport carries only concrete types.
 func writeGuestFrame(w io.Writer, frame guestFrame) error {
 	payload, err := json.Marshal(frame)
 	if err != nil {
 		return fmt.Errorf("marshal guest frame: %w", err)
 	}
-	return writeFramePayload(w, payload)
+	return wire.WriteFrame(w, payload)
 }
 
 func writeHostFrame(w io.Writer, frame hostFrame) error {
@@ -114,31 +89,16 @@ func writeHostFrame(w io.Writer, frame hostFrame) error {
 	if err != nil {
 		return fmt.Errorf("marshal host frame: %w", err)
 	}
-	return writeFramePayload(w, payload)
+	return wire.WriteFrame(w, payload)
 }
 
-func writeFramePayload(w io.Writer, payload []byte) error {
-	if len(payload) > maxFrameBytes {
-		return fmt.Errorf("frame of %d bytes exceeds limit %d", len(payload), maxFrameBytes)
-	}
-	var header [4]byte
-	binary.BigEndian.PutUint32(header[:], uint32(len(payload)))
-	if _, err := w.Write(header[:]); err != nil {
-		return fmt.Errorf("write frame header: %w", err)
-	}
-	if _, err := w.Write(payload); err != nil {
-		return fmt.Errorf("write frame payload: %w", err)
-	}
-	return nil
-}
-
-// readGuestFrame and readHostFrame read one length-prefixed frame and decode it
-// into the concrete frame type. They return io.EOF only when the stream is
-// cleanly closed on a frame boundary, which the host uses to detect the guest
-// exiting.
+// readGuestFrame and readHostFrame read one length-prefixed wire frame and
+// decode it into the concrete frame type. They return io.EOF only when the
+// stream is cleanly closed on a frame boundary, which the host uses to detect
+// the guest exiting.
 func readGuestFrame(r io.Reader) (guestFrame, error) {
 	var frame guestFrame
-	payload, err := readFramePayload(r)
+	payload, err := wire.ReadFrame(r)
 	if err != nil {
 		return frame, err
 	}
@@ -150,7 +110,7 @@ func readGuestFrame(r io.Reader) (guestFrame, error) {
 
 func readHostFrame(r io.Reader) (hostFrame, error) {
 	var frame hostFrame
-	payload, err := readFramePayload(r)
+	payload, err := wire.ReadFrame(r)
 	if err != nil {
 		return frame, err
 	}
@@ -158,25 +118,6 @@ func readHostFrame(r io.Reader) (hostFrame, error) {
 		return frame, fmt.Errorf("unmarshal host frame: %w", err)
 	}
 	return frame, nil
-}
-
-func readFramePayload(r io.Reader) ([]byte, error) {
-	var header [4]byte
-	if _, err := io.ReadFull(r, header[:]); err != nil {
-		if err == io.ErrUnexpectedEOF {
-			return nil, fmt.Errorf("read frame header: %w", err)
-		}
-		return nil, err
-	}
-	length := binary.BigEndian.Uint32(header[:])
-	if length > maxFrameBytes {
-		return nil, fmt.Errorf("frame of %d bytes exceeds limit %d", length, maxFrameBytes)
-	}
-	payload := make([]byte, length)
-	if _, err := io.ReadFull(r, payload); err != nil {
-		return nil, fmt.Errorf("read frame payload: %w", err)
-	}
-	return payload, nil
 }
 
 // credentialToWire serializes a store result. Used on the host to encode the
@@ -237,11 +178,8 @@ func credentialFromWire(wire credentialWire) auth.CredentialLookupResult {
 	case "missing":
 		return auth.CredentialMissing{}
 	case "rejected":
-		code, ok := errorCodesByString[wire.ErrorCode]
-		if !ok {
-			return rejected(core.ErrorCodeInvalidState, "bridge: unknown error code "+wire.ErrorCode)
-		}
-		return auth.CredentialLookupRejected{Reason: core.NewDomainError(code, wire.ErrorDescription)}
+		reason := domainwire.DecodeDomainError(domainwire.DomainError{Code: wire.ErrorCode, Description: wire.ErrorDescription})
+		return auth.CredentialLookupRejected{Reason: reason}
 	default:
 		return rejected(core.ErrorCodeInvalidState, "bridge: unknown credential variant "+wire.Variant)
 	}

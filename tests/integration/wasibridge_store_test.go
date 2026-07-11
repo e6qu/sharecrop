@@ -32,23 +32,28 @@ var (
 	guestWASMErr   error
 )
 
-// buildGuestWASM compiles the spike guest to wasip1 once per test binary and
-// caches the bytes. Building in-process keeps the test self-contained: no
-// external build step has to run first.
+// compileWASIGuest builds a command package to a wasip1 WASM module in-process,
+// keeping the bridge tests self-contained: no external build step has to run
+// first. Callers cache the bytes if they run many subtests.
+func compileWASIGuest(t *testing.T, importPath string) ([]byte, error) {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "guest.wasm")
+	cmd := exec.Command("go", "build", "-o", out, importPath)
+	cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("build %s: %v: %s", importPath, err, stderr.String())
+	}
+	return os.ReadFile(out)
+}
+
+// buildGuestWASM compiles the Phase 2 spike guest once per test binary and
+// caches the bytes.
 func buildGuestWASM(t *testing.T) []byte {
 	t.Helper()
 	guestWASMOnce.Do(func() {
-		out := filepath.Join(t.TempDir(), "guest.wasm")
-		cmd := exec.Command("go", "build", "-o", out,
-			"github.com/e6qu/sharecrop/cmd/sharecrop-wasi-spike-guest")
-		cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			guestWASMErr = fmt.Errorf("build guest wasm: %v: %s", err, stderr.String())
-			return
-		}
-		guestWASMBytes, guestWASMErr = os.ReadFile(out)
+		guestWASMBytes, guestWASMErr = compileWASIGuest(t, "github.com/e6qu/sharecrop/cmd/sharecrop-wasi-spike-guest")
 	})
 	if guestWASMErr != nil {
 		t.Fatalf("%v", guestWASMErr)
