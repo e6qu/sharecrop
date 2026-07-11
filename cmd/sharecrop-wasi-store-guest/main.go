@@ -18,6 +18,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
@@ -53,6 +54,8 @@ func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 		return notificationbridge.Dispatch(ctx, notificationbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "auth":
 		return authbridge.Dispatch(ctx, authbridge.NewGuestStore(rpc.Invoke), method, args)
+	case "ledger":
+		return ledgerbridge.Dispatch(ctx, ledgerbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "agent":
 		return agentbridge.Dispatch(ctx, agentbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "orgcred":

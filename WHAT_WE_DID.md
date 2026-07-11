@@ -1,5 +1,33 @@
 # What We Did
 
+The `task/wasi-bridge-ledger` branch bridged the `ledger` store - the eighth and
+most union-dense store - and, unlike the previous few, needed **no generator
+change**: it fit the existing framework. The ledger is the credit system, so its
+types nest deeply. Commands carry selection unions (`CreditReviewSelection`
+full/partial/none, `TipSelection` none/credit, `CollectibleTipSelection`
+none/selected, `BanSelection` none/ban), and the accept/reject results carry a
+`PayoutOutcome` (none/credit/collectible/bundle) and a `TipOutcome`
+(none/credit/collectible/bundle). `internal/wasibridge/ledgerbridge` serializes
+all of them, plus `LedgerEntry` (with its `EntryKind`, `SignedAmount`, and
+`TaskReference` union), `TaskFund`, and `Balance`. Amounts cross the wire as
+int64 base units. No new reconstruction constructors were needed: every ledger
+value type round-trips through its existing validating constructor because the
+store only ever produces valid values (credit amounts are always positive,
+signed amounts non-zero, idempotency keys non-empty) - the fund/refund results
+share `fundResultWire` and the accept/reject results share
+`reviewedSubmissionWire` (with a shared success/decode helper) so jscpd stays at
+0 clones. `corewire` gained `LedgerEntryID` and `CreditAccountID` codecs. The
+codec test round-trips every payout/tip/selection variant; the dual-run
+integration test (`tests/integration/ledgerbridge_store_test.go`) drives a full
+fund -> accept -> refund through the guest against real Postgres and checks the
+balance/allocated/entries reads match a direct call byte-for-byte (accept pays a
+real `CreditPayout`). The generic store guest and `storehost` route `ledger.*`.
+Eight stores bridged (audit, notification, auth, agent, orgcred, assets,
+submission, ledger). All gates green. Nothing about the native server or browser
+demo changed.
+
+---
+
 The `task/wasi-bridge-submission` branch bridged the `submission` store - the
 seventh and widest store - and drove a second generator enhancement.
 `submission.Store.CreateSubmission` takes `[]SensitiveField` (a slice of a

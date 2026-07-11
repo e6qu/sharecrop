@@ -53,7 +53,26 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-submission` — bridge the `submission` store
+Active task: `task/wasi-bridge-ledger` — bridge the `ledger` store (the store
+with the deepest unions: fund/accept/request-changes/reject/refund commands and
+balance/allocated/entries reads; accept and reject commands carry nested
+credit/tip/collectible/ban *selection* unions, and their results carry nested
+*payout* and *tip outcome* unions). `internal/wasibridge/ledgerbridge` (codecs +
+generated `bridge_gen.go`) is dual-run-verified against real Postgres with a
+full **fund -> accept -> refund** flow through the wasip1 guest
+(`tests/integration/ledgerbridge_store_test.go`), plus exhaustive codec
+round-trip tests for every payout/tip/selection variant. It needed **no
+generator change** (it fit the existing framework). `corewire` gained
+`LedgerEntryID` and `CreditAccountID` codecs; no new reconstruction constructors
+were needed because every ledger value type round-trips through its existing
+validating constructor (amounts are always positive, signed amounts non-zero,
+keys non-empty). The generic store guest and `storehost` route `ledger.*` too.
+**Eight stores bridged: audit, notification, auth, agent, orgcred, assets,
+submission, ledger.** **Next**: bridge the last two (task ~20 methods, org ~15);
+then weigh instance pooling and migrate `cmd/sharecrop`. Nothing about the
+native server or browser demo changes.
+
+Earlier: `task/wasi-bridge-submission` bridged the `submission` store
 (the widest so far: submissions with attachments, validation outcomes, and
 sensitive fields; the receipt-token lookup; per-task and per-submitter lists;
 and the submission comment thread). `internal/wasibridge/submissionbridge`
