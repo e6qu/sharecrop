@@ -1,5 +1,28 @@
 # What We Did
 
+The `task/wasi-app-route` branch tied the Phase 3 store bridge to the Phase 4
+HTTP hosting: a real authenticated, store-touching route
+(`GET /api/notifications`) now runs end to end through the wasip1 guest. Access-
+token verification is stateless (signature + clock, no store), so the route
+needs only the verifier plus the already-bridged notification store. The app
+guest (`cmd/sharecrop-wasi-app-guest`) builds the real `internal/http` mux via a
+shared `internal/wasibridge/appmux` helper with a live notification service
+backed by the generated `GuestStore`; the request runs through an `httptest`
+recorder in-guest, and the notification read RPCs back to the host over the same
+unit of work and hits real Postgres. `cmd/sharecrop-wasi-app-host` is the
+production-shaped `net/http.Server` for it: a fresh guest per request, store
+calls dispatched to `internal/db` by method prefix, and the token secret handed
+to the guest via WASI env (new `rpc.Host.WithGuestEnv`). The request-bridging
+handler moved into a shared `httpbridge.Handler` used by both the Phase 4 health
+host and the app host. The integration test
+(`tests/integration/approute_test.go`) asserts the guest's response is byte-
+identical to the same mux run in-process against the same store, and that the
+body actually contains the seeded notification (so the bridge read real data,
+not an empty list). All gates green. Nothing about the native server or browser
+demo changed.
+
+---
+
 The `task/wasi-bridge-multistore` branch started the post-spike implementation
 effort: generalize the bridge codegen beyond one hard-coded store and prove it
 scales. `internal/wasibridge/gen` is now store-agnostic — each store is a

@@ -51,34 +51,14 @@ func run(guestPath, addr string) error {
 	}
 	defer host.Close(ctx)
 
-	server := &http.Server{Addr: addr, Handler: &bridgeHandler{host: host}}
+	server := &http.Server{Addr: addr, Handler: httpbridge.Handler(host)}
 	log.Printf("listening on %s - each request runs a fresh wasm guest", addr)
 	return server.ListenAndServe()
 }
 
-type bridgeHandler struct {
-	host *rpc.Host
-}
-
-func (h *bridgeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	requestBytes, err := httpbridge.EncodeRequest(r)
-	if err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	responseBytes, err := h.host.Call(r.Context(), "http.handle", requestBytes)
-	if err != nil {
-		http.Error(w, "bridge error: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-	if err := httpbridge.WriteResponse(w, responseBytes); err != nil {
-		log.Printf("write response: %v", err)
-	}
-}
-
 // noStoreDispatcher rejects every store call. The Phase 4 slice serves /healthz,
 // which makes none; a store-touching route would supply a real dispatcher (the
-// Phase 3 auditbridge.Dispatch shape).
+// Phase 3 auditbridge.Dispatch shape - see cmd/sharecrop-wasi-app-host).
 func noStoreDispatcher(ctx context.Context, method string, args []byte) ([]byte, error) {
 	return nil, errors.New("no store is bridged for this route")
 }

@@ -50,8 +50,8 @@ func TestHTTPBridgeByteIdentical(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			direct := serveDirect(directMux, testCase.method, testCase.target)
-			bridged := serveThroughBridge(t, ctx, host, testCase.method, testCase.target)
+			direct := serveDirect(directMux, httptest.NewRequest(testCase.method, testCase.target, nil))
+			bridged := serveThroughBridge(t, ctx, host, httptest.NewRequest(testCase.method, testCase.target, nil))
 
 			if bridged.Status != direct.Status {
 				t.Errorf("status: bridge %d, direct %d", bridged.Status, direct.Status)
@@ -67,8 +67,7 @@ func TestHTTPBridgeByteIdentical(t *testing.T) {
 	}
 }
 
-func serveDirect(mux http.Handler, method, target string) httpbridge.Response {
-	req := httptest.NewRequest(method, target, nil)
+func serveDirect(mux http.Handler, req *http.Request) httpbridge.Response {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	result := rec.Result()
@@ -76,9 +75,9 @@ func serveDirect(mux http.Handler, method, target string) httpbridge.Response {
 	return httpbridge.Response{Status: result.StatusCode, Header: result.Header, Body: body}
 }
 
-func serveThroughBridge(t *testing.T, ctx context.Context, host *rpc.Host, method, target string) httpbridge.Response {
+func serveThroughBridge(t *testing.T, ctx context.Context, host *rpc.Host, req *http.Request) httpbridge.Response {
 	t.Helper()
-	requestBytes, err := httpbridge.EncodeRequest(httptest.NewRequest(method, target, nil))
+	requestBytes, err := httpbridge.EncodeRequest(req)
 	if err != nil {
 		t.Fatalf("encode request: %v", err)
 	}

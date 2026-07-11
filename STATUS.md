@@ -53,17 +53,22 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-multistore` — generalize the bridge codegen
-beyond one store and prove it scales. `internal/wasibridge/gen` is now
-store-agnostic (each store is a `storeSpec`; `generate wasi-bridge` iterates
-`gen.Targets()`), shared core-type codecs (ids, page, time) moved to
-`internal/wasibridge/corewire`, and `internal/notification.Store` is bridged
-as the second store (`.../notificationbridge`), dual-run-verified against real
-Postgres. One generic guest (`cmd/sharecrop-wasi-store-guest`) routes every
-store by method prefix. The audit bridge was regenerated onto `corewire` with
-no behavior change. Remaining stores (auth, ledger, task, org, submission,
-assets, orgcred) follow the same recipe: a spec + hand-written codecs + a
-dual-run test. Nothing about the native server or browser demo changes.
+Active task: `task/wasi-app-route` — tie the Phase 3 store bridge to the
+Phase 4 HTTP hosting: run a **real authenticated, store-touching route
+end to end through the wasip1 guest**. `GET /api/notifications` is served by
+the app guest (`cmd/sharecrop-wasi-app-guest`, building the real mux via
+`internal/wasibridge/appmux` with a live notification service): the stateless
+bearer-token verifier runs in-guest, and the notification read is bridged to
+the host and hits real Postgres. `cmd/sharecrop-wasi-app-host` is the
+production-shaped `net/http.Server` (fresh guest per request, store calls
+dispatched to `internal/db` by prefix, secret handed in via
+`rpc.Host.WithGuestEnv`). The integration test
+(`tests/integration/approute_test.go`) asserts the guest's response is
+byte-identical to the same mux in-process and actually contains the seeded
+row. **Next**: bridge more stores (auth first — needed by most routes) and
+wire them into `appmux` to cover more routes; then weigh instance pooling and
+migrate `cmd/sharecrop`. Nothing about the native server or browser demo
+changes.
 
 Blocking issues: none. GitHub Pages `deploy-pages` occasionally fails
 transiently after a merge and clears on retry; it is not caused by

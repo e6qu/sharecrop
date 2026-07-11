@@ -29,15 +29,17 @@ Current priority from
      `gen.Targets()`; shared core codecs in `.../corewire`), and
      `internal/notification.Store` is bridged as the second store
      (`.../notificationbridge`, dual-run-verified), served by one generic guest
-     (`cmd/sharecrop-wasi-store-guest`). **Next**: bridge the remaining stores
-     the same way (a `storeSpec` + hand-written codecs + a dual-run test each) —
-     `auth` (needed by almost every route, ~13 methods), then `ledger`, `task`,
-     `org`, `submission`, `assets`, `orgcred`. After enough stores are bridged,
-     wire the real domain services in the guest against those `GuestStore`s and
-     prove a store-touching HTTP route end to end (tying Phase 3 + 4 together),
-     then weigh the ~2-3ms instance-per-request floor against instance pooling,
-     migrate `cmd/sharecrop` onto the hosted guest, and retire
-     `internal/wasmdemo` once the browser demo can run the same artifact.
+     (`cmd/sharecrop-wasi-store-guest`). A **real authenticated, store-touching
+     route now runs end to end through the guest**: `GET /api/notifications`
+     via `cmd/sharecrop-wasi-app-{guest,host}` + `internal/wasibridge/appmux`,
+     with stateless in-guest token verification and the notification read
+     bridged to real Postgres, byte-identical to the native mux
+     (`tests/integration/approute_test.go`). **Next**: bridge more stores
+     (`auth` first — needed by most routes; then `ledger`, `task`, `org`,
+     `submission`, `assets`, `orgcred`) and wire each into `appmux` to cover
+     more routes. Then weigh the ~2-3ms instance-per-request floor against
+     instance pooling, migrate `cmd/sharecrop` onto the hosted guest, and
+     retire `internal/wasmdemo` once the browser demo can run the same artifact.
    - (b) Moving MCP/SSE to HTTP/2 by default (HTTP/3-ready) to support about
      100 concurrent streaming sessions, keeping HTTP/1.1 as an explicit,
      supported option for regular UI/API traffic.
