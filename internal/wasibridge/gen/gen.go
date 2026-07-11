@@ -74,6 +74,7 @@ func Targets() []Target {
 		{Key: "auth", SourceDir: "internal/auth", OutputPath: "internal/wasibridge/authbridge/bridge_gen.go"},
 		{Key: "agent", SourceDir: "internal/agent", OutputPath: "internal/wasibridge/agentbridge/bridge_gen.go"},
 		{Key: "orgcred", SourceDir: "internal/orgcred", OutputPath: "internal/wasibridge/orgcredbridge/bridge_gen.go"},
+		{Key: "assets", SourceDir: "internal/assets", OutputPath: "internal/wasibridge/assetsbridge/bridge_gen.go"},
 	}
 }
 
@@ -195,6 +196,32 @@ var specs = map[string]storeSpec{
 			"orgcred.RevokeStoreResult": {goType: "orgcred.RevokeStoreResult", wireType: "credentialResultWire", encodeFn: "encodeRevokeResult", decodeFn: "decodeRevokeResult", rejectedType: "orgcred.RevokeStoreRejected"},
 		},
 	},
+	"assets": {
+		bridgePackage: "assetsbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/assets",
+		domainPackage: "assets",
+		interfaceName: "Store",
+		wirePrefix:    "assets",
+		argCodecs: map[string]argCodec{
+			"core.UserID":                     userIDArg(),
+			"core.Page":                       pageArg(),
+			"core.TaskID":                     {field: "TaskID", goType: "core.TaskID", wireType: "string", encodeFn: "corewire.EncodeTaskID", decodeFn: "corewire.DecodeTaskID"},
+			"string":                          {field: "Query", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
+			"assets.Collectible":              {field: "Collectible", goType: "assets.Collectible", wireType: "collectibleWire", encodeFn: "encodeCollectible", decodeFn: "decodeCollectible"},
+			"assets.FundRewardStoreCommand":   {field: "Command", goType: "assets.FundRewardStoreCommand", wireType: "fundCommandWire", encodeFn: "encodeFundCommand", decodeFn: "decodeFundCommand"},
+			"assets.RefundRewardStoreCommand": {field: "Command", goType: "assets.RefundRewardStoreCommand", wireType: "refundCommandWire", encodeFn: "encodeRefundCommand", decodeFn: "decodeRefundCommand"},
+			"assets.GiftStoreCommand":         {field: "Command", goType: "assets.GiftStoreCommand", wireType: "giftCommandWire", encodeFn: "encodeGiftCommand", decodeFn: "decodeGiftCommand"},
+			"assets.AwardOrganizationCollectibleStoreCommand": {field: "Command", goType: "assets.AwardOrganizationCollectibleStoreCommand", wireType: "awardCommandWire", encodeFn: "encodeAwardCommand", decodeFn: "decodeAwardCommand"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"assets.CreateStoreResult":          {goType: "assets.CreateStoreResult", wireType: "acceptedRejectedWire", encodeFn: "encodeCreateResult", decodeFn: "decodeCreateResult", rejectedType: "assets.CreateStoreRejected"},
+			"assets.ListStoreResult":            {goType: "assets.ListStoreResult", wireType: "collectiblesResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "assets.ListStoreRejected"},
+			"assets.FundRewardResult":           {goType: "assets.FundRewardResult", wireType: "collectibleResultWire", encodeFn: "encodeFundRewardResult", decodeFn: "decodeFundRewardResult", rejectedType: "assets.FundRewardRejected"},
+			"assets.RefundRewardResult":         {goType: "assets.RefundRewardResult", wireType: "collectiblesResultWire", encodeFn: "encodeRefundRewardResult", decodeFn: "decodeRefundRewardResult", rejectedType: "assets.RefundRewardRejected"},
+			"assets.GiftResult":                 {goType: "assets.GiftResult", wireType: "collectibleResultWire", encodeFn: "encodeGiftResult", decodeFn: "decodeGiftResult", rejectedType: "assets.GiftRejected"},
+			"assets.TaskHeldCollectiblesResult": {goType: "assets.TaskHeldCollectiblesResult", wireType: "taskHeldResultWire", encodeFn: "encodeTaskHeldResult", decodeFn: "decodeTaskHeldResult", rejectedType: "assets.TaskHeldCollectiblesRejected"},
+		},
+	},
 }
 
 type method struct {
@@ -267,6 +294,7 @@ func extractMethods(sources map[string][]byte, spec storeSpec) ([]method, error)
 		}
 
 		args := make([]argCodec, 0)
+		usedFields := map[string]int{}
 		for _, param := range funcType.Params.List {
 			paramType := qualify(typeString(param.Type))
 			if paramType == "context.Context" {
@@ -275,6 +303,13 @@ func extractMethods(sources map[string][]byte, spec storeSpec) ([]method, error)
 			codec, known := spec.argCodecs[paramType]
 			if !known {
 				return nil, fmt.Errorf("method %s: no codec registered for argument type %q", name, paramType)
+			}
+			// The field name comes from the type, so a method with two arguments
+			// of the same type (e.g. ListCollectiblesByOwner(string, string, ...))
+			// would collide. Suffix the second and later occurrences.
+			usedFields[codec.field]++
+			if usedFields[codec.field] > 1 {
+				codec.field = fmt.Sprintf("%s%d", codec.field, usedFields[codec.field])
 			}
 			args = append(args, codec)
 		}

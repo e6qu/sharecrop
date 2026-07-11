@@ -35,6 +35,23 @@ type Store interface {
 	}
 }
 
+func TestGenerateDisambiguatesRepeatedArgumentTypes(t *testing.T) {
+	source, err := Generate(sources(`package audit
+import "context"
+type Store interface {
+	Get(context.Context, core.AuditEventID, core.AuditEventID) GetResult
+}
+`), "audit")
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	for _, want := range []string{"decoded.ID", "decoded.ID2", "argID", "argID2"} {
+		if !strings.Contains(source, want) {
+			t.Errorf("generated source is missing %q", want)
+		}
+	}
+}
+
 func TestGenerateRejectsUnregisteredArgumentType(t *testing.T) {
 	_, err := Generate(sources(`package audit
 import "context"

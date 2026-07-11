@@ -53,7 +53,22 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-orgcred` — bridge the `orgcred` store
+Active task: `task/wasi-bridge-assets` — bridge the `assets` store
+(collectibles: create/list/list-by-owner/fund/refund/gift/award/task-held).
+`internal/wasibridge/assetsbridge` (codecs + generated `bridge_gen.go`) is
+dual-run-verified against real Postgres
+(`tests/integration/assetsbridge_store_test.go`). It drove a **generator
+enhancement**: `ListCollectiblesByOwner(string, string, core.Page)` has two
+same-type arguments, so the generator now suffixes repeated field names
+(`Query`/`Query2`) - backward-compatible (existing bridges unchanged).
+`corewire` gained a `CollectibleID` codec; the collectible comparison helper
+lives in `internal/assets/assetstest`. The generic store guest and `storehost`
+route `assets.*` too. **Six stores bridged: audit, notification, auth, agent,
+orgcred, assets.** **Next**: bridge the big ones (submission, then ledger/task/
+org); then weigh instance pooling and migrate `cmd/sharecrop`. Nothing about
+the native server or browser demo changes.
+
+Earlier: `task/wasi-bridge-orgcred` bridged the `orgcred` store
 (organization-wide credentials), and extract the agent value-type codecs
 (`Label`/`ScopeSet`/`State` + the shared `CreateStoreResult`) into a new
 `internal/wasibridge/agentwire` package so agentbridge and orgcredbridge don't

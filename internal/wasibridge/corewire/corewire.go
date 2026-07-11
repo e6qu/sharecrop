@@ -67,6 +67,17 @@ func DecodeRefreshTokenID(raw string) (core.RefreshTokenID, error) {
 	return created.Value, nil
 }
 
+// EncodeCollectibleID / DecodeCollectibleID carry a core.CollectibleID.
+func EncodeCollectibleID(id core.CollectibleID) string { return id.String() }
+
+func DecodeCollectibleID(raw string) (core.CollectibleID, error) {
+	created, matched := core.ParseCollectibleID(raw).(core.CollectibleIDCreated)
+	if !matched {
+		return core.CollectibleID{}, fmt.Errorf("invalid collectible id %q", raw)
+	}
+	return created.Value, nil
+}
+
 // EncodeTaskID / DecodeTaskID carry a core.TaskID.
 func EncodeTaskID(id core.TaskID) string { return id.String() }
 

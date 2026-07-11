@@ -1,5 +1,26 @@
 # What We Did
 
+The `task/wasi-bridge-assets` branch bridged the `assets` store (collectibles) -
+the sixth store - and drove a generator enhancement. `assets.Store`'s
+`ListCollectiblesByOwner(context.Context, string, string, core.Page)` has two
+arguments of the same type, which the type-based field naming would collide on;
+the generator now suffixes repeated field names (`Query`/`Query2`), which is
+backward-compatible (no existing method has repeated arg types, so their
+generated files are unchanged - verified). `internal/wasibridge/assetsbridge`
+has codecs for `assets.Collectible` (string-wrapper value types: name/kind/
+state/policy), the four command structs (fund/refund/gift/award), and the result
+unions (accept/reject, collectible, collectible-slice, and collectible-id-slice
+payloads), plus a generated `bridge_gen.go`. `corewire` gained a `CollectibleID`
+codec; the collectible comparison helper lives in `internal/assets/assetstest`.
+The dual-run integration test (`tests/integration/assetsbridge_store_test.go`)
+covers create/list/list-by-owner (the two-string method)/gift/task-held against
+real Postgres. A new generator unit test covers the repeated-arg disambiguation.
+The generic store guest and `storehost` route `assets.*`. Six stores are bridged
+(audit, notification, auth, agent, orgcred, assets). All gates green. Nothing
+about the native server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-orgcred` branch bridged the `orgcred` store
 (organization-wide credentials) - the fifth store - and extracted the shared
 agent value-type codecs so the two credential bridges don't duplicate. orgcred's
