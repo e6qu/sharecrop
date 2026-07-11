@@ -1053,8 +1053,11 @@ update msg model =
             Api.withSession model (\state -> ( model, Api.postCancelTask state.accessToken taskId ))
 
         CancelTaskReceived (Ok detail) ->
+            -- Cancelling a funded task returns its allocated credits to the
+            -- owner's spendable balance, so refresh the wallet + ledger too,
+            -- not just the task lists (matches Fund/Refund/Accept).
             ( Api.updateLoggedIn model (\state -> { state | detail = Just detail, taskActionMessage = Just (SuccessNote "Task cancelled.") })
-            , Api.refreshTasksAndDiscovery model
+            , Cmd.batch [ Api.refreshTasksAndDiscovery model, Api.refreshBalanceAndLedger model ]
             )
 
         CancelTaskReceived (Err error) ->
@@ -1322,7 +1325,25 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | submitFieldValues = Dict.insert name value state.submitFieldValues }), Cmd.none )
 
         SubmitRawModeToggled enabled ->
-            ( Api.updateLoggedIn model (\state -> { state | submitRawMode = enabled }), Cmd.none )
+            -- Switching to the raw JSON editor seeds it from whatever the
+            -- worker already typed in the structured fields (best effort), so
+            -- the toggle doesn't read as data loss. Only seeds when the raw
+            -- box is still empty, to avoid clobbering hand-edited JSON on a
+            -- re-toggle.
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | submitRawMode = enabled
+                        , submitInput =
+                            if enabled && String.trim state.submitInput == "" then
+                                Api.seedRawSubmitInput state
+
+                            else
+                                state.submitInput
+                    }
+                )
+            , Cmd.none
+            )
 
         PickSubmitAttachmentClicked ->
             Api.withSession model

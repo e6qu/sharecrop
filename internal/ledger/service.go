@@ -77,6 +77,7 @@ type Store interface {
 	RequestChanges(context.Context, RequestChangesStoreCommand) RequestChangesResult
 	RejectSubmission(context.Context, RejectStoreCommand) RejectResult
 	RefundTask(context.Context, RefundStoreCommand) RefundResult
+	TaskAllocatedCredits(context.Context, core.TaskID) TaskAllocatedResult
 	Balance(context.Context, core.UserID) BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) BalanceResult
 	ListEntries(context.Context, core.UserID, core.Page) ListEntriesResult
@@ -246,6 +247,13 @@ func (service Service) Balance(ctx context.Context, owner core.UserID) BalanceRe
 
 func (service Service) OrganizationBalance(ctx context.Context, organizationID core.OrganizationID) BalanceResult {
 	return service.store.OrganizationBalance(ctx, organizationID)
+}
+
+// TaskAllocatedCredits reports the credits currently allocated to a task
+// (0 when it holds no credit funding). Used to show a task's live funding on
+// its detail page and to gate the refund control.
+func (service Service) TaskAllocatedCredits(ctx context.Context, taskID core.TaskID) TaskAllocatedResult {
+	return service.store.TaskAllocatedCredits(ctx, taskID)
 }
 
 func (service Service) ListEntries(ctx context.Context, owner core.UserID, page core.Page) ListEntriesResult {

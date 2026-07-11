@@ -322,6 +322,10 @@ func (healthLedgerService) RefundTask(context.Context, core.UserID, core.TaskID,
 	return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthLedgerService) TaskAllocatedCredits(context.Context, core.TaskID) ledger.TaskAllocatedResult {
+	return ledger.TaskAllocatedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthLedgerService) Balance(context.Context, core.UserID) ledger.BalanceResult {
 	return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
@@ -394,6 +398,10 @@ func (healthAssetService) GiftCollectible(context.Context, core.UserID, core.Use
 
 func (healthAssetService) AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult {
 	return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) TaskHeldCollectibles(context.Context, core.TaskID) assets.TaskHeldCollectiblesResult {
+	return assets.TaskHeldCollectiblesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 func (healthAgentService) Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult {

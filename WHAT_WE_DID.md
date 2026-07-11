@@ -1,5 +1,34 @@
 # What We Did
 
+The `task/wallet-followup-and-boyscout` branch is a post-#141 follow-up.
+
+Per-task funding on the task detail. The task response now reports
+`allocated_credits` and the individual `allocated_collectible_ids` a task
+currently holds (collectibles are non-fungible and tracked individually, not
+counted), read from `task_funds` / `task_fund_collectibles` on both backends
+via new `ledger.TaskAllocatedCredits` and `assets.TaskHeldCollectibles`
+methods. The detail, create, and state-change (open/cancel/unpublish)
+responses all carry the live figures. The browser gates the Refund button on
+actual funding (no more Refund on an unfunded declared reward), shows a
+per-task "Allocated to this task" line, and shows the prominent fund callout
+for any unfunded draft (not just no-reward drafts).
+
+Boy-scout fixes from a fresh two-agent review. Client validation for a
+collectible/bundle reward with nothing selected (was an avoidable 400);
+Cancel now refetches the wallet and ledger like Fund/Refund/Accept; the
+stale "escrowed reward" cancel copy now describes the wallet model; the
+raw-JSON submit editor seeds from the structured fields the worker already
+filled; the login and password-reset controls are separate forms so Enter in
+a reset field no longer attempts a login; the review Accept/Reject/Request-
+changes buttons got `type="button"`. Security: `parseHashString` rejects a
+zero-length salt or key so a malformed stored Argon2id hash cannot act as a
+universal password. Data hygiene: refunding or cancelling a task now releases
+the worker's reservation (to `cancelled_by_requester`) on both backends
+instead of leaving it dangling in an active/submitted state on a cancelled
+task.
+
+---
+
 The `task/journey-review-fixes` branch, after the review pass below, also
 replaced the credit-escrow system with a two-section wallet and switched
 password hashing to Argon2id.

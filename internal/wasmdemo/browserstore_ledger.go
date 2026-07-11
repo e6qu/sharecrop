@@ -383,6 +383,12 @@ func (store LedgerBrowserStore) RefundTask(_ context.Context, command ledger.Ref
 		return ledger.RefundRejected{Reason: invalidState("cancel task failed")}
 	}
 
+	// A refund cancels the task, so release the worker's reservation too
+	// (same as the cancel path's releaseReservationsOnCancel).
+	if reason := releaseReservationsOnCancel(store.storage, command.TaskID.String()); reason != nil {
+		return ledger.RefundRejected{Reason: *reason}
+	}
+
 	return ledger.TaskRefunded{Fund: buildLedgerTaskFund(fund.TaskID, fund.CreditAmount)}
 }
 
@@ -431,6 +437,17 @@ func (store LedgerBrowserStore) Balance(_ context.Context, owner core.UserID) le
 
 func (store LedgerBrowserStore) OrganizationBalance(_ context.Context, organizationID core.OrganizationID) ledger.BalanceResult {
 	return store.balanceForOwner("organization", organizationID.String(), "read organization balance failed")
+}
+
+func (store LedgerBrowserStore) TaskAllocatedCredits(_ context.Context, taskID core.TaskID) ledger.TaskAllocatedResult {
+	record, found, domainErr := store.loadFund(taskID.String())
+	if domainErr != nil {
+		return ledger.TaskAllocatedRejected{Reason: *domainErr}
+	}
+	if !found {
+		return ledger.TaskAllocatedFound{Amount: 0}
+	}
+	return ledger.TaskAllocatedFound{Amount: record.CreditAmount}
 }
 
 func (store LedgerBrowserStore) balanceForOwner(ownerKind string, ownerID string, failureMessage string) ledger.BalanceResult {

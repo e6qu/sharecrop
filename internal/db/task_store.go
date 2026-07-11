@@ -131,6 +131,14 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 		if reason := settleFundedTaskOnCancel(ctx, tx, taskID); reason != nil {
 			return task.ChangeTaskStateStoreRejected{Reason: *reason}
 		}
+		// A cancelled task can never be reserved, submitted to, or reviewed
+		// again, so every reservation still held on it must be released in the
+		// same transaction. Otherwise it dangles forever: the expiry sweep
+		// ignores submitted reservations and no other path clears them, leaving
+		// the worker reported as still actively holding the task.
+		if reason := releaseReservationsOnCancel(ctx, tx, taskID); reason != nil {
+			return task.ChangeTaskStateStoreRejected{Reason: *reason}
+		}
 	}
 
 	commandTag, err := tx.Exec(ctx, `
@@ -233,6 +241,23 @@ func settleFundedTaskOnCancel(ctx context.Context, tx pgx.Tx, taskID core.TaskID
 		}
 	}
 	if reason, rejected := refundHeldCollectibleReward(ctx, tx, taskID); rejected {
+		return &reason
+	}
+	return nil
+}
+
+// releaseReservationsOnCancel terminates every non-terminal reservation on a
+// task that is being cancelled. A reservation in requested/active/submitted
+// moves to cancelled_by_requester, the same terminal state the owner-driven
+// submission rejection uses (see internal/db/ledger_store.go). Terminal
+// reservations are left untouched.
+func releaseReservationsOnCancel(ctx context.Context, tx pgx.Tx, taskID core.TaskID) *core.DomainError {
+	if _, err := tx.Exec(ctx, `
+		update task_reservations
+		set state = $2, state_recorded_at = now()
+		where task_id = $1 and state in ('requested', 'active', 'submitted')
+	`, taskID.String(), task.ReservationStateCancelledByRequester.String()); err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "release reservations on cancel failed")
 		return &reason
 	}
 	return nil

@@ -44,6 +44,34 @@ func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.U
 	return collectListedCollectibles(rows)
 }
 
+func (store CollectibleStore) TaskHeldCollectibles(ctx context.Context, taskID core.TaskID) assets.TaskHeldCollectiblesResult {
+	rows, err := store.pool.Query(ctx,
+		"select collectible_id::text from task_fund_collectibles where task_id = $1 order by collectible_id",
+		taskID.String())
+	if err != nil {
+		return assets.TaskHeldCollectiblesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list held task collectibles failed")}
+	}
+	defer rows.Close()
+
+	ids := make([]core.CollectibleID, 0)
+	for rows.Next() {
+		var rawID string
+		if err := rows.Scan(&rawID); err != nil {
+			return assets.TaskHeldCollectiblesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan held task collectible failed")}
+		}
+		idResult := core.ParseCollectibleID(rawID)
+		idCreated, matched := idResult.(core.CollectibleIDCreated)
+		if !matched {
+			return assets.TaskHeldCollectiblesRejected{Reason: idResult.(core.CollectibleIDRejected).Reason}
+		}
+		ids = append(ids, idCreated.Value)
+	}
+	if rows.Err() != nil {
+		return assets.TaskHeldCollectiblesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read held task collectibles failed")}
+	}
+	return assets.TaskHeldCollectiblesFound{IDs: ids}
+}
+
 func (store CollectibleStore) ListCollectiblesByOwner(ctx context.Context, ownerKind string, ownerID string, page core.Page) assets.ListStoreResult {
 	rows, err := store.pool.Query(ctx, `
 		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art
@@ -191,6 +219,12 @@ func (store CollectibleStore) RefundCollectibleReward(ctx context.Context, comma
 	}
 	if _, err := tx.Exec(ctx, "update tasks set state = 'cancelled', state_recorded_at = now() where id = $1", command.TaskID.String()); err != nil {
 		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "cancel task failed")}
+	}
+
+	// A collectible-reward refund cancels the task, so release the worker's
+	// reservation too (same as the cancel and credit-refund paths).
+	if reason := releaseReservationsOnCancel(ctx, tx, command.TaskID); reason != nil {
+		return assets.RefundRewardRejected{Reason: *reason}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

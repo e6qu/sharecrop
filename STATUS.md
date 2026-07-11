@@ -1,6 +1,8 @@
 # Status
 
-All work through pull request 140 is merged into `main`.
+All work through pull request 141 is merged into `main`. PR 141 landed the
+review-driven fixes, the two-section credit wallet (replacing the escrow
+state machine), and Argon2id password hashing.
 
 Implemented surface:
 
@@ -24,58 +26,28 @@ integration tests, HTTP end-to-end tests, shared scenario parity against
 both the real DB-backed backend and the compiled WASM demo, and Playwright
 browser tests. All green on `main`.
 
-Active task: `task/journey-review-fixes` — a review-driven fix pass across
-backend parity, Elm client UX, security, and documentation, ready for a
-pull request. It covers:
+Active task: `task/wallet-followup-and-boyscout` — a post-#141 follow-up
+pass. It covers:
 
-- Backend correctness/parity: 16 findings fixed (transactional
-  `ChangeTaskState`, refund/cancel and deactivation guards, and 11
-  real-vs-WASM store divergences — reservation expiry/uniqueness,
-  implementor bans, idempotency semantics, ledger pagination, series
-  bookkeeping, team scope, unknown-task 404, strict pagination, fund audit
-  events). See `WHAT_WE_DID.md`.
-- Two-section wallet (replaces the escrow state machine): every user and
-  organization credit account now has a **spendable** section
-  (`sum(ledger_entries)`) and an **allocated** section
-  (`sum(task_funds.credit_amount)`). Funding moves credits spendable ->
-  allocated (a stateless `task_funds` row, no held/released/refunded state),
-  so allocated credits cannot be double-spent. Finishing a task moves the
-  funder's allocated credits to the worker's spendable balance; refunding or
-  closing an un-awarded task returns them to the funder's spendable balance.
-  Refunds are auto-granted for the task owner or the active reservation
-  holder while the task is not yet awarded. Collectible rewards use the same
-  stateless temp store (`task_fund_collectibles`) and keep the collectible's
-  `escrowed` lifecycle state as the trade lock. Balance endpoints return
-  `{spendable_credits, allocated_credits}`; the ledger kind `task_escrow`
-  was renamed `task_fund`.
-- Password hashing switched from PBKDF2 to Argon2id (OWASP first choice,
-  m=19 MiB/t=2/p=1) via `golang.org/x/crypto/argon2`, matching what
-  AGENTS.md/PLAN.md already documented.
-- Security: password-reset/verification token delivery now defaults to `log`
-  (fail closed) so production no longer returns tokens to anonymous callers;
-  the demo opts into `api` explicitly. Password-reset no longer reveals
-  whether an email is registered. Token-confirm endpoints are rate limited.
-  User-directory search escapes LIKE metacharacters and caps query length.
-  The demo shell's `<base href>` is rebuilt from safe path segments.
-- Elm client: deep-link login now loads the target page; mid-session token
-  refresh (with an explicit expiry logout); a schema-driven worker response
-  form; a fix for the silent reward downgrade on create; disclosure panels
-  no longer snap shut mid-edit; successes and failures are visually
-  distinct; standalone-team create + browsable team pages; self-service
-  privacy-request list; a deactivate-account confirmation step; and a batch
-  of smaller fixes (trade/tip/funding gating, pagination end state, honest
-  no-email copy, agent-scope reset).
-- Demo seed: added a pending submission, an approval-required reservation
-  request, an inbox notification, and a held collectible targeting `mara`
-  so the single-actor demo can exercise the review/approval/collectible
-  journeys.
-
-Deferred follow-up: the Overview/organization pages now show the account's
-allocated total, but the task DETAIL response still does not report a task's
-live allocated amount, so the Refund button can still appear on an unfunded
-declared-reward task (clicking it returns a clear "nothing to refund"
-message). Exposing per-task funding state on the detail response to gate the
-button is a smaller remaining follow-up. See `DO_NEXT.md`.
+- Per-task funding state on the task DETAIL response: the response now
+  reports `allocated_credits` and the individual `allocated_collectible_ids`
+  currently held for the task (collectibles are non-fungible and tracked
+  individually, not counted), read from `task_funds` /
+  `task_fund_collectibles` on both backends. The browser gates the Refund
+  button on live funding (no more Refund button on an unfunded declared
+  reward), shows a per-task funding line, and surfaces the prominent fund
+  callout for any unfunded draft (not just no-reward drafts).
+- Boy-scout fixes from a fresh review: client validation for a collectible
+  reward with nothing selected; Cancel now refetches the wallet; stale
+  "escrowed reward" copy corrected to the wallet model; the raw-JSON submit
+  editor seeds from the typed fields; password-reset fields are their own
+  forms so Enter no longer triggers a login; review buttons get
+  `type_ "button"`.
+- Security hardening: `VerifyPassword`/`parseHashString` reject a
+  zero-length salt or key so a malformed stored hash cannot act as a
+  universal password.
+- Data hygiene: refunding/cancelling a task no longer leaves the worker's
+  reservation dangling (see `WHAT_WE_DID.md`).
 
 Blocking issues: none. GitHub Pages `deploy-pages` occasionally fails
 transiently after a merge and clears on retry; it is not caused by

@@ -3600,6 +3600,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -3716,6 +3725,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -3826,6 +3837,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -3942,6 +3962,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -4071,6 +4093,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -4187,6 +4218,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -4306,6 +4339,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -4422,6 +4464,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -4649,6 +4693,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -4765,6 +4818,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -4884,6 +4939,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -5000,6 +5064,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -5130,6 +5196,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -5246,6 +5321,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -5373,6 +5450,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -5489,6 +5575,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -5599,6 +5687,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -5715,6 +5812,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -5834,6 +5933,15 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "allocated_collectible_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allocated_credits": {
+                            "type": "integer"
+                          },
                           "assignee_scope": {
                             "type": "string"
                           },
@@ -5950,6 +6058,8 @@
                           "reward_kind",
                           "reward_credit_amount",
                           "reward_collectible_count",
+                          "allocated_credits",
+                          "allocated_collectible_ids",
                           "participation_policy",
                           "assignee_scope",
                           "reservation_expiry_hours",
@@ -6279,6 +6389,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "allocated_collectible_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "allocated_credits": {
+                      "type": "integer"
+                    },
                     "assignee_scope": {
                       "type": "string"
                     },
@@ -6395,6 +6514,8 @@
                     "reward_kind",
                     "reward_credit_amount",
                     "reward_collectible_count",
+                    "allocated_credits",
+                    "allocated_collectible_ids",
                     "participation_policy",
                     "assignee_scope",
                     "reservation_expiry_hours",
@@ -6431,6 +6552,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "allocated_collectible_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "allocated_credits": {
+                      "type": "integer"
+                    },
                     "assignee_scope": {
                       "type": "string"
                     },
@@ -6547,6 +6677,8 @@
                     "reward_kind",
                     "reward_credit_amount",
                     "reward_collectible_count",
+                    "allocated_credits",
+                    "allocated_collectible_ids",
                     "participation_policy",
                     "assignee_scope",
                     "reservation_expiry_hours",
@@ -6592,6 +6724,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "allocated_collectible_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "allocated_credits": {
+                      "type": "integer"
+                    },
                     "assignee_scope": {
                       "type": "string"
                     },
@@ -6708,6 +6849,8 @@
                     "reward_kind",
                     "reward_credit_amount",
                     "reward_collectible_count",
+                    "allocated_credits",
+                    "allocated_collectible_ids",
                     "participation_policy",
                     "assignee_scope",
                     "reservation_expiry_hours",
@@ -7066,6 +7209,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "allocated_collectible_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "allocated_credits": {
+                      "type": "integer"
+                    },
                     "assignee_scope": {
                       "type": "string"
                     },
@@ -7182,6 +7334,8 @@
                     "reward_kind",
                     "reward_credit_amount",
                     "reward_collectible_count",
+                    "allocated_credits",
+                    "allocated_collectible_ids",
                     "participation_policy",
                     "assignee_scope",
                     "reservation_expiry_hours",
@@ -8141,6 +8295,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "allocated_collectible_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "allocated_credits": {
+                      "type": "integer"
+                    },
                     "assignee_scope": {
                       "type": "string"
                     },
@@ -8257,6 +8420,8 @@
                     "reward_kind",
                     "reward_credit_amount",
                     "reward_collectible_count",
+                    "allocated_credits",
+                    "allocated_collectible_ids",
                     "participation_policy",
                     "assignee_scope",
                     "reservation_expiry_hours",

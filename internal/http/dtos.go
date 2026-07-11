@@ -297,33 +297,42 @@ type usersResponse struct {
 }
 
 type taskResponse struct {
-	ID                     string               `json:"id"`
-	OwnerKind              string               `json:"owner_kind"`
-	OwnerID                string               `json:"owner_id"`
-	Title                  string               `json:"title"`
-	Description            string               `json:"description"`
-	TaskType               string               `json:"task_type"`
-	ReferenceURL           string               `json:"reference_url"`
-	RewardKind             string               `json:"reward_kind"`
-	RewardCreditAmount     int64                `json:"reward_credit_amount"`
-	RewardCollectibleCount int                  `json:"reward_collectible_count"`
-	ParticipationPolicy    string               `json:"participation_policy"`
-	AssigneeScope          string               `json:"assignee_scope"`
-	ReservationExpiryHours int                  `json:"reservation_expiry_hours"`
-	State                  string               `json:"state"`
-	VisibilityKind         string               `json:"visibility_kind"`
-	VisibilityID           string               `json:"visibility_id"`
-	SeriesKind             string               `json:"series_kind"`
-	SeriesID               string               `json:"series_id"`
-	SeriesPosition         int                  `json:"series_position"`
-	ResponseSchemaJSON     string               `json:"response_schema_json"`
-	PayloadKind            string               `json:"payload_kind"`
-	PayloadJSON            string               `json:"payload_json"`
-	Attachments            []attachmentResponse `json:"attachments"`
-	CreatedBy              string               `json:"created_by"`
-	AvailabilityKind       string               `json:"availability_kind"`
-	ViewerAction           string               `json:"viewer_action"`
-	ReviewerAction         string               `json:"reviewer_action"`
+	ID                     string `json:"id"`
+	OwnerKind              string `json:"owner_kind"`
+	OwnerID                string `json:"owner_id"`
+	Title                  string `json:"title"`
+	Description            string `json:"description"`
+	TaskType               string `json:"task_type"`
+	ReferenceURL           string `json:"reference_url"`
+	RewardKind             string `json:"reward_kind"`
+	RewardCreditAmount     int64  `json:"reward_credit_amount"`
+	RewardCollectibleCount int    `json:"reward_collectible_count"`
+	// AllocatedCredits / AllocatedCollectibleIDs report the reward actually
+	// held (allocated) for this task right now - zero/empty until it is
+	// funded, and zero/empty again after it is awarded or refunded. Distinct
+	// from the Reward* fields, which are the *declared* reward. Collectibles
+	// are non-fungible, so the held collectibles are listed individually by
+	// id rather than counted. Populated only on the task detail response;
+	// list items leave them zero/empty.
+	AllocatedCredits        int64                `json:"allocated_credits"`
+	AllocatedCollectibleIDs []string             `json:"allocated_collectible_ids"`
+	ParticipationPolicy     string               `json:"participation_policy"`
+	AssigneeScope           string               `json:"assignee_scope"`
+	ReservationExpiryHours  int                  `json:"reservation_expiry_hours"`
+	State                   string               `json:"state"`
+	VisibilityKind          string               `json:"visibility_kind"`
+	VisibilityID            string               `json:"visibility_id"`
+	SeriesKind              string               `json:"series_kind"`
+	SeriesID                string               `json:"series_id"`
+	SeriesPosition          int                  `json:"series_position"`
+	ResponseSchemaJSON      string               `json:"response_schema_json"`
+	PayloadKind             string               `json:"payload_kind"`
+	PayloadJSON             string               `json:"payload_json"`
+	Attachments             []attachmentResponse `json:"attachments"`
+	CreatedBy               string               `json:"created_by"`
+	AvailabilityKind        string               `json:"availability_kind"`
+	ViewerAction            string               `json:"viewer_action"`
+	ReviewerAction          string               `json:"reviewer_action"`
 }
 
 type attachmentResponse struct {

@@ -198,6 +198,44 @@ func (store TaskBrowserStore) settleFundedTaskOnCancel(taskID string) *core.Doma
 	return nil
 }
 
+// releaseReservationsOnCancel mirrors internal/db's helper of the same name:
+// every non-terminal reservation on a cancelled task (requested/active/
+// submitted) moves to cancelled_by_requester, the same terminal state the
+// owner-driven submission rejection uses. Terminal reservations are left
+// untouched. It is a package-level function taking BrowserStorage (rather than
+// a TaskBrowserStore method) so the refund path in browserstore_ledger.go,
+// which cancels a task from a LedgerBrowserStore, can reuse it without
+// reconstructing a TaskBrowserStore.
+func releaseReservationsOnCancel(storage BrowserStorage, taskID string) *core.DomainError {
+	indexResult := loadStringIndex(storage, reservationTaskIndexKey(taskID), "reservation")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return &reason
+	}
+	for _, id := range loaded.values {
+		record, found, ok := getStoredReservationJSON(storage, reservationRecordKey(id))
+		if !ok {
+			reason := invalidState("read reservation failed")
+			return &reason
+		}
+		if !found {
+			continue
+		}
+		if record.State != task.ReservationStateRequested.String() &&
+			record.State != task.ReservationStateActive.String() &&
+			record.State != task.ReservationStateSubmitted.String() {
+			continue
+		}
+		record.State = task.ReservationStateCancelledByRequester.String()
+		if !putStoredReservationJSON(storage, reservationRecordKey(id), record) {
+			reason := invalidState("release reservations on cancel failed")
+			return &reason
+		}
+	}
+	return nil
+}
+
 func (store TaskBrowserStore) ChangeTaskState(_ context.Context, taskID core.TaskID, state task.State) task.ChangeTaskStateStoreResult {
 	record, found, err := loadStoredTaskRecord(store.storage, taskID.String())
 	if err != nil {
@@ -213,6 +251,13 @@ func (store TaskBrowserStore) ChangeTaskState(_ context.Context, taskID core.Tas
 	}
 	if state == task.StateCancelled {
 		if rejectReason := store.settleFundedTaskOnCancel(record.ID); rejectReason != nil {
+			return task.ChangeTaskStateStoreRejected{Reason: *rejectReason}
+		}
+		// A cancelled task can never be reserved, submitted to, or reviewed
+		// again, so every reservation still held on it must be released.
+		// Otherwise it dangles forever: the expiry sweep ignores submitted
+		// reservations and no other path clears them.
+		if rejectReason := releaseReservationsOnCancel(store.storage, record.ID); rejectReason != nil {
 			return task.ChangeTaskStateStoreRejected{Reason: *rejectReason}
 		}
 	}

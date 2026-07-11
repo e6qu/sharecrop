@@ -367,7 +367,7 @@ taskStateGuidance state =
             "This task is closed. An accepted submission has been settled."
 
         Task.TaskStateCancelled ->
-            "This task was cancelled. Any escrowed reward was refunded."
+            "This task was cancelled. Any allocated reward was returned to the funder's spendable balance."
 
         Task.TaskStateExpired ->
             "This task expired without an accepted submission."

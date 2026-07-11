@@ -1007,6 +1007,10 @@ func (testLedgerService) RefundTask(_ context.Context, _ core.UserID, taskID cor
 	return ledger.TaskRefunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: ledger.NewCreditAmount(1).(ledger.CreditAmountAccepted).Value}}
 }
 
+func (testLedgerService) TaskAllocatedCredits(context.Context, core.TaskID) ledger.TaskAllocatedResult {
+	return ledger.TaskAllocatedFound{Amount: 0}
+}
+
 func (testLedgerService) Balance(context.Context, core.UserID) ledger.BalanceResult {
 	return ledger.BalanceFound{Value: ledger.NewBalance(100, 0)}
 }
@@ -1088,6 +1092,10 @@ func (testAssetService) RefundReward(context.Context, core.UserID, core.TaskID) 
 
 func (testAssetService) GiftCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult {
 	return assets.CollectibleGifted{}
+}
+
+func (testAssetService) TaskHeldCollectibles(context.Context, core.TaskID) assets.TaskHeldCollectiblesResult {
+	return assets.TaskHeldCollectiblesFound{IDs: nil}
 }
 
 func (testAssetService) AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult {

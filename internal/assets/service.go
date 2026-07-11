@@ -15,6 +15,7 @@ type Store interface {
 	RefundCollectibleReward(context.Context, RefundRewardStoreCommand) RefundRewardResult
 	GiftCollectible(context.Context, GiftStoreCommand) GiftResult
 	AwardOrganizationCollectible(context.Context, AwardOrganizationCollectibleStoreCommand) GiftResult
+	TaskHeldCollectibles(context.Context, core.TaskID) TaskHeldCollectiblesResult
 }
 
 // AwardOrganizationCollectibleStoreCommand carries a validated request to
@@ -114,6 +115,31 @@ type ListRejected struct {
 func (CollectiblesListed) listResult() {}
 
 func (ListRejected) listResult() {}
+
+// TaskHeldCollectiblesResult reports the individual collectibles currently held
+// as a task's reward (the stateless task_fund_collectibles rows). Collectibles
+// are non-fungible, so this returns each held collectible's id, not a count -
+// empty when the task holds no collectible funding.
+type TaskHeldCollectiblesResult interface {
+	taskHeldCollectiblesResult()
+}
+
+type TaskHeldCollectiblesFound struct {
+	IDs []core.CollectibleID
+}
+
+type TaskHeldCollectiblesRejected struct {
+	Reason core.DomainError
+}
+
+func (TaskHeldCollectiblesFound) taskHeldCollectiblesResult()    {}
+func (TaskHeldCollectiblesRejected) taskHeldCollectiblesResult() {}
+
+// TaskHeldCollectibles reports the individual collectibles currently held as
+// the given task's reward.
+func (service Service) TaskHeldCollectibles(ctx context.Context, taskID core.TaskID) TaskHeldCollectiblesResult {
+	return service.store.TaskHeldCollectibles(ctx, taskID)
+}
 
 func (service Service) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) ListResult {
 	storeResult := service.store.ListCollectibles(ctx, owner, page)

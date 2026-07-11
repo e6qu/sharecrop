@@ -202,6 +202,9 @@ createTaskCommand model state =
 
         amountMissing =
             rewardAmountMissing state.createRewardKind state.createRewardAmount
+
+        collectibleMissing =
+            rewardCollectibleMissing state.createRewardKind state.createRewardCollectibleIds
     in
     if titleMissing || descriptionMissing || amountMissing then
         ( updateLoggedIn model
@@ -215,6 +218,9 @@ createTaskCommand model state =
             )
         , Cmd.none
         )
+
+    else if collectibleMissing then
+        ( updateLoggedIn model (\current -> { current | createMessage = Just (FailureNote "Select at least one collectible for this reward.") }), Cmd.none )
 
     else if participationUsesReservation state.createParticipationPolicy && (reservationHoursValue state.createReservationHours < 1 || reservationHoursValue state.createReservationHours > 720) then
         ( updateLoggedIn model (\current -> { current | createMessage = Just (FailureNote "Reservation expiry must be between 1 and 720 hours.") }), Cmd.none )
@@ -234,6 +240,16 @@ rewardAmountMissing : String -> String -> Bool
 rewardAmountMissing kind rawAmount =
     (kind == "credit" || kind == "bundle")
         && (Maybe.withDefault 0 (String.toInt (String.trim rawAmount)) < 1)
+
+
+{-| A collectible or bundle reward needs at least one collectible selected;
+the server rejects an empty list, so block the submit with a clear message
+instead of letting the create round-trip fail.
+-}
+rewardCollectibleMissing : String -> List String -> Bool
+rewardCollectibleMissing kind collectibleIds =
+    (kind == "collectible" || kind == "bundle")
+        && List.isEmpty collectibleIds
 
 
 submitCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
@@ -272,6 +288,20 @@ schemaFormFields state =
         state.detail
             |> Maybe.andThen (\detail -> ResponseSchema.parse detail.responseSchemaJson)
             |> Maybe.andThen ResponseSchema.formFields
+
+
+{-| Best-effort JSON for the raw editor, built from the structured fields the
+worker has filled in so far. Empty when there is no object schema or nothing
+has been filled.
+-}
+seedRawSubmitInput : LoggedInModel -> String
+seedRawSubmitInput state =
+    case schemaFormFields state of
+        Just fields ->
+            ResponseSchema.buildPartial fields state.submitFieldValues
+
+        Nothing ->
+            ""
 
 
 submitRawCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
@@ -408,6 +438,16 @@ refreshTasksAndLedger model =
     case model.session of
         LoggedIn state ->
             Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset, fetchBalance state.accessToken, fetchLedger state.accessToken state.ledgerOffset ]
+
+        LoggedOut ->
+            Cmd.none
+
+
+refreshBalanceAndLedger : Model -> Cmd Msg
+refreshBalanceAndLedger model =
+    case model.session of
+        LoggedIn state ->
+            Cmd.batch [ fetchBalance state.accessToken, fetchLedger state.accessToken state.ledgerOffset ]
 
         LoggedOut ->
             Cmd.none
@@ -1818,6 +1858,8 @@ taskDetailFromResponse response =
     , rewardKind = response.rewardKind
     , rewardCreditAmount = response.rewardCreditAmount
     , rewardCollectibleCount = response.rewardCollectibleCount
+    , allocatedCredits = response.allocatedCredits
+    , allocatedCollectibleIDs = response.allocatedCollectibleIDs
     , participationPolicy = response.participationPolicy
     , assigneeScope = response.assigneeScope
     , reservationExpiryHours = response.reservationExpiryHours

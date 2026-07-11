@@ -408,6 +408,13 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "cancel task failed")}
 	}
 
+	// A refund cancels the task, so release the worker's reservation too -
+	// otherwise it would dangle in an active/submitted state on a cancelled
+	// task, exactly like the cancel path (releaseReservationsOnCancel).
+	if reason := releaseReservationsOnCancel(ctx, tx, command.TaskID); reason != nil {
+		return ledger.RefundRejected{Reason: *reason}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit refund task transaction failed")}
 	}
@@ -489,6 +496,17 @@ func (store LedgerStore) Balance(ctx context.Context, owner core.UserID) ledger.
 		return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read balance failed")}
 	}
 	return ledger.BalanceFound{Value: ledger.NewBalance(spendable, allocated)}
+}
+
+func (store LedgerStore) TaskAllocatedCredits(ctx context.Context, taskID core.TaskID) ledger.TaskAllocatedResult {
+	var allocated int64
+	err := store.pool.QueryRow(ctx,
+		"select coalesce((select credit_amount from task_funds where task_id = $1), 0)",
+		taskID.String()).Scan(&allocated)
+	if err != nil {
+		return ledger.TaskAllocatedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task allocated credits failed")}
+	}
+	return ledger.TaskAllocatedFound{Amount: allocated}
 }
 
 func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, page core.Page) ledger.ListEntriesResult {

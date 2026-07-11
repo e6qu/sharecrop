@@ -239,6 +239,23 @@ func (store AssetBrowserStore) ListCollectiblesByOwner(_ context.Context, ownerK
 	return store.listByOwner(ownerKind, ownerID, page)
 }
 
+func (store AssetBrowserStore) TaskHeldCollectibles(_ context.Context, taskID core.TaskID) assets.TaskHeldCollectiblesResult {
+	rewards, domainErr := loadTaskFundCollectibles(store.storage, taskID.String())
+	if domainErr != nil {
+		return assets.TaskHeldCollectiblesRejected{Reason: *domainErr}
+	}
+	ids := make([]core.CollectibleID, 0, len(rewards))
+	for _, reward := range rewards {
+		idResult := core.ParseCollectibleID(reward.CollectibleID)
+		idCreated, matched := idResult.(core.CollectibleIDCreated)
+		if !matched {
+			return assets.TaskHeldCollectiblesRejected{Reason: idResult.(core.CollectibleIDRejected).Reason}
+		}
+		ids = append(ids, idCreated.Value)
+	}
+	return assets.TaskHeldCollectiblesFound{IDs: ids}
+}
+
 func (store AssetBrowserStore) FundCollectibleReward(_ context.Context, command assets.FundRewardStoreCommand) assets.FundRewardResult {
 	collectible, found, err := store.loadCollectible(command.CollectibleID.String())
 	if err != nil {
@@ -346,6 +363,12 @@ func (store AssetBrowserStore) RefundCollectibleReward(_ context.Context, comman
 	record.State = "cancelled"
 	if !saveStoredTaskRecord(store.storage, record) {
 		return assets.RefundRewardRejected{Reason: invalidState("cancel task failed")}
+	}
+
+	// A collectible-reward refund cancels the task, so release the worker's
+	// reservation too (same as the cancel and credit-refund paths).
+	if reason := releaseReservationsOnCancel(store.storage, command.TaskID.String()); reason != nil {
+		return assets.RefundRewardRejected{Reason: *reason}
 	}
 	return assets.RewardRefunded{Values: refunded}
 }

@@ -1771,4 +1771,120 @@ export async function runSharedScenarioParity(
       "notification state must change to read",
     );
   }
+
+  // Data-hygiene parity: cancelling a task must release every non-terminal
+  // reservation still held on it, rather than leaving the worker's reservation
+  // dangling in a submitted state on a task that can never be reviewed again.
+  // Both backends serve the cancel endpoint through the task store's
+  // ChangeTaskState, which moves the reservation to a terminal state.
+  const cancelReleaseTitle = uniqueName(
+    "Scenario parity cancel releases reservation",
+  );
+  const cancelReleaseTask = await owner.client.request("POST", "/api/tasks", {
+    owner: { kind: "user", user_id: owner.subjectID },
+    title: cancelReleaseTitle,
+    description: "Created to verify cancel releases a submitted reservation.",
+    visibility: { kind: "public" },
+    participation: {
+      policy: "reservation_required",
+      assignee_scope: "user",
+      reservation_expiry_hours: 48,
+    },
+    reward: {
+      kind: "none",
+      credit_amount: 0,
+      collectible_ids: [],
+    },
+    response_schema_json: '{"kind":"freeform"}',
+    payload: { kind: "none", json: "" },
+    placement: { kind: "standalone" },
+  });
+  assertStatus(cancelReleaseTask, 201, "create cancel-release task");
+  const cancelReleaseTaskID = requireString(cancelReleaseTask.json, "id");
+
+  const cancelReleaseOpened = await owner.client.request(
+    "POST",
+    `/api/tasks/${cancelReleaseTaskID}/open`,
+    {},
+  );
+  assertStatus(cancelReleaseOpened, 200, "open cancel-release task");
+
+  const cancelReleaseReservation = await worker.client.request(
+    "POST",
+    `/api/tasks/${cancelReleaseTaskID}/reservations`,
+    {},
+  );
+  assertStatus(cancelReleaseReservation, 201, "reserve cancel-release task");
+  const cancelReleaseReservationID = requireString(
+    cancelReleaseReservation.json,
+    "id",
+  );
+  assertScenario(
+    requireString(cancelReleaseReservation.json, "state") === "active",
+    "reservation_required reservation must start active",
+  );
+
+  const cancelReleaseSubmission = await worker.client.request(
+    "POST",
+    `/api/tasks/${cancelReleaseTaskID}/submissions`,
+    { response_json: '{"cancel_release":"done"}' },
+  );
+  assertStatus(cancelReleaseSubmission, 201, "submit cancel-release task");
+
+  const reservationsBeforeCancel = await owner.client.request(
+    "GET",
+    `/api/tasks/${cancelReleaseTaskID}/reservations`,
+    noScenarioBody,
+  );
+  assertStatus(
+    reservationsBeforeCancel,
+    200,
+    "list reservations before cancel",
+  );
+  assertScenario(
+    requireArray(reservationsBeforeCancel.json, "reservations").some((item) => {
+      const reservation = requireRecord(item, "reservationsBeforeCancel[]");
+      return requireString(reservation, "id") === cancelReleaseReservationID &&
+        requireString(reservation, "state") === "submitted";
+    }),
+    "worker reservation must be submitted before the task is cancelled",
+  );
+
+  const cancelledTask = await owner.client.request(
+    "POST",
+    `/api/tasks/${cancelReleaseTaskID}/cancel`,
+    {},
+  );
+  assertStatus(cancelledTask, 200, "cancel task with submitted reservation");
+  assertScenario(
+    requireString(cancelledTask.json, "state") === "cancelled",
+    "cancelled task state must be cancelled",
+  );
+
+  const reservationsAfterCancel = await owner.client.request(
+    "GET",
+    `/api/tasks/${cancelReleaseTaskID}/reservations`,
+    noScenarioBody,
+  );
+  assertStatus(reservationsAfterCancel, 200, "list reservations after cancel");
+  const cancelledReservation = requireArray(
+    reservationsAfterCancel.json,
+    "reservations",
+  )
+    .map((item) => requireRecord(item, "reservationsAfterCancel[]"))
+    .find((reservation) =>
+      requireString(reservation, "id") === cancelReleaseReservationID
+    );
+  if (cancelledReservation === undefined) {
+    throw new Error("worker reservation must remain listed after cancel");
+  }
+  const cancelledReservationState = requireString(
+    cancelledReservation,
+    "state",
+  );
+  assertScenario(
+    cancelledReservationState !== "active" &&
+      cancelledReservationState !== "submitted",
+    "worker reservation must no longer be active or submitted after cancel",
+  );
 }
