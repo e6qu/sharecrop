@@ -18,6 +18,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
+	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
@@ -52,5 +53,5 @@ func buildMux() (http.Handler, error) {
 	if !matched {
 		return nil, fmt.Errorf("SHARECROP_ACCESS_TOKEN_SECRET is missing or invalid")
 	}
-	return appmux.New(secret.Value, notificationbridge.NewGuestStore(rpc.Invoke)), nil
+	return appmux.New(secret.Value, authbridge.NewGuestStore(rpc.Invoke), notificationbridge.NewGuestStore(rpc.Invoke)), nil
 }

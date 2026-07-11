@@ -23,13 +23,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/e6qu/sharecrop/internal/db"
-	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
-	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
+	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
 )
 
 func main() {
@@ -66,7 +64,7 @@ func run(guestPath, addr string) error {
 		return fmt.Errorf("read guest module: %w", err)
 	}
 
-	host, err := rpc.NewHost(ctx, guestWASM, storeDispatcher(db.NewNotificationStore(pool), db.NewAuditStore(pool)))
+	host, err := rpc.NewHost(ctx, guestWASM, storehost.Dispatcher(pool))
 	if err != nil {
 		return fmt.Errorf("build host: %w", err)
 	}
@@ -76,20 +74,4 @@ func run(guestPath, addr string) error {
 	server := &http.Server{Addr: addr, Handler: httpbridge.Handler(host)}
 	log.Printf("listening on %s - each request runs a fresh wasm guest against Postgres", addr)
 	return server.ListenAndServe()
-}
-
-// storeDispatcher routes a guest's store call to the matching bridge over the
-// real db stores, by method prefix - the host-side mirror of the store guest.
-func storeDispatcher(notificationStore db.NotificationStore, auditStore db.AuditStore) rpc.Dispatcher {
-	return func(ctx context.Context, method string, args []byte) ([]byte, error) {
-		store, _, _ := strings.Cut(method, ".")
-		switch store {
-		case "notification":
-			return notificationbridge.Dispatch(ctx, notificationStore, method, args)
-		case "audit":
-			return auditbridge.Dispatch(ctx, auditStore, method, args)
-		default:
-			return nil, fmt.Errorf("no bridge for method %q", method)
-		}
-	}
 }

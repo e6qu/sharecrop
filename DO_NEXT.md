@@ -37,10 +37,14 @@ Current priority from
      (`tests/integration/approute_test.go`). Three stores are now bridged:
      **audit, notification, auth** (auth = the largest, dual-run-verified
      across all 13 methods; its opaque hash types round-trip via new
-     `*FromString` reconstruction constructors in `internal/auth`). **Next**:
-     wire the auth service into `appmux` and prove an auth/account route end to
-     end; bridge the remaining stores (`ledger`, `task`, `org`, `submission`,
-     `assets`, `orgcred`); then weigh the ~2-3ms instance-per-request floor
+     `*FromString` reconstruction constructors in `internal/auth`). An
+     **auth-store-touching route runs end to end through the guest**:
+     `GET /api/users` reads the auth directory via a live auth service (bridged
+     `GuestStore`), byte-identical to native
+     (`tests/integration/authroute_test.go`); host-side routing shared as
+     `internal/wasibridge/storehost`. **Next**: bridge the remaining stores
+     (`ledger`, `task`, `org`, `submission`, `assets`, `orgcred`) and wire their
+     services/routes; then weigh the ~2-3ms instance-per-request floor
      against instance pooling, migrate `cmd/sharecrop` onto the hosted guest,
      and retire `internal/wasmdemo` once the browser demo can run the same
      artifact.

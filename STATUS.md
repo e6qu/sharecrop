@@ -53,20 +53,18 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-auth` — bridge the `auth` store (the largest:
-13 methods, 10 result unions), so authenticated/account routes can eventually
-run in the guest. `internal/wasibridge/authbridge` (codecs + generated
-`bridge_gen.go`) is dual-run-verified against real Postgres across all 13
-methods (`tests/integration/authbridge_store_test.go`), including the
-refresh-token and account-token flows. The opaque hash/token types needed
-reconstruction constructors added to `internal/auth`
-(`RefreshTokenHashFromString`/`AccountTokenHashFromString`/
-`AccountTokenKindFromString`, mirroring `ParsePasswordHash`), and `corewire`
-grew id/string/time codecs for method arguments. The generic store guest now
-routes `auth.*` too. Three stores bridged: audit, notification, auth.
-**Next**: wire the auth service into `appmux` and prove an auth/account route
-end to end; bridge the remaining stores (ledger, task, org, submission,
-assets, orgcred); then weigh instance pooling and migrate `cmd/sharecrop`.
+Active task: `task/wasi-auth-route` — prove an auth-store-touching route end
+to end through the guest. `appmux` now wires a **live auth service** (backed by
+the bridged auth `GuestStore`) alongside the notification service, so
+`GET /api/users` reads the auth store's directory through the guest,
+byte-identical to native (`tests/integration/authroute_test.go`) - the first
+route to exercise a bridged store's *service*, not just stateless token
+verification. Host-side store routing (audit/auth/notification by method
+prefix) is shared as `internal/wasibridge/storehost`, used by the app host and
+the tests. Three stores bridged: audit, notification, auth. **Next**: bridge
+the remaining stores (ledger, task, org, submission, assets, orgcred) and wire
+their services/routes; then weigh the ~2-3ms instance-per-request floor
+against instance pooling and migrate `cmd/sharecrop` onto the hosted guest.
 Nothing about the native server or browser demo changes.
 
 Blocking issues: none. GitHub Pages `deploy-pages` occasionally fails
