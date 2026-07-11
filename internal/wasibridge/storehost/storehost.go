@@ -16,6 +16,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
@@ -30,6 +31,7 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	assetsStore := db.NewCollectibleStore(pool)
 	auditStore := db.NewAuditStore(pool)
 	authStore := db.NewAuthStore(pool)
+	ledgerStore := db.NewLedgerStore(pool)
 	notificationStore := db.NewNotificationStore(pool)
 	orgcredStore := db.NewOrgCredentialStore(pool)
 	submissionStore := db.NewSubmissionStore(pool)
@@ -45,6 +47,8 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 			return auditbridge.Dispatch(ctx, auditStore, method, args)
 		case "auth":
 			return authbridge.Dispatch(ctx, authStore, method, args)
+		case "ledger":
+			return ledgerbridge.Dispatch(ctx, ledgerStore, method, args)
 		case "notification":
 			return notificationbridge.Dispatch(ctx, notificationStore, method, args)
 		case "orgcred":

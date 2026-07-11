@@ -76,6 +76,7 @@ func Targets() []Target {
 		{Key: "orgcred", SourceDir: "internal/orgcred", OutputPath: "internal/wasibridge/orgcredbridge/bridge_gen.go"},
 		{Key: "assets", SourceDir: "internal/assets", OutputPath: "internal/wasibridge/assetsbridge/bridge_gen.go"},
 		{Key: "submission", SourceDir: "internal/submission", OutputPath: "internal/wasibridge/submissionbridge/bridge_gen.go"},
+		{Key: "ledger", SourceDir: "internal/ledger", OutputPath: "internal/wasibridge/ledgerbridge/bridge_gen.go"},
 	}
 }
 
@@ -249,6 +250,35 @@ var specs = map[string]storeSpec{
 			"submission.ListSubmissionsStoreResult":         {goType: "submission.ListSubmissionsStoreResult", wireType: "submissionsResultWire", encodeFn: "encodeListSubmissionsResult", decodeFn: "decodeListSubmissionsResult", rejectedType: "submission.ListSubmissionsStoreRejected"},
 			"submission.CreateSubmissionCommentStoreResult": {goType: "submission.CreateSubmissionCommentStoreResult", wireType: "submissionCommentResultWire", encodeFn: "encodeCreateCommentResult", decodeFn: "decodeCreateCommentResult", rejectedType: "submission.CreateSubmissionCommentStoreRejected"},
 			"submission.ListSubmissionCommentsStoreResult":  {goType: "submission.ListSubmissionCommentsStoreResult", wireType: "submissionCommentsResultWire", encodeFn: "encodeListCommentsResult", decodeFn: "decodeListCommentsResult", rejectedType: "submission.ListSubmissionCommentsStoreRejected"},
+		},
+	},
+	"ledger": {
+		bridgePackage: "ledgerbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/ledger",
+		domainPackage: "ledger",
+		interfaceName: "Store",
+		wirePrefix:    "ledger",
+		argCodecs: map[string]argCodec{
+			"core.UserID":                         userIDArg(),
+			"core.Page":                           pageArg(),
+			"core.TaskID":                         {field: "TaskID", goType: "core.TaskID", wireType: "string", encodeFn: "corewire.EncodeTaskID", decodeFn: "corewire.DecodeTaskID"},
+			"core.OrganizationID":                 {field: "OrganizationID", goType: "core.OrganizationID", wireType: "string", encodeFn: "corewire.EncodeOrganizationID", decodeFn: "corewire.DecodeOrganizationID"},
+			"ledger.FundStoreCommand":             {field: "FundCommand", goType: "ledger.FundStoreCommand", wireType: "fundCommandWire", encodeFn: "encodeFundCommand", decodeFn: "decodeFundCommand"},
+			"ledger.OrganizationFundStoreCommand": {field: "OrgFundCommand", goType: "ledger.OrganizationFundStoreCommand", wireType: "orgFundCommandWire", encodeFn: "encodeOrgFundCommand", decodeFn: "decodeOrgFundCommand"},
+			"ledger.AcceptStoreCommand":           {field: "AcceptCommand", goType: "ledger.AcceptStoreCommand", wireType: "acceptCommandWire", encodeFn: "encodeAcceptCommand", decodeFn: "decodeAcceptCommand"},
+			"ledger.RequestChangesStoreCommand":   {field: "RequestChangesCommand", goType: "ledger.RequestChangesStoreCommand", wireType: "requestChangesCommandWire", encodeFn: "encodeRequestChangesCommand", decodeFn: "decodeRequestChangesCommand"},
+			"ledger.RejectStoreCommand":           {field: "RejectCommand", goType: "ledger.RejectStoreCommand", wireType: "rejectCommandWire", encodeFn: "encodeRejectCommand", decodeFn: "decodeRejectCommand"},
+			"ledger.RefundStoreCommand":           {field: "RefundCommand", goType: "ledger.RefundStoreCommand", wireType: "refundCommandWire", encodeFn: "encodeRefundCommand", decodeFn: "decodeRefundCommand"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"ledger.FundResult":           {goType: "ledger.FundResult", wireType: "fundResultWire", encodeFn: "encodeFundResult", decodeFn: "decodeFundResult", rejectedType: "ledger.FundRejected"},
+			"ledger.AcceptResult":         {goType: "ledger.AcceptResult", wireType: "reviewedSubmissionWire", encodeFn: "encodeAcceptResult", decodeFn: "decodeAcceptResult", rejectedType: "ledger.AcceptRejected"},
+			"ledger.RequestChangesResult": {goType: "ledger.RequestChangesResult", wireType: "changesRequestedWire", encodeFn: "encodeRequestChangesResult", decodeFn: "decodeRequestChangesResult", rejectedType: "ledger.RequestChangesRejected"},
+			"ledger.RejectResult":         {goType: "ledger.RejectResult", wireType: "reviewedSubmissionWire", encodeFn: "encodeRejectResult", decodeFn: "decodeRejectResult", rejectedType: "ledger.RejectRejected"},
+			"ledger.RefundResult":         {goType: "ledger.RefundResult", wireType: "fundResultWire", encodeFn: "encodeRefundResult", decodeFn: "decodeRefundResult", rejectedType: "ledger.RefundRejected"},
+			"ledger.TaskAllocatedResult":  {goType: "ledger.TaskAllocatedResult", wireType: "taskAllocatedWire", encodeFn: "encodeTaskAllocatedResult", decodeFn: "decodeTaskAllocatedResult", rejectedType: "ledger.TaskAllocatedRejected"},
+			"ledger.BalanceResult":        {goType: "ledger.BalanceResult", wireType: "balanceWire", encodeFn: "encodeBalanceResult", decodeFn: "decodeBalanceResult", rejectedType: "ledger.BalanceRejected"},
+			"ledger.ListEntriesResult":    {goType: "ledger.ListEntriesResult", wireType: "entriesWire", encodeFn: "encodeListEntriesResult", decodeFn: "decodeListEntriesResult", rejectedType: "ledger.ListEntriesRejected"},
 		},
 	},
 }

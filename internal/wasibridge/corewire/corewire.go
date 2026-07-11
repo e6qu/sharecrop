@@ -122,6 +122,28 @@ func DecodeOrgCredentialID(raw string) (core.OrgCredentialID, error) {
 	return created.Value, nil
 }
 
+// EncodeLedgerEntryID / DecodeLedgerEntryID carry a core.LedgerEntryID.
+func EncodeLedgerEntryID(id core.LedgerEntryID) string { return id.String() }
+
+func DecodeLedgerEntryID(raw string) (core.LedgerEntryID, error) {
+	created, matched := core.ParseLedgerEntryID(raw).(core.LedgerEntryIDCreated)
+	if !matched {
+		return core.LedgerEntryID{}, fmt.Errorf("invalid ledger entry id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeCreditAccountID / DecodeCreditAccountID carry a core.CreditAccountID.
+func EncodeCreditAccountID(id core.CreditAccountID) string { return id.String() }
+
+func DecodeCreditAccountID(raw string) (core.CreditAccountID, error) {
+	created, matched := core.ParseCreditAccountID(raw).(core.CreditAccountIDCreated)
+	if !matched {
+		return core.CreditAccountID{}, fmt.Errorf("invalid credit account id %q", raw)
+	}
+	return created.Value, nil
+}
+
 // EncodeSubmissionID / DecodeSubmissionID carry a core.SubmissionID.
 func EncodeSubmissionID(id core.SubmissionID) string { return id.String() }
 
