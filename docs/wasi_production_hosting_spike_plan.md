@@ -387,13 +387,33 @@ implementation on a shaky foundation.
   serializes the result (anti-drift safeguard #1). Safeguards #2 (codegen)
   and #3 (dual-run for every method) arrive in Phase 3.
 
-- **Phase 3 — codegen the bridge for one full store.**
-  Build the `generate wasi-bridge` tool against one complete store
-  interface (not all 15), and add the `check-wasi-bridge` CI gate.
-  *Checkpoint*: codegen output compiles, passes the dual-run test
-  described above for every method on that one store, and CI catches an
-  intentionally-introduced drift (e.g. hand-edit the generated file and
-  confirm `check-wasi-bridge` fails).
+- **Phase 3 — codegen the bridge for one full store. ✅ Done, in this session.**
+  Target store: `internal/audit.Store` (all 3 methods: `Record`, `Get`,
+  `List`) - small but representative (typed ids, a string-wrapper enum,
+  nested structs, three sealed-union filters, a slice, `time.Time`,
+  `DomainError`). Generic transport `internal/wasibridge/rpc` (method-keyed
+  call frames over the Phase 1 pipe shape) generalizes the Phase 2 auth
+  spike, both now sharing `internal/wasibridge/wire` (framing) and
+  `internal/wasibridge/domainwire` (the shared `DomainError` codec).
+  `internal/wasibridge/auditbridge` holds hand-written, round-trip-tested
+  per-type codecs (`codec.go`) plus a **generated** `bridge_gen.go`
+  (`Dispatch` host router + `GuestStore` client) emitted by
+  `internal/wasibridge/gen` via `go run ./cmd/sharecrop generate wasi-bridge`.
+  The `check-wasi-bridge` CI gate regenerates and diffs (mirroring
+  `check-contracts`/`check-openapi`).
+  *Checkpoint met*: the generator reproduces the committed bridge exactly
+  (safeguard #2); the dual-run integration test
+  (`tests/integration/auditbridge_store_test.go`) exercises every method
+  against real Postgres through both the direct-db path and the compiled
+  `GOOS=wasip1` guest + host bridge, with matching results including the
+  not-found rejection and the write path (safeguard #3); and the generator
+  errors loudly on a Store method whose type has no registered codec
+  (`gen_test.go`), so a new method can't silently ship an incomplete bridge.
+  The generated `GuestStore` also carries a `var _ audit.Store = GuestStore{}`
+  assertion, so adding a method to the interface without regenerating fails
+  to compile. Anti-drift safeguard #1 (no business logic in the bridge)
+  holds: `Dispatch` only decodes args, calls the real method, and encodes
+  the result.
 
 - **Phase 4 — one real HTTP request, fully end to end.**
   Host process has a real `net/http.Server`; on a request, it marshals the

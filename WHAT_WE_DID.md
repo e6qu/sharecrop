@@ -1,5 +1,37 @@
 # What We Did
 
+The `task/wasi-spike-phase3` branch executed Phase 3 of the WASI production
+hosting spike: codegen the bridge for one full store, with a CI drift gate and
+dual-run tests. It added a generic method-keyed transport
+(`internal/wasibridge/rpc`, generalizing Phase 2's hand-wired shape) and pulled
+the framing and the `DomainError` codec into shared packages
+(`internal/wasibridge/wire`, `.../domainwire`) that both the auth spike and the
+audit bridge now use. `internal/wasibridge/auditbridge` bridges the whole
+`internal/audit.Store` (Record/Get/List): hand-written, round-trip-tested
+per-type codecs (`codec.go`, covering typed ids, a string-wrapper enum, nested
+structs, three sealed-union filters, a slice, `time.Time`, and `DomainError`)
+plus a generated `bridge_gen.go` (the `Dispatch` host router and the
+`GuestStore` client) emitted by `internal/wasibridge/gen` via
+`go run ./cmd/sharecrop generate wasi-bridge`. A `check-wasi-bridge` Make target
++ CI step regenerates and diffs (mirroring `check-openapi`), and the generator
+errors loudly on a Store method whose type has no registered codec
+(`gen_test.go`). The dual-run integration test
+(`tests/integration/auditbridge_store_test.go`) runs every method against real
+Postgres through both the direct-`internal/db` path and the compiled
+`GOOS=wasip1` guest (`cmd/sharecrop-wasi-audit-guest`) + host bridge and asserts
+they match, including the not-found rejection and the write path;
+`cmd/sharecrop-wasi-audit-host` is the manual counterpart. The generated
+`GuestStore` carries a `var _ audit.Store = GuestStore{}` assertion, so a new
+interface method without regeneration fails to compile. Anti-drift safeguards
+#1 (no business logic in the bridge), #2 (codegen + gate), and #3 (dual-run) are
+all in place. Nothing about the native server or browser demo changed. The
+Phase 2 auth spike was refactored onto the shared `wire`/`domainwire`/`rpc`
+packages with no behavior change (its tests still pass). Findings and the
+Phase 3 checkpoint are recorded in
+`docs/wasi_production_hosting_spike_plan.md`.
+
+---
+
 The `task/wasi-spike-phase2` branch executed Phase 2 of the WASI production
 hosting spike: proving one real store method round-trips from a `GOOS=wasip1`
 WASM guest to real Postgres and back. New package `internal/wasibridge` holds

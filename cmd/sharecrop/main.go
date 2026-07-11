@@ -30,6 +30,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
+	"github.com/e6qu/sharecrop/internal/wasibridge/gen"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -70,7 +71,7 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 
 func runGenerate(args []string, stdout io.Writer, logger *slog.Logger) int {
 	if len(args) != 1 {
-		_, _ = fmt.Fprintln(stdout, "usage: sharecrop generate elm-contracts|openapi")
+		_, _ = fmt.Fprintln(stdout, "usage: sharecrop generate elm-contracts|openapi|wasi-bridge")
 		return 2
 	}
 	switch args[0] {
@@ -78,10 +79,38 @@ func runGenerate(args []string, stdout io.Writer, logger *slog.Logger) int {
 		return runGenerateElmContracts(stdout, logger)
 	case "openapi":
 		return runGenerateOpenAPI(stdout, logger)
+	case "wasi-bridge":
+		return runGenerateWASIBridge(stdout, logger)
 	default:
-		_, _ = fmt.Fprintln(stdout, "usage: sharecrop generate elm-contracts|openapi")
+		_, _ = fmt.Fprintln(stdout, "usage: sharecrop generate elm-contracts|openapi|wasi-bridge")
 		return 2
 	}
+}
+
+// runGenerateWASIBridge regenerates the audit store's WASI bridge
+// (internal/wasibridge/auditbridge/bridge_gen.go) from the audit.Store
+// interface, so the per-method plumbing tracks the interface. check-wasi-bridge
+// runs this and diffs, failing CI if the committed bridge has drifted.
+func runGenerateWASIBridge(stdout io.Writer, logger *slog.Logger) int {
+	sources, err := readGoPackageSources("internal/audit")
+	if err != nil {
+		logger.Error("read audit package sources", "error", err)
+		return 1
+	}
+
+	source, err := gen.Generate(sources, "Store")
+	if err != nil {
+		logger.Error("generate wasi bridge", "error", err)
+		return 1
+	}
+
+	if err := os.WriteFile("internal/wasibridge/auditbridge/bridge_gen.go", []byte(source), 0o644); err != nil {
+		logger.Error("write wasi bridge", "error", err)
+		return 1
+	}
+
+	_, _ = fmt.Fprintln(stdout, "wasi bridge generated")
+	return 0
 }
 
 func runGenerateElmContracts(stdout io.Writer, logger *slog.Logger) int {

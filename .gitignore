@@ -12,4 +12,11 @@ site/demo/wasm_exec.js
 # ELM_BIN note in the dev docs. Not part of the repo.
 elm019
 
+# Stray native binaries from `go build ./cmd/...` without -o (the real build
+# output goes to bin/).
+/sharecrop-wasi-audit-guest
+/sharecrop-wasi-audit-host
+/sharecrop-wasi-spike
+/sharecrop-wasi-spike-guest
+
 *.log
