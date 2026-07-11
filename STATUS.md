@@ -1,12 +1,13 @@
 # Status
 
-All work through pull request 145 is merged into `main`. PR 141 landed the
+All work through pull request 146 is merged into `main`. PR 141 landed the
 review-driven fixes, the two-section credit wallet, and Argon2id hashing;
 PR 142 exposed per-task funding; PR 143 verified the deployed demo and
 corrected the "two backends" framing; PR 144 landed the WASI hosting spike
-Phase 2 (`internal/wasibridge`: one real store method bridged from a wasip1
-guest to Postgres); PR 145 split the reward-return action into owner
-"Reclaim" vs worker "Refund" with an info toggle explaining each.
+Phase 2 (one store method bridged from a wasip1 guest to Postgres); PR 145
+split the reward-return action into owner "Reclaim" vs worker "Refund" with
+an info toggle; PR 146 landed WASI spike Phase 3 (codegen the audit-store
+bridge with a CI drift gate + dual-run tests).
 
 Implemented surface:
 
@@ -49,25 +50,26 @@ allocated 30, the ledger shows "Task funding", the funded task shows
 "Allocated to this task: 30 credits" with the Refund button gated correctly,
 inbox and collectibles are populated, and there are no console errors.
 
-Active task: `task/wasi-spike-phase3` — Phase 3 of the WASI production
-hosting spike (see
+Active task: `task/wasi-spike-phase4` — Phase 4, the **final** phase of the
+WASI production hosting spike (see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)):
-codegen the bridge for one full store, with a CI drift gate and dual-run
-tests. The generic transport `internal/wasibridge/rpc` (method-keyed calls
-over the Phase 1 pipe shape) now underpins both the Phase 2 auth spike and
-Phase 3, sharing `internal/wasibridge/wire` (framing) and
-`.../domainwire` (the shared `DomainError` codec).
-`internal/wasibridge/auditbridge` bridges the whole `internal/audit.Store`
-(Record/Get/List) with hand-written, tested codecs plus a **generated**
-`bridge_gen.go` (`Dispatch` + `GuestStore`) emitted by
-`go run ./cmd/sharecrop generate wasi-bridge`. The `check-wasi-bridge` gate
-regenerates and diffs (like `check-openapi`). The dual-run integration test
-(`tests/integration/auditbridge_store_test.go`) runs every method against
-real Postgres through both the direct-db path and the compiled wasip1
-guest + host bridge and asserts they match; the generator errors loudly on
-an unregistered type (`gen_test.go`). Nothing about the native server or
-browser demo changes. Next: Phase 4 (one real HTTP request end to end
-through the guest).
+one real HTTP request end to end through the guest.
+`cmd/sharecrop-wasi-http-host` runs a real `net/http.Server` that handles
+each request by running a fresh wasip1 guest
+(`cmd/sharecrop-wasi-http-guest`) over the Phase 3 `rpc` transport; the guest
+runs the **real production mux** (`httpserver.New(...)`, the same one
+`cmd/sharecrop serve` builds) through an `httptest` recorder. Request/response
+marshaling is `internal/wasibridge/httpbridge`. The integration test
+(`tests/integration/httpbridge_test.go`) asserts byte-identical responses
+(status, Content-Type, body) vs the in-process mux for `GET /healthz` (200)
+and an unknown `/api` route (404); a real `curl` confirms it. The route
+touches no store, so no DB bridge is needed for this slice.
+
+**The spike is complete** — all four phases verified. The follow-up is the
+full implementation effort (its own workstream, not part of the spike):
+bridge the remaining stores, wire real services in the guest, cover the full
+route surface, weigh instance pooling, migrate `cmd/sharecrop`, and retire
+`internal/wasmdemo`. Nothing about the native server or browser demo changes.
 
 Blocking issues: none. GitHub Pages `deploy-pages` occasionally fails
 transiently after a merge and clears on retry; it is not caused by

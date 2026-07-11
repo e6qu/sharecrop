@@ -1,5 +1,30 @@
 # What We Did
 
+The `task/wasi-spike-phase4` branch executed Phase 4 — the final phase of the
+WASI production hosting spike: one real HTTP request end to end through the
+guest. `cmd/sharecrop-wasi-http-host` runs a real `net/http.Server` whose
+handler, per request, serializes the request
+(`internal/wasibridge/httpbridge`), runs a fresh wasip1 guest
+(`cmd/sharecrop-wasi-http-guest`) over the Phase 3 `rpc` transport, and writes
+the serialized response back. The guest builds the **real production mux** —
+`httpserver.New(...)`, the same routing table `cmd/sharecrop serve` builds
+(services are nil for this slice since `GET /healthz` touches none) — and runs
+the request through an `httptest` recorder, exactly as the browser demo does. A
+probe confirmed the real mux constructs and serves `/healthz` with nil services.
+The integration test (`tests/integration/httpbridge_test.go`) asserts the
+response through the compiled guest is byte-identical (status, `Content-Type`,
+body) to the same mux run in-process, for both `GET /healthz` (200) and an
+unknown `/api` route (404); a real `curl` against the host returns
+`200 {"status":"ok"}` through the wasm guest. This is the last spike checkpoint:
+the real `internal/http` handler runs inside a wasip1 guest behind a native HTTP
+server, output-identical to the native path. With all four phases verified, the
+spike is complete and the direction is confirmed (see the "After Phase 4" note
+in `docs/wasi_production_hosting_spike_plan.md`); the follow-up is the full
+implementation effort, not part of the spike. Nothing about the native server or
+browser demo changed.
+
+---
+
 The `task/wasi-spike-phase3` branch executed Phase 3 of the WASI production
 hosting spike: codegen the bridge for one full store, with a CI drift gate and
 dual-run tests. It added a generic method-keyed transport
