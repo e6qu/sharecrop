@@ -75,6 +75,7 @@ func Targets() []Target {
 		{Key: "agent", SourceDir: "internal/agent", OutputPath: "internal/wasibridge/agentbridge/bridge_gen.go"},
 		{Key: "orgcred", SourceDir: "internal/orgcred", OutputPath: "internal/wasibridge/orgcredbridge/bridge_gen.go"},
 		{Key: "assets", SourceDir: "internal/assets", OutputPath: "internal/wasibridge/assetsbridge/bridge_gen.go"},
+		{Key: "submission", SourceDir: "internal/submission", OutputPath: "internal/wasibridge/submissionbridge/bridge_gen.go"},
 	}
 }
 
@@ -222,6 +223,34 @@ var specs = map[string]storeSpec{
 			"assets.TaskHeldCollectiblesResult": {goType: "assets.TaskHeldCollectiblesResult", wireType: "taskHeldResultWire", encodeFn: "encodeTaskHeldResult", decodeFn: "decodeTaskHeldResult", rejectedType: "assets.TaskHeldCollectiblesRejected"},
 		},
 	},
+	"submission": {
+		bridgePackage: "submissionbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/submission",
+		domainPackage: "submission",
+		interfaceName: "Store",
+		wirePrefix:    "submission",
+		argCodecs: map[string]argCodec{
+			"core.UserID":                   userIDArg(),
+			"core.Page":                     pageArg(),
+			"core.TaskID":                   {field: "TaskID", goType: "core.TaskID", wireType: "string", encodeFn: "corewire.EncodeTaskID", decodeFn: "corewire.DecodeTaskID"},
+			"core.SubmissionID":             {field: "SubmissionID", goType: "core.SubmissionID", wireType: "string", encodeFn: "corewire.EncodeSubmissionID", decodeFn: "corewire.DecodeSubmissionID"},
+			"core.SubmissionReceiptTokenID": {field: "ReceiptID", goType: "core.SubmissionReceiptTokenID", wireType: "string", encodeFn: "corewire.EncodeSubmissionReceiptTokenID", decodeFn: "corewire.DecodeSubmissionReceiptTokenID"},
+			"submission.ReceiptTokenHash":   {field: "ReceiptHash", goType: "submission.ReceiptTokenHash", wireType: "string", encodeFn: "encodeReceiptTokenHash", decodeFn: "decodeReceiptTokenHash"},
+			"submission.SubmitCommand":      {field: "Command", goType: "submission.SubmitCommand", wireType: "submitCommandWire", encodeFn: "encodeSubmitCommand", decodeFn: "decodeSubmitCommand"},
+			"submission.State":              {field: "State", goType: "submission.State", wireType: "string", encodeFn: "encodeState", decodeFn: "decodeState"},
+			"submission.ValidationOutcome":  {field: "Validation", goType: "submission.ValidationOutcome", wireType: "validationOutcomeWire", encodeFn: "encodeValidationOutcome", decodeFn: "decodeValidationOutcome"},
+			"[]submission.SensitiveField":   {field: "SensitiveFields", goType: "[]submission.SensitiveField", wireType: "[]sensitiveFieldWire", encodeFn: "encodeSensitiveFields", decodeFn: "decodeSensitiveFields"},
+			"submission.SubmissionComment":  {field: "Comment", goType: "submission.SubmissionComment", wireType: "submissionCommentWire", encodeFn: "encodeSubmissionComment", decodeFn: "decodeSubmissionComment"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"submission.CreateSubmissionStoreResult":        {goType: "submission.CreateSubmissionStoreResult", wireType: "submissionResultWire", encodeFn: "encodeCreateSubmissionResult", decodeFn: "decodeCreateSubmissionResult", rejectedType: "submission.CreateSubmissionStoreRejected"},
+			"submission.FindReceiptStoreResult":             {goType: "submission.FindReceiptStoreResult", wireType: "submissionResultWire", encodeFn: "encodeFindReceiptResult", decodeFn: "decodeFindReceiptResult", rejectedType: "submission.ReceiptMissing"},
+			"submission.FindSubmissionStoreResult":          {goType: "submission.FindSubmissionStoreResult", wireType: "submissionResultWire", encodeFn: "encodeFindSubmissionResult", decodeFn: "decodeFindSubmissionResult", rejectedType: "submission.FindSubmissionStoreRejected"},
+			"submission.ListSubmissionsStoreResult":         {goType: "submission.ListSubmissionsStoreResult", wireType: "submissionsResultWire", encodeFn: "encodeListSubmissionsResult", decodeFn: "decodeListSubmissionsResult", rejectedType: "submission.ListSubmissionsStoreRejected"},
+			"submission.CreateSubmissionCommentStoreResult": {goType: "submission.CreateSubmissionCommentStoreResult", wireType: "submissionCommentResultWire", encodeFn: "encodeCreateCommentResult", decodeFn: "decodeCreateCommentResult", rejectedType: "submission.CreateSubmissionCommentStoreRejected"},
+			"submission.ListSubmissionCommentsStoreResult":  {goType: "submission.ListSubmissionCommentsStoreResult", wireType: "submissionCommentsResultWire", encodeFn: "encodeListCommentsResult", decodeFn: "decodeListCommentsResult", rejectedType: "submission.ListSubmissionCommentsStoreRejected"},
+		},
+	},
 }
 
 type method struct {
@@ -274,8 +303,14 @@ func extractMethods(sources map[string][]byte, spec storeSpec) ([]method, error)
 
 	// Types local to the interface's own package appear unqualified in the AST
 	// (e.g. "Event", not "audit.Event"); qualify them so registry lookups match.
-	// Builtins (string, int, ...) are left alone - they are not package types.
-	qualify := func(typeName string) string {
+	// Builtins (string, int, ...) are left alone - they are not package types. A
+	// slice qualifies its element type, so "[]SensitiveField" becomes
+	// "[]audit.SensitiveField", not the meaningless "audit.[]SensitiveField".
+	var qualify func(typeName string) string
+	qualify = func(typeName string) string {
+		if strings.HasPrefix(typeName, "[]") {
+			return "[]" + qualify(typeName[2:])
+		}
 		if strings.Contains(typeName, ".") || isBuiltinType(typeName) {
 			return typeName
 		}
