@@ -447,8 +447,10 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   `go run ./cmd/sharecrop generate wasi-bridge` regenerates every store in
   `gen.Targets()`. Shared core-type codecs (typed ids, page, time) moved to
   `internal/wasibridge/corewire` so bridges don't duplicate them.
-  **`audit`, `notification`, and `auth` are bridged** (each in its own
-  `*bridge` package), dual-run-verified against real Postgres. One generic
+  **`audit`, `notification`, `auth`, and `agent` are bridged** (each in its own
+  `*bridge` package), dual-run-verified against real Postgres. `agent` (MCP
+  credentials) added nullable-pointer fields (`*time.Time`, `*core.TaskID`) and
+  a scope-set to the codec vocabulary. One generic
   guest (`cmd/sharecrop-wasi-store-guest`) routes every store by method prefix.
   `auth` (the largest - 13 methods, 10 result unions) exercised the pattern's
   edges: its opaque hash/token types round-trip through reconstruction

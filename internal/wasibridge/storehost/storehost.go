@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/wasibridge/agentbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
@@ -22,6 +23,7 @@ import (
 
 // Dispatcher builds an rpc.Dispatcher backed by the real db stores on pool.
 func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
+	agentStore := db.NewAgentStore(pool)
 	auditStore := db.NewAuditStore(pool)
 	authStore := db.NewAuthStore(pool)
 	notificationStore := db.NewNotificationStore(pool)
@@ -29,6 +31,8 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	return func(ctx context.Context, method string, args []byte) ([]byte, error) {
 		store, _, _ := strings.Cut(method, ".")
 		switch store {
+		case "agent":
+			return agentbridge.Dispatch(ctx, agentStore, method, args)
 		case "audit":
 			return auditbridge.Dispatch(ctx, auditStore, method, args)
 		case "auth":
