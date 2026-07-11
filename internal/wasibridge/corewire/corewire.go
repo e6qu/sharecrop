@@ -100,6 +100,37 @@ func DecodeOrganizationID(raw string) (core.OrganizationID, error) {
 	return created.Value, nil
 }
 
+// EncodeOrgCredentialID / DecodeOrgCredentialID carry a core.OrgCredentialID.
+func EncodeOrgCredentialID(id core.OrgCredentialID) string { return id.String() }
+
+func DecodeOrgCredentialID(raw string) (core.OrgCredentialID, error) {
+	created, matched := core.ParseOrgCredentialID(raw).(core.OrgCredentialIDCreated)
+	if !matched {
+		return core.OrgCredentialID{}, fmt.Errorf("invalid org credential id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeTimePtr / DecodeTimePtr carry a nullable *time.Time as a string that is
+// empty when the pointer is nil.
+func EncodeTimePtr(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return EncodeTime(*value)
+}
+
+func DecodeTimePtr(raw string) (*time.Time, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := DecodeTime(raw)
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
 // EncodeString / DecodeString carry a plain string argument. DecodeString never
 // errors; it exists so the generated bridge can treat a string argument with
 // the same (encode, decode-with-error) shape as every other type.

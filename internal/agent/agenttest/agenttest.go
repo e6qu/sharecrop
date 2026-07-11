@@ -1,44 +1,58 @@
-// Package agenttest holds test-support helpers for agent.Credential, shared by
-// the agent bridge's codec tests and the integration dual-run test so the two
-// do not carry duplicate comparisons.
+// Package agenttest holds test-support helpers for agent.Credential and the
+// agent value types (Label, ScopeSet, State) that the orgcred credential shares.
+// It is used by the agent and orgcred bridges' codec tests and their
+// integration dual-run tests so those do not carry duplicate comparisons.
 package agenttest
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 )
 
-// CredentialDiff returns a description of the first field in which got and want
-// differ, or "" if they are equal. Timestamps compare by instant; nullable
-// fields compare presence then value.
-func CredentialDiff(got, want agent.Credential) string {
-	switch {
-	case got.ID != want.ID:
-		return fmt.Sprintf("id: %s != %s", got.ID, want.ID)
-	case got.UserID != want.UserID:
-		return fmt.Sprintf("user id: %s != %s", got.UserID, want.UserID)
-	case got.Label.String() != want.Label.String():
-		return fmt.Sprintf("label: %s != %s", got.Label, want.Label)
-	case got.State.String() != want.State.String():
-		return fmt.Sprintf("state: %s != %s", got.State, want.State)
+// SharedFieldsDiff compares the label, scope set, state, and expiry that the
+// agent and orgcred credentials have in common - agent's value types. It
+// returns a description of the first difference, or "" if equal. Both
+// credentials' own comparators call this for their shared fields.
+func SharedFieldsDiff(gotLabel, wantLabel agent.Label, gotScopes, wantScopes agent.ScopeSet, gotState, wantState agent.State, gotExpires, wantExpires *time.Time) string {
+	if gotLabel.String() != wantLabel.String() {
+		return fmt.Sprintf("label: %s != %s", gotLabel, wantLabel)
+	}
+	if gotState.String() != wantState.String() {
+		return fmt.Sprintf("state: %s != %s", gotState, wantState)
 	}
 
-	gotScopes, wantScopes := got.Scopes.Values(), want.Scopes.Values()
-	if len(gotScopes) != len(wantScopes) {
-		return fmt.Sprintf("scope count: %d != %d", len(gotScopes), len(wantScopes))
+	gotValues, wantValues := gotScopes.Values(), wantScopes.Values()
+	if len(gotValues) != len(wantValues) {
+		return fmt.Sprintf("scope count: %d != %d", len(gotValues), len(wantValues))
 	}
-	for index := range wantScopes {
-		if gotScopes[index].String() != wantScopes[index].String() {
-			return fmt.Sprintf("scope %d: %s != %s", index, gotScopes[index], wantScopes[index])
+	for index := range wantValues {
+		if gotValues[index].String() != wantValues[index].String() {
+			return fmt.Sprintf("scope %d: %s != %s", index, gotValues[index], wantValues[index])
 		}
 	}
 
-	if (got.ExpiresAt == nil) != (want.ExpiresAt == nil) {
-		return fmt.Sprintf("expires_at presence: got %v want %v", got.ExpiresAt, want.ExpiresAt)
+	if (gotExpires == nil) != (wantExpires == nil) {
+		return fmt.Sprintf("expires_at presence: got %v want %v", gotExpires, wantExpires)
 	}
-	if got.ExpiresAt != nil && !got.ExpiresAt.Equal(*want.ExpiresAt) {
-		return fmt.Sprintf("expires_at: %s != %s", got.ExpiresAt, want.ExpiresAt)
+	if gotExpires != nil && !gotExpires.Equal(*wantExpires) {
+		return fmt.Sprintf("expires_at: %s != %s", gotExpires, wantExpires)
+	}
+	return ""
+}
+
+// CredentialDiff returns a description of the first field in which got and want
+// differ, or "" if they are equal.
+func CredentialDiff(got, want agent.Credential) string {
+	if got.ID != want.ID {
+		return fmt.Sprintf("id: %s != %s", got.ID, want.ID)
+	}
+	if got.UserID != want.UserID {
+		return fmt.Sprintf("user id: %s != %s", got.UserID, want.UserID)
+	}
+	if diff := SharedFieldsDiff(got.Label, want.Label, got.Scopes, want.Scopes, got.State, want.State, got.ExpiresAt, want.ExpiresAt); diff != "" {
+		return diff
 	}
 	if (got.TaskID == nil) != (want.TaskID == nil) {
 		return "task_id presence differs"

@@ -1,5 +1,26 @@
 # What We Did
 
+The `task/wasi-bridge-orgcred` branch bridged the `orgcred` store
+(organization-wide credentials) - the fifth store - and extracted the shared
+agent value-type codecs so the two credential bridges don't duplicate. orgcred's
+`Credential` reuses agent's `Label`/`ScopeSet`/`State`, and its
+`CreateStoreResult` is a type alias of agent's, so those codecs moved to a new
+`internal/wasibridge/agentwire` package that both agentbridge and orgcredbridge
+use (the agent bridge was refactored onto it and regenerated with no behavior
+change). `internal/wasibridge/orgcredbridge` has its own `Credential`/result
+codecs (using agentwire for the shared parts, corewire for ids and the
+nullable `*time.Time`), a generated `bridge_gen.go`, and a dual-run integration
+test (`tests/integration/orgcredbridge_store_test.go`). `orgcred` gained a
+`SecretHashFromString` reconstruction constructor; `corewire` gained
+`OrgCredentialID` and nullable-time codecs. The shared credential-field
+comparison lives in `internal/agent/agenttest.SharedFieldsDiff`, called by both
+the agent and orgcred test comparators (so those don't clone). The generic store
+guest and `storehost` route `orgcred.*`. Five stores are bridged (audit,
+notification, auth, agent, orgcred). All gates green. Nothing about the native
+server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-agent` branch bridged the `agent` store (MCP agent
 credentials: create/verify/list/revoke) - the fourth store. It stretched the
 codec vocabulary with **nullable pointer fields** (`*time.Time`, `*core.TaskID`,

@@ -1,7 +1,10 @@
 // Package agentbridge is the WASI bridge for internal/agent's Store (agent MCP
 // credentials): hand-written per-type codecs (this file) plus a generated
-// dispatcher and guest client (bridge_gen.go). Shared core types (ids, page,
-// time) are serialized by internal/wasibridge/corewire.
+// dispatcher and guest client (bridge_gen.go). Shared core types are serialized
+// by internal/wasibridge/corewire; the agent value types it shares with the
+// orgcred bridge (Label, State, ScopeSet, CreateStoreResult) live in
+// internal/wasibridge/agentwire. Only what is specific to the agent store's
+// Credential and result unions is here.
 //
 // Like auth, the credential SecretHash is an opaque stored string, so it
 // round-trips through agent.SecretHashFromString rather than by re-hashing.
@@ -9,81 +12,20 @@ package agentbridge
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/wasibridge/agentwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
 )
 
-// ---- value types ----
+// ---- value types specific to the agent store ----
 
 func encodeSecretHash(hash agent.SecretHash) string { return hash.String() }
 
 func decodeSecretHash(raw string) (agent.SecretHash, error) {
 	return agent.SecretHashFromString(raw), nil
-}
-
-func encodeLabel(label agent.Label) string { return label.String() }
-
-func decodeLabel(raw string) (agent.Label, error) {
-	accepted, matched := agent.NewLabel(raw).(agent.LabelAccepted)
-	if !matched {
-		return agent.Label{}, fmt.Errorf("invalid agent label %q", raw)
-	}
-	return accepted.Value, nil
-}
-
-func encodeState(state agent.State) string { return state.String() }
-
-func decodeState(raw string) (agent.State, error) {
-	accepted, matched := agent.ParseState(raw).(agent.StateAccepted)
-	if !matched {
-		return agent.State{}, fmt.Errorf("invalid agent state %q", raw)
-	}
-	return accepted.Value, nil
-}
-
-func encodeScopeSet(scopes agent.ScopeSet) []string {
-	values := scopes.Values()
-	encoded := make([]string, 0, len(values))
-	for index := range values {
-		encoded = append(encoded, values[index].String())
-	}
-	return encoded
-}
-
-func decodeScopeSet(raw []string) (agent.ScopeSet, error) {
-	scopes := make([]agent.Scope, 0, len(raw))
-	for _, value := range raw {
-		accepted, matched := agent.ParseScope(value).(agent.ScopeAccepted)
-		if !matched {
-			return agent.ScopeSet{}, fmt.Errorf("invalid agent scope %q", value)
-		}
-		scopes = append(scopes, accepted.Value)
-	}
-	return agent.NewScopeSet(scopes), nil
-}
-
-// Nullable pointers cross the wire as a string that is empty when nil.
-
-func encodeTimePtr(value *time.Time) string {
-	if value == nil {
-		return ""
-	}
-	return corewire.EncodeTime(*value)
-}
-
-func decodeTimePtr(raw string) (*time.Time, error) {
-	if raw == "" {
-		return nil, nil
-	}
-	value, err := corewire.DecodeTime(raw)
-	if err != nil {
-		return nil, err
-	}
-	return &value, nil
 }
 
 func encodeTaskIDPtr(value *core.TaskID) string {
@@ -120,10 +62,10 @@ func encodeCredential(credential agent.Credential) credentialWire {
 	return credentialWire{
 		ID:        corewire.EncodeAgentCredentialID(credential.ID),
 		UserID:    corewire.EncodeUserID(credential.UserID),
-		Label:     encodeLabel(credential.Label),
-		Scopes:    encodeScopeSet(credential.Scopes),
-		State:     encodeState(credential.State),
-		ExpiresAt: encodeTimePtr(credential.ExpiresAt),
+		Label:     agentwire.EncodeLabel(credential.Label),
+		Scopes:    agentwire.EncodeScopeSet(credential.Scopes),
+		State:     agentwire.EncodeState(credential.State),
+		ExpiresAt: corewire.EncodeTimePtr(credential.ExpiresAt),
 		TaskID:    encodeTaskIDPtr(credential.TaskID),
 	}
 }
@@ -137,19 +79,19 @@ func decodeCredential(wire credentialWire) (agent.Credential, error) {
 	if err != nil {
 		return agent.Credential{}, err
 	}
-	label, err := decodeLabel(wire.Label)
+	label, err := agentwire.DecodeLabel(wire.Label)
 	if err != nil {
 		return agent.Credential{}, err
 	}
-	scopes, err := decodeScopeSet(wire.Scopes)
+	scopes, err := agentwire.DecodeScopeSet(wire.Scopes)
 	if err != nil {
 		return agent.Credential{}, err
 	}
-	state, err := decodeState(wire.State)
+	state, err := agentwire.DecodeState(wire.State)
 	if err != nil {
 		return agent.Credential{}, err
 	}
-	expiresAt, err := decodeTimePtr(wire.ExpiresAt)
+	expiresAt, err := corewire.DecodeTimePtr(wire.ExpiresAt)
 	if err != nil {
 		return agent.Credential{}, err
 	}
@@ -168,38 +110,11 @@ func decodeCredential(wire credentialWire) (agent.Credential, error) {
 	}, nil
 }
 
-// ---- result unions ----
+// ---- result unions specific to the agent store ----
+//
+// CreateStoreResult is shared with orgcred, so it is serialized by agentwire;
+// the verify/revoke/list results carry an agent.Credential and stay here.
 
-type createResultWire struct {
-	Variant string                  `json:"variant"`
-	Error   *domainwire.DomainError `json:"error,omitempty"`
-}
-
-func encodeCreateResult(result agent.CreateStoreResult) createResultWire {
-	switch typed := result.(type) {
-	case agent.CreateStoreAccepted:
-		return createResultWire{Variant: "accepted"}
-	case agent.CreateStoreRejected:
-		reason := domainwire.EncodeDomainError(typed.Reason)
-		return createResultWire{Variant: "rejected", Error: &reason}
-	default:
-		return createResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown agent result %T", result))}
-	}
-}
-
-func decodeCreateResult(wire createResultWire) (agent.CreateStoreResult, error) {
-	switch wire.Variant {
-	case "accepted":
-		return agent.CreateStoreAccepted{}, nil
-	case "rejected":
-		return agent.CreateStoreRejected{Reason: decodeReason(wire.Error)}, nil
-	default:
-		return nil, fmt.Errorf("unknown create result variant %q", wire.Variant)
-	}
-}
-
-// credentialResultWire backs the verify and revoke unions, which each carry a
-// single credential on success.
 type credentialResultWire struct {
 	Variant    string                  `json:"variant"`
 	Credential *credentialWire         `json:"credential,omitempty"`

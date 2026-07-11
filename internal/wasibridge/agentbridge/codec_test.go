@@ -56,25 +56,6 @@ func TestCredentialRoundTrip(t *testing.T) {
 	}
 }
 
-func TestCreateResultRoundTrip(t *testing.T) {
-	accepted, err := decodeCreateResult(encodeCreateResult(agent.CreateStoreAccepted{}))
-	if err != nil {
-		t.Fatalf("decode accepted: %v", err)
-	}
-	if _, matched := accepted.(agent.CreateStoreAccepted); !matched {
-		t.Errorf("accepted result = %T", accepted)
-	}
-	rejected, err := decodeCreateResult(encodeCreateResult(agent.CreateStoreRejected{
-		Reason: core.NewDomainError(core.ErrorCodeConflict, "dup"),
-	}))
-	if err != nil {
-		t.Fatalf("decode rejected: %v", err)
-	}
-	if typed, matched := rejected.(agent.CreateStoreRejected); !matched || typed.Reason.Code() != core.ErrorCodeConflict {
-		t.Errorf("create rejection not preserved: %T", rejected)
-	}
-}
-
 func TestVerifyRevokeListRoundTrip(t *testing.T) {
 	credential := sampleCredential(t, nil)
 
