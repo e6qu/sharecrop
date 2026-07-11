@@ -1,13 +1,12 @@
 # Status
 
-All work through pull request 146 is merged into `main`. PR 141 landed the
-review-driven fixes, the two-section credit wallet, and Argon2id hashing;
-PR 142 exposed per-task funding; PR 143 verified the deployed demo and
-corrected the "two backends" framing; PR 144 landed the WASI hosting spike
-Phase 2 (one store method bridged from a wasip1 guest to Postgres); PR 145
-split the reward-return action into owner "Reclaim" vs worker "Refund" with
-an info toggle; PR 146 landed WASI spike Phase 3 (codegen the audit-store
-bridge with a CI drift gate + dual-run tests).
+All work through pull request 147 is merged into `main`. PR 144/146/147 were
+the WASI hosting spike (Phase 2: one store method bridged from a wasip1 guest;
+Phase 3: codegen the audit-store bridge with a CI drift gate + dual-run;
+Phase 4: the real `internal/http` mux running in a wasip1 guest behind a
+native `net/http.Server`, byte-identical). PR 145 split the reward-return
+action into owner "Reclaim" vs worker "Refund"; 141-143 landed the wallet,
+Argon2id, per-task funding, and the deployed-demo verification.
 
 Implemented surface:
 
@@ -50,26 +49,21 @@ allocated 30, the ledger shows "Task funding", the funded task shows
 "Allocated to this task: 30 credits" with the Refund button gated correctly,
 inbox and collectibles are populated, and there are no console errors.
 
-Active task: `task/wasi-spike-phase4` — Phase 4, the **final** phase of the
-WASI production hosting spike (see
-[docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)):
-one real HTTP request end to end through the guest.
-`cmd/sharecrop-wasi-http-host` runs a real `net/http.Server` that handles
-each request by running a fresh wasip1 guest
-(`cmd/sharecrop-wasi-http-guest`) over the Phase 3 `rpc` transport; the guest
-runs the **real production mux** (`httpserver.New(...)`, the same one
-`cmd/sharecrop serve` builds) through an `httptest` recorder. Request/response
-marshaling is `internal/wasibridge/httpbridge`. The integration test
-(`tests/integration/httpbridge_test.go`) asserts byte-identical responses
-(status, Content-Type, body) vs the in-process mux for `GET /healthz` (200)
-and an unknown `/api` route (404); a real `curl` confirms it. The route
-touches no store, so no DB bridge is needed for this slice.
+The WASI hosting **spike is complete** (all four phases; see
+[docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
+The follow-up **implementation effort** has started.
 
-**The spike is complete** — all four phases verified. The follow-up is the
-full implementation effort (its own workstream, not part of the spike):
-bridge the remaining stores, wire real services in the guest, cover the full
-route surface, weigh instance pooling, migrate `cmd/sharecrop`, and retire
-`internal/wasmdemo`. Nothing about the native server or browser demo changes.
+Active task: `task/wasi-bridge-multistore` — generalize the bridge codegen
+beyond one store and prove it scales. `internal/wasibridge/gen` is now
+store-agnostic (each store is a `storeSpec`; `generate wasi-bridge` iterates
+`gen.Targets()`), shared core-type codecs (ids, page, time) moved to
+`internal/wasibridge/corewire`, and `internal/notification.Store` is bridged
+as the second store (`.../notificationbridge`), dual-run-verified against real
+Postgres. One generic guest (`cmd/sharecrop-wasi-store-guest`) routes every
+store by method prefix. The audit bridge was regenerated onto `corewire` with
+no behavior change. Remaining stores (auth, ledger, task, org, submission,
+assets, orgcred) follow the same recipe: a spec + hand-written codecs + a
+dual-run test. Nothing about the native server or browser demo changes.
 
 Blocking issues: none. GitHub Pages `deploy-pages` occasionally fails
 transiently after a merge and clears on retry; it is not caused by

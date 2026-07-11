@@ -9,6 +9,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 )
 
 // Method names namespace each audit.Store method on the wire.
@@ -27,8 +28,8 @@ type getArgs struct {
 }
 
 type listArgs struct {
-	Filters listFiltersWire `json:"filters"`
-	Page    pageWire        `json:"page"`
+	Filters listFiltersWire   `json:"filters"`
+	Page    corewire.PageWire `json:"page"`
 }
 
 // Dispatch services one store call against store: decode the arguments, call the
@@ -51,7 +52,7 @@ func Dispatch(ctx context.Context, store audit.Store, method string, args []byte
 		if err := json.Unmarshal(args, &decoded); err != nil {
 			return nil, fmt.Errorf("audit bridge: decode Get args: %w", err)
 		}
-		argID, err := decodeAuditEventID(decoded.ID)
+		argID, err := corewire.DecodeAuditEventID(decoded.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +66,7 @@ func Dispatch(ctx context.Context, store audit.Store, method string, args []byte
 		if err != nil {
 			return nil, err
 		}
-		argPage, err := decodePage(decoded.Page)
+		argPage, err := corewire.DecodePage(decoded.Page)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +113,7 @@ func (g GuestStore) Record(ctx context.Context, argEvent audit.Event) audit.Reco
 }
 
 func (g GuestStore) Get(ctx context.Context, argID core.AuditEventID) audit.GetResult {
-	args, err := json.Marshal(getArgs{ID: encodeAuditEventID(argID)})
+	args, err := json.Marshal(getArgs{ID: corewire.EncodeAuditEventID(argID)})
 	if err != nil {
 		return audit.GetRejected{Reason: guestError(err)}
 	}
@@ -132,7 +133,7 @@ func (g GuestStore) Get(ctx context.Context, argID core.AuditEventID) audit.GetR
 }
 
 func (g GuestStore) List(ctx context.Context, argFilters audit.ListFilters, argPage core.Page) audit.ListResult {
-	args, err := json.Marshal(listArgs{Filters: encodeListFilters(argFilters), Page: encodePage(argPage)})
+	args, err := json.Marshal(listArgs{Filters: encodeListFilters(argFilters), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return audit.ListRejected{Reason: guestError(err)}
 	}

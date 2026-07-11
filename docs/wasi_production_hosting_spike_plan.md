@@ -438,6 +438,22 @@ performance hardening, replacing `cmd/sharecrop` for real) is the actual
 implementation effort this spike is scoping — not part of the spike
 itself.**
 
+## Implementation progress (post-spike)
+
+The spike is done; this tracks the follow-up implementation effort as it lands.
+
+- **Bridge codegen generalized to N stores.** `internal/wasibridge/gen` is now
+  store-agnostic: each store is a `storeSpec` (naming its codecs), and
+  `go run ./cmd/sharecrop generate wasi-bridge` regenerates every store in
+  `gen.Targets()`. Shared core-type codecs (typed ids, page, time) moved to
+  `internal/wasibridge/corewire` so bridges don't duplicate them.
+  **`internal/notification.Store` is bridged** as the second store
+  (`internal/wasibridge/notificationbridge`), dual-run-verified against real
+  Postgres (`tests/integration/notificationbridge_store_test.go`). One generic
+  guest (`cmd/sharecrop-wasi-store-guest`) routes every store by method prefix.
+  Remaining stores (auth, ledger, task, org, submission, assets, orgcred) are
+  the same pattern: add a spec + hand-written codecs + a dual-run test.
+
 ## Non-goals for this spike
 
 - Full route/store coverage. Phases 2-4 intentionally pick the smallest

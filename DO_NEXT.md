@@ -24,12 +24,19 @@ Current priority from
      byte-identical output for `GET /healthz`. The go/no-go is **go**; see the
      "After Phase 4" note in the plan.
 
-     **The follow-up is the full implementation effort** (its own workstream,
-     not the spike): bridge the remaining store interfaces (extend the Phase 3
-     codecs + registry), wire the real domain services in the guest against
-     those `GuestStore`s, cover the full route surface, weigh the ~2-3ms
-     instance-per-request floor against an instance-pool strategy, migrate
-     `cmd/sharecrop` onto the hosted guest, and eventually retire
+     **The follow-up implementation effort has started.** The bridge codegen
+     is now generalized to N stores (`gen` is store-agnostic via `storeSpec` +
+     `gen.Targets()`; shared core codecs in `.../corewire`), and
+     `internal/notification.Store` is bridged as the second store
+     (`.../notificationbridge`, dual-run-verified), served by one generic guest
+     (`cmd/sharecrop-wasi-store-guest`). **Next**: bridge the remaining stores
+     the same way (a `storeSpec` + hand-written codecs + a dual-run test each) —
+     `auth` (needed by almost every route, ~13 methods), then `ledger`, `task`,
+     `org`, `submission`, `assets`, `orgcred`. After enough stores are bridged,
+     wire the real domain services in the guest against those `GuestStore`s and
+     prove a store-touching HTTP route end to end (tying Phase 3 + 4 together),
+     then weigh the ~2-3ms instance-per-request floor against instance pooling,
+     migrate `cmd/sharecrop` onto the hosted guest, and retire
      `internal/wasmdemo` once the browser demo can run the same artifact.
    - (b) Moving MCP/SSE to HTTP/2 by default (HTTP/3-ready) to support about
      100 concurrent streaming sessions, keeping HTTP/1.1 as an explicit,

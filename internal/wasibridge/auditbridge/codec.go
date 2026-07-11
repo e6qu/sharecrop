@@ -1,9 +1,10 @@
-// Package auditbridge is the Phase 3 WASI bridge for internal/audit's Store: a
-// generated dispatcher and guest client (bridge_gen.go) over hand-written
-// per-type codecs (this file). The codecs carry the domain knowledge - how each
-// audit type maps to JSON and back - and are covered by round-trip tests; the
-// generated file is pure plumbing (which method, which codec) so it can be
-// regenerated from the Store interface and diffed in CI.
+// Package auditbridge is the WASI bridge for internal/audit's Store: a generated
+// dispatcher and guest client (bridge_gen.go) over hand-written per-type codecs
+// (this file). The codecs carry the domain knowledge - how each audit type maps
+// to JSON and back - and are covered by round-trip tests; the generated file is
+// pure plumbing (which method, which codec) so it can be regenerated from the
+// Store interface and diffed in CI. Shared core types (ids, page, time) are
+// serialized by internal/wasibridge/corewire, not duplicated here.
 //
 // The split is deliberate: adding or changing a Store method must regenerate the
 // plumbing (caught by check-wasi-bridge), while a type's fields are checked by
@@ -13,34 +14,12 @@ package auditbridge
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
 )
-
-// ---- typed ids ----
-
-func encodeAuditEventID(id core.AuditEventID) string { return id.String() }
-
-func decodeAuditEventID(raw string) (core.AuditEventID, error) {
-	created, matched := core.ParseAuditEventID(raw).(core.AuditEventIDCreated)
-	if !matched {
-		return core.AuditEventID{}, fmt.Errorf("invalid audit event id %q", raw)
-	}
-	return created.Value, nil
-}
-
-func encodeUserID(id core.UserID) string { return id.String() }
-
-func decodeUserID(raw string) (core.UserID, error) {
-	created, matched := core.ParseUserID(raw).(core.UserIDCreated)
-	if !matched {
-		return core.UserID{}, fmt.Errorf("invalid user id %q", raw)
-	}
-	return created.Value, nil
-}
 
 // ---- audit.Action (a free-form string wrapper) ----
 
@@ -48,7 +27,7 @@ func encodeAction(action audit.Action) string { return action.String() }
 
 func decodeAction(raw string) audit.Action { return audit.ActionFromString(raw) }
 
-// ---- audit.Subject / audit.Metadata / time.Time ----
+// ---- audit.Subject / audit.Metadata ----
 
 type subjectWire struct {
 	Kind string `json:"kind"`
@@ -67,16 +46,6 @@ func encodeMetadata(metadata audit.Metadata) string { return metadata.JSON }
 
 func decodeMetadata(raw string) audit.Metadata { return audit.Metadata{JSON: raw} }
 
-func encodeTime(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
-
-func decodeTime(raw string) (time.Time, error) {
-	parsed, err := time.Parse(time.RFC3339Nano, raw)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid timestamp %q: %w", raw, err)
-	}
-	return parsed.UTC(), nil
-}
-
 // ---- audit.Event ----
 
 type eventWire struct {
@@ -90,25 +59,25 @@ type eventWire struct {
 
 func encodeEvent(event audit.Event) eventWire {
 	return eventWire{
-		ID:          encodeAuditEventID(event.ID),
-		ActorUserID: encodeUserID(event.ActorUserID),
+		ID:          corewire.EncodeAuditEventID(event.ID),
+		ActorUserID: corewire.EncodeUserID(event.ActorUserID),
 		Action:      encodeAction(event.Action),
 		Subject:     encodeSubject(event.Subject),
 		Metadata:    encodeMetadata(event.Metadata),
-		CreatedAt:   encodeTime(event.CreatedAt),
+		CreatedAt:   corewire.EncodeTime(event.CreatedAt),
 	}
 }
 
 func decodeEvent(wire eventWire) (audit.Event, error) {
-	id, err := decodeAuditEventID(wire.ID)
+	id, err := corewire.DecodeAuditEventID(wire.ID)
 	if err != nil {
 		return audit.Event{}, err
 	}
-	actor, err := decodeUserID(wire.ActorUserID)
+	actor, err := corewire.DecodeUserID(wire.ActorUserID)
 	if err != nil {
 		return audit.Event{}, err
 	}
-	createdAt, err := decodeTime(wire.CreatedAt)
+	createdAt, err := corewire.DecodeTime(wire.CreatedAt)
 	if err != nil {
 		return audit.Event{}, err
 	}
@@ -120,25 +89,6 @@ func decodeEvent(wire eventWire) (audit.Event, error) {
 		Metadata:    decodeMetadata(wire.Metadata),
 		CreatedAt:   createdAt,
 	}, nil
-}
-
-// ---- core.Page ----
-
-type pageWire struct {
-	Limit  int `json:"limit"`
-	Offset int `json:"offset"`
-}
-
-func encodePage(page core.Page) pageWire {
-	return pageWire{Limit: page.Limit(), Offset: page.Offset()}
-}
-
-func decodePage(wire pageWire) (core.Page, error) {
-	accepted, matched := core.NewPage(wire.Limit, wire.Offset).(core.PageAccepted)
-	if !matched {
-		return core.Page{}, fmt.Errorf("invalid page limit=%d offset=%d", wire.Limit, wire.Offset)
-	}
-	return accepted.Value, nil
 }
 
 // ---- audit.ListFilters and its three filter unions ----

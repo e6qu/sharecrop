@@ -92,21 +92,23 @@ func runGenerate(args []string, stdout io.Writer, logger *slog.Logger) int {
 // interface, so the per-method plumbing tracks the interface. check-wasi-bridge
 // runs this and diffs, failing CI if the committed bridge has drifted.
 func runGenerateWASIBridge(stdout io.Writer, logger *slog.Logger) int {
-	sources, err := readGoPackageSources("internal/audit")
-	if err != nil {
-		logger.Error("read audit package sources", "error", err)
-		return 1
-	}
+	for _, target := range gen.Targets() {
+		sources, err := readGoPackageSources(target.SourceDir)
+		if err != nil {
+			logger.Error("read store package sources", "store", target.Key, "error", err)
+			return 1
+		}
 
-	source, err := gen.Generate(sources, "Store")
-	if err != nil {
-		logger.Error("generate wasi bridge", "error", err)
-		return 1
-	}
+		source, err := gen.Generate(sources, target.Key)
+		if err != nil {
+			logger.Error("generate wasi bridge", "store", target.Key, "error", err)
+			return 1
+		}
 
-	if err := os.WriteFile("internal/wasibridge/auditbridge/bridge_gen.go", []byte(source), 0o644); err != nil {
-		logger.Error("write wasi bridge", "error", err)
-		return 1
+		if err := os.WriteFile(target.OutputPath, []byte(source), 0o644); err != nil {
+			logger.Error("write wasi bridge", "store", target.Key, "error", err)
+			return 1
+		}
 	}
 
 	_, _ = fmt.Fprintln(stdout, "wasi bridge generated")
