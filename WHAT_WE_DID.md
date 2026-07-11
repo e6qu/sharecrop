@@ -1,5 +1,22 @@
 # What We Did
 
+The `task/wasi-bridge-agent` branch bridged the `agent` store (MCP agent
+credentials: create/verify/list/revoke) - the fourth store. It stretched the
+codec vocabulary with **nullable pointer fields** (`*time.Time`, `*core.TaskID`,
+carried as empty-when-nil strings) and a **scope set** (serialized as a string
+list). Like auth, the opaque `SecretHash` round-trips via a new
+`agent.SecretHashFromString` reconstruction constructor; `corewire` gained
+`TaskID` and `AgentCredentialID` codecs. The generated `bridge_gen.go` and
+hand-written codecs are dual-run-verified against real Postgres
+(`tests/integration/agentbridge_store_test.go`), and the credential comparison
+helper lives in `internal/agent/agenttest` (matching the audittest /
+notificationtest pattern). The generic store guest and
+`internal/wasibridge/storehost` now route `agent.*`. Four stores are bridged
+(audit, notification, auth, agent). All gates green. Nothing about the native
+server or browser demo changed.
+
+---
+
 The `task/wasi-auth-route` branch proved an auth-store-touching route runs end
 to end through the guest. `internal/wasibridge/appmux` now wires a live auth
 service (`auth.NewService` over the bridged auth `GuestStore`) alongside the

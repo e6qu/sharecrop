@@ -72,6 +72,7 @@ func Targets() []Target {
 		{Key: "audit", SourceDir: "internal/audit", OutputPath: "internal/wasibridge/auditbridge/bridge_gen.go"},
 		{Key: "notification", SourceDir: "internal/notification", OutputPath: "internal/wasibridge/notificationbridge/bridge_gen.go"},
 		{Key: "auth", SourceDir: "internal/auth", OutputPath: "internal/wasibridge/authbridge/bridge_gen.go"},
+		{Key: "agent", SourceDir: "internal/agent", OutputPath: "internal/wasibridge/agentbridge/bridge_gen.go"},
 	}
 }
 
@@ -151,6 +152,26 @@ var specs = map[string]storeSpec{
 			"auth.RevokeRefreshFamilyResult": {goType: "auth.RevokeRefreshFamilyResult", wireType: "acceptedRejectedWire", encodeFn: "encodeRevokeRefreshFamilyResult", decodeFn: "decodeRevokeRefreshFamilyResult", rejectedType: "auth.RevokeRefreshFamilyRejected"},
 			"auth.AccountTokenStoreResult":   {goType: "auth.AccountTokenStoreResult", wireType: "acceptedRejectedWire", encodeFn: "encodeAccountTokenStoreResult", decodeFn: "decodeAccountTokenStoreResult", rejectedType: "auth.AccountTokenStoreRejected"},
 			"auth.AccountTokenConsumeResult": {goType: "auth.AccountTokenConsumeResult", wireType: "accountTokenConsumeResultWire", encodeFn: "encodeAccountTokenConsumeResult", decodeFn: "decodeAccountTokenConsumeResult", rejectedType: "auth.AccountTokenConsumeRejected"},
+		},
+	},
+	"agent": {
+		bridgePackage: "agentbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/agent",
+		domainPackage: "agent",
+		interfaceName: "Store",
+		wirePrefix:    "agent",
+		argCodecs: map[string]argCodec{
+			"core.UserID":            userIDArg(),
+			"core.Page":              pageArg(),
+			"core.AgentCredentialID": {field: "ID", goType: "core.AgentCredentialID", wireType: "string", encodeFn: "corewire.EncodeAgentCredentialID", decodeFn: "corewire.DecodeAgentCredentialID"},
+			"agent.Credential":       {field: "Credential", goType: "agent.Credential", wireType: "credentialWire", encodeFn: "encodeCredential", decodeFn: "decodeCredential"},
+			"agent.SecretHash":       {field: "SecretHash", goType: "agent.SecretHash", wireType: "string", encodeFn: "encodeSecretHash", decodeFn: "decodeSecretHash"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"agent.CreateStoreResult": {goType: "agent.CreateStoreResult", wireType: "createResultWire", encodeFn: "encodeCreateResult", decodeFn: "decodeCreateResult", rejectedType: "agent.CreateStoreRejected"},
+			"agent.VerifyStoreResult": {goType: "agent.VerifyStoreResult", wireType: "credentialResultWire", encodeFn: "encodeVerifyResult", decodeFn: "decodeVerifyResult", rejectedType: "agent.VerifyStoreRejected"},
+			"agent.ListStoreResult":   {goType: "agent.ListStoreResult", wireType: "listResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "agent.ListStoreRejected"},
+			"agent.RevokeStoreResult": {goType: "agent.RevokeStoreResult", wireType: "credentialResultWire", encodeFn: "encodeRevokeResult", decodeFn: "decodeRevokeResult", rejectedType: "agent.RevokeStoreRejected"},
 		},
 	},
 }

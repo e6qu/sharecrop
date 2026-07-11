@@ -67,6 +67,28 @@ func DecodeRefreshTokenID(raw string) (core.RefreshTokenID, error) {
 	return created.Value, nil
 }
 
+// EncodeTaskID / DecodeTaskID carry a core.TaskID.
+func EncodeTaskID(id core.TaskID) string { return id.String() }
+
+func DecodeTaskID(raw string) (core.TaskID, error) {
+	created, matched := core.ParseTaskID(raw).(core.TaskIDCreated)
+	if !matched {
+		return core.TaskID{}, fmt.Errorf("invalid task id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeAgentCredentialID / DecodeAgentCredentialID carry a core.AgentCredentialID.
+func EncodeAgentCredentialID(id core.AgentCredentialID) string { return id.String() }
+
+func DecodeAgentCredentialID(raw string) (core.AgentCredentialID, error) {
+	created, matched := core.ParseAgentCredentialID(raw).(core.AgentCredentialIDCreated)
+	if !matched {
+		return core.AgentCredentialID{}, fmt.Errorf("invalid agent credential id %q", raw)
+	}
+	return created.Value, nil
+}
+
 // EncodeOrganizationID / DecodeOrganizationID carry a core.OrganizationID.
 func EncodeOrganizationID(id core.OrganizationID) string { return id.String() }
 
