@@ -1,5 +1,22 @@
 # What We Did
 
+The `task/wasi-auth-route` branch proved an auth-store-touching route runs end
+to end through the guest. `internal/wasibridge/appmux` now wires a live auth
+service (`auth.NewService` over the bridged auth `GuestStore`) alongside the
+notification service, so `GET /api/users` - which reads the auth store's
+directory via `authService.ListUsers` - is served entirely by the wasip1 guest,
+with the read bridged back to real Postgres. The integration test
+(`tests/integration/authroute_test.go`) mints an access token, seeds a user, and
+asserts the guest's response is byte-identical (status, Content-Type, body) to
+the same mux run in-process over the real store, and contains the seeded user.
+This is the first route to exercise a bridged store's *service* (not just
+stateless token verification). The host-side store routing (audit/auth/
+notification by method prefix) was extracted into `internal/wasibridge/storehost`
+and is shared by the app host and the tests. All gates green. Nothing about the
+native server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-auth` branch bridged the `auth` store - the largest and
 most complex (13 methods, 10 result unions, a three-variant Subject union,
 record and token structs). `internal/wasibridge/authbridge` has hand-written

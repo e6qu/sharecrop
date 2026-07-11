@@ -474,7 +474,12 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   byte-identical to the same mux run in-process against the same store, and
   that it actually contains the seeded row. This is the key proof that the two
   halves compose; broadening to routes that need other stores just needs those
-  stores bridged and wired into `appmux`.
+  stores bridged and wired into `appmux`. `GET /api/users` now does exactly
+  that - it reads the auth store's directory through the guest via a live auth
+  service (backed by the bridged auth `GuestStore`), byte-identical to native
+  (`tests/integration/authroute_test.go`) - the first route to exercise a
+  bridged store's *service*, not just stateless token verification. The
+  host-side store routing is shared as `internal/wasibridge/storehost`.
 
 ## Non-goals for this spike
 

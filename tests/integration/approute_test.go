@@ -39,8 +39,8 @@ func TestAppRouteEndToEndThroughGuest(t *testing.T) {
 
 	secret := requireAccessTokenSecret(t, appRouteSecret)
 
-	// Native: the same mux the guest builds, over the real db store, in-process.
-	nativeMux := appmux.New(secret, notificationStore)
+	// Native: the same mux the guest builds, over the real db stores, in-process.
+	nativeMux := appmux.New(secret, db.NewAuthStore(pool), notificationStore)
 	direct := serveDirect(nativeMux, authedRequest(token))
 
 	// Bridge: the app guest, with notification.* dispatched to the same db store
