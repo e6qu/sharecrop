@@ -1,8 +1,9 @@
 /* Sharecrop marketing/docs shell: a "dispatch desk" aesthetic for the two
    static pages that sit outside the compiled Elm app (site/index.html,
    site/docs/index.html). Sharecrop is a coordination layer for requested
-   work — a task is a work order, a reward is money held in escrow, a
-   response schema is the intake form a worker fills out. The visual
+   work — a task is a work order, a reward is credits allocated to the task
+   from the requester's wallet, a response schema is the intake form a
+   worker fills out. The visual
    language leans into that directly: kraft paper, typewriter display type,
    carbon-copy tickets, rubber-stamp buttons, tear-off perforation. This is
    deliberately not the demo's pixel-arcade skin (site/demo/arcade.css) —

@@ -17103,7 +17103,19 @@ var $author$project$Main$update = F2(
 					$author$project$Sharecrop$Api$withSession,
 					model,
 					function (state) {
-						return _Utils_Tuple2(
+						return ($elm$core$String$trim(state.teamMemberEmail) === '') ? _Utils_Tuple2(
+							A2(
+								$author$project$Sharecrop$Api$updateLoggedIn,
+								model,
+								function (current) {
+									return _Utils_update(
+										current,
+										{
+											teamMemberMessage: $elm$core$Maybe$Just(
+												$author$project$Sharecrop$Types$FailureNote('A member email is required.'))
+										});
+								}),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 							model,
 							A3($author$project$Sharecrop$Api$postAddTeamMember, state.accessToken, teamId, state.teamMemberEmail));
 					});
@@ -17472,7 +17484,7 @@ var $author$project$Main$update = F2(
 								{
 									createOrgTeamName: '',
 									orgTeamMessage: $elm$core$Maybe$Just(
-										$author$project$Sharecrop$Types$FailureNote('Created team ' + team.name))
+										$author$project$Sharecrop$Types$SuccessNote('Created team ' + team.name))
 								});
 						});
 					return A2(
@@ -18372,7 +18384,7 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										teamWorkMessage: $elm$core$Maybe$Just(
-											$author$project$Sharecrop$Types$FailureNote('Saved view: ' + view.name)),
+											$author$project$Sharecrop$Types$SuccessNote('Saved view: ' + view.name)),
 										teamWorkSavedViewName: '',
 										teamWorkSavedViews: A2($author$project$Main$saveQueueView, view, state.teamWorkSavedViews)
 									});
@@ -18386,7 +18398,7 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										orgTaskMessage: $elm$core$Maybe$Just(
-											$author$project$Sharecrop$Types$FailureNote('Saved view: ' + view.name)),
+											$author$project$Sharecrop$Types$SuccessNote('Saved view: ' + view.name)),
 										orgTaskSavedViewName: '',
 										orgTaskSavedViews: A2($author$project$Main$saveQueueView, view, state.orgTaskSavedViews)
 									});
@@ -24959,6 +24971,14 @@ var $author$project$Sharecrop$View$orgTeamsList = function (teams) {
 			},
 			teams));
 };
+var $author$project$Sharecrop$View$allocatedLabel = function (balance) {
+	if (balance.$ === 'Just') {
+		var wallet = balance.a;
+		return $elm$core$String$fromInt(wallet.allocated) + ' credits';
+	} else {
+		return 'Loading…';
+	}
+};
 var $author$project$Sharecrop$View$countMembers = F2(
 	function (status, members) {
 		return $elm$core$List$length(
@@ -25224,9 +25244,14 @@ var $author$project$Sharecrop$View$organizationOperationsDashboard = function (s
 					[
 						A3(
 						$author$project$Sharecrop$View$operationMetric,
-						'Balance',
+						'Spendable',
 						$author$project$Sharecrop$View$balanceLabel(state.orgBalance),
 						'org-ops-balance'),
+						A3(
+						$author$project$Sharecrop$View$operationMetric,
+						'Allocated',
+						$author$project$Sharecrop$View$allocatedLabel(state.orgBalance),
+						'org-ops-allocated'),
 						A3(
 						$author$project$Sharecrop$View$operationMetric,
 						'Teams',

@@ -1,5 +1,26 @@
 # What We Did
 
+The `task/pages-verify-and-boyscout` branch verified the deployment and
+corrected framing. It confirmed the deployed GitHub Pages demo works end to
+end after the #142 merge (spendable/allocated wallet, "Task funding" ledger
+kind, the per-task funding line and refund gating, populated inbox and
+collectibles, no console errors). It corrected the imprecise "two backends"
+language in the continuity docs: there is one backend (the `internal/http`
+mux plus the domain services), with two storage adapters bound to the domain
+`Store` interfaces — `internal/db` (Postgres, for the server) and
+`internal/wasmdemo` (browser key/value, for the demo). A browser cannot open
+a Postgres connection, so a browser-local storage adapter is unavoidable for
+the demo; the two adapters are kept behaviorally identical by the shared
+scenario-parity suite. Running production on the same compiled WASM artifact
+via a WASI host (bridging storage to `internal/db`) remains the tracked goal
+in `DO_NEXT.md`. Also fixed stale escrow wording in the marketing shell, made
+the organization operations dashboard show Spendable + Allocated (matching the
+wallet model), corrected three success confirmations that were rendered in
+red failure styling (org-team create, saved-view save), and added a
+missing empty-input guard on the add-team-member form.
+
+---
+
 The `task/wallet-followup-and-boyscout` branch is a post-#141 follow-up.
 
 Per-task funding on the task detail. The task response now reports

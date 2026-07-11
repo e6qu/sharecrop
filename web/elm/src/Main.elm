@@ -2120,7 +2120,14 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | teamMemberEmail = value }), Cmd.none )
 
         AddTeamMemberClicked teamId ->
-            Api.withSession model (\state -> ( model, Api.postAddTeamMember state.accessToken teamId state.teamMemberEmail ))
+            Api.withSession model
+                (\state ->
+                    if String.trim state.teamMemberEmail == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | teamMemberMessage = Just (FailureNote "A member email is required.") }), Cmd.none )
+
+                    else
+                        ( model, Api.postAddTeamMember state.accessToken teamId state.teamMemberEmail )
+                )
 
         AddTeamMemberReceived (Ok detail) ->
             ( Api.updateLoggedIn model (\state -> { state | teamDetail = Just detail, teamMemberEmail = "", teamMemberMessage = Just (SuccessNote "Member added.") }), Cmd.none )
@@ -2267,7 +2274,7 @@ update msg model =
         CreateOrgTeamReceived (Ok team) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | createOrgTeamName = "", orgTeamMessage = Just (FailureNote ("Created team " ++ team.name)) })
+                    Api.updateLoggedIn model (\state -> { state | createOrgTeamName = "", orgTeamMessage = Just (SuccessNote ("Created team " ++ team.name)) })
             in
             Api.withSession updated (\state -> ( updated, Api.fetchOrgTeams state.accessToken state.activeOrgId ))
 
@@ -2530,10 +2537,10 @@ update msg model =
                     queueViewFromResponse response
             in
             if response.scope == teamWorkSavedViewScope then
-                ( Api.updateLoggedIn model (\state -> { state | teamWorkSavedViews = saveQueueView view state.teamWorkSavedViews, teamWorkSavedViewName = "", teamWorkMessage = Just (FailureNote ("Saved view: " ++ view.name)) }), Cmd.none )
+                ( Api.updateLoggedIn model (\state -> { state | teamWorkSavedViews = saveQueueView view state.teamWorkSavedViews, teamWorkSavedViewName = "", teamWorkMessage = Just (SuccessNote ("Saved view: " ++ view.name)) }), Cmd.none )
 
             else if response.scope == orgTaskSavedViewScope then
-                ( Api.updateLoggedIn model (\state -> { state | orgTaskSavedViews = saveQueueView view state.orgTaskSavedViews, orgTaskSavedViewName = "", orgTaskMessage = Just (FailureNote ("Saved view: " ++ view.name)) }), Cmd.none )
+                ( Api.updateLoggedIn model (\state -> { state | orgTaskSavedViews = saveQueueView view state.orgTaskSavedViews, orgTaskSavedViewName = "", orgTaskMessage = Just (SuccessNote ("Saved view: " ++ view.name)) }), Cmd.none )
 
             else
                 ( model, Cmd.none )
@@ -2616,6 +2623,10 @@ update msg model =
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.triageModerationReport state.accessToken reportID stateValue state.adminModerationResolutionNote ))
 
         AdminModerationReportTriaged (Ok response) ->
+            -- Replace the report in place (keeping it visible with its new
+            -- state badge and resolution note) rather than refetching, so the
+            -- admin sees immediate confirmation of the resolution instead of
+            -- the row vanishing from the current filter.
             ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = replaceModerationReport response state.adminModerationReports, adminModerationResolutionNote = "", adminMessage = Just (SuccessNote "Moderation report updated.") }), Cmd.none )
 
         AdminModerationReportTriaged (Err error) ->

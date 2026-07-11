@@ -1736,7 +1736,8 @@ organizationOperationsDashboard state =
     div [ Html.Attributes.class "space-y-3 rounded-md border border-slate-200 bg-white p-3", testId "org-operations-dashboard" ]
         [ Ui.sectionTitle "Operations"
         , div [ Html.Attributes.class "grid gap-2 sm:grid-cols-2" ]
-            [ operationMetric "Balance" (balanceLabel state.orgBalance) "org-ops-balance"
+            [ operationMetric "Spendable" (balanceLabel state.orgBalance) "org-ops-balance"
+            , operationMetric "Allocated" (allocatedLabel state.orgBalance) "org-ops-allocated"
             , operationMetric "Teams" (String.fromInt (List.length state.orgTeams)) "org-ops-teams"
             , operationMetric "Active members" (String.fromInt (countMembers Organization.MembershipStatusActive state.orgMembers)) "org-ops-members-active"
             , operationMetric "Inactive members" (String.fromInt (inactiveMemberCount state.orgMembers)) "org-ops-members-inactive"
@@ -2011,6 +2012,18 @@ balanceLabel balance =
     case balance of
         Just wallet ->
             String.fromInt wallet.spendable ++ " credits"
+
+        Nothing ->
+            "Loading…"
+
+
+-- allocatedLabel shows the credits currently locked to tasks (the allocated
+-- wallet section), for the org operations dashboard's compact metric grid.
+allocatedLabel : Maybe Wallet -> String
+allocatedLabel balance =
+    case balance of
+        Just wallet ->
+            String.fromInt wallet.allocated ++ " credits"
 
         Nothing ->
             "Loading…"
