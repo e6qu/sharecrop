@@ -44,10 +44,7 @@ Current priority from
      (`tests/integration/authroute_test.go`); host-side routing shared as
      `internal/wasibridge/storehost`. Four stores bridged: audit, notification,
      auth, **agent** (MCP credentials, dual-run-verified; added nullable-pointer
-     + scope-set codecs). **Next**: bridge the remaining stores
-     (`ledger`, `task`, `org`, `submission`, `assets`, `orgcred` - note
-     `orgcred` reuses agent's `Label`/`ScopeSet`/`State`, so shared codecs may
-     be worth extracting first) and wire their services/routes; then weigh the
+     + scope-set codecs). Five stores bridged (audit, notification, auth, agent, orgcred; agent+orgcred share codecs via agentwire). **Next**: bridge the remaining stores (`submission`, `assets`, then the big ones `ledger`/`task`/`org`) and wire their services/routes; then weigh the
      ~2-3ms instance-per-request floor
      against instance pooling, migrate `cmd/sharecrop` onto the hosted guest,
      and retire `internal/wasmdemo` once the browser demo can run the same

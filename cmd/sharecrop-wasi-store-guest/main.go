@@ -18,6 +18,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 )
 
@@ -50,6 +51,8 @@ func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 		return authbridge.Dispatch(ctx, authbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "agent":
 		return agentbridge.Dispatch(ctx, agentbridge.NewGuestStore(rpc.Invoke), method, args)
+	case "orgcred":
+		return orgcredbridge.Dispatch(ctx, orgcredbridge.NewGuestStore(rpc.Invoke), method, args)
 	default:
 		return nil, fmt.Errorf("no bridge for method %q", method)
 	}

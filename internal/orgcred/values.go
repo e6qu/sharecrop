@@ -82,3 +82,10 @@ func (secret SecretPlain) Hash() SecretHash {
 func (hash SecretHash) String() string {
 	return hash.value
 }
+
+// SecretHashFromString reconstructs a SecretHash from its stored string form,
+// for storage adapters (including the WASI store bridge). It does not hash a
+// plaintext secret.
+func SecretHashFromString(raw string) SecretHash {
+	return SecretHash{value: raw}
+}

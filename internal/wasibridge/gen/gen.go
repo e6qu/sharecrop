@@ -73,6 +73,7 @@ func Targets() []Target {
 		{Key: "notification", SourceDir: "internal/notification", OutputPath: "internal/wasibridge/notificationbridge/bridge_gen.go"},
 		{Key: "auth", SourceDir: "internal/auth", OutputPath: "internal/wasibridge/authbridge/bridge_gen.go"},
 		{Key: "agent", SourceDir: "internal/agent", OutputPath: "internal/wasibridge/agentbridge/bridge_gen.go"},
+		{Key: "orgcred", SourceDir: "internal/orgcred", OutputPath: "internal/wasibridge/orgcredbridge/bridge_gen.go"},
 	}
 }
 
@@ -168,10 +169,30 @@ var specs = map[string]storeSpec{
 			"agent.SecretHash":       {field: "SecretHash", goType: "agent.SecretHash", wireType: "string", encodeFn: "encodeSecretHash", decodeFn: "decodeSecretHash"},
 		},
 		resultCodecs: map[string]resultCodec{
-			"agent.CreateStoreResult": {goType: "agent.CreateStoreResult", wireType: "createResultWire", encodeFn: "encodeCreateResult", decodeFn: "decodeCreateResult", rejectedType: "agent.CreateStoreRejected"},
+			"agent.CreateStoreResult": {goType: "agent.CreateStoreResult", wireType: "agentwire.CreateResultWire", encodeFn: "agentwire.EncodeCreateStoreResult", decodeFn: "agentwire.DecodeCreateStoreResult", rejectedType: "agent.CreateStoreRejected"},
 			"agent.VerifyStoreResult": {goType: "agent.VerifyStoreResult", wireType: "credentialResultWire", encodeFn: "encodeVerifyResult", decodeFn: "decodeVerifyResult", rejectedType: "agent.VerifyStoreRejected"},
 			"agent.ListStoreResult":   {goType: "agent.ListStoreResult", wireType: "listResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "agent.ListStoreRejected"},
 			"agent.RevokeStoreResult": {goType: "agent.RevokeStoreResult", wireType: "credentialResultWire", encodeFn: "encodeRevokeResult", decodeFn: "decodeRevokeResult", rejectedType: "agent.RevokeStoreRejected"},
+		},
+	},
+	"orgcred": {
+		bridgePackage: "orgcredbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/orgcred",
+		domainPackage: "orgcred",
+		interfaceName: "Store",
+		wirePrefix:    "orgcred",
+		argCodecs: map[string]argCodec{
+			"core.OrganizationID":  {field: "OrganizationID", goType: "core.OrganizationID", wireType: "string", encodeFn: "corewire.EncodeOrganizationID", decodeFn: "corewire.DecodeOrganizationID"},
+			"core.Page":            pageArg(),
+			"core.OrgCredentialID": {field: "ID", goType: "core.OrgCredentialID", wireType: "string", encodeFn: "corewire.EncodeOrgCredentialID", decodeFn: "corewire.DecodeOrgCredentialID"},
+			"orgcred.Credential":   {field: "Credential", goType: "orgcred.Credential", wireType: "credentialWire", encodeFn: "encodeCredential", decodeFn: "decodeCredential"},
+			"orgcred.SecretHash":   {field: "SecretHash", goType: "orgcred.SecretHash", wireType: "string", encodeFn: "encodeSecretHash", decodeFn: "decodeSecretHash"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"orgcred.CreateStoreResult": {goType: "orgcred.CreateStoreResult", wireType: "agentwire.CreateResultWire", encodeFn: "agentwire.EncodeCreateStoreResult", decodeFn: "agentwire.DecodeCreateStoreResult", rejectedType: "orgcred.CreateStoreRejected"},
+			"orgcred.VerifyStoreResult": {goType: "orgcred.VerifyStoreResult", wireType: "credentialResultWire", encodeFn: "encodeVerifyResult", decodeFn: "decodeVerifyResult", rejectedType: "orgcred.VerifyStoreRejected"},
+			"orgcred.ListStoreResult":   {goType: "orgcred.ListStoreResult", wireType: "listResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "orgcred.ListStoreRejected"},
+			"orgcred.RevokeStoreResult": {goType: "orgcred.RevokeStoreResult", wireType: "credentialResultWire", encodeFn: "encodeRevokeResult", decodeFn: "decodeRevokeResult", rejectedType: "orgcred.RevokeStoreRejected"},
 		},
 	},
 }
@@ -312,16 +333,26 @@ func paramName(field string) string { return "arg" + field }
 
 func emit(spec storeSpec, methods []method) (string, error) {
 	usesCorewire := false
+	usesAgentwire := false
 	usesTime := false
-	for _, m := range methods {
-		for _, arg := range m.args {
-			if strings.Contains(arg.encodeFn, "corewire.") || strings.Contains(arg.wireType, "corewire.") {
+	note := func(refs ...string) {
+		for _, ref := range refs {
+			if strings.Contains(ref, "corewire.") {
 				usesCorewire = true
 			}
+			if strings.Contains(ref, "agentwire.") {
+				usesAgentwire = true
+			}
+		}
+	}
+	for _, m := range methods {
+		for _, arg := range m.args {
+			note(arg.encodeFn, arg.decodeFn, arg.wireType)
 			if arg.goType == "time.Time" {
 				usesTime = true
 			}
 		}
+		note(m.result.encodeFn, m.result.decodeFn, m.result.wireType)
 	}
 
 	var b strings.Builder
@@ -333,6 +364,9 @@ func emit(spec storeSpec, methods []method) (string, error) {
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "\t%q\n", spec.domainImport)
 	b.WriteString("\t\"github.com/e6qu/sharecrop/internal/core\"\n")
+	if usesAgentwire {
+		b.WriteString("\t\"github.com/e6qu/sharecrop/internal/wasibridge/agentwire\"\n")
+	}
 	if usesCorewire {
 		b.WriteString("\t\"github.com/e6qu/sharecrop/internal/wasibridge/corewire\"\n")
 	}

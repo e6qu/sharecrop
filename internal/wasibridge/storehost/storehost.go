@@ -16,6 +16,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,6 +28,7 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	auditStore := db.NewAuditStore(pool)
 	authStore := db.NewAuthStore(pool)
 	notificationStore := db.NewNotificationStore(pool)
+	orgcredStore := db.NewOrgCredentialStore(pool)
 
 	return func(ctx context.Context, method string, args []byte) ([]byte, error) {
 		store, _, _ := strings.Cut(method, ".")
@@ -39,6 +41,8 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 			return authbridge.Dispatch(ctx, authStore, method, args)
 		case "notification":
 			return notificationbridge.Dispatch(ctx, notificationStore, method, args)
+		case "orgcred":
+			return orgcredbridge.Dispatch(ctx, orgcredStore, method, args)
 		default:
 			return nil, fmt.Errorf("no bridge for method %q", method)
 		}

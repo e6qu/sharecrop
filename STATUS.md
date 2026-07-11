@@ -53,17 +53,18 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-agent` — bridge the `agent` store (MCP agent
-credentials: create/verify/list/revoke). `internal/wasibridge/agentbridge`
-(codecs + generated `bridge_gen.go`) is dual-run-verified against real Postgres
-(`tests/integration/agentbridge_store_test.go`). It added nullable-pointer
-codecs (`*time.Time`, `*core.TaskID`) and a scope-set to the codec vocabulary,
-plus `agent.SecretHashFromString` (like auth's hash reconstruction) and
-`corewire` codecs for `TaskID`/`AgentCredentialID`. The generic store guest and
-`storehost` route `agent.*` too. **Four stores bridged: audit, notification,
-auth, agent.** **Next**: bridge the remaining stores (ledger, task, org,
-submission, assets, orgcred - `orgcred` reuses agent's Label/ScopeSet/State
-types, so shared codecs may be worth extracting first); then weigh instance
+Active task: `task/wasi-bridge-orgcred` — bridge the `orgcred` store
+(organization-wide credentials), and extract the agent value-type codecs
+(`Label`/`ScopeSet`/`State` + the shared `CreateStoreResult`) into a new
+`internal/wasibridge/agentwire` package so agentbridge and orgcredbridge don't
+duplicate them (jscpd would block identical codecs on the same types). The agent
+bridge was refactored onto `agentwire` (regenerated, no behavior change).
+`internal/wasibridge/orgcredbridge` is dual-run-verified against real Postgres
+(`tests/integration/orgcredbridge_store_test.go`); shared test-comparison
+helpers live in `internal/agent/agenttest.SharedFieldsDiff`. `corewire` gained
+`OrgCredentialID` + nullable-`*time.Time` codecs. **Five stores bridged: audit,
+notification, auth, agent, orgcred.** **Next**: bridge the remaining stores
+(submission, assets, then the big ones - ledger/task/org); then weigh instance
 pooling and migrate `cmd/sharecrop`. Nothing about the native server or browser
 demo changes.
 
