@@ -1,5 +1,36 @@
 # What We Did
 
+The `task/wasi-bridge-org` branch bridged the `org` store (organizations,
+members, and teams) - the ninth store - and drove a third generator enhancement.
+`org.Store.ProvisionMember(..., auth.EmailAddress, ...)` and `AddTeamMemberByEmail`
+are the first methods whose argument type lives in a *third* package (neither the
+domain package nor core), so the generated `GuestStore` signatures reference
+`auth.EmailAddress` and the generated file must import `auth`. The generator's
+import block was hardcoded to core/corewire/domain, so `storeSpec` gained an
+`extraImports []string` field; `emit` writes those into the import group
+(`format.Source` sorts them). Backward-compatible: every other spec leaves
+`extraImports` nil, so their generated files are byte-unchanged (verified by
+`check-wasi-bridge`), and a new gen unit test covers it. `internal/wasibridge/orgbridge`
+serializes `Organization`, `OrganizationMember` (with its `MembershipStatus` and
+`[]Role`), and `Team` - including the `TeamOwner` tagged union
+(organization-owned vs standalone user-owned) - plus twelve result unions (four
+accept/reject pairs share `acceptedRejectedWire`; provision and update-roles
+share `memberResultWire`). No new reconstruction constructors were needed: org
+value types (names, roles, membership status, email) round-trip through their
+existing validating constructors because the store only emits valid values.
+`corewire` gained `TeamID` and `OrganizationMembershipID` codecs. Shared test
+builders live in `internal/org/orgtest` (to keep jscpd at 0 across the codec and
+integration tests). The dual-run integration test
+(`tests/integration/orgbridge_store_test.go`) drives create-org / provision /
+update-roles / deactivate / create-team / add-member through the guest against
+real Postgres and checks every read path against a direct call. The generic
+store guest and `storehost` route `org.*`. Nine stores bridged (audit,
+notification, auth, agent, orgcred, assets, submission, ledger, org); only
+`task` remains. All gates green. Nothing about the native server or browser demo
+changed.
+
+---
+
 The `task/wasi-bridge-ledger` branch bridged the `ledger` store - the eighth and
 most union-dense store - and, unlike the previous few, needed **no generator
 change**: it fit the existing framework. The ledger is the credit system, so its

@@ -55,6 +55,10 @@ type storeSpec struct {
 	wirePrefix    string
 	argCodecs     map[string]argCodec
 	resultCodecs  map[string]resultCodec
+	// extraImports lists packages the generated signatures reference beyond the
+	// domain package, core, and corewire - e.g. a method argument whose type
+	// lives in another package (auth.EmailAddress). Left nil by most stores.
+	extraImports []string
 }
 
 // Target names a store to (re)generate: where its interface source lives and
@@ -77,6 +81,7 @@ func Targets() []Target {
 		{Key: "assets", SourceDir: "internal/assets", OutputPath: "internal/wasibridge/assetsbridge/bridge_gen.go"},
 		{Key: "submission", SourceDir: "internal/submission", OutputPath: "internal/wasibridge/submissionbridge/bridge_gen.go"},
 		{Key: "ledger", SourceDir: "internal/ledger", OutputPath: "internal/wasibridge/ledgerbridge/bridge_gen.go"},
+		{Key: "org", SourceDir: "internal/org", OutputPath: "internal/wasibridge/orgbridge/bridge_gen.go"},
 	}
 }
 
@@ -281,6 +286,40 @@ var specs = map[string]storeSpec{
 			"ledger.ListEntriesResult":    {goType: "ledger.ListEntriesResult", wireType: "entriesWire", encodeFn: "encodeListEntriesResult", decodeFn: "decodeListEntriesResult", rejectedType: "ledger.ListEntriesRejected"},
 		},
 	},
+	"org": {
+		bridgePackage: "orgbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/org",
+		domainPackage: "org",
+		interfaceName: "Store",
+		wirePrefix:    "org",
+		extraImports:  []string{"github.com/e6qu/sharecrop/internal/auth"},
+		argCodecs: map[string]argCodec{
+			"core.UserID":                   userIDArg(),
+			"core.Page":                     pageArg(),
+			"core.OrganizationID":           {field: "OrganizationID", goType: "core.OrganizationID", wireType: "string", encodeFn: "corewire.EncodeOrganizationID", decodeFn: "corewire.DecodeOrganizationID"},
+			"core.TeamID":                   {field: "TeamID", goType: "core.TeamID", wireType: "string", encodeFn: "corewire.EncodeTeamID", decodeFn: "corewire.DecodeTeamID"},
+			"core.OrganizationMembershipID": {field: "MembershipID", goType: "core.OrganizationMembershipID", wireType: "string", encodeFn: "corewire.EncodeOrganizationMembershipID", decodeFn: "corewire.DecodeOrganizationMembershipID"},
+			"string":                        {field: "Search", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
+			"org.OrganizationName":          {field: "OrganizationName", goType: "org.OrganizationName", wireType: "string", encodeFn: "encodeOrganizationName", decodeFn: "decodeOrganizationName"},
+			"org.TeamName":                  {field: "TeamName", goType: "org.TeamName", wireType: "string", encodeFn: "encodeTeamName", decodeFn: "decodeTeamName"},
+			"auth.EmailAddress":             {field: "Email", goType: "auth.EmailAddress", wireType: "string", encodeFn: "encodeEmail", decodeFn: "decodeEmail"},
+			"[]org.Role":                    {field: "Roles", goType: "[]org.Role", wireType: "[]string", encodeFn: "encodeRoles", decodeFn: "decodeRoles"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"org.CreateOrganizationStoreResult": {goType: "org.CreateOrganizationStoreResult", wireType: "acceptedRejectedWire", encodeFn: "encodeCreateOrganizationResult", decodeFn: "decodeCreateOrganizationResult", rejectedType: "org.CreateOrganizationStoreRejected"},
+			"org.ListOrganizationsResult":       {goType: "org.ListOrganizationsResult", wireType: "organizationsResultWire", encodeFn: "encodeListOrganizationsResult", decodeFn: "decodeListOrganizationsResult", rejectedType: "org.ListOrganizationsRejected"},
+			"org.MemberRolesResult":             {goType: "org.MemberRolesResult", wireType: "memberRolesResultWire", encodeFn: "encodeMemberRolesResult", decodeFn: "decodeMemberRolesResult", rejectedType: "org.MemberRolesRejected"},
+			"org.ListMembersResult":             {goType: "org.ListMembersResult", wireType: "membersResultWire", encodeFn: "encodeListMembersResult", decodeFn: "decodeListMembersResult", rejectedType: "org.ListMembersRejected"},
+			"org.ProvisionMemberStoreResult":    {goType: "org.ProvisionMemberStoreResult", wireType: "memberResultWire", encodeFn: "encodeProvisionMemberResult", decodeFn: "decodeProvisionMemberResult", rejectedType: "org.ProvisionMemberStoreRejected"},
+			"org.DeactivateMemberStoreResult":   {goType: "org.DeactivateMemberStoreResult", wireType: "acceptedRejectedWire", encodeFn: "encodeDeactivateMemberResult", decodeFn: "decodeDeactivateMemberResult", rejectedType: "org.DeactivateMemberStoreRejected"},
+			"org.UpdateMemberRolesStoreResult":  {goType: "org.UpdateMemberRolesStoreResult", wireType: "memberResultWire", encodeFn: "encodeUpdateMemberRolesResult", decodeFn: "decodeUpdateMemberRolesResult", rejectedType: "org.UpdateMemberRolesStoreRejected"},
+			"org.CreateTeamStoreResult":         {goType: "org.CreateTeamStoreResult", wireType: "acceptedRejectedWire", encodeFn: "encodeCreateTeamResult", decodeFn: "decodeCreateTeamResult", rejectedType: "org.CreateTeamStoreRejected"},
+			"org.AddTeamMemberStoreResult":      {goType: "org.AddTeamMemberStoreResult", wireType: "acceptedRejectedWire", encodeFn: "encodeAddTeamMemberResult", decodeFn: "decodeAddTeamMemberResult", rejectedType: "org.AddTeamMemberStoreRejected"},
+			"org.TeamListResult":                {goType: "org.TeamListResult", wireType: "teamsResultWire", encodeFn: "encodeTeamListResult", decodeFn: "decodeTeamListResult", rejectedType: "org.TeamListRejected"},
+			"org.FindTeamResult":                {goType: "org.FindTeamResult", wireType: "findTeamResultWire", encodeFn: "encodeFindTeamResult", decodeFn: "decodeFindTeamResult", rejectedType: "org.TeamMissing"},
+			"org.TeamMembersResult":             {goType: "org.TeamMembersResult", wireType: "teamMembersResultWire", encodeFn: "encodeTeamMembersResult", decodeFn: "decodeTeamMembersResult", rejectedType: "org.TeamMembersRejected"},
+		},
+	},
 }
 
 type method struct {
@@ -464,6 +503,9 @@ func emit(spec storeSpec, methods []method) (string, error) {
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "\t%q\n", spec.domainImport)
 	b.WriteString("\t\"github.com/e6qu/sharecrop/internal/core\"\n")
+	for _, extra := range spec.extraImports {
+		fmt.Fprintf(&b, "\t%q\n", extra)
+	}
 	if usesAgentwire {
 		b.WriteString("\t\"github.com/e6qu/sharecrop/internal/wasibridge/agentwire\"\n")
 	}

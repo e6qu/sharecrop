@@ -72,6 +72,26 @@ type Store interface {
 	}
 }
 
+func TestGenerateEmitsExtraImports(t *testing.T) {
+	source, err := Generate(sources(`package org
+import "context"
+type Store interface {
+	AddTeamMemberByEmail(context.Context, core.TeamID, auth.EmailAddress) AddTeamMemberStoreResult
+}
+`), "org")
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	// auth.EmailAddress is a method argument, so the generated file must import
+	// the auth package for the GuestStore method signature to compile.
+	if !strings.Contains(source, `"github.com/e6qu/sharecrop/internal/auth"`) {
+		t.Errorf("generated source is missing the auth extra import")
+	}
+	if !strings.Contains(source, "argEmail auth.EmailAddress") {
+		t.Errorf("generated signature is missing the auth-typed argument")
+	}
+}
+
 func TestGenerateRejectsUnregisteredArgumentType(t *testing.T) {
 	_, err := Generate(sources(`package audit
 import "context"

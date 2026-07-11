@@ -122,6 +122,29 @@ func DecodeOrgCredentialID(raw string) (core.OrgCredentialID, error) {
 	return created.Value, nil
 }
 
+// EncodeTeamID / DecodeTeamID carry a core.TeamID.
+func EncodeTeamID(id core.TeamID) string { return id.String() }
+
+func DecodeTeamID(raw string) (core.TeamID, error) {
+	created, matched := core.ParseTeamID(raw).(core.TeamIDCreated)
+	if !matched {
+		return core.TeamID{}, fmt.Errorf("invalid team id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeOrganizationMembershipID / DecodeOrganizationMembershipID carry a
+// core.OrganizationMembershipID.
+func EncodeOrganizationMembershipID(id core.OrganizationMembershipID) string { return id.String() }
+
+func DecodeOrganizationMembershipID(raw string) (core.OrganizationMembershipID, error) {
+	created, matched := core.ParseOrganizationMembershipID(raw).(core.OrganizationMembershipIDCreated)
+	if !matched {
+		return core.OrganizationMembershipID{}, fmt.Errorf("invalid organization membership id %q", raw)
+	}
+	return created.Value, nil
+}
+
 // EncodeLedgerEntryID / DecodeLedgerEntryID carry a core.LedgerEntryID.
 func EncodeLedgerEntryID(id core.LedgerEntryID) string { return id.String() }
 
