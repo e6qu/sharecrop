@@ -3,17 +3,7 @@
 Current priority from
 [docs/application_readiness_review.md](./docs/application_readiness_review.md):
 
-1. Report a task's live allocated amount on the task DETAIL response so the
-   browser can gate the Refund button precisely. Since the wallet refactor,
-   the Overview/organization pages show each account's allocated total, and
-   the task detail still shows only the declared reward. Add the task's
-   allocated credit amount (from `task_funds`) and held-collectible presence
-   (from `task_fund_collectibles`) to the detail DTO + generated Elm
-   contract + both stores (`internal/db`, `internal/wasmdemo`), then hide the
-   Refund button on an unfunded declared-reward task and show a per-task
-   funding line. Smaller than it was before the wallet refactor.
-
-2. Two large infrastructure efforts are wanted but explicitly deferred:
+1. Two large infrastructure efforts are wanted but explicitly deferred:
 
    - (a) WASI production hosting: replace `cmd/sharecrop`'s native
      `net/http` server with a WASI-hosted WASM binary compiled from the real
@@ -30,21 +20,21 @@ Current priority from
      100 concurrent streaming sessions, keeping HTTP/1.1 as an explicit,
      supported option for regular UI/API traffic.
 
-3. Keep expanding shared scenario parity as new user-visible API surfaces
+2. Keep expanding shared scenario parity as new user-visible API surfaces
    are added, and keep running it against real APIs as behavior changes. The
    explicit-session runner accepts `--origin`, access-token input, and
    refresh-token input; the local real runner can register a scenario admin
    and grant platform-admin state through `DATABASE_URL` and `psql`.
 
-4. Keep expanding generated/fixture-level HTTP contract coverage as the API
+3. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
 
-5. Audit remaining raw-ID browser flows and replace high-traffic fields with
+4. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID
    input remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 
-6. Build a genuine production non-browser WASM host if a non-browser
+5. Build a genuine production non-browser WASM host if a non-browser
    deployment target appears: persistent storage (file or database-backed)
    behind the same `storageHas`/`storageGet`/`storagePut` contract and a
    real clock. The reference host (`tools/wasm_runtime_loader.ts`) resolves
@@ -53,7 +43,7 @@ Current priority from
    test/measurement host, not a production one. Keep re-running
    `deno task measure:wasm` as the WASM binary grows.
 
-7. Do not add anonymous worker identity or provider email delivery unless
+6. Do not add anonymous worker identity or provider email delivery unless
    the product direction changes. Registered-user submissions remain the
    model; account and organization setup stays admin/org-admin driven.
 

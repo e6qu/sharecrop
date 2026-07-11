@@ -59,34 +59,44 @@ sessionView model =
 
 authView : Model -> Html Msg
 authView model =
-    form
-        [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit LoginClicked ]
-        [ p [ Html.Attributes.class "text-slate-600" ] [ text "Sign in or create an account to view your credit ledger and set up agents." ]
-        , Ui.textInput [ type_ "email", placeholder "Email", value model.email, onInput EmailChanged, testId "email" ]
-        , Ui.textInput [ type_ "password", placeholder "Password", value model.password, onInput PasswordChanged, testId "password" ]
-        , div [ Html.Attributes.class "flex gap-3" ]
-            ([ Ui.primaryButton [ type_ "submit", testId "login" ] "Log in"
-             , Ui.secondaryButton [ type_ "button", onClick RegisterClicked, testId "register" ] "Register"
-             ]
-                -- Guest sessions only work against the demo backend; the
-                -- real API rejects the guest subject on every data route, so
-                -- offering the button there is a dead end (empty lists and
-                -- failing actions with no explanation).
-                ++ (if model.demo then
-                        [ Ui.secondaryButton [ type_ "button", onClick GuestClicked, testId "guest-login" ] "Continue as guest" ]
+    div
+        [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" ]
+        -- The login and password-reset controls are separate <form>s so that
+        -- pressing Enter in a reset field submits the reset request rather than
+        -- attempting a login. Each reset field is bound to the reset action
+        -- that makes sense for it.
+        [ form [ Html.Attributes.class "space-y-4", onSubmit LoginClicked ]
+            [ p [ Html.Attributes.class "text-slate-600" ] [ text "Sign in or create an account to view your credit ledger and set up agents." ]
+            , Ui.textInput [ type_ "email", placeholder "Email", value model.email, onInput EmailChanged, testId "email" ]
+            , Ui.textInput [ type_ "password", placeholder "Password", value model.password, onInput PasswordChanged, testId "password" ]
+            , div [ Html.Attributes.class "flex gap-3" ]
+                ([ Ui.primaryButton [ type_ "submit", testId "login" ] "Log in"
+                 , Ui.secondaryButton [ type_ "button", onClick RegisterClicked, testId "register" ] "Register"
+                 ]
+                    -- Guest sessions only work against the demo backend; the
+                    -- real API rejects the guest subject on every data route, so
+                    -- offering the button there is a dead end (empty lists and
+                    -- failing actions with no explanation).
+                    ++ (if model.demo then
+                            [ Ui.secondaryButton [ type_ "button", onClick GuestClicked, testId "guest-login" ] "Continue as guest" ]
 
-                    else
-                        []
-                   )
-            )
+                        else
+                            []
+                       )
+                )
+            ]
         , div [ Html.Attributes.class "space-y-2 border-t border-slate-100 pt-4" ]
             [ Ui.label_ "Password reset"
-            , Ui.textInput [ type_ "email", placeholder "Account email", value model.resetEmail, onInput PasswordResetEmailChanged, testId "reset-email" ]
-            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-                [ Ui.secondaryButton [ type_ "button", onClick RequestPasswordResetClicked, testId "request-password-reset" ] "Create reset token" ]
-            , Ui.textInput [ type_ "text", placeholder "Reset token", value model.resetToken, onInput PasswordResetTokenChanged, testId "reset-token" ]
-            , Ui.textInput [ type_ "password", placeholder "New password", value model.resetPassword, onInput PasswordResetPasswordChanged, testId "reset-password" ]
-            , Ui.secondaryButton [ type_ "button", onClick ConfirmPasswordResetClicked, testId "confirm-password-reset" ] "Reset password"
+            , form [ Html.Attributes.class "space-y-2", onSubmit RequestPasswordResetClicked ]
+                [ Ui.textInput [ type_ "email", placeholder "Account email", value model.resetEmail, onInput PasswordResetEmailChanged, testId "reset-email" ]
+                , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                    [ Ui.primaryButton [ type_ "submit", testId "request-password-reset" ] "Create reset token" ]
+                ]
+            , form [ Html.Attributes.class "space-y-2", onSubmit ConfirmPasswordResetClicked ]
+                [ Ui.textInput [ type_ "text", placeholder "Reset token", value model.resetToken, onInput PasswordResetTokenChanged, testId "reset-token" ]
+                , Ui.textInput [ type_ "password", placeholder "New password", value model.resetPassword, onInput PasswordResetPasswordChanged, testId "reset-password" ]
+                , Ui.primaryButton [ type_ "submit", testId "confirm-password-reset" ] "Reset password"
+                ]
             ]
         , maybeError model.authError "auth-error"
         , case model.authNotice of
@@ -3370,22 +3380,43 @@ ownerControlsCard state =
                 -- surfaced as an open-by-default callout instead of a
                 -- same-weight collapsed disclosure next to unrelated
                 -- housekeeping sections (API & MCP, Report task).
+                -- A draft that holds no allocated reward yet is where funding
+                -- is the genuine next step - whether it declared no reward or
+                -- declared a credit/bundle/collectible reward it hasn't funded.
+                -- A declared credit/bundle reward must be funded before the
+                -- task can open, so surfacing the fund panel prominently
+                -- (rather than as a collapsed disclosure) is what stops the
+                -- owner from clicking Open straight into an invariant error.
                 needsFundingGuidance =
-                    canFund && detail.rewardKind == "none"
+                    canFund && not (holdsCredits || holdsCollectibles)
+
+                -- Whether the task currently holds any allocated reward (live
+                -- funding state from the detail response), as opposed to a
+                -- merely *declared* reward that was never funded. Only a task
+                -- that actually holds a reward can be refunded, so this gates
+                -- the Refund button - a declared-but-unfunded draft no longer
+                -- shows a Refund button that would just report "nothing to
+                -- refund".
+                holdsCredits =
+                    detail.allocatedCredits > 0
+
+                holdsCollectibles =
+                    not (List.isEmpty detail.allocatedCollectibleIDs)
 
                 -- The credit refund endpoint (/refund) is the unified refund: it
                 -- returns held credits AND held collectibles together (so it
                 -- handles bundle rewards in one shot). The collectible-refund
                 -- endpoint only handles collectible-only tasks (it 409s on bundle).
-                -- So: credit and bundle -> /refund; collectible-only -> /collectible-refund.
+                -- So: any held credits (credit or bundle) -> /refund;
+                -- collectible-only holdings -> /collectible-refund.
                 refundButton =
-                    if draftOrOpen && detail.rewardKind == "credit" then
-                        Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund credits")
-
-                    else if draftOrOpen && detail.rewardKind == "bundle" then
+                    if draftOrOpen && holdsCredits && holdsCollectibles then
                         Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund reward")
 
-                    else if draftOrOpen && detail.rewardKind == "collectible" then
+                    else if draftOrOpen && holdsCredits then
+                        Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund credits")
+
+                    else if draftOrOpen && holdsCollectibles then
                         Just (Ui.secondaryButton [ type_ "button", onClick (RefundCollectibleRewardClicked detail.id), testId "refund-collectible" ] "Refund collectible")
 
                     else
@@ -3424,6 +3455,7 @@ ownerControlsCard state =
             Ui.card
                 [ Ui.sectionTitle "Owner controls"
                 , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
+                , taskFundingStatus holdsCredits holdsCollectibles detail
                 , div [ Html.Attributes.class "flex flex-wrap gap-2" ] buttons
                 , maybeNote state.taskActionMessage "task-action-message"
                 , if needsFundingGuidance then
@@ -3436,7 +3468,15 @@ ownerControlsCard state =
                     -- funding is genuinely the next step here.
                     div [ Html.Attributes.class "space-y-3 rounded-md border border-blue-200 bg-blue-50 p-4", testId "fund-task-callout" ]
                         [ p [ Html.Attributes.class "text-xs font-semibold tracking-wide text-blue-700" ] [ text "BEFORE YOU OPEN THIS TASK" ]
-                        , p [ Html.Attributes.class "text-sm text-blue-900" ] [ text "This draft has no reward yet. Fund it with credits, a collectible, or both - or open it unfunded if that's intentional." ]
+                        , p [ Html.Attributes.class "text-sm text-blue-900" ]
+                            [ text
+                                (if detail.rewardKind == "none" then
+                                    "This draft has no reward yet. Fund it with credits, a collectible, or both - or open it unfunded if that's intentional."
+
+                                 else
+                                    "This draft declares a reward but hasn't been funded yet. A declared reward must be funded before the task can open."
+                                )
+                            ]
                         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
                         , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset
                         , Ui.primaryButton [ type_ "button", onClick FundClicked, testId "fund" ] "Fund task"
@@ -3968,9 +4008,9 @@ reviewButtons state submission =
     case submission.state of
         Submission.SubmissionStateSubmitted ->
             div [ Html.Attributes.class "flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end" ]
-                [ Ui.secondaryButton [ onClick (RequestChangesClicked submission.id), disabled (String.trim state.reviewNote == ""), testId "request-changes" ] "Request changes"
-                , Ui.secondaryButton [ onClick (RejectClicked submission.id), disabled (String.trim state.reviewNote == ""), testId "reject-submission" ] "Reject"
-                , Ui.primaryButton [ onClick (AcceptClicked submission.id), testId "accept-submission" ] "Accept"
+                [ Ui.secondaryButton [ type_ "button", onClick (RequestChangesClicked submission.id), disabled (String.trim state.reviewNote == ""), testId "request-changes" ] "Request changes"
+                , Ui.secondaryButton [ type_ "button", onClick (RejectClicked submission.id), disabled (String.trim state.reviewNote == ""), testId "reject-submission" ] "Reject"
+                , Ui.primaryButton [ type_ "button", onClick (AcceptClicked submission.id), testId "accept-submission" ] "Accept"
                 ]
 
         _ ->
@@ -4159,6 +4199,44 @@ restSubmitCurl origin taskId token =
         ++ "/submissions -H \"Authorization: Bearer "
         ++ token
         ++ "\" -H \"Content-Type: application/json\" -d '{\"response_json\":\"{}\"}'"
+
+
+-- taskFundingStatus shows what reward is actually allocated (locked) to the
+-- task right now, drawn from the live allocated fields on the detail response
+-- rather than the declared reward. Renders nothing when the task holds no
+-- reward, so an unfunded draft stays quiet.
+taskFundingStatus : Bool -> Bool -> TaskDetail -> Html Msg
+taskFundingStatus holdsCredits holdsCollectibles detail =
+    let
+        parts =
+            (if holdsCredits then
+                [ String.fromInt detail.allocatedCredits ++ " credits" ]
+
+             else
+                []
+            )
+                ++ (if holdsCollectibles then
+                        [ pluralizeCollectibles (List.length detail.allocatedCollectibleIDs) ]
+
+                    else
+                        []
+                   )
+    in
+    if List.isEmpty parts then
+        text ""
+
+    else
+        p [ Html.Attributes.class "text-sm text-slate-700", testId "task-funding-status" ]
+            [ text ("Allocated to this task: " ++ String.join " and " parts ++ ".") ]
+
+
+pluralizeCollectibles : Int -> String
+pluralizeCollectibles count =
+    if count == 1 then
+        "1 collectible"
+
+    else
+        String.fromInt count ++ " collectibles"
 
 
 fundSuccessLabel : Ledger.TaskFundResponse -> String

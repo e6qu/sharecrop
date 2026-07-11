@@ -3,6 +3,7 @@ module Sharecrop.ResponseSchema exposing
     , FormField
     , ResponseSchema(..)
     , SchemaField
+    , buildPartial
     , buildSubmission
     , formFields
     , parse
@@ -189,6 +190,30 @@ buildSubmission fields values =
         (Ok [])
         fields
         |> Result.map (\pairs -> Encode.encode 0 (Encode.object pairs))
+
+
+{-| Build a best-effort JSON object from whatever fields currently have a
+usable value, ignoring missing-required and per-field errors. Used to seed
+the raw-JSON editor when the worker switches to it, so the values they
+already typed are not lost.
+-}
+buildPartial : List FormField -> Dict String String -> String
+buildPartial fields values =
+    fields
+        |> List.filterMap
+            (\field ->
+                case fieldValue field (Dict.get field.name values |> Maybe.withDefault "") of
+                    FieldOk value ->
+                        Just ( field.name, value )
+
+                    FieldOmitted ->
+                        Nothing
+
+                    FieldError _ ->
+                        Nothing
+            )
+        |> Encode.object
+        |> Encode.encode 2
 
 
 type FieldOutcome

@@ -601,6 +601,8 @@ func taskModule() Module {
 					{Name: NewElmValueName("rewardKind"), JSONName: NewJSONFieldName("reward_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("rewardCreditAmount"), JSONName: NewJSONFieldName("reward_credit_amount"), Type: IntRef{}},
 					{Name: NewElmValueName("rewardCollectibleCount"), JSONName: NewJSONFieldName("reward_collectible_count"), Type: IntRef{}},
+					{Name: NewElmValueName("allocatedCredits"), JSONName: NewJSONFieldName("allocated_credits"), Type: IntRef{}},
+					{Name: NewElmValueName("allocatedCollectibleIDs"), JSONName: NewJSONFieldName("allocated_collectible_ids"), Type: ListRef{Element: StringRef{}}},
 					{Name: NewElmValueName("participationPolicy"), JSONName: NewJSONFieldName("participation_policy"), Type: NamedRef{Name: NewElmTypeName("TaskParticipationPolicy")}},
 					{Name: NewElmValueName("assigneeScope"), JSONName: NewJSONFieldName("assignee_scope"), Type: NamedRef{Name: NewElmTypeName("TaskAssigneeScope")}},
 					{Name: NewElmValueName("reservationExpiryHours"), JSONName: NewJSONFieldName("reservation_expiry_hours"), Type: IntRef{}},

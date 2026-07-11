@@ -82,13 +82,18 @@ Known risks:
   holding allocated credits or held collectibles, so funds that only their
   owner can refund are not stranded.
 
-- The task detail response still reports only the declared reward, not the
-  live allocated amount, so the browser cannot perfectly tell a funded task
-  from an un-awarded one that merely declares a reward; the Refund button may
-  appear on an unfunded declared-reward task and returns a clear
-  "task has nothing to refund" message when clicked. The Overview/org pages
-  now show the account's allocated total. Exposing per-task funding state on
-  the detail response is still a tracked follow-up (see `DO_NEXT.md`).
+- The task detail, create, and state-change responses report the live
+  allocated reward a task holds (`allocated_credits` and the individual
+  `allocated_collectible_ids`), distinct from the declared reward. The
+  browser gates the Refund button on it (no Refund on an unfunded declared
+  reward) and shows a per-task funding line; the Overview/org pages show the
+  account's allocated total.
+
+- Refunding or cancelling a task releases the worker's reservation (to
+  `cancelled_by_requester`) on both backends, so a reservation no longer
+  dangles in an active/submitted state on a cancelled task. The refund/cancel
+  paths (credit refund, collectible refund, and the cancel state transition)
+  all go through the shared release helper.
 
 - `site/demo/backend.js` (the legacy JS mock backend) and its Deno tests have
   been removed; `deno task check:scenario-parity:wasm` is now CI-enforced

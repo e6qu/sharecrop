@@ -175,6 +175,10 @@ func (store *memoryStore) FundTaskFromOrganization(_ context.Context, command Or
 	return TaskFunded{Fund: TaskFund{TaskID: command.TaskID, CreditAmount: command.Amount}}
 }
 
+func (store *memoryStore) TaskAllocatedCredits(_ context.Context, _ core.TaskID) TaskAllocatedResult {
+	return TaskAllocatedFound{Amount: 0}
+}
+
 func (store *memoryStore) Balance(_ context.Context, _ core.UserID) BalanceResult {
 	return BalanceFound{Value: NewBalance(0, 0)}
 }

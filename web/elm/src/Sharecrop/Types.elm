@@ -327,6 +327,8 @@ type alias TaskDetail =
     , rewardKind : String
     , rewardCreditAmount : Int
     , rewardCollectibleCount : Int
+    , allocatedCredits : Int
+    , allocatedCollectibleIDs : List String
     , participationPolicy : Task.TaskParticipationPolicy
     , assigneeScope : Task.TaskAssigneeScope
     , reservationExpiryHours : Int

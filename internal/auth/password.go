@@ -102,6 +102,14 @@ func parseHashString(raw string) (parsedHash, bool) {
 	if err != nil {
 		return parsedHash{}, false
 	}
+	// Reject a zero-length salt or key: a hash whose key segment is empty
+	// would make VerifyPassword derive an empty key and constant-time-compare
+	// two empty slices as equal, so every password would "match".
+	// HashPassword never produces such a hash, but refuse to trust one if it
+	// appears.
+	if len(salt) == 0 || len(key) == 0 {
+		return parsedHash{}, false
+	}
 
 	return parsedHash{
 		memoryKiB:   uint32(memory),

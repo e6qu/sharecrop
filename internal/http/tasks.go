@@ -11,6 +11,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/schema"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -55,11 +56,21 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 			writeDomainError(w, refreshed.(task.GetRejected).Reason)
 			return
 		}
-		writeTaskResponse(w, http.StatusCreated, taskToResponse(got.Value))
+		response, fundingErr := server.withAllocatedFunding(r.Context(), taskToResponse(got.Value), got.Value.ID)
+		if fundingErr != nil {
+			writeDomainError(w, *fundingErr)
+			return
+		}
+		writeTaskResponse(w, http.StatusCreated, response)
 		return
 	}
 
-	writeTaskResponse(w, http.StatusCreated, taskToResponse(created.Value))
+	response, fundingErr := server.withAllocatedFunding(r.Context(), taskToResponse(created.Value), created.Value.ID)
+	if fundingErr != nil {
+		writeDomainError(w, *fundingErr)
+		return
+	}
+	writeTaskResponse(w, http.StatusCreated, response)
 }
 func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserOrOrgSubject(r)
@@ -287,7 +298,15 @@ func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, cha
 		return
 	}
 
-	writeTaskResponse(w, http.StatusOK, taskToResponse(changed.Value))
+	// Report the task's live allocated funding after the transition, since
+	// open/cancel/unpublish change what the task holds (cancel returns it,
+	// unpublish keeps it) and the browser gates its funding UI on it.
+	response, fundingErr := server.withAllocatedFunding(r.Context(), taskToResponse(changed.Value), changed.Value.ID)
+	if fundingErr != nil {
+		writeDomainError(w, *fundingErr)
+		return
+	}
+	writeTaskResponse(w, http.StatusOK, response)
 }
 func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResult {
 	var request taskRequest
@@ -865,31 +884,66 @@ func taskToResponse(value task.Task) taskResponse {
 		RewardKind:             reward.kind,
 		RewardCreditAmount:     reward.amount,
 		RewardCollectibleCount: reward.collectibleCount,
-		ParticipationPolicy:    value.Participation.String(),
-		AssigneeScope:          value.AssigneeScope.String(),
-		ReservationExpiryHours: value.ReservationTTL.Hours(),
-		State:                  value.State.String(),
-		VisibilityKind:         visibility.kind,
-		VisibilityID:           visibility.id,
-		SeriesKind:             placement.kind,
-		SeriesID:               placement.id,
-		SeriesPosition:         placement.position,
-		ResponseSchemaJSON:     value.ResponseSchema.String(),
-		PayloadKind:            payload.kind,
-		PayloadJSON:            payload.source,
-		Attachments:            attachmentsToResponse(value.Attachments),
-		CreatedBy:              value.CreatedBy.String(),
-		AvailabilityKind:       taskAvailabilityKind(value).String(),
-		ViewerAction:           taskViewerAction(value).String(),
-		ReviewerAction:         task.ReviewerActionNone.String(),
+		// Live allocated funding is looked up and set only on the detail path
+		// (taskToResponseForActor); default to nothing held here so list /
+		// create / state-change responses do not claim funding they did not
+		// verify. An empty (non-nil) slice keeps the JSON a [] array.
+		AllocatedCredits:        0,
+		AllocatedCollectibleIDs: []string{},
+		ParticipationPolicy:     value.Participation.String(),
+		AssigneeScope:           value.AssigneeScope.String(),
+		ReservationExpiryHours:  value.ReservationTTL.Hours(),
+		State:                   value.State.String(),
+		VisibilityKind:          visibility.kind,
+		VisibilityID:            visibility.id,
+		SeriesKind:              placement.kind,
+		SeriesID:                placement.id,
+		SeriesPosition:          placement.position,
+		ResponseSchemaJSON:      value.ResponseSchema.String(),
+		PayloadKind:             payload.kind,
+		PayloadJSON:             payload.source,
+		Attachments:             attachmentsToResponse(value.Attachments),
+		CreatedBy:               value.CreatedBy.String(),
+		AvailabilityKind:        taskAvailabilityKind(value).String(),
+		ViewerAction:            taskViewerAction(value).String(),
+		ReviewerAction:          task.ReviewerActionNone.String(),
 	}
 }
 
-func (server Server) taskToResponseForActor(ctx context.Context, actor auth.UserSubject, value task.Task) taskResponse {
+func (server Server) taskToResponseForActor(ctx context.Context, actor auth.UserSubject, value task.Task) (taskResponse, *core.DomainError) {
 	response := taskToResponse(value)
 	response.ReviewerAction = server.taskReviewerAction(ctx, actor, value).String()
 	response.ViewerAction = server.taskViewerActionForActor(ctx, actor, value).String()
-	return response
+	return server.withAllocatedFunding(ctx, response, value.ID)
+}
+
+// withAllocatedFunding fills the live allocated-reward fields (credits held in
+// task_funds and the individual collectibles held in task_fund_collectibles)
+// onto a task response. These are actor-independent, so it is shared by the
+// detail path and the state-change path (open/cancel/unpublish all change what
+// a task holds).
+func (server Server) withAllocatedFunding(ctx context.Context, response taskResponse, taskID core.TaskID) (taskResponse, *core.DomainError) {
+	allocatedResult := server.ledgerService.TaskAllocatedCredits(ctx, taskID)
+	allocated, matched := allocatedResult.(ledger.TaskAllocatedFound)
+	if !matched {
+		reason := allocatedResult.(ledger.TaskAllocatedRejected).Reason
+		return taskResponse{}, &reason
+	}
+	response.AllocatedCredits = allocated.Amount
+
+	heldResult := server.assetService.TaskHeldCollectibles(ctx, taskID)
+	held, matched := heldResult.(assets.TaskHeldCollectiblesFound)
+	if !matched {
+		reason := heldResult.(assets.TaskHeldCollectiblesRejected).Reason
+		return taskResponse{}, &reason
+	}
+	ids := make([]string, 0, len(held.IDs))
+	for _, id := range held.IDs {
+		ids = append(ids, id.String())
+	}
+	response.AllocatedCollectibleIDs = ids
+
+	return response, nil
 }
 
 // taskViewerActionForActor overrides the viewer-independent "reserve" /

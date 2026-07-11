@@ -167,6 +167,24 @@ func (BalanceFound) balanceResult() {}
 
 func (BalanceRejected) balanceResult() {}
 
+// TaskAllocatedResult reports the credits currently allocated (locked) to a
+// single task via the stateless task_funds store - 0 when the task holds no
+// credit funding.
+type TaskAllocatedResult interface {
+	taskAllocatedResult()
+}
+
+type TaskAllocatedFound struct {
+	Amount int64
+}
+
+type TaskAllocatedRejected struct {
+	Reason core.DomainError
+}
+
+func (TaskAllocatedFound) taskAllocatedResult()    {}
+func (TaskAllocatedRejected) taskAllocatedResult() {}
+
 type ListEntriesResult interface {
 	listEntriesResult()
 }

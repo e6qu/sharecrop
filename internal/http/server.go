@@ -117,6 +117,7 @@ type AssetService interface {
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
 	GiftCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult
 	AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult
+	TaskHeldCollectibles(context.Context, core.TaskID) assets.TaskHeldCollectiblesResult
 }
 
 type SubmissionService interface {
@@ -137,6 +138,7 @@ type LedgerService interface {
 	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, submission.ReviewNote) ledger.RequestChangesResult
 	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
+	TaskAllocatedCredits(context.Context, core.TaskID) ledger.TaskAllocatedResult
 	Balance(context.Context, core.UserID) ledger.BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult
 	ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult

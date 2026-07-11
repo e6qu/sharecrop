@@ -491,6 +491,8 @@ type alias TaskResponse =
     , rewardKind : String
     , rewardCreditAmount : Int
     , rewardCollectibleCount : Int
+    , allocatedCredits : Int
+    , allocatedCollectibleIDs : List String
     , participationPolicy : TaskParticipationPolicy
     , assigneeScope : TaskAssigneeScope
     , reservationExpiryHours : Int
@@ -526,28 +528,30 @@ taskResponseDecoder =
                 Decode.map8 finish
                     (Decode.field "reward_credit_amount" Decode.int)
                     (Decode.field "reward_collectible_count" Decode.int)
+                    (Decode.field "allocated_credits" Decode.int)
+                    (Decode.field "allocated_collectible_ids" (Decode.list Decode.string))
                     (Decode.field "participation_policy" taskParticipationPolicyDecoder)
                     (Decode.field "assignee_scope" taskAssigneeScopeDecoder)
                     (Decode.field "reservation_expiry_hours" Decode.int)
                     (Decode.field "state" taskStateDecoder)
-                    (Decode.field "visibility_kind" taskVisibilityKindDecoder)
-                    (Decode.field "visibility_id" Decode.string)
             )
         |> Decode.andThen
             (\finish ->
                 Decode.map8 finish
+                    (Decode.field "visibility_kind" taskVisibilityKindDecoder)
+                    (Decode.field "visibility_id" Decode.string)
                     (Decode.field "availability_kind" taskAvailabilityKindDecoder)
                     (Decode.field "viewer_action" taskViewerActionDecoder)
                     (Decode.field "reviewer_action" Decode.string)
                     (Decode.field "series_kind" Decode.string)
                     (Decode.field "series_id" Decode.string)
                     (Decode.field "series_position" Decode.int)
-                    (Decode.field "response_schema_json" Decode.string)
-                    (Decode.field "payload_kind" Decode.string)
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map3 finish
+                Decode.map5 finish
+                    (Decode.field "response_schema_json" Decode.string)
+                    (Decode.field "payload_kind" Decode.string)
                     (Decode.field "payload_json" Decode.string)
                     (Decode.field "attachments" (Decode.list taskAttachmentResponseDecoder))
                     (Decode.field "created_by" Decode.string)
@@ -566,6 +570,8 @@ taskResponseEncoder taskResponse =
         , ( "reward_kind", Encode.string taskResponse.rewardKind )
         , ( "reward_credit_amount", Encode.int taskResponse.rewardCreditAmount )
         , ( "reward_collectible_count", Encode.int taskResponse.rewardCollectibleCount )
+        , ( "allocated_credits", Encode.int taskResponse.allocatedCredits )
+        , ( "allocated_collectible_ids", Encode.list Encode.string taskResponse.allocatedCollectibleIDs )
         , ( "participation_policy", taskParticipationPolicyEncoder taskResponse.participationPolicy )
         , ( "assignee_scope", taskAssigneeScopeEncoder taskResponse.assigneeScope )
         , ( "reservation_expiry_hours", Encode.int taskResponse.reservationExpiryHours )

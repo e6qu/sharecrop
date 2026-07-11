@@ -8,6 +8,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -192,6 +193,51 @@ func TestTaskBrowserStoreCancelSettlesAllocatedCredits(t *testing.T) {
 	balance := ledgerService.Balance(ctx, owner).(ledger.BalanceFound)
 	if balance.Value.Spendable() != 100 || balance.Value.Allocated() != 0 {
 		t.Fatalf("owner balance after cancel = (spendable %d, allocated %d), want (100, 0)", balance.Value.Spendable(), balance.Value.Allocated())
+	}
+}
+
+// TestTaskBrowserStoreCancelReleasesSubmittedReservation covers the data-hygiene
+// invariant that cancelling a task releases every reservation still held on it. A
+// worker reserves and submits (moving the reservation to submitted), then the
+// owner cancels the task: the reservation must land in a terminal state rather
+// than dangling as submitted forever.
+func TestTaskBrowserStoreCancelReleasesSubmittedReservation(t *testing.T) {
+	storage := newTestBrowserStorage()
+	ids := &counterLedgerIDs{}
+	taskStore := NewTaskBrowserStore(storage, ids, systemTestClock{})
+	taskService := task.NewService(taskStore, noopOrganizationPermissions{}, nil)
+	submissionService := submission.NewService(NewSubmissionBrowserStore(storage, ids), taskStore, noopOrganizationPermissions{})
+	ctx := context.Background()
+	owner := auth.UserSubject{ID: testUserID(t, "owner")}
+	worker := auth.UserSubject{ID: testUserID(t, "worker")}
+
+	created := taskService.Create(ctx, testCreateCommand(t, owner.ID, task.NoRewardSpec{}, task.ParticipationPolicyReservationRequired)).(task.TaskCreated)
+	taskService.Open(ctx, owner, created.Value.ID)
+	taskService.Reserve(ctx, worker, created.Value.ID)
+	submissionService.Submit(ctx, submission.SubmitCommand{
+		TaskID: created.Value.ID, SubmitterID: worker.ID, ResponseSource: testResponseSource(t, `{"note":"done"}`),
+	})
+
+	before := taskService.ListReservations(ctx, owner, created.Value.ID).(task.ReservationsListed)
+	if len(before.Values) != 1 || before.Values[0].State != task.ReservationStateSubmitted {
+		t.Fatalf("reservation before cancel = %+v, want state=submitted", before.Values)
+	}
+
+	cancelResult := taskService.Cancel(ctx, owner, created.Value.ID)
+	cancelled, matched := cancelResult.(task.TaskStateChanged)
+	if !matched {
+		t.Fatalf("cancel task with submitted reservation: want TaskStateChanged, got %#v", cancelResult)
+	}
+	if cancelled.Value.State != task.StateCancelled {
+		t.Fatalf("cancelled task state = %v, want cancelled", cancelled.Value.State)
+	}
+
+	after := taskService.ListReservations(ctx, owner, created.Value.ID).(task.ReservationsListed)
+	if len(after.Values) != 1 {
+		t.Fatalf("reservations after cancel = %+v, want one", after.Values)
+	}
+	if after.Values[0].State != task.ReservationStateCancelledByRequester {
+		t.Fatalf("reservation after cancel = %v, want cancelled_by_requester (no longer active/submitted)", after.Values[0].State)
 	}
 }
 

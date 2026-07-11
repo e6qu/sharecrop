@@ -351,7 +351,12 @@ func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeTaskResponse(w, http.StatusOK, server.taskToResponseForActor(r.Context(), actor.subject, got.Value))
+	response, fundingErr := server.taskToResponseForActor(r.Context(), actor.subject, got.Value)
+	if fundingErr != nil {
+		writeDomainError(w, *fundingErr)
+		return
+	}
+	writeTaskResponse(w, http.StatusOK, response)
 }
 
 // credentialFields is the label/scopes/expiration triple common to both a
