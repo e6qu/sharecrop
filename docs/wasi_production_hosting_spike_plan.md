@@ -448,20 +448,25 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   `gen.Targets()`. Shared core-type codecs (typed ids, page, time) moved to
   `internal/wasibridge/corewire` so bridges don't duplicate them.
   **`audit`, `notification`, `auth`, `agent`, `orgcred`, `assets`,
-  `submission`, and `ledger` are bridged** (each in its own `*bridge` package),
-  dual-run-verified against real Postgres. `agent` added nullable-pointer fields
-  and a scope-set; `orgcred` reuses agent's `Label`/`ScopeSet`/`State` codecs
-  (extracted into a shared `internal/wasibridge/agentwire` package); `assets`
-  (collectibles) drove a generator enhancement to disambiguate a method with two
-  arguments of the same type (`ListCollectiblesByOwner(string, string, ...)`),
-  and covers command structs and collectible/id-slice result payloads;
-  `submission` (submissions, attachments, validation outcomes, sensitive fields,
-  and the comment thread) drove a second generator enhancement so a `[]LocalType`
-  argument qualifies its element type (`CreateSubmission(..., []SensitiveField)`);
-  `ledger` (the deepest unions - commands carrying credit/tip/collectible/ban
-  selection unions, and accept/reject results carrying nested payout and tip
-  outcome unions) needed no generator change and was dual-run-verified with a
-  full fund -> accept -> refund flow. One generic
+  `submission`, `ledger`, and `org` are bridged** (each in its own `*bridge`
+  package), dual-run-verified against real Postgres. `agent` added
+  nullable-pointer fields and a scope-set; `orgcred` reuses agent's
+  `Label`/`ScopeSet`/`State` codecs (extracted into a shared
+  `internal/wasibridge/agentwire` package); `assets` (collectibles) drove a
+  generator enhancement to disambiguate a method with two arguments of the same
+  type (`ListCollectiblesByOwner(string, string, ...)`), and covers command
+  structs and collectible/id-slice result payloads; `submission` (submissions,
+  attachments, validation outcomes, sensitive fields, and the comment thread)
+  drove a second generator enhancement so a `[]LocalType` argument qualifies its
+  element type (`CreateSubmission(..., []SensitiveField)`); `ledger` (the deepest
+  unions - commands carrying credit/tip/collectible/ban selection unions, and
+  accept/reject results carrying nested payout and tip outcome unions) needed no
+  generator change and was dual-run-verified with a full fund -> accept ->
+  refund flow; `org` (organizations, members, and teams, including the TeamOwner
+  tagged union) drove a third generator enhancement - `extraImports`, for a
+  method argument whose type lives in another package
+  (`ProvisionMember(..., auth.EmailAddress, ...)`). Only `task` remains. One
+  generic
   guest (`cmd/sharecrop-wasi-store-guest`) routes every store by method prefix.
   `auth` (the largest - 13 methods, 10 result unions) exercised the pattern's
   edges: its opaque hash/token types round-trip through reconstruction

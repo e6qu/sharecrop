@@ -53,7 +53,26 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-ledger` — bridge the `ledger` store (the store
+Active task: `task/wasi-bridge-org` — bridge the `org` store (organizations,
+members, and teams: 16 methods, including the `TeamOwner` tagged union -
+organization-owned vs standalone user-owned teams). `internal/wasibridge/orgbridge`
+(codecs + generated `bridge_gen.go`) is dual-run-verified against real Postgres
+(`tests/integration/orgbridge_store_test.go`) across create-org / provision /
+update-roles / deactivate / create-team / add-member and every read path. It
+drove a third **generator enhancement**: `ProvisionMember(..., auth.EmailAddress,
+...)` is the first method with an argument whose type lives in a *third* package,
+so `storeSpec` gained an `extraImports` field and the generated file now imports
+`auth` (backward-compatible - every other spec leaves `extraImports` nil, so
+their generated files are unchanged). `corewire` gained `TeamID` and
+`OrganizationMembershipID` codecs; no new reconstruction constructors were needed
+(org value types round-trip through their existing validating constructors).
+Shared test builders live in `internal/org/orgtest`. The generic store guest and
+`storehost` route `org.*` too. **Nine stores bridged: audit, notification, auth,
+agent, orgcred, assets, submission, ledger, org.** **Next**: the last store,
+`task` (~20 methods); then weigh instance pooling and migrate `cmd/sharecrop`.
+Nothing about the native server or browser demo changes.
+
+Earlier: `task/wasi-bridge-ledger` bridged the `ledger` store (the store
 with the deepest unions: fund/accept/request-changes/reject/refund commands and
 balance/allocated/entries reads; accept and reject commands carry nested
 credit/tip/collectible/ban *selection* unions, and their results carry nested
