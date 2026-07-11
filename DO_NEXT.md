@@ -14,19 +14,23 @@ Current priority from
      mux and real domain services compiled to `js/wasm` over
      browser-storage-backed stores (PR 138). The spike plan is
      [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md),
-     with Phase 0/1/2/3 verified. Phase 2 bridged one auth method; Phase 3
-     added the generic transport (`internal/wasibridge/rpc`), a shared
-     framing/`DomainError` codec (`.../wire`, `.../domainwire`), and codegen
-     for a full store: `internal/wasibridge/auditbridge` bridges the whole
-     `internal/audit.Store` via a generated `bridge_gen.go`
-     (`go run ./cmd/sharecrop generate wasi-bridge`), gated by
-     `check-wasi-bridge` and covered by a dual-run integration test
-     (direct-db vs guest+bridge) — anti-drift safeguards #1/#2/#3 all in
-     place. **Phase 4 is next**: one real HTTP request end to end — a native
-     `net/http` host marshals a parsed request into the guest (compiled from
-     real `internal/http` + enough domain-service code for one route), the
-     guest's real handler runs, DB access rides the Phase 3 bridge, and the
-     response comes back byte-identical to `cmd/sharecrop serve`.
+    **complete** — all four phases verified. Phase 2 bridged one auth method;
+     Phase 3 added the generic transport (`internal/wasibridge/rpc`), shared
+     framing/`DomainError` codecs (`.../wire`, `.../domainwire`), and codegen
+     for a full store (`.../auditbridge` + `generate wasi-bridge` +
+     `check-wasi-bridge` + dual-run); Phase 4 ran the real `internal/http` mux
+     inside a wasip1 guest behind a native `net/http.Server`
+     (`cmd/sharecrop-wasi-http-{host,guest}`, `.../httpbridge`) with
+     byte-identical output for `GET /healthz`. The go/no-go is **go**; see the
+     "After Phase 4" note in the plan.
+
+     **The follow-up is the full implementation effort** (its own workstream,
+     not the spike): bridge the remaining store interfaces (extend the Phase 3
+     codecs + registry), wire the real domain services in the guest against
+     those `GuestStore`s, cover the full route surface, weigh the ~2-3ms
+     instance-per-request floor against an instance-pool strategy, migrate
+     `cmd/sharecrop` onto the hosted guest, and eventually retire
+     `internal/wasmdemo` once the browser demo can run the same artifact.
    - (b) Moving MCP/SSE to HTTP/2 by default (HTTP/3-ready) to support about
      100 concurrent streaming sessions, keeping HTTP/1.1 as an explicit,
      supported option for regular UI/API traffic.

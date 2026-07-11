@@ -415,16 +415,23 @@ implementation on a shaky foundation.
   holds: `Dispatch` only decodes args, calls the real method, and encodes
   the result.
 
-- **Phase 4 — one real HTTP request, fully end to end.**
-  Host process has a real `net/http.Server`; on a request, it marshals the
-  parsed request into the guest (compiled from real `internal/http` +
-  enough real domain-service code to handle one real route, e.g.
-  `GET /healthz` or a simple read-only route), the guest's real handler
-  logic runs, any DB access goes through the Phase 3 bridge, and the
-  response comes back out through the host's `http.ResponseWriter`.
-  *Checkpoint*: a `curl` against the host process gets a byte-identical
-  response to what `cmd/sharecrop serve` returns for the same request
-  against the same seeded Postgres data.
+- **Phase 4 — one real HTTP request, fully end to end. ✅ Done, in this session.**
+  `cmd/sharecrop-wasi-http-host` runs a real `net/http.Server` whose handler,
+  per request, serializes the request (`internal/wasibridge/httpbridge`), runs
+  a fresh wasip1 guest (`cmd/sharecrop-wasi-http-guest`) over the Phase 3 `rpc`
+  transport, and writes the serialized response back. The guest runs the
+  **real production routing table** - `httpserver.New(...)`, the exact mux
+  `cmd/sharecrop serve` builds - through an `httptest` recorder (the same shape
+  the browser demo uses). The route is `GET /healthz`, which touches no store,
+  so no DB bridge is needed for this slice; a store-touching route would bind
+  Phase 3 `GuestStore`s in place of the guest's nil services and its DB calls
+  would RPC back over the same channel.
+  *Checkpoint met*: the integration test
+  (`tests/integration/httpbridge_test.go`) asserts the response through the
+  compiled guest is **byte-identical** (status, `Content-Type`, body) to the
+  same mux run in-process, for both `GET /healthz` (200) and an unknown
+  `/api/...` route (404); a real `curl` against the host process returns
+  `200 {"status":"ok"}` through the wasm guest.
 
 **Everything past Phase 4 (broadening to the full route/store surface,
 performance hardening, replacing `cmd/sharecrop` for real) is the actual
@@ -464,12 +471,24 @@ itself.**
   interfaces rather than hand-written. Separately, finding #8's ~2–3ms
   instance-per-request floor is the cost signal to weigh a pooling strategy
   against — a performance decision, not a correctness blocker.
-- **After Phase 4**: this is the real go/no-go point for committing to the
-  full effort. If everything checks out, the follow-up is a proper phased
-  implementation plan (comparable in structure to the RBAC effort's
-  5-phase plan) covering full store/route coverage, migration off
-  `cmd/sharecrop`, and retiring `internal/wasmdemo` once the browser demo
-  can run the same guest artifact.
+- **After Phase 4** (reached — go): every checkpoint held. Toolchain viable
+  (Phase 0); the fresh-instance/one-goroutine/stdin-stdout-pipe transport is
+  correct and cheap (Phase 1, ~3.45µs/call); a real store method round-trips
+  with `DomainError` fidelity at ~2.7ms/instance (Phase 2); the bridge is
+  generated from the interface, drift-gated, and dual-run-verified for a full
+  store (Phase 3); and the real `internal/http` mux runs inside a wasip1 guest
+  behind a native `net/http.Server` with byte-identical output (Phase 4). No
+  checkpoint surfaced a reason to abandon the approach. **The spike is
+  complete and the direction is confirmed.** The follow-up is the full
+  implementation effort (its own phased plan): bridge the remaining store
+  interfaces (extend the Phase 3 codecs + registry), wire the real services in
+  the guest against those `GuestStore`s, cover the full route surface, weigh
+  the ~2-3ms instance-per-request floor against an instance-pool strategy
+  (Phase 2 finding #8), migrate `cmd/sharecrop` onto the hosted guest, and
+  eventually retire `internal/wasmdemo` once the browser demo can run the same
+  artifact. That effort is out of scope for this spike, which set out only to
+  answer "is this feasible, and roughly what does it cost" - and it is, at a
+  cost now measured rather than guessed.
 
 ## Effort framing
 
