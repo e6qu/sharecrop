@@ -90,7 +90,7 @@ Known risks:
   account's allocated total.
 
 - Refunding or cancelling a task releases the worker's reservation (to
-  `cancelled_by_requester`) on both backends, so a reservation no longer
+  `cancelled_by_requester`) through both storage adapters, so a reservation no longer
   dangles in an active/submitted state on a cancelled task. The refund/cancel
   paths (credit refund, collectible refund, and the cancel state transition)
   all go through the shared release helper.
