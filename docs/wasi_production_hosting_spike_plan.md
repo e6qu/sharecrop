@@ -235,13 +235,46 @@ a browser.
    microseconds per round trip** (10,000 calls in 34.5ms) — comfortably
    under the "low hundreds of microseconds" target from the original
    Phase 1 checkpoint below.
-   **Not yet measured** (a real gap, not covered by the 3.45µs number
-   above): *module instantiation* cost itself — the 10,000 round trips
-   happened inside a single instantiation. If the production design is
-   genuinely "one fresh instance per HTTP request," `InstantiateModule`'s
-   own overhead (separate from per-call latency) determines whether that's
-   viable versus needing instance pooling/reuse across requests. This is
-   an explicit measurement to add in Phase 2 or 4, not yet done.
+   **Module instantiation cost — now measured in Phase 2 (see finding #8).**
+   The 10,000 round trips above happened inside a single instantiation, so
+   they did not cover the cost of `InstantiateModule` itself. Phase 2's
+   end-to-end test does one fresh instantiation per unit of work, so its
+   per-call mean (~2.7ms idle, several ms under concurrent load) *is* the
+   instance-per-request cost — dominated by instantiation, not by the
+   store round trip. This is the number that decides whether "one fresh
+   instance per HTTP request" is viable as-is or needs instance pooling.
+
+7. **A real `internal/db` store method round-trips from a wasip1 guest to
+   real Postgres and back, with the `DomainError` shape intact — verified
+   in Phase 2, not reasoned about.** `internal/wasibridge` wires
+   `AuthStore.FindCredentialByEmail` (the smallest real read) through the
+   finding-#6 bridge by hand. A guest compiled to `GOOS=wasip1`
+   (`cmd/sharecrop-wasi-spike-guest`, ~4.3 MB, and it *does* compile the
+   real `internal/auth` including `golang.org/x/crypto/argon2` to wasip1)
+   issues the lookup over its stdin/stdout; the host services it against a
+   real local Postgres via the exact `db.NewAuthStore(pool)` value
+   `cmd/sharecrop` uses. The integration test
+   (`tests/integration/wasibridge_store_test.go`, `-tags integration`)
+   proves all three result shapes: **found** matches a direct store call
+   field-for-field (user id, email, password hash, status), **missing**
+   returns `CredentialMissing`, and **rejected** returns
+   `CredentialLookupRejected` whose `core.ErrorCode` survives as the
+   canonical value — crossing the serialization boundary *twice* (host→guest,
+   then the guest's report back to host). This resolves the "After Phase 2"
+   decision point below: error-shape round-tripping is not lossy.
+8. **Fresh-instance-per-unit-of-work costs low single-digit milliseconds,
+   dominated by instantiation, not the DB round trip.** The Phase 2 test
+   instantiates a fresh guest module for every lookup (the finding-#6 safe
+   shape) and measures the full wall time: ~2.7ms mean on an idle machine,
+   rising to several ms under concurrent build load. The local Postgres
+   round trip inside that window is sub-millisecond, so `InstantiateModule`
+   is the cost driver. **Implication for the full effort**: "one fresh WASM
+   instance per HTTP request" adds ~2–3ms of floor latency per request.
+   Whether that is acceptable as-is or motivates an instance-pool /
+   snapshot strategy is a Phase 3+ decision, now backed by a real number
+   rather than a guess. The bridge itself (serialization + pipe transport)
+   is negligible next to instantiation, consistent with the 3.45µs/call
+   from finding #6.
 
 ## Target architecture
 
@@ -336,16 +369,23 @@ implementation on a shaky foundation.
   ample headroom for real per-query overhead (serialization, actual
   Postgres round-trip time) on top.
 
-- **Phase 2 — one real store method, end to end.**
-  Pick the smallest real store method (e.g. `internal/db`'s
-  `AuthStore`-equivalent read), wire it through the Phase 1 bridge shape by
-  hand (not yet generated) so a wasip1 guest can call it and get a real row
-  back from a real local Postgres via the host. This proves the actual
-  target, not just a toy string round trip.
-  *Checkpoint*: one real query round-trips correctly with real data,
-  including error cases (row not found, constraint violation) mapping
-  back through the bridge without losing the original `DomainError`
-  shape `internal/core` methods depend on.
+- **Phase 2 — one real store method, end to end. ✅ Done, in this session.**
+  `internal/wasibridge` wires `AuthStore.FindCredentialByEmail` through the
+  Phase 1 bridge shape by hand (not codegen). A `GOOS=wasip1` guest
+  (`cmd/sharecrop-wasi-spike-guest`) issues the lookup over stdin/stdout;
+  the native host (`internal/wasibridge/host.go`, embedding wazero, plus the
+  `cmd/sharecrop-wasi-spike` CLI) services it against a real Postgres via
+  the same `db.NewAuthStore(pool)` the server uses. Fast unit tests cover
+  the wire format (`internal/wasibridge/protocol_test.go`); an
+  integration test drives the whole path against real Postgres
+  (`tests/integration/wasibridge_store_test.go`). See findings #7 and #8.
+  *Checkpoint met*: found/missing/rejected all round-trip correctly with
+  real data; the rejected path preserves the `DomainError` code across two
+  serialization crossings; instance-per-call cost measured (~2.7ms,
+  instantiation-dominated). The bridge holds **no business logic** — the
+  host dispatcher only parses the email argument, calls the real store, and
+  serializes the result (anti-drift safeguard #1). Safeguards #2 (codegen)
+  and #3 (dual-run for every method) arrive in Phase 3.
 
 - **Phase 3 — codegen the bridge for one full store.**
   Build the `generate wasi-bridge` tool against one complete store
@@ -394,10 +434,16 @@ itself.**
   per-query; re-evaluate only if Phase 2's real Postgres round trip
   reveals overhead the toy test didn't (e.g. serialization cost for
   realistic row shapes, not just a single int).
-- **After Phase 2**: if error-shape round-tripping (`DomainError`, typed
-  IDs, etc.) proves fragile or lossy across the serialization boundary,
-  that's a signal the whole approach needs a different serialization
-  strategy before scaling to more stores.
+- **After Phase 2** (met — see findings #7/#8): error-shape round-tripping
+  is *not* lossy — a `DomainError`'s `core.ErrorCode` survives as the
+  canonical value across two serialization crossings, and typed values
+  (`UserID`, `EmailAddress`, `PasswordHash`) reconstruct via their existing
+  parse constructors. The JSON-over-length-prefixed-frames serialization is
+  sound to carry into Phase 3; the one refinement it needs there is codegen
+  so the per-method (de)serialization is generated from the store
+  interfaces rather than hand-written. Separately, finding #8's ~2–3ms
+  instance-per-request floor is the cost signal to weigh a pooling strategy
+  against — a performance decision, not a correctness blocker.
 - **After Phase 4**: this is the real go/no-go point for committing to the
   full effort. If everything checks out, the follow-up is a proper phased
   implementation plan (comparable in structure to the RBAC effort's

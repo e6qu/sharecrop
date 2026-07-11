@@ -14,8 +14,16 @@ Current priority from
      mux and real domain services compiled to `js/wasm` over
      browser-storage-backed stores (PR 138). The spike plan is
      [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md),
-     with Phase 0/1 verified; Phase 2 (wiring one real store method through
-     the bridge to real Postgres) is the next step whenever this resumes.
+     with Phase 0/1/2 verified. Phase 2 is done: `internal/wasibridge` wires
+     `AuthStore.FindCredentialByEmail` from a real `GOOS=wasip1` guest
+     (`cmd/sharecrop-wasi-spike-guest`) to real Postgres through the host
+     bridge, proving found/missing/rejected round-trip with the
+     `DomainError` shape intact and measuring fresh-instance-per-call cost
+     (~2.7ms, instantiation-dominated — findings #7/#8 in the plan).
+     **Phase 3 is next**: build `generate wasi-bridge` codegen against one
+     full store interface plus a `check-wasi-bridge` CI gate, and dual-run
+     that store's test suite through both the direct-db and guest+bridge
+     paths (anti-drift safeguards #2 and #3).
    - (b) Moving MCP/SSE to HTTP/2 by default (HTTP/3-ready) to support about
      100 concurrent streaming sessions, keeping HTTP/1.1 as an explicit,
      supported option for regular UI/API traffic.
