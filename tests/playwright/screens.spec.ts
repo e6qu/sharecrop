@@ -285,6 +285,86 @@ test("a worker cancels their own active reservation", async ({ page, request }) 
   await expect(page.getByTestId("reserve-task")).toBeVisible();
 });
 
+test("the active implementor refunds a funded task they reserved", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "worker-refund-owner");
+  const title = `Worker refund ${crypto.randomUUID()}`;
+
+  // Owner creates a funded credit-reward task that requires a reservation, then
+  // funds and opens it - all via API, so the test focuses on the worker's UI.
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {
+      owner: {
+        kind: "user",
+        user_id: owner.body.subject_id,
+        team_id: "",
+        organization_id: "",
+      },
+      title,
+      description: "A funded task an implementor can refund.",
+      reward: { kind: "credit", credit_amount: 15 },
+      visibility: {
+        kind: "public",
+        user_id: "",
+        team_id: "",
+        organization_id: "",
+      },
+      placement: {
+        kind: "standalone",
+        series_id: "",
+        series_title: "",
+        series_position: 0,
+      },
+      participation: {
+        policy: "reservation_required",
+        assignee_scope: "user",
+        reservation_expiry_hours: 48,
+      },
+      response_schema_json: '{"kind":"freeform"}',
+      payload: { kind: "none", json: "" },
+    },
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+  await request.post(`/api/tasks/${task.id}/funding`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: { amount: 15, idempotency_key: `fund:${task.id}` },
+  });
+  await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+
+  // A worker reserves the task, becoming the active implementor.
+  const worker = await registerViaApi(request, "worker-refund-worker");
+  await loginViaUi(page, worker.email);
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("discovery-task-row").filter({ hasText: title })
+    .getByTestId("discovery-view").click();
+  await page.getByTestId("reserve-task").click();
+  await expect(page.getByTestId("reservation-message")).toContainText("active");
+
+  // The worker sees a "Refund reward" control - named a refund, not a reclaim -
+  // with an info toggle explaining it. The owner's Reclaim is never shown to a
+  // worker.
+  await expect(page.getByTestId("worker-refund-task")).toHaveText(
+    "Refund reward",
+  );
+  await expect(page.getByTestId("refund-task")).toHaveCount(0);
+  await page.getByTestId("worker-refund-task-info").getByText("What this does")
+    .click();
+  await expect(page.getByTestId("worker-refund-task-info")).toContainText(
+    "Refund returns the reward to the requester",
+  );
+
+  // Refunding returns the reward to the requester and cancels the task; the
+  // confirmation is echoed into the reservation card the worker is looking at.
+  await page.getByTestId("worker-refund-task").click();
+  await expect(page.getByTestId("worker-task-action-message")).toContainText(
+    "Reward returned and the task was cancelled.",
+  );
+});
+
 test("an owner approves a worker's reservation request from the task detail page", async ({ page, request }) => {
   const owner = await registerViaApi(request, "reservation-approve-owner");
   const title = `Approval required ${crypto.randomUUID()}`;
@@ -1451,13 +1531,14 @@ test("a bundle task refunds credits and collectible in one shot via the UI", asy
 
   await openTaskFromDiscovery(page, owner.email, title);
 
-  // A bundle task shows the unified "Refund reward" button (which calls /refund
-  // and returns credits + collectible together) and NOT a separate collectible refund.
-  await expect(page.getByTestId("refund-task")).toHaveText("Refund reward");
+  // A bundle task shows the owner's unified "Reclaim reward" button (which calls
+  // /refund and returns credits + collectible together) and NOT a separate
+  // collectible reclaim.
+  await expect(page.getByTestId("refund-task")).toHaveText("Reclaim reward");
   await expect(page.getByTestId("refund-collectible")).toHaveCount(0);
   await page.getByTestId("refund-task").click();
   await expect(page.getByTestId("task-action-message")).toContainText(
-    "refunded",
+    "returned",
   );
 
   // Both reward portions returned: the refunded credits are back in the

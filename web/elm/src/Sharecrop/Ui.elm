@@ -48,6 +48,26 @@ disclosure identifier openByDefault title children =
         ]
 
 
+{-| A compact "ⓘ" info toggle that sits beside an action and explains, on
+demand, what that action does. It is a native `<details>` so it needs no app
+state (the same reason `disclosure` uses one), the marker is dropped so the
+summary reads as a small info chip rather than a section header, and the tone
+matches the info badge. The glyph is `aria-hidden` and purely decorative - the
+"What this does" label carries the meaning for assistive tech (WCAG 1.4.1).
+-}
+explainToggle : String -> String -> Html msg
+explainToggle identifier explanation =
+    Html.node "details"
+        [ class "text-xs", testId identifier ]
+        [ Html.node "summary"
+            [ class "inline-flex w-fit cursor-pointer select-none items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-800 list-none [&::-webkit-details-marker]:hidden" ]
+            [ span [ attribute "aria-hidden" "true" ] [ text "ⓘ" ]
+            , text "What this does"
+            ]
+        , p [ class "mt-1 max-w-prose text-slate-600" ] [ text explanation ]
+        ]
+
+
 pageTitle : String -> Html msg
 pageTitle title =
     h1 [ class "text-3xl font-semibold" ] [ text title ]
