@@ -186,6 +186,15 @@ func (hash RefreshTokenHash) String() string {
 	return hash.value
 }
 
+// RefreshTokenHashFromString reconstructs a RefreshTokenHash from its stored
+// string form (as returned by String). Storage adapters that persist and reload
+// the hash - including the WASI store bridge, which carries it across the
+// host/guest boundary - use this; it does not compute a hash from a plaintext
+// token (that is HashRefreshToken).
+func RefreshTokenHashFromString(raw string) RefreshTokenHash {
+	return RefreshTokenHash{value: raw}
+}
+
 type AccountTokenKind struct {
 	value string
 }
@@ -197,6 +206,13 @@ var (
 
 func (kind AccountTokenKind) String() string {
 	return kind.value
+}
+
+// AccountTokenKindFromString reconstructs an AccountTokenKind from its string
+// form, for storage adapters (including the WASI store bridge) that carry it as
+// a string.
+func AccountTokenKindFromString(raw string) AccountTokenKind {
+	return AccountTokenKind{value: raw}
 }
 
 type AccountTokenPlain struct {
@@ -283,6 +299,13 @@ func (plain AccountTokenPlain) String() string {
 
 func (hash AccountTokenHash) String() string {
 	return hash.value
+}
+
+// AccountTokenHashFromString reconstructs an AccountTokenHash from its stored
+// string form, for storage adapters (including the WASI store bridge). It does
+// not compute a hash from a plaintext token (that is HashAccountToken).
+func AccountTokenHashFromString(raw string) AccountTokenHash {
+	return AccountTokenHash{value: raw}
 }
 
 type Subject interface {

@@ -17,3 +17,4 @@ elm019
 /sharecrop-wasi-*
 
 *.log
+/sharecrop

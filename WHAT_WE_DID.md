@@ -1,5 +1,26 @@
 # What We Did
 
+The `task/wasi-bridge-auth` branch bridged the `auth` store - the largest and
+most complex (13 methods, 10 result unions, a three-variant Subject union,
+record and token structs). `internal/wasibridge/authbridge` has hand-written
+codecs plus a generated `bridge_gen.go`, dual-run-verified against real Postgres
+across all 13 methods (`tests/integration/authbridge_store_test.go`): credential
+create/lookup/list, the account mutations, guest subject, and the refresh-token
+and account-token store/consume/revoke flows. Auth exercised the codegen's
+edges: (1) its opaque hash/token types (`RefreshTokenHash`, `AccountTokenHash`,
+`AccountTokenKind`) have no public "from string" constructor, so `internal/auth`
+gained reconstruction constructors (`RefreshTokenHashFromString`,
+`AccountTokenHashFromString`, `AccountTokenKindFromString`, mirroring the
+existing `ParsePasswordHash`) that storage adapters use to reload a stored hash;
+(2) `corewire` grew codecs for `GuestID`/`RefreshTokenID`/`OrganizationID` plus
+plain-`string` and `time.Time` method arguments; (3) the generator learned to
+leave Go builtins unqualified and to import `time` when a method takes a
+timestamp. The generic store guest now routes `auth.*` too. Three stores are
+bridged (audit, notification, auth). All gates green. Nothing about the native
+server or browser demo changed.
+
+---
+
 The `task/wasi-app-route` branch tied the Phase 3 store bridge to the Phase 4
 HTTP hosting: a real authenticated, store-touching route
 (`GET /api/notifications`) now runs end to end through the wasip1 guest. Access-
