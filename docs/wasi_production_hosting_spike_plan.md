@@ -453,6 +453,22 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   guest (`cmd/sharecrop-wasi-store-guest`) routes every store by method prefix.
   Remaining stores (auth, ledger, task, org, submission, assets, orgcred) are
   the same pattern: add a spec + hand-written codecs + a dual-run test.
+- **A real authenticated, store-touching route runs end to end through the
+  guest** — the Phase 3 + Phase 4 pieces, combined. `GET /api/notifications`
+  is served entirely by the wasip1 guest (`cmd/sharecrop-wasi-app-guest`,
+  building the real mux via `internal/wasibridge/appmux` with a live
+  notification service): the stateless access-token verifier checks the bearer
+  token in-guest (no store — verification is signature + clock), and the
+  notification read is bridged back to the host and hits real Postgres.
+  `cmd/sharecrop-wasi-app-host` is the production-shaped `net/http.Server` for
+  it (fresh guest per request, store calls dispatched to `internal/db` by
+  method prefix, the token secret handed in via WASI env —
+  `rpc.Host.WithGuestEnv`). The integration test
+  (`tests/integration/approute_test.go`) asserts the guest's response is
+  byte-identical to the same mux run in-process against the same store, and
+  that it actually contains the seeded row. This is the key proof that the two
+  halves compose; broadening to routes that need other stores just needs those
+  stores bridged and wired into `appmux`.
 
 ## Non-goals for this spike
 

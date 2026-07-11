@@ -26,6 +26,7 @@ type Host struct {
 	runtime  wazero.Runtime
 	compiled wazero.CompiledModule
 	dispatch Dispatcher
+	env      map[string]string
 }
 
 // NewHost compiles the guest WASM once and binds it to a dispatcher.
@@ -41,6 +42,14 @@ func NewHost(ctx context.Context, guestWASM []byte, dispatch Dispatcher) (*Host,
 		return nil, fmt.Errorf("compile guest: %w", err)
 	}
 	return &Host{runtime: runtime, compiled: compiled, dispatch: dispatch}, nil
+}
+
+// WithGuestEnv sets environment variables handed to every guest instance (via
+// WASI env), for configuration a guest reads with os.Getenv - e.g. the access
+// token secret a request handler needs. It returns the host for chaining.
+func (h *Host) WithGuestEnv(env map[string]string) *Host {
+	h.env = env
+	return h
 }
 
 // Close releases the runtime and every module compiled against it.
@@ -102,6 +111,9 @@ func (h *Host) Call(ctx context.Context, method string, args []byte) ([]byte, er
 		WithStdout(guestStdoutWriter).
 		WithArgs("guest", method, string(args)).
 		WithName("")
+	for key, value := range h.env {
+		config = config.WithEnv(key, value)
+	}
 
 	instance, err := h.runtime.InstantiateModule(ctx, h.compiled, config)
 	if instance != nil {

@@ -14,9 +14,6 @@ elm019
 
 # Stray native binaries from `go build ./cmd/...` without -o (the real build
 # output goes to bin/).
-/sharecrop-wasi-audit-guest
-/sharecrop-wasi-audit-host
-/sharecrop-wasi-spike
-/sharecrop-wasi-spike-guest
+/sharecrop-wasi-*
 
 *.log
