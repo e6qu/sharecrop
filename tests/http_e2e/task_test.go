@@ -52,28 +52,28 @@ func TestTaskHTTPFlow(t *testing.T) {
 	assertStatus(t, cancelResponse, http.StatusOK)
 }
 
-// TestCancelRejectsWhenEscrowHeld guards against orphaning escrow: a funded
-// task cannot be cancelled directly because the state transition does not
-// return held credits/collectibles. The caller must refund first.
-func TestCancelRejectsWhenEscrowHeld(t *testing.T) {
+// TestCancelSettlesAllocatedCredits verifies that cancelling a funded task
+// settles it: the allocated credits are returned to the owner's spendable
+// balance before the task is cancelled.
+func TestCancelSettlesAllocatedCredits(t *testing.T) {
 	server := newAuthHTTPServer(t, t.Context())
 	defer server.Close()
 
 	owner := registerUser(t, server, "cancel-funded")
 	task := createCreditUserTask(t, server, owner, 30)
 	fundTask(t, server, owner.AccessToken, task.ID, 30, "fund-"+task.ID)
+	if balance := getBalance(t, server, owner.AccessToken); balance.SpendableCredits != 70 || balance.AllocatedCredits != 30 {
+		t.Fatalf("owner balance after funding = (spendable %d, allocated %d), want (70, 30)", balance.SpendableCredits, balance.AllocatedCredits)
+	}
 
 	cancelResponse := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/cancel", []byte(`{}`), owner.AccessToken)
 	defer cancelResponse.Body.Close()
-	assertStatus(t, cancelResponse, http.StatusConflict)
+	assertStatus(t, cancelResponse, http.StatusOK)
 
-	// The escrow is still held and the balance untouched; refunding then works.
-	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 70 {
-		t.Fatalf("owner balance after rejected cancel = %d, want 70", balance.Amount)
+	// The allocated credits returned to spendable; total 100, allocated 0.
+	if balance := getBalance(t, server, owner.AccessToken); balance.SpendableCredits != 100 || balance.AllocatedCredits != 0 {
+		t.Fatalf("owner balance after cancel = (spendable %d, allocated %d), want (100, 0)", balance.SpendableCredits, balance.AllocatedCredits)
 	}
-	refund := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/refund", []byte(`{"idempotency_key":"refund-`+task.ID+`"}`), owner.AccessToken)
-	defer refund.Body.Close()
-	assertStatus(t, refund, http.StatusOK)
 }
 
 func TestOrganizationPublicTaskRequiresPublisherRole(t *testing.T) {

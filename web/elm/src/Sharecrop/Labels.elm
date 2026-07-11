@@ -140,7 +140,7 @@ availabilityKindLabel : Task.TaskAvailabilityKind -> String
 availabilityKindLabel kind =
     case kind of
         Task.TaskAvailabilityKindAvailable ->
-            "available"
+            "available to work"
 
         Task.TaskAvailabilityKindReserved ->
             "reserved"
@@ -149,7 +149,9 @@ availabilityKindLabel kind =
             "awaiting approval"
 
         Task.TaskAvailabilityKindClosed ->
-            "closed"
+            -- Not a bare "closed": next to a draft's "open submissions"
+            -- participation badge that read as a contradiction.
+            "not open for work"
 
 
 viewerActionLabel : Task.TaskViewerAction -> String
@@ -415,8 +417,8 @@ kindLabel kind =
         Ledger.LedgerEntryKindSignupGrant ->
             "Signup grant"
 
-        Ledger.LedgerEntryKindTaskEscrow ->
-            "Task escrow"
+        Ledger.LedgerEntryKindTaskFund ->
+            "Task funding"
 
         Ledger.LedgerEntryKindTaskRefund ->
             "Task refund"
@@ -429,19 +431,6 @@ kindLabel kind =
 
         Ledger.LedgerEntryKindManualAdjustment ->
             "Manual adjustment"
-
-
-escrowStateLabel : Ledger.EscrowState -> String
-escrowStateLabel state =
-    case state of
-        Ledger.EscrowStateHeld ->
-            "held"
-
-        Ledger.EscrowStateReleased ->
-            "released"
-
-        Ledger.EscrowStateRefunded ->
-            "refunded"
 
 
 rewardLabel : String -> Int -> Int -> String

@@ -5,12 +5,18 @@
 Replace `cmd/sharecrop`'s native production server with a single WASM
 artifact compiled from the real backend (`internal/http` + the real domain
 services in `internal/task`, `internal/org`, `internal/submission`, etc.,
-backed by the real Postgres stores in `internal/db`), so there is exactly
-one implementation of Sharecrop's server-side logic — not the native
-server plus a separate from-scratch reimplementation (`internal/wasmdemo`)
-for the browser demo. The browser demo and production would both run the
-same compiled artifact; only the host environment around it differs
-(browser JS host vs. a native Go host process).
+backed by the real Postgres stores in `internal/db`), hosted under WASI.
+
+The browser-demo half of the original duplication problem is already
+solved without WASI: since PR 139 the browser demo runs the real
+`internal/http` mux and real domain services compiled to `js/wasm`, over
+browser-storage-backed stores (PR 138); `internal/wasmdemo` is no longer a
+separate reimplementation. See
+[wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md). The remaining
+rationale for this spike is WASI production hosting itself: one compiled
+artifact for real, horizontally-scaled production deployment, with the
+host environment (native Go host process embedding a WASM runtime)
+supplying Postgres and networking.
 
 This document plans a **spike** — de-risking the two questions raised in
 chat before this became a real engineering effort: is this feasible at
@@ -39,8 +45,8 @@ The one compiled artifact has to work correctly in two genuinely different
 deployment shapes, not just compile once and "mostly work" in whichever one
 gets tested first:
 
-1. **The browser demo** (`internal/wasmdemo` today, eventually the same
-   compiled guest once this effort completes) — single effective user,
+1. **The browser demo** (already the real mux + browser-storage-backed
+   stores compiled to `js/wasm` since PR 139) — single effective user,
    localStorage-backed, runs on the browser's main thread.
 2. **Real production** — presumably **multiple replicas** (horizontally
    scaled, likely behind a load balancer), plus explicit attention to

@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import {
   type AuthBody,
+  fillDetailResponse,
   password,
   taskRequest,
   uniqueEmail,
@@ -100,9 +101,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await workerRow.getByTestId("discovery-view").click();
   await expect(page.getByTestId("detail-title")).toContainText(title);
 
-  await page.getByTestId("detail-submit-input").fill(
-    '{"answer":"from the browser"}',
-  );
+  await fillDetailResponse(page, '{"answer":"from the browser"}');
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toBeVisible();
   await expect(page.getByTestId("my-submission-comments-toggle")).toHaveText(
@@ -766,9 +765,7 @@ test("workers see requested revisions in their submission inbox", async ({ page,
       JSON.parse(await page.getByTestId("detail-submit-input").inputValue())
     )
     .toEqual({ answer: "revise me" });
-  await page.getByTestId("detail-submit-input").fill(
-    '{"answer":"revised from inbox"}',
-  );
+  await fillDetailResponse(page, '{"answer":"revised from inbox"}');
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toBeVisible();
 
@@ -1010,8 +1007,10 @@ test("a requester uses a code-review template with a PR link and comments on the
   await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   // Pick the code-review template (prefills description + response schema) and
-  // point it at a specific pull request.
+  // point it at a specific pull request. Reference URL lives under Advanced
+  // options, which is collapsed by default.
   await page.getByTestId("create-task-type").selectOption("code_review");
+  await page.getByTestId("create-advanced-options").click();
   await page.getByTestId("create-reference-url").fill(prURL);
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
@@ -1232,7 +1231,7 @@ test("owner and worker exchange comments on a submission", async ({ page, reques
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
     .getByTestId("discovery-view").click();
-  await page.getByTestId("detail-submit-input").fill('{"answer":"done"}');
+  await fillDetailResponse(page, '{"answer":"done"}');
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toBeVisible();
 
@@ -1368,7 +1367,7 @@ test("an owner tips a collectible on accept through the review form", async ({ p
 
   // Worker submits.
   await openTaskFromDiscovery(page, worker.email, title);
-  await page.getByTestId("detail-submit-input").fill('{"answer":"done"}');
+  await fillDetailResponse(page, '{"answer":"done"}');
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toBeVisible();
 
@@ -1461,11 +1460,18 @@ test("a bundle task refunds credits and collectible in one shot via the UI", asy
     "refunded",
   );
 
-  // Both escrow portions returned: balance restored and the collectible back in holdings.
+  // Both reward portions returned: the refunded credits are back in the
+  // spendable balance and nothing remains allocated, and the collectible is
+  // back in holdings.
   const balance = await request.get("/api/credits/balance", {
     headers: { Authorization: `Bearer ${owner.body.access_token}` },
   });
-  expect(((await balance.json()) as { amount: number }).amount).toBe(100);
+  const wallet = (await balance.json()) as {
+    spendable_credits: number;
+    allocated_credits: number;
+  };
+  expect(wallet.spendable_credits).toBe(100);
+  expect(wallet.allocated_credits).toBe(0);
   const holdings = await request.get("/api/collectibles", {
     headers: { Authorization: `Bearer ${owner.body.access_token}` },
   });

@@ -245,7 +245,11 @@ func (server Server) listPrivacyRequests(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
 		return
 	}
-	result := server.privacyService.ListForRequester(r.Context(), actor.subject.ID, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.privacyService.ListForRequester(r.Context(), actor.subject.ID, page)
 	server.writePrivacyListResult(w, result)
 }
 
@@ -253,7 +257,11 @@ func (server Server) listAdminPrivacyRequests(w http.ResponseWriter, r *http.Req
 	if _, ok := server.requireAdminSubject(w, r); !ok {
 		return
 	}
-	result := server.privacyService.ListAll(r.Context(), parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.privacyService.ListAll(r.Context(), page)
 	server.writePrivacyListResult(w, result)
 }
 

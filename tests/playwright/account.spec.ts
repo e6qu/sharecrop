@@ -7,10 +7,11 @@ test("guest entry and account lifecycle controls work in the browser", async ({ 
   const { changedPassword, resetPassword } = accountLifecycleScenario;
 
   await page.goto("/");
-  await page.getByTestId("guest-login").click();
-  await expect(page.getByTestId("overview")).toBeVisible();
-  await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  // Guest sessions only work against the demo backend: the real API rejects
+  // the guest subject on every data route, so the real app hides the button
+  // instead of offering a dead end.
+  await expect(page.getByTestId("login")).toBeVisible();
+  await expect(page.getByTestId("guest-login")).toHaveCount(0);
 
   await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
@@ -41,12 +42,13 @@ test("guest entry and account lifecycle controls work in the browser", async ({ 
   await page.getByTestId("logout").click();
   await page.getByTestId("reset-email").fill(email);
   await page.getByTestId("request-password-reset").click();
-  await expect(page.getByTestId("auth-error")).toContainText(
-    "Password reset token created.",
+  // Successes render in the auth-notice slot (green), not auth-error.
+  await expect(page.getByTestId("auth-notice")).toContainText(
+    "Password reset token created",
   );
   await page.getByTestId("reset-password").fill(resetPassword);
   await page.getByTestId("confirm-password-reset").click();
-  await expect(page.getByTestId("auth-error")).toContainText(
+  await expect(page.getByTestId("auth-notice")).toContainText(
     "Password reset. Log in with the new password.",
   );
 

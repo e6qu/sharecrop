@@ -47,7 +47,7 @@ func TestNewIdempotencyKeyRejectsEmpty(t *testing.T) {
 func TestParseEntryKindRoundTrips(t *testing.T) {
 	kinds := []EntryKind{
 		EntryKindSignupGrant,
-		EntryKindTaskEscrow,
+		EntryKindTaskFund,
 		EntryKindTaskRefund,
 		EntryKindTaskPayout,
 		EntryKindManualAdjustment,
@@ -69,33 +69,27 @@ func TestParseEntryKindRejectsUnknown(t *testing.T) {
 	}
 }
 
-func TestParseEscrowStateRoundTrips(t *testing.T) {
-	for _, state := range []EscrowState{EscrowStateHeld, EscrowStateReleased, EscrowStateRefunded} {
-		accepted, matched := ParseEscrowState(state.String()).(EscrowStateAccepted)
-		if !matched {
-			t.Fatalf("ParseEscrowState(%q) was rejected", state.String())
-		}
-		if accepted.Value != state {
-			t.Fatalf("parsed = %q, want %q", accepted.Value.String(), state.String())
-		}
-	}
-}
-
-func TestDeriveBalanceSumsSignedAmounts(t *testing.T) {
+func TestDeriveSpendableSumsSignedAmounts(t *testing.T) {
 	entries := []LedgerEntry{
 		newTestEntry(t, 100),
 		newTestEntry(t, -40),
 		newTestEntry(t, 15),
 	}
-	balance := DeriveBalance(entries)
-	if balance.Int64() != 75 {
-		t.Fatalf("balance = %d, want 75", balance.Int64())
+	if spendable := DeriveSpendable(entries); spendable != 75 {
+		t.Fatalf("spendable = %d, want 75", spendable)
 	}
 }
 
-func TestDeriveBalanceOfNoEntriesIsZero(t *testing.T) {
-	if DeriveBalance(nil).Int64() != 0 {
-		t.Fatalf("empty balance was not zero")
+func TestDeriveSpendableOfNoEntriesIsZero(t *testing.T) {
+	if DeriveSpendable(nil) != 0 {
+		t.Fatalf("empty spendable was not zero")
+	}
+}
+
+func TestBalanceSectionsAndTotal(t *testing.T) {
+	balance := NewBalance(70, 30)
+	if balance.Spendable() != 70 || balance.Allocated() != 30 || balance.Total() != 100 {
+		t.Fatalf("balance = (%d, %d, total %d), want (70, 30, total 100)", balance.Spendable(), balance.Allocated(), balance.Total())
 	}
 }
 
@@ -155,7 +149,7 @@ type memoryStore struct {
 
 func (store *memoryStore) FundTask(_ context.Context, command FundStoreCommand) FundResult {
 	store.fundCommand = command
-	return TaskFunded{Escrow: TaskEscrow{TaskID: command.TaskID, Amount: command.Amount, State: EscrowStateHeld}}
+	return TaskFunded{Fund: TaskFund{TaskID: command.TaskID, CreditAmount: command.Amount}}
 }
 
 func (store *memoryStore) AcceptSubmission(_ context.Context, command AcceptStoreCommand) AcceptResult {
@@ -174,19 +168,19 @@ func (store *memoryStore) RejectSubmission(_ context.Context, command RejectStor
 
 func (store *memoryStore) RefundTask(_ context.Context, command RefundStoreCommand) RefundResult {
 	store.refundCommand = command
-	return TaskRefunded{Escrow: TaskEscrow{TaskID: command.TaskID, State: EscrowStateRefunded}}
+	return TaskRefunded{Fund: TaskFund{TaskID: command.TaskID}}
 }
 
 func (store *memoryStore) FundTaskFromOrganization(_ context.Context, command OrganizationFundStoreCommand) FundResult {
-	return TaskFunded{Escrow: TaskEscrow{TaskID: command.TaskID, Amount: command.Amount, State: EscrowStateHeld}}
+	return TaskFunded{Fund: TaskFund{TaskID: command.TaskID, CreditAmount: command.Amount}}
 }
 
 func (store *memoryStore) Balance(_ context.Context, _ core.UserID) BalanceResult {
-	return BalanceFound{Value: NewBalance(0)}
+	return BalanceFound{Value: NewBalance(0, 0)}
 }
 
 func (store *memoryStore) OrganizationBalance(_ context.Context, _ core.OrganizationID) BalanceResult {
-	return BalanceFound{Value: NewBalance(0)}
+	return BalanceFound{Value: NewBalance(0, 0)}
 }
 
 func (store *memoryStore) ListEntries(_ context.Context, _ core.UserID, _ core.Page) ListEntriesResult {

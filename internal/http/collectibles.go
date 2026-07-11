@@ -230,7 +230,11 @@ func (server Server) listCollectibles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID, page)
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
 		writeDomainError(w, result.(assets.ListRejected).Reason)
@@ -390,7 +394,11 @@ func (server Server) listOwnerCollectibles(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result := server.assetService.ListByOwner(r.Context(), ownerKind, ownerID, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.assetService.ListByOwner(r.Context(), ownerKind, ownerID, page)
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
 		writeDomainError(w, result.(assets.ListRejected).Reason)

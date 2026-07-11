@@ -17,11 +17,15 @@ type accountTokenDelivery struct {
 
 func newAccountTokenDeliveryFromEnv() accountTokenDelivery {
 	mode := os.Getenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY")
-	if mode == "" {
-		mode = accountTokenDeliveryAPI
-	}
+	// Default to log delivery (fail closed). In api mode `write` returns the
+	// account token in the HTTP response body, and the password-reset request
+	// is unauthenticated - so an api-mode default would hand a password-reset
+	// token to anyone who knows a victim's email, an account-takeover
+	// primitive. api mode is opt-in for the browser demo (browser-local, no
+	// real accounts) and for tests; production `serve` keeps tokens in the
+	// server log for admin-driven delivery.
 	if mode != accountTokenDeliveryAPI && mode != accountTokenDeliveryLog {
-		mode = accountTokenDeliveryAPI
+		mode = accountTokenDeliveryLog
 	}
 	return accountTokenDelivery{mode: mode}
 }

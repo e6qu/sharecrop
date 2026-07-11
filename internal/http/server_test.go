@@ -458,12 +458,15 @@ func TestCreditsBalanceEndpoint(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Amount != 100 {
-		t.Fatalf("amount = %d, want 100", body.Amount)
+	if body.SpendableCredits != 100 {
+		t.Fatalf("spendable_credits = %d, want 100", body.SpendableCredits)
+	}
+	if body.AllocatedCredits != 0 {
+		t.Fatalf("allocated_credits = %d, want 0", body.AllocatedCredits)
 	}
 }
 
-func TestFundTaskEndpointReturnsHeldEscrow(t *testing.T) {
+func TestFundTaskEndpointReturnsTaskFund(t *testing.T) {
 	taskIDCreated := core.NewTaskID().(core.TaskIDCreated)
 	request := httptest.NewRequest(http.MethodPost, "/api/tasks/"+taskIDCreated.Value.String()+"/funding", strings.NewReader(`{"amount":40,"idempotency_key":"fund-1"}`))
 	request.Header.Set("Authorization", "Bearer test-access-token")
@@ -475,15 +478,12 @@ func TestFundTaskEndpointReturnsHeldEscrow(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
 	}
 
-	var body taskEscrowResponse
+	var body taskFundResponse
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Amount != 40 {
-		t.Fatalf("amount = %d, want 40", body.Amount)
-	}
-	if body.State != "held" {
-		t.Fatalf("state = %q, want held", body.State)
+	if body.CreditAmount != 40 {
+		t.Fatalf("credit_amount = %d, want 40", body.CreditAmount)
 	}
 }
 
@@ -976,15 +976,15 @@ func (testSubmissionService) ListSubmissionComments(context.Context, auth.Subjec
 }
 
 func (testLedgerService) FundTask(_ context.Context, _ core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
-	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
+	return ledger.TaskFunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: amount}}
 }
 
 func (testLedgerService) FundTaskFromOrganization(_ context.Context, _ core.OrganizationID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
-	return ledger.TaskFunded{Escrow: ledger.TaskEscrow{TaskID: taskID, Amount: amount, State: ledger.EscrowStateHeld}}
+	return ledger.TaskFunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: amount}}
 }
 
 func (testLedgerService) OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult {
-	return ledger.BalanceFound{Value: ledger.NewBalance(100)}
+	return ledger.BalanceFound{Value: ledger.NewBalance(100, 0)}
 }
 
 func (testLedgerService) AcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey) ledger.AcceptResult {
@@ -1004,11 +1004,11 @@ func (testLedgerService) RejectSubmission(_ context.Context, _ core.UserID, task
 }
 
 func (testLedgerService) RefundTask(_ context.Context, _ core.UserID, taskID core.TaskID, _ ledger.IdempotencyKey) ledger.RefundResult {
-	return ledger.TaskRefunded{Escrow: ledger.TaskEscrow{TaskID: taskID, State: ledger.EscrowStateRefunded}}
+	return ledger.TaskRefunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: ledger.NewCreditAmount(1).(ledger.CreditAmountAccepted).Value}}
 }
 
 func (testLedgerService) Balance(context.Context, core.UserID) ledger.BalanceResult {
-	return ledger.BalanceFound{Value: ledger.NewBalance(100)}
+	return ledger.BalanceFound{Value: ledger.NewBalance(100, 0)}
 }
 
 func (testLedgerService) ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult {

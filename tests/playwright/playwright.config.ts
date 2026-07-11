@@ -15,8 +15,11 @@ export default defineConfig({
   },
   webServer: [
     {
+      // Account-token delivery defaults to log (fail closed); the browser
+      // account/reset flows read the token from the response, so this test
+      // server opts into api delivery like the demo does.
       command:
-        `SHARECROP_HTTP_ADDR=:${apiPort} SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 DATABASE_URL='${databaseURL}' SHARECROP_MIGRATIONS_DIR=migrations go run ./cmd/sharecrop serve`,
+        `SHARECROP_HTTP_ADDR=:${apiPort} SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 SHARECROP_ACCOUNT_TOKEN_DELIVERY=api DATABASE_URL='${databaseURL}' SHARECROP_MIGRATIONS_DIR=migrations go run ./cmd/sharecrop serve`,
       cwd: "../..",
       url: `${apiOrigin}/healthz`,
       reuseExistingServer: true,

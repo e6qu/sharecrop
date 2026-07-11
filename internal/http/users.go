@@ -10,6 +10,10 @@ import (
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
+// maxUserDirectoryQueryLength bounds the user-directory search term so a
+// caller cannot force an expensive database scan with a very long pattern.
+const maxUserDirectoryQueryLength = 160
+
 type userProfileResponse struct {
 	ID    string                 `json:"id"`
 	Tasks []taskListItemResponse `json:"tasks"`
@@ -25,7 +29,16 @@ func (server Server) listUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.authService.ListUsers(r.Context(), r.URL.Query().Get("query"), parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	query := r.URL.Query().Get("query")
+	if len(query) > maxUserDirectoryQueryLength {
+		writeError(w, http.StatusBadRequest, "query is too long")
+		return
+	}
+	result := server.authService.ListUsers(r.Context(), query, page)
 	listed, matched := result.(auth.UsersListed)
 	if !matched {
 		writeDomainError(w, result.(auth.UserDirectoryRejected).Reason)
@@ -39,30 +52,44 @@ func (server Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (server Server) getUserProfile(w http.ResponseWriter, r *http.Request) {
+// userPathRequest resolves the shared prologue of the per-user list
+// endpoints: the authenticated actor, the {user_id} path value, and strict
+// paging. It reports false after writing the error response itself.
+func (server Server) userPathRequest(w http.ResponseWriter, r *http.Request) (auth.UserSubject, core.UserID, core.Page, bool) {
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
-		return
+		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		return auth.UserSubject{}, core.UserID{}, core.Page{}, false
 	}
 
 	userIDResult := core.ParseUserID(r.PathValue("user_id"))
 	userIDCreated, userIDMatched := userIDResult.(core.UserIDCreated)
 	if !userIDMatched {
 		writeError(w, http.StatusBadRequest, userIDResult.(core.UserIDRejected).Reason.Description())
-		return
+		return auth.UserSubject{}, core.UserID{}, core.Page{}, false
 	}
 
-	result := server.taskService.List(r.Context(), actor.subject, task.CreatorListScope{CreatorID: userIDCreated.Value}, task.NoListFilters(), parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return auth.UserSubject{}, core.UserID{}, core.Page{}, false
+	}
+	return actor.subject, userIDCreated.Value, page, true
+}
+
+func (server Server) getUserProfile(w http.ResponseWriter, r *http.Request) {
+	actor, userID, page, ok := server.userPathRequest(w, r)
+	if !ok {
+		return
+	}
+	result := server.taskService.List(r.Context(), actor, task.CreatorListScope{CreatorID: userID}, task.NoListFilters(), page)
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		writeDomainError(w, result.(task.ListRejected).Reason)
 		return
 	}
 
-	response := userProfileResponse{ID: userIDCreated.Value.String(), Tasks: make([]taskListItemResponse, 0, len(listed.Values))}
+	response := userProfileResponse{ID: userID.String(), Tasks: make([]taskListItemResponse, 0, len(listed.Values))}
 	for valueIndex := range listed.Values {
 		response.Tasks = append(response.Tasks, taskListItemToResponse(listed.Values[valueIndex]))
 	}
@@ -70,22 +97,11 @@ func (server Server) getUserProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) getUserWork(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
-	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+	actor, userID, page, ok := server.userPathRequest(w, r)
+	if !ok {
 		return
 	}
-
-	userIDResult := core.ParseUserID(r.PathValue("user_id"))
-	userIDCreated, userIDMatched := userIDResult.(core.UserIDCreated)
-	if !userIDMatched {
-		writeError(w, http.StatusBadRequest, userIDResult.(core.UserIDRejected).Reason.Description())
-		return
-	}
-
-	result := server.taskService.List(r.Context(), actor.subject, task.AssigneeListScope{AssigneeID: userIDCreated.Value}, task.NoListFilters(), parsePage(r))
+	result := server.taskService.List(r.Context(), actor, task.AssigneeListScope{AssigneeID: userID}, task.NoListFilters(), page)
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		writeDomainError(w, result.(task.ListRejected).Reason)
@@ -95,29 +111,11 @@ func (server Server) getUserWork(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) getUserSubmissions(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
-	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+	actor, userID, page, ok := server.userPathRequest(w, r)
+	if !ok {
 		return
 	}
-
-	userIDResult := core.ParseUserID(r.PathValue("user_id"))
-	userIDCreated, userIDMatched := userIDResult.(core.UserIDCreated)
-	if !userIDMatched {
-		writeError(w, http.StatusBadRequest, userIDResult.(core.UserIDRejected).Reason.Description())
-		return
-	}
-
-	pageResult := parsePageStrict(r)
-	page, pageMatched := pageResult.(pageParseAccepted)
-	if !pageMatched {
-		writeError(w, http.StatusBadRequest, pageResult.(pageParseRejected).reason)
-		return
-	}
-
-	result := server.submissionService.ListForSubmitter(r.Context(), actor.subject, userIDCreated.Value, page.value)
+	result := server.submissionService.ListForSubmitter(r.Context(), actor, userID, page)
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		writeDomainError(w, result.(submission.ListRejected).Reason)
@@ -126,7 +124,7 @@ func (server Server) getUserSubmissions(w http.ResponseWriter, r *http.Request) 
 
 	response := submissionsResponse{Submissions: make([]submissionResponse, 0, len(listed.Values))}
 	for _, value := range listed.Values {
-		if !server.recordSensitiveFieldAccess(w, r, actor.subject.ID, value) {
+		if !server.recordSensitiveFieldAccess(w, r, actor.ID, value) {
 			return
 		}
 		response.Submissions = append(response.Submissions, submissionToResponse(value))

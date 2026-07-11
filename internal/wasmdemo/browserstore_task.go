@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -27,10 +29,11 @@ import (
 type TaskBrowserStore struct {
 	storage BrowserStorage
 	ids     InteractionIDSource
+	clock   HandlerClock
 }
 
-func NewTaskBrowserStore(storage BrowserStorage, ids InteractionIDSource) TaskBrowserStore {
-	return TaskBrowserStore{storage: storage, ids: ids}
+func NewTaskBrowserStore(storage BrowserStorage, ids InteractionIDSource, clock HandlerClock) TaskBrowserStore {
+	return TaskBrowserStore{storage: storage, ids: ids, clock: clock}
 }
 
 func (store TaskBrowserStore) CreateTask(_ context.Context, seriesID core.TaskSeriesID, taskID core.TaskID, command task.CreateCommand) task.CreateTaskStoreResult {
@@ -118,7 +121,7 @@ func (store TaskBrowserStore) FindTask(_ context.Context, taskID core.TaskID) ta
 		return task.FindTaskStoreRejected{Reason: *err}
 	}
 	if !found {
-		return task.FindTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task was not found")}
+		return task.FindTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	value, parseErr := parseStoredTaskRecord(record)
 	if parseErr != nil {
@@ -127,38 +130,70 @@ func (store TaskBrowserStore) FindTask(_ context.Context, taskID core.TaskID) ta
 	return task.FindTaskStoreAccepted{Value: value}
 }
 
-// requireOpenableRewardBrowser mirrors internal/db's requireOpenableReward:
-// a credit/bundle reward needs a held escrow matching the declared amount;
-// a collectible/bundle reward needs at least one held collectible reward
-// (not yet implemented - see AssetBrowserStore - so this always rejects for
-// a collectible-bearing task, matching "not funded yet" rather than
-// silently allowing it).
+// requireOpenableReward mirrors internal/db's requireOpenableReward: a
+// credit/bundle reward needs a task_funds record whose allocated credits match
+// the declared amount, and a collectible/bundle reward needs at least one held
+// collectible-reward record (funded via AssetBrowserStore.FundCollectibleReward).
 func (store TaskBrowserStore) requireOpenableReward(record storedTaskRecord) *core.DomainError {
 	if record.RewardKind == "credit" || record.RewardKind == "bundle" {
-		escrow, found, err := (LedgerBrowserStore{storage: store.storage}).loadEscrow(record.ID)
+		fund, found, err := (LedgerBrowserStore{storage: store.storage}).loadFund(record.ID)
 		if err != nil {
 			return err
 		}
-		if !found || escrow.State != "held" || escrow.Amount != record.RewardCreditAmount {
+		if !found {
 			reason := core.NewDomainError(core.ErrorCodeConflict, "credit reward must be funded before opening")
+			return &reason
+		}
+		if fund.CreditAmount != record.RewardCreditAmount {
+			reason := core.NewDomainError(core.ErrorCodeConflict, "allocated credits must match the declared credit reward")
 			return &reason
 		}
 	}
 	if record.RewardKind == "collectible" || record.RewardKind == "bundle" {
-		reason := core.NewDomainError(core.ErrorCodeConflict, "collectible reward must be funded before opening")
-		return &reason
+		heldCollectibles, heldErr := countHeldCollectibleRewards(store.storage, record.ID)
+		if heldErr != nil {
+			return heldErr
+		}
+		if heldCollectibles < 1 {
+			reason := core.NewDomainError(core.ErrorCodeConflict, "collectible reward must be funded before opening")
+			return &reason
+		}
 	}
 	return nil
 }
 
-func (store TaskBrowserStore) requireNoHeldEscrow(record storedTaskRecord) *core.DomainError {
-	escrow, found, err := (LedgerBrowserStore{storage: store.storage}).loadEscrow(record.ID)
+// settleFundedTaskOnCancel mirrors internal/db's helper of the same name:
+// cancelling a funded task that has not been awarded returns its allocated
+// credits and every held collectible to their funder before the task is
+// cancelled, so nothing is orphaned. An unfunded task settles to nothing.
+func (store TaskBrowserStore) settleFundedTaskOnCancel(taskID string) *core.DomainError {
+	ledgerStore := LedgerBrowserStore{storage: store.storage, ids: store.ids}
+	fund, found, err := ledgerStore.loadFund(taskID)
 	if err != nil {
 		return err
 	}
-	if found && escrow.State == "held" {
-		reason := core.NewDomainError(core.ErrorCodeConflict, "refund the task's held escrow before cancelling")
-		return &reason
+	if found {
+		entryResult := core.NewLedgerEntryID()
+		entryCreated, matched := entryResult.(core.LedgerEntryIDCreated)
+		if !matched {
+			reason := entryResult.(core.LedgerEntryIDRejected).Reason
+			return &reason
+		}
+		saveResult := SaveLedgerEntry(store.storage, StoredLedgerEntry{
+			ID: entryCreated.Value.String(), OwnerKind: fund.FunderOwnerKind, OwnerID: fund.FunderOwnerID,
+			Kind: ledger.EntryKindTaskRefund.String(), Amount: fund.CreditAmount, TaskID: taskID,
+		})
+		if _, matched := saveResult.(LedgerEntryStored); !matched {
+			reason := invalidState("insert cancel refund ledger entry failed")
+			return &reason
+		}
+		if !ledgerStore.clearFund(fund) {
+			reason := invalidState("clear task fund failed")
+			return &reason
+		}
+	}
+	if reason := refundHeldCollectibleRewardBrowser(store.storage, store.ids, taskID); reason != nil {
+		return reason
 	}
 	return nil
 }
@@ -169,7 +204,7 @@ func (store TaskBrowserStore) ChangeTaskState(_ context.Context, taskID core.Tas
 		return task.ChangeTaskStateStoreRejected{Reason: *err}
 	}
 	if !found {
-		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task was not found")}
+		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	if state == task.StateOpen {
 		if rejectReason := store.requireOpenableReward(record); rejectReason != nil {
@@ -177,7 +212,7 @@ func (store TaskBrowserStore) ChangeTaskState(_ context.Context, taskID core.Tas
 		}
 	}
 	if state == task.StateCancelled {
-		if rejectReason := store.requireNoHeldEscrow(record); rejectReason != nil {
+		if rejectReason := store.settleFundedTaskOnCancel(record.ID); rejectReason != nil {
 			return task.ChangeTaskStateStoreRejected{Reason: *rejectReason}
 		}
 	}
@@ -216,6 +251,10 @@ func (store TaskBrowserStore) activeAssigneeForTask(taskID string) (task.ActiveA
 }
 
 func (store TaskBrowserStore) ListTasks(_ context.Context, scope task.ListScope, filters task.ListFilters, page core.Page) task.ListTasksStoreResult {
+	if sweepErr := store.releaseExpiredReservations(); sweepErr != nil {
+		return task.ListTasksStoreRejected{Reason: *sweepErr}
+	}
+
 	var candidateIDs []string
 	switch typed := scope.(type) {
 	case task.PublicListScope:
@@ -267,7 +306,14 @@ func (store TaskBrowserStore) ListTasks(_ context.Context, scope task.ListScope,
 		if !matched {
 			return task.ListTasksStoreRejected{Reason: invalidState(indexResult.(stringIndexRejected).reason)}
 		}
-		candidateIDs = loaded.values
+		// Matches internal/db: the team's queue includes tasks the team is
+		// actively working on (its active reservation), not only tasks shared
+		// with it via visibility.
+		reservedIDs, reservedErr := store.taskIDsActivelyReservedByTeam(typed.TeamID.String())
+		if reservedErr != nil {
+			return task.ListTasksStoreRejected{Reason: *reservedErr}
+		}
+		candidateIDs = unionStringSlices(loaded.values, reservedIDs)
 	default:
 		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "this task list scope is not yet implemented in the browser demo")}
 	}
@@ -343,6 +389,33 @@ func (store TaskBrowserStore) ListTasks(_ context.Context, scope task.ListScope,
 		end = len(values)
 	}
 	return task.ListTasksStoreAccepted{Values: values[start:end]}
+}
+
+// taskIDsActivelyReservedByTeam scans the global reservation index for
+// active reservations held by teamID and returns their task IDs, in
+// reservation-creation order.
+func (store TaskBrowserStore) taskIDsActivelyReservedByTeam(teamID string) ([]string, *core.DomainError) {
+	indexResult := loadStringIndex(store.storage, reservationAllIndexKey(), "reservation")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return nil, &reason
+	}
+	taskIDs := make([]string, 0)
+	for _, id := range loaded.values {
+		record, found, ok := getStoredReservationJSON(store.storage, reservationRecordKey(id))
+		if !ok {
+			reason := invalidState("read reservation failed")
+			return nil, &reason
+		}
+		if !found {
+			continue
+		}
+		if record.State == task.ReservationStateActive.String() && record.AssigneeTeamID == teamID {
+			taskIDs = append(taskIDs, record.TaskID)
+		}
+	}
+	return taskIDs, nil
 }
 
 // unionStringSlices merges two id slices, preserving first-seen order and
@@ -441,11 +514,102 @@ type storedReservation struct {
 	AssigneeOrgID   string `json:"assignee_organization_id,omitempty"`
 	State           string `json:"state"`
 	RequestedByUser string `json:"requested_by_user_id"`
+	ExpiresAt       int64  `json:"expires_at_unix,omitempty"`
 }
 
 func reservationRecordKey(id string) string { return "task:reservation:" + id }
 func reservationTaskIndexKey(taskID string) string {
 	return "task:reservation_index:" + taskID
+}
+
+// reservationAllIndexKey indexes every reservation across all tasks, so the
+// expiry sweep (mirroring internal/db's expireReservationsSQL, which scans the
+// whole task_reservations table) can visit each of them, and so the team task
+// list can find tasks actively reserved by a team.
+func reservationAllIndexKey() string { return "task:reservation_index_all" }
+
+// releaseExpiredReservations mirrors internal/db's expireReservationsSQL:
+// every requested/active reservation whose expiry has passed flips to expired. It
+// runs at the start of every reservation-observing store method, the same
+// call sites the real store sweeps at.
+func (store TaskBrowserStore) releaseExpiredReservations() *core.DomainError {
+	indexResult := loadStringIndex(store.storage, reservationAllIndexKey(), "reservation")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return &reason
+	}
+	nowUnixNano := store.clock.Now().UnixNano()
+	for _, id := range loaded.values {
+		record, found, ok := getStoredReservationJSON(store.storage, reservationRecordKey(id))
+		if !ok {
+			reason := invalidState("release expired reservations failed")
+			return &reason
+		}
+		if !found {
+			continue
+		}
+		if record.State != task.ReservationStateRequested.String() && record.State != task.ReservationStateActive.String() {
+			continue
+		}
+		if record.ExpiresAt > nowUnixNano {
+			continue
+		}
+		record.State = task.ReservationStateExpired.String()
+		if !putStoredReservationJSON(store.storage, reservationRecordKey(id), record) {
+			reason := invalidState("release expired reservations failed")
+			return &reason
+		}
+	}
+	return nil
+}
+
+// storedImplementorBan mirrors internal/db's task_implementor_bans row: a
+// reviewer rejecting a submission may ban the implementor from the task, and
+// the ban blocks both new reservations and submission eligibility.
+type storedImplementorBan struct {
+	TaskID       string `json:"task_id"`
+	AssigneeKind string `json:"assignee_kind"`
+	UserID       string `json:"user_id,omitempty"`
+	TeamID       string `json:"team_id,omitempty"`
+	OrgID        string `json:"organization_id,omitempty"`
+	BannedBy     string `json:"banned_by_user_id"`
+}
+
+// implementorBanKey mirrors the (task_id, assignee_kind, assignee_key)
+// primary key of task_implementor_bans.
+func implementorBanKey(taskID string, assigneeKind string, assigneeKey string) string {
+	return "task:implementor_ban:" + taskID + ":" + assigneeKind + ":" + assigneeKey
+}
+
+func implementorBanAssigneeKey(kind string, userID string, teamID string, orgID string) string {
+	switch kind {
+	case task.AssigneeScopeUser.String():
+		return userID
+	case task.AssigneeScopeOrganizationTeam.String():
+		return orgID + ":" + teamID
+	default:
+		return teamID
+	}
+}
+
+func saveImplementorBan(storage BrowserStorage, ban storedImplementorBan) bool {
+	encoded, err := json.Marshal(ban)
+	if err != nil {
+		return false
+	}
+	assigneeKey := implementorBanAssigneeKey(ban.AssigneeKind, ban.UserID, ban.TeamID, ban.OrgID)
+	return putStorageString(storage, implementorBanKey(ban.TaskID, ban.AssigneeKind, assigneeKey), string(encoded))
+}
+
+func isImplementorBanned(storage BrowserStorage, taskID string, assigneeKind string, userID string, teamID string, orgID string) (bool, *core.DomainError) {
+	assigneeKey := implementorBanAssigneeKey(assigneeKind, userID, teamID, orgID)
+	_, found, ok := getStorageString(storage, implementorBanKey(taskID, assigneeKind, assigneeKey))
+	if !ok {
+		reason := invalidState("check task implementor ban failed")
+		return false, &reason
+	}
+	return found, nil
 }
 
 func putStoredReservationJSON(storage BrowserStorage, rawKey string, record storedReservation) bool {
@@ -580,6 +744,10 @@ func taskSeriesBlocksExecution(storage BrowserStorage, seriesID string) *core.Do
 }
 
 func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID core.TaskReservationID, command task.ReservationCommand) task.CreateReservationStoreResult {
+	if sweepErr := store.releaseExpiredReservations(); sweepErr != nil {
+		return task.CreateReservationStoreRejected{Reason: *sweepErr}
+	}
+
 	record, found, err := loadStoredTaskRecord(store.storage, command.TaskID.String())
 	if err != nil {
 		return task.CreateReservationStoreRejected{Reason: *err}
@@ -594,21 +762,6 @@ func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID
 		return task.CreateReservationStoreRejected{Reason: *blocked}
 	}
 
-	existing, existingErr := store.loadReservations(command.TaskID.String())
-	if existingErr != nil {
-		return task.CreateReservationStoreRejected{Reason: *existingErr}
-	}
-	assigneeKind, assigneeUserID, assigneeTeamID, assigneeOrgID := assigneeSQLColumnsBrowser(command.Assignee)
-	for _, reservation := range existing {
-		if reservation.State != task.ReservationStateRequested && reservation.State != task.ReservationStateActive {
-			continue
-		}
-		existingKind, existingUserID, existingTeamID, existingOrgID := assigneeSQLColumnsBrowser(reservation.Assignee)
-		if existingKind == assigneeKind && existingUserID == assigneeUserID && existingTeamID == assigneeTeamID && existingOrgID == assigneeOrgID {
-			return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "assignee already has an active or pending reservation")}
-		}
-	}
-
 	var initialState task.ReservationState
 	switch record.Participation {
 	case task.ParticipationPolicyReservationRequired.String():
@@ -619,15 +772,49 @@ func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task does not require reservation")}
 	}
 
+	assigneeKind, assigneeUserID, assigneeTeamID, assigneeOrgID := assigneeSQLColumnsBrowser(command.Assignee)
+	banned, banErr := isImplementorBanned(store.storage, command.TaskID.String(), assigneeKind, assigneeUserID, assigneeTeamID, assigneeOrgID)
+	if banErr != nil {
+		return task.CreateReservationStoreRejected{Reason: *banErr}
+	}
+	if banned {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "implementor is banned from the task")}
+	}
+
+	existing, existingErr := store.loadReservations(command.TaskID.String())
+	if existingErr != nil {
+		return task.CreateReservationStoreRejected{Reason: *existingErr}
+	}
+	for _, reservation := range existing {
+		if reservation.State != task.ReservationStateRequested && reservation.State != task.ReservationStateActive {
+			continue
+		}
+		existingKind, existingUserID, existingTeamID, existingOrgID := assigneeSQLColumnsBrowser(reservation.Assignee)
+		if existingKind == assigneeKind && existingUserID == assigneeUserID && existingTeamID == assigneeTeamID && existingOrgID == assigneeOrgID {
+			return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "assignee already has an active or pending reservation")}
+		}
+	}
+	// Mirror internal/db's task_reservations_one_active_idx partial unique
+	// index: at most one active reservation per task, whoever holds it.
+	if initialState == task.ReservationStateActive {
+		if activeErr := store.requireNoActiveReservation(command.TaskID.String(), "task already has an active reservation"); activeErr != nil {
+			return task.CreateReservationStoreRejected{Reason: *activeErr}
+		}
+	}
+
 	stored := storedReservation{
 		ID: reservationID.String(), TaskID: command.TaskID.String(), AssigneeKind: assigneeKind,
 		AssigneeUserID: assigneeUserID, AssigneeTeamID: assigneeTeamID, AssigneeOrgID: assigneeOrgID,
 		State: initialState.String(), RequestedByUser: command.RequestedBy.String(),
+		ExpiresAt: store.clock.Now().Add(time.Duration(record.ReservationTTLHours) * time.Hour).UnixNano(),
 	}
 	if !putStoredReservationJSON(store.storage, reservationRecordKey(stored.ID), stored) {
 		return task.CreateReservationStoreRejected{Reason: invalidState("insert reservation failed")}
 	}
 	if _, matched := appendStringIndex(store.storage, reservationTaskIndexKey(command.TaskID.String()), stored.ID, "reservation").(stringIndexStored); !matched {
+		return task.CreateReservationStoreRejected{Reason: invalidState("update reservation index failed")}
+	}
+	if _, matched := appendStringIndex(store.storage, reservationAllIndexKey(), stored.ID, "reservation").(stringIndexStored); !matched {
 		return task.CreateReservationStoreRejected{Reason: invalidState("update reservation index failed")}
 	}
 
@@ -636,6 +823,23 @@ func (store TaskBrowserStore) CreateReservation(_ context.Context, reservationID
 		return task.CreateReservationStoreRejected{Reason: *parseErr}
 	}
 	return task.CreateReservationStoreAccepted{Value: value}
+}
+
+// requireNoActiveReservation rejects with a conflict carrying message when
+// the task already has an active reservation, mirroring the partial unique
+// index the real store relies on.
+func (store TaskBrowserStore) requireNoActiveReservation(taskID string, message string) *core.DomainError {
+	existing, existingErr := store.loadReservations(taskID)
+	if existingErr != nil {
+		return existingErr
+	}
+	for _, reservation := range existing {
+		if reservation.State == task.ReservationStateActive {
+			reason := core.NewDomainError(core.ErrorCodeConflict, message)
+			return &reason
+		}
+	}
+	return nil
 }
 
 func assigneeSQLColumnsBrowser(assignee task.Assignee) (kind string, userID string, teamID string, organizationID string) {
@@ -652,6 +856,10 @@ func assigneeSQLColumnsBrowser(assignee task.Assignee) (kind string, userID stri
 }
 
 func (store TaskBrowserStore) ChangeReservationState(_ context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState) task.ChangeReservationStateStoreResult {
+	if sweepErr := store.releaseExpiredReservations(); sweepErr != nil {
+		return task.ChangeReservationStateStoreRejected{Reason: *sweepErr}
+	}
+
 	record, found, ok := getStoredReservationJSON(store.storage, reservationRecordKey(reservationID.String()))
 	if !ok {
 		return task.ChangeReservationStateStoreRejected{Reason: invalidState("read reservation failed")}
@@ -661,6 +869,14 @@ func (store TaskBrowserStore) ChangeReservationState(_ context.Context, taskID c
 	}
 	if record.State != task.ReservationStateRequested.String() && record.State != task.ReservationStateActive.String() {
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation is not pending or active")}
+	}
+	// Approving a reservation while another one is already active would break
+	// the one-active-reservation-per-task rule; the real store's partial
+	// unique index surfaces this as "reservation state was not changed".
+	if state == task.ReservationStateActive && record.State != task.ReservationStateActive.String() {
+		if activeErr := store.requireNoActiveReservation(taskID.String(), "reservation state was not changed"); activeErr != nil {
+			return task.ChangeReservationStateStoreRejected{Reason: *activeErr}
+		}
 	}
 	record.State = state.String()
 	if !putStoredReservationJSON(store.storage, reservationRecordKey(reservationID.String()), record) {
@@ -674,6 +890,10 @@ func (store TaskBrowserStore) ChangeReservationState(_ context.Context, taskID c
 }
 
 func (store TaskBrowserStore) ListReservations(_ context.Context, taskID core.TaskID) task.ListReservationsStoreResult {
+	if sweepErr := store.releaseExpiredReservations(); sweepErr != nil {
+		return task.ListReservationsStoreRejected{Reason: *sweepErr}
+	}
+
 	values, err := store.loadReservations(taskID.String())
 	if err != nil {
 		return task.ListReservationsStoreRejected{Reason: *err}
@@ -682,6 +902,10 @@ func (store TaskBrowserStore) ListReservations(_ context.Context, taskID core.Ta
 }
 
 func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, taskID core.TaskID, submitterID core.UserID) task.SubmissionEligibilityStoreResult {
+	if sweepErr := store.releaseExpiredReservations(); sweepErr != nil {
+		return task.SubmissionEligibilityRejected{Reason: *sweepErr}
+	}
+
 	record, found, err := loadStoredTaskRecord(store.storage, taskID.String())
 	if err != nil {
 		return task.SubmissionEligibilityRejected{Reason: *err}
@@ -691,6 +915,13 @@ func (store TaskBrowserStore) CheckSubmissionEligibility(_ context.Context, task
 	}
 	if blocked := taskSeriesBlocksExecution(store.storage, record.SeriesID); blocked != nil {
 		return task.SubmissionEligibilityRejected{Reason: *blocked}
+	}
+	banned, banErr := isImplementorBanned(store.storage, taskID.String(), task.AssigneeScopeUser.String(), submitterID.String(), "", "")
+	if banErr != nil {
+		return task.SubmissionEligibilityRejected{Reason: *banErr}
+	}
+	if banned {
+		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "implementor is banned from the task")}
 	}
 	if record.Participation == task.ParticipationPolicyOpen.String() {
 		return task.SubmissionEligible{}

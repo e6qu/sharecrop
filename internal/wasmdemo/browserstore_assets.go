@@ -41,6 +41,77 @@ func collectibleOwnerIndexKey(ownerKind string, ownerID string) string {
 func taskCollectibleRewardIndexKey(taskID string) string {
 	return "assets:task_reward_index:" + taskID
 }
+func taskCollectibleRewardRecordKey(taskID string, collectibleID string) string {
+	return "assets:task_reward:" + taskID + ":" + collectibleID
+}
+
+// storedTaskFundCollectible mirrors internal/db's task_fund_collectibles row: a
+// stateless record that exists iff the collectible is currently held for the
+// task's reward. It is deleted on award or refund. The escrowed collectible
+// keeps recording its funder as owner, so a refund returns it there.
+type storedTaskFundCollectible struct {
+	TaskID        string `json:"task_id"`
+	CollectibleID string `json:"collectible_id"`
+}
+
+func putStoredTaskFundCollectibleJSON(storage BrowserStorage, rawKey string, record storedTaskFundCollectible) bool {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return false
+	}
+	return putStorageString(storage, rawKey, string(encoded))
+}
+
+func getStoredTaskFundCollectibleJSON(storage BrowserStorage, rawKey string) (storedTaskFundCollectible, bool, bool) {
+	raw, found, ok := getStorageString(storage, rawKey)
+	if !ok || !found {
+		return storedTaskFundCollectible{}, found, ok
+	}
+	if raw == "" {
+		return storedTaskFundCollectible{}, false, true
+	}
+	var record storedTaskFundCollectible
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return storedTaskFundCollectible{}, false, false
+	}
+	return record, true, true
+}
+
+// loadTaskFundCollectibles returns every held collectible-reward record on a
+// task in escrow order, failing loudly on a broken index or a missing record.
+func loadTaskFundCollectibles(storage BrowserStorage, taskID string) ([]storedTaskFundCollectible, *core.DomainError) {
+	indexResult := loadStringIndex(storage, taskCollectibleRewardIndexKey(taskID), "task collectible reward")
+	loaded, matched := indexResult.(stringIndexLoaded)
+	if !matched {
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return nil, &reason
+	}
+	rewards := make([]storedTaskFundCollectible, 0, len(loaded.values))
+	for _, collectibleID := range loaded.values {
+		record, found, ok := getStoredTaskFundCollectibleJSON(storage, taskCollectibleRewardRecordKey(taskID, collectibleID))
+		if !ok {
+			reason := invalidState("read collectible reward failed")
+			return nil, &reason
+		}
+		if !found {
+			// A deleted (awarded/refunded) reward leaves a tombstone in the
+			// index; skip it rather than failing.
+			continue
+		}
+		rewards = append(rewards, record)
+	}
+	return rewards, nil
+}
+
+// countHeldCollectibleRewards counts the collectibles currently held for a
+// task's reward, used by the display count and the open/cancel invariants.
+func countHeldCollectibleRewards(storage BrowserStorage, taskID string) (int, *core.DomainError) {
+	rewards, err := loadTaskFundCollectibles(storage, taskID)
+	if err != nil {
+		return 0, err
+	}
+	return len(rewards), nil
+}
 
 func putStoredCollectibleJSON(storage BrowserStorage, rawKey string, record storedCollectible) bool {
 	encoded, err := json.Marshal(record)
@@ -199,6 +270,17 @@ func (store AssetBrowserStore) FundCollectibleReward(_ context.Context, command 
 		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be funded")}
 	}
 
+	// Mirror internal/db's (task_id, collectible_id) uniqueness constraint: the
+	// same collectible can never be escrowed twice on the same task,
+	// whatever reward state the earlier escrow reached.
+	_, rewardExists, rewardOK := getStoredTaskFundCollectibleJSON(store.storage, taskCollectibleRewardRecordKey(command.TaskID.String(), command.CollectibleID.String()))
+	if !rewardOK {
+		return assets.FundRewardRejected{Reason: invalidState("read collectible reward failed")}
+	}
+	if rewardExists {
+		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible is already escrowed on this task")}
+	}
+
 	switch record.RewardKind {
 	case "none":
 		record.RewardKind = "collectible"
@@ -212,6 +294,12 @@ func (store AssetBrowserStore) FundCollectibleReward(_ context.Context, command 
 	collectible.State = assets.CollectibleStateEscrowed.String()
 	if !store.saveCollectible(collectible) {
 		return assets.FundRewardRejected{Reason: invalidState("escrow collectible failed")}
+	}
+	reward := storedTaskFundCollectible{
+		TaskID: command.TaskID.String(), CollectibleID: command.CollectibleID.String(),
+	}
+	if !putStoredTaskFundCollectibleJSON(store.storage, taskCollectibleRewardRecordKey(reward.TaskID, reward.CollectibleID), reward) {
+		return assets.FundRewardRejected{Reason: invalidState("insert collectible reward failed")}
 	}
 	if _, matched := appendStringIndex(store.storage, taskCollectibleRewardIndexKey(command.TaskID.String()), command.CollectibleID.String(), "task collectible reward").(stringIndexStored); !matched {
 		return assets.FundRewardRejected{Reason: invalidState("insert collectible reward failed")}
@@ -229,22 +317,30 @@ func (store AssetBrowserStore) RefundCollectibleReward(_ context.Context, comman
 	if taskErr != nil {
 		return assets.RefundRewardRejected{Reason: *taskErr}
 	}
-	if !found || record.CreatedBy != command.RequesterUserID.String() {
-		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner can refund the task")}
+	if !found {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
+	}
+	if reason := requireRefundAuthorizedBrowser(store.storage, record, command.RequesterUserID); reason != nil {
+		return assets.RefundRewardRejected{Reason: *reason}
 	}
 	if record.State != "draft" && record.State != "open" {
-		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only draft or open tasks can be refunded")}
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only tasks that are not yet awarded can be refunded")}
 	}
 	if record.RewardKind == "bundle" {
 		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "bundled rewards must be refunded together")}
 	}
 
+	rewards, rewardsErr := loadTaskFundCollectibles(store.storage, command.TaskID.String())
+	if rewardsErr != nil {
+		return assets.RefundRewardRejected{Reason: *rewardsErr}
+	}
+	if len(rewards) == 0 {
+		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has no collectible reward to refund")}
+	}
+
 	refunded, refundErr := store.releaseHeldCollectibleReward(command.TaskID.String())
 	if refundErr != nil {
 		return assets.RefundRewardRejected{Reason: *refundErr}
-	}
-	if len(refunded) == 0 {
-		return assets.RefundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has no collectible reward to refund")}
 	}
 
 	record.State = "cancelled"
@@ -254,30 +350,42 @@ func (store AssetBrowserStore) RefundCollectibleReward(_ context.Context, comman
 	return assets.RewardRefunded{Values: refunded}
 }
 
-// releaseHeldCollectibleReward returns every held collectible reward on a
-// task to "minted" and reports the released collectibles - shared by
-// RefundCollectibleReward (a genuine collectible-reward refund request) and
-// LedgerBrowserStore.RefundTask (a credit refund on a bundle task, which
-// must also release its collectible half).
-func (store AssetBrowserStore) releaseHeldCollectibleReward(taskID string) ([]assets.Collectible, *core.DomainError) {
-	indexResult := loadStringIndex(store.storage, taskCollectibleRewardIndexKey(taskID), "task collectible reward")
-	loaded, matched := indexResult.(stringIndexLoaded)
-	if !matched {
-		reason := invalidState(indexResult.(stringIndexRejected).reason)
-		return nil, &reason
+// deleteTaskFundCollectible removes a held collectible-reward record and its
+// index entry, used on award/refund when the collectible changes hands.
+func deleteTaskFundCollectible(storage BrowserStorage, taskID string, collectibleID string) bool {
+	if !removeFromStringIndex(storage, taskCollectibleRewardIndexKey(taskID), collectibleID) {
+		return false
 	}
-	released := make([]assets.Collectible, 0, len(loaded.values))
-	for _, collectibleID := range loaded.values {
-		collectible, found, err := store.loadCollectible(collectibleID)
+	return putStorageString(storage, taskCollectibleRewardRecordKey(taskID, collectibleID), "")
+}
+
+// releaseHeldCollectibleReward returns every held collectible reward on a
+// task to "minted" (its escrowed owner is already the funder) and deletes the
+// reward records - shared by RefundCollectibleReward (a genuine collectible
+// -reward refund request) and LedgerBrowserStore.RefundTask (a credit refund
+// on a bundle task, which must also release its collectible half).
+func (store AssetBrowserStore) releaseHeldCollectibleReward(taskID string) ([]assets.Collectible, *core.DomainError) {
+	rewards, rewardsErr := loadTaskFundCollectibles(store.storage, taskID)
+	if rewardsErr != nil {
+		return nil, rewardsErr
+	}
+	released := make([]assets.Collectible, 0, len(rewards))
+	for _, reward := range rewards {
+		collectible, found, err := store.loadCollectible(reward.CollectibleID)
 		if err != nil {
 			return nil, err
 		}
-		if !found || collectible.State != assets.CollectibleStateEscrowed.String() {
-			continue
+		if !found {
+			reason := invalidState("return collectible failed")
+			return nil, &reason
 		}
 		collectible.State = assets.CollectibleStateMinted.String()
 		if !store.saveCollectible(collectible) {
 			reason := invalidState("return collectible failed")
+			return nil, &reason
+		}
+		if !deleteTaskFundCollectible(store.storage, reward.TaskID, reward.CollectibleID) {
+			reason := invalidState("clear collectible reward failed")
 			return nil, &reason
 		}
 		value, parseErr := parseStoredCollectible(collectible)
@@ -290,27 +398,26 @@ func (store AssetBrowserStore) releaseHeldCollectibleReward(taskID string) ([]as
 }
 
 // payOutHeldCollectibleReward transfers every held collectible reward on a
-// task to the accepted worker, mirroring internal/db's payOutCollectible -
-// used by LedgerBrowserStore.AcceptSubmission for collectible/bundle reward
-// tasks.
+// task to the accepted worker (escrowed -> minted, owner = worker) and deletes
+// the reward records, mirroring internal/db's payOutCollectible - used by
+// LedgerBrowserStore.AcceptSubmission for collectible/bundle reward tasks.
 func (store AssetBrowserStore) payOutHeldCollectibleReward(taskID string, workerUserID string) ([]core.CollectibleID, *core.DomainError) {
-	indexResult := loadStringIndex(store.storage, taskCollectibleRewardIndexKey(taskID), "task collectible reward")
-	loaded, matched := indexResult.(stringIndexLoaded)
-	if !matched {
-		reason := invalidState(indexResult.(stringIndexRejected).reason)
-		return nil, &reason
+	rewards, rewardsErr := loadTaskFundCollectibles(store.storage, taskID)
+	if rewardsErr != nil {
+		return nil, rewardsErr
 	}
-	awarded := make([]core.CollectibleID, 0, len(loaded.values))
-	for _, collectibleID := range loaded.values {
-		collectible, found, err := store.loadCollectible(collectibleID)
+	awarded := make([]core.CollectibleID, 0, len(rewards))
+	for _, reward := range rewards {
+		collectible, found, err := store.loadCollectible(reward.CollectibleID)
 		if err != nil {
 			return nil, err
 		}
-		if !found || collectible.State != assets.CollectibleStateEscrowed.String() {
-			continue
+		if !found {
+			reason := invalidState("award collectible failed")
+			return nil, &reason
 		}
 		previousOwnerKind, previousOwnerID := collectible.OwnerKind, collectible.OwnerID
-		collectible.State = assets.CollectibleStateAwarded.String()
+		collectible.State = assets.CollectibleStateMinted.String()
 		collectible.OwnerKind = assets.CollectibleOwnerKindUser
 		collectible.OwnerID = workerUserID
 		if !store.saveCollectible(collectible) {
@@ -321,7 +428,11 @@ func (store AssetBrowserStore) payOutHeldCollectibleReward(taskID string, worker
 			reason := invalidState("update collectible index failed")
 			return nil, &reason
 		}
-		idResult := core.ParseCollectibleID(collectibleID)
+		if !deleteTaskFundCollectible(store.storage, reward.TaskID, reward.CollectibleID) {
+			reason := invalidState("clear collectible reward failed")
+			return nil, &reason
+		}
+		idResult := core.ParseCollectibleID(reward.CollectibleID)
 		id, idMatched := idResult.(core.CollectibleIDCreated)
 		if !idMatched {
 			reason := idResult.(core.CollectibleIDRejected).Reason

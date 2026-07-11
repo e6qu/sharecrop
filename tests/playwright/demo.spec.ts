@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import process from "node:process";
+import { fillDetailResponse } from "./helpers.ts";
 
 // The demo serves the real compiled Elm client against the compiled Go/WASM
 // backend path. It is hosted by the static webServer in playwright.config.ts
@@ -64,7 +65,7 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
   // (valid or not) consumes the active reservation, so a resubmission needs a
   // fresh reservation first, matching the real backend's eligibility check.
   await page.getByTestId("reserve-task").click();
-  await page.getByTestId("detail-submit-input").fill("{}");
+  await fillDetailResponse(page, "{}");
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toContainText(
     "invalid",
@@ -80,7 +81,8 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
     .getByTestId("discovery-view")
     .click();
   await page.getByTestId("reserve-task").click();
-  await page.getByTestId("detail-submit-input").fill(
+  await fillDetailResponse(
+    page,
     '{"invoices":[{"invoice_id":"INV-1041","vendor":"Birch Supply Co","total":"1240.55","due_date":"2026-07-12"}]}',
   );
   await page.getByTestId("detail-submit").click();
@@ -122,7 +124,8 @@ test("demo uploads small task and submission attachments", async ({ page }) => {
     .filter({ hasText: "Classify 8 support tickets by category" })
     .getByTestId("discovery-view")
     .click();
-  await page.getByTestId("detail-submit-input").fill(
+  await fillDetailResponse(
+    page,
     '{"labels":["billing","bug","other","billing","account","feature_request","billing","other"]}',
   );
   const submitChooser = page.waitForEvent("filechooser");
@@ -375,7 +378,7 @@ test("demo owner funds a draft task created with no declared reward", async ({ p
   await page.getByTestId("fund-amount").fill("25");
   await page.getByTestId("fund").click();
   await expect(page.getByTestId("fund-message")).toContainText(
-    "Escrowed 25 credits",
+    "Allocated 25 credits",
   );
 });
 

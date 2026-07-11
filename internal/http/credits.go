@@ -24,7 +24,7 @@ func (server Server) creditsBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, balanceResponse{Amount: found.Value.Int64()})
+	writeJSON(w, http.StatusOK, balanceResponse{SpendableCredits: found.Value.Spendable(), AllocatedCredits: found.Value.Allocated()})
 }
 func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
@@ -35,7 +35,11 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID, page)
 	listed, matched := result.(ledger.EntriesListed)
 	if !matched {
 		rejected := result.(ledger.ListEntriesRejected)
@@ -61,11 +65,10 @@ func ledgerEntryToResponse(entry ledger.LedgerEntry) ledgerEntryResponse {
 		TaskID: taskID,
 	}
 }
-func escrowToResponse(escrow ledger.TaskEscrow) taskEscrowResponse {
-	return taskEscrowResponse{
-		TaskID: escrow.TaskID.String(),
-		Amount: escrow.Amount.Int64(),
-		State:  escrow.State.String(),
+func fundToResponse(fund ledger.TaskFund) taskFundResponse {
+	return taskFundResponse{
+		TaskID:       fund.TaskID.String(),
+		CreditAmount: fund.CreditAmount.Int64(),
 	}
 }
 func collectibleIDStrings(ids []core.CollectibleID) []string {

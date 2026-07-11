@@ -249,9 +249,16 @@ type AccountTokenIssueRejected struct {
 	Reason core.DomainError
 }
 
-func (AccountTokenIssued) accountTokenIssueResult() {}
+// AccountTokenIssueIgnored reports that no token was issued but the caller
+// must not learn that (an unknown-email password-reset request), so the
+// handler returns the same neutral response it returns for a real one. This
+// avoids the account-existence enumeration oracle a distinct error would
+// create.
+type AccountTokenIssueIgnored struct{}
 
+func (AccountTokenIssued) accountTokenIssueResult()        {}
 func (AccountTokenIssueRejected) accountTokenIssueResult() {}
+func (AccountTokenIssueIgnored) accountTokenIssueResult()  {}
 
 func (service Service) RequestEmailVerification(ctx context.Context, userID core.UserID) AccountTokenIssueResult {
 	return service.issueAccountToken(ctx, userID, AccountTokenKindEmailVerification)
@@ -264,7 +271,9 @@ func (service Service) RequestPasswordReset(ctx context.Context, email EmailAddr
 		return AccountTokenIssueRejected{Reason: rejected.Reason}
 	}
 	if !matched {
-		return AccountTokenIssueRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account was not found")}
+		// Do not reveal whether the email is registered: return the same
+		// neutral outcome as a successful request.
+		return AccountTokenIssueIgnored{}
 	}
 	return service.issueAccountToken(ctx, found.Record.UserID, AccountTokenKindPasswordReset)
 }

@@ -22,7 +22,11 @@ func (server Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.notificationService.List(r.Context(), actor.subject.ID, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.notificationService.List(r.Context(), actor.subject.ID, page)
 	listed, listedMatched := result.(notification.NotificationsListed)
 	if !listedMatched {
 		writeDomainError(w, result.(notification.ListRejected).Reason)

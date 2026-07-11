@@ -1,6 +1,7 @@
 module Sharecrop.Types exposing (..)
 
 import Browser
+import Dict
 import Browser.Navigation as Nav
 import File
 import Http
@@ -99,13 +100,23 @@ type alias SelectedAttachment =
     }
 
 
+{-| A credit account's two sections: spendable credits (what can be spent or
+used to fund tasks) and credits currently allocated to (locked in) tasks,
+which cannot be spent until the task finishes or is refunded.
+-}
+type alias Wallet =
+    { spendable : Int
+    , allocated : Int
+    }
+
+
 type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
     , isAdmin : Bool
     , page : Page
     , openNavMenu : Maybe String
-    , balance : Maybe Int
+    , balance : Maybe Wallet
     , entries : List Ledger.LedgerEntryResponse
     , ledgerOffset : Int
     , createTitle : String
@@ -117,6 +128,7 @@ type alias LoggedInModel =
     , createPayloadJson : String
     , createRewardKind : String
     , createRewardAmount : String
+    , createRewardAmountInvalid : Bool
     , createRewardCollectibleIds : List String
     , createVisibility : String
     , createScopeUserId : String
@@ -126,11 +138,11 @@ type alias LoggedInModel =
     , createParticipationPolicy : String
     , createReservationHours : String
     , createAttachments : List SelectedAttachment
-    , createMessage : Maybe String
+    , createMessage : Maybe Note
     , fundTaskId : String
     , fundAmount : String
     , fundOrganizationId : String
-    , fundMessage : Maybe String
+    , fundMessage : Maybe Note
     , fundNonce : Int
     , tasks : List Task.TaskListItemResponse
     , taskStateFilter : List String
@@ -143,7 +155,7 @@ type alias LoggedInModel =
     , agentExpiresHours : String
     , credentials : List Agent.AgentCredentialResponse
     , newCredential : Maybe Agent.AgentCredentialCreatedResponse
-    , agentMessage : Maybe String
+    , agentMessage : Maybe Note
     , discoveryTasks : List Task.TaskListItemResponse
     , discoveryIncludeReserved : Bool
     , discoveryOffset : Int
@@ -153,45 +165,49 @@ type alias LoggedInModel =
     , reservations : List Task.TaskReservationResponse
     , reservationOrganizationId : String
     , reservationTeamId : String
-    , reservationMessage : Maybe String
+    , reservationMessage : Maybe Note
     , reservationSecret : Maybe String
     , submissions : List Submission.SubmissionResponse
     , submitInput : String
+    , submitFieldValues : Dict.Dict String String
+    , submitRawMode : Bool
     , submitAttachments : List SelectedAttachment
-    , submitMessage : Maybe String
+    , submitMessage : Maybe Note
     , moderationReason : Moderation.ModerationReason
     , moderationDetails : String
-    , moderationMessage : Maybe String
+    , moderationMessage : Maybe Note
     , reviewNote : String
     , reviewPartialCredit : String
     , reviewTip : String
     , reviewTipCollectibleId : String
     , reviewBan : Bool
-    , reviewMessage : Maybe String
+    , reviewMessage : Maybe Note
     , collectibles : List Collectible.CollectibleResponse
     , collectibleName : String
     , collectibleKind : Collectible.CollectibleKind
     , collectiblePolicy : Collectible.CollectibleTransferPolicy
-    , collectibleMessage : Maybe String
+    , collectibleMessage : Maybe Note
     , awardTaskId : String
-    , awardMessage : Maybe String
-    , awardDefaultMessage : Maybe String
+    , awardMessage : Maybe Note
+    , awardDefaultMessage : Maybe Note
     , collectibleCatalog : List Collectible.CollectibleCatalogEntry
     , awardRecipientKind : String
     , awardRecipientId : String
     , transferRecipientId : String
-    , transferMessage : Maybe String
+    , transferMessage : Maybe Note
     , organizations : List Organization.OrganizationResponse
     , createOrgName : String
-    , orgMessage : Maybe String
+    , orgMessage : Maybe Note
     , activeOrgId : String
-    , orgBalance : Maybe Int
+    , orgBalance : Maybe Wallet
     , orgLedger : List Ledger.LedgerEntryResponse
     , orgLedgerOffset : Int
     , orgAuditEvents : List Admin.AuditEventResponse
-    , orgAuditMessage : Maybe String
+    , orgAuditMessage : Maybe Note
     , orgTeams : List Team.TeamResponse
     , standaloneTeams : List Team.TeamResponse
+    , createTeamName : String
+    , createTeamMessage : Maybe Note
     , orgMembers : List Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
     , orgTaskQuery : String
@@ -199,21 +215,21 @@ type alias LoggedInModel =
     , orgTaskTypeFilter : String
     , orgTaskSort : String
     , orgTaskOffset : Int
-    , orgTaskMessage : Maybe String
+    , orgTaskMessage : Maybe Note
     , orgTaskSavedViewName : String
     , orgTaskSavedViews : List QueueView
     , orgCollectibles : List Collectible.CollectibleResponse
-    , orgCollectiblesMessage : Maybe String
+    , orgCollectiblesMessage : Maybe Note
     , awardOrgCollectibleRecipientId : String
-    , awardOrgCollectibleMessage : Maybe String
+    , awardOrgCollectibleMessage : Maybe Note
     , orgCredentials : List Agent.OrgCredentialResponse
     , orgCredentialLabel : String
     , orgCredentialScopes : List Agent.AgentScope
     , orgCredentialExpiresHours : String
     , newOrgCredential : Maybe Agent.OrgCredentialCreatedResponse
-    , orgCredentialMessage : Maybe String
+    , orgCredentialMessage : Maybe Note
     , teamCollectibles : List Collectible.CollectibleResponse
-    , teamCollectiblesMessage : Maybe String
+    , teamCollectiblesMessage : Maybe Note
     , userProfile : Maybe Task.UserProfileResponse
     , userProfileError : Maybe String
     , userWork : List Task.TaskListItemResponse
@@ -226,7 +242,7 @@ type alias LoggedInModel =
     , seriesList : List TaskSeries.TaskSeriesResponse
     , createSeriesTitle : String
     , createSeriesDescription : String
-    , seriesMessage : Maybe String
+    , seriesMessage : Maybe Note
     , addSeriesTaskId : String
     , seriesCommentBody : String
     , seriesRenameTitle : String
@@ -239,35 +255,37 @@ type alias LoggedInModel =
     , teamWorkTypeFilter : String
     , teamWorkSort : String
     , teamWorkOffset : Int
-    , teamWorkMessage : Maybe String
+    , teamWorkMessage : Maybe Note
     , teamWorkSavedViewName : String
     , teamWorkSavedViews : List QueueView
     , teamMemberEmail : String
-    , teamMemberMessage : Maybe String
+    , teamMemberMessage : Maybe Note
     , createOrgTeamName : String
-    , orgTeamMessage : Maybe String
+    , orgTeamMessage : Maybe Note
     , provisionMemberEmail : String
     , provisionMemberRoles : List String
-    , provisionMemberMessage : Maybe String
+    , provisionMemberMessage : Maybe Note
     , createTaskOwner : String
     , createTaskType : String
     , createReferenceURL : String
     , taskComments : List Task.TaskCommentResponse
     , taskCommentBody : String
-    , taskCommentMessage : Maybe String
+    , taskCommentMessage : Maybe Note
     , submissionComments : List Submission.SubmissionCommentResponse
     , activeSubmissionCommentsID : Maybe String
     , submissionCommentBody : String
-    , submissionCommentMessage : Maybe String
+    , submissionCommentMessage : Maybe Note
     , taskAgentToken : Maybe String
-    , taskActionMessage : Maybe String
+    , taskActionMessage : Maybe Note
     , userAgentToken : Maybe String
     , accountEmail : String
     , currentPassword : String
     , newPassword : String
     , emailVerificationToken : String
     , emailVerificationInput : String
-    , accountMessage : Maybe String
+    , accountMessage : Maybe Note
+    , deactivateConfirming : Bool
+    , myPrivacyRequests : List Privacy.PrivacyRequestResponse
     , userDirectory : List UserDirectoryEntry
     , userDirectoryQuery : String
     , userDirectoryOffset : Int
@@ -294,10 +312,10 @@ type alias LoggedInModel =
     , auditActionFilter : String
     , auditSubjectKindFilter : String
     , auditSubjectIDFilter : String
-    , adminMessage : Maybe String
+    , adminMessage : Maybe Note
     , notifications : List Notification.NotificationResponse
     , notificationsOffset : Int
-    , inboxMessage : Maybe String
+    , inboxMessage : Maybe Note
     }
 
 
@@ -341,6 +359,7 @@ type alias Model =
     , resetToken : String
     , resetPassword : String
     , authError : Maybe String
+    , authNotice : Maybe String
     , session : Session
     }
 
@@ -405,13 +424,13 @@ type Msg
     | FundAmountChanged String
     | FundClicked
     | FundOrganizationIdChanged String
-    | FundReceived (Result Http.Error Ledger.TaskEscrowResponse)
+    | FundReceived (Result Http.Error Ledger.TaskFundResponse)
     | OpenTaskClicked String
     | OpenTaskReceived (Result Http.Error TaskDetail)
     | UnpublishTaskClicked String
     | UnpublishTaskReceived (Result Http.Error TaskDetail)
     | RefundTaskClicked String
-    | RefundTaskReceived (Result Http.Error Ledger.TaskEscrowResponse)
+    | RefundTaskReceived (Result Http.Error Ledger.TaskFundResponse)
     | CancelTaskClicked String
     | CancelTaskReceived (Result Http.Error TaskDetail)
     | RefundCollectibleRewardClicked String
@@ -619,11 +638,21 @@ type Msg
     | UpdateProfileClicked
     | ChangePasswordClicked
     | DeactivateAccountClicked
+    | ConfirmDeactivateAccountClicked
+    | CancelDeactivateAccountClicked
     | EmailVerificationRequested (Result Http.Error String)
     | AccountActionReceived (Result Http.Error ())
     | DeactivateAccountReceived (Result Http.Error ())
     | PrivacyRequestClicked Privacy.PrivacyRequestKind
     | PrivacyRequestReceived (Result Http.Error Privacy.PrivacyRequestResponse)
+    | MyPrivacyRequestsReceived (Result Http.Error Privacy.PrivacyRequestsResponse)
+    | CreateTeamNameChanged String
+    | CreateTeamClicked
+    | TeamCreated (Result Http.Error Team.TeamResponse)
+    | SubmitFieldChanged String String
+    | SubmitRawModeToggled Bool
+    | SessionRefreshTick Time.Posix
+    | SessionRefreshed (Result Http.Error Auth.AuthResponse)
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
     | PreviousAuditEventsPageClicked
@@ -748,6 +777,27 @@ visibilityOrganizationTag =
 allVisibilityTags : List String
 allVisibilityTags =
     [ visibilityPublicTag, visibilityDefaultTag, visibilityUserTag, visibilityTeamTag, visibilityOrganizationTag ]
+
+
+-- Note is a user-facing outcome message. Failures and successes carry the
+-- same shape of text but must not look the same, so the distinction is made
+-- at the type level where the outcome is known (the update handler), not
+-- guessed from wording in the view.
+
+
+type Note
+    = SuccessNote String
+    | FailureNote String
+
+
+-- pageSize is the limit sent with every paginated list request. Views use it
+-- to tell when a page is the last one (a short page), so the Next button can
+-- be disabled instead of paging into blank pages.
+
+
+pageSize : Int
+pageSize =
+    20
 
 
 visibilityLabel : String -> String

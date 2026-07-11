@@ -199,7 +199,7 @@ Go libraries:
 
 - `github.com/jackc/pgx/v5` v5.10.0 for PostgreSQL access.
 - `github.com/golang-jwt/jwt/v5` v5.3.1 for JWT handling, contained in `internal/auth`.
-- `golang.org/x/crypto` v0.53.0 for Argon2id, contained in `internal/auth`.
+- `golang.org/x/crypto` v0.54.0 for Argon2id, contained in `internal/auth`.
 - `github.com/google/uuid` v1.6.0 for UUIDv7/UUID parsing, contained in `internal/core/id`.
 
 Not included:
@@ -1266,9 +1266,26 @@ Package intent:
 
 ## Open Questions
 
-- Should first-version organization-scoped tasks be visible to all organization members by default, or only selected organization users/teams?
-- What anonymous worker identity and payout model should be used before anonymous submissions return?
-- Should platform collectibles be transferable immediately, or should some collectibles be account-bound?
+Two of the original open questions are settled by the implementation:
+
+- Organization task default visibility: when task creation asks for the
+  `default` visibility kind, visibility follows the owner
+  (`defaultVisibilityForOwner` in `internal/http/tasks.go`). An
+  organization-owned task defaults to organization-wide visibility (all
+  organization members); an organization-team-owned task defaults to that
+  team. Narrower scoping uses an explicit `organization_team`, `team`, or
+  `user` visibility.
+- Collectible transferability: transferability is a per-collectible transfer
+  policy chosen at mint time (`internal/assets/policy.go`):
+  `non_transferable_except_payout` (account-bound outside payout),
+  `transferable_between_users`, `transferable_within_organization`, and
+  `issuer_controlled`.
+
+Still open, and dormant by product decision:
+
+- What anonymous worker identity and payout model should be used if
+  anonymous submissions return. Submissions currently require registered
+  users.
 
 ## Chosen Implementation Defaults
 
@@ -1695,7 +1712,7 @@ Acceptance checks:
 
 ## Current Roadmap
 
-The codebase has implemented through pull request 15 on `main`. The requester ergonomics and task-page instructions branch is the next implementation pull request.
+The numbered pull-request roadmap in this plan is fully implemented and merged into `main`, including every section below (reservation foundations, requester ergonomics, review outcomes, reward bundles, and MCP Streamable HTTP). The sections are kept as a record of the agreed scope and defaults. Later work is tracked in [DO_NEXT.md](./DO_NEXT.md), [STATUS.md](./STATUS.md), and [WHAT_WE_DID.md](./WHAT_WE_DID.md), not by extending this roadmap.
 
 ### Reservation, Approval, And Discovery Availability Foundations
 

@@ -5,6 +5,7 @@ import Html exposing (Html, a, button, div, form, h3, label, main_, nav, option,
 import Html.Keyed
 import Html.Attributes exposing (checked, disabled, href, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
+import Dict
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Sharecrop.Generated.Admin as Admin
@@ -19,8 +20,9 @@ import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
+import Sharecrop.ResponseSchema as ResponseSchema
 import Sharecrop.Sprites as Sprites
-import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, escrowStateLabel, kindLabel, participationPolicyLabel, participationPolicyTag, participationUsesReservation, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
+import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, kindLabel, participationPolicyLabel, participationPolicyTag, participationUsesReservation, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
 import Sharecrop.Types exposing (..)
 import Sharecrop.Ui as Ui exposing (testId)
 
@@ -63,10 +65,20 @@ authView model =
         , Ui.textInput [ type_ "email", placeholder "Email", value model.email, onInput EmailChanged, testId "email" ]
         , Ui.textInput [ type_ "password", placeholder "Password", value model.password, onInput PasswordChanged, testId "password" ]
         , div [ Html.Attributes.class "flex gap-3" ]
-            [ Ui.primaryButton [ type_ "submit", testId "login" ] "Log in"
-            , Ui.secondaryButton [ type_ "button", onClick RegisterClicked, testId "register" ] "Register"
-            , Ui.secondaryButton [ type_ "button", onClick GuestClicked, testId "guest-login" ] "Continue as guest"
-            ]
+            ([ Ui.primaryButton [ type_ "submit", testId "login" ] "Log in"
+             , Ui.secondaryButton [ type_ "button", onClick RegisterClicked, testId "register" ] "Register"
+             ]
+                -- Guest sessions only work against the demo backend; the
+                -- real API rejects the guest subject on every data route, so
+                -- offering the button there is a dead end (empty lists and
+                -- failing actions with no explanation).
+                ++ (if model.demo then
+                        [ Ui.secondaryButton [ type_ "button", onClick GuestClicked, testId "guest-login" ] "Continue as guest" ]
+
+                    else
+                        []
+                   )
+            )
         , div [ Html.Attributes.class "space-y-2 border-t border-slate-100 pt-4" ]
             [ Ui.label_ "Password reset"
             , Ui.textInput [ type_ "email", placeholder "Account email", value model.resetEmail, onInput PasswordResetEmailChanged, testId "reset-email" ]
@@ -77,6 +89,12 @@ authView model =
             , Ui.secondaryButton [ type_ "button", onClick ConfirmPasswordResetClicked, testId "confirm-password-reset" ] "Reset password"
             ]
         , maybeError model.authError "auth-error"
+        , case model.authNotice of
+            Just notice ->
+                Ui.successText "auth-notice" notice
+
+            Nothing ->
+                text ""
         ]
 
 
@@ -218,7 +236,7 @@ adminView state =
             , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
                 [ Ui.secondaryButton [ type_ "button", onClick SearchAuditEventsClicked, testId "admin-audit-search" ] "Search"
                 ]
-            , paginationControls "admin-audit-page" PreviousAuditEventsPageClicked NextAuditEventsPageClicked state.auditEventsOffset
+            , paginationControls "admin-audit-page" PreviousAuditEventsPageClicked NextAuditEventsPageClicked state.auditEventsOffset (List.length state.auditEvents)
             , if List.isEmpty state.auditEvents then
                 p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-audit-empty" ] [ text "No audit events." ]
 
@@ -234,7 +252,7 @@ adminView state =
             , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
                 [ Ui.secondaryButton [ type_ "button", onClick GrantPlatformAdminClicked, disabled (String.trim state.adminSelectedUserId == ""), testId "admin-grant-platform-admin" ] "Grant"
                 ]
-            , paginationControls "admin-platform-admins-page" PreviousPlatformAdminsPageClicked NextPlatformAdminsPageClicked state.platformAdminsOffset
+            , paginationControls "admin-platform-admins-page" PreviousPlatformAdminsPageClicked NextPlatformAdminsPageClicked state.platformAdminsOffset (List.length state.platformAdmins)
             , if List.isEmpty state.platformAdmins then
                 p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-platform-admins-empty" ] [ text "No platform admins." ]
 
@@ -256,7 +274,7 @@ adminView state =
                     Nothing ->
                         text ""
                 ]
-            , paginationControls "admin-privacy-page" PreviousAdminPrivacyPageClicked NextAdminPrivacyPageClicked state.adminPrivacyOffset
+            , paginationControls "admin-privacy-page" PreviousAdminPrivacyPageClicked NextAdminPrivacyPageClicked state.adminPrivacyOffset (List.length state.adminPrivacyRequests)
             , if List.isEmpty state.adminPrivacyRequests then
                 p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-privacy-empty" ] [ text "No privacy requests." ]
 
@@ -279,7 +297,7 @@ adminView state =
                 , Ui.fieldLabel "Triage note"
                     [ Ui.textInput [ placeholder "Decision note", value state.adminModerationResolutionNote, onInput AdminModerationResolutionNoteChanged, testId "admin-moderation-note" ] ]
                 ]
-            , paginationControls "admin-moderation-page" PreviousAdminModerationPageClicked NextAdminModerationPageClicked state.adminModerationOffset
+            , paginationControls "admin-moderation-page" PreviousAdminModerationPageClicked NextAdminModerationPageClicked state.adminModerationOffset (List.length state.adminModerationReports)
             , if List.isEmpty state.adminModerationReports then
                 p [ Html.Attributes.class "text-sm text-slate-500", testId "admin-moderation-empty" ] [ text "No moderation reports." ]
 
@@ -414,7 +432,7 @@ inboxView state =
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "inbox-list" ]
                 (List.map notificationRow state.notifications)
-        , paginationControls "inbox-page" PreviousNotificationsPageClicked NextNotificationsPageClicked state.notificationsOffset
+        , paginationControls "inbox-page" PreviousNotificationsPageClicked NextNotificationsPageClicked state.notificationsOffset (List.length state.notifications)
         , maybeNote state.inboxMessage "inbox-message"
         ]
 
@@ -557,7 +575,14 @@ teamDetailView teamId state =
                       else
                         div [ Html.Attributes.class "divide-y divide-slate-100", testId "team-members" ]
                             (List.map (\memberId -> a [ href ("#/users/" ++ memberId), Html.Attributes.class "block py-2 text-sm underline", testId "team-member-row" ] [ text memberId ]) detail.members)
-                    , if detail.team.ownerKind == "user" && detail.team.ownerUserID == state.subjectId then
+                    -- Shown for the user-owner AND for org-owned teams: the
+                    -- backend allows anyone with manage-teams permission on
+                    -- the owning org to add members, and the client does not
+                    -- load the viewer's org roles here, so it lets the server
+                    -- decide (an unauthorized attempt gets a clear rejection
+                    -- in team-member-message). Hiding it entirely made
+                    -- org-owned teams impossible to populate in the browser.
+                    , if detail.team.ownerKind == "organization" || (detail.team.ownerKind == "user" && detail.team.ownerUserID == state.subjectId) then
                         form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit (AddTeamMemberClicked detail.team.id) ]
                             [ Ui.fieldLabel "Add member by email"
                                 [ Ui.textInput [ type_ "email", placeholder "person@example.com", value state.teamMemberEmail, onInput TeamMemberEmailChanged, testId "team-member-email" ] ]
@@ -600,7 +625,7 @@ teamWorkDashboard teamId state =
             List.filter (\item -> item.activeAssigneeID == teamId) filteredTasks
     in
     div [ Html.Attributes.class "space-y-4", testId "team-work-dashboard" ]
-        [ Ui.disclosure "team-work-filters" (teamWorkFiltersActive state) "Filters" <|
+        [ Ui.disclosure "team-work-filters" False "Filters" <|
             [ Ui.fieldLabel "Search team work"
                 [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.teamWorkQuery, onInput TeamWorkQueryChanged, testId "team-work-query" ] ]
             , taskTypeFilterSelect "team-work-type" state.teamWorkTypeFilter TeamWorkTypeFilterChanged
@@ -619,17 +644,12 @@ teamWorkDashboard teamId state =
                 , prefix = "team-work"
                 }
             ]
-        , paginationControls "team-work-page" PreviousTeamWorkPageClicked NextTeamWorkPageClicked state.teamWorkOffset
+        , paginationControls "team-work-page" PreviousTeamWorkPageClicked NextTeamWorkPageClicked state.teamWorkOffset (List.length state.teamWork)
         , teamWorkSection state.subjectId "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
         , teamWorkSection state.subjectId "Ready for team" "team-ready-work" "No team-visible tasks are ready for action." readyForTeam
         , teamWorkSection state.subjectId "Assigned to team" "team-assigned-work" "No tasks are currently assigned to this team." assignedToTeam
         , maybeNote state.teamWorkMessage "team-work-message"
         ]
-
-
-teamWorkFiltersActive : LoggedInModel -> Bool
-teamWorkFiltersActive state =
-    state.teamWorkFilter /= "" || state.teamWorkQuery /= "" || state.teamWorkTypeFilter /= "" || state.teamWorkSort /= "newest"
 
 
 teamWorkFilterOptions : List ( String, String )
@@ -831,11 +851,18 @@ collectibleDetailView collectibleId state =
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Kind: " ++ collectibleKindLabel collectible.kind) ]
                     , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ collectibleStateLabel collectible.state) ]
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Transfer policy: " ++ collectiblePolicyLabel collectible.transferPolicy) ]
-                    , div [ Html.Attributes.class "mt-3 space-y-2" ]
-                        [ Ui.label_ "Trade to another user"
-                        , userPicker "transfer-recipient-id" state.transferRecipientId state.userDirectoryQuery TransferRecipientIdChanged "Choose user" state.userDirectory state.userDirectoryOffset
-                        , Ui.primaryButton [ type_ "button", onClick (TransferCollectibleClicked collectible.id), testId "transfer-collectible" ] "Trade"
-                        ]
+                    , case collectible.transferPolicy of
+                        Collectible.CollectibleTransferPolicyTransferableBetweenUsers ->
+                            tradeControls collectible state
+
+                        Collectible.CollectibleTransferPolicyTransferableWithinOrganization ->
+                            tradeControls collectible state
+
+                        Collectible.CollectibleTransferPolicyNonTransferableExceptPayout ->
+                            tradeUnavailableNote "This collectible's policy only allows it to move as a task payout, so it cannot be traded directly."
+
+                        Collectible.CollectibleTransferPolicyIssuerControlled ->
+                            tradeUnavailableNote "This collectible's policy only allows its issuer to move it, so it cannot be traded directly."
                     ]
 
             [] ->
@@ -845,6 +872,20 @@ collectibleDetailView collectibleId state =
         -- even after the traded collectible leaves your holdings.
         , maybeNote state.transferMessage "transfer-message"
         ]
+
+
+tradeControls : Collectible.CollectibleResponse -> LoggedInModel -> Html Msg
+tradeControls collectible state =
+    div [ Html.Attributes.class "mt-3 space-y-2" ]
+        [ Ui.label_ "Trade to another user"
+        , userPicker "transfer-recipient-id" state.transferRecipientId state.userDirectoryQuery TransferRecipientIdChanged "Choose user" state.userDirectory state.userDirectoryOffset
+        , Ui.primaryButton [ type_ "button", onClick (TransferCollectibleClicked collectible.id), testId "transfer-collectible" ] "Trade"
+        ]
+
+
+tradeUnavailableNote : String -> Html Msg
+tradeUnavailableNote reason =
+    p [ Html.Attributes.class "mt-3 text-sm text-slate-500", testId "transfer-unavailable" ] [ text reason ]
 
 
 {-| The Series section embedded on the Tasks hub (see `tasksView`) — content
@@ -1211,7 +1252,7 @@ userSubmissionsSection state =
           else
             div [ Html.Attributes.class "divide-y divide-slate-100", testId "user-submissions" ]
                 (List.map userSubmissionRow submissions)
-        , paginationControls "user-submissions-page" PreviousUserSubmissionsPageClicked NextUserSubmissionsPageClicked state.userSubmissionsOffset
+        , paginationControls "user-submissions-page" PreviousUserSubmissionsPageClicked NextUserSubmissionsPageClicked state.userSubmissionsOffset (List.length state.userSubmissions)
         ]
     , revisionTimelineView submissions
     ]
@@ -1350,13 +1391,74 @@ accountSettingsCard state =
                 [ Ui.secondaryButton [ type_ "button", onClick (PrivacyRequestClicked Privacy.PrivacyRequestKindDataExport), testId "request-data-export" ] "Request data export"
                 , Ui.secondaryButton [ type_ "button", onClick (PrivacyRequestClicked Privacy.PrivacyRequestKindSensitiveFieldDeletion), testId "request-sensitive-deletion" ] "Request sensitive-field deletion"
                 ]
+            , myPrivacyRequestsList state.myPrivacyRequests
             ]
         , Ui.disclosure "account-deactivate"
             False
             "Deactivate account"
-            [ Ui.dangerButton [ type_ "button", onClick DeactivateAccountClicked, testId "deactivate-account" ] "Deactivate account" ]
+            (if state.deactivateConfirming then
+                [ p [ Html.Attributes.class "text-sm text-red-700", testId "deactivate-confirm-warning" ]
+                    [ text "This permanently deactivates your account: your password and tokens are revoked and your email is anonymized. It cannot be undone." ]
+                , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                    [ Ui.dangerButton [ type_ "button", onClick ConfirmDeactivateAccountClicked, testId "confirm-deactivate-account" ] "Yes, deactivate my account"
+                    , Ui.secondaryButton [ type_ "button", onClick CancelDeactivateAccountClicked, testId "cancel-deactivate-account" ] "Keep my account"
+                    ]
+                ]
+
+             else
+                [ Ui.dangerButton [ type_ "button", onClick DeactivateAccountClicked, testId "deactivate-account" ] "Deactivate account" ]
+            )
         , maybeNote state.accountMessage "account-message"
         ]
+
+
+-- myPrivacyRequestsList shows the caller's own privacy requests with their
+-- status: previously a queued request was a dead end (only platform admins
+-- could ever see its state or the export result).
+myPrivacyRequestsList : List Privacy.PrivacyRequestResponse -> Html Msg
+myPrivacyRequestsList requests =
+    if List.isEmpty requests then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "my-privacy-empty" ] [ text "No privacy requests yet." ]
+
+    else
+        div [ Html.Attributes.class "space-y-2", testId "my-privacy-requests" ] (List.map myPrivacyRequestRow requests)
+
+
+privacyRequestKindText : String -> String
+privacyRequestKindText kind =
+    case kind of
+        "data_export" ->
+            "Data export"
+
+        "sensitive_field_deletion" ->
+            "Sensitive-field deletion"
+
+        other ->
+            other
+
+
+myPrivacyRequestRow : Privacy.PrivacyRequestResponse -> Html Msg
+myPrivacyRequestRow request =
+    div [ Html.Attributes.class "space-y-1 rounded-md bg-slate-50 p-2 text-sm", testId "my-privacy-request" ]
+        ([ div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+            [ span [ Html.Attributes.class "font-medium" ] [ text (privacyRequestKindText request.kind) ]
+            , Ui.badge request.status
+            , span [ Html.Attributes.class "text-xs text-slate-500" ] [ text request.createdAt ]
+            ]
+         ]
+            ++ (if request.resolutionNote /= "" then
+                    [ p [ Html.Attributes.class "text-xs text-slate-600" ] [ text ("Resolution: " ++ request.resolutionNote) ] ]
+
+                else
+                    []
+               )
+            ++ (if request.exportJSON /= "" then
+                    [ Ui.codeBlock [ testId "my-privacy-export" ] request.exportJSON ]
+
+                else
+                    []
+               )
+        )
 
 
 userAgentAccessCard : String -> LoggedInModel -> Html Msg
@@ -1435,7 +1537,38 @@ organizationsView state =
             , Ui.primaryButton [ type_ "submit", testId "create-org" ] "Create organization"
             ]
         , maybeNote state.orgMessage "org-message"
+
+        -- Standalone teams previously existed only inside <select> pickers:
+        -- there was no way to create one in the browser and no link to a
+        -- team's page outside organization pages.
+        , Ui.sectionTitle "Teams"
+        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Personal teams for sharing tasks with a fixed group, outside any organization." ]
+        , standaloneTeamsList state.standaloneTeams
+        , form [ Html.Attributes.class "mt-3 flex flex-wrap items-end gap-2", onSubmit CreateTeamClicked ]
+            [ Ui.fieldLabel "New team"
+                [ Ui.textInput [ type_ "text", placeholder "Team name", value state.createTeamName, onInput CreateTeamNameChanged, testId "create-team-name" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "create-team" ] "Create team"
+            ]
+        , maybeNote state.createTeamMessage "create-team-message"
         ]
+
+
+standaloneTeamsList : List Team.TeamResponse -> Html Msg
+standaloneTeamsList teams =
+    if List.isEmpty teams then
+        p [ Html.Attributes.class "text-sm text-slate-500", testId "standalone-teams-empty" ] [ text "No teams yet." ]
+
+    else
+        div [ Html.Attributes.class "divide-y divide-slate-100", testId "standalone-teams" ]
+            (List.map
+                (\team ->
+                    div [ Html.Attributes.class "flex items-center justify-between gap-2 py-2" ]
+                        [ span [ Html.Attributes.class "text-sm font-medium" ] [ text team.name ]
+                        , a [ href ("#/teams/" ++ team.id), Html.Attributes.class Ui.secondaryButtonClass, testId "standalone-team-open" ] [ text "Open" ]
+                        ]
+                )
+                teams
+            )
 
 
 organizationDetailView : LoggedInModel -> Html Msg
@@ -1470,15 +1603,12 @@ activeOrganizationView state =
         text ""
 
     else
-        let
-            orgTaskFiltersActive =
-                state.orgTaskFilter /= "" || state.orgTaskQuery /= "" || state.orgTaskTypeFilter /= "" || state.orgTaskSort /= "newest"
-        in
         div [ Html.Attributes.class "mt-4 space-y-4 rounded-md bg-slate-50 p-4", testId "active-organization" ]
-            [ Ui.label_ ("Balance: " ++ balanceLabel state.orgBalance)
-            , organizationOperationsDashboard state
+            (Ui.label_ ("Spendable balance: " ++ balanceLabel state.orgBalance)
+                :: allocatedLine state.orgBalance
+                ++ [ organizationOperationsDashboard state
             , Ui.sectionTitleWithCount "Organization tasks" (List.length state.orgTasks) "org-tasks-heading"
-            , Ui.disclosure "org-task-filters" orgTaskFiltersActive "Filters" [ orgTaskControls state ]
+            , Ui.disclosure "org-task-filters" False "Filters" [ orgTaskControls state ]
             , tasksListSimple "org-tasks" state.orgTasks
             , maybeNote state.orgTaskMessage "org-task-message"
             , Ui.disclosure "org-teams-section" False ("Teams (" ++ String.fromInt (List.length state.orgTeams) ++ ")") <|
@@ -1530,6 +1660,7 @@ activeOrganizationView state =
                     ]
                 ]
             ]
+            )
 
 
 orgScopeCheckbox : List Agent.AgentScope -> Agent.AgentScope -> Html Msg
@@ -1620,11 +1751,11 @@ orgLedgerPanel entries offset =
             table [ Html.Attributes.class "w-full text-left text-sm" ]
                 [ tbody [ testId "org-ledger" ] (List.map ledgerRow entries)
                 ]
-        , paginationControls "org-ledger-page" PreviousOrgLedgerPageClicked NextOrgLedgerPageClicked offset
+        , paginationControls "org-ledger-page" PreviousOrgLedgerPageClicked NextOrgLedgerPageClicked offset (List.length entries)
         ]
 
 
-orgAuditPanel : List Admin.AuditEventResponse -> Maybe String -> Html Msg
+orgAuditPanel : List Admin.AuditEventResponse -> Maybe Note -> Html Msg
 orgAuditPanel events message =
     div [ Html.Attributes.class "space-y-2", testId "org-audit-panel" ]
         [ h3 [ Html.Attributes.class "text-sm font-semibold text-slate-900" ] [ text "Organization audit" ]
@@ -1679,7 +1810,7 @@ orgTaskControls state =
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             [ Ui.secondaryButton [ type_ "button", onClick SearchOrgTasksClicked, testId "org-task-search" ] "Search"
             ]
-        , paginationControls "org-tasks-page" PreviousOrgTasksPageClicked NextOrgTasksPageClicked state.orgTaskOffset
+        , paginationControls "org-tasks-page" PreviousOrgTasksPageClicked NextOrgTasksPageClicked state.orgTaskOffset (List.length state.orgTasks)
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "org-task-filter" ]
             (List.map (orgTaskFilterButton state.orgTaskFilter) orgTaskFilterOptions)
         , queueSavedViews
@@ -1777,12 +1908,24 @@ orgMemberRow member =
             [ a [ href ("#/users/" ++ member.userID), Html.Attributes.class "text-sm font-medium underline", testId "org-member-link" ] [ text member.userID ]
             , p [ Html.Attributes.class "text-xs text-slate-600" ] [ text (roles ++ " · " ++ membershipStatusText member.status) ]
             ]
-        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-            [ Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "member" ]), testId "member-role-member" ] "Member"
-            , Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "member", "reviewer" ]), testId "member-role-reviewer" ] "Reviewer"
-            , Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "admin" ]), testId "member-role-admin" ] "Admin"
-            , Ui.secondaryButton [ type_ "button", onClick (DeactivateMemberClicked member.userID), testId "deactivate-member" ] "Deactivate"
-            ]
+        , case member.status of
+            Organization.MembershipStatusActive ->
+                div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                    [ Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "member" ]), testId "member-role-member" ] "Member"
+                    , Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "member", "reviewer" ]), testId "member-role-reviewer" ] "Reviewer"
+                    , Ui.secondaryButton [ type_ "button", onClick (UpdateMemberRolesClicked member.userID [ "admin" ]), testId "member-role-admin" ] "Admin"
+                    , Ui.secondaryButton [ type_ "button", onClick (DeactivateMemberClicked member.userID), testId "deactivate-member" ] "Deactivate"
+                    ]
+
+            Organization.MembershipStatusDeactivated ->
+                -- Role changes and deactivation require an active membership,
+                -- so these buttons only produce server rejections here. The
+                -- API has no reactivation path, so none is offered.
+                p [ Html.Attributes.class "text-xs text-slate-500", testId "member-deactivated-note" ]
+                    [ text "Deactivated." ]
+
+            Organization.MembershipStatusRemoved ->
+                text ""
         ]
 
 
@@ -1839,44 +1982,48 @@ organizationRow organization =
         ]
 
 
-balanceView : Maybe Int -> Html Msg
+balanceView : Maybe Wallet -> Html Msg
 balanceView balance =
     Ui.card
-        [ Ui.label_ "Balance"
-        , p [ Html.Attributes.class "text-3xl font-semibold", testId "balance" ] [ text (balanceLabel balance) ]
-        ]
+        ([ Ui.label_ "Spendable balance"
+         , p [ Html.Attributes.class "text-3xl font-semibold", testId "balance" ] [ text (balanceLabel balance) ]
+         ]
+            ++ allocatedLine balance
+        )
 
 
-balanceLabel : Maybe Int -> String
+-- balanceLabel shows the SPENDABLE credits (what the account can spend or use
+-- to fund tasks). Credits allocated to tasks are shown separately by
+-- allocatedLine - they are locked until the task finishes or is refunded, so
+-- they are deliberately not part of this figure.
+balanceLabel : Maybe Wallet -> String
 balanceLabel balance =
     case balance of
-        Just amount ->
-            String.fromInt amount ++ " credits"
+        Just wallet ->
+            String.fromInt wallet.spendable ++ " credits"
 
         Nothing ->
             "Loading…"
 
 
+allocatedLine : Maybe Wallet -> List (Html Msg)
+allocatedLine balance =
+    case balance of
+        Just wallet ->
+            if wallet.allocated > 0 then
+                [ p [ Html.Attributes.class "text-sm text-slate-600", testId "allocated-balance" ]
+                    [ text (String.fromInt wallet.allocated ++ " credits allocated to tasks (locked until each task finishes or is refunded)") ]
+                ]
+
+            else
+                []
+
+        Nothing ->
+            []
+
+
 createTaskView : LoggedInModel -> Html Msg
 createTaskView state =
-    let
-        advancedActive =
-            state.createTaskType
-                /= "general"
-                || String.trim state.createReferenceURL
-                /= ""
-                || String.trim state.createPayloadJson
-                /= ""
-                || not (List.isEmpty state.createAttachments)
-
-        ownershipActive =
-            state.createTaskOwner
-                /= ""
-                || state.createParticipationPolicy
-                /= "open"
-                || state.createAssigneeScope
-                /= Task.TaskAssigneeScopeUser
-    in
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit CreateTaskClicked ]
         [ Ui.sectionTitle "Create a task"
         , Ui.fieldLabel "Title *"
@@ -1905,7 +2052,7 @@ createTaskView state =
             p [ Html.Attributes.class "text-xs text-slate-600", testId "template-schema-note" ]
                 [ text ("The " ++ taskTypeLabel state.createTaskType ++ " template prefilled the description and response schema; open Advanced options below to review or edit the schema.") ]
         , Ui.disclosure "create-advanced-options"
-            advancedActive
+            False
             "Advanced options"
             [ Ui.fieldLabel "Reference URL (optional, e.g. a pull request)" [ Ui.textInput [ type_ "text", placeholder "https://github.com/org/repo/pull/123", value state.createReferenceURL, onInput CreateReferenceURLChanged, testId "create-reference-url" ] ]
             , Ui.fieldLabel "Response schema (JSON, advanced)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
@@ -1920,7 +2067,7 @@ createTaskView state =
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (visibilityButton state.createVisibility) allVisibilityTags)
         , visibilityScopeField state
         , Ui.disclosure "create-task-ownership"
-            ownershipActive
+            False
             "Ownership & access"
             [ ownerChooser state
             , Ui.label_ "Participation"
@@ -1970,7 +2117,15 @@ rewardKindLabel kind =
 rewardAmountField : LoggedInModel -> Html Msg
 rewardAmountField state =
     if state.createRewardKind == "credit" || state.createRewardKind == "bundle" then
-        Ui.fieldLabel "Credit amount" [ Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ] ]
+        Ui.fieldLabel "Credit amount *"
+            (Ui.textInputToned state.createRewardAmountInvalid [ type_ "number", placeholder "Amount in credits", value state.createRewardAmount, onInput CreateRewardAmountChanged, testId "create-reward" ]
+                :: (if state.createRewardAmountInvalid then
+                        [ Ui.fieldError "Enter a credit amount of at least 1" ]
+
+                    else
+                        []
+                   )
+            )
 
     else
         text ""
@@ -2322,7 +2477,7 @@ ledgerView entries offset =
                 ]
             , tbody [ testId "ledger" ] (List.map ledgerRow entries)
             ]
-        , paginationControls "ledger-page" PreviousLedgerPageClicked NextLedgerPageClicked offset
+        , paginationControls "ledger-page" PreviousLedgerPageClicked NextLedgerPageClicked offset (List.length entries)
         ]
 
 
@@ -2353,7 +2508,11 @@ fundingView : LoggedInModel -> Html Msg
 fundingView state =
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit FundClicked ]
         [ Ui.sectionTitle "Fund a task"
-        , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged state.tasks
+        , p [ Html.Attributes.class "text-sm text-slate-600" ] [ text "Only draft tasks can be funded. Unpublish an open task first to change its funding." ]
+
+        -- The backend only accepts funding for draft tasks, so offering the
+        -- rest of the list here just produces avoidable rejections.
+        , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged (List.filter (\item -> item.state == Task.TaskStateDraft) state.tasks)
         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
         , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset
         , Ui.primaryButton [ type_ "submit", disabled (state.fundTaskId == ""), testId "fund" ] "Fund task"
@@ -2421,15 +2580,12 @@ tasksView origin state =
     let
         visibleTasks =
             filterTasksByQuery state.taskListQuery state.tasks
-
-        filtersActive =
-            state.taskStateFilter /= [] || state.taskListQuery /= "" || state.taskListTypeFilter /= "" || state.taskListSort /= "newest"
     in
     Ui.card
         ([ a [ href ("#" ++ pageToPath CreateTaskPage), Html.Attributes.class Ui.primaryButtonClass, testId "new-task-button" ] [ text "+ New task" ]
          , Ui.sectionTitle "My tasks"
          , Ui.disclosure "tasks-filters"
-            filtersActive
+            False
             "Filters"
             [ Ui.label_ "Filter by state (select any number)"
             , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "task-filter" ] (List.map (taskFilterChip state.taskStateFilter) taskStateFilterOptions)
@@ -2438,7 +2594,7 @@ tasksView origin state =
             , taskTypeFilterSelect "tasks-type" state.taskListTypeFilter TaskListTypeFilterChanged
             , taskSortSelect "tasks-sort" state.taskListSort TaskListSortChanged
             ]
-         , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset
+         , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset (List.length state.tasks)
          , tasksList state.subjectId visibleTasks
          ]
             ++ discoverySection state
@@ -2519,7 +2675,7 @@ blankOption labelText =
 organizationPicker : String -> String -> String -> (String -> Msg) -> (String -> Msg) -> Msg -> Msg -> Msg -> String -> List Organization.OrganizationResponse -> Int -> Html Msg
 organizationPicker identifier selectedOrganizationId query change queryChange search previous next blankLabel organizations offset =
     div [ Html.Attributes.class "space-y-2" ]
-        [ selectorSearchControls identifier "Search organizations" query queryChange search previous next offset
+        [ selectorSearchControls identifier "Search organizations" query queryChange search previous next offset (List.length organizations)
         , select
             [ Html.Attributes.class Ui.fieldClass, value selectedOrganizationId, onInput change, testId identifier ]
             (blankOption blankLabel
@@ -2531,7 +2687,7 @@ organizationPicker identifier selectedOrganizationId query change queryChange se
 userPicker : String -> String -> String -> (String -> Msg) -> String -> List UserDirectoryEntry -> Int -> Html Msg
 userPicker identifier selectedUserId query change blankLabel users offset =
     div [ Html.Attributes.class "space-y-2" ]
-        [ selectorSearchControls identifier "Search users" query UserDirectoryQueryChanged SearchUserDirectoryClicked PreviousUserDirectoryPageClicked NextUserDirectoryPageClicked offset
+        [ selectorSearchControls identifier "Search users" query UserDirectoryQueryChanged SearchUserDirectoryClicked PreviousUserDirectoryPageClicked NextUserDirectoryPageClicked offset (List.length users)
         , select
             [ Html.Attributes.class Ui.fieldClass, value selectedUserId, onInput change, testId identifier ]
             (blankOption blankLabel
@@ -2543,7 +2699,7 @@ userPicker identifier selectedUserId query change blankLabel users offset =
 teamPicker : String -> String -> String -> (String -> Msg) -> (String -> Msg) -> Msg -> Msg -> Msg -> String -> List Team.TeamResponse -> Int -> Html Msg
 teamPicker identifier selectedTeamId query change queryChange search previous next blankLabel teams offset =
     div [ Html.Attributes.class "space-y-2" ]
-        [ selectorSearchControls identifier "Search teams" query queryChange search previous next offset
+        [ selectorSearchControls identifier "Search teams" query queryChange search previous next offset (List.length teams)
         , select
             [ Html.Attributes.class Ui.fieldClass, value selectedTeamId, onInput change, testId identifier ]
             (blankOption blankLabel
@@ -2552,8 +2708,8 @@ teamPicker identifier selectedTeamId query change queryChange search previous ne
         ]
 
 
-selectorSearchControls : String -> String -> String -> (String -> Msg) -> Msg -> Msg -> Msg -> Int -> Html Msg
-selectorSearchControls identifier placeholderText query queryChange search previous next offset =
+selectorSearchControls : String -> String -> String -> (String -> Msg) -> Msg -> Msg -> Msg -> Int -> Int -> Html Msg
+selectorSearchControls identifier placeholderText query queryChange search previous next offset shownCount =
     div [ Html.Attributes.class "space-y-2" ]
         [ div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             [ Ui.textInput [ type_ "search", placeholder placeholderText, value query, onInput queryChange, testId (identifier ++ "-query") ]
@@ -2562,7 +2718,7 @@ selectorSearchControls identifier placeholderText query queryChange search previ
         , div [ Html.Attributes.class "flex flex-wrap items-center gap-2 text-xs text-slate-500" ]
             [ Ui.secondaryButton [ type_ "button", disabled (offset == 0), onClick previous, testId (identifier ++ "-previous") ] "Previous"
             , span [ testId (identifier ++ "-offset") ] [ text ("Offset " ++ String.fromInt offset) ]
-            , Ui.secondaryButton [ type_ "button", onClick next, testId (identifier ++ "-next") ] "Next"
+            , Ui.secondaryButton [ type_ "button", disabled (shownCount < pageSize), onClick next, testId (identifier ++ "-next") ] "Next"
             ]
         ]
 
@@ -2750,7 +2906,7 @@ collectiblesView state =
         , Ui.disclosure "collectibles-mint" False "Mint a collectible" [ mintForm state ]
         , Ui.disclosure "collectibles-award-task" False "Award a collectible to a task" [ awardForm state ]
         , if state.isAdmin then
-            Ui.disclosure "award-default-section" (String.trim state.awardRecipientId /= "") "Admin: award a default collectible" (awardRecipientControl state)
+            Ui.disclosure "award-default-section" False "Admin: award a default collectible" (awardRecipientControl state)
 
           else
             text ""
@@ -2836,8 +2992,10 @@ policyButton selected policy =
 awardForm : LoggedInModel -> Html Msg
 awardForm state =
     div [ Html.Attributes.class "mt-4 space-y-3" ]
-        [ taskPicker "award-task-id" state.awardTaskId AwardTaskIdChanged state.tasks
-        , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text "Choose the task here, then press Award next to a collectible below." ]
+        -- Collectible reward funding is draft-only on the backend, like
+        -- credit funding.
+        [ taskPicker "award-task-id" state.awardTaskId AwardTaskIdChanged (List.filter (\item -> item.state == Task.TaskStateDraft) state.tasks)
+        , p [ Html.Attributes.class "text-xs text-slate-500" ] [ text "Choose a draft task here, then press Award next to a collectible below." ]
         , maybeNote state.awardMessage "award-message"
         ]
 
@@ -2887,19 +3045,16 @@ discoverySection state =
     let
         visibleTasks =
             filterTasksByQuery state.discoveryQuery state.discoveryTasks
-
-        filtersActive =
-            state.discoveryIncludeReserved || state.discoveryQuery /= ""
     in
     [ Ui.sectionTitle "Discover public tasks"
     , Ui.disclosure "discovery-filters"
-        filtersActive
+        False
         "Filters"
         [ Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
         , Ui.fieldLabel "Search loaded discovery"
             [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.discoveryQuery, onInput DiscoveryQueryChanged, testId "discovery-query" ] ]
         ]
-    , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset
+    , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset (List.length state.discoveryTasks)
     , discoveryList state.subjectId visibleTasks
     ]
 
@@ -2951,12 +3106,17 @@ discoveryRow subjectId item =
         ]
 
 
-paginationControls : String -> Msg -> Msg -> Int -> Html Msg
-paginationControls identifier previous next offset =
+-- paginationControls takes the number of items on the current page so Next
+-- can be disabled on the last (short) page instead of paging into blank
+-- pages that read as misleading empty states. A page of exactly pageSize
+-- items keeps Next enabled even when it happens to be the final one - the
+-- client cannot tell without a total count the API does not return.
+paginationControls : String -> Msg -> Msg -> Int -> Int -> Html Msg
+paginationControls identifier previous next offset shownCount =
     div [ Html.Attributes.class "flex flex-wrap items-center gap-2 text-xs text-slate-600", testId identifier ]
         [ Ui.secondaryButton [ type_ "button", disabled (offset == 0), onClick previous, testId (identifier ++ "-previous") ] "Previous"
         , span [ testId (identifier ++ "-offset") ] [ text ("Offset " ++ String.fromInt offset) ]
-        , Ui.secondaryButton [ type_ "button", onClick next, testId (identifier ++ "-next") ] "Next"
+        , Ui.secondaryButton [ type_ "button", disabled (shownCount < pageSize), onClick next, testId (identifier ++ "-next") ] "Next"
         ]
 
 
@@ -3248,10 +3408,11 @@ ownerControlsCard state =
 
                           else
                             Nothing
-                        , -- Cancel ends the task. Offered for drafts (any reward) and for
-                          -- open tasks with no reward. Reward-bearing OPEN tasks are ended
-                          -- via Refund instead, since Cancel of a funded task would orphan
-                          -- the held escrow (the backend's Refund returns escrow; Cancel does not).
+                        , -- Cancel ends an unfunded task. Reward-bearing tasks are ended via
+                          -- Refund instead, which is the clearer label for "return my
+                          -- allocated credits and close the task" - though the backend now
+                          -- settles the funds either way (cancelling a funded task returns
+                          -- its allocated credits to the owner's spendable balance too).
                           if detail.state == Task.TaskStateDraft || (detail.state == Task.TaskStateOpen && detail.rewardKind == "none") then
                             Just (Ui.secondaryButton [ type_ "button", onClick (CancelTaskClicked detail.id), testId "cancel-task" ] "Cancel")
 
@@ -3363,10 +3524,12 @@ reservationCard state =
             in
             Ui.card
                 [ Ui.sectionTitle "Reservation"
-                , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
-                    [ Ui.badge (viewerActionLabel detail.viewerAction)
-                    , Ui.badge (assigneeScopeLabel detail.assigneeScope)
-                    ]
+
+                -- Spell these out: the raw enum badges ("submit user",
+                -- "wait user") read as noise to anyone who has not read the
+                -- API reference.
+                , p [ Html.Attributes.class "text-sm text-slate-600", testId "reservation-summary" ]
+                    [ text ("You can: " ++ viewerActionSentence detail.viewerAction ++ " · Assignee scope: " ++ assigneeScopeLabel detail.assigneeScope) ]
 
                 -- The server's viewerAction doesn't rule out an owner
                 -- reserving their own task, but that's not a real workflow
@@ -3387,6 +3550,28 @@ reservationCard state =
 
         Nothing ->
             text ""
+
+
+viewerActionSentence : Task.TaskViewerAction -> String
+viewerActionSentence action =
+    case action of
+        Task.TaskViewerActionSubmit ->
+            "submit a response now"
+
+        Task.TaskViewerActionReserve ->
+            "reserve this task"
+
+        Task.TaskViewerActionRequestApproval ->
+            "request a reservation (the owner must approve it)"
+
+        Task.TaskViewerActionWait ->
+            -- viewerAction is computed without looking at who is asking, so
+            -- the active reservation may well be the viewer's own (listed
+            -- below) - do not claim it belongs to someone else.
+            "wait - this task already has an active reservation"
+
+        Task.TaskViewerActionNone ->
+            "view this task (no worker action available)"
 
 
 reservationSecretView : Maybe String -> Html Msg
@@ -3528,19 +3713,102 @@ submitCard state =
 
 submitCardForm : LoggedInModel -> Html Msg
 submitCardForm state =
+    let
+        schemaFields =
+            if state.submitRawMode then
+                Nothing
+
+            else
+                state.detail
+                    |> Maybe.andThen (\detail -> ResponseSchema.parse detail.responseSchemaJson)
+                    |> Maybe.andThen ResponseSchema.formFields
+
+        editor =
+            case schemaFields of
+                Just fields ->
+                    -- The task declared a structured response schema, so
+                    -- render one typed input per field instead of making the
+                    -- worker hand-write the whole JSON document.
+                    div [ Html.Attributes.class "space-y-3", testId "submit-schema-form" ]
+                        (List.map (schemaFieldInput state.submitFieldValues) fields
+                            ++ [ Ui.checkbox [ checked False, onClick (SubmitRawModeToggled True), testId "submit-raw-toggle" ] "Edit as raw JSON instead" ]
+                        )
+
+                Nothing ->
+                    div [ Html.Attributes.class "space-y-3" ]
+                        (Ui.textarea_
+                            [ placeholder "{}"
+                            , value state.submitInput
+                            , onInput SubmitInputChanged
+                            , Html.Attributes.rows 6
+                            , testId "detail-submit-input"
+                            ]
+                            :: (if state.submitRawMode then
+                                    [ Ui.checkbox [ checked True, onClick (SubmitRawModeToggled False), testId "submit-raw-toggle" ] "Edit as raw JSON instead" ]
+
+                                else
+                                    []
+                               )
+                        )
+    in
     form [ Html.Attributes.class "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm", onSubmit SubmitClicked ]
         [ Ui.sectionTitle "Submit a response"
-        , Ui.textarea_
-            [ placeholder "{}"
-            , value state.submitInput
-            , onInput SubmitInputChanged
-            , Html.Attributes.rows 6
-            , testId "detail-submit-input"
-            ]
+        , editor
         , selectedAttachmentsView "Attachments" state.submitAttachments PickSubmitAttachmentClicked RemoveSubmitAttachmentClicked "submit-attachments"
         , Ui.primaryButton [ type_ "submit", testId "detail-submit" ] "Submit response"
         , maybeNote state.submitMessage "detail-submit-message"
         ]
+
+
+schemaFieldInput : Dict.Dict String String -> ResponseSchema.FormField -> Html Msg
+schemaFieldInput values field =
+    let
+        raw =
+            Dict.get field.name values |> Maybe.withDefault ""
+
+        label =
+            field.name
+                ++ (if field.required then
+                        " *"
+
+                    else
+                        " (optional)"
+                   )
+
+        fieldTestId =
+            testId ("submit-field-" ++ field.name)
+    in
+    case field.input of
+        ResponseSchema.TextInput ->
+            Ui.fieldLabel label [ Ui.textInput [ type_ "text", value raw, onInput (SubmitFieldChanged field.name), fieldTestId ] ]
+
+        ResponseSchema.IntegerInput ->
+            Ui.fieldLabel label [ Ui.textInput [ type_ "number", value raw, onInput (SubmitFieldChanged field.name), fieldTestId ] ]
+
+        ResponseSchema.DecimalInput ->
+            Ui.fieldLabel (label ++ " - decimal number") [ Ui.textInput [ type_ "text", value raw, onInput (SubmitFieldChanged field.name), fieldTestId ] ]
+
+        ResponseSchema.EnumSelect options ->
+            Ui.fieldLabel label
+                [ select [ Html.Attributes.class Ui.fieldClass, value raw, onInput (SubmitFieldChanged field.name), fieldTestId ]
+                    (blankOption "Choose a value" :: List.map (\option_ -> option [ value option_, selected (raw == option_) ] [ text option_ ]) options)
+                ]
+
+        ResponseSchema.FixedLiteral literal ->
+            Ui.fieldLabel (field.name ++ " - fixed value, included automatically")
+                [ p [ Html.Attributes.class "text-sm text-slate-600", fieldTestId ] [ text literal ] ]
+
+        ResponseSchema.LinesArray ->
+            Ui.fieldLabel (label ++ " - one item per line")
+                [ Ui.textarea_ [ value raw, onInput (SubmitFieldChanged field.name), Html.Attributes.rows 4, fieldTestId ] ]
+
+        ResponseSchema.JsonArrayInput ->
+            Ui.fieldLabel (label ++ " - JSON array")
+                [ Ui.textarea_ [ placeholder "[ ]", value raw, onInput (SubmitFieldChanged field.name), Html.Attributes.rows 4, fieldTestId ] ]
+
+        ResponseSchema.JsonInput ->
+            Ui.fieldLabel (label ++ " - JSON")
+                [ Ui.textarea_ [ placeholder "{}", value raw, onInput (SubmitFieldChanged field.name), Html.Attributes.rows 4, fieldTestId ] ]
 
 
 mySubmissionsCard : LoggedInModel -> Html Msg
@@ -3620,7 +3888,10 @@ reviewControls state =
                         (\c -> option [ value c.id, selected (state.reviewTipCollectibleId == c.id) ]
                             [ text (c.name ++ " · " ++ collectibleKindLabel c.kind) ]
                         )
-                        state.collectibles
+                        -- Only minted holdings can be tipped; offering an
+                        -- escrowed or awarded collectible here just produces
+                        -- a server rejection on Accept.
+                        (List.filter (\c -> c.state == Collectible.CollectibleStateMinted) state.collectibles)
                 )
             ]
         ]
@@ -3770,11 +4041,14 @@ maybeError message identifier =
             text ""
 
 
-maybeNote : Maybe String -> String -> Html Msg
+maybeNote : Maybe Note -> String -> Html Msg
 maybeNote message identifier =
     case message of
-        Just value ->
-            Ui.noteText identifier value
+        Just (SuccessNote value) ->
+            Ui.successText identifier value
+
+        Just (FailureNote value) ->
+            Ui.errorText identifier value
 
         Nothing ->
             text ""
@@ -3887,9 +4161,9 @@ restSubmitCurl origin taskId token =
         ++ "\" -H \"Content-Type: application/json\" -d '{\"response_json\":\"{}\"}'"
 
 
-fundSuccessLabel : Ledger.TaskEscrowResponse -> String
-fundSuccessLabel escrow =
-    "Escrowed " ++ String.fromInt escrow.amount ++ " credits (" ++ escrowStateLabel escrow.state ++ ")."
+fundSuccessLabel : Ledger.TaskFundResponse -> String
+fundSuccessLabel fund =
+    "Allocated " ++ String.fromInt fund.creditAmount ++ " credits to this task."
 
 
 submitSuccessLabel : Submission.SubmissionCreatedResponse -> String

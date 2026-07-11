@@ -18,6 +18,7 @@ import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.Labels exposing (assigneeScopeTag, participationUsesReservation)
+import Sharecrop.ResponseSchema as ResponseSchema
 import Sharecrop.Types exposing (..)
 import Task as ElmTask
 import Time
@@ -44,11 +45,11 @@ updateLoggedIn model change =
             model
 
 
-balanceFromResult : Result Http.Error Ledger.BalanceResponse -> Maybe Int
+balanceFromResult : Result Http.Error Ledger.BalanceResponse -> Maybe Wallet
 balanceFromResult result =
     case result of
         Ok response ->
-            Just response.amount
+            Just { spendable = response.spendableCredits, allocated = response.allocatedCredits }
 
         Err _ ->
             Nothing
@@ -105,7 +106,7 @@ boolQuery value =
 
 selectorPageSize : Int
 selectorPageSize =
-    20
+    pageSize
 
 
 selectorQuery : String -> Int -> String -> String
@@ -138,22 +139,22 @@ fundTaskCommand model state =
     case String.toInt state.fundAmount of
         Just amount ->
             if amount <= 0 then
-                ( updateLoggedIn model (\current -> { current | fundMessage = Just "Amount must be a positive number of credits." }), Cmd.none )
+                ( updateLoggedIn model (\current -> { current | fundMessage = Just (FailureNote "Amount must be a positive number of credits.") }), Cmd.none )
 
             else
                 ( updateLoggedIn model (\current -> { current | fundMessage = Nothing }), postFunding state.accessToken state.fundTaskId amount state.fundOrganizationId state.fundNonce )
 
         Nothing ->
-            ( updateLoggedIn model (\current -> { current | fundMessage = Just "Amount must be a whole number of credits." }), Cmd.none )
+            ( updateLoggedIn model (\current -> { current | fundMessage = Just (FailureNote "Amount must be a whole number of credits.") }), Cmd.none )
 
 
 createAgentCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 createAgentCommand model state =
     if List.isEmpty state.agentScopes then
-        ( updateLoggedIn model (\current -> { current | agentMessage = Just "Select at least one scope." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | agentMessage = Just (FailureNote "Select at least one scope.") }), Cmd.none )
 
     else if not (expiresHoursIsValid state.agentExpiresHours) then
-        ( updateLoggedIn model (\current -> { current | agentMessage = Just "Expires in (hours) must be a positive whole number, or blank for never." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | agentMessage = Just (FailureNote "Expires in (hours) must be a positive whole number, or blank for never.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | agentMessage = Nothing, newCredential = Nothing }), ElmTask.perform AgentExpiresAtResolved Time.now )
@@ -162,13 +163,13 @@ createAgentCommand model state =
 createOrgCredentialCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 createOrgCredentialCommand model state =
     if state.activeOrgId == "" then
-        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just "Open an organization first." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just (FailureNote "Open an organization first.") }), Cmd.none )
 
     else if List.isEmpty state.orgCredentialScopes then
-        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just "Select at least one scope." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just (FailureNote "Select at least one scope.") }), Cmd.none )
 
     else if not (expiresHoursIsValid state.orgCredentialExpiresHours) then
-        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just "Expires in (hours) must be a positive whole number, or blank for never." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Just (FailureNote "Expires in (hours) must be a positive whole number, or blank for never.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Nothing, newOrgCredential = Nothing }), ElmTask.perform OrgCredentialExpiresAtResolved Time.now )
@@ -198,53 +199,101 @@ createTaskCommand model state =
 
         descriptionMissing =
             String.isEmpty (String.trim state.createDescription)
+
+        amountMissing =
+            rewardAmountMissing state.createRewardKind state.createRewardAmount
     in
-    if titleMissing || descriptionMissing then
+    if titleMissing || descriptionMissing || amountMissing then
         ( updateLoggedIn model
             (\current ->
                 { current
                     | createTitleInvalid = titleMissing
                     , createDescriptionInvalid = descriptionMissing
-                    , createMessage = Just "Fill in the required fields below."
+                    , createRewardAmountInvalid = amountMissing
+                    , createMessage = Just (FailureNote "Fill in the required fields below.")
                 }
             )
         , Cmd.none
         )
 
     else if participationUsesReservation state.createParticipationPolicy && (reservationHoursValue state.createReservationHours < 1 || reservationHoursValue state.createReservationHours > 720) then
-        ( updateLoggedIn model (\current -> { current | createMessage = Just "Reservation expiry must be between 1 and 720 hours." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | createMessage = Just (FailureNote "Reservation expiry must be between 1 and 720 hours.") }), Cmd.none )
 
     else
-        ( updateLoggedIn model (\current -> { current | createTitleInvalid = False, createDescriptionInvalid = False, createMessage = Nothing })
+        ( updateLoggedIn model (\current -> { current | createTitleInvalid = False, createDescriptionInvalid = False, createRewardAmountInvalid = False, createMessage = Nothing })
         , postCreateTask state
         )
+
+
+{-| A credit or bundle reward needs a positive whole credit amount; without
+one the request would either be rejected by the server or - worse - silently
+turn into a different reward kind than the user picked, so block the submit
+instead.
+-}
+rewardAmountMissing : String -> String -> Bool
+rewardAmountMissing kind rawAmount =
+    (kind == "credit" || kind == "bundle")
+        && (Maybe.withDefault 0 (String.toInt (String.trim rawAmount)) < 1)
 
 
 submitCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 submitCommand model state =
     case state.page of
         TaskDetailPage taskId ->
-            let
-                trimmed =
-                    String.trim state.submitInput
-            in
-            -- Guard obviously-invalid input before hitting the server: the
-            -- response payload must be non-empty and parse as JSON.
-            if trimmed == "" then
-                ( updateLoggedIn model (\current -> { current | submitMessage = Just "Enter a response first." }), Cmd.none )
+            case schemaFormFields state of
+                Just fields ->
+                    -- Schema-driven form: build the response JSON from the
+                    -- typed per-field inputs and validate before sending.
+                    case ResponseSchema.buildSubmission fields state.submitFieldValues of
+                        Ok encoded ->
+                            ( updateLoggedIn model (\current -> { current | submitMessage = Nothing })
+                            , postSubmission state.accessToken taskId encoded state.submitAttachments
+                            )
 
-            else
-                case Decode.decodeString Decode.value trimmed of
-                    Ok _ ->
-                        ( updateLoggedIn model (\current -> { current | submitMessage = Nothing })
-                        , postSubmission state.accessToken taskId trimmed state.submitAttachments
-                        )
+                        Err message ->
+                            ( updateLoggedIn model (\current -> { current | submitMessage = Just (FailureNote message) }), Cmd.none )
 
-                    Err _ ->
-                        ( updateLoggedIn model (\current -> { current | submitMessage = Just "Response must be valid JSON." }), Cmd.none )
+                Nothing ->
+                    submitRawCommand model state taskId
 
         _ ->
             ( model, Cmd.none )
+
+
+-- schemaFormFields returns the typed form fields when the current task's
+-- response schema is a top-level object and the worker has not switched to
+-- the raw JSON editor.
+schemaFormFields : LoggedInModel -> Maybe (List ResponseSchema.FormField)
+schemaFormFields state =
+    if state.submitRawMode then
+        Nothing
+
+    else
+        state.detail
+            |> Maybe.andThen (\detail -> ResponseSchema.parse detail.responseSchemaJson)
+            |> Maybe.andThen ResponseSchema.formFields
+
+
+submitRawCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+submitRawCommand model state taskId =
+    let
+        trimmed =
+            String.trim state.submitInput
+    in
+    -- Guard obviously-invalid input before hitting the server: the
+    -- response payload must be non-empty and parse as JSON.
+    if trimmed == "" then
+        ( updateLoggedIn model (\current -> { current | submitMessage = Just (FailureNote "Enter a response first.") }), Cmd.none )
+
+    else
+        case Decode.decodeString Decode.value trimmed of
+            Ok _ ->
+                ( updateLoggedIn model (\current -> { current | submitMessage = Nothing })
+                , postSubmission state.accessToken taskId trimmed state.submitAttachments
+                )
+
+            Err _ ->
+                ( updateLoggedIn model (\current -> { current | submitMessage = Just (FailureNote "Response must be valid JSON.") }), Cmd.none )
 
 
 acceptCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
@@ -292,7 +341,7 @@ reservationChangeCommand model state reservationId action =
 mintCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 mintCommand model state =
     if String.isEmpty (String.trim state.collectibleName) then
-        ( updateLoggedIn model (\current -> { current | collectibleMessage = Just "Name is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | collectibleMessage = Just (FailureNote "Name is required.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | collectibleMessage = Nothing })
@@ -303,7 +352,7 @@ mintCommand model state =
 awardCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
 awardCommand model state collectibleId =
     if String.isEmpty (String.trim state.awardTaskId) then
-        ( updateLoggedIn model (\current -> { current | awardMessage = Just "Task ID is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | awardMessage = Just (FailureNote "Task ID is required.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | awardMessage = Nothing })
@@ -413,7 +462,13 @@ routeLoadCmd token subjectId page =
             Cmd.batch [ fetchOrganizations token, loadOrganization token organizationId, fetchOrganizationCollectibles token organizationId ]
 
         UserDetailPage userId ->
-            fetchUserProfile token userId
+            if userId == subjectId then
+                -- Your own profile page carries the account-settings card,
+                -- whose Privacy section lists your own privacy requests.
+                Cmd.batch [ fetchUserProfile token userId, fetchMyPrivacyRequests token ]
+
+            else
+                fetchUserProfile token userId
 
         UserWorkPage userId ->
             authorizedRequest "GET" token ("/api/users/" ++ userId ++ "/work") Http.emptyBody (expectJsonWithServerError UserWorkReceived Task.tasksResponseDecoder)
@@ -649,6 +704,19 @@ postRefresh =
         }
 
 
+-- postSessionRefresh rotates the token mid-session without rebuilding any
+-- page state (unlike the boot-time postRefresh, whose handler resets the
+-- whole logged-in model). Access tokens expire after 15 minutes; without
+-- this, every request in a tab left open longer than that fails.
+postSessionRefresh : Cmd Msg
+postSessionRefresh =
+    Http.post
+        { url = "/api/auth/refresh"
+        , body = Http.emptyBody
+        , expect = expectJsonWithServerError SessionRefreshed Auth.authResponseDecoder
+        }
+
+
 postLogout : Cmd Msg
 postLogout =
     Http.post
@@ -795,7 +863,7 @@ postFunding token taskId amount organizationId nonce =
         token
         ("/api/tasks/" ++ taskId ++ "/funding")
         (Http.jsonBody (fundingRequestBody taskId amount organizationId nonce))
-        (expectJsonWithServerError FundReceived Ledger.taskEscrowResponseDecoder)
+        (expectJsonWithServerError FundReceived Ledger.taskFundResponseDecoder)
 
 
 postOpenTask : String -> String -> Cmd Msg
@@ -822,7 +890,7 @@ postRefundTask token taskId =
         token
         ("/api/tasks/" ++ taskId ++ "/refund")
         (Http.jsonBody (Encode.object [ ( "idempotency_key", Encode.string ("ui-refund:" ++ taskId) ) ]))
-        (expectJsonWithServerError RefundTaskReceived Ledger.taskEscrowResponseDecoder)
+        (expectJsonWithServerError RefundTaskReceived Ledger.taskFundResponseDecoder)
 
 
 postCancelTask : String -> String -> Cmd Msg
@@ -1015,6 +1083,15 @@ fetchUserDirectoryPage token queryText offset =
 fetchStandaloneTeams : String -> Cmd Msg
 fetchStandaloneTeams token =
     fetchStandaloneTeamsPage token "" 0
+
+
+createStandaloneTeam : String -> String -> Cmd Msg
+createStandaloneTeam token name =
+    authorizedRequest "POST"
+        token
+        "/api/teams"
+        (Http.jsonBody (Encode.object [ ( "name", Encode.string name ) ]))
+        (expectJsonWithServerError TeamCreated Team.teamResponseDecoder)
 
 
 fetchStandaloneTeamsPage : String -> String -> Int -> Cmd Msg
@@ -1248,6 +1325,15 @@ requestPrivacy token kind =
         (expectJsonWithServerError PrivacyRequestReceived Privacy.privacyRequestResponseDecoder)
 
 
+fetchMyPrivacyRequests : String -> Cmd Msg
+fetchMyPrivacyRequests token =
+    authorizedRequest "GET"
+        token
+        ("/api/privacy-requests?limit=" ++ String.fromInt selectorPageSize ++ "&offset=0")
+        Http.emptyBody
+        (expectJsonWithServerError MyPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
+
+
 reportTask : String -> String -> Moderation.ModerationReason -> String -> Cmd Msg
 reportTask token taskId reason details =
     authorizedRequest "POST"
@@ -1268,7 +1354,7 @@ reportTask token taskId reason details =
 createOrgTeamCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 createOrgTeamCommand model state =
     if String.isEmpty (String.trim state.createOrgTeamName) || state.activeOrgId == "" then
-        ( updateLoggedIn model (\current -> { current | orgTeamMessage = Just "A team name is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | orgTeamMessage = Just (FailureNote "A team name is required.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | orgTeamMessage = Nothing })
@@ -1283,10 +1369,10 @@ createOrgTeamCommand model state =
 provisionMemberCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 provisionMemberCommand model state =
     if String.isEmpty (String.trim state.provisionMemberEmail) || state.activeOrgId == "" then
-        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "A member email is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just (FailureNote "A member email is required.") }), Cmd.none )
 
     else if List.isEmpty state.provisionMemberRoles then
-        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "Select at least one role." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just (FailureNote "Select at least one role.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Nothing })
@@ -1301,7 +1387,7 @@ provisionMemberCommand model state =
 updateMemberRolesCommand : Model -> LoggedInModel -> String -> List String -> ( Model, Cmd Msg )
 updateMemberRolesCommand model state userId roles =
     if state.activeOrgId == "" || List.isEmpty roles then
-        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "Select at least one role." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just (FailureNote "Select at least one role.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Nothing })
@@ -1316,7 +1402,7 @@ updateMemberRolesCommand model state userId roles =
 deactivateMemberCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
 deactivateMemberCommand model state userId =
     if state.activeOrgId == "" then
-        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just "Open an organization first." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Just (FailureNote "Open an organization first.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | provisionMemberMessage = Nothing })
@@ -1371,7 +1457,7 @@ submissionsFromResult result =
 createOrgCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 createOrgCommand model state =
     if String.isEmpty (String.trim state.createOrgName) then
-        ( updateLoggedIn model (\current -> { current | orgMessage = Just "Organization name is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | orgMessage = Just (FailureNote "Organization name is required.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | orgMessage = Nothing })
@@ -1474,28 +1560,30 @@ createPayloadBody state =
         Encode.object [ ( "kind", Encode.string "json" ), ( "json", Encode.string state.createPayloadJson ) ]
 
 
+{-| Encode exactly the reward kind the user picked. createTaskCommand rejects
+a credit/bundle reward without a positive amount before this runs, so a zero
+amount can only reach the server through a bypassed client check, where the
+server rejects it loudly - never silently create a different reward kind
+than the one selected.
+-}
 createRewardBody : String -> String -> List String -> Encode.Value
 createRewardBody kind rawAmount collectibleIds =
-    case String.toInt rawAmount of
-        Just amount ->
-            if kind == "credit" && amount > 0 then
-                Encode.object [ ( "kind", Encode.string "credit" ), ( "credit_amount", Encode.int amount ), ( "collectible_ids", Encode.list Encode.string [] ) ]
+    let
+        amount =
+            Maybe.withDefault 0 (String.toInt (String.trim rawAmount))
+    in
+    case kind of
+        "credit" ->
+            Encode.object [ ( "kind", Encode.string "credit" ), ( "credit_amount", Encode.int amount ), ( "collectible_ids", Encode.list Encode.string [] ) ]
 
-            else if kind == "collectible" then
-                Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string collectibleIds ) ]
+        "collectible" ->
+            Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string collectibleIds ) ]
 
-            else if kind == "bundle" && amount > 0 then
-                Encode.object [ ( "kind", Encode.string "bundle" ), ( "credit_amount", Encode.int amount ), ( "collectible_ids", Encode.list Encode.string collectibleIds ) ]
+        "bundle" ->
+            Encode.object [ ( "kind", Encode.string "bundle" ), ( "credit_amount", Encode.int amount ), ( "collectible_ids", Encode.list Encode.string collectibleIds ) ]
 
-            else
-                Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string [] ) ]
-
-        Nothing ->
-            if kind == "collectible" then
-                Encode.object [ ( "kind", Encode.string "collectible" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string collectibleIds ) ]
-
-            else
-                Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string [] ) ]
+        _ ->
+            Encode.object [ ( "kind", Encode.string "none" ), ( "credit_amount", Encode.int 0 ), ( "collectible_ids", Encode.list Encode.string [] ) ]
 
 
 createParticipationBody : LoggedInModel -> Encode.Value
@@ -1791,7 +1879,7 @@ fetchSeriesDetail token seriesId =
 createSeriesCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 createSeriesCommand model state =
     if String.isEmpty (String.trim state.createSeriesTitle) then
-        ( updateLoggedIn model (\current -> { current | seriesMessage = Just "A series title is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Just (FailureNote "A series title is required.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | seriesMessage = Nothing })
@@ -1806,7 +1894,7 @@ createSeriesCommand model state =
 updateSeriesCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
 updateSeriesCommand model state seriesId =
     if String.isEmpty (String.trim state.seriesRenameTitle) then
-        ( updateLoggedIn model (\current -> { current | seriesMessage = Just "A series title is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Just (FailureNote "A series title is required.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | seriesMessage = Nothing })
@@ -1830,7 +1918,7 @@ seriesStateCommand token seriesId action =
 addSeriesTaskCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
 addSeriesTaskCommand model state seriesId =
     if String.isEmpty (String.trim state.addSeriesTaskId) then
-        ( updateLoggedIn model (\current -> { current | seriesMessage = Just "A task ID is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Just (FailureNote "A task ID is required.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | seriesMessage = Nothing })
@@ -1863,7 +1951,7 @@ reorderSeriesCommand token seriesId taskIds =
 addSeriesCommentCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
 addSeriesCommentCommand model state seriesId =
     if String.isEmpty (String.trim state.seriesCommentBody) then
-        ( updateLoggedIn model (\current -> { current | seriesMessage = Just "A comment is required." }), Cmd.none )
+        ( updateLoggedIn model (\current -> { current | seriesMessage = Just (FailureNote "A comment is required.") }), Cmd.none )
 
     else
         ( updateLoggedIn model (\current -> { current | seriesMessage = Nothing })

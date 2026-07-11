@@ -25,19 +25,21 @@ type LedgerEntry struct {
 	TaskRef TaskReference
 }
 
-// TaskEscrow holds credits reserved for a task reward.
-type TaskEscrow struct {
+// TaskFund records the credits currently allocated to a task. A TaskFund exists
+// only while the task holds those credits; awarding or refunding the task
+// removes it.
+type TaskFund struct {
 	TaskID          core.TaskID
 	FunderAccountID core.CreditAccountID
-	Amount          CreditAmount
-	State           EscrowState
+	CreditAmount    CreditAmount
 }
 
-// DeriveBalance sums the signed amounts of an account's ledger entries.
-func DeriveBalance(entries []LedgerEntry) Balance {
+// DeriveSpendable sums the signed amounts of an account's ledger entries, i.e.
+// the spendable section of its wallet.
+func DeriveSpendable(entries []LedgerEntry) int64 {
 	total := int64(0)
 	for index := range entries {
 		total += entries[index].Amount.Int64()
 	}
-	return NewBalance(total)
+	return total
 }

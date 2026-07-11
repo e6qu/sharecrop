@@ -125,8 +125,8 @@ func TestEmptyResponseWireShape(t *testing.T) {
 }
 
 func TestBalanceResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(balanceResponse{Amount: 100})
-	assertWireShape(t, encoded, err, `{"amount":100}`)
+	encoded, err := json.Marshal(balanceResponse{SpendableCredits: 100, AllocatedCredits: 40})
+	assertWireShape(t, encoded, err, `{"spendable_credits":100,"allocated_credits":40}`)
 }
 
 func TestLedgerEntryResponseWireShape(t *testing.T) {
@@ -139,9 +139,9 @@ func TestLedgerListResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"entries":[{"id":"entry-1","kind":"task_payout","amount":25,"task_id":"task-1"}]}`)
 }
 
-func TestTaskEscrowResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(taskEscrowResponse{TaskID: "task-1", Amount: 40, State: "held"})
-	assertWireShape(t, encoded, err, `{"task_id":"task-1","amount":40,"state":"held"}`)
+func TestTaskFundResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(taskFundResponse{TaskID: "task-1", CreditAmount: 40})
+	assertWireShape(t, encoded, err, `{"task_id":"task-1","credit_amount":40}`)
 }
 
 func TestAcceptSubmissionResponseWireShape(t *testing.T) {

@@ -124,8 +124,8 @@ func TestCollectibleRewardAwardedOnAccept(t *testing.T) {
 	if len(workerCollectibles) != 1 {
 		t.Fatalf("worker collectible count = %d, want 1", len(workerCollectibles))
 	}
-	if workerCollectibles[0].State != "awarded" {
-		t.Fatalf("worker collectible state = %q, want awarded", workerCollectibles[0].State)
+	if workerCollectibles[0].State != "minted" {
+		t.Fatalf("worker collectible state = %q, want minted", workerCollectibles[0].State)
 	}
 }
 
@@ -173,22 +173,29 @@ func TestBundleRewardRequiresBothComponentsAndPaysBothOnAccept(t *testing.T) {
 	if len(accept.CollectibleIDs) != 1 || accept.CollectibleIDs[0] != collectibleID {
 		t.Fatalf("collectible payout ids = %v, want [%q]", accept.CollectibleIDs, collectibleID)
 	}
-	if balance := getBalance(t, server, worker.AccessToken); balance.Amount != 125 {
-		t.Fatalf("worker balance after bundle payout = %d, want 125", balance.Amount)
+	if balance := getBalance(t, server, worker.AccessToken); balance.SpendableCredits != 125 {
+		t.Fatalf("worker balance after bundle payout = %d, want 125", balance.SpendableCredits)
 	}
 	if workerCollectibles := listCollectibles(t, server, worker.AccessToken); len(workerCollectibles) != 1 || workerCollectibles[0].ID != collectibleID {
 		t.Fatalf("worker did not receive bundled collectible")
 	}
 
+	// The stateless reward links are consumed by the award, so a replayed accept
+	// reconstructs only the credit payout from the durable task_payout ledger
+	// entry (keyed on the accept idempotency key); the awarded collectibles are
+	// not re-derivable and do not double-transfer.
 	repeat := acceptSubmission(t, server, owner.AccessToken, task.ID, submission.Submission.ID, "bundle-accept-"+task.ID)
-	if repeat.PayoutKind != "bundle" {
-		t.Fatalf("idempotent payout kind = %q, want bundle", repeat.PayoutKind)
+	if repeat.PayoutKind != "credit" {
+		t.Fatalf("idempotent payout kind = %q, want credit", repeat.PayoutKind)
 	}
-	if repeat.PayoutAmount != 25 || len(repeat.CollectibleIDs) != 1 || repeat.CollectibleIDs[0] != collectibleID {
-		t.Fatalf("idempotent bundle payout = %d/%v, want 25/[%q]", repeat.PayoutAmount, repeat.CollectibleIDs, collectibleID)
+	if repeat.PayoutAmount != 25 {
+		t.Fatalf("idempotent credit payout = %d, want 25", repeat.PayoutAmount)
 	}
-	if balance := getBalance(t, server, worker.AccessToken); balance.Amount != 125 {
-		t.Fatalf("worker balance after idempotent bundle accept = %d, want 125", balance.Amount)
+	if workerCollectibles := listCollectibles(t, server, worker.AccessToken); len(workerCollectibles) != 1 {
+		t.Fatalf("worker collectible count after replay = %d, want 1 (not double-transferred)", len(workerCollectibles))
+	}
+	if balance := getBalance(t, server, worker.AccessToken); balance.SpendableCredits != 125 {
+		t.Fatalf("worker balance after idempotent bundle accept = %d, want 125", balance.SpendableCredits)
 	}
 }
 
@@ -238,12 +245,12 @@ func TestBundleRefundReturnsCreditsAndCollectible(t *testing.T) {
 	refund := postJSONWithBearer(t, server.URL+"/api/tasks/"+task.ID+"/refund", []byte(`{"idempotency_key":"bundle-refund-`+task.ID+`"}`), owner.AccessToken)
 	defer refund.Body.Close()
 	assertStatus(t, refund, http.StatusOK)
-	refundBody := decodeEscrowHTTPResponse(t, refund)
-	if refundBody.State != "refunded" {
-		t.Fatalf("bundle refund state = %q, want refunded", refundBody.State)
+	refundBody := decodeFundHTTPResponse(t, refund)
+	if refundBody.CreditAmount != 30 {
+		t.Fatalf("bundle refund credit amount = %d, want 30", refundBody.CreditAmount)
 	}
-	if balance := getBalance(t, server, owner.AccessToken); balance.Amount != 100 {
-		t.Fatalf("owner balance after bundle refund = %d, want 100", balance.Amount)
+	if balance := getBalance(t, server, owner.AccessToken); balance.SpendableCredits != 100 {
+		t.Fatalf("owner balance after bundle refund = %d, want 100", balance.SpendableCredits)
 	}
 	owned := listCollectibles(t, server, owner.AccessToken)
 	if len(owned) != 1 || owned[0].ID != collectibleID || owned[0].State != "minted" {

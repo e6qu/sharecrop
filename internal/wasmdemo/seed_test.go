@@ -6,13 +6,26 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
-func newSeedTestEnv(t *testing.T) (auth.Service, org.Service, task.Service, ledger.Service) {
+type seedTestEnv struct {
+	auth         auth.Service
+	organization org.Service
+	task         task.Service
+	ledger       ledger.Service
+	submission   submission.Service
+	asset        assets.Service
+	notification notification.Service
+}
+
+func newSeedTestEnv(t *testing.T) seedTestEnv {
 	t.Helper()
 	storage := newTestBrowserStorage()
 	ids := &counterLedgerIDs{}
@@ -25,18 +38,33 @@ func newSeedTestEnv(t *testing.T) (auth.Service, org.Service, task.Service, ledg
 
 	organizationService := org.NewService(NewOrgBrowserStore(storage, ids))
 	agentService := agent.NewService(NewAgentBrowserStore(storage))
-	taskStore := NewTaskBrowserStore(storage, ids)
+	taskStore := NewTaskBrowserStore(storage, ids, systemTestClock{})
 	taskService := task.NewService(taskStore, organizationService, agentService)
 	ledgerService := ledger.NewService(NewLedgerBrowserStore(storage, ids))
+	submissionService := submission.NewService(NewSubmissionBrowserStore(storage, ids), taskStore, organizationService)
+	assetService := assets.NewService(NewAssetBrowserStore(storage, ids))
+	notificationService := notification.NewService(NewNotificationBrowserStore(storage))
 
-	return authService.Value, organizationService, taskService, ledgerService
+	return seedTestEnv{
+		auth:         authService.Value,
+		organization: organizationService,
+		task:         taskService,
+		ledger:       ledgerService,
+		submission:   submissionService,
+		asset:        assetService,
+		notification: notificationService,
+	}
+}
+
+func (env seedTestEnv) seed(ctx context.Context) SeedResult {
+	return SeedDemoScenario(ctx, env.auth, env.organization, env.task, env.ledger, env.submission, env.asset, env.notification)
 }
 
 func TestSeedDemoScenarioSeedsFixedDemoCast(t *testing.T) {
-	authService, organizationService, taskService, ledgerService := newSeedTestEnv(t)
+	env := newSeedTestEnv(t)
 	ctx := context.Background()
 
-	result := SeedDemoScenario(ctx, authService, organizationService, taskService, ledgerService)
+	result := env.seed(ctx)
 	if result.Err != "" {
 		t.Fatalf("seed demo scenario: %s", result.Err)
 	}
@@ -48,26 +76,28 @@ func TestSeedDemoScenarioSeedsFixedDemoCast(t *testing.T) {
 	}
 
 	adminSubject := auth.UserSubject{ID: result.AdminUserID}
-	balanceResult := ledgerService.Balance(ctx, result.AdminUserID)
+	balanceResult := env.ledger.Balance(ctx, result.AdminUserID)
 	balance, matched := balanceResult.(ledger.BalanceFound)
 	if !matched {
 		t.Fatalf("admin balance: want BalanceFound, got %#v", balanceResult)
 	}
 	// 100 signup grant - 30 escrowed for the fraud-signals task.
-	if balance.Value.Int64() != 70 {
-		t.Fatalf("admin balance = %d, want 70", balance.Value.Int64())
+	if balance.Value.Spendable() != 70 {
+		t.Fatalf("admin balance = %d, want 70", balance.Value.Spendable())
 	}
 
-	tasksResult := taskService.List(ctx, adminSubject, task.PublicListScope{ViewerID: result.AdminUserID}, task.ListFilters{}, testPage(t, 20, 0))
+	tasksResult := env.task.List(ctx, adminSubject, task.PublicListScope{ViewerID: result.AdminUserID}, task.ListFilters{}, testPage(t, 20, 0))
 	listed, matched := tasksResult.(task.TasksListed)
 	if !matched {
 		t.Fatalf("list public tasks: want TasksListed, got %#v", tasksResult)
 	}
-	if len(listed.Values) != 4 {
-		t.Fatalf("public task count = %d, want 4", len(listed.Values))
+	// 4 discovery tasks + mara's own approval ("Proofread") and review
+	// ("Review 5 pull request diffs") tasks.
+	if len(listed.Values) != 6 {
+		t.Fatalf("public task count = %d, want 6", len(listed.Values))
 	}
 
-	organizationsResult := organizationService.ListOrganizations(ctx, adminSubject, "", testPage(t, 20, 0))
+	organizationsResult := env.organization.ListOrganizations(ctx, adminSubject, "", testPage(t, 20, 0))
 	organizations, matched := organizationsResult.(org.OrganizationsListed)
 	if !matched {
 		t.Fatalf("list organizations: want OrganizationsListed, got %#v", organizationsResult)
@@ -75,17 +105,38 @@ func TestSeedDemoScenarioSeedsFixedDemoCast(t *testing.T) {
 	if len(organizations.Values) != 1 || organizations.Values[0].Name.String() != "Field Operations" {
 		t.Fatalf("organizations = %+v, want one named Field Operations", organizations.Values)
 	}
+
+	// The review-side seed gives mara a pending submission to review, an inbox
+	// notification, and a collectible in her holdings - so the single-actor
+	// demo can exercise the review/approve/collectible journeys.
+	notificationsResult := env.notification.List(ctx, result.AdminUserID, testPage(t, 20, 0))
+	notifications, matched := notificationsResult.(notification.NotificationsListed)
+	if !matched {
+		t.Fatalf("list notifications: want Listed, got %#v", notificationsResult)
+	}
+	if len(notifications.Values) != 1 {
+		t.Fatalf("notification count = %d, want 1", len(notifications.Values))
+	}
+
+	collectiblesResult := env.asset.ListCollectibles(ctx, result.AdminUserID, testPage(t, 20, 0))
+	collectibles, matched := collectiblesResult.(assets.CollectiblesListed)
+	if !matched {
+		t.Fatalf("list collectibles: want CollectiblesListed, got %#v", collectiblesResult)
+	}
+	if len(collectibles.Values) != 1 {
+		t.Fatalf("collectible count = %d, want 1", len(collectibles.Values))
+	}
 }
 
 func TestSeedDemoScenarioSecondRunLogsInInsteadOfReseeding(t *testing.T) {
-	authService, organizationService, taskService, ledgerService := newSeedTestEnv(t)
+	env := newSeedTestEnv(t)
 	ctx := context.Background()
 
-	first := SeedDemoScenario(ctx, authService, organizationService, taskService, ledgerService)
+	first := env.seed(ctx)
 	if first.Err != "" {
 		t.Fatalf("first seed: %s", first.Err)
 	}
-	second := SeedDemoScenario(ctx, authService, organizationService, taskService, ledgerService)
+	second := env.seed(ctx)
 	if second.Err != "" {
 		t.Fatalf("second seed: %s", second.Err)
 	}
@@ -96,14 +147,14 @@ func TestSeedDemoScenarioSecondRunLogsInInsteadOfReseeding(t *testing.T) {
 		t.Fatalf("second seed result missing a usable refresh cookie: %+v", second)
 	}
 
-	// Re-seeding would have duplicated the fixed task cast; still exactly 4.
+	// Re-seeding would have duplicated the fixed task cast; still exactly 5.
 	adminSubject := auth.UserSubject{ID: first.AdminUserID}
-	tasksResult := taskService.List(ctx, adminSubject, task.PublicListScope{ViewerID: first.AdminUserID}, task.ListFilters{}, testPage(t, 20, 0))
+	tasksResult := env.task.List(ctx, adminSubject, task.PublicListScope{ViewerID: first.AdminUserID}, task.ListFilters{}, testPage(t, 20, 0))
 	listed, matched := tasksResult.(task.TasksListed)
 	if !matched {
 		t.Fatalf("list public tasks: want TasksListed, got %#v", tasksResult)
 	}
-	if len(listed.Values) != 4 {
-		t.Fatalf("public task count after second seed = %d, want 4 (no duplication)", len(listed.Values))
+	if len(listed.Values) != 6 {
+		t.Fatalf("public task count after second seed = %d, want 6 (no duplication)", len(listed.Values))
 	}
 }

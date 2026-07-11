@@ -256,7 +256,18 @@ func (store TaskBrowserStore) AddTaskToSeries(_ context.Context, seriesID core.T
 	if !found {
 		return task.SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task was not found")}
 	}
-	nextPosition := 1 + len(mustLoadStringIndexValues(store.storage, taskSeriesTaskIndexKey(seriesID.String())))
+	// Mirror internal/db's clean overwrite (update tasks set series_id = ...):
+	// a task moving from series A to B must leave A's task index, or A keeps
+	// listing a task that no longer belongs to it.
+	if record.SeriesID != "" && record.SeriesID != seriesID.String() {
+		if !removeFromStringIndex(store.storage, taskSeriesTaskIndexKey(record.SeriesID), taskID.String()) {
+			return task.SeriesMutationStoreRejected{Reason: invalidState("update task series task index failed")}
+		}
+	}
+	nextPosition, positionErr := store.nextSeriesPosition(seriesID.String())
+	if positionErr != nil {
+		return task.SeriesMutationStoreRejected{Reason: *positionErr}
+	}
 	record.SeriesID = seriesID.String()
 	record.SeriesPosition = nextPosition
 	if !saveStoredTaskRecord(store.storage, record) {
@@ -268,13 +279,30 @@ func (store TaskBrowserStore) AddTaskToSeries(_ context.Context, seriesID core.T
 	return store.seriesMutationDetail(seriesID.String())
 }
 
-func mustLoadStringIndexValues(storage BrowserStorage, key string) []string {
-	indexResult := loadStringIndex(storage, key, "task series task")
+// nextSeriesPosition mirrors internal/db's `coalesce(max(series_position), 0)
+// + 1` over the target series' current tasks: index length would collide with
+// existing positions after a removal, since positions are not compacted.
+func (store TaskBrowserStore) nextSeriesPosition(seriesID string) (int, *core.DomainError) {
+	indexResult := loadStringIndex(store.storage, taskSeriesTaskIndexKey(seriesID), "task series task")
 	loaded, matched := indexResult.(stringIndexLoaded)
 	if !matched {
-		return nil
+		reason := invalidState(indexResult.(stringIndexRejected).reason)
+		return 0, &reason
 	}
-	return loaded.values
+	maxPosition := 0
+	for _, memberTaskID := range loaded.values {
+		member, memberFound, memberErr := loadStoredTaskRecord(store.storage, memberTaskID)
+		if memberErr != nil {
+			return 0, memberErr
+		}
+		if !memberFound || member.SeriesID != seriesID {
+			continue
+		}
+		if member.SeriesPosition > maxPosition {
+			maxPosition = member.SeriesPosition
+		}
+	}
+	return maxPosition + 1, nil
 }
 
 func (store TaskBrowserStore) RemoveTaskFromSeries(_ context.Context, seriesID core.TaskSeriesID, taskID core.TaskID) task.SeriesMutationStoreResult {

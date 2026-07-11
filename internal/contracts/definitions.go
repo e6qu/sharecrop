@@ -761,25 +761,18 @@ func ledgerModule() Module {
 				Name: NewElmTypeName("LedgerEntryKind"),
 				Variants: []Variant{
 					{Name: NewElmTypeName("LedgerEntryKindSignupGrant"), Tag: "signup_grant"},
-					{Name: NewElmTypeName("LedgerEntryKindTaskEscrow"), Tag: "task_escrow"},
+					{Name: NewElmTypeName("LedgerEntryKindTaskFund"), Tag: "task_fund"},
 					{Name: NewElmTypeName("LedgerEntryKindTaskRefund"), Tag: "task_refund"},
 					{Name: NewElmTypeName("LedgerEntryKindTaskPayout"), Tag: "task_payout"},
 					{Name: NewElmTypeName("LedgerEntryKindTaskTip"), Tag: "task_tip"},
 					{Name: NewElmTypeName("LedgerEntryKindManualAdjustment"), Tag: "manual_adjustment"},
 				},
 			},
-			Enum{
-				Name: NewElmTypeName("EscrowState"),
-				Variants: []Variant{
-					{Name: NewElmTypeName("EscrowStateHeld"), Tag: "held"},
-					{Name: NewElmTypeName("EscrowStateReleased"), Tag: "released"},
-					{Name: NewElmTypeName("EscrowStateRefunded"), Tag: "refunded"},
-				},
-			},
 			Product{
 				Name: NewElmTypeName("BalanceResponse"),
 				Fields: []Field{
-					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
+					{Name: NewElmValueName("spendableCredits"), JSONName: NewJSONFieldName("spendable_credits"), Type: IntRef{}},
+					{Name: NewElmValueName("allocatedCredits"), JSONName: NewJSONFieldName("allocated_credits"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -798,11 +791,10 @@ func ledgerModule() Module {
 				},
 			},
 			Product{
-				Name: NewElmTypeName("TaskEscrowResponse"),
+				Name: NewElmTypeName("TaskFundResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
-					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
-					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("EscrowState")}},
+					{Name: NewElmValueName("creditAmount"), JSONName: NewJSONFieldName("credit_amount"), Type: IntRef{}},
 				},
 			},
 			Product{

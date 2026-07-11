@@ -72,7 +72,11 @@ func (server Server) listTaskSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.taskService.ListSeries(r.Context(), actor, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.taskService.ListSeries(r.Context(), actor, page)
 	listed, matched := result.(task.SeriesListed)
 	if !matched {
 		writeDomainError(w, result.(task.ListSeriesRejected).Reason)

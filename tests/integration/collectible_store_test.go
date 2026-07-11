@@ -56,12 +56,15 @@ func TestMultipleCollectiblesAwardedOnAccept(t *testing.T) {
 		t.Fatalf("awarded collectibles = %v, want both %s and %s", payout.CollectibleIDs, first, second)
 	}
 
-	// Both collectibles now belong to the worker and are marked awarded.
-	if ownerHeld := collectibleStateCount(t, pool, owner, "awarded"); ownerHeld != 0 {
-		t.Fatalf("owner awarded collectible count = %d, want 0", ownerHeld)
+	// Both collectibles now belong to the worker as minted (tradeable) assets.
+	if ownerMinted := collectibleStateCount(t, pool, owner, "minted"); ownerMinted != 0 {
+		t.Fatalf("owner minted collectible count = %d, want 0", ownerMinted)
 	}
-	if workerAwarded := collectibleStateCount(t, pool, worker, "awarded"); workerAwarded != 2 {
-		t.Fatalf("worker awarded collectible count = %d, want 2", workerAwarded)
+	if workerMinted := collectibleStateCount(t, pool, worker, "minted"); workerMinted != 2 {
+		t.Fatalf("worker minted collectible count = %d, want 2", workerMinted)
+	}
+	if held := heldRewardCount(t, pool, taskID); held != 0 {
+		t.Fatalf("held reward count after award = %d, want 0", held)
 	}
 }
 
@@ -250,7 +253,7 @@ func collectibleStateCount(t *testing.T, pool *pgxpool.Pool, owner core.UserID, 
 func heldRewardCount(t *testing.T, pool *pgxpool.Pool, taskID core.TaskID) int {
 	t.Helper()
 	var count int
-	if err := pool.QueryRow(context.Background(), "select count(*) from task_collectible_rewards where task_id = $1 and state = 'held'", taskID.String()).Scan(&count); err != nil {
+	if err := pool.QueryRow(context.Background(), "select count(*) from task_fund_collectibles where task_id = $1", taskID.String()).Scan(&count); err != nil {
 		t.Fatalf("count held rewards: %v", err)
 	}
 	return count

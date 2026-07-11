@@ -2,12 +2,17 @@ package wasmdemo
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -54,7 +59,7 @@ func seedErr(reason string) SeedResult { return SeedResult{Err: reason} }
 // mara in either way so the caller always gets a fresh refresh-token cookie
 // - browser storage persists seeded data across page reloads, but the
 // in-memory admin/session state built fresh each reload does not.
-func SeedDemoScenario(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service) SeedResult {
+func SeedDemoScenario(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service, notificationService notification.Service) SeedResult {
 	maraEmailResult := auth.NewEmailAddress(demoUsers[0].email)
 	maraEmail, matched := maraEmailResult.(auth.EmailAddressAccepted)
 	if !matched {
@@ -68,7 +73,7 @@ func SeedDemoScenario(ctx context.Context, authService auth.Service, organizatio
 
 	registerResult := authService.Register(ctx, maraEmail.Value, password.Value)
 	if accepted, matched := registerResult.(auth.RegisterAccepted); matched {
-		if err := seedDemoScenarioData(ctx, authService, organizationService, taskService, ledgerService, accepted.Subject.ID, password.Value); err != "" {
+		if err := seedDemoScenarioData(ctx, authService, organizationService, taskService, ledgerService, submissionService, assetService, notificationService, accepted.Subject.ID, password.Value); err != "" {
 			return seedErr(err)
 		}
 		return SeedResult{AdminUserID: accepted.Subject.ID, AdminRefreshToken: refreshCookie(accepted.RefreshToken)}
@@ -92,7 +97,7 @@ func refreshCookie(token auth.RefreshTokenPlain) *http.Cookie {
 	return &http.Cookie{Name: "sharecrop_refresh_token", Value: token.String(), Path: "/"}
 }
 
-func seedDemoScenarioData(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, maraID core.UserID, password auth.PasswordSecret) string {
+func seedDemoScenarioData(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service, notificationService notification.Service, maraID core.UserID, password auth.PasswordSecret) string {
 	mara := auth.UserSubject{ID: maraID}
 	memberIDs := make(map[string]core.UserID, len(demoUsers))
 	memberIDs[demoUsers[0].label] = maraID
@@ -133,11 +138,13 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	}
 
 	// task-ledger-review: mara's own public task, already funded and open,
-	// so the demo shows a refundable task with no fund panel on load.
-	if err := seedFundedOpenTask(ctx, taskService, ledgerService, mara, "Verify 10 ledger transfers for fraud signals",
+	// so the demo shows a refundable task with no fund panel on load. It is
+	// deliberately left free of pending submissions so the demo refund flow
+	// still applies (a task with work pending review cannot be refunded).
+	if _, fraudErr := seedFundedOpenTask(ctx, taskService, ledgerService, mara, "Verify 10 ledger transfers for fraud signals",
 		"Review ledger movements and flag suspicious transfers.", task.TaskTypeCodeReview,
-		`{"kind":"freeform"}`, "", 30); err != "" {
-		return err
+		`{"kind":"freeform"}`, "", 30); fraudErr != "" {
+		return fraudErr
 	}
 
 	// task-invoices: public, reservable, with the exact embedded reference
@@ -210,7 +217,130 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 		return "open task-release-notes failed"
 	}
 
+	// The demo is single-actor (always mara), so the review half of the
+	// marketplace is only demonstrable if the seed targets mara with work
+	// from the other seeded users: a submission waiting for her review, a
+	// reservation request waiting for her approval, the matching inbox
+	// notification, and a collectible in her holdings.
+
+	// review-inbox: a separate mara-owned task with a pending submission from
+	// ren, so mara has a real submission to accept/reject/request changes on,
+	// plus the same inbox notification the HTTP layer writes for a live
+	// submission. This is deliberately a *no-reward* task on its own (not the
+	// fraud task): mara's balance stays at exactly 70, and the fraud task
+	// stays free of pending work so the demo's refund flow still applies to
+	// it. renSubject is already declared above (it owns task-support).
+	reviewTask := taskService.Create(ctx, task.CreateCommand{
+		Actor: mara, Owner: task.UserOwner{UserID: maraID},
+		Title:       seedTitle("Review 5 pull request diffs"),
+		Description: seedDescription("Read each diff and note correctness, style, and test-coverage issues."),
+		Type:        task.TaskTypeCodeReview, Reference: task.ReferenceURL{},
+		Reward: task.NoRewardSpec{}, Participation: task.ParticipationPolicyOpen,
+		AssigneeScope: task.AssigneeScopeUser, ReservationTTL: task.DefaultReservationTTL(),
+		Visibility: task.PublicVisibility{}, Placement: task.StandalonePlacement{},
+		ResponseSchema: seedSchema(`{"kind":"object","fields":[{"name":"findings","presence":"required","schema":{"kind":"array","item":{"kind":"freeform"}}}]}`),
+		Payload:        task.JSONDataPayload{Source: seedPayload(`{"pull_requests":["#141","#142","#143","#144","#145"]}`)},
+	})
+	reviewCreated, matched := reviewTask.(task.TaskCreated)
+	if !matched {
+		return reviewTask.(task.CreateRejected).Reason.Description()
+	}
+	if result := taskService.Open(ctx, mara, reviewCreated.Value.ID); !isTaskStateChanged(result) {
+		return "open task-review failed"
+	}
+	responseResult := submission.NewResponseSource(`{"findings":[{"pull_request":"#142","issue":"missing nil check on the reservation path"},{"pull_request":"#144","issue":"no test covers the refund-after-close case"}]}`)
+	responseAccepted, matched := responseResult.(submission.ResponseSourceAccepted)
+	if !matched {
+		return "seed submission response was rejected"
+	}
+	submitResult := submissionService.Submit(ctx, submission.SubmitCommand{
+		TaskID:         reviewCreated.Value.ID,
+		SubmitterID:    renSubject.ID,
+		ResponseSource: responseAccepted.Value,
+		Attachments:    []attachment.Attachment{},
+	})
+	submitted, matched := submitResult.(submission.SubmissionCreated)
+	if !matched {
+		return submitResult.(submission.SubmitRejected).Reason.Description()
+	}
+	if err := seedSubmissionNotification(ctx, notificationService, maraID, renSubject.ID, submitted.Value.ID, reviewCreated.Value.ID); err != "" {
+		return err
+	}
+
+	// task-approvals: an approval-required task owned by mara with a pending
+	// reservation request from sol, so the owner Approve/Decline controls
+	// have something real to act on.
+	approvalTask := taskService.Create(ctx, task.CreateCommand{
+		Actor: mara, Owner: task.UserOwner{UserID: maraID},
+		Title:       seedTitle("Proofread 3 onboarding emails"),
+		Description: seedDescription("Check the drafts for tone, typos, and broken links before they go out."),
+		Type:        task.TaskTypeProductReview, Reference: task.ReferenceURL{},
+		Reward: task.NoRewardSpec{}, Participation: task.ParticipationPolicyApprovalRequired,
+		AssigneeScope: task.AssigneeScopeUser, ReservationTTL: task.DefaultReservationTTL(),
+		Visibility: task.PublicVisibility{}, Placement: task.StandalonePlacement{},
+		ResponseSchema: seedSchema(`{"kind":"freeform"}`),
+		Payload:        task.JSONDataPayload{Source: seedPayload(`{"drafts":["welcome.md","first-task.md","invite-team.md"]}`)},
+	})
+	approvalCreated, matched := approvalTask.(task.TaskCreated)
+	if !matched {
+		return approvalTask.(task.CreateRejected).Reason.Description()
+	}
+	if result := taskService.Open(ctx, mara, approvalCreated.Value.ID); !isTaskStateChanged(result) {
+		return "open task-approvals failed"
+	}
+	solSubject := auth.UserSubject{ID: memberIDs["sol"]}
+	if reserveResult := taskService.Reserve(ctx, solSubject, approvalCreated.Value.ID); !isReservationCreated(reserveResult) {
+		return "seed approval reservation request failed"
+	}
+
+	// A collectible in mara's holdings, awarded from the default catalog the
+	// same way the admin award endpoint mints one, so the collectible pages
+	// have something to show without minting first. Transferable, so the
+	// demo trade flow also works on it.
+	entry, found := assets.CatalogBySlug("harvest-star")
+	if !found {
+		return "seed collectible slug is unknown"
+	}
+	collectibleNameResult := assets.NewCollectibleName(entry.Name)
+	collectibleName, matched := collectibleNameResult.(assets.CollectibleNameAccepted)
+	if !matched {
+		return "seed collectible name was rejected"
+	}
+	if mintResult := assetService.Mint(ctx, assets.CollectibleOwnerKindUser, maraID.String(), "", collectibleName.Value, entry.Kind, entry.Policy, entry.Art); !isCollectibleMinted(mintResult) {
+		return "seed collectible award failed"
+	}
+
 	return ""
+}
+
+// seedSubmissionNotification writes the same notification the HTTP layer
+// records for a live submission (internal/http notify + KindSubmissionCreated
+// + task metadata), since notifications are an HTTP-layer side effect that
+// service-level seeding does not produce.
+func seedSubmissionNotification(ctx context.Context, notificationService notification.Service, recipient core.UserID, actor core.UserID, submissionID core.SubmissionID, taskID core.TaskID) string {
+	metadata, err := json.Marshal(struct {
+		TaskID string `json:"task_id"`
+	}{TaskID: taskID.String()})
+	if err != nil {
+		return "encode seed notification metadata failed"
+	}
+	result := notificationService.Notify(ctx, recipient, actor, notification.KindSubmissionCreated,
+		notification.Subject{Kind: "submission", ID: submissionID.String()},
+		notification.Metadata{JSON: string(metadata)})
+	if _, matched := result.(notification.NotificationCreated); !matched {
+		return "seed submission notification failed"
+	}
+	return ""
+}
+
+func isReservationCreated(result task.ReservationResult) bool {
+	_, matched := result.(task.ReservationCreated)
+	return matched
+}
+
+func isCollectibleMinted(result assets.MintResult) bool {
+	_, matched := result.(assets.CollectibleMinted)
+	return matched
 }
 
 func emailFor(label string) string {
@@ -296,7 +426,7 @@ func isTaskStateChanged(result task.ChangeStateResult) bool {
 
 // seedFundedOpenTask creates a task owned by actor, funds it from the
 // actor's own balance, and opens it - the shape task-ledger-review needs.
-func seedFundedOpenTask(ctx context.Context, taskService task.Service, ledgerService ledger.Service, actor auth.UserSubject, title string, description string, taskType task.TaskType, schemaJSON string, payloadJSON string, amount int64) string {
+func seedFundedOpenTask(ctx context.Context, taskService task.Service, ledgerService ledger.Service, actor auth.UserSubject, title string, description string, taskType task.TaskType, schemaJSON string, payloadJSON string, amount int64) (core.TaskID, string) {
 	command := task.CreateCommand{
 		Actor: actor, Owner: task.UserOwner{UserID: actor.ID},
 		Title: seedTitle(title), Description: seedDescription(description),
@@ -312,14 +442,14 @@ func seedFundedOpenTask(ctx context.Context, taskService task.Service, ledgerSer
 	createResult := taskService.Create(ctx, command)
 	created, matched := createResult.(task.TaskCreated)
 	if !matched {
-		return createResult.(task.CreateRejected).Reason.Description()
+		return core.TaskID{}, createResult.(task.CreateRejected).Reason.Description()
 	}
 	fundResult := ledgerService.FundTask(ctx, actor.ID, created.Value.ID, mustCreditAmount(amount), mustIdempotencyKey("seed-fund-"+created.Value.ID.String()))
 	if _, matched := fundResult.(ledger.TaskFunded); !matched {
-		return "fund seeded task failed"
+		return core.TaskID{}, "fund seeded task failed"
 	}
 	if openResult := taskService.Open(ctx, actor, created.Value.ID); !isTaskStateChanged(openResult) {
-		return "open seeded task failed"
+		return core.TaskID{}, "open seeded task failed"
 	}
-	return ""
+	return created.Value.ID, ""
 }

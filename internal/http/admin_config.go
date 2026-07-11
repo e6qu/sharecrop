@@ -155,7 +155,11 @@ func (server Server) listPlatformAdmins(w http.ResponseWriter, r *http.Request) 
 	if _, ok := server.requireAdminSubject(w, r); !ok {
 		return
 	}
-	result := server.platformAdmins.List(r.Context(), parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.platformAdmins.List(r.Context(), page)
 	listed, matched := result.(PlatformAdminsListed)
 	if !matched {
 		writeDomainError(w, result.(PlatformAdminListRejected).Reason)

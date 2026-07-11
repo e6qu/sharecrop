@@ -78,11 +78,14 @@ func (store AuthStore) FindCredentialByUserID(ctx context.Context, userID core.U
 func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Page) auth.UserDirectoryResult {
 	limit := page.Limit()
 	offset := page.Offset()
+	// Escape LIKE metacharacters in the caller's query so a value full of
+	// '%'/'_' is matched literally (as the browser-store substring match
+	// does) rather than expanding into an expensive wildcard scan.
 	rows, err := store.pool.Query(ctx, `
 		select id::text, email, status
 		from users
 		where status = 'active'
-		and ($1 = '' or email ilike '%' || $1 || '%' or id::text = $1)
+		and ($1 = '' or email ilike '%' || replace(replace(replace($1, '\', '\\'), '%', '\%'), '_', '\_') || '%' or id::text = $1)
 		order by email asc
 		limit $2 offset $3
 	`, query, limit, offset)
@@ -182,7 +185,9 @@ func (store AuthStore) UpdatePassword(ctx context.Context, userID core.UserID, p
 	if tag.RowsAffected() == 0 {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
 	}
-	_, _ = store.pool.Exec(ctx, "update refresh_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String())
+	if _, err := store.pool.Exec(ctx, "update refresh_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String()); err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke account sessions failed")}
+	}
 	return auth.AccountMutationAccepted{}
 }
 
@@ -192,6 +197,25 @@ func (store AuthStore) DeactivateUser(ctx context.Context, userID core.UserID) a
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin deactivate account failed")}
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// A user still owning tasks that hold allocated credits or held collectibles
+	// cannot deactivate: those funds would be stranded. Refunds are easy and
+	// auto-granted, so this stays a light guard that asks them to settle first.
+	var holdsFundedRewards bool
+	if err := tx.QueryRow(ctx, `
+		select exists(
+			select 1 from tasks
+			where tasks.created_by_user_id = $1
+			and (
+				exists(select 1 from task_funds where task_funds.task_id = tasks.id)
+				or exists(select 1 from task_fund_collectibles where task_fund_collectibles.task_id = tasks.id)
+			)
+		)
+	`, userID.String()).Scan(&holdsFundedRewards); err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check held task rewards failed")}
+	}
+	if holdsFundedRewards {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "refund or close your funded tasks before deactivating")}
+	}
 	tombstoneEmail := "deactivated+" + userID.String() + "@sharecrop.invalid"
 	tag, err := tx.Exec(ctx, "update users set status = 'deactivated', email = $2, email_verified_at = null where id = $1 and status = 'active'", userID.String(), tombstoneEmail)
 	if err != nil {

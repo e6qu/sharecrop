@@ -8,7 +8,7 @@ Sharecrop runs as one HTTP process backed by PostgreSQL.
 - `DATABASE_URL`: PostgreSQL connection string.
 - `SHARECROP_MIGRATIONS_DIR`: path to SQL migrations.
 - `SHARECROP_ACCESS_TOKEN_SECRET`: at least 32 bytes.
-- `SHARECROP_ADMIN_USER_IDS`: comma-separated user ids that may award catalog collectibles and read admin operations status.
+- `SHARECROP_ADMIN_USER_IDS`: comma-separated bootstrap platform-admin user ids. Platform admins can grant and revoke other platform admins (bootstrap admins cannot be revoked), award catalog collectibles, read admin operations status, list platform-wide audit events, list and triage moderation reports, list and resolve privacy requests, and run sensitive-field retention.
 - `SHARECROP_ACCOUNT_TOKEN_DELIVERY`: `api` for local/test token responses, or `log` to emit verification/reset tokens to structured logs and return only `{"status":"sent"}`.
 - `SHARECROP_INSECURE_COOKIES`: set to `true` only for local plain-HTTP development.
 
@@ -59,6 +59,6 @@ The audit endpoint supports optional `action`, `subject_kind`, and `subject_id` 
 
 The database includes `audit_events`, `rate_limit_buckets`, and `mcp_http_sessions` tables as the operations-state schema foundation.
 
-MCP HTTP sessions, SSE replay buffers, and rate-limit buckets are still stored in process memory by the runtime. This is acceptable for one process. Multi-process deployments need the runtime adapters to use the Postgres tables and need a cross-process SSE fan-out design before horizontal scaling.
+Production `serve` (`cmd/sharecrop`) wires Postgres-backed rate-limit buckets, persisted MCP HTTP session identity, and persisted MCP replay events against those tables (migrations `000024_operations_foundation.sql` and `000026_mcp_http_events.sql`), along with Postgres-backed audit events, notifications, saved queue views, privacy requests, platform admins, and moderation triage. Only live SSE subscriber channels are process-local; persisted subscribers poll the replay table as cross-process fan-out groundwork, but multi-process MCP/SSE streaming still needs a pub/sub design or sticky sessions before horizontal scaling. The in-memory defaults apply only to the test/demo HTTP constructor, not to `serve`.
 
 Sharecrop rewards are internal-only: Sharecrop credits and admin-minted Sharecrop collectibles. User/org/per-project tokens, external wallets, and crypto integrations are not part of the operating model.

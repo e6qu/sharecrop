@@ -373,6 +373,11 @@ func (store OrgBrowserStore) FindMemberRoles(_ context.Context, organizationID c
 		}
 		roles = append(roles, roleAccepted.Value)
 	}
+	// Matches internal/db: an active membership carrying zero roles reports
+	// the member roles as missing, not as an empty found set.
+	if len(roles) == 0 {
+		return org.MemberRolesMissing{}
+	}
 	return org.MemberRolesFound{Roles: roles}
 }
 
@@ -424,7 +429,7 @@ func (store OrgBrowserStore) ProvisionMember(_ context.Context, membershipID cor
 		return org.ProvisionMemberStoreRejected{Reason: invalidState("check existing organization membership failed")}
 	}
 	if alreadyMember {
-		return org.ProvisionMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "user is already a member of this organization")}
+		return org.ProvisionMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "user is already a member of this organization")}
 	}
 
 	rawRoles := make([]string, len(roles))

@@ -154,6 +154,9 @@ func (store OrgStore) ProvisionMember(ctx context.Context, membershipID core.Org
 
 	_, err = tx.Exec(ctx, "insert into organization_memberships (id, organization_id, user_id, status) values ($1, $2, $3, $4)", membershipID.String(), organizationID.String(), userIDFound.value.String(), org.MembershipStatusActive.String())
 	if err != nil {
+		if isUniqueViolation(err) {
+			return org.ProvisionMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "user is already a member of this organization")}
+		}
 		return org.ProvisionMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization membership failed")}
 	}
 
@@ -655,7 +658,7 @@ func lookupUserIDByEmail(ctx context.Context, tx pgx.Tx, email auth.EmailAddress
 	err := tx.QueryRow(ctx, "select id::text from users where email = $1", email.String()).Scan(&rawUserID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return userIDLookupRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "user was not found for email address")}
+			return userIDLookupRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "user was not found for email address")}
 		}
 		return userIDLookupRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lookup user by email failed")}
 	}

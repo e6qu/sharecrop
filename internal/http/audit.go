@@ -130,7 +130,11 @@ func (server Server) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filters := parseAuditListFilters(r)
-	result := server.auditService.List(r.Context(), filters, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.auditService.List(r.Context(), filters, page)
 	listed, listedMatched := result.(audit.EventsListed)
 	if !listedMatched {
 		writeDomainError(w, result.(audit.ListRejected).Reason)
@@ -167,7 +171,11 @@ func (server Server) listOrganizationAuditEvents(w http.ResponseWriter, r *http.
 
 	filters := audit.NoListFilters()
 	filters.SubjectID = audit.SubjectIDEquals{Value: organizationIDAccepted.value.String()}
-	result := server.auditService.List(r.Context(), filters, parsePage(r))
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.auditService.List(r.Context(), filters, page)
 	listed, listedMatched := result.(audit.EventsListed)
 	if !listedMatched {
 		writeDomainError(w, result.(audit.ListRejected).Reason)

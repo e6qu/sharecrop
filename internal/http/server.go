@@ -438,7 +438,7 @@ func (balanceResponse) writableResponse() {}
 
 func (ledgerListResponse) writableResponse() {}
 
-func (taskEscrowResponse) writableResponse() {}
+func (taskFundResponse) writableResponse() {}
 
 func (acceptSubmissionResponse) writableResponse() {}
 
@@ -955,27 +955,18 @@ func (taskListFiltersAccepted) taskListFiltersResult() {}
 
 func (taskListFiltersRejected) taskListFiltersResult() {}
 
-func parsePage(r *http.Request) core.Page {
-	query := r.URL.Query()
-	rawLimit := query.Get("limit")
-	rawOffset := query.Get("offset")
-	if rawLimit == "" && rawOffset == "" {
-		return core.DefaultPage()
-	}
-	limit, limitErr := strconv.Atoi(rawLimit)
-	if limitErr != nil {
-		limit = core.DefaultPage().Limit()
-	}
-	offset, offsetErr := strconv.Atoi(rawOffset)
-	if offsetErr != nil {
-		offset = core.DefaultPage().Offset()
-	}
-	pageResult := core.NewPage(limit, offset)
-	accepted, matched := pageResult.(core.PageAccepted)
+// parsePageOrReject parses the limit/offset query parameters strictly,
+// writing a 400 response and reporting false when they are invalid. Every
+// list endpoint uses this; there is no lenient variant that silently coerces
+// malformed paging input to defaults.
+func parsePageOrReject(w http.ResponseWriter, r *http.Request) (core.Page, bool) {
+	pageResult := parsePageStrict(r)
+	accepted, matched := pageResult.(pageParseAccepted)
 	if !matched {
-		return core.DefaultPage()
+		writeError(w, http.StatusBadRequest, pageResult.(pageParseRejected).reason)
+		return core.Page{}, false
 	}
-	return accepted.Value
+	return accepted.value, true
 }
 
 type pageParseResult interface {
