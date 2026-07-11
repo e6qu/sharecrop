@@ -3370,6 +3370,31 @@ selectedAttachmentRow removeMsg index attachment =
         ]
 
 
+{-| A reward-return action (owner "Reclaim" or worker "Refund") paired with a
+small info toggle that explains what it does. Both roles reach the same
+endpoints; the label, test id, and explanation carry the role-specific meaning.
+-}
+rewardReturnControl : Msg -> String -> String -> String -> String -> Html Msg
+rewardReturnControl clickMsg label buttonTestId infoTestId explanation =
+    div [ Html.Attributes.class "space-y-1" ]
+        [ Ui.secondaryButton [ type_ "button", onClick clickMsg, testId buttonTestId ] label
+        , Ui.explainToggle infoTestId explanation
+        ]
+
+
+{-| Owner-side wording: the owner takes their own allocated reward back. -}
+ownerReclaimExplanation : String
+ownerReclaimExplanation =
+    "Reclaim moves the reward you allocated to this task back to your wallet's spendable balance and cancels the task. You can only reclaim before the task is awarded to a worker."
+
+
+{-| Worker-side wording: the active implementor hands the reward back to the
+requester. Same effect as a reclaim, but named from the worker's side. -}
+workerRefundExplanation : String
+workerRefundExplanation =
+    "Refund returns the reward to the requester and cancels the task. Use it if you have reserved this task but cannot complete the work. You can only refund before the task is awarded."
+
+
 ownerControlsCard : LoggedInModel -> Html Msg
 ownerControlsCard state =
     case state.detail of
@@ -3416,21 +3441,31 @@ ownerControlsCard state =
                 holdsCollectibles =
                     not (List.isEmpty detail.allocatedCollectibleIDs)
 
-                -- The credit refund endpoint (/refund) is the unified refund: it
+                -- The owner's reward-return action is a *reclaim*: it pulls the
+                -- reward the owner allocated to this task back to their own
+                -- spendable balance and cancels the task. This is deliberately
+                -- worded differently from a worker's *refund* (see
+                -- workerRefundControl in the reservation card) even though both
+                -- hit the same endpoint - the endpoint returns the reward to the
+                -- funder (always the owner) and cancels the task, but "reclaim"
+                -- names it from the owner's side ("take my reward back") and
+                -- "refund" from the worker's side ("give the reward back").
+                --
+                -- The credit refund endpoint (/refund) is the unified path: it
                 -- returns held credits AND held collectibles together (so it
                 -- handles bundle rewards in one shot). The collectible-refund
-                -- endpoint only handles collectible-only tasks (it 409s on bundle).
-                -- So: any held credits (credit or bundle) -> /refund;
+                -- endpoint only handles collectible-only tasks (it 409s on
+                -- bundle). So: any held credits (credit or bundle) -> /refund;
                 -- collectible-only holdings -> /collectible-refund.
-                refundButton =
+                reclaimControl =
                     if draftOrOpen && holdsCredits && holdsCollectibles then
-                        Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund reward")
+                        Just (rewardReturnControl (RefundTaskClicked detail.id) "Reclaim reward" "refund-task" "refund-task-info" ownerReclaimExplanation)
 
                     else if draftOrOpen && holdsCredits then
-                        Just (Ui.secondaryButton [ type_ "button", onClick (RefundTaskClicked detail.id), testId "refund-task" ] "Refund credits")
+                        Just (rewardReturnControl (RefundTaskClicked detail.id) "Reclaim credits" "refund-task" "refund-task-info" ownerReclaimExplanation)
 
                     else if draftOrOpen && holdsCollectibles then
-                        Just (Ui.secondaryButton [ type_ "button", onClick (RefundCollectibleRewardClicked detail.id), testId "refund-collectible" ] "Refund collectible")
+                        Just (rewardReturnControl (RefundCollectibleRewardClicked detail.id) "Reclaim collectible" "refund-collectible" "refund-collectible-info" ownerReclaimExplanation)
 
                     else
                         Nothing
@@ -3453,8 +3488,8 @@ ownerControlsCard state =
                           else
                             Nothing
                         , -- Cancel ends an unfunded task. Reward-bearing tasks are ended via
-                          -- Refund instead, which is the clearer label for "return my
-                          -- allocated credits and close the task" - though the backend now
+                          -- Reclaim instead, which is the clearer label for "take my
+                          -- allocated reward back and close the task" - though the backend now
                           -- settles the funds either way (cancelling a funded task returns
                           -- its allocated credits to the owner's spendable balance too).
                           if detail.state == Task.TaskStateDraft || (detail.state == Task.TaskStateOpen && detail.rewardKind == "none") then
@@ -3462,7 +3497,6 @@ ownerControlsCard state =
 
                           else
                             Nothing
-                        , refundButton
                         ]
             in
             Ui.card
@@ -3470,6 +3504,7 @@ ownerControlsCard state =
                 , p [ Html.Attributes.class "rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700", testId "task-guidance" ] [ text (taskStateGuidance detail.state) ]
                 , taskFundingStatus holdsCredits holdsCollectibles detail
                 , div [ Html.Attributes.class "flex flex-wrap gap-2" ] buttons
+                , Maybe.withDefault (text "") reclaimControl
                 , maybeNote state.taskActionMessage "task-action-message"
                 , if needsFundingGuidance then
                     -- state.fundTaskId is kept synced to the currently-viewed
@@ -3597,12 +3632,70 @@ reservationCard state =
                   else
                     reservationAction state detail
                 , reservationsList isOwner state.subjectId state.reservations
+                , workerRefundControl state detail isOwner
+
+                -- The refund confirmation lives in taskActionMessage, which the
+                -- owner sees in the owner-controls card. A worker never sees that
+                -- card, so echo it here (worker-only) - otherwise the worker's
+                -- Refund click would report nothing back.
+                , if isOwner then
+                    text ""
+
+                  else
+                    maybeNote state.taskActionMessage "worker-task-action-message"
                 , reservationSecretView state.reservationSecret
                 , maybeNote state.reservationMessage "reservation-message"
                 ]
 
         Nothing ->
             text ""
+
+
+{-| The active implementor's counterpart to the owner's Reclaim: a worker who
+holds the active reservation on a still-fundable task can hand the reward back
+to the requester and cancel the task (the backend authorizes the active
+implementor for the same /refund path). Only shown when the viewer actually
+holds an active reservation and the task still holds a reward - so it never
+appears as a button that would just fail server-side. Owners use Reclaim in the
+owner controls instead, so this is worker-only.
+-}
+workerRefundControl : LoggedInModel -> PublicTaskDetail -> Bool -> Html Msg
+workerRefundControl state detail isOwner =
+    let
+        holdsActiveReservation =
+            List.any
+                (\reservation ->
+                    reservation.state
+                        == Task.TaskReservationStateActive
+                        && reservation.assigneeKind
+                        == Task.TaskAssigneeScopeUser
+                        && reservation.assigneeID
+                        == state.subjectId
+                )
+                state.reservations
+
+        draftOrOpen =
+            detail.state == Task.TaskStateDraft || detail.state == Task.TaskStateOpen
+
+        holdsCredits =
+            detail.allocatedCredits > 0
+
+        holdsCollectibles =
+            not (List.isEmpty detail.allocatedCollectibleIDs)
+    in
+    if isOwner || not holdsActiveReservation || not draftOrOpen then
+        text ""
+
+    else if holdsCredits then
+        -- Any held credits (credit or bundle) go through /refund, which returns
+        -- credits and collectibles together - matching the owner's Reclaim.
+        rewardReturnControl (RefundTaskClicked detail.id) "Refund reward" "worker-refund-task" "worker-refund-task-info" workerRefundExplanation
+
+    else if holdsCollectibles then
+        rewardReturnControl (RefundCollectibleRewardClicked detail.id) "Refund collectible" "worker-refund-collectible" "worker-refund-collectible-info" workerRefundExplanation
+
+    else
+        text ""
 
 
 viewerActionSentence : Task.TaskViewerAction -> String

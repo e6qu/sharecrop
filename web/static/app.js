@@ -14183,7 +14183,7 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										taskActionMessage: $elm$core$Maybe$Just(
-											$author$project$Sharecrop$Types$SuccessNote('Task refunded and cancelled.'))
+											$author$project$Sharecrop$Types$SuccessNote('Reward returned and the task was cancelled.'))
 									});
 							}),
 						$elm$core$Platform$Cmd$batch(
@@ -14279,7 +14279,7 @@ var $author$project$Main$update = F2(
 									state,
 									{
 										taskActionMessage: $elm$core$Maybe$Just(
-											$author$project$Sharecrop$Types$SuccessNote('Collectible reward refunded.'))
+											$author$project$Sharecrop$Types$SuccessNote('Collectible reward returned and the task was cancelled.'))
 									});
 							}),
 						$elm$core$Platform$Cmd$batch(
@@ -27374,6 +27374,74 @@ var $author$project$Sharecrop$Types$RefundTaskClicked = function (a) {
 var $author$project$Sharecrop$Types$UnpublishTaskClicked = function (a) {
 	return {$: 'UnpublishTaskClicked', a: a};
 };
+var $author$project$Sharecrop$View$ownerReclaimExplanation = 'Reclaim moves the reward you allocated to this task back to your wallet\'s spendable balance and cancels the task. You can only reclaim before the task is awarded to a worker.';
+var $author$project$Sharecrop$Ui$explainToggle = F2(
+	function (identifier, explanation) {
+		return A3(
+			$elm$html$Html$node,
+			'details',
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-xs'),
+					$author$project$Sharecrop$Ui$testId(identifier)
+				]),
+			_List_fromArray(
+				[
+					A3(
+					$elm$html$Html$node,
+					'summary',
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('inline-flex w-fit cursor-pointer select-none items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-800 list-none [&::-webkit-details-marker]:hidden')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									A2($elm$html$Html$Attributes$attribute, 'aria-hidden', 'true')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('ⓘ')
+								])),
+							$elm$html$Html$text('What this does')
+						])),
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('mt-1 max-w-prose text-slate-600')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(explanation)
+						]))
+				]));
+	});
+var $author$project$Sharecrop$View$rewardReturnControl = F5(
+	function (clickMsg, label, buttonTestId, infoTestId, explanation) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('space-y-1')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$author$project$Sharecrop$Ui$secondaryButton,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$type_('button'),
+							$elm$html$Html$Events$onClick(clickMsg),
+							$author$project$Sharecrop$Ui$testId(buttonTestId)
+						]),
+					label),
+					A2($author$project$Sharecrop$Ui$explainToggle, infoTestId, explanation)
+				]));
+	});
 var $author$project$Sharecrop$View$pluralizeCollectibles = function (count) {
 	return (count === 1) ? '1 collectible' : ($elm$core$String$fromInt(count) + ' collectibles');
 };
@@ -27423,37 +27491,28 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 		var holdsCredits = detail.allocatedCredits > 0;
 		var holdsCollectibles = !$elm$core$List$isEmpty(detail.allocatedCollectibleIDs);
 		var draftOrOpen = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen);
-		var refundButton = (draftOrOpen && (holdsCredits && holdsCollectibles)) ? $elm$core$Maybe$Just(
-			A2(
-				$author$project$Sharecrop$Ui$secondaryButton,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('button'),
-						$elm$html$Html$Events$onClick(
-						$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
-						$author$project$Sharecrop$Ui$testId('refund-task')
-					]),
-				'Refund reward')) : ((draftOrOpen && holdsCredits) ? $elm$core$Maybe$Just(
-			A2(
-				$author$project$Sharecrop$Ui$secondaryButton,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('button'),
-						$elm$html$Html$Events$onClick(
-						$author$project$Sharecrop$Types$RefundTaskClicked(detail.id)),
-						$author$project$Sharecrop$Ui$testId('refund-task')
-					]),
-				'Refund credits')) : ((draftOrOpen && holdsCollectibles) ? $elm$core$Maybe$Just(
-			A2(
-				$author$project$Sharecrop$Ui$secondaryButton,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$type_('button'),
-						$elm$html$Html$Events$onClick(
-						$author$project$Sharecrop$Types$RefundCollectibleRewardClicked(detail.id)),
-						$author$project$Sharecrop$Ui$testId('refund-collectible')
-					]),
-				'Refund collectible')) : $elm$core$Maybe$Nothing));
+		var reclaimControl = (draftOrOpen && (holdsCredits && holdsCollectibles)) ? $elm$core$Maybe$Just(
+			A5(
+				$author$project$Sharecrop$View$rewardReturnControl,
+				$author$project$Sharecrop$Types$RefundTaskClicked(detail.id),
+				'Reclaim reward',
+				'refund-task',
+				'refund-task-info',
+				$author$project$Sharecrop$View$ownerReclaimExplanation)) : ((draftOrOpen && holdsCredits) ? $elm$core$Maybe$Just(
+			A5(
+				$author$project$Sharecrop$View$rewardReturnControl,
+				$author$project$Sharecrop$Types$RefundTaskClicked(detail.id),
+				'Reclaim credits',
+				'refund-task',
+				'refund-task-info',
+				$author$project$Sharecrop$View$ownerReclaimExplanation)) : ((draftOrOpen && holdsCollectibles) ? $elm$core$Maybe$Just(
+			A5(
+				$author$project$Sharecrop$View$rewardReturnControl,
+				$author$project$Sharecrop$Types$RefundCollectibleRewardClicked(detail.id),
+				'Reclaim collectible',
+				'refund-collectible',
+				'refund-collectible-info',
+				$author$project$Sharecrop$View$ownerReclaimExplanation)) : $elm$core$Maybe$Nothing));
 		var canFund = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft);
 		var needsFundingGuidance = canFund && (!(holdsCredits || holdsCollectibles));
 		var buttons = A2(
@@ -27493,8 +27552,7 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 								$author$project$Sharecrop$Types$CancelTaskClicked(detail.id)),
 								$author$project$Sharecrop$Ui$testId('cancel-task')
 							]),
-						'Cancel')) : $elm$core$Maybe$Nothing,
-					refundButton
+						'Cancel')) : $elm$core$Maybe$Nothing
 				]));
 		return $author$project$Sharecrop$Ui$card(
 			_List_fromArray(
@@ -27520,6 +27578,10 @@ var $author$project$Sharecrop$View$ownerControlsCard = function (state) {
 							$elm$html$Html$Attributes$class('flex flex-wrap gap-2')
 						]),
 					buttons),
+					A2(
+					$elm$core$Maybe$withDefault,
+					$elm$html$Html$text(''),
+					reclaimControl),
 					A2($author$project$Sharecrop$View$maybeNote, state.taskActionMessage, 'task-action-message'),
 					needsFundingGuidance ? A2(
 					$elm$html$Html$div,
@@ -27876,6 +27938,32 @@ var $author$project$Sharecrop$View$viewerActionSentence = function (action) {
 			return 'view this task (no worker action available)';
 	}
 };
+var $author$project$Sharecrop$View$workerRefundExplanation = 'Refund returns the reward to the requester and cancels the task. Use it if you have reserved this task but cannot complete the work. You can only refund before the task is awarded.';
+var $author$project$Sharecrop$View$workerRefundControl = F3(
+	function (state, detail, isOwner) {
+		var holdsCredits = detail.allocatedCredits > 0;
+		var holdsCollectibles = !$elm$core$List$isEmpty(detail.allocatedCollectibleIDs);
+		var holdsActiveReservation = A2(
+			$elm$core$List$any,
+			function (reservation) {
+				return _Utils_eq(reservation.state, $author$project$Sharecrop$Generated$Task$TaskReservationStateActive) && (_Utils_eq(reservation.assigneeKind, $author$project$Sharecrop$Generated$Task$TaskAssigneeScopeUser) && _Utils_eq(reservation.assigneeID, state.subjectId));
+			},
+			state.reservations);
+		var draftOrOpen = _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateDraft) || _Utils_eq(detail.state, $author$project$Sharecrop$Generated$Task$TaskStateOpen);
+		return (isOwner || ((!holdsActiveReservation) || (!draftOrOpen))) ? $elm$html$Html$text('') : (holdsCredits ? A5(
+			$author$project$Sharecrop$View$rewardReturnControl,
+			$author$project$Sharecrop$Types$RefundTaskClicked(detail.id),
+			'Refund reward',
+			'worker-refund-task',
+			'worker-refund-task-info',
+			$author$project$Sharecrop$View$workerRefundExplanation) : (holdsCollectibles ? A5(
+			$author$project$Sharecrop$View$rewardReturnControl,
+			$author$project$Sharecrop$Types$RefundCollectibleRewardClicked(detail.id),
+			'Refund collectible',
+			'worker-refund-collectible',
+			'worker-refund-collectible-info',
+			$author$project$Sharecrop$View$workerRefundExplanation) : $elm$html$Html$text('')));
+	});
 var $author$project$Sharecrop$View$reservationCard = function (state) {
 	var _v0 = state.detail;
 	if (_v0.$ === 'Just') {
@@ -27899,6 +27987,8 @@ var $author$project$Sharecrop$View$reservationCard = function (state) {
 						])),
 					isOwner ? $elm$html$Html$text('') : A2($author$project$Sharecrop$View$reservationAction, state, detail),
 					A3($author$project$Sharecrop$View$reservationsList, isOwner, state.subjectId, state.reservations),
+					A3($author$project$Sharecrop$View$workerRefundControl, state, detail, isOwner),
+					isOwner ? $elm$html$Html$text('') : A2($author$project$Sharecrop$View$maybeNote, state.taskActionMessage, 'worker-task-action-message'),
 					$author$project$Sharecrop$View$reservationSecretView(state.reservationSecret),
 					A2($author$project$Sharecrop$View$maybeNote, state.reservationMessage, 'reservation-message')
 				]));

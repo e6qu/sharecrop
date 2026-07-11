@@ -1042,7 +1042,11 @@ update msg model =
             Api.withSession model (\state -> ( model, Api.postRefundTask state.accessToken taskId ))
 
         RefundTaskReceived (Ok _) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (SuccessNote "Task refunded and cancelled.") })
+            -- Neutral wording: the same endpoint backs the owner's Reclaim and
+            -- the active implementor's Refund, so the confirmation reads
+            -- correctly for both ("returned" to whoever funded it - always the
+            -- owner).
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (SuccessNote "Reward returned and the task was cancelled.") })
             , Cmd.batch [ Api.refreshTasksAndLedger model, Api.refreshAfterAccept model ]
             )
 
@@ -1067,7 +1071,7 @@ update msg model =
             Api.withSession model (\state -> ( model, Api.postRefundCollectibleReward state.accessToken taskId ))
 
         RefundCollectibleRewardReceived (Ok _) ->
-            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (SuccessNote "Collectible reward refunded.") })
+            ( Api.updateLoggedIn model (\state -> { state | taskActionMessage = Just (SuccessNote "Collectible reward returned and the task was cancelled.") })
             , Cmd.batch [ Api.refreshAfterAccept model, Api.refreshCollectibles model ]
             )
 

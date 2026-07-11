@@ -329,11 +329,12 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
     .getByTestId("view-task")
     .click();
 
-  // The owner controls offer Refund; the WASM backend implements /refund and
-  // returns the escrow shape the client decodes, so the action succeeds.
+  // The owner controls offer Reclaim (the owner taking their allocated reward
+  // back); the WASM backend implements /refund and returns the fund shape the
+  // client decodes, so the action succeeds.
   await page.getByTestId("refund-task").click();
   await expect(page.getByTestId("task-action-message")).toContainText(
-    "Task refunded and cancelled.",
+    "Reward returned and the task was cancelled.",
   );
 });
 

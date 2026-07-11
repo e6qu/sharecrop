@@ -8,4 +8,8 @@ playwright-report/
 site/demo/sharecrop-wasm-backend.wasm
 site/demo/wasm_exec.js
 
+# Locally downloaded Elm 0.19.1 compiler (system elm is 0.19.2); see the
+# ELM_BIN note in the dev docs. Not part of the repo.
+elm019
+
 *.log
