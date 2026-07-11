@@ -67,7 +67,7 @@ type Store interface {
 
 func TestGenerateRequiresTheInterface(t *testing.T) {
 	_, err := Generate(sources(`package audit
-type NotStore interface{}
+type NotStore struct{}
 `), "Store")
 	if err == nil || !strings.Contains(err.Error(), `interface "Store" not found`) {
 		t.Fatalf("expected a not-found error, got: %v", err)

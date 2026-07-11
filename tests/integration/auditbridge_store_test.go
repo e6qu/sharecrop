@@ -49,8 +49,15 @@ func TestAuditBridgeDualRun(t *testing.T) {
 
 	actor := createUser(t, pool, "audit-bridge")
 
+	// A test-only action string that no production query matches. These tests
+	// share the db-checks database with the scenario-parity run; using a real
+	// action (e.g. moderation_report_created) would leave audit rows that other
+	// suites pick up - moderation listing, for one, joins such rows to a triage
+	// row this test never creates and 404s on the mismatch.
+	action := audit.ActionFromString("wasi-bridge-dualrun")
+
 	t.Run("get: bridge read matches a direct store call", func(t *testing.T) {
-		seeded := recordAuditEvent(t, ctx, dbStore, actor, audit.ActionOrganizationCreated,
+		seeded := recordAuditEvent(t, ctx, dbStore, actor, action,
 			audit.Subject{Kind: "organization", ID: "org-" + newAuditEventID(t).String()})
 
 		viaBridge := requireEventFound(t, bridgeStore.Get(ctx, seeded.ID))
@@ -68,7 +75,7 @@ func TestAuditBridgeDualRun(t *testing.T) {
 	})
 
 	t.Run("record: writing through the bridge persists to postgres", func(t *testing.T) {
-		event := buildAuditEvent(t, actor, audit.ActionTaskFunded,
+		event := buildAuditEvent(t, actor, action,
 			audit.Subject{Kind: "task", ID: "task-" + newAuditEventID(t).String()})
 
 		if _, matched := bridgeStore.Record(ctx, event).(audit.EventRecorded); !matched {
@@ -91,7 +98,7 @@ func TestAuditBridgeDualRun(t *testing.T) {
 	t.Run("list: bridge listing matches a direct store call", func(t *testing.T) {
 		kind := "list-" + newAuditEventID(t).String()
 		for i := 0; i < 3; i++ {
-			recordAuditEvent(t, ctx, dbStore, actor, audit.ActionModerationReportCreated,
+			recordAuditEvent(t, ctx, dbStore, actor, action,
 				audit.Subject{Kind: kind, ID: newAuditEventID(t).String()})
 		}
 		page, matched := core.NewPage(50, 0).(core.PageAccepted)
