@@ -18,3 +18,6 @@ elm019
 
 *.log
 /sharecrop
+
+# WASI cutover guest artifact (built by make wasi-app-guest)
+/app-guest.wasm

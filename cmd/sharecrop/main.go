@@ -5,14 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/app"
@@ -31,6 +36,9 @@ import (
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasibridge/gen"
+	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
+	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -334,19 +342,38 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	notificationService := notification.NewService(db.NewNotificationStore(pool))
 	bootstrapAdmins := httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
 
+	nativeHandler := httpserver.NewWithRuntimeState(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, httpserver.RuntimeState{
+		IPRateLimiter:       db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
+		SubjectRateLimiter:  db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
+		MCPSessions:         httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
+		AuditService:        audit.NewService(db.NewAuditStore(pool)),
+		NotificationService: notificationService,
+		SavedQueueViews:     db.NewSavedQueueViewStore(pool),
+		PrivacyService:      db.NewPrivacyStore(pool),
+		PlatformAdmins:      db.NewPlatformAdminStore(pool, bootstrapAdmins),
+		ModerationTriage:    db.NewModerationTriageStore(pool),
+	})
+
+	// The production cutover: when SHARECROP_WASI_GUEST points at a compiled
+	// wasip1 app guest, serve the dynamic routes by running that guest (the same
+	// mux, over the same bridged stores) from a pool of reused instances - so
+	// production runs the same WASM artifact as the browser demo. Static assets
+	// stay host-side. Unset, serve keeps the in-process native mux.
+	handler := nativeHandler
+	if guestPath := os.Getenv("SHARECROP_WASI_GUEST"); guestPath != "" {
+		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestPath, cfg, pool, staticFiles)
+		if err != nil {
+			logger.Error("build wasi guest host", "error", err)
+			return 1
+		}
+		defer closeGuest()
+		logger.Info("serving dynamic routes through the WASI guest pool", "guest", guestPath, "pool_size", wasiPoolSize())
+		handler = wasiHandler
+	}
+
 	server := &http.Server{
-		Addr: cfg.HTTPAddress(),
-		Handler: httpserver.NewWithRuntimeState(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, httpserver.RuntimeState{
-			IPRateLimiter:       db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
-			SubjectRateLimiter:  db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
-			MCPSessions:         httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
-			AuditService:        audit.NewService(db.NewAuditStore(pool)),
-			NotificationService: notificationService,
-			SavedQueueViews:     db.NewSavedQueueViewStore(pool),
-			PrivacyService:      db.NewPrivacyStore(pool),
-			PlatformAdmins:      db.NewPlatformAdminStore(pool, bootstrapAdmins),
-			ModerationTriage:    db.NewModerationTriageStore(pool),
-		}),
+		Addr:              cfg.HTTPAddress(),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -375,4 +402,57 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		logger.Error("serve", "error", err)
 		return 1
 	}
+}
+
+// serveThroughWASIGuest builds the handler for the WASI cutover: a pool of the
+// compiled app guest (the real mux, over the bridged GuestStores) serves the
+// dynamic routes, while static assets and the SPA shell are served host-side
+// (the guest carries no static files). Every store call the guest makes is
+// dispatched back to the host's Postgres pool via storehost. The returned func
+// tears the guest pool down.
+func serveThroughWASIGuest(ctx context.Context, guestPath string, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS) (http.Handler, func(), error) {
+	guestWASM, err := os.ReadFile(guestPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read guest module %q: %w", guestPath, err)
+	}
+	guestPool, err := rpc.NewPool(ctx, guestWASM, storehost.Dispatcher(pool), wasiPoolSize())
+	if err != nil {
+		return nil, nil, fmt.Errorf("build guest pool: %w", err)
+	}
+	guestPool.WithGuestEnv(map[string]string{
+		"SHARECROP_ACCESS_TOKEN_SECRET": cfg.AccessTokenSecret(),
+		"SHARECROP_INSECURE_COOKIES":    os.Getenv("SHARECROP_INSECURE_COOKIES"),
+	})
+	guest := httpbridge.Handler(guestPool)
+
+	mux := http.NewServeMux()
+	// Dynamic routes run in the guest.
+	mux.Handle("/api/", guest)
+	mux.Handle("/mcp", guest)
+	mux.Handle("/healthz", guest)
+	// Static assets and the SPA shell are served from the host's embedded files.
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		data, err := fs.ReadFile(staticFiles, "index.html")
+		if err != nil {
+			http.Error(w, "index not found", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data)
+	})
+
+	return mux, func() { _ = guestPool.Close(context.Background()) }, nil
+}
+
+// wasiPoolSize is how many guest instances the cutover keeps warm, from
+// SHARECROP_WASI_POOL_SIZE (a positive integer) or GOMAXPROCS by default.
+func wasiPoolSize() int {
+	if raw := os.Getenv("SHARECROP_WASI_POOL_SIZE"); raw != "" {
+		if size, err := strconv.Atoi(raw); err == nil && size > 0 {
+			return size
+		}
+	}
+	return runtime.GOMAXPROCS(0)
 }

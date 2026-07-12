@@ -1,5 +1,34 @@
 # What We Did
 
+The `task/wasi-cutover` branch is the **production cutover - the end of the WASI
+hosting effort**. `cmd/sharecrop serve` can now serve production by running the
+compiled app guest, so production and the browser demo run the same WASM
+artifact. It is opt-in and reversible: when `SHARECROP_WASI_GUEST` points at a
+wasip1 app-guest module (`make wasi-app-guest` builds it), `serve` builds an
+`rpc.Pool` over it (sized by `SHARECROP_WASI_POOL_SIZE`, default GOMAXPROCS),
+dispatches every store call the guest makes to Postgres via
+`storehost.Dispatcher`, and routes the dynamic paths (`/api/`, `/mcp`,
+`/healthz`) to the guest while serving static assets and the SPA shell host-side
+(the guest carries no static files). With the variable unset, `serve` keeps the
+native in-process mux, so nothing changes for existing deployments until an
+operator opts in. Verified two ways: an integration test that assembles the same
+handler and checks both halves (host serves the SPA shell and `/static/` assets;
+the guest handles `GET /api/notifications` and returns real Postgres data), and a
+live smoke test of the real `serve` binary in WASI mode - it logged "serving
+dynamic routes through the WASI guest pool" (pool_size 12) and answered `/healthz`
+200 (guest → Postgres) and `/` 200 (host static). A `make wasi-app-guest` target
+builds the artifact, `.gitignore` covers it.
+
+This completes the effort tracked since the store-bridging phase began: ten
+domain stores and six RuntimeState infra services are bridged, the full mux runs
+in a pool of reused guest instances, and `cmd/sharecrop serve` can now run
+production on the same compiled WASM artifact as the demo - closing the
+native-vs-WASM deviation the "one backend" section of STATUS named. One backend,
+one artifact, two storage adapters. All gates green. Nothing about the native
+server or browser demo changes for anyone who doesn't opt in.
+
+---
+
 The `task/wasi-bridge-mcpsession` branch bridges **MCP session persistence** -
 the sixth and **last** RuntimeState infra service. Like the rate limiter it is
 hand-written, because its methods return multi-value tuples (`(bool, error)`,

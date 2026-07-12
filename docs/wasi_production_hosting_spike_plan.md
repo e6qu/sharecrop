@@ -540,8 +540,20 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   once per instance, not per request. Two concurrency tests prove no cross-talk
   under load (144 store units through 4 reused instances; 16 concurrent HTTP
   requests through the pooled app host), each unit seeing only its own data.
-  **Remaining: move `cmd/sharecrop serve` itself onto the WASI host (the
-  production cutover).**
+- **The production cutover is DONE - the effort is complete.** `cmd/sharecrop
+  serve` runs production through the WASI guest when `SHARECROP_WASI_GUEST` points
+  at a compiled app-guest wasm (`make wasi-app-guest`): it pools that guest
+  (`rpc.Pool`, `SHARECROP_WASI_POOL_SIZE`/GOMAXPROCS), dispatches store calls to
+  Postgres via `storehost`, routes `/api/`, `/mcp`, `/healthz` to the guest, and
+  serves static assets + the SPA shell host-side. Unset, `serve` keeps the native
+  mux, so the cutover is opt-in and reversible. Verified by an integration test
+  (both halves of the split) and a live smoke test of the real `serve` binary
+  (`/healthz` 200 through the guest pool against Postgres, `/` 200 from host
+  static). **Production can now run the same compiled WASM artifact as the browser
+  demo - the deviation this whole plan set out to close is closed.** Non-blocking
+  follow-ups: flip the WASI path to the default once proven in staging; embed or
+  mount the static files into the guest if single-artifact static serving is
+  wanted; retire `internal/wasmdemo`.
 
 ## Non-goals for this spike
 
