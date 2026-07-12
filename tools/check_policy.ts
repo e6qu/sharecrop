@@ -10,6 +10,10 @@ const generatedSuffixes: string[] = [
 ];
 const boundarySuffixes: string[] = [
   "/cmd/sharecrop-wasm/main_js_wasm.go",
+  // The DB handle adapts pgx / database/sql, whose variadic argument and
+  // scan-destination signatures are unavoidably weakly typed. This is the one
+  // seam between the typed domain layer and the driver interfaces.
+  "/internal/db/handle.go",
 ];
 
 const weakWildcardToken = "a" + "ny";
