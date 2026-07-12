@@ -19,6 +19,9 @@ var (
 	sqliteForUpdatePattern = regexp.MustCompile(`(?i)\s+for update`)
 	// now() as a function call (not a column named "now").
 	sqliteNowPattern = regexp.MustCompile(`(?i)\bnow\(\)`)
+	// now() + make_interval(hours => $N) — Postgres interval arithmetic becomes
+	// a strftime "now" modifier ('+N hours'). Must run before the now() rewrite.
+	sqliteMakeIntervalHours = regexp.MustCompile(`(?i)now\(\)\s*\+\s*make_interval\(\s*hours\s*=>\s*(\$\d+)\s*\)`)
 	// Postgres $N placeholders bind by number. SQLite treats $1 as a named
 	// parameter numbered by appearance, so "$3 ... $1" would bind wrong;
 	// rewriting to ?N restores explicit by-number binding.
@@ -46,14 +49,16 @@ var (
 	sqliteJSONBTypePattern  = regexp.MustCompile(`(?i)\bjsonb\b`)
 	sqliteJSONTypePattern   = regexp.MustCompile(`(?i)\bjson\b`)
 	sqliteDefaultNowPattern = regexp.MustCompile(`(?i)default\s+now\(\)`)
-	// SQLite's ADD COLUMN has no IF NOT EXISTS; a fresh sequential apply never
-	// re-adds a column, so the guard can be dropped.
-	sqliteAddColumnGuard = regexp.MustCompile(`(?i)add\s+column\s+if\s+not\s+exists`)
+	// SQLite's ADD/DROP COLUMN have no IF (NOT) EXISTS; a fresh sequential apply
+	// always has the expected column state, so the guards can be dropped.
+	sqliteAddColumnGuard  = regexp.MustCompile(`(?i)add\s+column\s+if\s+not\s+exists`)
+	sqliteDropColumnGuard = regexp.MustCompile(`(?i)drop\s+column\s+if\s+exists`)
 
-	// ALTER TABLE forms SQLite cannot execute. The demo builds the final schema
-	// fresh and validates data in the domain layer, so dropping these leaves an
-	// equivalent-enough schema (looser constraints, all columns still present).
-	sqliteUnsupportedAlter = regexp.MustCompile(`(?is)^\s*alter\s+table\s+\w+\s+(drop\s+constraint|add\s+constraint|alter\s+column|drop\s+column)`)
+	// ALTER TABLE forms SQLite cannot execute. Constraint and column-type
+	// changes are dropped; the demo builds the final schema fresh and validates
+	// data in the domain layer. (DROP COLUMN, which SQLite does support, is
+	// executed instead so removed columns don't linger with stale NOT NULLs.)
+	sqliteUnsupportedAlter = regexp.MustCompile(`(?is)^\s*alter\s+table\s+\w+\s+(drop\s+constraint|add\s+constraint|alter\s+column)`)
 )
 
 // sqliteUnsupportedDDL reports whether a single translated DDL statement is one
@@ -132,6 +137,7 @@ func translateSQLiteStatement(query string) string {
 	query = strings.ReplaceAll(query, "jsonb_agg", "json_group_array")
 	query = sqliteILike.ReplaceAllString(query, "like")
 	query = sqliteCastPattern.ReplaceAllString(query, "")
+	query = sqliteMakeIntervalHours.ReplaceAllString(query, "strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+' || ${1} || ' hours')")
 	query = sqliteNowPattern.ReplaceAllString(query, sqliteNowExpr)
 	query = sqlitePlaceholder.ReplaceAllString(query, "?$1")
 	return query
@@ -144,9 +150,63 @@ func translateSQLiteDDL(ddl string) string {
 	ddl = sqliteLineComment.ReplaceAllString(ddl, "")
 	ddl = sqliteDefaultNowPattern.ReplaceAllString(ddl, "default ("+sqliteNowExpr+")")
 	ddl = sqliteAddColumnGuard.ReplaceAllString(ddl, "add column")
+	ddl = sqliteDropColumnGuard.ReplaceAllString(ddl, "drop column")
 	ddl = sqliteCastPattern.ReplaceAllString(ddl, "")
 	ddl = sqliteUUIDPattern.ReplaceAllString(ddl, "text")
 	ddl = sqliteJSONBTypePattern.ReplaceAllString(ddl, "text")
 	ddl = sqliteJSONTypePattern.ReplaceAllString(ddl, "text")
 	return ddl
+}
+
+var (
+	sqliteCheckKeyword     = regexp.MustCompile(`(?i)\bcheck\s*\(`)
+	sqliteConstraintPrefix = regexp.MustCompile(`(?i)constraint\s+\w+\s*$`)
+	sqliteDoubleComma      = regexp.MustCompile(`,(\s*,)+`)
+	sqliteTrailingComma    = regexp.MustCompile(`,\s*\)`)
+	sqliteLeadingComma     = regexp.MustCompile(`\(\s*,`)
+)
+
+// stripSQLiteChecks removes CHECK constraints from DDL. Later migrations relax
+// several of them via ALTER statements SQLite cannot replay, so the original
+// inline checks would reject rows Postgres accepts; the domain layer validates
+// instead. A named "constraint <name> check (...)" prefix is removed with it,
+// and comma artifacts are cleaned up afterward.
+func stripSQLiteChecks(ddl string) string {
+	for {
+		keyword := sqliteCheckKeyword.FindStringIndex(ddl)
+		if keyword == nil {
+			break
+		}
+		closeParen := matchParen(ddl, keyword[1]-1)
+		if closeParen < 0 {
+			break
+		}
+		start := keyword[0]
+		if prefix := sqliteConstraintPrefix.FindStringIndex(ddl[:start]); prefix != nil {
+			start = prefix[0]
+		}
+		ddl = ddl[:start] + ddl[closeParen+1:]
+	}
+	ddl = sqliteDoubleComma.ReplaceAllString(ddl, ",")
+	ddl = sqliteTrailingComma.ReplaceAllString(ddl, ")")
+	ddl = sqliteLeadingComma.ReplaceAllString(ddl, "(")
+	return ddl
+}
+
+// matchParen returns the index of the parenthesis closing the one at open, or
+// -1 if unbalanced.
+func matchParen(text string, open int) int {
+	depth := 0
+	for index := open; index < len(text); index++ {
+		switch text[index] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return index
+			}
+		}
+	}
+	return -1
 }

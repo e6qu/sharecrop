@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"time"
 )
 
 // NewSQLite adapts a database/sql handle (backed by ncruces/go-sqlite3) to
@@ -80,7 +82,7 @@ type sqliteRows struct {
 }
 
 func (r sqliteRows) Next() bool             { return r.rows.Next() }
-func (r sqliteRows) Scan(dest ...any) error { return r.rows.Scan(dest...) }
+func (r sqliteRows) Scan(dest ...any) error { return r.rows.Scan(wrapTimeDests(dest)...) }
 func (r sqliteRows) Close()                 { _ = r.rows.Close() }
 func (r sqliteRows) Err() error             { return r.rows.Err() }
 
@@ -90,11 +92,57 @@ type sqliteRow struct {
 }
 
 func (r sqliteRow) Scan(dest ...any) error {
-	err := r.row.Scan(dest...)
+	err := r.row.Scan(wrapTimeDests(dest)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNoRows
 	}
 	return err
+}
+
+// wrapTimeDests replaces *time.Time scan destinations with a scanner that
+// accepts either a time.Time or a text timestamp. ncruces decodes SELECTed
+// timestamp columns to time.Time, but under js/wasm it returns RETURNING
+// timestamps as text, which database/sql cannot scan into *time.Time directly.
+func wrapTimeDests(dest []any) []any {
+	wrapped := make([]any, len(dest))
+	for index, destination := range dest {
+		if target, matched := destination.(*time.Time); matched {
+			wrapped[index] = sqliteTimeScanner{target: target}
+			continue
+		}
+		wrapped[index] = destination
+	}
+	return wrapped
+}
+
+type sqliteTimeScanner struct {
+	target *time.Time
+}
+
+func (s sqliteTimeScanner) Scan(src any) error {
+	switch value := src.(type) {
+	case nil:
+		return nil
+	case time.Time:
+		*s.target = value
+		return nil
+	case string:
+		return s.parse(value)
+	case []byte:
+		return s.parse(string(value))
+	default:
+		return fmt.Errorf("sqlitex: cannot scan %T into time.Time", src)
+	}
+}
+
+func (s sqliteTimeScanner) parse(value string) error {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05.999999999-07:00", "2006-01-02 15:04:05"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			*s.target = parsed
+			return nil
+		}
+	}
+	return fmt.Errorf("sqlitex: cannot parse timestamp %q", value)
 }
 
 // sqliteArgs expands any NamedArgs into database/sql named arguments and passes

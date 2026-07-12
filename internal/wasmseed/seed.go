@@ -1,10 +1,11 @@
-package wasmdemo
+package wasmseed
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -14,7 +15,28 @@ import (
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
+	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
 )
+
+// Seed builds the demo's domain services over the given stores and seeds the
+// fixed browser-demo scenario. It is the entry point the browser demo uses so
+// the stores it seeds are the same ones appmux.New serves requests over.
+func Seed(ctx context.Context, secret auth.AccessTokenSecret, stores appmux.Stores) SeedResult {
+	authServiceResult := auth.NewService(stores.Auth, secret, auth.SystemClock{})
+	authService, matched := authServiceResult.(auth.ServiceCreated)
+	if !matched {
+		return seedErr(authServiceResult.(auth.ServiceRejected).Reason.Description())
+	}
+	organizationService := org.NewService(stores.Organization)
+	agentService := agent.NewService(stores.Agent)
+	taskService := task.NewService(stores.Task, organizationService, agentService)
+	submissionService := submission.NewService(stores.Submission, stores.Task, organizationService)
+	ledgerService := ledger.NewService(stores.Ledger)
+	assetService := assets.NewService(stores.Assets)
+	notificationService := notification.NewService(stores.Notification)
+
+	return SeedDemoScenario(ctx, authService.Value, organizationService, taskService, ledgerService, submissionService, assetService, notificationService)
+}
 
 // demoUserSeed is one of the fixed browser-demo accounts. The email addresses
 // match the ones the demo's own UI already searches by (e.g. the collectible

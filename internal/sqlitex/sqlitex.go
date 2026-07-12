@@ -14,7 +14,16 @@ import (
 	"github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/ncruces/go-sqlite3/ext/serdes"
+	"github.com/ncruces/go-sqlite3/vfs/memdb"
 )
+
+// LoadSnapshot pre-loads a snapshot into the named shared memdb database before
+// it is opened, so every pooled connection sees the restored data. The name is
+// the memdb database name without the leading "/" (e.g. Open a DSN of
+// "file:/demo?vfs=memdb" after LoadSnapshot("demo", ...)). Call before Open.
+func LoadSnapshot(name string, snapshot []byte) {
+	memdb.Create(name, snapshot)
+}
 
 // Open opens a SQLite database at the given DSN with the compatibility
 // functions registered on every connection.

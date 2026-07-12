@@ -54,6 +54,10 @@
         window.localStorage.setItem(storageKey(key), value);
         return true;
       },
+      storageDelete(key) {
+        window.localStorage.removeItem(storageKey(key));
+        return true;
+      },
       now() {
         return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
       },
