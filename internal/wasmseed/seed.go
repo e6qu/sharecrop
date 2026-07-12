@@ -38,6 +38,33 @@ func Seed(ctx context.Context, secret auth.AccessTokenSecret, stores appmux.Stor
 	return SeedDemoScenario(ctx, authService.Value, organizationService, taskService, ledgerService, submissionService, assetService, notificationService)
 }
 
+// LoginDemoAdmin logs the demo admin (mara) in over the given stores, returning
+// a fresh session. It is used after loading a pre-generated seed snapshot so the
+// demo boots already logged in without re-running the (bcrypt-heavy) seed.
+func LoginDemoAdmin(ctx context.Context, secret auth.AccessTokenSecret, stores appmux.Stores) SeedResult {
+	authServiceResult := auth.NewService(stores.Auth, secret, auth.SystemClock{})
+	authService, matched := authServiceResult.(auth.ServiceCreated)
+	if !matched {
+		return seedErr(authServiceResult.(auth.ServiceRejected).Reason.Description())
+	}
+
+	email, matched := auth.NewEmailAddress(demoUsers[0].email).(auth.EmailAddressAccepted)
+	if !matched {
+		return seedErr("demo admin email rejected")
+	}
+	password, matched := auth.NewPasswordSecret(demoPassword).(auth.PasswordSecretAccepted)
+	if !matched {
+		return seedErr("demo password rejected")
+	}
+
+	loginResult := authService.Value.Login(ctx, email.Value, password.Value)
+	accepted, matched := loginResult.(auth.LoginAccepted)
+	if !matched {
+		return seedErr(loginResult.(auth.LoginRejected).Reason.Description())
+	}
+	return SeedResult{AdminUserID: accepted.Subject.ID, AdminRefreshToken: refreshCookie(accepted.RefreshToken)}
+}
+
 // demoUserSeed is one of the fixed browser-demo accounts. The email addresses
 // match the ones the demo's own UI already searches by (e.g. the collectible
 // award-recipient picker), so they must stay in sync with the Elm client and

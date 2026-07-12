@@ -123,6 +123,19 @@
     go.run(result.instance);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    // Load the pre-generated seed snapshot (a build artifact next to the wasm)
+    // so the demo boots by restoring it instead of re-running the slower seed. A
+    // missing or failed fetch falls back to seeding on the Go side.
+    const seedSnapshotURL = wasmURL.replace(/[^/]*$/, "seed-snapshot.b64");
+    try {
+      const seedResponse = await fetch(seedSnapshotURL);
+      if (seedResponse.ok) {
+        window.__sharecropSeedSnapshot = await seedResponse.text();
+      }
+    } catch (_error) {
+      // fall back to seeding
+    }
+
     const configure = requiredFunction("sharecropConfigureHost");
     const handle = requiredFunction("sharecropHandleRequest");
     const host = makeHost();

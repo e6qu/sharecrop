@@ -21,3 +21,4 @@ elm019
 
 # WASI cutover guest artifact (built by make wasi-app-guest)
 /app-guest.wasm
+site/demo/seed-snapshot.b64

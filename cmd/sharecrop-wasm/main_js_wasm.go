@@ -36,6 +36,9 @@ const (
 	demoMemdbName      = "sharecrop-demo"
 	demoDataSourceName = "file:/sharecrop-demo?vfs=memdb&_pragma=foreign_keys(off)"
 	refreshCookieName  = "sharecrop_refresh_token"
+	// seedSnapshotGlobal is the window global the page loader sets to the
+	// base64 pre-generated seed snapshot before configuring the host.
+	seedSnapshotGlobal = "__sharecropSeedSnapshot"
 )
 
 type wasmStatus struct {
@@ -134,11 +137,19 @@ func buildConfiguredMux(host js.Value) (http.Handler, string) {
 		return nil, "set demo account token delivery: " + err.Error()
 	}
 
-	// A saved snapshot must be loaded into the shared memdb before the database
-	// is opened, so every pooled connection sees the restored data.
-	snapshot, hasSnapshot := readSnapshot(host)
-	if hasSnapshot {
-		sqlitex.LoadSnapshot(demoMemdbName, snapshot)
+	// A snapshot must be loaded into the shared memdb before the database is
+	// opened, so every pooled connection sees the restored data. Prefer the
+	// user's saved snapshot (their clicked-through state); otherwise fall back to
+	// the pre-generated seed snapshot, which is far faster than re-running the
+	// seed. Only when neither is available (e.g. the scenario-parity harness)
+	// does the demo migrate and seed from scratch.
+	userSnapshot, hasUserSnapshot := readSnapshot(host)
+	seedSnapshot, hasSeedSnapshot := readSeedSnapshot()
+	switch {
+	case hasUserSnapshot:
+		sqlitex.LoadSnapshot(demoMemdbName, userSnapshot)
+	case hasSeedSnapshot:
+		sqlitex.LoadSnapshot(demoMemdbName, seedSnapshot)
 	}
 
 	handle, err := sqlitex.Open(demoDataSourceName)
@@ -158,15 +169,38 @@ func buildConfiguredMux(host js.Value) (http.Handler, string) {
 
 	stores := wasmseed.StoresFromHandle(db.NewSQLite(handle))
 
-	if hasSnapshot {
+	switch {
+	case hasUserSnapshot:
 		if token, present := storageGet(host, sessionStorageKey); present {
 			currentRefreshCookie = &http.Cookie{Name: refreshCookieName, Value: token}
 		}
-	} else if reason := seedFreshDatabase(host, handle, tokenSecret.Value, stores); reason != "" {
-		return nil, reason
+	case hasSeedSnapshot:
+		login := wasmseed.LoginDemoAdmin(context.Background(), tokenSecret.Value, stores)
+		if login.Err != "" {
+			return nil, login.Err
+		}
+		currentRefreshCookie = login.AdminRefreshToken
+	default:
+		if reason := seedFreshDatabase(host, handle, tokenSecret.Value, stores); reason != "" {
+			return nil, reason
+		}
 	}
 
 	return appmux.New(tokenSecret.Value, stores), ""
+}
+
+// readSeedSnapshot decodes the pre-generated seed snapshot the page fetched into
+// a global before configuring, if present.
+func readSeedSnapshot() ([]byte, bool) {
+	value := js.Global().Get(seedSnapshotGlobal)
+	if value.Type() != js.TypeString {
+		return nil, false
+	}
+	snapshot, err := base64.StdEncoding.DecodeString(value.String())
+	if err != nil {
+		return nil, false
+	}
+	return snapshot, true
 }
 
 // readSnapshot reads and decodes the saved database snapshot from browser
