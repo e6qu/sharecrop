@@ -4,6 +4,7 @@ package rpc
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -80,6 +81,13 @@ func newSession(ctx context.Context, runtime wazero.Runtime, compiled wazero.Com
 			WithStdin(stdinReader).
 			WithStdout(stdoutWriter).
 			WithArgs("guest").
+			// wazero's default random source is deterministic (seeded zeros) for
+			// reproducible sandboxing, so without this every pooled guest shares
+			// one predictable crypto/rand stream: UUIDs collide across instances
+			// (PK violations on insert) and security-critical bytes - password
+			// salts, auth/refresh/receipt tokens, MCP session ids - become
+			// predictable. Draw from the host's real CSPRNG instead.
+			WithRandSource(rand.Reader).
 			WithName("")
 		for key, value := range env {
 			config = config.WithEnv(key, value)
