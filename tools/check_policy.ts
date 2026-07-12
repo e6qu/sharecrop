@@ -15,6 +15,9 @@ const boundarySuffixes: string[] = [
   // seam between the typed domain layer and the driver interfaces.
   "/internal/db/handle.go",
   "/internal/db/handle_sqlite.go",
+  // StringArray implements the standard-library sql.Scanner interface, whose
+  // Scan parameter is weakly typed by that interface.
+  "/internal/db/stringarray.go",
 ];
 
 const weakWildcardToken = "a" + "ny";

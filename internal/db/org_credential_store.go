@@ -53,7 +53,7 @@ func (store OrgCredentialStore) VerifyCredential(ctx context.Context, hash orgcr
 	var label string
 	var state string
 	var expiresAt *time.Time
-	var rawScopes []string
+	var rawScopes StringArray
 	scanErr := store.db.QueryRow(ctx, orgCredentialSelectSQL()+`
 		where org_credentials.token_hash = $1
 		group by org_credentials.id
@@ -92,7 +92,7 @@ func (store OrgCredentialStore) ListCredentials(ctx context.Context, organizatio
 		var label string
 		var state string
 		var expiresAt *time.Time
-		var rawScopes []string
+		var rawScopes StringArray
 		if err := rows.Scan(&rawID, &rawOrganizationID, &label, &state, &expiresAt, &rawScopes); err != nil {
 			return orgcred.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan org credential failed")}
 		}
@@ -127,7 +127,7 @@ func (store OrgCredentialStore) RevokeCredential(ctx context.Context, organizati
 	var label string
 	var state string
 	var expiresAt *time.Time
-	var rawScopes []string
+	var rawScopes StringArray
 	scanErr := store.db.QueryRow(ctx, orgCredentialSelectSQL()+`
 		where org_credentials.id = $1
 		group by org_credentials.id
@@ -148,7 +148,7 @@ func orgCredentialSelectSQL() string {
 	return `
 		select org_credentials.id::text, org_credentials.organization_id::text, org_credentials.label, org_credentials.state,
 			org_credentials.expires_at,
-			coalesce(array_remove(array_agg(org_credential_scopes.scope), null), '{}') as scopes
+			coalesce(array_remove(array_agg(org_credential_scopes.scope), null), '{}')::text as scopes
 		from org_credentials
 		left join org_credential_scopes on org_credential_scopes.credential_id = org_credentials.id
 	`

@@ -93,6 +93,51 @@ func TestAuditStoreOnSQLite(t *testing.T) {
 	}
 }
 
+// TestArrayAggOnSQLite exercises the array_agg translation (→ json_group_array
+// with a null FILTER) and the StringArray Scanner parsing the JSON result.
+func TestArrayAggOnSQLite(t *testing.T) {
+	ctx := context.Background()
+	sqlHandle := openSQLiteWithSchema(t)
+	handle := NewSQLite(sqlHandle)
+
+	if _, err := sqlHandle.ExecContext(ctx, `insert into agent_credential_scopes (credential_id, scope) values ('c1','tasks_read'),('c1','submissions_review')`); err != nil {
+		t.Fatalf("seed scopes: %v", err)
+	}
+
+	var scopes StringArray
+	err := handle.QueryRow(ctx, `
+		select coalesce(array_remove(array_agg(agent_credential_scopes.scope), null), '{}')::text
+		from agent_credential_scopes
+		where credential_id = $1
+	`, "c1").Scan(&scopes)
+	if err != nil {
+		t.Fatalf("array_agg query: %v", err)
+	}
+	if len(scopes) != 2 {
+		t.Fatalf("scopes = %v, want 2 elements", scopes)
+	}
+	found := map[string]bool{}
+	for _, scope := range scopes {
+		found[scope] = true
+	}
+	if !found["tasks_read"] || !found["submissions_review"] {
+		t.Fatalf("scopes = %v, want tasks_read + submissions_review", scopes)
+	}
+
+	// Empty aggregation must yield an empty slice, not an error.
+	var empty StringArray
+	if err := handle.QueryRow(ctx, `
+		select coalesce(array_remove(array_agg(agent_credential_scopes.scope), null), '{}')::text
+		from agent_credential_scopes
+		where credential_id = $1
+	`, "missing").Scan(&empty); err != nil {
+		t.Fatalf("empty array_agg query: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty aggregation = %v, want []", empty)
+	}
+}
+
 // TestSavedQueueViewUpsertOnSQLite exercises ON CONFLICT DO UPDATE + excluded on
 // SQLite: a second upsert for the same (user, scope, name) updates in place.
 func TestSavedQueueViewUpsertOnSQLite(t *testing.T) {

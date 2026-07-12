@@ -23,6 +23,18 @@ var (
 	// parameter numbered by appearance, so "$3 ... $1" would bind wrong;
 	// rewriting to ?N restores explicit by-number binding.
 	sqlitePlaceholder = regexp.MustCompile(`\$(\d+)`)
+
+	// array_remove(array_agg(X), null) drops nulls from an aggregated array;
+	// json_group_array keeps them, so the null filter moves into a FILTER clause.
+	sqliteArrayRemoveAgg = regexp.MustCompile(`(?is)array_remove\(\s*array_agg\(([^)]+)\)\s*,\s*null\s*\)`)
+	// ILIKE has no SQLite form, but SQLite's LIKE is already case-insensitive
+	// for ASCII, which is what the scope/title searches rely on.
+	sqliteILike = regexp.MustCompile(`(?i)\bilike\b`)
+	// "X at time zone 'UTC'" — ncruces stores UTC, so the conversion is dropped.
+	sqliteAtTimeZone = regexp.MustCompile(`(?i)\s+at time zone '[^']*'`)
+	// to_char(X, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') renders an RFC3339 timestamp; the
+	// SQLite equivalent is strftime with the matching format.
+	sqliteToCharRFC3339 = regexp.MustCompile(`(?is)to_char\(\s*([^,]+?)\s*,\s*'YYYY-MM-DD"T"HH24:MI:SS"Z"'\s*\)`)
 	// SQL line comments are stripped before splitting DDL on ";", because a
 	// comment may itself contain a semicolon and would otherwise split badly.
 	sqliteLineComment = regexp.MustCompile(`--[^\n]*`)
@@ -112,9 +124,14 @@ func expandSQLiteAddColumns(statement string) []string {
 // translateSQLiteStatement rewrites a Postgres query so it runs on SQLite.
 func translateSQLiteStatement(query string) string {
 	query = sqliteForUpdatePattern.ReplaceAllString(query, "")
-	query = sqliteCastPattern.ReplaceAllString(query, "")
+	query = sqliteAtTimeZone.ReplaceAllString(query, "")
+	query = sqliteToCharRFC3339.ReplaceAllString(query, "strftime('%Y-%m-%dT%H:%M:%SZ', $1)")
+	query = sqliteArrayRemoveAgg.ReplaceAllString(query, "json_group_array($1) filter (where $1 is not null)")
+	query = strings.ReplaceAll(query, "array_agg", "json_group_array")
 	query = strings.ReplaceAll(query, "jsonb_build_object", "json_object")
 	query = strings.ReplaceAll(query, "jsonb_agg", "json_group_array")
+	query = sqliteILike.ReplaceAllString(query, "like")
+	query = sqliteCastPattern.ReplaceAllString(query, "")
 	query = sqliteNowPattern.ReplaceAllString(query, sqliteNowExpr)
 	query = sqlitePlaceholder.ReplaceAllString(query, "?$1")
 	return query
