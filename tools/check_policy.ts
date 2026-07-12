@@ -159,6 +159,23 @@ for (const path of files) {
   }
 }
 
+// The embedded app guest is a build artifact: it is committed as an empty
+// placeholder and rebuilt by `make wasi-app-guest`. Guard against accidentally
+// committing the ~12MB built version.
+const embeddedGuestPath = "internal/wasiguest/app-guest.wasm";
+try {
+  const info = await Deno.stat(embeddedGuestPath);
+  if (info.size > 0) {
+    violations.push({
+      path: embeddedGuestPath,
+      message:
+        "embedded app guest must stay an empty placeholder (it is built by `make wasi-app-guest`, not committed)",
+    });
+  }
+} catch {
+  // Absent is fine; the embed simply falls back to the native mux.
+}
+
 if (violations.length > 0) {
   for (const violation of violations) {
     console.error(`${violation.path}: ${violation.message}`);

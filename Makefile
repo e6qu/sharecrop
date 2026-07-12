@@ -2,15 +2,18 @@ APP := bin/sharecrop
 
 .PHONY: build check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts check-wasi-bridge check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet wasi-app-guest wasi-bridge
 
-build: frontend
+build: frontend wasi-app-guest
 	go build -o $(APP) ./cmd/sharecrop
 
-# wasi-app-guest compiles the app guest to a wasip1 module. Point serve at it with
-# SHARECROP_WASI_GUEST=app-guest.wasm to run the production cutover: `sharecrop
-# serve` then handles the dynamic routes by pooling this guest against Postgres,
-# the same WASM artifact the browser demo runs. Unset, serve uses the native mux.
+# wasi-app-guest compiles the app guest to a wasip1 module and writes it to the
+# embed path, so `build` bakes it into the sharecrop binary. WASI hosting is the
+# default: `sharecrop serve` handles the dynamic routes by pooling this guest
+# against Postgres — the same WASM artifact the browser demo runs. Set
+# SHARECROP_WASI_MODE=native to run the in-process mux instead. The committed
+# internal/wasiguest/app-guest.wasm is an empty placeholder this target replaces;
+# do not commit the built (large) version.
 wasi-app-guest:
-	GOOS=wasip1 GOARCH=wasm go build -o app-guest.wasm ./cmd/sharecrop-wasi-app-guest
+	GOOS=wasip1 GOARCH=wasm go build -o internal/wasiguest/app-guest.wasm ./cmd/sharecrop-wasi-app-guest
 
 contracts:
 	go run ./cmd/sharecrop generate elm-contracts
