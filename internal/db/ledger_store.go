@@ -14,7 +14,11 @@ type LedgerStore struct {
 }
 
 func NewLedgerStore(pool *pgxpool.Pool) LedgerStore {
-	return LedgerStore{db: NewPGX(pool)}
+	return NewLedgerStoreFromHandle(NewPGX(pool))
+}
+
+func NewLedgerStoreFromHandle(handle Beginner) LedgerStore {
+	return LedgerStore{db: handle}
 }
 
 func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreCommand) ledger.FundResult {

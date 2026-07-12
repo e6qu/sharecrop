@@ -17,7 +17,11 @@ type AuthStore struct {
 }
 
 func NewAuthStore(pool *pgxpool.Pool) AuthStore {
-	return AuthStore{db: NewPGX(pool)}
+	return NewAuthStoreFromHandle(NewPGX(pool))
+}
+
+func NewAuthStoreFromHandle(handle Beginner) AuthStore {
+	return AuthStore{db: handle}
 }
 
 func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID, email auth.EmailAddress, passwordHash auth.PasswordHash) auth.StoreUserResult {

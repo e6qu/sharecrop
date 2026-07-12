@@ -14,7 +14,11 @@ type AuditStore struct {
 }
 
 func NewAuditStore(pool *pgxpool.Pool) AuditStore {
-	return AuditStore{db: NewPGX(pool)}
+	return NewAuditStoreFromHandle(NewPGX(pool))
+}
+
+func NewAuditStoreFromHandle(handle Beginner) AuditStore {
+	return AuditStore{db: handle}
 }
 
 func (store AuditStore) Record(ctx context.Context, event audit.Event) audit.RecordResult {

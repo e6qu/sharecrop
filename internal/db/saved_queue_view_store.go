@@ -14,7 +14,11 @@ type SavedQueueViewStore struct {
 }
 
 func NewSavedQueueViewStore(pool *pgxpool.Pool) SavedQueueViewStore {
-	return SavedQueueViewStore{db: NewPGX(pool)}
+	return NewSavedQueueViewStoreFromHandle(NewPGX(pool))
+}
+
+func NewSavedQueueViewStoreFromHandle(handle Beginner) SavedQueueViewStore {
+	return SavedQueueViewStore{db: handle}
 }
 
 func (store SavedQueueViewStore) List(ctx context.Context, userID core.UserID, scope string) httpserver.SavedQueueViewsListResult {

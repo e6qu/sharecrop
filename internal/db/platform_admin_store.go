@@ -16,6 +16,10 @@ type PlatformAdminStore struct {
 }
 
 func NewPlatformAdminStore(pool *pgxpool.Pool, bootstrap map[string]bool) PlatformAdminStore {
+	return NewPlatformAdminStoreFromHandle(NewPGX(pool), bootstrap)
+}
+
+func NewPlatformAdminStoreFromHandle(handle Beginner, bootstrap map[string]bool) PlatformAdminStore {
 	records := map[string]httpserver.PlatformAdminRecord{}
 	for rawID := range bootstrap {
 		parsed := core.ParseUserID(rawID)
@@ -24,7 +28,7 @@ func NewPlatformAdminStore(pool *pgxpool.Pool, bootstrap map[string]bool) Platfo
 			records[rawID] = httpserver.PlatformAdminRecord{UserID: created.Value, Source: "bootstrap", CreatedAt: time.Now().UTC()}
 		}
 	}
-	return PlatformAdminStore{db: NewPGX(pool), bootstrap: records}
+	return PlatformAdminStore{db: handle, bootstrap: records}
 }
 
 func (store PlatformAdminStore) IsAdmin(ctx context.Context, userID core.UserID) httpserver.PlatformAdminCheckResult {

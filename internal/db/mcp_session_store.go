@@ -13,7 +13,11 @@ type MCPSessionStore struct {
 }
 
 func NewMCPSessionStore(pool *pgxpool.Pool) MCPSessionStore {
-	return MCPSessionStore{db: NewPGX(pool)}
+	return NewMCPSessionStoreFromHandle(NewPGX(pool))
+}
+
+func NewMCPSessionStoreFromHandle(handle Beginner) MCPSessionStore {
+	return MCPSessionStore{db: handle}
 }
 
 func (store MCPSessionStore) CreateMCPSession(ctx context.Context, id string, subject string, now time.Time) error {

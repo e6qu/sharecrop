@@ -14,7 +14,11 @@ type CollectibleStore struct {
 }
 
 func NewCollectibleStore(pool *pgxpool.Pool) CollectibleStore {
-	return CollectibleStore{db: NewPGX(pool)}
+	return NewCollectibleStoreFromHandle(NewPGX(pool))
+}
+
+func NewCollectibleStoreFromHandle(handle Beginner) CollectibleStore {
+	return CollectibleStore{db: handle}
 }
 
 func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible assets.Collectible) assets.CreateStoreResult {
