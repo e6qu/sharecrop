@@ -101,10 +101,16 @@ func main() {
 		recorder := httptest.NewRecorder()
 		configuredMux.ServeHTTP(recorder, req)
 		captureRefreshCookie(recorder.Result().Cookies())
-		if mutates(method) {
+		return encodeHandleResponse(wasmHandleResponse{Status: recorder.Code, Body: recorder.Body.String()})
+	}))
+	js.Global().Set("sharecropPersistSnapshot", js.FuncOf(func(js.Value, []js.Value) interface{} {
+		// Called from the page's beforeunload handler: snapshotting the whole
+		// database is too expensive to do after every request, so state is saved
+		// once when the page is about to unload (refresh or close).
+		if hostConfigured {
 			persistSnapshot()
 		}
-		return encodeHandleResponse(wasmHandleResponse{Status: recorder.Code, Body: recorder.Body.String()})
+		return js.ValueOf(true)
 	}))
 	js.Global().Set("sharecropResetDemo", js.FuncOf(func(js.Value, []js.Value) interface{} {
 		if hostConfigured {
@@ -196,15 +202,6 @@ func seedFreshDatabase(host js.Value, handle *sql.DB, secret auth.AccessTokenSec
 
 	persistSnapshotWithHost(host)
 	return ""
-}
-
-func mutates(method string) bool {
-	switch strings.ToUpper(method) {
-	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return false
-	default:
-		return true
-	}
 }
 
 func captureRefreshCookie(cookies []*http.Cookie) {
