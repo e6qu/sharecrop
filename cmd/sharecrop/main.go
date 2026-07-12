@@ -39,6 +39,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
+	"github.com/e6qu/sharecrop/internal/wasiguest"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -354,20 +355,35 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		ModerationTriage:    db.NewModerationTriageStore(pool),
 	})
 
-	// The production cutover: when SHARECROP_WASI_GUEST points at a compiled
-	// wasip1 app guest, serve the dynamic routes by running that guest (the same
-	// mux, over the same bridged stores) from a pool of reused instances - so
-	// production runs the same WASM artifact as the browser demo. Static assets
-	// stay host-side. Unset, serve keeps the in-process native mux.
+	// WASI hosting is the default: production runs the same WASM artifact as the
+	// browser demo (the app guest embedded via internal/wasiguest), serving the
+	// dynamic routes from a pool of reused guest instances whose store calls are
+	// dispatched back to Postgres; static assets stay host-side. Set
+	// SHARECROP_WASI_MODE=native to run the in-process mux instead;
+	// SHARECROP_WASI_GUEST overrides the embedded guest with an external module.
 	handler := nativeHandler
-	if guestPath := os.Getenv("SHARECROP_WASI_GUEST"); guestPath != "" {
-		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestPath, cfg, pool, staticFiles)
+	guestWASM, guestSource, err := resolveGuestModule()
+	if err != nil {
+		logger.Error("resolve wasi guest", "error", err)
+		return 1
+	}
+	switch mode := strings.ToLower(os.Getenv("SHARECROP_WASI_MODE")); {
+	case mode == "native":
+		logger.Info("serving through the native in-process mux", "reason", "SHARECROP_WASI_MODE=native")
+	case len(guestWASM) == 0:
+		if mode == "wasi" {
+			logger.Error("SHARECROP_WASI_MODE=wasi but no app guest is available; build with `make build` or set SHARECROP_WASI_GUEST")
+			return 1
+		}
+		logger.Warn("no app guest embedded; serving the native in-process mux (build with `make build` for WASI hosting)")
+	default:
+		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles)
 		if err != nil {
 			logger.Error("build wasi guest host", "error", err)
 			return 1
 		}
 		defer closeGuest()
-		logger.Info("serving dynamic routes through the WASI guest pool", "guest", guestPath, "pool_size", wasiPoolSize())
+		logger.Info("serving dynamic routes through the WASI guest pool", "guest", guestSource, "pool_size", wasiPoolSize())
 		handler = wasiHandler
 	}
 
@@ -410,11 +426,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 // (the guest carries no static files). Every store call the guest makes is
 // dispatched back to the host's Postgres pool via storehost. The returned func
 // tears the guest pool down.
-func serveThroughWASIGuest(ctx context.Context, guestPath string, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS) (http.Handler, func(), error) {
-	guestWASM, err := os.ReadFile(guestPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read guest module %q: %w", guestPath, err)
-	}
+func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS) (http.Handler, func(), error) {
 	guestPool, err := rpc.NewPool(ctx, guestWASM, storehost.Dispatcher(pool), wasiPoolSize())
 	if err != nil {
 		return nil, nil, fmt.Errorf("build guest pool: %w", err)
@@ -444,6 +456,21 @@ func serveThroughWASIGuest(ctx context.Context, guestPath string, cfg app.Config
 	})
 
 	return mux, func() { _ = guestPool.Close(context.Background()) }, nil
+}
+
+// resolveGuestModule returns the app guest wasm to run: an external module when
+// SHARECROP_WASI_GUEST points at one, otherwise the embedded guest (empty when
+// the binary was not built for WASI). The second return value labels the source
+// for logging.
+func resolveGuestModule() ([]byte, string, error) {
+	if path := os.Getenv("SHARECROP_WASI_GUEST"); path != "" {
+		module, err := os.ReadFile(path)
+		if err != nil {
+			return nil, "", fmt.Errorf("read guest module %q: %w", path, err)
+		}
+		return module, path, nil
+	}
+	return wasiguest.Guest, "embedded", nil
 }
 
 // wasiPoolSize is how many guest instances the cutover keeps warm, from
