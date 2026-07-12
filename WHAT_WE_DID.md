@@ -1,5 +1,31 @@
 # What We Did
 
+The `task/wasi-bridge-ratelimit` branch bridges the **rate limiter** - the fifth
+of the six infra services, and the first that is **hand-written** rather than
+generated. `RateLimiter.Allow(key) bool` takes no context and returns a bare
+bool, which the code generator (built for ctx + single-union-result methods)
+doesn't model, so `internal/wasibridge/ratelimitbridge` is written by hand: a
+`GuestRateLimiter` that implements `httpserver.RateLimiter` by RPCing each call
+(`Allow`/`ActiveBuckets`/`StorageKind`) to the host, and a `Dispatch` that routes
+back to the real limiter. Because there are two limiters - one keyed by client IP,
+one by MCP agent subject - the wire method carries a prefix (`ratelimit.ip.Allow`
+vs `ratelimit.subject.Allow`) that selects which, and the guest holds one
+`GuestRateLimiter` per prefix. `Allow` fails open on a transport error: a broken
+bridge must never lock every client out. The db rate limiter genuinely queries
+Postgres (a token-bucket row per key), so bridging keeps the buckets in one
+shared store instead of a per-instance in-memory copy - a pooled guest now rate-
+limits consistently across instances. `appmux.Stores` gained `IPRateLimiter` and
+`SubjectRateLimiter` fields overriding the in-memory defaults. Dual-run-verified:
+draining a unique key's 20-token bucket through the bridge enforces the shared
+budget (20 allowed, then denied), and StorageKind/ActiveBuckets match a direct
+call. The unique key keeps the bucket private so nothing contaminates the shared
+db-checks database, and the full integration suite was run locally. Five of six
+infra services bridged; only MCP session persistence remains (also hand-written -
+multi-return tuples), then the cutover. All gates green. Nothing about the native
+server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-privacy` branch bridges the **privacy** RuntimeState
 service - the fourth and last of the codegen-friendly infra services, and the
 largest (6 methods, 3 result unions). Like moderation-triage it takes a

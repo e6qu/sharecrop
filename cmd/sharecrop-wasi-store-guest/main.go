@@ -25,6 +25,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/platformadminbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/privacybridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/ratelimitbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/savedqueueviewbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
@@ -71,6 +72,8 @@ func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 		return moderationtriagebridge.Dispatch(ctx, moderationtriagebridge.NewGuestStore(rpc.Invoke), method, args)
 	case "privacy":
 		return privacybridge.Dispatch(ctx, privacybridge.NewGuestStore(rpc.Invoke), method, args)
+	case "ratelimit":
+		return ratelimitbridge.Dispatch(ctx, ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "ip"), ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "subject"), method, args)
 	default:
 		return nil, fmt.Errorf("no bridge for method %q", method)
 	}

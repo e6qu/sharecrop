@@ -53,7 +53,21 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-privacy` — bridge the **privacy** RuntimeState
+Active task: `task/wasi-bridge-ratelimit` — bridge the **rate limiter** (fifth of
+six infra services; the first HAND-WRITTEN bridge, not codegen: `Allow(key) bool`
+has no ctx and a bare bool return, which the generator doesn't model).
+`internal/wasibridge/ratelimitbridge` has a `GuestRateLimiter` (implements
+`httpserver.RateLimiter`, RPCs `Allow`/`ActiveBuckets`/`StorageKind` with a
+prefix that picks the ip vs subject limiter) and a `Dispatch`. `Allow` fails open
+on transport error (a broken bridge must not lock everyone out). `appmux.Stores`
+gained `IPRateLimiter` + `SubjectRateLimiter` fields; dual-run-verified (draining
+a key's 20-token bucket through the bridge enforces the shared Postgres budget)
+and route tests pass; full integration suite run locally. **Five of six infra
+services bridged.** Remaining: **MCP session persistence** (also hand-written -
+multi-return tuples), then the production cutover of `cmd/sharecrop serve`.
+Nothing about the native server or browser demo changes.
+
+Earlier: `task/wasi-bridge-privacy` bridged the **privacy** RuntimeState
 service (fourth and last codegen-friendly infra service; 6 methods, 3 result
 unions). `RecordSensitiveFieldAccess` takes a `submission.Submission`
 (→ `extraImports`), but the store reads only the submission's ID and each

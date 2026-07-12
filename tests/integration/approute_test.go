@@ -13,6 +13,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -22,20 +23,22 @@ import (
 // domain service backed by a real Postgres store.
 func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
 	return appmux.Stores{
-		Auth:             db.NewAuthStore(pool),
-		Notification:     db.NewNotificationStore(pool),
-		Organization:     db.NewOrgStore(pool),
-		Task:             db.NewTaskStore(pool),
-		Submission:       db.NewSubmissionStore(pool),
-		Ledger:           db.NewLedgerStore(pool),
-		Agent:            db.NewAgentStore(pool),
-		OrgCredential:    db.NewOrgCredentialStore(pool),
-		Assets:           db.NewCollectibleStore(pool),
-		Audit:            db.NewAuditStore(pool),
-		SavedQueueViews:  db.NewSavedQueueViewStore(pool),
-		PlatformAdmins:   db.NewPlatformAdminStore(pool, map[string]bool{}),
-		ModerationTriage: db.NewModerationTriageStore(pool),
-		Privacy:          db.NewPrivacyStore(pool),
+		Auth:               db.NewAuthStore(pool),
+		Notification:       db.NewNotificationStore(pool),
+		Organization:       db.NewOrgStore(pool),
+		Task:               db.NewTaskStore(pool),
+		Submission:         db.NewSubmissionStore(pool),
+		Ledger:             db.NewLedgerStore(pool),
+		Agent:              db.NewAgentStore(pool),
+		OrgCredential:      db.NewOrgCredentialStore(pool),
+		Assets:             db.NewCollectibleStore(pool),
+		Audit:              db.NewAuditStore(pool),
+		SavedQueueViews:    db.NewSavedQueueViewStore(pool),
+		PlatformAdmins:     db.NewPlatformAdminStore(pool, map[string]bool{}),
+		ModerationTriage:   db.NewModerationTriageStore(pool),
+		Privacy:            db.NewPrivacyStore(pool),
+		IPRateLimiter:      db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
+		SubjectRateLimiter: db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
 	}
 }
 
