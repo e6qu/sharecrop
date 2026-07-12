@@ -53,7 +53,27 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-task` — bridge the `task` store, the **last and
+Active task: `task/wasi-appmux-full-graph` — with all ten stores bridged, wire
+the **full production mux** into the WASI app guest. `internal/wasibridge/appmux`
+grew from the auth+notification slice to the complete domain-service graph (auth,
+notification, org, task, submission, ledger, agent, orgcred, assets, audit),
+built in the same dependency order `cmd/sharecrop serve` uses (org+agent feed
+task; the shared task store + org service feed submission; no adapter types
+needed - services satisfy each other's cross-interfaces directly). The
+RuntimeState services without a dedicated store (rate limiters, MCP sessions,
+saved queue views, privacy, platform admins, moderation triage) keep their
+in-memory defaults; audit + notification run over bridged stores. `appmux.New`
+now takes an `appmux.Stores` struct (ten store interfaces), so the guest
+(`cmd/sharecrop-wasi-app-guest`) passes bridge GuestStores and the route tests
+pass real db stores - identical mux either way. Three routes are dual-run-
+verified byte-identical to native through the full-graph guest:
+`GET /api/notifications`, `GET /api/users`, and now `GET /api/credits/balance`
+(ledger service, returns the real signup-grant balance). **Next**: weigh
+instance pooling vs the ~2-3ms fresh-instance-per-request floor, then move
+`cmd/sharecrop serve` onto the WASI host. Nothing about the native server or
+browser demo changes.
+
+Earlier: `task/wasi-bridge-task` bridged the `task` store, the **last and
 widest store** (21 methods: tasks, series, reservations, and task/series comment
 threads). The `Task` model alone carries ~10 nested unions (owner, reward spec,
 visibility, series placement, data payload, assignee, active assignee, and the

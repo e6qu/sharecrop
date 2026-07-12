@@ -503,6 +503,24 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   (`tests/integration/authroute_test.go`) - the first route to exercise a
   bridged store's *service*, not just stateless token verification. The
   host-side store routing is shared as `internal/wasibridge/storehost`.
+- **The FULL production mux now runs in the guest.** With every store bridged,
+  `internal/wasibridge/appmux` was expanded from the auth+notification slice to
+  the complete domain-service graph (auth, notification, org, task, submission,
+  ledger, agent, orgcred, assets, audit), wired in the same dependency order
+  `cmd/sharecrop serve` uses - org and agent services feed the task service; the
+  shared task store and the org service feed the submission service; no adapter
+  types are needed because the services satisfy each other's cross-interfaces
+  directly. The RuntimeState services with no dedicated domain store (rate
+  limiters, MCP sessions, saved queue views, privacy, platform admins,
+  moderation triage) keep their in-memory defaults; audit and notification run
+  over the bridged stores. `appmux.New` now takes an `appmux.Stores` struct (ten
+  store interfaces), so the guest passes bridge GuestStores and the tests pass
+  real `internal/db` stores - the assembled mux is identical either way. A third
+  route test (`GET /api/credits/balance`, backed by the ledger service) proves a
+  service beyond auth/notification runs byte-identically through the guest and
+  returns the real signup-grant balance. **Remaining before a production cutover:
+  weigh instance pooling against the ~2-3ms fresh-instance-per-request floor,
+  then move `cmd/sharecrop serve` onto the WASI host.**
 
 ## Non-goals for this spike
 

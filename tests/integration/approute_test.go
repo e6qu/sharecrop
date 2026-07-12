@@ -14,9 +14,28 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
 	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
-	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
+	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// appmuxStores builds the full set of appmux stores over the db pool, so the
+// native mux in the route tests is assembled exactly like the guest's - every
+// domain service backed by a real Postgres store.
+func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
+	return appmux.Stores{
+		Auth:          db.NewAuthStore(pool),
+		Notification:  db.NewNotificationStore(pool),
+		Organization:  db.NewOrgStore(pool),
+		Task:          db.NewTaskStore(pool),
+		Submission:    db.NewSubmissionStore(pool),
+		Ledger:        db.NewLedgerStore(pool),
+		Agent:         db.NewAgentStore(pool),
+		OrgCredential: db.NewOrgCredentialStore(pool),
+		Assets:        db.NewCollectibleStore(pool),
+		Audit:         db.NewAuditStore(pool),
+	}
+}
 
 const appRouteSecret = "01234567890123456789012345678901"
 
@@ -40,18 +59,16 @@ func TestAppRouteEndToEndThroughGuest(t *testing.T) {
 	secret := requireAccessTokenSecret(t, appRouteSecret)
 
 	// Native: the same mux the guest builds, over the real db stores, in-process.
-	nativeMux := appmux.New(secret, db.NewAuthStore(pool), notificationStore)
+	nativeMux := appmux.New(secret, appmuxStores(pool))
 	direct := serveDirect(nativeMux, authedRequest(token))
 
-	// Bridge: the app guest, with notification.* dispatched to the same db store
-	// and the secret handed to the guest via WASI env.
+	// Bridge: the app guest, with every store dispatched to the same db pool and
+	// the secret handed to the guest via WASI env.
 	guestWASM, err := compileWASIGuest(t, "github.com/e6qu/sharecrop/cmd/sharecrop-wasi-app-guest")
 	if err != nil {
 		t.Fatalf("compile app guest: %v", err)
 	}
-	host, err := rpc.NewHost(ctx, guestWASM, func(ctx context.Context, method string, args []byte) ([]byte, error) {
-		return notificationbridge.Dispatch(ctx, notificationStore, method, args)
-	})
+	host, err := rpc.NewHost(ctx, guestWASM, storehost.Dispatcher(pool))
 	if err != nil {
 		t.Fatalf("new host: %v", err)
 	}

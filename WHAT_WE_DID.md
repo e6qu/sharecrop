@@ -1,5 +1,34 @@
 # What We Did
 
+The `task/wasi-appmux-full-graph` branch is the first step of the host-wiring
+phase that follows store-bridging: it wires the **full production mux** into the
+WASI app guest. Until now `internal/wasibridge/appmux` only wired the auth +
+notification services (the Phase-4 slice); every other domain service was passed
+as nil to `httpserver.NewWithRuntimeState`. Now that all ten stores are bridged,
+appmux builds the complete domain-service graph - auth, notification, org, task,
+submission, ledger, agent, orgcred, assets, audit - in the exact dependency order
+`cmd/sharecrop serve` uses: the org and agent services feed the task service, and
+the shared task store plus the org service feed the submission service. There are
+no adapter types - the domain services satisfy each other's cross-service
+interfaces (`task.OrganizationPermissions`, `task.TaskCredentialIssuer`,
+`submission.TaskFinder`, `submission.OrganizationPermissions`) directly, and the
+one store shared by two services (the task store, used by both task and
+submission) is passed to both. The RuntimeState services that have no dedicated
+domain store (rate limiters, MCP sessions, saved queue views, privacy, platform
+admins, moderation triage) keep the in-memory defaults from
+`httpserver.DefaultRuntimeState`; only audit and notification are overridden to
+run over the bridged stores. `appmux.New`'s signature changed from three
+positional args to an `appmux.Stores` struct of ten store interfaces, so the
+guest passes bridge GuestStores and the tests pass real `internal/db` stores -
+the assembled mux is byte-for-byte identical either way. The app guest
+(`cmd/sharecrop-wasi-app-guest`) now constructs all ten GuestStores, and the two
+existing route tests plus a new one (`GET /api/credits/balance`, backed by the
+ledger service, returning the real 100-credit signup grant) verify routes run
+byte-identically to the native mux through the full-graph guest. All gates green.
+Nothing about the native server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-task` branch bridged the `task` store - the tenth and
 **final** store, and the widest by far (21 methods). This completes the
 store-bridging phase: every one of the ten domain stores now round-trips through
