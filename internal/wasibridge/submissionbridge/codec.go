@@ -189,7 +189,7 @@ func decodeSubmitCommand(wire submitCommandWire) (submission.SubmitCommand, erro
 
 // ---- submission.Submission ----
 
-type submissionWire struct {
+type SubmissionWire struct {
 	ID              string                `json:"id"`
 	TaskID          string                `json:"task_id"`
 	SubmitterID     string                `json:"submitter_id"`
@@ -201,8 +201,8 @@ type submissionWire struct {
 	ReviewNote      string                `json:"review_note"`
 }
 
-func encodeSubmission(value submission.Submission) submissionWire {
-	return submissionWire{
+func EncodeSubmission(value submission.Submission) SubmissionWire {
+	return SubmissionWire{
 		ID:              corewire.EncodeSubmissionID(value.ID),
 		TaskID:          corewire.EncodeTaskID(value.TaskID),
 		SubmitterID:     corewire.EncodeUserID(value.SubmitterID),
@@ -215,7 +215,7 @@ func encodeSubmission(value submission.Submission) submissionWire {
 	}
 }
 
-func decodeSubmission(wire submissionWire) (submission.Submission, error) {
+func DecodeSubmission(wire SubmissionWire) (submission.Submission, error) {
 	id, err := corewire.DecodeSubmissionID(wire.ID)
 	if err != nil {
 		return submission.Submission{}, err
@@ -265,18 +265,18 @@ func decodeSubmission(wire submissionWire) (submission.Submission, error) {
 	}, nil
 }
 
-func encodeSubmissions(values []submission.Submission) []submissionWire {
-	encoded := make([]submissionWire, 0, len(values))
+func encodeSubmissions(values []submission.Submission) []SubmissionWire {
+	encoded := make([]SubmissionWire, 0, len(values))
 	for index := range values {
-		encoded = append(encoded, encodeSubmission(values[index]))
+		encoded = append(encoded, EncodeSubmission(values[index]))
 	}
 	return encoded
 }
 
-func decodeSubmissions(wires []submissionWire) ([]submission.Submission, error) {
+func decodeSubmissions(wires []SubmissionWire) ([]submission.Submission, error) {
 	values := make([]submission.Submission, 0, len(wires))
 	for index := range wires {
-		value, err := decodeSubmission(wires[index])
+		value, err := DecodeSubmission(wires[index])
 		if err != nil {
 			return nil, err
 		}
@@ -361,7 +361,7 @@ func decodeSubmissionComments(wires []submissionCommentWire) ([]submission.Submi
 // which each carry a single submission on success.
 type submissionResultWire struct {
 	Variant    string                  `json:"variant"`
-	Submission *submissionWire         `json:"submission,omitempty"`
+	Submission *SubmissionWire         `json:"submission,omitempty"`
 	Error      *domainwire.DomainError `json:"error,omitempty"`
 }
 
@@ -445,7 +445,7 @@ func decodeFindSubmissionResult(wire submissionResultWire) (submission.FindSubmi
 
 type submissionsResultWire struct {
 	Variant     string                  `json:"variant"`
-	Submissions []submissionWire        `json:"submissions,omitempty"`
+	Submissions []SubmissionWire        `json:"submissions,omitempty"`
 	Error       *domainwire.DomainError `json:"error,omitempty"`
 }
 
@@ -548,7 +548,7 @@ func decodeListCommentsResult(wire submissionCommentsResultWire) (submission.Lis
 // acceptedSubmissionWire builds the success arm shared by the three
 // single-submission results; only the variant tag differs between them.
 func acceptedSubmissionWire(variant string, value submission.Submission) submissionResultWire {
-	encoded := encodeSubmission(value)
+	encoded := EncodeSubmission(value)
 	return submissionResultWire{Variant: variant, Submission: &encoded}
 }
 
@@ -557,11 +557,11 @@ func rejectedSubmissionWire(reason core.DomainError) submissionResultWire {
 	return submissionResultWire{Variant: "rejected", Error: &encoded}
 }
 
-func decodeSubmissionPayload(wire *submissionWire) (submission.Submission, error) {
+func decodeSubmissionPayload(wire *SubmissionWire) (submission.Submission, error) {
 	if wire == nil {
 		return submission.Submission{}, fmt.Errorf("result is missing its submission")
 	}
-	return decodeSubmission(*wire)
+	return DecodeSubmission(*wire)
 }
 
 func decodeCommentPayload(wire *submissionCommentWire) (submission.SubmissionComment, error) {

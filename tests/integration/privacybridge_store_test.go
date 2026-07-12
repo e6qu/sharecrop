@@ -79,9 +79,35 @@ func TestPrivacyBridgeDualRun(t *testing.T) {
 		if !matched {
 			t.Fatalf("submission id rejected")
 		}
-		// An empty-field submission records nothing (no FK needed) but still round-
-		// trips the submission's id through the bridge.
-		if _, matched := bridgeStore.RecordSensitiveFieldAccess(ctx, requester, submission.Submission{ID: submissionID.Value}).(httpserver.PrivacyRequestSaved); !matched {
+		taskID, matched := core.NewTaskID().(core.TaskIDCreated)
+		if !matched {
+			t.Fatalf("task id rejected")
+		}
+		submitterID, matched := core.NewUserID().(core.UserIDCreated)
+		if !matched {
+			t.Fatalf("user id rejected")
+		}
+		responseSource, matched := submission.NewResponseSource(`{"answer":"yes"}`).(submission.ResponseSourceAccepted)
+		if !matched {
+			t.Fatalf("response source rejected")
+		}
+		reviewNote, matched := submission.NewStoredReviewNote("").(submission.ReviewNoteAccepted)
+		if !matched {
+			t.Fatalf("review note rejected")
+		}
+		// The full submission (now carried whole across the bridge) has no
+		// sensitive fields, so it records nothing (no FK needed) but still
+		// round-trips every field.
+		value := submission.Submission{
+			ID:             submissionID.Value,
+			TaskID:         taskID.Value,
+			SubmitterID:    submitterID.Value,
+			State:          submission.StateSubmitted,
+			ResponseSource: responseSource.Value,
+			Validation:     submission.ValidationPassed{},
+			ReviewNote:     reviewNote.Value,
+		}
+		if _, matched := bridgeStore.RecordSensitiveFieldAccess(ctx, requester, value).(httpserver.PrivacyRequestSaved); !matched {
 			t.Fatalf("bridge RecordSensitiveFieldAccess did not save")
 		}
 	})

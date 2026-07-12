@@ -105,9 +105,10 @@ var specs = map[string]storeSpec{
 		domainPackage: "audit",
 		interfaceName: "Store",
 		wirePrefix:    "audit",
+		extraImports:  []string{"github.com/e6qu/sharecrop/internal/wasibridge/auditwire"},
 		argCodecs: map[string]argCodec{
 			"core.AuditEventID": {field: "ID", goType: "core.AuditEventID", wireType: "string", encodeFn: "corewire.EncodeAuditEventID", decodeFn: "corewire.DecodeAuditEventID"},
-			"audit.Event":       {field: "Event", goType: "audit.Event", wireType: "eventWire", encodeFn: "encodeEvent", decodeFn: "decodeEvent"},
+			"audit.Event":       {field: "Event", goType: "audit.Event", wireType: "auditwire.EventWire", encodeFn: "auditwire.EncodeEvent", decodeFn: "auditwire.DecodeEvent"},
 			"audit.ListFilters": {field: "Filters", goType: "audit.ListFilters", wireType: "listFiltersWire", encodeFn: "encodeListFilters", decodeFn: "decodeListFilters"},
 			"core.Page":         pageArg(),
 		},
@@ -415,12 +416,12 @@ var specs = map[string]storeSpec{
 		domainPackage: "httpserver",
 		interfaceName: "ModerationTriageService",
 		wirePrefix:    "moderationtriage",
-		extraImports:  []string{"github.com/e6qu/sharecrop/internal/audit"},
+		extraImports:  []string{"github.com/e6qu/sharecrop/internal/audit", "github.com/e6qu/sharecrop/internal/wasibridge/auditwire"},
 		argCodecs: map[string]argCodec{
 			"core.UserID":         userIDArg(),
 			"core.AuditEventID":   {field: "ReportID", goType: "core.AuditEventID", wireType: "string", encodeFn: "corewire.EncodeAuditEventID", decodeFn: "corewire.DecodeAuditEventID"},
 			"[]core.AuditEventID": {field: "IDs", goType: "[]core.AuditEventID", wireType: "[]string", encodeFn: "encodeAuditEventIDs", decodeFn: "decodeAuditEventIDs"},
-			"audit.Event":         {field: "Event", goType: "audit.Event", wireType: "eventWire", encodeFn: "encodeEvent", decodeFn: "decodeEvent"},
+			"audit.Event":         {field: "Event", goType: "audit.Event", wireType: "auditwire.EventWire", encodeFn: "auditwire.EncodeEvent", decodeFn: "auditwire.DecodeEvent"},
 			"string":              {field: "State", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
 		},
 		resultCodecs: map[string]resultCodec{
@@ -437,12 +438,12 @@ var specs = map[string]storeSpec{
 		domainPackage: "httpserver",
 		interfaceName: "PrivacyService",
 		wirePrefix:    "privacy",
-		extraImports:  []string{"github.com/e6qu/sharecrop/internal/submission"},
+		extraImports:  []string{"github.com/e6qu/sharecrop/internal/submission", "github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"},
 		argCodecs: map[string]argCodec{
 			"core.UserID":           userIDArg(),
 			"core.Page":             pageArg(),
 			"string":                {field: "Text", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
-			"submission.Submission": {field: "Submission", goType: "submission.Submission", wireType: "submissionWire", encodeFn: "encodeSubmission", decodeFn: "decodeSubmission"},
+			"submission.Submission": {field: "Submission", goType: "submission.Submission", wireType: "submissionbridge.SubmissionWire", encodeFn: "submissionbridge.EncodeSubmission", decodeFn: "submissionbridge.DecodeSubmission"},
 		},
 		resultCodecs: map[string]resultCodec{
 			"httpserver.PrivacyMutationResult":  {goType: "httpserver.PrivacyMutationResult", wireType: "recordResultWire", encodeFn: "encodeMutationResult", decodeFn: "decodeMutationResult", rejectedType: "httpserver.PrivacyRequestMutationRejected"},

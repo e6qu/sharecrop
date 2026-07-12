@@ -11,43 +11,12 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
-	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
 )
 
-// ---- submission.Submission ----
-//
-// RecordSensitiveFieldAccess is the only method taking a submission.Submission,
-// and the store reads only the submission's ID and the Path of each sensitive
-// field from it (it records one access event per sensitive field). So the wire
-// carries just those, and rebuilds a minimal submission; if the store ever reads
-// another field, this codec and the dual-run test must grow with it.
-
-type submissionWire struct {
-	ID              string   `json:"id"`
-	SensitiveFields []string `json:"sensitive_fields,omitempty"`
-}
-
-func encodeSubmission(value submission.Submission) submissionWire {
-	paths := make([]string, 0, len(value.SensitiveFields))
-	for index := range value.SensitiveFields {
-		paths = append(paths, value.SensitiveFields[index].Path)
-	}
-	return submissionWire{ID: corewire.EncodeSubmissionID(value.ID), SensitiveFields: paths}
-}
-
-func decodeSubmission(wire submissionWire) (submission.Submission, error) {
-	id, err := corewire.DecodeSubmissionID(wire.ID)
-	if err != nil {
-		return submission.Submission{}, err
-	}
-	fields := make([]submission.SensitiveField, 0, len(wire.SensitiveFields))
-	for index := range wire.SensitiveFields {
-		fields = append(fields, submission.SensitiveField{Path: wire.SensitiveFields[index]})
-	}
-	return submission.Submission{ID: id, SensitiveFields: fields}, nil
-}
+// RecordSensitiveFieldAccess takes a full submission.Submission, serialized by
+// submissionbridge's shared EncodeSubmission/DecodeSubmission codec.
 
 // ---- httpserver.PrivacyRequestRecord ----
 

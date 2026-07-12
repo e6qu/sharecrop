@@ -9,6 +9,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/wasibridge/auditwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 )
 
@@ -20,7 +21,7 @@ const (
 )
 
 type recordArgs struct {
-	Event eventWire `json:"event"`
+	Event auditwire.EventWire `json:"event"`
 }
 
 type getArgs struct {
@@ -42,7 +43,7 @@ func Dispatch(ctx context.Context, store audit.Store, method string, args []byte
 		if err := json.Unmarshal(args, &decoded); err != nil {
 			return nil, fmt.Errorf("audit bridge: decode Record args: %w", err)
 		}
-		argEvent, err := decodeEvent(decoded.Event)
+		argEvent, err := auditwire.DecodeEvent(decoded.Event)
 		if err != nil {
 			return nil, err
 		}
@@ -93,7 +94,7 @@ func NewGuestStore(invoke Invoker) GuestStore {
 }
 
 func (g GuestStore) Record(ctx context.Context, argEvent audit.Event) audit.RecordResult {
-	args, err := json.Marshal(recordArgs{Event: encodeEvent(argEvent)})
+	args, err := json.Marshal(recordArgs{Event: auditwire.EncodeEvent(argEvent)})
 	if err != nil {
 		return audit.RecordRejected{Reason: guestError(err)}
 	}

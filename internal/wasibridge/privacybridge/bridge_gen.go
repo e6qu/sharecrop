@@ -11,6 +11,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
 )
 
 // Method names namespace each httpserver.PrivacyService method on the wire.
@@ -43,8 +44,8 @@ type resolveArgs struct {
 }
 
 type recordSensitiveFieldAccessArgs struct {
-	UserID     string         `json:"userid"`
-	Submission submissionWire `json:"submission"`
+	UserID     string                          `json:"userid"`
+	Submission submissionbridge.SubmissionWire `json:"submission"`
 }
 
 type runRetentionArgs struct {
@@ -117,7 +118,7 @@ func Dispatch(ctx context.Context, store httpserver.PrivacyService, method strin
 		if err != nil {
 			return nil, err
 		}
-		argSubmission, err := decodeSubmission(decoded.Submission)
+		argSubmission, err := submissionbridge.DecodeSubmission(decoded.Submission)
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +235,7 @@ func (g GuestStore) Resolve(ctx context.Context, argText string, argText2 string
 }
 
 func (g GuestStore) RecordSensitiveFieldAccess(ctx context.Context, argUserID core.UserID, argSubmission submission.Submission) httpserver.PrivacyMutationResult {
-	args, err := json.Marshal(recordSensitiveFieldAccessArgs{UserID: corewire.EncodeUserID(argUserID), Submission: encodeSubmission(argSubmission)})
+	args, err := json.Marshal(recordSensitiveFieldAccessArgs{UserID: corewire.EncodeUserID(argUserID), Submission: submissionbridge.EncodeSubmission(argSubmission)})
 	if err != nil {
 		return httpserver.PrivacyRequestMutationRejected{Reason: guestError(err)}
 	}
