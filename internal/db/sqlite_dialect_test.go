@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"os"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func openSQLiteWithSchema(t *testing.T) *sql.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() { _ = handle.Close() })
-	if err := MigrateUpSQLite(context.Background(), handle, "../../migrations"); err != nil {
+	if err := MigrateUpSQLite(context.Background(), handle, os.DirFS("../../migrations")); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
 	return handle
