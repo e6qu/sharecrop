@@ -53,8 +53,21 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-savedqueueview` — bridge the first of the **six
-RuntimeState infra services** so the pooled mux shares one Postgres store instead
+Active task: `task/wasi-bridge-platformadmin` — bridge the **platform-admin**
+RuntimeState service (second of six infra services; codegen-friendly). Its `Grant`
+takes two `core.UserID` args, which the generator's repeated-arg disambiguation
+handles (`UserID`/`UserID2`). One wrinkle: the db store takes bootstrap admins, so
+`storehost` now parses `SHARECROP_ADMIN_USER_IDS` (host-side config) to seed
+`db.NewPlatformAdminStore`. `appmux.Stores` gained a `PlatformAdmins` field
+overriding the in-memory default; dual-run-verified (grant/is-admin/list) and the
+full-graph route tests pass with it wired in. **Two codegen-friendly infra
+services remain (privacy, moderation-triage - each needs a shared cross-package
+value codec: submission.Submission / audit.Event, likely extracted like
+attachmentwire), then the two non-codegen ones (rate limiter, MCP sessions), then
+the production cutover.** Nothing about the native server or browser demo changes.
+
+Earlier: `task/wasi-bridge-savedqueueview` bridged the first of the six
+RuntimeState infra services so the pooled mux shares one Postgres store instead
 of a per-instance in-memory copy. `cmd/sharecrop serve` backs these six (rate
 limiters, MCP sessions, saved queue views, privacy, platform admins, moderation
 triage) with db stores; `appmux` had them all in-memory, which under pooling

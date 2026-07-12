@@ -33,6 +33,7 @@ func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
 		Assets:          db.NewCollectibleStore(pool),
 		Audit:           db.NewAuditStore(pool),
 		SavedQueueViews: db.NewSavedQueueViewStore(pool),
+		PlatformAdmins:  db.NewPlatformAdminStore(pool, map[string]bool{}),
 	}
 }
 

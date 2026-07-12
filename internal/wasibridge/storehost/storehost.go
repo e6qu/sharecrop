@@ -9,8 +9,10 @@ package storehost
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
 	"github.com/e6qu/sharecrop/internal/wasibridge/agentbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
@@ -20,6 +22,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/platformadminbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/savedqueueviewbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
@@ -27,6 +30,23 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// bootstrapAdmins parses SHARECROP_ADMIN_USER_IDS (comma-separated user ids) the
+// same way the native server does, so the host-side platform-admin store seeds
+// the same bootstrap admins. Malformed ids are skipped.
+func bootstrapAdmins() map[string]bool {
+	admins := map[string]bool{}
+	for _, raw := range strings.Split(os.Getenv("SHARECROP_ADMIN_USER_IDS"), ",") {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if _, matched := core.ParseUserID(trimmed).(core.UserIDCreated); matched {
+			admins[trimmed] = true
+		}
+	}
+	return admins
+}
 
 // Dispatcher builds an rpc.Dispatcher backed by the real db stores on pool.
 func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
@@ -41,6 +61,7 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	submissionStore := db.NewSubmissionStore(pool)
 	taskStore := db.NewTaskStore(pool)
 	savedQueueViewStore := db.NewSavedQueueViewStore(pool)
+	platformAdminStore := db.NewPlatformAdminStore(pool, bootstrapAdmins())
 
 	return func(ctx context.Context, method string, args []byte) ([]byte, error) {
 		store, _, _ := strings.Cut(method, ".")
@@ -67,6 +88,8 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 			return taskbridge.Dispatch(ctx, taskStore, method, args)
 		case "savedqueueview":
 			return savedqueueviewbridge.Dispatch(ctx, savedQueueViewStore, method, args)
+		case "platformadmin":
+			return platformadminbridge.Dispatch(ctx, platformAdminStore, method, args)
 		default:
 			return nil, fmt.Errorf("no bridge for method %q", method)
 		}

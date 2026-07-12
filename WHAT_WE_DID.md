@@ -1,5 +1,27 @@
 # What We Did
 
+The `task/wasi-bridge-platformadmin` branch bridges the **platform-admin**
+RuntimeState service - the second of the six infra services the cutover needs,
+and the second-simplest. Its `Grant(ctx, userID, actor)` takes two `core.UserID`
+arguments, so it exercises the generator's repeated-arg disambiguation
+(`UserID`/`UserID2`) - the same enhancement the assets bridge first needed. The
+one wrinkle beyond the saved-queue-view pattern: the db platform-admin store is
+constructed with a bootstrap-admins set (`db.NewPlatformAdminStore(pool,
+bootstrap)`), so `storehost` now parses `SHARECROP_ADMIN_USER_IDS` (the same
+host-side config the native server uses) to seed it; tests run with an empty set.
+`appmux.Stores` gained a `PlatformAdmins` field, so `appmux.New` overrides the
+in-memory default. Dual-run-verified (grant makes a user an admin; is-admin and
+list match a direct db call) and the full-graph route tests pass with it wired
+in. Four of the six infra services are now bridged or trivially so - saved-queue-
+view and platform-admin are done; privacy and moderation-triage remain but each
+references a cross-package value type (submission.Submission, audit.Event) that
+will likely be extracted into a shared wire package (as attachmentwire was) to
+avoid duplicating an existing bridge's codec. The last two (rate limiter, MCP
+sessions) don't fit the codegen at all. All gates green. Nothing about the native
+server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-savedqueueview` branch begins bridging the **RuntimeState
 infra services** so a faithful production cutover is possible. The prior work
 bridged the ten domain stores and wired the full mux into a pooled guest, but the
