@@ -19,6 +19,5 @@ elm019
 *.log
 /sharecrop
 
-# WASI cutover guest artifact (built by make wasi-app-guest)
-/app-guest.wasm
+# Generated demo build artifact (built by deno task wasm:demo:build)
 site/demo/seed-snapshot.b64

@@ -53,21 +53,22 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-cutover` — **the production cutover, and the end of the
-WASI hosting effort.** `cmd/sharecrop serve` can now serve production through the
-WASI guest: when `SHARECROP_WASI_GUEST` points at a compiled app-guest wasm
-(`make wasi-app-guest`), serve pools that guest (`rpc.Pool`, sized by
+**WASI hosting is complete and is now the DEFAULT.** `cmd/sharecrop serve` runs
+production through the WASI guest: the compiled app-guest wasm is embedded in the
+`sharecrop` binary (`internal/wasiguest`, built by `make wasi-app-guest` as part
+of `make build`), so production runs the same WASM artifact as the browser demo —
+one backend, one artifact. Serve pools that guest (`rpc.Pool`, sized by
 `SHARECROP_WASI_POOL_SIZE`, default GOMAXPROCS) and dispatches its store calls to
 Postgres via `storehost`; the dynamic routes (`/api/`, `/mcp`, `/healthz`) run in
-the guest and static assets + the SPA shell are served host-side. Unset, serve
-keeps the native in-process mux, so the cutover is opt-in and reversible.
-Verified with an integration test (host static + guest dynamic both correct) and
-a live smoke test of the real `serve` command (`/healthz` 200 through the guest
-pool against Postgres, `/` 200 from host static). **This closes the deviation the
-STATUS "one backend" section named: production can now run the same compiled WASM
-artifact as the browser demo - one backend, one artifact, two storage adapters.**
-Follow-ups (not blocking): flip the WASI path to the default once proven in
-staging; retire `internal/wasmdemo` once the browser demo shares more.
+the guest and static assets + the SPA shell are served host-side. Set
+`SHARECROP_WASI_MODE=native` to run the in-process mux instead;
+`SHARECROP_WASI_GUEST=<path>` overrides the embedded guest. A binary built
+without the guest (plain `go build`) runs native. If a present guest cannot load,
+serve fails loudly rather than silently degrading.
+
+The browser demo, too, now runs the same real backend over SQLite (retiring
+`internal/wasmdemo`), so both deployments share one store implementation
+parameterised only by SQL engine — Postgres in production, SQLite in the demo.
 
 Earlier: `task/wasi-bridge-mcpsession` bridged **MCP session persistence**,
 the **sixth and last** RuntimeState infra service (hand-written: its methods

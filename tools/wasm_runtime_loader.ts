@@ -26,8 +26,6 @@ export type HostFunctions = {
   storageHas(key: string): boolean;
   storageGet(key: string): string;
   storagePut(key: string, value: string): boolean;
-  now(): string;
-  nextID(kind: string): string;
 };
 
 export async function goRoot(): Promise<string> {
@@ -150,15 +148,13 @@ export function recordField(
  * contract that `site/demo/wasm-host.js` satisfies with browser
  * `localStorage`/`Date`. It is the documented starting point for a
  * non-browser WASM host (see docs/wasm_demo_backend_spike.md), not a
- * production-ready host: storage is process-local and unpersisted, and IDs
- * are sequential rather than cryptographically random. No user pre-seeding
- * is needed here - the WASM binary seeds its own fixed demo cast (real
- * accounts, real UUIDs) on `sharecropConfigureHost`, the same as the
+ * production-ready host: storage is process-local and unpersisted. No user
+ * pre-seeding is needed here - the WASM binary seeds its own fixed demo cast
+ * (real accounts, real UUIDs) on `sharecropConfigureHost`, the same as the
  * browser demo does.
  */
-export function createHost(nowValue = "2026-07-01T10:00:00Z"): HostFunctions {
+export function createHost(): HostFunctions {
   const storage = new Map<string, string>();
-  const counters = new Map<string, number>();
   return {
     storageHas(key: string): boolean {
       return storage.has(key);
@@ -173,15 +169,6 @@ export function createHost(nowValue = "2026-07-01T10:00:00Z"): HostFunctions {
     storagePut(key: string, value: string): boolean {
       storage.set(key, value);
       return true;
-    },
-    now(): string {
-      return nowValue;
-    },
-    nextID(kind: string): string {
-      const current = counters.get(kind) ?? 0;
-      const next = current + 1;
-      counters.set(kind, next);
-      return `${kind}-${next}`;
     },
   };
 }
