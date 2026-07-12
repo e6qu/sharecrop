@@ -53,7 +53,28 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-org` — bridge the `org` store (organizations,
+Active task: `task/wasi-bridge-task` — bridge the `task` store, the **last and
+widest store** (21 methods: tasks, series, reservations, and task/series comment
+threads). The `Task` model alone carries ~10 nested unions (owner, reward spec,
+visibility, series placement, data payload, assignee, active assignee, and the
+filter/scope unions). `internal/wasibridge/taskbridge` (codecs across codec.go /
+models_codec.go / commands_codec.go / results_codec.go + generated
+`bridge_gen.go`) is dual-run-verified against real Postgres
+(`tests/integration/taskbridge_store_test.go`) across create/find/change-state/
+list/reserve/comment/series/attach-to-series/series-comment. It needed **no
+generator change**. `corewire` gained `TaskSeriesID`/`TaskReservationID`/
+`SeriesCommentID`/`TaskCommentID` codecs. The attachment codec, previously
+duplicated in `submissionbridge`, was extracted into a shared
+`internal/wasibridge/attachmentwire` package (both bridges now use it); shared
+task test builders + diff helpers live in `internal/task/tasktest`. The generic
+store guest and `storehost` route `task.*` too. **ALL TEN stores are now
+bridged: audit, notification, auth, agent, orgcred, assets, submission, ledger,
+org, task.** The store-bridging phase is COMPLETE. **Next**: the host wiring -
+weigh instance pooling against the ~2-3ms instance-per-request floor, then
+migrate `cmd/sharecrop serve` onto the WASI host. Nothing about the native
+server or browser demo changes.
+
+Earlier: `task/wasi-bridge-org` bridged the `org` store (organizations,
 members, and teams: 16 methods, including the `TeamOwner` tagged union -
 organization-owned vs standalone user-owned teams). `internal/wasibridge/orgbridge`
 (codecs + generated `bridge_gen.go`) is dual-run-verified against real Postgres

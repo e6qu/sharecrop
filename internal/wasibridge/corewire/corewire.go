@@ -122,6 +122,50 @@ func DecodeOrgCredentialID(raw string) (core.OrgCredentialID, error) {
 	return created.Value, nil
 }
 
+// EncodeTaskSeriesID / DecodeTaskSeriesID carry a core.TaskSeriesID.
+func EncodeTaskSeriesID(id core.TaskSeriesID) string { return id.String() }
+
+func DecodeTaskSeriesID(raw string) (core.TaskSeriesID, error) {
+	created, matched := core.ParseTaskSeriesID(raw).(core.TaskSeriesIDCreated)
+	if !matched {
+		return core.TaskSeriesID{}, fmt.Errorf("invalid task series id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeTaskReservationID / DecodeTaskReservationID carry a core.TaskReservationID.
+func EncodeTaskReservationID(id core.TaskReservationID) string { return id.String() }
+
+func DecodeTaskReservationID(raw string) (core.TaskReservationID, error) {
+	created, matched := core.ParseTaskReservationID(raw).(core.TaskReservationIDCreated)
+	if !matched {
+		return core.TaskReservationID{}, fmt.Errorf("invalid task reservation id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeSeriesCommentID / DecodeSeriesCommentID carry a core.SeriesCommentID.
+func EncodeSeriesCommentID(id core.SeriesCommentID) string { return id.String() }
+
+func DecodeSeriesCommentID(raw string) (core.SeriesCommentID, error) {
+	created, matched := core.ParseSeriesCommentID(raw).(core.SeriesCommentIDCreated)
+	if !matched {
+		return core.SeriesCommentID{}, fmt.Errorf("invalid series comment id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeTaskCommentID / DecodeTaskCommentID carry a core.TaskCommentID.
+func EncodeTaskCommentID(id core.TaskCommentID) string { return id.String() }
+
+func DecodeTaskCommentID(raw string) (core.TaskCommentID, error) {
+	created, matched := core.ParseTaskCommentID(raw).(core.TaskCommentIDCreated)
+	if !matched {
+		return core.TaskCommentID{}, fmt.Errorf("invalid task comment id %q", raw)
+	}
+	return created.Value, nil
+}
+
 // EncodeTeamID / DecodeTeamID carry a core.TeamID.
 func EncodeTeamID(id core.TeamID) string { return id.String() }
 
