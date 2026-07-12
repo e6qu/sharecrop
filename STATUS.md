@@ -53,8 +53,31 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-appmux-full-graph` — with all ten stores bridged, wire
-the **full production mux** into the WASI app guest. `internal/wasibridge/appmux`
+Active task: `task/wasi-instance-pool` — **instance pooling** for the WASI app
+host. The guest was a wasip1 *command* (ran `main()` once per unit of work and
+exited), so each HTTP request paid the ~2-3ms guest-startup floor. Command
+instances can't be reused, and the Phase-1 findings proved a *shared* reactor
+instance corrupts state. The viable design, now implemented: the guest's
+`main()` **loops** over units of work read from stdin (via new `rpc.Serve`),
+staying alive between them, and the host keeps a **pool** of such instances
+(`rpc.Pool`), checking one out per unit of work. Each instance is still driven by
+exactly one goroutine and touched by no other - a per-instance `session` has a
+runner goroutine (owns the wazero instance) and a driver goroutine (owns both
+pipe ends, so the two-write framing never interleaves); request goroutines reach
+the driver only over Go channels. So pooling adds no shared-instance concurrency;
+concurrency comes from having several sessions. The unit-of-work protocol moved
+from argv to stdin "work" frames; `Host.Call` (fresh instance per call, used by
+all the dual-run/route tests) and `Pool.Call` both sit on the same `session`.
+`httpbridge.Handler` now takes an `rpc.Caller` (either), and the production
+`cmd/sharecrop-wasi-app-host` uses a pool sized by `SHARECROP_WASI_POOL_SIZE`
+(default GOMAXPROCS). Two new tests prove no cross-talk under load - 144
+concurrent store units through 4 reused instances, and 16 concurrent HTTP
+requests through the pooled app host - each seeing only its own data. **Next**:
+move `cmd/sharecrop serve` itself onto the WASI host (the production cutover).
+Nothing about the native server or browser demo changes.
+
+Earlier: `task/wasi-appmux-full-graph` wired the **full production mux** into the
+WASI app guest. `internal/wasibridge/appmux`
 grew from the auth+notification slice to the complete domain-service graph (auth,
 notification, org, task, submission, ledger, agent, orgcred, assets, audit),
 built in the same dependency order `cmd/sharecrop serve` uses (org+agent feed

@@ -28,18 +28,9 @@ import (
 )
 
 func main() {
-	method, args, err := rpc.UnitOfWork()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-
-	result, err := dispatch(context.Background(), method, args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if err := rpc.ReportResult(result); err != nil {
+	if err := rpc.Serve(func(method string, args []byte) ([]byte, error) {
+		return dispatch(context.Background(), method, args)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
