@@ -6,16 +6,15 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/core/id"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type SavedQueueViewStore struct {
-	pool *pgxpool.Pool
+	db Querier
 }
 
 func NewSavedQueueViewStore(pool *pgxpool.Pool) SavedQueueViewStore {
-	return SavedQueueViewStore{pool: pool}
+	return SavedQueueViewStore{db: NewPGX(pool)}
 }
 
 func (store SavedQueueViewStore) List(ctx context.Context, userID core.UserID, scope string) httpserver.SavedQueueViewsListResult {
@@ -28,12 +27,12 @@ func (store SavedQueueViewStore) List(ctx context.Context, userID core.UserID, s
 		query += " and scope = $2"
 	}
 	query += " order by updated_at desc, name"
-	var rows pgx.Rows
+	var rows Rows
 	var err error
 	if scope == "" {
-		rows, err = store.pool.Query(ctx, query, userID.String())
+		rows, err = store.db.Query(ctx, query, userID.String())
 	} else {
-		rows, err = store.pool.Query(ctx, query, userID.String(), scope)
+		rows, err = store.db.Query(ctx, query, userID.String(), scope)
 	}
 	if err != nil {
 		return httpserver.SavedQueueViewsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list saved queue views failed")}
@@ -67,7 +66,7 @@ func (store SavedQueueViewStore) Upsert(ctx context.Context, view httpserver.Sav
 	if !viewIDMatched {
 		return httpserver.SavedQueueViewSaveRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, viewIDResult.(id.IDRejected).Description)}
 	}
-	row := store.pool.QueryRow(ctx, `
+	row := store.db.QueryRow(ctx, `
 		insert into saved_queue_views (id, user_id, scope, name, query_text, state_filter, type_filter, sort_order)
 		values ($1, $2, $3, $4, $5, $6, $7, $8)
 		on conflict (user_id, scope, name) do update

@@ -7,12 +7,11 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PlatformAdminStore struct {
-	pool      *pgxpool.Pool
+	db        Querier
 	bootstrap map[string]httpserver.PlatformAdminRecord
 }
 
@@ -25,7 +24,7 @@ func NewPlatformAdminStore(pool *pgxpool.Pool, bootstrap map[string]bool) Platfo
 			records[rawID] = httpserver.PlatformAdminRecord{UserID: created.Value, Source: "bootstrap", CreatedAt: time.Now().UTC()}
 		}
 	}
-	return PlatformAdminStore{pool: pool, bootstrap: records}
+	return PlatformAdminStore{db: NewPGX(pool), bootstrap: records}
 }
 
 func (store PlatformAdminStore) IsAdmin(ctx context.Context, userID core.UserID) httpserver.PlatformAdminCheckResult {
@@ -33,7 +32,7 @@ func (store PlatformAdminStore) IsAdmin(ctx context.Context, userID core.UserID)
 		return httpserver.PlatformAdminAllowed{}
 	}
 	var exists bool
-	if err := store.pool.QueryRow(ctx, `select exists(select 1 from platform_admins where user_id = $1 and state = 'active')`, userID.String()).Scan(&exists); err != nil {
+	if err := store.db.QueryRow(ctx, `select exists(select 1 from platform_admins where user_id = $1 and state = 'active')`, userID.String()).Scan(&exists); err != nil {
 		return httpserver.PlatformAdminDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check platform admin failed")}
 	}
 	if exists {
@@ -47,7 +46,7 @@ func (store PlatformAdminStore) List(ctx context.Context, page core.Page) httpse
 	for _, record := range store.bootstrap {
 		records = append(records, record)
 	}
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select user_id::text, source, created_at
 		from platform_admins
 		where state = 'active'
@@ -81,7 +80,7 @@ func (store PlatformAdminStore) Grant(ctx context.Context, userID core.UserID, a
 		return httpserver.PlatformAdminSaved{Value: record}
 	}
 	var createdAt time.Time
-	if err := store.pool.QueryRow(ctx, `
+	if err := store.db.QueryRow(ctx, `
 		insert into platform_admins (user_id, source, state, granted_by_user_id)
 		values ($1, 'granted', 'active', $2)
 		on conflict (user_id) do update set source = 'granted', state = 'active', granted_by_user_id = $2, updated_at = now()
@@ -99,13 +98,13 @@ func (store PlatformAdminStore) Revoke(ctx context.Context, userID core.UserID) 
 	var rawID string
 	var source string
 	var createdAt time.Time
-	if err := store.pool.QueryRow(ctx, `
+	if err := store.db.QueryRow(ctx, `
 		update platform_admins
 		set state = 'revoked', updated_at = now()
 		where user_id = $1 and state = 'active'
 		returning user_id::text, source, created_at
 	`, userID.String()).Scan(&rawID, &source, &createdAt); err != nil {
-		if err == pgx.ErrNoRows {
+		if err == ErrNoRows {
 			return httpserver.PlatformAdminMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "platform admin was not found")}
 		}
 		return httpserver.PlatformAdminMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke platform admin failed")}
@@ -122,7 +121,7 @@ type platformAdminRejected struct{ reason core.DomainError }
 func (platformAdminAccepted) platformAdminResult() {}
 func (platformAdminRejected) platformAdminResult() {}
 
-func scanPlatformAdmin(rows pgx.Rows) platformAdminResult {
+func scanPlatformAdmin(rows Rows) platformAdminResult {
 	var rawID string
 	var source string
 	var createdAt time.Time

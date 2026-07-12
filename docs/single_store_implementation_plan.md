@@ -86,6 +86,25 @@ wide — the bulk of the porting effort.
 interface lives in a package whose doc explains the unavoidable `database/sql`
 signature, or uses a named `type Arg = any` alias vetted against the checker.
 
+## P0.5 browser de-risk — RESULTS (GO)
+
+Validated in real headless Chrome (Playwright) with `ncruces/go-sqlite3`
+v0.35.2 (which translates SQLite wasm to Go via wasm2go — native Go, not
+interpreted):
+
+- Cold page-load → sqlite up + schema + **5000 rows inserted (one tx)** + an
+  indexed paginated query: **361 ms wall total**. WASM instantiate 11 ms; open
+  49 ms; DDL 69 ms; insert-5000 159 ms; paginated query **5.3 ms**.
+- Correct: 5000 rows, `$N` placeholders, index, `order by … desc limit/offset`,
+  transactions all work in-browser.
+- Size: 17.8 MB raw / **4.5 MB gzip** / **3.0 MB brotli** (sqlite + minimal
+  main). A combined demo (mux + services + sqlite) is expected ~6–7 MB gzip.
+
+**Persistence:** `memdb` imports bytes (`Create`) but exposes no export. Path:
+a small forked exportable memdb VFS (read the page buffer back out) → snapshot
+to IndexedDB via `syscall/js`; or accept demo-resets-on-reload. Decided in the
+demo-cutover phase (Px). Not a feasibility blocker.
+
 ## Phased program (one PR at a time, prod stays green throughout)
 
 - **P0 — abstraction + pilot store.** Add the `Querier/Tx/Rows` interfaces + pgx
