@@ -10,6 +10,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/wasibridge/auditwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 )
 
@@ -21,7 +22,7 @@ const (
 )
 
 type recordOpenArgs struct {
-	Event eventWire `json:"event"`
+	Event auditwire.EventWire `json:"event"`
 }
 
 type listArgs struct {
@@ -45,7 +46,7 @@ func Dispatch(ctx context.Context, store httpserver.ModerationTriageService, met
 		if err := json.Unmarshal(args, &decoded); err != nil {
 			return nil, fmt.Errorf("moderationtriage bridge: decode RecordOpen args: %w", err)
 		}
-		argEvent, err := decodeEvent(decoded.Event)
+		argEvent, err := auditwire.DecodeEvent(decoded.Event)
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +105,7 @@ func NewGuestStore(invoke Invoker) GuestStore {
 }
 
 func (g GuestStore) RecordOpen(ctx context.Context, argEvent audit.Event) httpserver.ModerationTriageMutationResult {
-	args, err := json.Marshal(recordOpenArgs{Event: encodeEvent(argEvent)})
+	args, err := json.Marshal(recordOpenArgs{Event: auditwire.EncodeEvent(argEvent)})
 	if err != nil {
 		return httpserver.ModerationTriageMutationRejected{Reason: guestError(err)}
 	}

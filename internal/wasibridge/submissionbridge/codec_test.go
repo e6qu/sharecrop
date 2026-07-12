@@ -70,7 +70,7 @@ func sampleSubmission(t *testing.T) submission.Submission {
 
 func TestSubmissionRoundTrip(t *testing.T) {
 	original := sampleSubmission(t)
-	restored, err := decodeSubmission(encodeSubmission(original))
+	restored, err := DecodeSubmission(EncodeSubmission(original))
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}

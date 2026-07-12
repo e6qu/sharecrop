@@ -17,79 +17,13 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
-	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/auditwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
 )
 
-// ---- audit.Action (a free-form string wrapper) ----
-
-func encodeAction(action audit.Action) string { return action.String() }
-
-func decodeAction(raw string) audit.Action { return audit.ActionFromString(raw) }
-
-// ---- audit.Subject / audit.Metadata ----
-
-type subjectWire struct {
-	Kind string `json:"kind"`
-	ID   string `json:"id"`
-}
-
-func encodeSubject(subject audit.Subject) subjectWire {
-	return subjectWire{Kind: subject.Kind, ID: subject.ID}
-}
-
-func decodeSubject(wire subjectWire) audit.Subject {
-	return audit.Subject{Kind: wire.Kind, ID: wire.ID}
-}
-
-func encodeMetadata(metadata audit.Metadata) string { return metadata.JSON }
-
-func decodeMetadata(raw string) audit.Metadata { return audit.Metadata{JSON: raw} }
-
-// ---- audit.Event ----
-
-type eventWire struct {
-	ID          string      `json:"id"`
-	ActorUserID string      `json:"actor_user_id"`
-	Action      string      `json:"action"`
-	Subject     subjectWire `json:"subject"`
-	Metadata    string      `json:"metadata"`
-	CreatedAt   string      `json:"created_at"`
-}
-
-func encodeEvent(event audit.Event) eventWire {
-	return eventWire{
-		ID:          corewire.EncodeAuditEventID(event.ID),
-		ActorUserID: corewire.EncodeUserID(event.ActorUserID),
-		Action:      encodeAction(event.Action),
-		Subject:     encodeSubject(event.Subject),
-		Metadata:    encodeMetadata(event.Metadata),
-		CreatedAt:   corewire.EncodeTime(event.CreatedAt),
-	}
-}
-
-func decodeEvent(wire eventWire) (audit.Event, error) {
-	id, err := corewire.DecodeAuditEventID(wire.ID)
-	if err != nil {
-		return audit.Event{}, err
-	}
-	actor, err := corewire.DecodeUserID(wire.ActorUserID)
-	if err != nil {
-		return audit.Event{}, err
-	}
-	createdAt, err := corewire.DecodeTime(wire.CreatedAt)
-	if err != nil {
-		return audit.Event{}, err
-	}
-	return audit.Event{
-		ID:          id,
-		ActorUserID: actor,
-		Action:      decodeAction(wire.Action),
-		Subject:     decodeSubject(wire.Subject),
-		Metadata:    decodeMetadata(wire.Metadata),
-		CreatedAt:   createdAt,
-	}, nil
-}
+// audit.Event, its Subject/Action/Metadata, and the Event codec live in the
+// shared internal/wasibridge/auditwire package (also used by the
+// moderation-triage bridge); the result unions below carry auditwire.EventWire.
 
 // ---- audit.ListFilters and its three filter unions ----
 //
@@ -103,7 +37,7 @@ type actionFilterWire struct {
 
 func encodeActionFilter(filter audit.ActionFilter) actionFilterWire {
 	if equals, matched := filter.(audit.ActionEquals); matched {
-		return actionFilterWire{Variant: "equals", Value: encodeAction(equals.Value)}
+		return actionFilterWire{Variant: "equals", Value: equals.Value.String()}
 	}
 	return actionFilterWire{Variant: "unfiltered"}
 }
@@ -111,7 +45,7 @@ func encodeActionFilter(filter audit.ActionFilter) actionFilterWire {
 func decodeActionFilter(wire actionFilterWire) (audit.ActionFilter, error) {
 	switch wire.Variant {
 	case "equals":
-		return audit.ActionEquals{Value: decodeAction(wire.Value)}, nil
+		return audit.ActionEquals{Value: audit.ActionFromString(wire.Value)}, nil
 	case "unfiltered":
 		return audit.AnyAction{}, nil
 	default:
@@ -201,14 +135,14 @@ func decodeListFilters(wire listFiltersWire) (audit.ListFilters, error) {
 
 type recordResultWire struct {
 	Variant string                  `json:"variant"`
-	Event   *eventWire              `json:"event,omitempty"`
+	Event   *auditwire.EventWire    `json:"event,omitempty"`
 	Error   *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeRecordResult(result audit.RecordResult) recordResultWire {
 	switch typed := result.(type) {
 	case audit.EventRecorded:
-		event := encodeEvent(typed.Value)
+		event := auditwire.EncodeEvent(typed.Value)
 		return recordResultWire{Variant: "recorded", Event: &event}
 	case audit.RecordRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
@@ -224,7 +158,7 @@ func decodeRecordResult(wire recordResultWire) (audit.RecordResult, error) {
 		if wire.Event == nil {
 			return nil, fmt.Errorf("recorded record result is missing its event")
 		}
-		event, err := decodeEvent(*wire.Event)
+		event, err := auditwire.DecodeEvent(*wire.Event)
 		if err != nil {
 			return nil, err
 		}
@@ -241,14 +175,14 @@ func decodeRecordResult(wire recordResultWire) (audit.RecordResult, error) {
 
 type getResultWire struct {
 	Variant string                  `json:"variant"`
-	Event   *eventWire              `json:"event,omitempty"`
+	Event   *auditwire.EventWire    `json:"event,omitempty"`
 	Error   *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeGetResult(result audit.GetResult) getResultWire {
 	switch typed := result.(type) {
 	case audit.EventFound:
-		event := encodeEvent(typed.Value)
+		event := auditwire.EncodeEvent(typed.Value)
 		return getResultWire{Variant: "found", Event: &event}
 	case audit.GetRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
@@ -264,7 +198,7 @@ func decodeGetResult(wire getResultWire) (audit.GetResult, error) {
 		if wire.Event == nil {
 			return nil, fmt.Errorf("found get result is missing its event")
 		}
-		event, err := decodeEvent(*wire.Event)
+		event, err := auditwire.DecodeEvent(*wire.Event)
 		if err != nil {
 			return nil, err
 		}
@@ -281,16 +215,16 @@ func decodeGetResult(wire getResultWire) (audit.GetResult, error) {
 
 type listResultWire struct {
 	Variant string                  `json:"variant"`
-	Events  []eventWire             `json:"events,omitempty"`
+	Events  []auditwire.EventWire   `json:"events,omitempty"`
 	Error   *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeListResult(result audit.ListResult) listResultWire {
 	switch typed := result.(type) {
 	case audit.EventsListed:
-		events := make([]eventWire, 0, len(typed.Values))
+		events := make([]auditwire.EventWire, 0, len(typed.Values))
 		for index := range typed.Values {
-			events = append(events, encodeEvent(typed.Values[index]))
+			events = append(events, auditwire.EncodeEvent(typed.Values[index]))
 		}
 		return listResultWire{Variant: "listed", Events: events}
 	case audit.ListRejected:
@@ -306,7 +240,7 @@ func decodeListResult(wire listResultWire) (audit.ListResult, error) {
 	case "listed":
 		events := make([]audit.Event, 0, len(wire.Events))
 		for index := range wire.Events {
-			event, err := decodeEvent(wire.Events[index])
+			event, err := auditwire.DecodeEvent(wire.Events[index])
 			if err != nil {
 				return nil, err
 			}

@@ -7,6 +7,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/audit/audittest"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/wasibridge/auditwire"
 )
 
 func sampleEvent(t *testing.T) audit.Event {
@@ -38,7 +39,7 @@ func assertEventEqual(t *testing.T, got audit.Event, want audit.Event) {
 
 func TestEventRoundTrip(t *testing.T) {
 	original := sampleEvent(t)
-	restored, err := decodeEvent(encodeEvent(original))
+	restored, err := auditwire.DecodeEvent(auditwire.EncodeEvent(original))
 	if err != nil {
 		t.Fatalf("decode event: %v", err)
 	}

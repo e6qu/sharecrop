@@ -9,44 +9,14 @@ package moderationtriagebridge
 import (
 	"fmt"
 
-	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
 )
 
-// ---- audit.Event ----
-//
-// RecordOpen is the only method taking an audit.Event, and both the in-memory
-// and db moderation-triage stores read only the event's ID and CreatedAt from it
-// (the moderation report is keyed by the audit event that opened it). So the wire
-// carries just those two fields and rebuilds a minimal event; if RecordOpen ever
-// reads another field, this codec and the dual-run test must grow with it.
-
-type eventWire struct {
-	ID        string `json:"id"`
-	CreatedAt string `json:"created_at"`
-}
-
-func encodeEvent(event audit.Event) eventWire {
-	return eventWire{
-		ID:        corewire.EncodeAuditEventID(event.ID),
-		CreatedAt: corewire.EncodeTime(event.CreatedAt),
-	}
-}
-
-func decodeEvent(wire eventWire) (audit.Event, error) {
-	id, err := corewire.DecodeAuditEventID(wire.ID)
-	if err != nil {
-		return audit.Event{}, err
-	}
-	createdAt, err := corewire.DecodeTime(wire.CreatedAt)
-	if err != nil {
-		return audit.Event{}, err
-	}
-	return audit.Event{ID: id, CreatedAt: createdAt}, nil
-}
+// RecordOpen takes a full audit.Event, serialized by the shared
+// internal/wasibridge/auditwire package (also used by the audit store bridge).
 
 // ---- []core.AuditEventID ----
 
