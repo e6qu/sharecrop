@@ -183,7 +183,7 @@ func (store OrgStore) ProvisionMember(ctx context.Context, membershipID core.Org
 func (store OrgStore) ListMembers(ctx context.Context, organizationID core.OrganizationID, page core.Page) org.ListMembersResult {
 	rows, err := store.db.Query(ctx, `
 		select organization_memberships.id::text, organization_memberships.user_id::text, organization_memberships.status,
-			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')
+			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')::text
 		from organization_memberships
 		left join organization_membership_roles on organization_membership_roles.membership_id = organization_memberships.id
 		where organization_memberships.organization_id = $1 and organization_memberships.status <> $2
@@ -201,7 +201,7 @@ func (store OrgStore) ListMembers(ctx context.Context, organizationID core.Organ
 		var rawID string
 		var rawUserID string
 		var rawStatus string
-		var rawRoles []string
+		var rawRoles StringArray
 		if err := rows.Scan(&rawID, &rawUserID, &rawStatus, &rawRoles); err != nil {
 			return org.ListMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan organization member failed")}
 		}
@@ -324,10 +324,10 @@ func (store OrgStore) findActiveMember(ctx context.Context, organizationID core.
 	var rawID string
 	var rawUserID string
 	var rawStatus string
-	var rawRoles []string
+	var rawRoles StringArray
 	err := store.db.QueryRow(ctx, `
 		select organization_memberships.id::text, organization_memberships.user_id::text, organization_memberships.status,
-			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')
+			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')::text
 		from organization_memberships
 		left join organization_membership_roles on organization_membership_roles.membership_id = organization_memberships.id
 		where organization_memberships.organization_id = $1

@@ -59,7 +59,7 @@ func (store AgentStore) VerifyCredential(ctx context.Context, hash agent.SecretH
 	var state string
 	var expiresAt *time.Time
 	var rawTaskID *string
-	var rawScopes []string
+	var rawScopes StringArray
 	scanErr := store.db.QueryRow(ctx, agentCredentialSelectSQL()+`
 		where agent_credentials.token_hash = $1
 		group by agent_credentials.id
@@ -99,7 +99,7 @@ func (store AgentStore) ListCredentials(ctx context.Context, owner core.UserID, 
 		var state string
 		var expiresAt *time.Time
 		var rawTaskID *string
-		var rawScopes []string
+		var rawScopes StringArray
 		if err := rows.Scan(&rawID, &rawUserID, &label, &state, &expiresAt, &rawTaskID, &rawScopes); err != nil {
 			return agent.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan agent credential failed")}
 		}
@@ -135,7 +135,7 @@ func (store AgentStore) RevokeCredential(ctx context.Context, owner core.UserID,
 	var state string
 	var expiresAt *time.Time
 	var rawTaskID *string
-	var rawScopes []string
+	var rawScopes StringArray
 	scanErr := store.db.QueryRow(ctx, agentCredentialSelectSQL()+`
 		where agent_credentials.id = $1
 		group by agent_credentials.id
@@ -156,7 +156,7 @@ func agentCredentialSelectSQL() string {
 	return `
 		select agent_credentials.id::text, agent_credentials.user_id::text, agent_credentials.label, agent_credentials.state,
 			agent_credentials.expires_at, agent_credentials.task_id::text,
-			coalesce(array_remove(array_agg(agent_credential_scopes.scope), null), '{}') as scopes
+			coalesce(array_remove(array_agg(agent_credential_scopes.scope), null), '{}')::text as scopes
 		from agent_credentials
 		left join agent_credential_scopes on agent_credential_scopes.credential_id = agent_credentials.id
 	`
