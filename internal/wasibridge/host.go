@@ -117,6 +117,12 @@ func (h *Host) LookupCredential(ctx context.Context, email string) (auth.Credent
 		// real CSPRNG so the guest's crypto/rand (UUIDs, tokens, salts) is not
 		// predictable or collision-prone. See the rpc host for the full rationale.
 		WithRandSource(rand.Reader).
+		// wazero also defaults to a fake clock; give the guest the host's real
+		// walltime/nanotime/sleep so time.Now() timestamps are real. See the rpc
+		// host for the full rationale.
+		WithSysWalltime().
+		WithSysNanotime().
+		WithSysNanosleep().
 		// Anonymous instance name so the same compiled module can be
 		// instantiated many times in one runtime without a name collision.
 		WithName("")
