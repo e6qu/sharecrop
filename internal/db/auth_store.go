@@ -8,21 +8,20 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AuthStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewAuthStore(pool *pgxpool.Pool) AuthStore {
-	return AuthStore{pool: pool}
+	return AuthStore{db: NewPGX(pool)}
 }
 
 func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID, email auth.EmailAddress, passwordHash auth.PasswordHash) auth.StoreUserResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return auth.StoreUserRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "begin create user transaction failed")}
 	}
@@ -56,7 +55,7 @@ func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID,
 }
 
 func (store AuthStore) FindCredentialByEmail(ctx context.Context, email auth.EmailAddress) auth.CredentialLookupResult {
-	row := store.pool.QueryRow(ctx, `
+	row := store.db.QueryRow(ctx, `
 		select users.id::text, users.email, password_credentials.password_hash, users.status
 		from users
 		join password_credentials on password_credentials.user_id = users.id
@@ -66,7 +65,7 @@ func (store AuthStore) FindCredentialByEmail(ctx context.Context, email auth.Ema
 }
 
 func (store AuthStore) FindCredentialByUserID(ctx context.Context, userID core.UserID) auth.CredentialLookupResult {
-	row := store.pool.QueryRow(ctx, `
+	row := store.db.QueryRow(ctx, `
 		select users.id::text, users.email, password_credentials.password_hash, users.status
 		from users
 		join password_credentials on password_credentials.user_id = users.id
@@ -81,7 +80,7 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 	// Escape LIKE metacharacters in the caller's query so a value full of
 	// '%'/'_' is matched literally (as the browser-store substring match
 	// does) rather than expanding into an expensive wildcard scan.
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, email, status
 		from users
 		where status = 'active'
@@ -120,13 +119,13 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 	return auth.UsersListed{Values: values}
 }
 
-func scanCredential(row pgx.Row) auth.CredentialLookupResult {
+func scanCredential(row Row) auth.CredentialLookupResult {
 	var rawUserID string
 	var rawEmail string
 	var rawPasswordHash string
 	var rawStatus string
 	if err := row.Scan(&rawUserID, &rawEmail, &rawPasswordHash, &rawStatus); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return auth.CredentialMissing{}
 		}
 		return auth.CredentialLookupRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credential lookup failed")}
@@ -164,35 +163,35 @@ func scanCredential(row pgx.Row) auth.CredentialLookupResult {
 }
 
 func (store AuthStore) UpdateUserEmail(ctx context.Context, userID core.UserID, email auth.EmailAddress) auth.AccountMutationResult {
-	tag, err := store.pool.Exec(ctx, "update users set email = $2, email_verified_at = null where id = $1 and status = 'active'", userID.String(), email.String())
+	tag, err := store.db.Exec(ctx, "update users set email = $2, email_verified_at = null where id = $1 and status = 'active'", userID.String(), email.String())
 	if err != nil {
 		if isUniqueViolation(err) {
 			return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "email address is already registered")}
 		}
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update user email failed")}
 	}
-	if tag.RowsAffected() == 0 {
+	if tag == 0 {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
 	}
 	return auth.AccountMutationAccepted{}
 }
 
 func (store AuthStore) UpdatePassword(ctx context.Context, userID core.UserID, passwordHash auth.PasswordHash) auth.AccountMutationResult {
-	tag, err := store.pool.Exec(ctx, "update password_credentials set password_hash = $2 where user_id = $1", userID.String(), passwordHash.String())
+	tag, err := store.db.Exec(ctx, "update password_credentials set password_hash = $2 where user_id = $1", userID.String(), passwordHash.String())
 	if err != nil {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update password failed")}
 	}
-	if tag.RowsAffected() == 0 {
+	if tag == 0 {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
 	}
-	if _, err := store.pool.Exec(ctx, "update refresh_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String()); err != nil {
+	if _, err := store.db.Exec(ctx, "update refresh_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String()); err != nil {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke account sessions failed")}
 	}
 	return auth.AccountMutationAccepted{}
 }
 
 func (store AuthStore) DeactivateUser(ctx context.Context, userID core.UserID) auth.AccountMutationResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin deactivate account failed")}
 	}
@@ -221,7 +220,7 @@ func (store AuthStore) DeactivateUser(ctx context.Context, userID core.UserID) a
 	if err != nil {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "deactivate account failed")}
 	}
-	if tag.RowsAffected() == 0 {
+	if tag == 0 {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
 	}
 	if _, err := tx.Exec(ctx, "update refresh_tokens set status = 'revoked' where user_id = $1 and status = 'active'", userID.String()); err != nil {
@@ -240,7 +239,7 @@ func (store AuthStore) DeactivateUser(ctx context.Context, userID core.UserID) a
 }
 
 func (store AuthStore) CreateGuestSubject(ctx context.Context, id core.GuestID) auth.StoreGuestResult {
-	_, err := store.pool.Exec(ctx, "insert into guest_subjects (id) values ($1)", id.String())
+	_, err := store.db.Exec(ctx, "insert into guest_subjects (id) values ($1)", id.String())
 	if err != nil {
 		return auth.StoreGuestRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "insert guest subject failed")}
 	}
@@ -251,7 +250,7 @@ func (store AuthStore) CreateGuestSubject(ctx context.Context, id core.GuestID) 
 // RevokeRefreshFamily revokes every active token in the family of the presented
 // token (logout). An unknown token matches no family and revokes nothing.
 func (store AuthStore) RevokeRefreshFamily(ctx context.Context, hash auth.RefreshTokenHash) auth.RevokeRefreshFamilyResult {
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		update refresh_tokens set status = 'revoked'
 		where status = 'active'
 		and family_id = (select family_id from refresh_tokens where token_hash = $1)
@@ -277,7 +276,7 @@ func (store AuthStore) StoreRefreshToken(ctx context.Context, record auth.Refres
 		return auth.StoreRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "refresh token subject is invalid")}
 	}
 
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		insert into refresh_tokens (id, family_id, token_hash, subject_kind, user_id, guest_id, status, expires_at)
 		values ($1, $2, $3, $4, nullif($5, '')::uuid, nullif($6, '')::uuid, 'active', $7)
 	`, record.ID.String(), record.FamilyID.String(), record.Hash.String(), subjectKind, userID, guestID, record.ExpiresAt)
@@ -289,7 +288,7 @@ func (store AuthStore) StoreRefreshToken(ctx context.Context, record auth.Refres
 }
 
 func (store AuthStore) StoreAccountToken(ctx context.Context, userID core.UserID, kind auth.AccountTokenKind, token auth.AccountToken) auth.AccountTokenStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return auth.AccountTokenStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin account token transaction failed")}
 	}
@@ -311,7 +310,7 @@ func (store AuthStore) StoreAccountToken(ctx context.Context, userID core.UserID
 }
 
 func (store AuthStore) ConsumeAccountToken(ctx context.Context, kind auth.AccountTokenKind, hash auth.AccountTokenHash, now time.Time) auth.AccountTokenConsumeResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return auth.AccountTokenConsumeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin account token consume failed")}
 	}
@@ -324,7 +323,7 @@ func (store AuthStore) ConsumeAccountToken(ctx context.Context, kind auth.Accoun
 		where token_hash = $1 and kind = $2 and status = 'active'
 		for update
 	`, hash.String(), kind.String()).Scan(&rawUserID, &expiresAt)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return auth.AccountTokenNotConsumed{}
 	}
 	if scanErr != nil {
@@ -353,7 +352,7 @@ func (store AuthStore) ConsumeAccountToken(ctx context.Context, kind auth.Accoun
 }
 
 func (store AuthStore) ConsumeRefreshToken(ctx context.Context, hash auth.RefreshTokenHash, consumedAt time.Time) auth.ConsumeRefreshTokenResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return auth.ConsumeRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "begin consume refresh token failed")}
 	}
@@ -371,7 +370,7 @@ func (store AuthStore) ConsumeRefreshToken(ctx context.Context, hash auth.Refres
 		where token_hash = $1
 		for update
 	`, hash.String()).Scan(&status, &rawFamilyID, &subjectKind, &rawUserID, &rawGuestID, &expiresAt)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return auth.RefreshTokenNotConsumed{}
 	}
 	if scanErr != nil {
@@ -456,7 +455,7 @@ func (signupGrantRejected) signupGrantResult() {}
 
 // insertSignupGrant creates the user's credit account and the signup grant
 // ledger entry inside the user-creation transaction.
-func insertSignupGrant(ctx context.Context, tx pgx.Tx, userID core.UserID) signupGrantResult {
+func insertSignupGrant(ctx context.Context, tx Tx, userID core.UserID) signupGrantResult {
 	accountResult := core.NewCreditAccountID()
 	account, accountMatched := accountResult.(core.CreditAccountIDCreated)
 	if !accountMatched {
@@ -486,7 +485,7 @@ func insertSignupGrant(ctx context.Context, tx pgx.Tx, userID core.UserID) signu
 
 // insertOrganizationCreditGrant creates an organization credit account and its
 // initial grant inside the organization-creation transaction.
-func insertOrganizationCreditGrant(ctx context.Context, tx pgx.Tx, organizationID core.OrganizationID) signupGrantResult {
+func insertOrganizationCreditGrant(ctx context.Context, tx Tx, organizationID core.OrganizationID) signupGrantResult {
 	accountResult := core.NewCreditAccountID()
 	account, accountMatched := accountResult.(core.CreditAccountIDCreated)
 	if !accountMatched {

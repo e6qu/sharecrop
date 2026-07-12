@@ -8,7 +8,6 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
-	"github.com/jackc/pgx/v5"
 )
 
 type accountLockResult interface {
@@ -28,10 +27,10 @@ func (accountLocked) accountLockResult() {}
 
 func (accountLockRejected) accountLockResult() {}
 
-func lockUserAccount(ctx context.Context, tx pgx.Tx, userID core.UserID) accountLockResult {
+func lockUserAccount(ctx context.Context, tx Tx, userID core.UserID) accountLockResult {
 	var rawID string
 	scanErr := tx.QueryRow(ctx, "select id::text from credit_accounts where user_id = $1 for update", userID.String()).Scan(&rawID)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return accountLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "user has no credit account")}
 	}
 	if scanErr != nil {
@@ -50,7 +49,7 @@ func lockUserAccount(ctx context.Context, tx pgx.Tx, userID core.UserID) account
 // entry (dropping spendable) and inserts the stateless task_funds row (raising
 // allocated). It is shared by user and organization funding so the mechanics
 // live in one place.
-func completeFunding(ctx context.Context, tx pgx.Tx, account accountLocked, taskID core.TaskID, amount ledger.CreditAmount, entryID core.LedgerEntryID, key ledger.IdempotencyKey, insufficientMessage string) ledger.FundResult {
+func completeFunding(ctx context.Context, tx Tx, account accountLocked, taskID core.TaskID, amount ledger.CreditAmount, entryID core.LedgerEntryID, key ledger.IdempotencyKey, insufficientMessage string) ledger.FundResult {
 	var fundExists bool
 	if err := tx.QueryRow(ctx, "select exists(select 1 from task_funds where task_id = $1)", taskID.String()).Scan(&fundExists); err != nil {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check existing task fund failed")}
@@ -85,10 +84,10 @@ func completeFunding(ctx context.Context, tx pgx.Tx, account accountLocked, task
 	}}
 }
 
-func lockOrganizationAccount(ctx context.Context, tx pgx.Tx, organizationID core.OrganizationID) accountLockResult {
+func lockOrganizationAccount(ctx context.Context, tx Tx, organizationID core.OrganizationID) accountLockResult {
 	var rawID string
 	scanErr := tx.QueryRow(ctx, "select id::text from credit_accounts where organization_id = $1 for update", organizationID.String()).Scan(&rawID)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return accountLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization has no credit account")}
 	}
 	if scanErr != nil {
@@ -102,13 +101,13 @@ func lockOrganizationAccount(ctx context.Context, tx pgx.Tx, organizationID core
 	return accountLocked{id: rawID, parsedID: parsed.Value}
 }
 
-func lockTaskOwnedByOrganization(ctx context.Context, tx pgx.Tx, taskID core.TaskID, organizationID core.OrganizationID) taskLockResult {
+func lockTaskOwnedByOrganization(ctx context.Context, tx Tx, taskID core.TaskID, organizationID core.OrganizationID) taskLockResult {
 	var state string
 	var rawOrganizationID string
 	var rewardKind string
 	var rewardCreditAmount int64
 	scanErr := tx.QueryRow(ctx, "select state, coalesce(organization_id::text, ''), reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawOrganizationID, &rewardKind, &rewardCreditAmount)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	if scanErr != nil {
@@ -138,13 +137,13 @@ func (taskLocked) taskLockResult() {}
 
 func (taskLockRejected) taskLockResult() {}
 
-func lockTaskOwnedBy(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID, action string) taskLockResult {
+func lockTaskOwnedBy(ctx context.Context, tx Tx, taskID core.TaskID, requester core.UserID, action string) taskLockResult {
 	var state string
 	var rawCreatedBy string
 	var rewardKind string
 	var rewardCreditAmount int64
 	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text, reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawCreatedBy, &rewardKind, &rewardCreditAmount)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	if scanErr != nil {
@@ -162,14 +161,14 @@ func lockTaskOwnedBy(ctx context.Context, tx pgx.Tx, taskID core.TaskID, request
 // submission service's review-permission check, but resolves authorization in
 // the same transaction as the review write so authorization cannot drift
 // between the check and the mutation.
-func lockTaskForReview(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID, action string) taskLockResult {
+func lockTaskForReview(ctx context.Context, tx Tx, taskID core.TaskID, requester core.UserID, action string) taskLockResult {
 	var state string
 	var rawCreatedBy string
 	var rawOrganizationID string
 	var rewardKind string
 	var rewardCreditAmount int64
 	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text, coalesce(organization_id::text, ''), reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawCreatedBy, &rawOrganizationID, &rewardKind, &rewardCreditAmount)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	if scanErr != nil {
@@ -189,7 +188,7 @@ func lockTaskForReview(ctx context.Context, tx pgx.Tx, taskID core.TaskID, reque
 
 // reviewerOrganizationPermission resolves whether the requester holds the
 // review-submissions permission in the given organization, evaluated in-tx.
-func reviewerOrganizationPermission(ctx context.Context, tx pgx.Tx, rawOrganizationID string, requester core.UserID) org.PermissionCheck {
+func reviewerOrganizationPermission(ctx context.Context, tx Tx, rawOrganizationID string, requester core.UserID) org.PermissionCheck {
 	rows, err := tx.Query(ctx, `
 		select organization_membership_roles.role
 		from organization_memberships
@@ -261,7 +260,7 @@ func requireCreditRewardFunding(taskRow taskLocked, amount ledger.CreditAmount) 
 // persists the reward_kind transition a first-time credit funding requires
 // (none -> credit, collectible -> bundle) - shared by personal and
 // organization funding so this policy lives in exactly one place.
-func requireFundableTask(ctx context.Context, tx pgx.Tx, taskID core.TaskID, taskRow taskLocked, amount ledger.CreditAmount) ledger.FundResult {
+func requireFundableTask(ctx context.Context, tx Tx, taskID core.TaskID, taskRow taskLocked, amount ledger.CreditAmount) ledger.FundResult {
 	if taskRow.state != "draft" {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only draft tasks can be funded")}
 	}
@@ -283,13 +282,13 @@ func requireFundableTask(ctx context.Context, tx pgx.Tx, taskID core.TaskID, tas
 // given idempotency key has already been recorded for the task. The reply is
 // reconstructed from the durable task_fund ledger entry, so it replays even
 // after the task_funds row has been consumed by an award or refund.
-func findFundForKey(ctx context.Context, tx pgx.Tx, key string, taskID core.TaskID) ledger.FundResult {
+func findFundForKey(ctx context.Context, tx Tx, key string, taskID core.TaskID) ledger.FundResult {
 	var kind string
 	var rawFunderAccountID string
 	var amount int64
 	var rawTaskID string
 	scanErr := tx.QueryRow(ctx, "select kind, account_id::text, amount, coalesce(task_id::text, '') from ledger_entries where idempotency_key = $1", key).Scan(&kind, &rawFunderAccountID, &amount, &rawTaskID)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return nil
 	}
 	if scanErr != nil {
@@ -322,7 +321,7 @@ func (payoutResolved) payoutResult() {}
 
 func (payoutRejected) payoutResult() {}
 
-func payOutEscrow(ctx context.Context, tx pgx.Tx, command ledger.AcceptStoreCommand, rawWorkerID string) payoutResult {
+func payOutEscrow(ctx context.Context, tx Tx, command ledger.AcceptStoreCommand, rawWorkerID string) payoutResult {
 	return payReviewFund(ctx, tx, reviewFundCommand{
 		taskID:            command.TaskID,
 		rawWorkerID:       rawWorkerID,
@@ -353,7 +352,7 @@ type reviewFundCommand struct {
 // amount and keeps the remainder allocated (updating task_funds) so a later
 // submission can still be accepted against it; a fully-paid reject deletes the
 // row.
-func payReviewFund(ctx context.Context, tx pgx.Tx, command reviewFundCommand) payoutResult {
+func payReviewFund(ctx context.Context, tx Tx, command reviewFundCommand) payoutResult {
 	if _, noPayout := command.selection.(ledger.NoCreditReviewSelection); noPayout {
 		return payoutResolved{outcome: ledger.NoPayout{}}
 	}
@@ -361,7 +360,7 @@ func payReviewFund(ctx context.Context, tx pgx.Tx, command reviewFundCommand) pa
 	var rawFunderAccountID string
 	var amount int64
 	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, credit_amount from task_funds where task_id = $1 for update", command.taskID.String()).Scan(&rawFunderAccountID, &amount)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		if _, partial := command.selection.(ledger.PartialCreditReviewSelection); partial {
 			return payoutRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "credit reward fund is missing")}
 		}
@@ -390,7 +389,7 @@ func payReviewFund(ctx context.Context, tx pgx.Tx, command reviewFundCommand) pa
 
 	var workerAccountID string
 	accountErr := tx.QueryRow(ctx, "select id::text from credit_accounts where user_id = $1 for update", command.rawWorkerID).Scan(&workerAccountID)
-	if errors.Is(accountErr, pgx.ErrNoRows) {
+	if errors.Is(accountErr, ErrNoRows) {
 		return payoutRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission author has no credit account")}
 	}
 	if accountErr != nil {
@@ -435,7 +434,7 @@ func payReviewFund(ctx context.Context, tx pgx.Tx, command reviewFundCommand) pa
 	return payoutResolved{outcome: ledger.CreditPayout{WorkerUserID: worker.Value, Amount: amountAccepted.Value}}
 }
 
-func payCreditTip(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID, rawWorkerID string, debitEntryID core.LedgerEntryID, creditEntryID core.LedgerEntryID, idempotencyKey ledger.IdempotencyKey, selection ledger.TipSelection) tipResult {
+func payCreditTip(ctx context.Context, tx Tx, taskID core.TaskID, requester core.UserID, rawWorkerID string, debitEntryID core.LedgerEntryID, creditEntryID core.LedgerEntryID, idempotencyKey ledger.IdempotencyKey, selection ledger.TipSelection) tipResult {
 	tip, matched := selection.(ledger.CreditTipSelection)
 	if !matched {
 		return tipResolved{outcome: ledger.NoTip{}}
@@ -463,7 +462,7 @@ func payCreditTip(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester 
 
 	var workerAccountID string
 	accountErr := tx.QueryRow(ctx, "select id::text from credit_accounts where user_id = $1 for update", rawWorkerID).Scan(&workerAccountID)
-	if errors.Is(accountErr, pgx.ErrNoRows) {
+	if errors.Is(accountErr, ErrNoRows) {
 		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission author has no credit account")}
 	}
 	if accountErr != nil {
@@ -485,7 +484,7 @@ func payCreditTip(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester 
 	return tipResolved{outcome: ledger.CreditTip{WorkerUserID: worker.Value, Amount: tip.Amount}}
 }
 
-func payCollectibleTip(ctx context.Context, tx pgx.Tx, requester core.UserID, rawWorkerID string, selection ledger.CollectibleTipSelection) tipResult {
+func payCollectibleTip(ctx context.Context, tx Tx, requester core.UserID, rawWorkerID string, selection ledger.CollectibleTipSelection) tipResult {
 	selected, matched := selection.(ledger.CollectibleTipSelected)
 	if !matched {
 		return tipResolved{outcome: ledger.NoTip{}}
@@ -546,7 +545,7 @@ func (tipRejected) tipResult() {}
 // task to the accepted worker (escrowed -> minted, owner = worker) and deletes
 // the task_fund_collectibles rows. A task may bundle more than one collectible,
 // so all held rewards are awarded together.
-func payOutCollectible(ctx context.Context, tx pgx.Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
+func payOutCollectible(ctx context.Context, tx Tx, taskID core.TaskID, rawWorkerID string) payoutResult {
 	rawCollectibleIDs, scanRejected := heldFundCollectibleIDs(ctx, tx, taskID, true)
 	if scanRejected != nil {
 		return payoutRejected{reason: *scanRejected}
@@ -601,7 +600,7 @@ func resolveCollectiblePayout(rawWorkerID string, rawCollectibleIDs []string) (p
 
 // heldFundCollectibleIDs returns the raw collectible IDs currently held for the
 // task's reward (task_fund_collectibles), optionally taking a row lock.
-func heldFundCollectibleIDs(ctx context.Context, tx pgx.Tx, taskID core.TaskID, lock bool) ([]string, *core.DomainError) {
+func heldFundCollectibleIDs(ctx context.Context, tx Tx, taskID core.TaskID, lock bool) ([]string, *core.DomainError) {
 	query := "select collectible_id::text from task_fund_collectibles where task_id = $1 order by collectible_id"
 	if lock {
 		query += " for update"
@@ -632,7 +631,7 @@ func heldFundCollectibleIDs(ctx context.Context, tx pgx.Tx, taskID core.TaskID, 
 // to its funder (escrowed -> minted; the escrowed collectible still records its
 // funder as owner) and deletes the task_fund_collectibles rows. A task may
 // bundle more than one collectible, so all held rewards are returned together.
-func refundHeldCollectibleReward(ctx context.Context, tx pgx.Tx, taskID core.TaskID) (core.DomainError, bool) {
+func refundHeldCollectibleReward(ctx context.Context, tx Tx, taskID core.TaskID) (core.DomainError, bool) {
 	rawCollectibleIDs, scanRejected := heldFundCollectibleIDs(ctx, tx, taskID, true)
 	if scanRejected != nil {
 		return *scanRejected, true
@@ -656,11 +655,11 @@ func refundHeldCollectibleReward(ctx context.Context, tx pgx.Tx, taskID core.Tas
 // task_funds/task_fund_collectibles rows were consumed by the first accept, so
 // the credit payout is reconstructed from the durable task_payout ledger entry
 // keyed on the accept's idempotency key.
-func idempotentAccept(ctx context.Context, tx pgx.Tx, command ledger.AcceptStoreCommand, rawWorkerID string) ledger.AcceptResult {
+func idempotentAccept(ctx context.Context, tx Tx, command ledger.AcceptStoreCommand, rawWorkerID string) ledger.AcceptResult {
 	outcome := ledger.PayoutOutcome(ledger.NoPayout{})
 	var amount int64
 	scanErr := tx.QueryRow(ctx, "select amount from ledger_entries where task_id = $1 and kind = 'task_payout' and idempotency_key = $2", command.TaskID.String(), command.IdempotencyKey.String()).Scan(&amount)
-	if scanErr != nil && !errors.Is(scanErr, pgx.ErrNoRows) {
+	if scanErr != nil && !errors.Is(scanErr, ErrNoRows) {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task payout failed")}
 	}
 	if scanErr == nil {

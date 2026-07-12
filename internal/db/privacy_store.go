@@ -11,16 +11,15 @@ import (
 	"github.com/e6qu/sharecrop/internal/core/id"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/submission"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PrivacyStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewPrivacyStore(pool *pgxpool.Pool) PrivacyStore {
-	return PrivacyStore{pool: pool}
+	return PrivacyStore{db: NewPGX(pool)}
 }
 
 func (store PrivacyStore) Create(ctx context.Context, requester core.UserID, kind string) httpserver.PrivacyMutationResult {
@@ -30,7 +29,7 @@ func (store PrivacyStore) Create(ctx context.Context, requester core.UserID, kin
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, requestIDResult.(id.IDRejected).Description)}
 	}
 	record := httpserver.PrivacyRequestRecord{ID: requestID.Value.String(), RequestedBy: requester, Kind: kind, State: "queued", CreatedAt: time.Now().UTC()}
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		insert into privacy_requests (id, requested_by_user_id, kind, state, export_json, resolution_note, created_at)
 		values ($1, $2, $3, $4, '', '', $5)
 	`, record.ID, requester.String(), kind, record.State, record.CreatedAt)
@@ -41,7 +40,7 @@ func (store PrivacyStore) Create(ctx context.Context, requester core.UserID, kin
 }
 
 func (store PrivacyStore) ListForRequester(ctx context.Context, requester core.UserID, page core.Page) httpserver.PrivacyListResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, requested_by_user_id::text, kind, state, export_json, resolution_note, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz), redacted_field_count
 		from privacy_requests
 		where requested_by_user_id = $1
@@ -55,7 +54,7 @@ func (store PrivacyStore) ListForRequester(ctx context.Context, requester core.U
 }
 
 func (store PrivacyStore) ListAll(ctx context.Context, page core.Page) httpserver.PrivacyListResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, requested_by_user_id::text, kind, state, export_json, resolution_note, created_at, coalesce(resolved_at, '0001-01-01T00:00:00Z'::timestamptz), redacted_field_count
 		from privacy_requests
 		order by created_at desc, id desc
@@ -68,7 +67,7 @@ func (store PrivacyStore) ListAll(ctx context.Context, page core.Page) httpserve
 }
 
 func (store PrivacyStore) Resolve(ctx context.Context, requestID string, note string) httpserver.PrivacyMutationResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin privacy request resolution failed")}
 	}
@@ -90,7 +89,7 @@ func (store PrivacyStore) Resolve(ctx context.Context, requestID string, note st
 	var resolvedAt time.Time
 	var redactedFieldCount int
 	if err := row.Scan(&rawID, &rawRequesterID, &kind, &state, &exportJSON, &existingNote, &createdAt, &resolvedAt, &redactedFieldCount); err != nil {
-		if err == pgx.ErrNoRows {
+		if err == ErrNoRows {
 			return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "privacy request was not found")}
 		}
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan privacy request failed")}
@@ -163,7 +162,7 @@ func (store PrivacyStore) RecordSensitiveFieldAccess(ctx context.Context, actor 
 	if len(value.SensitiveFields) == 0 {
 		return httpserver.PrivacyRequestSaved{Value: httpserver.PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
 	}
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin sensitive-field access recording failed")}
 	}
@@ -189,7 +188,7 @@ func (store PrivacyStore) RecordSensitiveFieldAccess(ctx context.Context, actor 
 }
 
 func (store PrivacyStore) RunRetention(ctx context.Context, actor core.UserID) httpserver.PrivacyRetentionResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return httpserver.PrivacyRetentionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin privacy retention run failed")}
 	}
@@ -294,14 +293,14 @@ type privacyExportRequest struct {
 	RedactedFieldCount int    `json:"redacted_field_count"`
 }
 
-func (store PrivacyStore) exportPrivacyData(ctx context.Context, tx pgx.Tx, requester core.UserID) (string, error) {
+func (store PrivacyStore) exportPrivacyData(ctx context.Context, tx Tx, requester core.UserID) (string, error) {
 	document := privacyExportDocument{UserID: requester.String(), GeneratedAt: time.Now().UTC().Format(time.RFC3339)}
 	if err := tx.QueryRow(ctx, `
 		select email
 		from users
 		where id = $1
 	`, requester.String()).Scan(&document.Email); err != nil {
-		if err == pgx.ErrNoRows {
+		if err == ErrNoRows {
 			return "", errors.New("privacy export user was not found")
 		}
 		return "", errors.New("privacy export user query failed")
@@ -380,7 +379,7 @@ func (privacyRequestRowAccepted) privacyRequestRowResult() {}
 
 func (privacyRequestRowRejected) privacyRequestRowResult() {}
 
-func scanPrivacyRequests(rows pgx.Rows) httpserver.PrivacyListResult {
+func scanPrivacyRequests(rows Rows) httpserver.PrivacyListResult {
 	defer rows.Close()
 	requests := make([]httpserver.PrivacyRequestRecord, 0)
 	for rows.Next() {
@@ -433,7 +432,7 @@ type redactedSensitiveFieldRow struct {
 	path         string
 }
 
-func scanRedactedSensitiveFieldRows(rows pgx.Rows) ([]redactedSensitiveFieldRow, error) {
+func scanRedactedSensitiveFieldRows(rows Rows) ([]redactedSensitiveFieldRow, error) {
 	defer rows.Close()
 	values := make([]redactedSensitiveFieldRow, 0)
 	for rows.Next() {
@@ -449,7 +448,7 @@ func scanRedactedSensitiveFieldRows(rows pgx.Rows) ([]redactedSensitiveFieldRow,
 	return values, nil
 }
 
-func scanPrivacyExportSubmissions(rows pgx.Rows, queryErr error) ([]privacyExportSubmission, error) {
+func scanPrivacyExportSubmissions(rows Rows, queryErr error) ([]privacyExportSubmission, error) {
 	if queryErr != nil {
 		return nil, errors.New("privacy export submissions query failed: " + queryErr.Error())
 	}
@@ -470,7 +469,7 @@ func scanPrivacyExportSubmissions(rows pgx.Rows, queryErr error) ([]privacyExpor
 	return values, nil
 }
 
-func scanPrivacyExportSensitiveFields(rows pgx.Rows, queryErr error) ([]privacyExportSensitive, error) {
+func scanPrivacyExportSensitiveFields(rows Rows, queryErr error) ([]privacyExportSensitive, error) {
 	if queryErr != nil {
 		return nil, errors.New("privacy export sensitive fields query failed: " + queryErr.Error())
 	}
@@ -489,7 +488,7 @@ func scanPrivacyExportSensitiveFields(rows pgx.Rows, queryErr error) ([]privacyE
 	return values, nil
 }
 
-func scanPrivacyExportNotifications(rows pgx.Rows, queryErr error) ([]privacyExportNotification, error) {
+func scanPrivacyExportNotifications(rows Rows, queryErr error) ([]privacyExportNotification, error) {
 	if queryErr != nil {
 		return nil, errors.New("privacy export notifications query failed: " + queryErr.Error())
 	}
@@ -510,7 +509,7 @@ func scanPrivacyExportNotifications(rows pgx.Rows, queryErr error) ([]privacyExp
 	return values, nil
 }
 
-func scanPrivacyExportLedgerEntries(rows pgx.Rows, queryErr error) ([]privacyExportLedgerEntry, error) {
+func scanPrivacyExportLedgerEntries(rows Rows, queryErr error) ([]privacyExportLedgerEntry, error) {
 	if queryErr != nil {
 		return nil, errors.New("privacy export ledger query failed: " + queryErr.Error())
 	}
@@ -531,7 +530,7 @@ func scanPrivacyExportLedgerEntries(rows pgx.Rows, queryErr error) ([]privacyExp
 	return values, nil
 }
 
-func scanPrivacyExportRequests(rows pgx.Rows, queryErr error) ([]privacyExportRequest, error) {
+func scanPrivacyExportRequests(rows Rows, queryErr error) ([]privacyExportRequest, error) {
 	if queryErr != nil {
 		return nil, errors.New("privacy export requests query failed: " + queryErr.Error())
 	}

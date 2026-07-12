@@ -7,12 +7,11 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
-	"github.com/jackc/pgx/v5"
 )
 
 func (store TaskStore) CreateSeries(ctx context.Context, series task.Series) task.SeriesMutationStoreResult {
 	ownerColumns := ownerSQLColumns(series.Owner)
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		insert into task_series (id, owner_kind, user_id, team_id, organization_id, title, description, state, created_by_user_id)
 		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`, series.ID.String(), ownerColumns.kind, ownerColumns.userID, ownerColumns.teamID, ownerColumns.organizationID,
@@ -24,7 +23,7 @@ func (store TaskStore) CreateSeries(ctx context.Context, series task.Series) tas
 }
 
 func (store TaskStore) UpdateSeries(ctx context.Context, seriesID core.TaskSeriesID, title task.SeriesTitle, description task.SeriesDescription) task.SeriesMutationStoreResult {
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		update task_series set title = $2, description = $3, updated_at = now() where id = $1
 	`, seriesID.String(), title.String(), description.String())
 	if err != nil {
@@ -34,7 +33,7 @@ func (store TaskStore) UpdateSeries(ctx context.Context, seriesID core.TaskSerie
 }
 
 func (store TaskStore) UpdateSeriesState(ctx context.Context, seriesID core.TaskSeriesID, state task.SeriesState) task.SeriesMutationStoreResult {
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		update task_series set state = $2, updated_at = now() where id = $1
 	`, seriesID.String(), state.String())
 	if err != nil {
@@ -44,7 +43,7 @@ func (store TaskStore) UpdateSeriesState(ctx context.Context, seriesID core.Task
 }
 
 func (store TaskStore) AddTaskToSeries(ctx context.Context, seriesID core.TaskSeriesID, taskID core.TaskID) task.SeriesMutationStoreResult {
-	tag, err := store.pool.Exec(ctx, `
+	tag, err := store.db.Exec(ctx, `
 		update tasks
 		set series_id = $1,
 			series_position = (select coalesce(max(series_position), 0) + 1 from tasks where series_id = $1)
@@ -53,27 +52,27 @@ func (store TaskStore) AddTaskToSeries(ctx context.Context, seriesID core.TaskSe
 	if err != nil {
 		return task.SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "add task to series failed")}
 	}
-	if tag.RowsAffected() == 0 {
+	if tag == 0 {
 		return task.SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task was not found")}
 	}
 	return store.seriesMutationDetail(ctx, seriesID)
 }
 
 func (store TaskStore) RemoveTaskFromSeries(ctx context.Context, seriesID core.TaskSeriesID, taskID core.TaskID) task.SeriesMutationStoreResult {
-	tag, err := store.pool.Exec(ctx, `
+	tag, err := store.db.Exec(ctx, `
 		update tasks set series_id = null, series_position = null where id = $1 and series_id = $2
 	`, taskID.String(), seriesID.String())
 	if err != nil {
 		return task.SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "remove task from series failed")}
 	}
-	if tag.RowsAffected() == 0 {
+	if tag == 0 {
 		return task.SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task is not in this series")}
 	}
 	return store.seriesMutationDetail(ctx, seriesID)
 }
 
 func (store TaskStore) ReorderSeries(ctx context.Context, seriesID core.TaskSeriesID, order []core.TaskID) task.SeriesMutationStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return task.SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reorder task series failed")}
 	}
@@ -85,7 +84,7 @@ func (store TaskStore) ReorderSeries(ctx context.Context, seriesID core.TaskSeri
 		if execErr != nil {
 			return task.SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reorder task series failed")}
 		}
-		if tag.RowsAffected() == 0 {
+		if tag == 0 {
 			return task.SeriesMutationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task is not in this series")}
 		}
 	}
@@ -100,7 +99,7 @@ func (store TaskStore) ReorderSeries(ctx context.Context, seriesID core.TaskSeri
 // to. A standalone task (no series) is never blocked.
 func (store TaskStore) taskSeriesBlocksExecution(ctx context.Context, taskID core.TaskID) *core.DomainError {
 	var blocked bool
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		select exists(
 			select 1 from tasks t
 			join task_series s on s.id = t.series_id
@@ -129,7 +128,7 @@ func (store TaskStore) seriesMutationDetail(ctx context.Context, seriesID core.T
 
 func (store TaskStore) CreateSeriesComment(ctx context.Context, comment task.SeriesComment) task.CreateSeriesCommentStoreResult {
 	var createdAt time.Time
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		insert into series_comments (id, series_id, author_user_id, body)
 		values ($1, $2, $3, $4)
 		returning created_at
@@ -142,7 +141,7 @@ func (store TaskStore) CreateSeriesComment(ctx context.Context, comment task.Ser
 }
 
 func (store TaskStore) ListSeriesComments(ctx context.Context, seriesID core.TaskSeriesID) task.ListSeriesCommentsStoreResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, series_id::text, author_user_id::text, body, created_at
 		from series_comments
 		where series_id = $1
@@ -168,7 +167,7 @@ func (store TaskStore) ListSeriesComments(ctx context.Context, seriesID core.Tas
 		values = append(values, accepted.Value)
 	}
 	if err := rows.Err(); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return task.ListSeriesCommentsStoreAccepted{Values: values}
 		}
 		return task.ListSeriesCommentsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read series comments failed")}

@@ -6,11 +6,10 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
-	"github.com/jackc/pgx/v5"
 )
 
 func (store TaskStore) ListSeries(ctx context.Context, owner core.UserID, page core.Page) task.ListSeriesStoreResult {
-	rows, err := store.pool.Query(ctx, seriesSelectSQL()+`
+	rows, err := store.db.Query(ctx, seriesSelectSQL()+`
 		where task_series.created_by_user_id = $1
 		order by task_series.created_at desc, task_series.id
 		limit $2 offset $3
@@ -29,7 +28,7 @@ func (store TaskStore) ListSeries(ctx context.Context, owner core.UserID, page c
 }
 
 func (store TaskStore) FindSeries(ctx context.Context, seriesID core.TaskSeriesID) task.FindSeriesStoreResult {
-	row, err := store.pool.Query(ctx, seriesSelectSQL()+" where task_series.id = $1", seriesID.String())
+	row, err := store.db.Query(ctx, seriesSelectSQL()+" where task_series.id = $1", seriesID.String())
 	if err != nil {
 		return task.FindSeriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find task series failed")}
 	}
@@ -43,7 +42,7 @@ func (store TaskStore) FindSeries(ctx context.Context, seriesID core.TaskSeriesI
 		return task.FindSeriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "task series was not found")}
 	}
 
-	taskRows, err := store.pool.Query(ctx, taskSelectSQL()+`
+	taskRows, err := store.db.Query(ctx, taskSelectSQL()+`
 		where tasks.series_id = $1
 		order by tasks.series_position, tasks.created_at
 	`, seriesID.String())
@@ -86,7 +85,7 @@ func (seriesRowsAccepted) seriesRowsResult() {}
 
 func (seriesRowsRejected) seriesRowsResult() {}
 
-func scanSeriesRows(rows pgx.Rows) seriesRowsResult {
+func scanSeriesRows(rows Rows) seriesRowsResult {
 	values := make([]task.Series, 0)
 	for rows.Next() {
 		var rawID string
@@ -109,7 +108,7 @@ func scanSeriesRows(rows pgx.Rows) seriesRowsResult {
 		values = append(values, accepted.value)
 	}
 	if err := rows.Err(); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return seriesRowsAccepted{values: values}
 		}
 		return seriesRowsRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task series failed")}

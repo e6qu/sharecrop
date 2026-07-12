@@ -7,12 +7,11 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
-	"github.com/jackc/pgx/v5"
 )
 
 func (store TaskStore) CreateTaskComment(ctx context.Context, comment task.TaskComment) task.CreateTaskCommentStoreResult {
 	var createdAt time.Time
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		insert into task_comments (id, task_id, author_user_id, body)
 		values ($1, $2, $3, $4)
 		returning created_at
@@ -25,7 +24,7 @@ func (store TaskStore) CreateTaskComment(ctx context.Context, comment task.TaskC
 }
 
 func (store TaskStore) ListTaskComments(ctx context.Context, taskID core.TaskID) task.ListTaskCommentsStoreResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, task_id::text, author_user_id::text, body, created_at
 		from task_comments
 		where task_id = $1
@@ -51,7 +50,7 @@ func (store TaskStore) ListTaskComments(ctx context.Context, taskID core.TaskID)
 		values = append(values, accepted.Value)
 	}
 	if err := rows.Err(); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return task.ListTaskCommentsStoreAccepted{Values: values}
 		}
 		return task.ListTaskCommentsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task comments failed")}

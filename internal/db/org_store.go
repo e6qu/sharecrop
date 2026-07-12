@@ -7,20 +7,19 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/org"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type OrgStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewOrgStore(pool *pgxpool.Pool) OrgStore {
-	return OrgStore{pool: pool}
+	return OrgStore{db: NewPGX(pool)}
 }
 
 func (store OrgStore) CreateOrganization(ctx context.Context, organizationID core.OrganizationID, name org.OrganizationName, createdBy core.UserID, membershipID core.OrganizationMembershipID) org.CreateOrganizationStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return org.CreateOrganizationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create organization transaction failed")}
 	}
@@ -56,7 +55,7 @@ func (store OrgStore) CreateOrganization(ctx context.Context, organizationID cor
 }
 
 func (store OrgStore) ListOrganizationsForUser(ctx context.Context, userID core.UserID, query string, page core.Page) org.ListOrganizationsResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select organizations.id::text, organizations.name, organizations.created_by_user_id::text
 		from organizations
 		join organization_memberships on organization_memberships.organization_id = organizations.id
@@ -96,7 +95,7 @@ func (store OrgStore) ListOrganizationsForUser(ctx context.Context, userID core.
 }
 
 func (store OrgStore) FindMemberRoles(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) org.MemberRolesResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select organization_membership_roles.role
 		from organization_memberships
 		join organization_membership_roles on organization_membership_roles.membership_id = organization_memberships.id
@@ -137,7 +136,7 @@ func (store OrgStore) FindMemberRoles(ctx context.Context, organizationID core.O
 }
 
 func (store OrgStore) ProvisionMember(ctx context.Context, membershipID core.OrganizationMembershipID, organizationID core.OrganizationID, email auth.EmailAddress, roles []org.Role) org.ProvisionMemberStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return org.ProvisionMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin provision member transaction failed")}
 	}
@@ -182,7 +181,7 @@ func (store OrgStore) ProvisionMember(ctx context.Context, membershipID core.Org
 }
 
 func (store OrgStore) ListMembers(ctx context.Context, organizationID core.OrganizationID, page core.Page) org.ListMembersResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select organization_memberships.id::text, organization_memberships.user_id::text, organization_memberships.status,
 			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')
 		from organization_memberships
@@ -268,7 +267,7 @@ func parseMemberRow(rawID string, organizationID core.OrganizationID, rawUserID 
 }
 
 func (store OrgStore) DeactivateMember(ctx context.Context, organizationID core.OrganizationID, userID core.UserID) org.DeactivateMemberStoreResult {
-	commandTag, err := store.pool.Exec(ctx, `
+	commandTag, err := store.db.Exec(ctx, `
 		update organization_memberships
 		set status = $3, status_recorded_at = now()
 		where organization_id = $1
@@ -278,14 +277,14 @@ func (store OrgStore) DeactivateMember(ctx context.Context, organizationID core.
 	if err != nil {
 		return org.DeactivateMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "deactivate member failed")}
 	}
-	if commandTag.RowsAffected() == 0 {
+	if commandTag == 0 {
 		return org.DeactivateMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "active organization member was not found")}
 	}
 	return org.MemberDeactivated{}
 }
 
 func (store OrgStore) UpdateMemberRoles(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, roles []org.Role) org.UpdateMemberRolesStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin update member roles transaction failed")}
 	}
@@ -299,7 +298,7 @@ func (store OrgStore) UpdateMemberRoles(ctx context.Context, organizationID core
 		for update
 	`, organizationID.String(), userID.String(), org.MembershipStatusActive.String()).Scan(&membershipID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "active organization member was not found")}
 		}
 		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find organization member failed")}
@@ -326,7 +325,7 @@ func (store OrgStore) findActiveMember(ctx context.Context, organizationID core.
 	var rawUserID string
 	var rawStatus string
 	var rawRoles []string
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		select organization_memberships.id::text, organization_memberships.user_id::text, organization_memberships.status,
 			coalesce(array_agg(organization_membership_roles.role) filter (where organization_membership_roles.role is not null), '{}')
 		from organization_memberships
@@ -337,7 +336,7 @@ func (store OrgStore) findActiveMember(ctx context.Context, organizationID core.
 		group by organization_memberships.id, organization_memberships.user_id, organization_memberships.status
 	`, organizationID.String(), userID.String(), org.MembershipStatusActive.String()).Scan(&rawID, &rawUserID, &rawStatus, &rawRoles)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "active organization member was not found")}
 		}
 		return org.UpdateMemberRolesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find updated organization member failed")}
@@ -351,7 +350,7 @@ func (store OrgStore) findActiveMember(ctx context.Context, organizationID core.
 }
 
 func (store OrgStore) CreateOrganizationTeam(ctx context.Context, teamID core.TeamID, organizationID core.OrganizationID, name org.TeamName, createdBy core.UserID) org.CreateTeamStoreResult {
-	_, err := store.pool.Exec(ctx, "insert into teams (id, name, owner_kind, organization_id, created_by_user_id) values ($1, $2, 'organization', $3, $4)", teamID.String(), name.String(), organizationID.String(), createdBy.String())
+	_, err := store.db.Exec(ctx, "insert into teams (id, name, owner_kind, organization_id, created_by_user_id) values ($1, $2, 'organization', $3, $4)", teamID.String(), name.String(), organizationID.String(), createdBy.String())
 	if err != nil {
 		return org.CreateTeamStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization team failed")}
 	}
@@ -359,7 +358,7 @@ func (store OrgStore) CreateOrganizationTeam(ctx context.Context, teamID core.Te
 }
 
 func (store OrgStore) AddTeamMember(ctx context.Context, teamID core.TeamID, userID core.UserID) org.AddTeamMemberStoreResult {
-	_, err := store.pool.Exec(ctx, "insert into team_members (team_id, user_id) values ($1, $2) on conflict do nothing", teamID.String(), userID.String())
+	_, err := store.db.Exec(ctx, "insert into team_members (team_id, user_id) values ($1, $2) on conflict do nothing", teamID.String(), userID.String())
 	if err != nil {
 		return org.AddTeamMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert team member failed")}
 	}
@@ -368,9 +367,9 @@ func (store OrgStore) AddTeamMember(ctx context.Context, teamID core.TeamID, use
 
 func (store OrgStore) AddTeamMemberByEmail(ctx context.Context, teamID core.TeamID, email auth.EmailAddress) org.AddTeamMemberStoreResult {
 	var rawUserID string
-	err := store.pool.QueryRow(ctx, "select id::text from users where email = $1", email.String()).Scan(&rawUserID)
+	err := store.db.QueryRow(ctx, "select id::text from users where email = $1", email.String()).Scan(&rawUserID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return org.AddTeamMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "user was not found for email address")}
 		}
 		return org.AddTeamMemberStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "lookup user by email failed")}
@@ -390,7 +389,7 @@ func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID 
 		return org.TeamListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization team access denied")}
 	}
 
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, owner_kind, coalesce(organization_id::text, ''), coalesce(owner_user_id::text, ''), name, created_by_user_id::text
 		from teams
 		where organization_id = $1
@@ -406,7 +405,7 @@ func (store OrgStore) ListOrganizationTeams(ctx context.Context, organizationID 
 
 // CreateStandaloneTeam stores a team owned directly by a user.
 func (store OrgStore) CreateStandaloneTeam(ctx context.Context, teamID core.TeamID, ownerUserID core.UserID, name org.TeamName) org.CreateTeamStoreResult {
-	_, err := store.pool.Exec(ctx, "insert into teams (id, name, owner_kind, owner_user_id, created_by_user_id) values ($1, $2, 'user', $3, $3)", teamID.String(), name.String(), ownerUserID.String())
+	_, err := store.db.Exec(ctx, "insert into teams (id, name, owner_kind, owner_user_id, created_by_user_id) values ($1, $2, 'user', $3, $3)", teamID.String(), name.String(), ownerUserID.String())
 	if err != nil {
 		return org.CreateTeamStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert standalone team failed")}
 	}
@@ -415,7 +414,7 @@ func (store OrgStore) CreateStandaloneTeam(ctx context.Context, teamID core.Team
 
 // ListStandaloneTeams lists the user-owned teams for the given user.
 func (store OrgStore) ListStandaloneTeams(ctx context.Context, ownerUserID core.UserID, query string, page core.Page) org.TeamListResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, owner_kind, coalesce(organization_id::text, ''), coalesce(owner_user_id::text, ''), name, created_by_user_id::text
 		from teams
 		where owner_kind = 'user' and owner_user_id = $1
@@ -436,13 +435,13 @@ func (store OrgStore) FindTeam(ctx context.Context, teamID core.TeamID) org.Find
 	var rawOwnerUserID string
 	var rawName string
 	var rawCreatedBy string
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		select id::text, owner_kind, coalesce(organization_id::text, ''), coalesce(owner_user_id::text, ''), name, created_by_user_id::text
 		from teams
 		where id = $1
 	`, teamID.String()).Scan(&rawID, &rawOwnerKind, &rawOrganizationID, &rawOwnerUserID, &rawName, &rawCreatedBy)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return org.TeamMissing{Reason: core.NewDomainError(core.ErrorCodeNotFound, "team not found")}
 		}
 		return org.TeamMissing{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find team failed")}
@@ -457,7 +456,7 @@ func (store OrgStore) FindTeam(ctx context.Context, teamID core.TeamID) org.Find
 }
 
 func (store OrgStore) ListTeamMembers(ctx context.Context, teamID core.TeamID) org.TeamMembersResult {
-	rows, err := store.pool.Query(ctx, "select user_id::text from team_members where team_id = $1 order by user_id", teamID.String())
+	rows, err := store.db.Query(ctx, "select user_id::text from team_members where team_id = $1 order by user_id", teamID.String())
 	if err != nil {
 		return org.TeamMembersRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list team members failed")}
 	}
@@ -482,7 +481,7 @@ func (store OrgStore) ListTeamMembers(ctx context.Context, teamID core.TeamID) o
 	return org.TeamMembersListed{Values: values}
 }
 
-func scanTeamRows(rows pgx.Rows, readErrorMessage string) org.TeamListResult {
+func scanTeamRows(rows Rows, readErrorMessage string) org.TeamListResult {
 	defer rows.Close()
 
 	values := make([]org.Team, 0)
@@ -653,11 +652,11 @@ func (userIDLookupFound) userIDLookupResult() {}
 
 func (userIDLookupRejected) userIDLookupResult() {}
 
-func lookupUserIDByEmail(ctx context.Context, tx pgx.Tx, email auth.EmailAddress) userIDLookupResult {
+func lookupUserIDByEmail(ctx context.Context, tx Tx, email auth.EmailAddress) userIDLookupResult {
 	var rawUserID string
 	err := tx.QueryRow(ctx, "select id::text from users where email = $1", email.String()).Scan(&rawUserID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNoRows) {
 			return userIDLookupRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "user was not found for email address")}
 		}
 		return userIDLookupRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lookup user by email failed")}
