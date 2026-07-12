@@ -10,14 +10,14 @@ const demoOrigin = `http://127.0.0.1:${demoPort}`;
 
 export default defineConfig({
   testDir: ".",
-  // Each test boots a real SQLite-backed backend in WebAssembly, restoring a
-  // pre-generated seed snapshot (fast — ~0.3s) rather than re-running the seed.
-  // That is quick enough for real use, but dozens of simultaneous boots still
-  // contend for CPU, so cap the workers, allow longer assertions than the 5s
-  // default, and retry the rare boot that stalls under load.
-  workers: 3,
-  retries: 2,
-  expect: { timeout: 10_000 },
+  // Each test boots a real SQLite-backed backend in WebAssembly (a 17MB module),
+  // restoring a pre-generated seed snapshot rather than re-running the seed. Even
+  // so, many simultaneous boots contend for CPU (wasm compile + hashing), so cap
+  // the workers conservatively, allow assertions longer than the 5s default, and
+  // give the rare stalled boot extra retries.
+  workers: 2,
+  retries: 3,
+  expect: { timeout: 15_000 },
   use: {
     baseURL: apiOrigin,
   },
