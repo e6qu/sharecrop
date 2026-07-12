@@ -24,6 +24,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/moderationtriagebridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
@@ -57,17 +58,18 @@ func buildMux() (http.Handler, error) {
 		return nil, fmt.Errorf("SHARECROP_ACCESS_TOKEN_SECRET is missing or invalid")
 	}
 	return appmux.New(secret.Value, appmux.Stores{
-		Auth:            authbridge.NewGuestStore(rpc.Invoke),
-		Notification:    notificationbridge.NewGuestStore(rpc.Invoke),
-		Organization:    orgbridge.NewGuestStore(rpc.Invoke),
-		Task:            taskbridge.NewGuestStore(rpc.Invoke),
-		Submission:      submissionbridge.NewGuestStore(rpc.Invoke),
-		Ledger:          ledgerbridge.NewGuestStore(rpc.Invoke),
-		Agent:           agentbridge.NewGuestStore(rpc.Invoke),
-		OrgCredential:   orgcredbridge.NewGuestStore(rpc.Invoke),
-		Assets:          assetsbridge.NewGuestStore(rpc.Invoke),
-		Audit:           auditbridge.NewGuestStore(rpc.Invoke),
-		SavedQueueViews: savedqueueviewbridge.NewGuestStore(rpc.Invoke),
-		PlatformAdmins:  platformadminbridge.NewGuestStore(rpc.Invoke),
+		Auth:             authbridge.NewGuestStore(rpc.Invoke),
+		Notification:     notificationbridge.NewGuestStore(rpc.Invoke),
+		Organization:     orgbridge.NewGuestStore(rpc.Invoke),
+		Task:             taskbridge.NewGuestStore(rpc.Invoke),
+		Submission:       submissionbridge.NewGuestStore(rpc.Invoke),
+		Ledger:           ledgerbridge.NewGuestStore(rpc.Invoke),
+		Agent:            agentbridge.NewGuestStore(rpc.Invoke),
+		OrgCredential:    orgcredbridge.NewGuestStore(rpc.Invoke),
+		Assets:           assetsbridge.NewGuestStore(rpc.Invoke),
+		Audit:            auditbridge.NewGuestStore(rpc.Invoke),
+		SavedQueueViews:  savedqueueviewbridge.NewGuestStore(rpc.Invoke),
+		PlatformAdmins:   platformadminbridge.NewGuestStore(rpc.Invoke),
+		ModerationTriage: moderationtriagebridge.NewGuestStore(rpc.Invoke),
 	}), nil
 }

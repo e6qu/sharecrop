@@ -19,6 +19,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/moderationtriagebridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
@@ -65,6 +66,8 @@ func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 		return savedqueueviewbridge.Dispatch(ctx, savedqueueviewbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "platformadmin":
 		return platformadminbridge.Dispatch(ctx, platformadminbridge.NewGuestStore(rpc.Invoke), method, args)
+	case "moderationtriage":
+		return moderationtriagebridge.Dispatch(ctx, moderationtriagebridge.NewGuestStore(rpc.Invoke), method, args)
 	default:
 		return nil, fmt.Errorf("no bridge for method %q", method)
 	}

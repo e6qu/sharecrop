@@ -22,18 +22,19 @@ import (
 // domain service backed by a real Postgres store.
 func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
 	return appmux.Stores{
-		Auth:            db.NewAuthStore(pool),
-		Notification:    db.NewNotificationStore(pool),
-		Organization:    db.NewOrgStore(pool),
-		Task:            db.NewTaskStore(pool),
-		Submission:      db.NewSubmissionStore(pool),
-		Ledger:          db.NewLedgerStore(pool),
-		Agent:           db.NewAgentStore(pool),
-		OrgCredential:   db.NewOrgCredentialStore(pool),
-		Assets:          db.NewCollectibleStore(pool),
-		Audit:           db.NewAuditStore(pool),
-		SavedQueueViews: db.NewSavedQueueViewStore(pool),
-		PlatformAdmins:  db.NewPlatformAdminStore(pool, map[string]bool{}),
+		Auth:             db.NewAuthStore(pool),
+		Notification:     db.NewNotificationStore(pool),
+		Organization:     db.NewOrgStore(pool),
+		Task:             db.NewTaskStore(pool),
+		Submission:       db.NewSubmissionStore(pool),
+		Ledger:           db.NewLedgerStore(pool),
+		Agent:            db.NewAgentStore(pool),
+		OrgCredential:    db.NewOrgCredentialStore(pool),
+		Assets:           db.NewCollectibleStore(pool),
+		Audit:            db.NewAuditStore(pool),
+		SavedQueueViews:  db.NewSavedQueueViewStore(pool),
+		PlatformAdmins:   db.NewPlatformAdminStore(pool, map[string]bool{}),
+		ModerationTriage: db.NewModerationTriageStore(pool),
 	}
 }
 

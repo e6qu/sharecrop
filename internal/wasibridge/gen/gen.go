@@ -85,6 +85,7 @@ func Targets() []Target {
 		{Key: "task", SourceDir: "internal/task", OutputPath: "internal/wasibridge/taskbridge/bridge_gen.go"},
 		{Key: "savedqueueview", SourceDir: "internal/http", OutputPath: "internal/wasibridge/savedqueueviewbridge/bridge_gen.go"},
 		{Key: "platformadmin", SourceDir: "internal/http", OutputPath: "internal/wasibridge/platformadminbridge/bridge_gen.go"},
+		{Key: "moderationtriage", SourceDir: "internal/http", OutputPath: "internal/wasibridge/moderationtriagebridge/bridge_gen.go"},
 	}
 }
 
@@ -402,6 +403,28 @@ var specs = map[string]storeSpec{
 			"httpserver.PlatformAdminCheckResult":    {goType: "httpserver.PlatformAdminCheckResult", wireType: "checkResultWire", encodeFn: "encodeCheckResult", decodeFn: "decodeCheckResult", rejectedType: "httpserver.PlatformAdminDenied"},
 			"httpserver.PlatformAdminListResult":     {goType: "httpserver.PlatformAdminListResult", wireType: "recordsResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "httpserver.PlatformAdminListRejected"},
 			"httpserver.PlatformAdminMutationResult": {goType: "httpserver.PlatformAdminMutationResult", wireType: "recordResultWire", encodeFn: "encodeMutationResult", decodeFn: "decodeMutationResult", rejectedType: "httpserver.PlatformAdminMutationRejected"},
+		},
+	},
+	// moderationtriage bridges an internal/http RuntimeState service. RecordOpen
+	// takes an audit.Event (a third package, so extraImports), and Update takes
+	// two strings (state, note) which the generator disambiguates.
+	"moderationtriage": {
+		bridgePackage: "moderationtriagebridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/http",
+		domainPackage: "httpserver",
+		interfaceName: "ModerationTriageService",
+		wirePrefix:    "moderationtriage",
+		extraImports:  []string{"github.com/e6qu/sharecrop/internal/audit"},
+		argCodecs: map[string]argCodec{
+			"core.UserID":         userIDArg(),
+			"core.AuditEventID":   {field: "ReportID", goType: "core.AuditEventID", wireType: "string", encodeFn: "corewire.EncodeAuditEventID", decodeFn: "corewire.DecodeAuditEventID"},
+			"[]core.AuditEventID": {field: "IDs", goType: "[]core.AuditEventID", wireType: "[]string", encodeFn: "encodeAuditEventIDs", decodeFn: "decodeAuditEventIDs"},
+			"audit.Event":         {field: "Event", goType: "audit.Event", wireType: "eventWire", encodeFn: "encodeEvent", decodeFn: "decodeEvent"},
+			"string":              {field: "State", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"httpserver.ModerationTriageMutationResult": {goType: "httpserver.ModerationTriageMutationResult", wireType: "recordResultWire", encodeFn: "encodeMutationResult", decodeFn: "decodeMutationResult", rejectedType: "httpserver.ModerationTriageMutationRejected"},
+			"httpserver.ModerationTriageListResult":     {goType: "httpserver.ModerationTriageListResult", wireType: "recordsResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "httpserver.ModerationTriageListRejected"},
 		},
 	},
 }
