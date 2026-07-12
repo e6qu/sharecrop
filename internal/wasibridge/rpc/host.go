@@ -88,6 +88,14 @@ func newSession(ctx context.Context, runtime wazero.Runtime, compiled wazero.Com
 			// salts, auth/refresh/receipt tokens, MCP session ids - become
 			// predictable. Draw from the host's real CSPRNG instead.
 			WithRandSource(rand.Reader).
+			// wazero also defaults to a FAKE clock (fixed 2022-01-01 walltime,
+			// per-instance monotonic nanotime, no-op sleep). Without these, a
+			// timestamp the guest computes with time.Now() - e.g. audit-event
+			// created_at - is written as the frozen fake epoch, and time-based
+			// waits never actually wait. Give the guest the host's real clocks.
+			WithSysWalltime().
+			WithSysNanotime().
+			WithSysNanosleep().
 			WithName("")
 		for key, value := range env {
 			config = config.WithEnv(key, value)
