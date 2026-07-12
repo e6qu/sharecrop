@@ -6,20 +6,19 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/notification"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type NotificationStore struct {
-	pool *pgxpool.Pool
+	db Querier
 }
 
 func NewNotificationStore(pool *pgxpool.Pool) NotificationStore {
-	return NotificationStore{pool: pool}
+	return NotificationStore{db: NewPGX(pool)}
 }
 
 func (store NotificationStore) Create(ctx context.Context, value notification.Notification) notification.CreateStoreResult {
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		insert into notifications (id, recipient_user_id, actor_user_id, kind, subject_kind, subject_id, state, metadata_json, created_at)
 		values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
 	`, value.ID.String(), value.RecipientID.String(), value.ActorID.String(), value.Kind.String(), value.Subject.Kind, value.Subject.ID, value.State.String(), value.Metadata.JSON, value.CreatedAt)
@@ -30,7 +29,7 @@ func (store NotificationStore) Create(ctx context.Context, value notification.No
 }
 
 func (store NotificationStore) List(ctx context.Context, recipient core.UserID, page core.Page) notification.ListStoreResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, recipient_user_id::text, actor_user_id::text, kind, subject_kind, subject_id, state, metadata_json::text, created_at
 		from notifications
 		where recipient_user_id = $1
@@ -45,7 +44,7 @@ func (store NotificationStore) List(ctx context.Context, recipient core.UserID, 
 }
 
 func (store NotificationStore) MarkRead(ctx context.Context, recipient core.UserID, id core.NotificationID) notification.MarkReadStoreResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		update notifications
 		set state = $3
 		where id = $1 and recipient_user_id = $2
@@ -66,7 +65,7 @@ func (store NotificationStore) MarkRead(ctx context.Context, recipient core.User
 	return notification.MarkReadStoreAccepted{Value: listed.Values[0]}
 }
 
-func scanNotificationRows(rows pgx.Rows) notification.ListStoreResult {
+func scanNotificationRows(rows Rows) notification.ListStoreResult {
 	values := make([]notification.Notification, 0)
 	for rows.Next() {
 		parsed := scanNotificationRow(rows)
@@ -98,7 +97,7 @@ func (notificationRowAccepted) notificationRowResult() {}
 
 func (notificationRowRejected) notificationRowResult() {}
 
-func scanNotificationRow(rows pgx.Rows) notificationRowResult {
+func scanNotificationRow(rows Rows) notificationRowResult {
 	var rawID string
 	var rawRecipientID string
 	var rawActorID string
