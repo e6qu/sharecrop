@@ -4,6 +4,7 @@ package wasibridge
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -112,6 +113,10 @@ func (h *Host) LookupCredential(ctx context.Context, email string) (auth.Credent
 		WithStdin(guestStdinReader).
 		WithStdout(guestStdoutWriter).
 		WithArgs("guest", email).
+		// wazero defaults to a deterministic random source; draw from the host's
+		// real CSPRNG so the guest's crypto/rand (UUIDs, tokens, salts) is not
+		// predictable or collision-prone. See the rpc host for the full rationale.
+		WithRandSource(rand.Reader).
 		// Anonymous instance name so the same compiled module can be
 		// instantiated many times in one runtime without a name collision.
 		WithName("")
