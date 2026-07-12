@@ -148,17 +148,19 @@ db`) confirm the risky translations per store:
   (`on conflict do update` + `excluded` + inline CHECK enforcement).
 - **json aggregation:** `json_group_array(json_object(...) order by ...)` works
   (SQLite 3.44+), so `jsonb_agg`/`jsonb_build_object` translate cleanly.
-- **Remaining dialect gaps (submission + a few stores), Pm.2b:**
-  - `ilike` → `like` (SQLite LIKE is case-insensitive for ASCII) — 3 sites.
-  - `X at time zone 'UTC'` → strip; `to_char(X, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
-    → `strftime('%Y-%m-%dT%H:%M:%SZ', X)` — 2 sites (submission sensitive
-    fields).
-  - `array_agg(x)` → `json_group_array(x)` (check scan target) — 4 sites.
-  - `encode(content, 'base64')` — no SQLite builtin; register a custom `encode`
-    scalar via ncruces `CreateFunction` in a connection init hook. This open+
-    register helper must live in a separate ncruces-importing package (not
-    `package db`) so production keeps linking zero ncruces packages.
-  - Then a submission-store SQLite test covering the full aggregation read path.
+- **Dialect completed (Pm.2b/Pm.2c):**
+  - `ilike` → `like`; `X at time zone 'UTC'` → stripped;
+    `to_char(X, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')` → `strftime`.
+  - `array_agg`/`array_remove(…, null)` → `json_group_array(…) filter (where …
+    is not null)`; the four array columns gained a `::text` cast (so pgx returns
+    the text literal instead of the binary wire format), and reads scan through a
+    portable `db.StringArray` Scanner that parses PG `{a,b}` or SQLite `[a,b]`.
+  - `encode(content, 'base64')` — registered as a custom SQLite function in the
+    new `internal/sqlitex` package (`driver.Open` + `CreateFunction`), which
+    imports ncruces so production (importing only `internal/db`) still links
+    zero ncruces packages. Verified: notification / audit / saved-queue-view /
+    array_agg / attachment-encode all round-trip on SQLite; the pgx path is
+    unchanged (integration suite green).
 
 - **Pm — sqlite adapter + dialect + sqlite migrations + dual-run gate.** Add the
   sqlite adapter and dialect translator; generate/maintain the SQLite migration
