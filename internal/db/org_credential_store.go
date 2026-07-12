@@ -8,20 +8,19 @@ import (
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/orgcred"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type OrgCredentialStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewOrgCredentialStore(pool *pgxpool.Pool) OrgCredentialStore {
-	return OrgCredentialStore{pool: pool}
+	return OrgCredentialStore{db: NewPGX(pool)}
 }
 
 func (store OrgCredentialStore) CreateCredential(ctx context.Context, credential orgcred.Credential, hash orgcred.SecretHash) orgcred.CreateStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return orgcred.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create org credential transaction failed")}
 	}
@@ -55,11 +54,11 @@ func (store OrgCredentialStore) VerifyCredential(ctx context.Context, hash orgcr
 	var state string
 	var expiresAt *time.Time
 	var rawScopes []string
-	scanErr := store.pool.QueryRow(ctx, orgCredentialSelectSQL()+`
+	scanErr := store.db.QueryRow(ctx, orgCredentialSelectSQL()+`
 		where org_credentials.token_hash = $1
 		group by org_credentials.id
 	`, hash.String()).Scan(&rawID, &rawOrganizationID, &label, &state, &expiresAt, &rawScopes)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return orgcred.VerifyStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "org credential is invalid")}
 	}
 	if scanErr != nil {
@@ -75,7 +74,7 @@ func (store OrgCredentialStore) VerifyCredential(ctx context.Context, hash orgcr
 }
 
 func (store OrgCredentialStore) ListCredentials(ctx context.Context, organizationID core.OrganizationID, page core.Page) orgcred.ListStoreResult {
-	rows, err := store.pool.Query(ctx, orgCredentialSelectSQL()+`
+	rows, err := store.db.Query(ctx, orgCredentialSelectSQL()+`
 		where org_credentials.organization_id = $1
 		group by org_credentials.id
 		order by org_credentials.created_at, org_credentials.id
@@ -111,7 +110,7 @@ func (store OrgCredentialStore) ListCredentials(ctx context.Context, organizatio
 }
 
 func (store OrgCredentialStore) RevokeCredential(ctx context.Context, organizationID core.OrganizationID, id core.OrgCredentialID) orgcred.RevokeStoreResult {
-	tag, err := store.pool.Exec(ctx, `
+	tag, err := store.db.Exec(ctx, `
 		update org_credentials
 		set state = 'revoked', state_recorded_at = now()
 		where id = $1 and organization_id = $2 and state = 'active'
@@ -119,7 +118,7 @@ func (store OrgCredentialStore) RevokeCredential(ctx context.Context, organizati
 	if err != nil {
 		return orgcred.RevokeStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke org credential failed")}
 	}
-	if tag.RowsAffected() == 0 {
+	if tag == 0 {
 		return orgcred.RevokeStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "active org credential was not found")}
 	}
 
@@ -129,7 +128,7 @@ func (store OrgCredentialStore) RevokeCredential(ctx context.Context, organizati
 	var state string
 	var expiresAt *time.Time
 	var rawScopes []string
-	scanErr := store.pool.QueryRow(ctx, orgCredentialSelectSQL()+`
+	scanErr := store.db.QueryRow(ctx, orgCredentialSelectSQL()+`
 		where org_credentials.id = $1
 		group by org_credentials.id
 	`, id.String()).Scan(&rawID, &rawOrganizationID, &label, &state, &expiresAt, &rawScopes)

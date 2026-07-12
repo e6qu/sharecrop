@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type RateLimiter struct {
-	pool         *pgxpool.Pool
+	db           Beginner
 	prefix       string
 	capacity     float64
 	refillPerSec float64
@@ -20,7 +19,7 @@ type RateLimiter struct {
 
 func NewRateLimiter(pool *pgxpool.Pool, prefix string, capacity int, refillPerSec float64) RateLimiter {
 	return RateLimiter{
-		pool:         pool,
+		db:           NewPGX(pool),
 		prefix:       prefix,
 		capacity:     float64(capacity),
 		refillPerSec: refillPerSec,
@@ -31,7 +30,7 @@ func NewRateLimiter(pool *pgxpool.Pool, prefix string, capacity int, refillPerSe
 
 func (limiter RateLimiter) Allow(key string) bool {
 	ctx := context.Background()
-	tx, err := limiter.pool.Begin(ctx)
+	tx, err := limiter.db.Begin(ctx)
 	if err != nil {
 		panic(fmt.Sprintf("begin rate limit transaction failed: %v", err))
 	}
@@ -98,7 +97,7 @@ func (limiter RateLimiter) ActiveBuckets() int {
 	ctx := context.Background()
 	limiter.evictExpired(ctx)
 	var count int
-	err := limiter.pool.QueryRow(ctx, `
+	err := limiter.db.QueryRow(ctx, `
 		select count(*)
 		from rate_limit_buckets
 		where key like $1
@@ -113,7 +112,7 @@ func (limiter RateLimiter) StorageKind() string {
 	return "postgres"
 }
 
-func (limiter RateLimiter) storeBucket(ctx context.Context, tx pgx.Tx, key string, tokens float64, now time.Time) error {
+func (limiter RateLimiter) storeBucket(ctx context.Context, tx Tx, key string, tokens float64, now time.Time) error {
 	_, err := tx.Exec(ctx, `
 		insert into rate_limit_buckets (key, tokens, updated_at)
 		values ($1, $2, $3)
@@ -124,7 +123,7 @@ func (limiter RateLimiter) storeBucket(ctx context.Context, tx pgx.Tx, key strin
 }
 
 func (limiter RateLimiter) evictExpired(ctx context.Context) {
-	_, err := limiter.pool.Exec(ctx, `
+	_, err := limiter.db.Exec(ctx, `
 		delete from rate_limit_buckets
 		where key like $1 and updated_at < $2
 	`, limiter.prefix+":%", limiter.now().UTC().Add(-limiter.fullAfter))

@@ -5,20 +5,19 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type MCPSessionStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewMCPSessionStore(pool *pgxpool.Pool) MCPSessionStore {
-	return MCPSessionStore{pool: pool}
+	return MCPSessionStore{db: NewPGX(pool)}
 }
 
 func (store MCPSessionStore) CreateMCPSession(ctx context.Context, id string, subject string, now time.Time) error {
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		insert into mcp_http_sessions (id, subject_id, last_seen_at, created_at)
 		values ($1, $2, $3, $3)
 		on conflict (id) do update
@@ -30,7 +29,7 @@ func (store MCPSessionStore) CreateMCPSession(ctx context.Context, id string, su
 }
 
 func (store MCPSessionStore) TouchMCPSession(ctx context.Context, id string, subject string, now time.Time, cutoff time.Time) (bool, error) {
-	command, err := store.pool.Exec(ctx, `
+	command, err := store.db.Exec(ctx, `
 		update mcp_http_sessions
 		set last_seen_at = $3
 		where id = $1
@@ -41,11 +40,11 @@ func (store MCPSessionStore) TouchMCPSession(ctx context.Context, id string, sub
 	if err != nil {
 		return false, err
 	}
-	return command.RowsAffected() == 1, nil
+	return command == 1, nil
 }
 
 func (store MCPSessionStore) CloseMCPSession(ctx context.Context, id string, now time.Time) (bool, error) {
-	command, err := store.pool.Exec(ctx, `
+	command, err := store.db.Exec(ctx, `
 		update mcp_http_sessions
 		set closed_at = $2
 		where id = $1 and closed_at is null
@@ -53,12 +52,12 @@ func (store MCPSessionStore) CloseMCPSession(ctx context.Context, id string, now
 	if err != nil {
 		return false, err
 	}
-	return command.RowsAffected() == 1, nil
+	return command == 1, nil
 }
 
 func (store MCPSessionStore) ActiveMCPSessionCount(ctx context.Context, cutoff time.Time) (int, error) {
 	var count int
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		select count(*)
 		from mcp_http_sessions
 		where closed_at is null and last_seen_at >= $1
@@ -68,7 +67,7 @@ func (store MCPSessionStore) ActiveMCPSessionCount(ctx context.Context, cutoff t
 
 func (store MCPSessionStore) ActiveMCPSessionCountForSubject(ctx context.Context, subject string, cutoff time.Time) (int, error) {
 	var count int
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		select count(*)
 		from mcp_http_sessions
 		where subject_id = $1
@@ -79,7 +78,7 @@ func (store MCPSessionStore) ActiveMCPSessionCountForSubject(ctx context.Context
 }
 
 func (store MCPSessionStore) AppendMCPEvent(ctx context.Context, sessionID string, payload []byte, now time.Time) (string, []byte, error) {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return "", nil, err
 	}
@@ -136,19 +135,19 @@ func (store MCPSessionStore) AppendMCPEvent(ctx context.Context, sessionID strin
 func (store MCPSessionStore) ListMCPEvents(ctx context.Context, sessionID string, lastEventID string, limit int) ([]string, [][]byte, error) {
 	var afterSequence int64
 	if lastEventID != "" {
-		err := store.pool.QueryRow(ctx, `
+		err := store.db.QueryRow(ctx, `
 			select sequence
 			from mcp_http_events
 			where session_id = $1 and event_id = $2
 		`, sessionID, lastEventID).Scan(&afterSequence)
-		if err != nil && err != pgx.ErrNoRows {
+		if err != nil && err != ErrNoRows {
 			return nil, nil, err
 		}
-		if err == pgx.ErrNoRows {
+		if err == ErrNoRows {
 			afterSequence = 1<<63 - 1
 		}
 	}
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select event_id, payload
 		from mcp_http_events
 		where session_id = $1 and sequence > $2

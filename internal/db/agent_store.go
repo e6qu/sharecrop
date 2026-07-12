@@ -7,20 +7,19 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/core"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AgentStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewAgentStore(pool *pgxpool.Pool) AgentStore {
-	return AgentStore{pool: pool}
+	return AgentStore{db: NewPGX(pool)}
 }
 
 func (store AgentStore) CreateCredential(ctx context.Context, credential agent.Credential, hash agent.SecretHash) agent.CreateStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return agent.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create agent credential transaction failed")}
 	}
@@ -61,11 +60,11 @@ func (store AgentStore) VerifyCredential(ctx context.Context, hash agent.SecretH
 	var expiresAt *time.Time
 	var rawTaskID *string
 	var rawScopes []string
-	scanErr := store.pool.QueryRow(ctx, agentCredentialSelectSQL()+`
+	scanErr := store.db.QueryRow(ctx, agentCredentialSelectSQL()+`
 		where agent_credentials.token_hash = $1
 		group by agent_credentials.id
 	`, hash.String()).Scan(&rawID, &rawUserID, &label, &state, &expiresAt, &rawTaskID, &rawScopes)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return agent.VerifyStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "agent credential is invalid")}
 	}
 	if scanErr != nil {
@@ -81,7 +80,7 @@ func (store AgentStore) VerifyCredential(ctx context.Context, hash agent.SecretH
 }
 
 func (store AgentStore) ListCredentials(ctx context.Context, owner core.UserID, page core.Page) agent.ListStoreResult {
-	rows, err := store.pool.Query(ctx, agentCredentialSelectSQL()+`
+	rows, err := store.db.Query(ctx, agentCredentialSelectSQL()+`
 		where agent_credentials.user_id = $1
 		group by agent_credentials.id
 		order by agent_credentials.created_at, agent_credentials.id
@@ -118,7 +117,7 @@ func (store AgentStore) ListCredentials(ctx context.Context, owner core.UserID, 
 }
 
 func (store AgentStore) RevokeCredential(ctx context.Context, owner core.UserID, id core.AgentCredentialID) agent.RevokeStoreResult {
-	tag, err := store.pool.Exec(ctx, `
+	tag, err := store.db.Exec(ctx, `
 		update agent_credentials
 		set state = 'revoked', state_recorded_at = now()
 		where id = $1 and user_id = $2 and state = 'active'
@@ -126,7 +125,7 @@ func (store AgentStore) RevokeCredential(ctx context.Context, owner core.UserID,
 	if err != nil {
 		return agent.RevokeStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke agent credential failed")}
 	}
-	if tag.RowsAffected() == 0 {
+	if tag == 0 {
 		return agent.RevokeStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "active agent credential was not found")}
 	}
 
@@ -137,7 +136,7 @@ func (store AgentStore) RevokeCredential(ctx context.Context, owner core.UserID,
 	var expiresAt *time.Time
 	var rawTaskID *string
 	var rawScopes []string
-	scanErr := store.pool.QueryRow(ctx, agentCredentialSelectSQL()+`
+	scanErr := store.db.QueryRow(ctx, agentCredentialSelectSQL()+`
 		where agent_credentials.id = $1
 		group by agent_credentials.id
 	`, id.String()).Scan(&rawID, &rawUserID, &label, &state, &expiresAt, &rawTaskID, &rawScopes)
