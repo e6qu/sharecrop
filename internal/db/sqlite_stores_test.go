@@ -2,11 +2,10 @@ package db
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"testing"
 	"time"
-
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -90,6 +89,54 @@ func TestAuditStoreOnSQLite(t *testing.T) {
 	}
 	if !got.Value.CreatedAt.Equal(funded.CreatedAt) {
 		t.Fatalf("get timestamp = %s, want %s", got.Value.CreatedAt, funded.CreatedAt)
+	}
+}
+
+// TestAttachmentEncodeOnSQLite exercises the registered encode(x,'base64')
+// function together with jsonb_agg/jsonb_build_object ordering — the submission
+// and task attachment read path.
+func TestAttachmentEncodeOnSQLite(t *testing.T) {
+	ctx := context.Background()
+	sqlHandle := openSQLiteWithSchema(t)
+	handle := NewSQLite(sqlHandle)
+
+	content := []byte("hello attachment body")
+	if _, err := sqlHandle.ExecContext(ctx, `insert into submission_attachments (submission_id, attachment_index, filename, content_type, content) values ('s1', 0, 'note.txt', 'text/plain', ?)`, content); err != nil {
+		t.Fatalf("seed attachment: %v", err)
+	}
+
+	var aggregated string
+	err := handle.QueryRow(ctx, `
+		select coalesce(jsonb_agg(
+			jsonb_build_object(
+				'name', submission_attachments.filename,
+				'content', encode(submission_attachments.content, 'base64')
+			)
+			order by submission_attachments.attachment_index
+		), '[]'::jsonb)::text
+		from submission_attachments
+		where submission_attachments.submission_id = $1
+	`, "s1").Scan(&aggregated)
+	if err != nil {
+		t.Fatalf("attachment aggregation: %v", err)
+	}
+
+	var attachments []struct {
+		Name    string `json:"name"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(aggregated), &attachments); err != nil {
+		t.Fatalf("unmarshal aggregated %q: %v", aggregated, err)
+	}
+	if len(attachments) != 1 || attachments[0].Name != "note.txt" {
+		t.Fatalf("attachments = %+v, want one note.txt", attachments)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(attachments[0].Content)
+	if err != nil {
+		t.Fatalf("content is not base64: %v", err)
+	}
+	if string(decoded) != string(content) {
+		t.Fatalf("decoded content = %q, want %q", decoded, content)
 	}
 }
 

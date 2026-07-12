@@ -6,11 +6,9 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
-
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/notification"
+	"github.com/e6qu/sharecrop/internal/sqlitex"
 )
 
 // openSQLiteWithSchema opens an ncruces SQLite database and applies the real
@@ -18,7 +16,7 @@ import (
 // translation against all 34 migration files.
 func openSQLiteWithSchema(t *testing.T) *sql.DB {
 	t.Helper()
-	handle, err := sql.Open("sqlite3", "file:"+t.TempDir()+"/demo.db?_pragma=foreign_keys(off)")
+	handle, err := sqlitex.Open("file:" + t.TempDir() + "/demo.db?_pragma=foreign_keys(off)")
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
