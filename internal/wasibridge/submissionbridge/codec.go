@@ -5,13 +5,12 @@
 package submissionbridge
 
 import (
-	"encoding/base64"
 	"fmt"
 
-	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
+	"github.com/e6qu/sharecrop/internal/wasibridge/attachmentwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
 )
@@ -63,54 +62,6 @@ func decodeCommentBody(raw string) (task.CommentBody, error) {
 		return task.CommentBody{}, fmt.Errorf("invalid comment body")
 	}
 	return accepted.Value, nil
-}
-
-// ---- attachment.Attachment ----
-
-type attachmentWire struct {
-	Name        string `json:"name"`
-	ContentType string `json:"content_type"`
-	Content     string `json:"content"`
-}
-
-func encodeAttachment(value attachment.Attachment) attachmentWire {
-	return attachmentWire{
-		Name:        value.Name.String(),
-		ContentType: value.ContentType.String(),
-		Content:     base64.StdEncoding.EncodeToString(value.Content.Bytes()),
-	}
-}
-
-func decodeAttachment(wire attachmentWire) (attachment.Attachment, error) {
-	content, err := base64.StdEncoding.DecodeString(wire.Content)
-	if err != nil {
-		return attachment.Attachment{}, fmt.Errorf("decode attachment content: %w", err)
-	}
-	accepted, matched := attachment.NewStoredAttachment(wire.Name, wire.ContentType, content).(attachment.AttachmentAccepted)
-	if !matched {
-		return attachment.Attachment{}, fmt.Errorf("invalid attachment %q", wire.Name)
-	}
-	return accepted.Value, nil
-}
-
-func encodeAttachments(values []attachment.Attachment) []attachmentWire {
-	encoded := make([]attachmentWire, 0, len(values))
-	for index := range values {
-		encoded = append(encoded, encodeAttachment(values[index]))
-	}
-	return encoded
-}
-
-func decodeAttachments(wires []attachmentWire) ([]attachment.Attachment, error) {
-	values := make([]attachment.Attachment, 0, len(wires))
-	for index := range wires {
-		value, err := decodeAttachment(wires[index])
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, value)
-	}
-	return values, nil
 }
 
 // ---- submission.ValidationOutcome ----
@@ -196,10 +147,10 @@ func decodeSensitiveFields(wires []sensitiveFieldWire) ([]submission.SensitiveFi
 // ---- submission.SubmitCommand ----
 
 type submitCommandWire struct {
-	TaskID         string           `json:"task_id"`
-	SubmitterID    string           `json:"submitter_id"`
-	ResponseSource string           `json:"response_source"`
-	Attachments    []attachmentWire `json:"attachments,omitempty"`
+	TaskID         string                `json:"task_id"`
+	SubmitterID    string                `json:"submitter_id"`
+	ResponseSource string                `json:"response_source"`
+	Attachments    []attachmentwire.Wire `json:"attachments,omitempty"`
 }
 
 func encodeSubmitCommand(command submission.SubmitCommand) submitCommandWire {
@@ -207,7 +158,7 @@ func encodeSubmitCommand(command submission.SubmitCommand) submitCommandWire {
 		TaskID:         corewire.EncodeTaskID(command.TaskID),
 		SubmitterID:    corewire.EncodeUserID(command.SubmitterID),
 		ResponseSource: encodeResponseSource(command.ResponseSource),
-		Attachments:    encodeAttachments(command.Attachments),
+		Attachments:    attachmentwire.EncodeSlice(command.Attachments),
 	}
 }
 
@@ -224,7 +175,7 @@ func decodeSubmitCommand(wire submitCommandWire) (submission.SubmitCommand, erro
 	if err != nil {
 		return submission.SubmitCommand{}, err
 	}
-	attachments, err := decodeAttachments(wire.Attachments)
+	attachments, err := attachmentwire.DecodeSlice(wire.Attachments)
 	if err != nil {
 		return submission.SubmitCommand{}, err
 	}
@@ -244,7 +195,7 @@ type submissionWire struct {
 	SubmitterID     string                `json:"submitter_id"`
 	State           string                `json:"state"`
 	ResponseSource  string                `json:"response_source"`
-	Attachments     []attachmentWire      `json:"attachments,omitempty"`
+	Attachments     []attachmentwire.Wire `json:"attachments,omitempty"`
 	Validation      validationOutcomeWire `json:"validation"`
 	SensitiveFields []sensitiveFieldWire  `json:"sensitive_fields,omitempty"`
 	ReviewNote      string                `json:"review_note"`
@@ -257,7 +208,7 @@ func encodeSubmission(value submission.Submission) submissionWire {
 		SubmitterID:     corewire.EncodeUserID(value.SubmitterID),
 		State:           encodeState(value.State),
 		ResponseSource:  encodeResponseSource(value.ResponseSource),
-		Attachments:     encodeAttachments(value.Attachments),
+		Attachments:     attachmentwire.EncodeSlice(value.Attachments),
 		Validation:      encodeValidationOutcome(value.Validation),
 		SensitiveFields: encodeSensitiveFields(value.SensitiveFields),
 		ReviewNote:      encodeReviewNote(value.ReviewNote),
@@ -285,7 +236,7 @@ func decodeSubmission(wire submissionWire) (submission.Submission, error) {
 	if err != nil {
 		return submission.Submission{}, err
 	}
-	attachments, err := decodeAttachments(wire.Attachments)
+	attachments, err := attachmentwire.DecodeSlice(wire.Attachments)
 	if err != nil {
 		return submission.Submission{}, err
 	}

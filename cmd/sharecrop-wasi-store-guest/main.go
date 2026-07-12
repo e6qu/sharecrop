@@ -24,6 +24,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/taskbridge"
 )
 
 func main() {
@@ -65,6 +66,8 @@ func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 		return orgcredbridge.Dispatch(ctx, orgcredbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "submission":
 		return submissionbridge.Dispatch(ctx, submissionbridge.NewGuestStore(rpc.Invoke), method, args)
+	case "task":
+		return taskbridge.Dispatch(ctx, taskbridge.NewGuestStore(rpc.Invoke), method, args)
 	default:
 		return nil, fmt.Errorf("no bridge for method %q", method)
 	}

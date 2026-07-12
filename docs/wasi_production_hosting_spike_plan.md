@@ -447,10 +447,10 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   `go run ./cmd/sharecrop generate wasi-bridge` regenerates every store in
   `gen.Targets()`. Shared core-type codecs (typed ids, page, time) moved to
   `internal/wasibridge/corewire` so bridges don't duplicate them.
-  **`audit`, `notification`, `auth`, `agent`, `orgcred`, `assets`,
-  `submission`, `ledger`, and `org` are bridged** (each in its own `*bridge`
-  package), dual-run-verified against real Postgres. `agent` added
-  nullable-pointer fields and a scope-set; `orgcred` reuses agent's
+  **ALL TEN domain stores are bridged** (`audit`, `notification`, `auth`,
+  `agent`, `orgcred`, `assets`, `submission`, `ledger`, `org`, `task` - each in
+  its own `*bridge` package), dual-run-verified against real Postgres. `agent`
+  added nullable-pointer fields and a scope-set; `orgcred` reuses agent's
   `Label`/`ScopeSet`/`State` codecs (extracted into a shared
   `internal/wasibridge/agentwire` package); `assets` (collectibles) drove a
   generator enhancement to disambiguate a method with two arguments of the same
@@ -465,8 +465,13 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   refund flow; `org` (organizations, members, and teams, including the TeamOwner
   tagged union) drove a third generator enhancement - `extraImports`, for a
   method argument whose type lives in another package
-  (`ProvisionMember(..., auth.EmailAddress, ...)`). Only `task` remains. One
-  generic
+  (`ProvisionMember(..., auth.EmailAddress, ...)`); `task` (the widest store -
+  21 methods, the full Task with ~10 nested unions, series, reservations, and
+  comments) needed no generator change, and its attachment codec was extracted
+  into a shared `internal/wasibridge/attachmentwire` package (also adopted by
+  `submission`). With every store bridged, the remaining work is the host wiring:
+  weigh instance pooling against the ~2-3ms instance-per-request floor, then
+  migrate `cmd/sharecrop serve` onto the WASI host. One generic
   guest (`cmd/sharecrop-wasi-store-guest`) routes every store by method prefix.
   `auth` (the largest - 13 methods, 10 result unions) exercised the pattern's
   edges: its opaque hash/token types round-trip through reconstruction

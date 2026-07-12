@@ -1,5 +1,35 @@
 # What We Did
 
+The `task/wasi-bridge-task` branch bridged the `task` store - the tenth and
+**final** store, and the widest by far (21 methods). This completes the
+store-bridging phase: every one of the ten domain stores now round-trips through
+the WASI guest. The `task` store is the deepest in structure: the `Task` model
+carries roughly ten nested unions (owner, reward spec, visibility, series
+placement, data payload, plus the list-scope and four list-filter unions), and
+the store also covers first-class series, reservations, and both the task and
+series comment threads. `internal/wasibridge/taskbridge` splits its codecs across
+four files (value types + unions, models, commands, results) plus the generated
+`bridge_gen.go`. It needed **no generator change** - the third enhancement
+(`extraImports`) already covered its only cross-package concern, and here the
+one cross-package type (`CreateCommand.Actor auth.UserSubject`) is nested inside
+a command, handled in codec.go, so the generated signatures never reference
+`auth`. `corewire` gained `TaskSeriesID`/`TaskReservationID`/`SeriesCommentID`/
+`TaskCommentID` codecs. No new reconstruction constructors were needed: as with
+ledger and org, every task value type round-trips through its existing validating
+constructor. The attachment codec - which the submission bridge had introduced -
+was extracted into a shared `internal/wasibridge/attachmentwire` package and
+adopted by both bridges (jscpd would otherwise flag the duplicate). Shared task
+test builders and deep diff helpers live in `internal/task/tasktest`; the codec
+test round-trips a fully-populated Task (every union arm), a Series, a
+Reservation, a comment, and the list scope/filters; the dual-run integration
+test (`tests/integration/taskbridge_store_test.go`) drives create / find /
+change-state / list / reserve / comment / create-series / attach-task / series-
+comment through the guest against real Postgres, checking every read against a
+direct call. Ten stores bridged - the whole set. All gates green. Nothing about
+the native server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-org` branch bridged the `org` store (organizations,
 members, and teams) - the ninth store - and drove a third generator enhancement.
 `org.Store.ProvisionMember(..., auth.EmailAddress, ...)` and `AddTeamMemberByEmail`

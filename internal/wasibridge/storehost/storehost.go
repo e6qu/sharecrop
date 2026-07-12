@@ -22,6 +22,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/taskbridge"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -37,6 +38,7 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	orgStore := db.NewOrgStore(pool)
 	orgcredStore := db.NewOrgCredentialStore(pool)
 	submissionStore := db.NewSubmissionStore(pool)
+	taskStore := db.NewTaskStore(pool)
 
 	return func(ctx context.Context, method string, args []byte) ([]byte, error) {
 		store, _, _ := strings.Cut(method, ".")
@@ -59,6 +61,8 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 			return orgcredbridge.Dispatch(ctx, orgcredStore, method, args)
 		case "submission":
 			return submissionbridge.Dispatch(ctx, submissionStore, method, args)
+		case "task":
+			return taskbridge.Dispatch(ctx, taskStore, method, args)
 		default:
 			return nil, fmt.Errorf("no bridge for method %q", method)
 		}
