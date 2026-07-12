@@ -7,20 +7,19 @@ import (
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type TaskStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewTaskStore(pool *pgxpool.Pool) TaskStore {
-	return TaskStore{pool: pool}
+	return TaskStore{db: NewPGX(pool)}
 }
 
 func (store TaskStore) CreateTask(ctx context.Context, seriesID core.TaskSeriesID, taskID core.TaskID, command task.CreateCommand) task.CreateTaskStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return task.CreateTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create task transaction failed")}
 	}
@@ -80,7 +79,7 @@ func (store TaskStore) CreateTask(ctx context.Context, seriesID core.TaskSeriesI
 }
 
 func (store TaskStore) FindTask(ctx context.Context, taskID core.TaskID) task.FindTaskStoreResult {
-	rows, err := store.pool.Query(ctx, taskSelectSQL()+" where tasks.id = $1", taskID.String())
+	rows, err := store.db.Query(ctx, taskSelectSQL()+" where tasks.id = $1", taskID.String())
 	if err != nil {
 		return task.FindTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "find task failed")}
 	}
@@ -103,7 +102,7 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 	// task row locked and the UPDATE predicated on the observed prior state, so
 	// a concurrent Cancel+Fund or Open+Refund cannot interleave between the
 	// checks and the write (orphaning escrow or reopening a cancelled task).
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin change task state transaction failed")}
 	}
@@ -111,7 +110,7 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 
 	var priorState string
 	scanErr := tx.QueryRow(ctx, "select state from tasks where id = $1 for update", taskID.String()).Scan(&priorState)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
 	if scanErr != nil {
@@ -149,7 +148,7 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 	if err != nil {
 		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "change task state failed")}
 	}
-	if commandTag.RowsAffected() != 1 {
+	if commandTag != 1 {
 		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task state was not changed")}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -179,7 +178,7 @@ func (openableRewardAccepted) openableRewardResult() {}
 
 func (openableRewardRejected) openableRewardResult() {}
 
-func requireOpenableReward(ctx context.Context, tx pgx.Tx, taskID core.TaskID) openableRewardResult {
+func requireOpenableReward(ctx context.Context, tx Tx, taskID core.TaskID) openableRewardResult {
 	var rewardKind string
 	var creditAmount int64
 	err := tx.QueryRow(ctx, "select reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1", taskID.String()).Scan(&rewardKind, &creditAmount)
@@ -213,11 +212,11 @@ func requireOpenableReward(ctx context.Context, tx pgx.Tx, taskID core.TaskID) o
 // held collectibles to their funder. It writes a task_refund ledger entry for
 // the credits, returns the collectibles to minted, and deletes the stateless
 // task_funds / task_fund_collectibles rows. An unfunded task settles to nothing.
-func settleFundedTaskOnCancel(ctx context.Context, tx pgx.Tx, taskID core.TaskID) *core.DomainError {
+func settleFundedTaskOnCancel(ctx context.Context, tx Tx, taskID core.TaskID) *core.DomainError {
 	var rawFunderAccountID string
 	var amount int64
 	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, credit_amount from task_funds where task_id = $1 for update", taskID.String()).Scan(&rawFunderAccountID, &amount)
-	if scanErr != nil && !errors.Is(scanErr, pgx.ErrNoRows) {
+	if scanErr != nil && !errors.Is(scanErr, ErrNoRows) {
 		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read task fund failed")
 		return &reason
 	}
@@ -251,7 +250,7 @@ func settleFundedTaskOnCancel(ctx context.Context, tx pgx.Tx, taskID core.TaskID
 // moves to cancelled_by_requester, the same terminal state the owner-driven
 // submission rejection uses (see internal/db/ledger_store.go). Terminal
 // reservations are left untouched.
-func releaseReservationsOnCancel(ctx context.Context, tx pgx.Tx, taskID core.TaskID) *core.DomainError {
+func releaseReservationsOnCancel(ctx context.Context, tx Tx, taskID core.TaskID) *core.DomainError {
 	if _, err := tx.Exec(ctx, `
 		update task_reservations
 		set state = $2, state_recorded_at = now()
@@ -275,7 +274,7 @@ func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filt
 		return task.ListTasksStoreRejected{Reason: rejected.reason}
 	}
 
-	rows, err := store.pool.Query(ctx, query.sql, query.arguments)
+	rows, err := store.db.Query(ctx, query.sql, query.arguments)
 	if err != nil {
 		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
 	}
@@ -291,7 +290,7 @@ func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filt
 }
 
 func (store TaskStore) CreateReservation(ctx context.Context, reservationID core.TaskReservationID, command task.ReservationCommand) task.CreateReservationStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create reservation transaction failed")}
 	}
@@ -383,7 +382,7 @@ func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.T
 
 	// Bind the mutation to the owning task so a reservation belonging to another
 	// task can never be flipped via a task the actor happens to own (IDOR).
-	commandTag, err := store.pool.Exec(ctx, `
+	commandTag, err := store.db.Exec(ctx, `
 		update task_reservations
 		set state = $2, state_recorded_at = now()
 		where id = $1 and task_id = $3 and state in ('requested', 'active')
@@ -391,7 +390,7 @@ func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.T
 	if err != nil {
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation state was not changed")}
 	}
-	if commandTag.RowsAffected() != 1 {
+	if commandTag != 1 {
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation is not pending or active")}
 	}
 
@@ -408,7 +407,7 @@ func (store TaskStore) ListReservations(ctx context.Context, taskID core.TaskID)
 		return task.ListReservationsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
 	}
 
-	rows, err := store.pool.Query(ctx, reservationSelectSQL()+`
+	rows, err := store.db.Query(ctx, reservationSelectSQL()+`
 		where task_reservations.task_id = $1
 		order by task_reservations.created_at
 	`, taskID.String())
@@ -431,7 +430,7 @@ func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID co
 	}
 
 	var policy string
-	err := store.pool.QueryRow(ctx, "select participation_policy from tasks where id = $1", taskID.String()).Scan(&policy)
+	err := store.db.QueryRow(ctx, "select participation_policy from tasks where id = $1", taskID.String()).Scan(&policy)
 	if err != nil {
 		return task.SubmissionEligibilityRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
@@ -439,7 +438,7 @@ func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID co
 		return task.SubmissionEligibilityRejected{Reason: *blocked}
 	}
 	var banned bool
-	if err := store.pool.QueryRow(ctx, `
+	if err := store.db.QueryRow(ctx, `
 		select exists(
 			select 1 from task_implementor_bans
 			where task_id = $1
@@ -457,7 +456,7 @@ func (store TaskStore) CheckSubmissionEligibility(ctx context.Context, taskID co
 	}
 
 	var activeForSubmitter bool
-	if err := store.pool.QueryRow(ctx, `
+	if err := store.db.QueryRow(ctx, `
 		select exists(
 			select 1
 			from task_reservations
@@ -501,7 +500,7 @@ func (insertSeriesAccepted) insertSeriesResult() {}
 
 func (insertSeriesRejected) insertSeriesResult() {}
 
-func (store TaskStore) insertSeriesForPlacement(ctx context.Context, tx pgx.Tx, seriesID core.TaskSeriesID, command task.CreateCommand) insertSeriesResult {
+func (store TaskStore) insertSeriesForPlacement(ctx context.Context, tx Tx, seriesID core.TaskSeriesID, command task.CreateCommand) insertSeriesResult {
 	switch placement := command.Placement.(type) {
 	case task.StandalonePlacement:
 		return insertSeriesAccepted{}
@@ -522,7 +521,7 @@ func (store TaskStore) insertSeriesForPlacement(ctx context.Context, tx pgx.Tx, 
 	}
 }
 
-func insertTaskAttachments(ctx context.Context, tx pgx.Tx, taskID core.TaskID, attachments []attachment.Attachment) insertAttachmentsResult {
+func insertTaskAttachments(ctx context.Context, tx Tx, taskID core.TaskID, attachments []attachment.Attachment) insertAttachmentsResult {
 	for index := range attachments {
 		value := attachments[index]
 		_, err := tx.Exec(ctx, `
@@ -656,7 +655,7 @@ const expireReservationsSQL = `
 `
 
 func (store TaskStore) releaseExpiredReservations(ctx context.Context) error {
-	_, err := store.pool.Exec(ctx, expireReservationsSQL)
+	_, err := store.db.Exec(ctx, expireReservationsSQL)
 	return err
 }
 
@@ -748,7 +747,7 @@ type listQueryResult interface {
 
 type listQueryAccepted struct {
 	sql       string
-	arguments pgx.NamedArgs
+	arguments NamedArgs
 }
 
 type listQueryRejected struct {
@@ -760,7 +759,7 @@ func (listQueryAccepted) listQueryResult() {}
 func (listQueryRejected) listQueryResult() {}
 
 func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core.Page) listQueryResult {
-	arguments := pgx.NamedArgs{
+	arguments := NamedArgs{
 		"limit":  page.Limit(),
 		"offset": page.Offset(),
 	}
@@ -902,7 +901,7 @@ func (taskListItemRowsAccepted) taskListItemRowsResult() {}
 
 func (taskListItemRowsRejected) taskListItemRowsResult() {}
 
-func scanTaskListItemRows(rows pgx.Rows) taskListItemRowsResult {
+func scanTaskListItemRows(rows Rows) taskListItemRowsResult {
 	values := make([]task.ListItem, 0)
 	for rows.Next() {
 		parsed := scanTaskListItemRow(rows)
@@ -935,7 +934,7 @@ func (taskListItemRowAccepted) taskListItemRowResult() {}
 
 func (taskListItemRowRejected) taskListItemRowResult() {}
 
-func scanTaskListItemRow(rows pgx.Rows) taskListItemRowResult {
+func scanTaskListItemRow(rows Rows) taskListItemRowResult {
 	var row taskBaseRow
 	var rawActiveAssigneeKind string
 	var rawActiveAssigneeUserID string
@@ -1024,7 +1023,7 @@ func (taskRowsAccepted) taskRowsResult() {}
 
 func (taskRowsRejected) taskRowsResult() {}
 
-func scanTaskRows(rows pgx.Rows) taskRowsResult {
+func scanTaskRows(rows Rows) taskRowsResult {
 	values := make([]task.Task, 0)
 	for rows.Next() {
 		parsed := scanTaskRow(rows)
@@ -1094,7 +1093,7 @@ func (row taskBaseRow) parse() taskRowResult {
 	return parseTaskRow(row.taskID, row.ownerKind, row.ownerUserID, row.ownerTeamID, row.ownerOrganizationID, row.title, row.description, row.taskType, row.referenceURL, row.state, row.rewardKind, row.rewardCreditAmount, row.rewardCollectibleCount, row.participationPolicy, row.assigneeScope, row.reservationTTLHours, row.visibilityKind, row.visibilityUserID, row.visibilityTeamID, row.visibilityOrganizationID, row.seriesID, row.seriesPosition, row.responseSchema, row.payloadKind, row.payload, row.createdBy, row.attachments)
 }
 
-func scanTaskRow(rows pgx.Rows) taskRowResult {
+func scanTaskRow(rows Rows) taskRowResult {
 	var row taskBaseRow
 	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments); err != nil {
 		return taskRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
@@ -1304,7 +1303,7 @@ func (reservationFound) reservationLookupResult() {}
 func (reservationMissing) reservationLookupResult() {}
 
 func (store TaskStore) findReservation(ctx context.Context, reservationID core.TaskReservationID) reservationLookupResult {
-	rows, err := store.pool.Query(ctx, reservationSelectSQL()+" where id = $1", reservationID.String())
+	rows, err := store.db.Query(ctx, reservationSelectSQL()+" where id = $1", reservationID.String())
 	if err != nil {
 		return reservationMissing{reason: core.NewDomainError(core.ErrorCodeInvalidState, "find reservation failed")}
 	}
@@ -1337,7 +1336,7 @@ func (reservationRowsAccepted) reservationRowsResult() {}
 
 func (reservationRowsRejected) reservationRowsResult() {}
 
-func scanReservationRows(rows pgx.Rows) reservationRowsResult {
+func scanReservationRows(rows Rows) reservationRowsResult {
 	values := make([]task.Reservation, 0)
 	for rows.Next() {
 		parsed := scanReservationRow(rows)
@@ -1369,7 +1368,7 @@ func (reservationRowAccepted) reservationRowResult() {}
 
 func (reservationRowRejected) reservationRowResult() {}
 
-func scanReservationRow(rows pgx.Rows) reservationRowResult {
+func scanReservationRow(rows Rows) reservationRowResult {
 	var rawID string
 	var rawTaskID string
 	var rawAssigneeKind string

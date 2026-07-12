@@ -6,20 +6,19 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type LedgerStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewLedgerStore(pool *pgxpool.Pool) LedgerStore {
-	return LedgerStore{pool: pool}
+	return LedgerStore{db: NewPGX(pool)}
 }
 
 func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreCommand) ledger.FundResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin fund task transaction failed")}
 	}
@@ -48,7 +47,7 @@ func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreC
 }
 
 func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command ledger.OrganizationFundStoreCommand) ledger.FundResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin fund task transaction failed")}
 	}
@@ -78,7 +77,7 @@ func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command l
 
 func (store LedgerStore) OrganizationBalance(ctx context.Context, organizationID core.OrganizationID) ledger.BalanceResult {
 	var spendable, allocated int64
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		select
 			coalesce((select sum(ledger_entries.amount) from ledger_entries join credit_accounts on credit_accounts.id = ledger_entries.account_id where credit_accounts.organization_id = $1), 0),
 			coalesce((select sum(task_funds.credit_amount) from task_funds join credit_accounts on credit_accounts.id = task_funds.funder_account_id where credit_accounts.organization_id = $1), 0)
@@ -90,7 +89,7 @@ func (store LedgerStore) OrganizationBalance(ctx context.Context, organizationID
 }
 
 func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.AcceptStoreCommand) ledger.AcceptResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin accept submission transaction failed")}
 	}
@@ -110,7 +109,7 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 		from submissions
 		where id = $1 and task_id = $2
 	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID, &acceptedKey)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
 	}
 	if scanErr != nil {
@@ -204,7 +203,7 @@ func combineTips(first ledger.TipOutcome, second ledger.TipOutcome) ledger.TipOu
 }
 
 func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.RequestChangesStoreCommand) ledger.RequestChangesResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin request changes transaction failed")}
 	}
@@ -227,7 +226,7 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 		where id = $1 and task_id = $2
 		for update
 	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
 	}
 	if scanErr != nil {
@@ -261,7 +260,7 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 }
 
 func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.RejectStoreCommand) ledger.RejectResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin reject submission transaction failed")}
 	}
@@ -285,7 +284,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 		where id = $1 and task_id = $2
 		for update
 	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID, &reviewKey)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
 	}
 	if scanErr != nil {
@@ -355,7 +354,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 }
 
 func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundStoreCommand) ledger.RefundResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin refund task transaction failed")}
 	}
@@ -373,7 +372,7 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 	var rawFunderAccountID string
 	var amount int64
 	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, credit_amount from task_funds where task_id = $1 for update", command.TaskID.String()).Scan(&rawFunderAccountID, &amount)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return replayOrRejectRefund(ctx, tx, command, keyExists)
 	}
 	if scanErr != nil {
@@ -426,11 +425,11 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 // permitted for the task owner (its creator) or the user currently holding the
 // active reservation (the implementor), and only while the task is not yet
 // awarded (still draft or open).
-func lockTaskRefundable(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requester core.UserID) *core.DomainError {
+func lockTaskRefundable(ctx context.Context, tx Tx, taskID core.TaskID, requester core.UserID) *core.DomainError {
 	var state string
 	var rawCreatedBy string
 	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawCreatedBy)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		reason := core.NewDomainError(core.ErrorCodeNotFound, "task was not found")
 		return &reason
 	}
@@ -464,14 +463,14 @@ func lockTaskRefundable(ctx context.Context, tx pgx.Tx, taskID core.TaskID, requ
 // replayOrRejectRefund handles a refund of a task with no task_funds row. If the
 // idempotency key was already used, it replays the recorded refund from the
 // durable task_refund ledger entry; otherwise the task has nothing to refund.
-func replayOrRejectRefund(ctx context.Context, tx pgx.Tx, command ledger.RefundStoreCommand, keyExists bool) ledger.RefundResult {
+func replayOrRejectRefund(ctx context.Context, tx Tx, command ledger.RefundStoreCommand, keyExists bool) ledger.RefundResult {
 	if !keyExists {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task has nothing to refund")}
 	}
 	var rawFunderAccountID string
 	var amount int64
 	scanErr := tx.QueryRow(ctx, "select account_id::text, amount from ledger_entries where task_id = $1 and kind = 'task_refund' and idempotency_key = $2", command.TaskID.String(), command.IdempotencyKey.String()).Scan(&rawFunderAccountID, &amount)
-	if errors.Is(scanErr, pgx.ErrNoRows) {
+	if errors.Is(scanErr, ErrNoRows) {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
 	}
 	if scanErr != nil {
@@ -487,7 +486,7 @@ func replayOrRejectRefund(ctx context.Context, tx pgx.Tx, command ledger.RefundS
 
 func (store LedgerStore) Balance(ctx context.Context, owner core.UserID) ledger.BalanceResult {
 	var spendable, allocated int64
-	err := store.pool.QueryRow(ctx, `
+	err := store.db.QueryRow(ctx, `
 		select
 			coalesce((select sum(ledger_entries.amount) from ledger_entries join credit_accounts on credit_accounts.id = ledger_entries.account_id where credit_accounts.user_id = $1), 0),
 			coalesce((select sum(task_funds.credit_amount) from task_funds join credit_accounts on credit_accounts.id = task_funds.funder_account_id where credit_accounts.user_id = $1), 0)
@@ -500,7 +499,7 @@ func (store LedgerStore) Balance(ctx context.Context, owner core.UserID) ledger.
 
 func (store LedgerStore) TaskAllocatedCredits(ctx context.Context, taskID core.TaskID) ledger.TaskAllocatedResult {
 	var allocated int64
-	err := store.pool.QueryRow(ctx,
+	err := store.db.QueryRow(ctx,
 		"select coalesce((select credit_amount from task_funds where task_id = $1), 0)",
 		taskID.String()).Scan(&allocated)
 	if err != nil {
@@ -510,7 +509,7 @@ func (store LedgerStore) TaskAllocatedCredits(ctx context.Context, taskID core.T
 }
 
 func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, page core.Page) ledger.ListEntriesResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, '')
 		from ledger_entries
 		join credit_accounts on credit_accounts.id = ledger_entries.account_id
@@ -546,7 +545,7 @@ func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, pag
 }
 
 func (store LedgerStore) ListOrganizationEntries(ctx context.Context, organizationID core.OrganizationID, page core.Page) ledger.ListEntriesResult {
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, '')
 		from ledger_entries
 		join credit_accounts on credit_accounts.id = ledger_entries.account_id

@@ -6,20 +6,19 @@ import (
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type SubmissionStore struct {
-	pool *pgxpool.Pool
+	db Beginner
 }
 
 func NewSubmissionStore(pool *pgxpool.Pool) SubmissionStore {
-	return SubmissionStore{pool: pool}
+	return SubmissionStore{db: NewPGX(pool)}
 }
 
 func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID core.SubmissionID, receiptID core.SubmissionReceiptTokenID, receiptHash submission.ReceiptTokenHash, command submission.SubmitCommand, state submission.State, outcome submission.ValidationOutcome, sensitiveFields []submission.SensitiveField) submission.CreateSubmissionStoreResult {
-	tx, err := store.pool.Begin(ctx)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create submission transaction failed")}
 	}
@@ -86,7 +85,7 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 }
 
 func (store SubmissionStore) FindByReceiptToken(ctx context.Context, hash submission.ReceiptTokenHash) submission.FindReceiptStoreResult {
-	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
+	rows, err := store.db.Query(ctx, submissionSelectSQL()+`
 		join submission_receipt_tokens on submission_receipt_tokens.submission_id = submissions.id
 		where submission_receipt_tokens.token_hash = $1
 	`, hash.String())
@@ -108,7 +107,7 @@ func (store SubmissionStore) FindByReceiptToken(ctx context.Context, hash submis
 }
 
 func (store SubmissionStore) FindSubmission(ctx context.Context, submissionID core.SubmissionID) submission.FindSubmissionStoreResult {
-	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
+	rows, err := store.db.Query(ctx, submissionSelectSQL()+`
 		where submissions.id = $1
 	`, submissionID.String())
 	if err != nil {
@@ -128,7 +127,7 @@ func (store SubmissionStore) FindSubmission(ctx context.Context, submissionID co
 }
 
 func (store SubmissionStore) ListForSubmitter(ctx context.Context, submitterID core.UserID, page core.Page) submission.ListSubmissionsStoreResult {
-	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
+	rows, err := store.db.Query(ctx, submissionSelectSQL()+`
 		where submissions.user_id = $1
 		order by submissions.created_at
 		limit $2 offset $3
@@ -147,7 +146,7 @@ func (store SubmissionStore) ListForSubmitter(ctx context.Context, submitterID c
 }
 
 func (store SubmissionStore) ListForTask(ctx context.Context, taskID core.TaskID, page core.Page) submission.ListSubmissionsStoreResult {
-	rows, err := store.pool.Query(ctx, submissionSelectSQL()+`
+	rows, err := store.db.Query(ctx, submissionSelectSQL()+`
 		where submissions.task_id = $1
 		order by submissions.created_at
 		limit $2 offset $3
@@ -180,7 +179,7 @@ func (insertRowsAccepted) insertRowsResult() {}
 
 func (insertRowsRejected) insertRowsResult() {}
 
-func insertValidationErrors(ctx context.Context, tx pgx.Tx, submissionID core.SubmissionID, outcome submission.ValidationOutcome) insertRowsResult {
+func insertValidationErrors(ctx context.Context, tx Tx, submissionID core.SubmissionID, outcome submission.ValidationOutcome) insertRowsResult {
 	failed, matched := outcome.(submission.ValidationFailed)
 	if !matched {
 		return insertRowsAccepted{}
@@ -198,7 +197,7 @@ func insertValidationErrors(ctx context.Context, tx pgx.Tx, submissionID core.Su
 	return insertRowsAccepted{}
 }
 
-func insertSensitiveFields(ctx context.Context, tx pgx.Tx, submissionID core.SubmissionID, fields []submission.SensitiveField) insertRowsResult {
+func insertSensitiveFields(ctx context.Context, tx Tx, submissionID core.SubmissionID, fields []submission.SensitiveField) insertRowsResult {
 	for fieldIndex := range fields {
 		field := fields[fieldIndex]
 		_, err := tx.Exec(ctx, `
@@ -212,7 +211,7 @@ func insertSensitiveFields(ctx context.Context, tx pgx.Tx, submissionID core.Sub
 	return insertRowsAccepted{}
 }
 
-func insertSubmissionAttachments(ctx context.Context, tx pgx.Tx, submissionID core.SubmissionID, attachments []attachment.Attachment) insertAttachmentsResult {
+func insertSubmissionAttachments(ctx context.Context, tx Tx, submissionID core.SubmissionID, attachments []attachment.Attachment) insertAttachmentsResult {
 	for index := range attachments {
 		value := attachments[index]
 		_, err := tx.Exec(ctx, `
@@ -285,7 +284,7 @@ func (submissionRowsAccepted) submissionRowsResult() {}
 
 func (submissionRowsRejected) submissionRowsResult() {}
 
-func scanSubmissionRows(rows pgx.Rows) submissionRowsResult {
+func scanSubmissionRows(rows Rows) submissionRowsResult {
 	values := make([]submission.Submission, 0)
 	for rows.Next() {
 		parsed := scanSubmissionRow(rows)
@@ -318,7 +317,7 @@ func (submissionRowAccepted) submissionRowResult() {}
 
 func (submissionRowRejected) submissionRowResult() {}
 
-func scanSubmissionRow(rows pgx.Rows) submissionRowResult {
+func scanSubmissionRow(rows Rows) submissionRowResult {
 	var rawSubmissionID string
 	var rawTaskID string
 	var rawUserID string
