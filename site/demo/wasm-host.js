@@ -54,6 +54,10 @@
         window.localStorage.setItem(storageKey(key), value);
         return true;
       },
+      storageDelete(key) {
+        window.localStorage.removeItem(storageKey(key));
+        return true;
+      },
       now() {
         return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
       },
@@ -125,6 +129,16 @@
     const configured = parseResponse(configure(host), "sharecropConfigureHost");
     if (configured.status !== "configured") {
       throw new Error(configured.error || "WASM host configuration failed");
+    }
+
+    // Persist the demo database once the page is about to unload (refresh or
+    // close), so clicking through the demo and refreshing keeps the state.
+    // Snapshotting after every request is too expensive to do inline.
+    const persist = window.sharecropPersistSnapshot;
+    if (typeof persist === "function") {
+      window.addEventListener("beforeunload", () => {
+        persist();
+      });
     }
 
     const RealXHR = window.XMLHttpRequest;

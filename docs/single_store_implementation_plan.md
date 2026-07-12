@@ -167,9 +167,16 @@ db`) confirm the risky translations per store:
   set. A dual-run test (mirroring the existing bridge dual-run harness) asserts
   each store returns identical results on Postgres and SQLite. This is the
   dialect correctness gate.
-- **Px — cut the demo over.** `cmd/sharecrop-wasm` builds the real `internal/db`
-  stores over the sqlite adapter instead of `wasmdemo`; seed via the real
-  services; persistence wired to the browser VFS.
+- **Px — cut the demo over. Done (PR #178).** `cmd/sharecrop-wasm` builds the
+  real `internal/db` stores over the sqlite adapter instead of `wasmdemo`, seeds
+  via the real services, and serves through `appmux.New`. Persistence uses
+  `sqlitex.Snapshot`/`LoadSnapshot` (SQLite serialize into browser storage,
+  restored on load; saved on `beforeunload`, cleared by a reset hook).
+  - *Follow-up optimization:* the demo re-runs the full seed on every fresh boot
+    (~0.7s, bcrypt-bound), so parallel Playwright workers need capped workers +
+    retries. A pre-generated seed snapshot (ship the serialized seeded DB as a
+    static asset, `LoadSnapshot` it, then log the demo admin in instead of
+    re-seeding) would make boot ~5× faster and remove the test flakiness.
 - **Pz — delete `internal/wasmdemo`** (all `browserstore_*.go`, `browser_storage
   .go`; keep seed rewritten onto real stores). Fold in the deferred
   **verification-depth** work: full `audit.Event` / `submission.Submission`

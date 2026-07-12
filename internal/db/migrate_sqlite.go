@@ -78,6 +78,7 @@ func execSQLiteStatements(ctx context.Context, handle *sql.DB, script string) er
 			continue
 		}
 		for _, single := range expandSQLiteAddColumns(statement) {
+			single = stripSQLiteChecks(single)
 			if _, err := handle.ExecContext(ctx, single); err != nil {
 				if sqliteIsAddColumn(single) && strings.Contains(err.Error(), "duplicate column name") {
 					continue

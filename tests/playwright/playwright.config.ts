@@ -10,6 +10,14 @@ const demoOrigin = `http://127.0.0.1:${demoPort}`;
 
 export default defineConfig({
   testDir: ".",
+  // Each test boots a real SQLite-backed backend in WebAssembly and seeds it on
+  // load; the seed's password hashing is CPU-bound, so many simultaneous boots
+  // saturate the CPU and a boot can occasionally miss the assertion window. Cap
+  // the workers, allow longer assertions than the 5s default, and retry the
+  // rare boot that still stalls.
+  workers: 2,
+  retries: 2,
+  expect: { timeout: 15_000 },
   use: {
     baseURL: apiOrigin,
   },
