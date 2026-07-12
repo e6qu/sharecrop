@@ -14,7 +14,11 @@ type NotificationStore struct {
 }
 
 func NewNotificationStore(pool *pgxpool.Pool) NotificationStore {
-	return NotificationStore{db: NewPGX(pool)}
+	return NewNotificationStoreFromHandle(NewPGX(pool))
+}
+
+func NewNotificationStoreFromHandle(handle Beginner) NotificationStore {
+	return NotificationStore{db: handle}
 }
 
 func (store NotificationStore) Create(ctx context.Context, value notification.Notification) notification.CreateStoreResult {

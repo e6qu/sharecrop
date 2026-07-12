@@ -18,8 +18,12 @@ type RateLimiter struct {
 }
 
 func NewRateLimiter(pool *pgxpool.Pool, prefix string, capacity int, refillPerSec float64) RateLimiter {
+	return NewRateLimiterFromHandle(NewPGX(pool), prefix, capacity, refillPerSec)
+}
+
+func NewRateLimiterFromHandle(handle Beginner, prefix string, capacity int, refillPerSec float64) RateLimiter {
 	return RateLimiter{
-		db:           NewPGX(pool),
+		db:           handle,
 		prefix:       prefix,
 		capacity:     float64(capacity),
 		refillPerSec: refillPerSec,

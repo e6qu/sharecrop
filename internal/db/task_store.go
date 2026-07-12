@@ -15,7 +15,11 @@ type TaskStore struct {
 }
 
 func NewTaskStore(pool *pgxpool.Pool) TaskStore {
-	return TaskStore{db: NewPGX(pool)}
+	return NewTaskStoreFromHandle(NewPGX(pool))
+}
+
+func NewTaskStoreFromHandle(handle Beginner) TaskStore {
+	return TaskStore{db: handle}
 }
 
 func (store TaskStore) CreateTask(ctx context.Context, seriesID core.TaskSeriesID, taskID core.TaskID, command task.CreateCommand) task.CreateTaskStoreResult {

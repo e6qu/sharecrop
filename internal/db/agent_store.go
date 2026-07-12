@@ -15,7 +15,11 @@ type AgentStore struct {
 }
 
 func NewAgentStore(pool *pgxpool.Pool) AgentStore {
-	return AgentStore{db: NewPGX(pool)}
+	return NewAgentStoreFromHandle(NewPGX(pool))
+}
+
+func NewAgentStoreFromHandle(handle Beginner) AgentStore {
+	return AgentStore{db: handle}
 }
 
 func (store AgentStore) CreateCredential(ctx context.Context, credential agent.Credential, hash agent.SecretHash) agent.CreateStoreResult {

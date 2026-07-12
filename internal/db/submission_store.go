@@ -14,7 +14,11 @@ type SubmissionStore struct {
 }
 
 func NewSubmissionStore(pool *pgxpool.Pool) SubmissionStore {
-	return SubmissionStore{db: NewPGX(pool)}
+	return NewSubmissionStoreFromHandle(NewPGX(pool))
+}
+
+func NewSubmissionStoreFromHandle(handle Beginner) SubmissionStore {
+	return SubmissionStore{db: handle}
 }
 
 func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID core.SubmissionID, receiptID core.SubmissionReceiptTokenID, receiptHash submission.ReceiptTokenHash, command submission.SubmitCommand, state submission.State, outcome submission.ValidationOutcome, sensitiveFields []submission.SensitiveField) submission.CreateSubmissionStoreResult {

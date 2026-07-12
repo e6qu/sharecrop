@@ -15,7 +15,11 @@ type OrgStore struct {
 }
 
 func NewOrgStore(pool *pgxpool.Pool) OrgStore {
-	return OrgStore{db: NewPGX(pool)}
+	return NewOrgStoreFromHandle(NewPGX(pool))
+}
+
+func NewOrgStoreFromHandle(handle Beginner) OrgStore {
+	return OrgStore{db: handle}
 }
 
 func (store OrgStore) CreateOrganization(ctx context.Context, organizationID core.OrganizationID, name org.OrganizationName, createdBy core.UserID, membershipID core.OrganizationMembershipID) org.CreateOrganizationStoreResult {

@@ -16,7 +16,11 @@ type OrgCredentialStore struct {
 }
 
 func NewOrgCredentialStore(pool *pgxpool.Pool) OrgCredentialStore {
-	return OrgCredentialStore{db: NewPGX(pool)}
+	return NewOrgCredentialStoreFromHandle(NewPGX(pool))
+}
+
+func NewOrgCredentialStoreFromHandle(handle Beginner) OrgCredentialStore {
+	return OrgCredentialStore{db: handle}
 }
 
 func (store OrgCredentialStore) CreateCredential(ctx context.Context, credential orgcred.Credential, hash orgcred.SecretHash) orgcred.CreateStoreResult {

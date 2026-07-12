@@ -16,7 +16,11 @@ type ModerationTriageStore struct {
 }
 
 func NewModerationTriageStore(pool *pgxpool.Pool) ModerationTriageStore {
-	return ModerationTriageStore{db: NewPGX(pool)}
+	return NewModerationTriageStoreFromHandle(NewPGX(pool))
+}
+
+func NewModerationTriageStoreFromHandle(handle Beginner) ModerationTriageStore {
+	return ModerationTriageStore{db: handle}
 }
 
 func (store ModerationTriageStore) RecordOpen(ctx context.Context, event audit.Event) httpserver.ModerationTriageMutationResult {

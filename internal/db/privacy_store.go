@@ -19,7 +19,11 @@ type PrivacyStore struct {
 }
 
 func NewPrivacyStore(pool *pgxpool.Pool) PrivacyStore {
-	return PrivacyStore{db: NewPGX(pool)}
+	return NewPrivacyStoreFromHandle(NewPGX(pool))
+}
+
+func NewPrivacyStoreFromHandle(handle Beginner) PrivacyStore {
+	return PrivacyStore{db: handle}
 }
 
 func (store PrivacyStore) Create(ctx context.Context, requester core.UserID, kind string) httpserver.PrivacyMutationResult {
