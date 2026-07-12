@@ -42,10 +42,12 @@ type Stores struct {
 	// SavedQueueViews and PlatformAdmins are RuntimeState services (internal/http),
 	// bridged so the pooled guest shares one Postgres-backed store instead of
 	// per-instance state.
-	SavedQueueViews  httpserver.SavedQueueViewService
-	PlatformAdmins   httpserver.PlatformAdminService
-	ModerationTriage httpserver.ModerationTriageService
-	Privacy          httpserver.PrivacyService
+	SavedQueueViews    httpserver.SavedQueueViewService
+	PlatformAdmins     httpserver.PlatformAdminService
+	ModerationTriage   httpserver.ModerationTriageService
+	Privacy            httpserver.PrivacyService
+	IPRateLimiter      httpserver.RateLimiter
+	SubjectRateLimiter httpserver.RateLimiter
 }
 
 // New builds the full app mux over the given access-token secret and stores.
@@ -75,6 +77,8 @@ func New(secret auth.AccessTokenSecret, stores Stores) http.Handler {
 	runtime.PlatformAdmins = stores.PlatformAdmins
 	runtime.ModerationTriage = stores.ModerationTriage
 	runtime.PrivacyService = stores.Privacy
+	runtime.IPRateLimiter = stores.IPRateLimiter
+	runtime.SubjectRateLimiter = stores.SubjectRateLimiter
 
 	return httpserver.NewWithRuntimeState(
 		fstest.MapFS{},
