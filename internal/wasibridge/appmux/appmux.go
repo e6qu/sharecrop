@@ -42,8 +42,9 @@ type Stores struct {
 	// SavedQueueViews and PlatformAdmins are RuntimeState services (internal/http),
 	// bridged so the pooled guest shares one Postgres-backed store instead of
 	// per-instance state.
-	SavedQueueViews httpserver.SavedQueueViewService
-	PlatformAdmins  httpserver.PlatformAdminService
+	SavedQueueViews  httpserver.SavedQueueViewService
+	PlatformAdmins   httpserver.PlatformAdminService
+	ModerationTriage httpserver.ModerationTriageService
 }
 
 // New builds the full app mux over the given access-token secret and stores.
@@ -71,6 +72,7 @@ func New(secret auth.AccessTokenSecret, stores Stores) http.Handler {
 	runtime.AuditService = audit.NewService(stores.Audit)
 	runtime.SavedQueueViews = stores.SavedQueueViews
 	runtime.PlatformAdmins = stores.PlatformAdmins
+	runtime.ModerationTriage = stores.ModerationTriage
 
 	return httpserver.NewWithRuntimeState(
 		fstest.MapFS{},

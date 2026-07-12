@@ -1,5 +1,27 @@
 # What We Did
 
+The `task/wasi-bridge-moderationtriage` branch bridges the **moderation-triage**
+RuntimeState service - the third of the six the cutover needs. It exercises two
+generator features at once: `RecordOpen(ctx, audit.Event)` takes a type from a
+third package (so the spec sets `extraImports` for internal/audit, as org did for
+auth), and `Update(ctx, UserID, AuditEventID, string, string)` takes two strings
+that the generator disambiguates (`State`/`State2`). One deliberate simplification:
+both the in-memory and db moderation stores read only `event.ID` and
+`event.CreatedAt` from the audit.Event (a moderation report is keyed by the audit
+event that opened it), so the wire carries just those two fields and rebuilds a
+minimal event rather than the whole thing - documented in the codec, and the
+dual-run test would fail if `RecordOpen` ever read another field. Unlike
+platform-admin, moderation `List` is by explicit audit-event-id (not a global
+list), so it can't contaminate other tests in the shared db-checks database.
+`appmux.Stores` gained a `ModerationTriage` field overriding the in-memory
+default; dual-run-verified (record-open / list / update) with a test-only audit
+action so the seed event never collides with scenario-parity. All gates green,
+and the full integration suite passes (checked locally for shared-db
+contamination). Three of six infra services bridged. Nothing about the native
+server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-platformadmin` branch bridges the **platform-admin**
 RuntimeState service - the second of the six infra services the cutover needs,
 and the second-simplest. Its `Grant(ctx, userID, actor)` takes two `core.UserID`

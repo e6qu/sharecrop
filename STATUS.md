@@ -53,7 +53,20 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-platformadmin` — bridge the **platform-admin**
+Active task: `task/wasi-bridge-moderationtriage` — bridge the **moderation-triage**
+RuntimeState service (third of six infra services). Its `RecordOpen` takes an
+`audit.Event` (a third package → `extraImports`), but both the memory and db
+stores read only the event's `ID` and `CreatedAt`, so the wire carries just those
+two and rebuilds a minimal event (documented; the dual-run test would catch it if
+`RecordOpen` grew to read more). `Update` takes two strings (state, note) →
+generator disambiguation. `appmux.Stores` gained a `ModerationTriage` field;
+dual-run-verified (record-open/list/update) and route tests pass. Three of six
+infra services bridged (saved-queue-view, platform-admin, moderation-triage).
+**Remaining**: privacy (codegen-friendly but references `submission.Submission`),
+then the two non-codegen ones (rate limiter, MCP sessions), then the cutover.
+Nothing about the native server or browser demo changes.
+
+Earlier: `task/wasi-bridge-platformadmin` bridged the **platform-admin**
 RuntimeState service (second of six infra services; codegen-friendly). Its `Grant`
 takes two `core.UserID` args, which the generator's repeated-arg disambiguation
 handles (`UserID`/`UserID2`). One wrinkle: the db store takes bootstrap admins, so
