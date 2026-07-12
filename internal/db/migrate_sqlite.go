@@ -4,25 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"sort"
 	"strings"
 )
 
 // MigrateUpSQLite applies the Postgres migrations to a SQLite database for the
-// browser demo, translating each to the SQLite dialect. Statements are split on
-// ";" because database/sql executes one statement per call (the migrations are
-// DDL with no embedded semicolons).
-func MigrateUpSQLite(ctx context.Context, handle *sql.DB, migrationsDir string) error {
-	entries, err := os.ReadDir(migrationsDir)
+// browser demo, translating each to the SQLite dialect. The migrations are read
+// from an fs.FS (a real directory in tests, an embedded FS in the browser).
+// Statements are split on ";" because database/sql executes one statement per
+// call (the migrations are DDL with no embedded semicolons).
+func MigrateUpSQLite(ctx context.Context, handle *sql.DB, migrations fs.FS) error {
+	entries, err := fs.ReadDir(migrations, ".")
 	if err != nil {
 		return err
 	}
 
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+		if entry.IsDir() || path.Ext(entry.Name()) != ".sql" {
 			continue
 		}
 		names = append(names, entry.Name())
@@ -45,8 +46,7 @@ func MigrateUpSQLite(ctx context.Context, handle *sql.DB, migrationsDir string) 
 			continue
 		}
 
-		path := filepath.Join(migrationsDir, name)
-		sqlBytes, err := os.ReadFile(path)
+		sqlBytes, err := fs.ReadFile(migrations, name)
 		if err != nil {
 			return err
 		}

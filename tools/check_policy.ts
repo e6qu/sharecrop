@@ -18,6 +18,9 @@ const boundarySuffixes: string[] = [
   // StringArray implements the standard-library sql.Scanner interface, whose
   // Scan parameter is weakly typed by that interface.
   "/internal/db/stringarray.go",
+  // sqlitex reaches the raw sqlite3.Conn through database/sql's Conn.Raw, whose
+  // callback parameter is weakly typed by the standard library.
+  "/internal/sqlitex/sqlitex.go",
 ];
 
 const weakWildcardToken = "a" + "ny";
