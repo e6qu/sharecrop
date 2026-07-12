@@ -6,38 +6,30 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
-	"github.com/e6qu/sharecrop/internal/auth"
-	"github.com/e6qu/sharecrop/internal/db"
 	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
 )
 
-// TestAuthRouteEndToEndThroughGuest proves an auth-store-touching route runs
-// end to end through the guest: GET /api/users reads the auth store's directory
-// via the auth service, which the guest builds over the bridged auth GuestStore.
-// The response must be byte-identical to the same mux run in-process over the
-// real store, and must contain the seeded user.
-func TestAuthRouteEndToEndThroughGuest(t *testing.T) {
+// TestCreditsRouteEndToEndThroughGuest proves a route backed by a service other
+// than auth/notification runs end to end through the full-graph guest:
+// GET /api/credits/balance reads the ledger balance via the ledger service,
+// which the guest builds over the bridged ledger GuestStore. A freshly created
+// user holds the 100-credit signup grant, so the response must be 200, byte-
+// identical to the native mux, and contain that balance.
+func TestCreditsRouteEndToEndThroughGuest(t *testing.T) {
 	ctx := context.Background()
 	pool := newPool(t)
-	authStore := db.NewAuthStore(pool)
 
-	userID := newUserID(t)
-	email := mustAuthEmail(t, "authroute-"+userID.String()+"@example.com")
-	if _, matched := authStore.CreateUserCredential(ctx, userID, email, mustAuthPasswordHash(t)).(auth.StoreUserAccepted); !matched {
-		t.Fatalf("seed credential rejected")
-	}
-	token := mintAccessToken(t, appRouteSecret, userID)
+	user := createUser(t, pool, "credits-user")
+	token := mintAccessToken(t, appRouteSecret, user)
 	secret := requireAccessTokenSecret(t, appRouteSecret)
 
-	target := "/api/users?query=" + url.QueryEscape(email.String())
 	request := func() *http.Request {
-		req := httptest.NewRequest("GET", target, nil)
+		req := httptest.NewRequest("GET", "/api/credits/balance", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		return req
 	}
@@ -46,7 +38,7 @@ func TestAuthRouteEndToEndThroughGuest(t *testing.T) {
 	nativeMux := appmux.New(secret, appmuxStores(pool))
 	direct := serveDirect(nativeMux, request())
 
-	// Bridge: the app guest, with auth.* dispatched to the same db store.
+	// Bridge: the full-graph app guest, every store dispatched to the same pool.
 	guestWASM, err := compileWASIGuest(t, "github.com/e6qu/sharecrop/cmd/sharecrop-wasi-app-guest")
 	if err != nil {
 		t.Fatalf("compile app guest: %v", err)
@@ -60,7 +52,7 @@ func TestAuthRouteEndToEndThroughGuest(t *testing.T) {
 
 	bridged := serveThroughBridge(t, ctx, host, request())
 
-	if direct.Status != 200 {
+	if direct.Status != http.StatusOK {
 		t.Fatalf("native status = %d, want 200 (body %q)", direct.Status, direct.Body)
 	}
 	if bridged.Status != direct.Status {
@@ -72,7 +64,8 @@ func TestAuthRouteEndToEndThroughGuest(t *testing.T) {
 	if string(bridged.Body) != string(direct.Body) {
 		t.Errorf("body: bridge %q, direct %q", bridged.Body, direct.Body)
 	}
-	if !strings.Contains(string(bridged.Body), userID.String()) {
-		t.Errorf("bridge body did not contain the seeded user %s: %q", userID, bridged.Body)
+	// The bridge read the real signup-grant balance through the ledger service.
+	if !strings.Contains(string(bridged.Body), "100") {
+		t.Errorf("bridge body did not contain the 100-credit signup balance: %q", bridged.Body)
 	}
 }

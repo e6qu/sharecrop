@@ -1,14 +1,14 @@
 // Command sharecrop-wasi-app-guest runs the real internal/http mux inside a
-// wasip1 guest with a live domain service wired in - the step that ties the
-// Phase 3 store bridge to the Phase 4 HTTP hosting. It serves an authenticated,
-// store-touching route (GET /api/notifications): the stateless access-token
-// verifier checks the bearer token (no store), and the notification service is
-// backed by the generated notification GuestStore, whose reads RPC back to the
-// host and hit real Postgres.
+// wasip1 guest with the FULL domain-service graph wired in - the step that ties
+// the store bridge to HTTP hosting for every route, not just a slice. The
+// stateless access-token verifier checks the bearer token in-guest (no store),
+// and all ten domain services are backed by their generated GuestStores, whose
+// calls RPC back to the host and hit real Postgres. RuntimeState services with
+// no dedicated store (rate limiters, MCP sessions, saved queue views, privacy,
+// platform admins, moderation triage) keep their in-memory defaults.
 //
-// Only the notification service is wired; other services are nil, so this guest
-// serves /healthz and the notification routes. Its store calls and its final
-// HTTP response share the same unit-of-work channel with the host.
+// Its store calls and its final HTTP response share the same unit-of-work
+// channel with the host.
 package main
 
 import (
@@ -17,11 +17,19 @@ import (
 	"os"
 
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/wasibridge/agentbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
+	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
+	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/taskbridge"
 )
 
 func main() {
@@ -53,5 +61,16 @@ func buildMux() (http.Handler, error) {
 	if !matched {
 		return nil, fmt.Errorf("SHARECROP_ACCESS_TOKEN_SECRET is missing or invalid")
 	}
-	return appmux.New(secret.Value, authbridge.NewGuestStore(rpc.Invoke), notificationbridge.NewGuestStore(rpc.Invoke)), nil
+	return appmux.New(secret.Value, appmux.Stores{
+		Auth:          authbridge.NewGuestStore(rpc.Invoke),
+		Notification:  notificationbridge.NewGuestStore(rpc.Invoke),
+		Organization:  orgbridge.NewGuestStore(rpc.Invoke),
+		Task:          taskbridge.NewGuestStore(rpc.Invoke),
+		Submission:    submissionbridge.NewGuestStore(rpc.Invoke),
+		Ledger:        ledgerbridge.NewGuestStore(rpc.Invoke),
+		Agent:         agentbridge.NewGuestStore(rpc.Invoke),
+		OrgCredential: orgcredbridge.NewGuestStore(rpc.Invoke),
+		Assets:        assetsbridge.NewGuestStore(rpc.Invoke),
+		Audit:         auditbridge.NewGuestStore(rpc.Invoke),
+	}), nil
 }
