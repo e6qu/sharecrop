@@ -4,8 +4,11 @@ package integration_test
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"testing"
 
+	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/wasibridge/platformadminbridge"
@@ -41,6 +44,11 @@ func TestPlatformAdminBridgeDualRun(t *testing.T) {
 	grantee := createUser(t, pool, "platformadmin-grantee")
 	page := requirePage(t, 50, 0)
 
+	// db-checks shares one Postgres across every integration test, and List
+	// returns all active platform admins globally, so a leaked active grant would
+	// break other tests' counts. Revoke at the end (after the subtests below run).
+	t.Cleanup(func() { _ = dbStore.Revoke(context.Background(), grantee) })
+
 	t.Run("grant through the bridge makes the user an admin", func(t *testing.T) {
 		if _, matched := bridgeStore.Grant(ctx, grantee, granter).(httpserver.PlatformAdminSaved); !matched {
 			t.Fatalf("bridge Grant did not save")
@@ -53,19 +61,34 @@ func TestPlatformAdminBridgeDualRun(t *testing.T) {
 		}
 	})
 
-	t.Run("list matches a direct call", func(t *testing.T) {
+	t.Run("list matches a direct call and contains the granted admin", func(t *testing.T) {
 		viaBridge := requireAdminsListed(t, bridgeStore.List(ctx, page))
 		direct := requireAdminsListed(t, dbStore.List(ctx, page))
-		if len(viaBridge) != len(direct) || len(viaBridge) != 1 {
-			t.Fatalf("admin counts: bridge %d, direct %d, want 1", len(viaBridge), len(direct))
+		if adminsKey(viaBridge) != adminsKey(direct) {
+			t.Errorf("admin list: bridge %s, direct %s", adminsKey(viaBridge), adminsKey(direct))
 		}
-		if viaBridge[0].UserID != direct[0].UserID || viaBridge[0].UserID != grantee {
-			t.Errorf("listed admin = %s, want %s", viaBridge[0].UserID, grantee)
-		}
-		if viaBridge[0].Source != direct[0].Source {
-			t.Errorf("admin source: bridge %q, direct %q", viaBridge[0].Source, direct[0].Source)
+		if !containsAdmin(viaBridge, grantee) {
+			t.Errorf("bridge list did not contain the granted admin %s", grantee)
 		}
 	})
+}
+
+func adminsKey(records []httpserver.PlatformAdminRecord) string {
+	ids := make([]string, 0, len(records))
+	for index := range records {
+		ids = append(ids, records[index].UserID.String()+":"+records[index].Source)
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, ",")
+}
+
+func containsAdmin(records []httpserver.PlatformAdminRecord, userID core.UserID) bool {
+	for index := range records {
+		if records[index].UserID == userID {
+			return true
+		}
+	}
+	return false
 }
 
 func requireAdminsListed(t *testing.T, result httpserver.PlatformAdminListResult) []httpserver.PlatformAdminRecord {
