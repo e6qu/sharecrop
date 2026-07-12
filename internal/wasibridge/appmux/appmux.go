@@ -39,6 +39,9 @@ type Stores struct {
 	OrgCredential orgcred.Store
 	Assets        assets.Store
 	Audit         audit.Store
+	// SavedQueueViews is a RuntimeState service (internal/http), bridged so the
+	// pooled guest shares one Postgres-backed store instead of per-instance state.
+	SavedQueueViews httpserver.SavedQueueViewService
 }
 
 // New builds the full app mux over the given access-token secret and stores.
@@ -64,6 +67,7 @@ func New(secret auth.AccessTokenSecret, stores Stores) http.Handler {
 	runtime := httpserver.DefaultRuntimeState(map[string]bool{})
 	runtime.NotificationService = notification.NewService(stores.Notification)
 	runtime.AuditService = audit.NewService(stores.Audit)
+	runtime.SavedQueueViews = stores.SavedQueueViews
 
 	return httpserver.NewWithRuntimeState(
 		fstest.MapFS{},

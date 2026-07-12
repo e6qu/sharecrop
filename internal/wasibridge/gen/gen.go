@@ -83,6 +83,7 @@ func Targets() []Target {
 		{Key: "ledger", SourceDir: "internal/ledger", OutputPath: "internal/wasibridge/ledgerbridge/bridge_gen.go"},
 		{Key: "org", SourceDir: "internal/org", OutputPath: "internal/wasibridge/orgbridge/bridge_gen.go"},
 		{Key: "task", SourceDir: "internal/task", OutputPath: "internal/wasibridge/taskbridge/bridge_gen.go"},
+		{Key: "savedqueueview", SourceDir: "internal/http", OutputPath: "internal/wasibridge/savedqueueviewbridge/bridge_gen.go"},
 	}
 }
 
@@ -363,6 +364,25 @@ var specs = map[string]storeSpec{
 			"task.ChangeReservationStateStoreResult": {goType: "task.ChangeReservationStateStoreResult", wireType: "reservationResultWire", encodeFn: "encodeChangeReservationStateResult", decodeFn: "decodeChangeReservationStateResult", rejectedType: "task.ChangeReservationStateStoreRejected"},
 			"task.ListReservationsStoreResult":       {goType: "task.ListReservationsStoreResult", wireType: "reservationsResultWire", encodeFn: "encodeListReservationsResult", decodeFn: "decodeListReservationsResult", rejectedType: "task.ListReservationsStoreRejected"},
 			"task.SubmissionEligibilityStoreResult":  {goType: "task.SubmissionEligibilityStoreResult", wireType: "acceptedRejectedWire", encodeFn: "encodeSubmissionEligibilityResult", decodeFn: "decodeSubmissionEligibilityResult", rejectedType: "task.SubmissionEligibilityRejected"},
+		},
+	},
+	// savedqueueview bridges an internal/http RuntimeState service (not a domain
+	// Store) so the mux running in a pooled guest reaches shared Postgres state
+	// instead of per-instance in-memory state. internal/http is package httpserver.
+	"savedqueueview": {
+		bridgePackage: "savedqueueviewbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/http",
+		domainPackage: "httpserver",
+		interfaceName: "SavedQueueViewService",
+		wirePrefix:    "savedqueueview",
+		argCodecs: map[string]argCodec{
+			"core.UserID":               userIDArg(),
+			"string":                    {field: "Scope", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
+			"httpserver.SavedQueueView": {field: "View", goType: "httpserver.SavedQueueView", wireType: "savedQueueViewWire", encodeFn: "encodeView", decodeFn: "decodeView"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"httpserver.SavedQueueViewsListResult":    {goType: "httpserver.SavedQueueViewsListResult", wireType: "viewsResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "httpserver.SavedQueueViewsListRejected"},
+			"httpserver.SavedQueueViewMutationResult": {goType: "httpserver.SavedQueueViewMutationResult", wireType: "viewResultWire", encodeFn: "encodeMutationResult", decodeFn: "decodeMutationResult", rejectedType: "httpserver.SavedQueueViewSaveRejected"},
 		},
 	},
 }
