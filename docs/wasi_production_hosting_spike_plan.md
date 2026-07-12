@@ -540,13 +540,15 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   once per instance, not per request. Two concurrency tests prove no cross-talk
   under load (144 store units through 4 reused instances; 16 concurrent HTTP
   requests through the pooled app host), each unit seeing only its own data.
-- **The production cutover is DONE - the effort is complete.** `cmd/sharecrop
-  serve` runs production through the WASI guest when `SHARECROP_WASI_GUEST` points
-  at a compiled app-guest wasm (`make wasi-app-guest`): it pools that guest
-  (`rpc.Pool`, `SHARECROP_WASI_POOL_SIZE`/GOMAXPROCS), dispatches store calls to
-  Postgres via `storehost`, routes `/api/`, `/mcp`, `/healthz` to the guest, and
-  serves static assets + the SPA shell host-side. Unset, `serve` keeps the native
-  mux, so the cutover is opt-in and reversible. Verified by an integration test
+- **The production cutover is DONE and WASI hosting is now the DEFAULT.**
+  `cmd/sharecrop serve` runs production through the WASI guest embedded in the
+  binary (`internal/wasiguest`, built by `make wasi-app-guest` as part of `make
+  build`): it pools that guest (`rpc.Pool`, `SHARECROP_WASI_POOL_SIZE`/GOMAXPROCS),
+  dispatches store calls to Postgres via `storehost`, routes `/api/`, `/mcp`,
+  `/healthz` to the guest, and serves static assets + the SPA shell host-side. Set
+  `SHARECROP_WASI_MODE=native` to run the in-process mux, or `SHARECROP_WASI_GUEST=
+  <path>` to override the embedded guest; a binary built without the guest runs
+  native, and a present-but-broken guest fails loudly. Verified by an integration test
   (both halves of the split) and a live smoke test of the real `serve` binary
   (`/healthz` 200 through the guest pool against Postgres, `/` 200 from host
   static). **Production can now run the same compiled WASM artifact as the browser

@@ -2,7 +2,6 @@
   "use strict";
 
   const STORAGE_PREFIX = "sharecrop-wasm:";
-  const COUNTER_PREFIX = "sharecrop-wasm-counter:";
 
   function requiredFunction(name) {
     const value = window[name];
@@ -58,22 +57,6 @@
         window.localStorage.removeItem(storageKey(key));
         return true;
       },
-      now() {
-        return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-      },
-      nextID(kind) {
-        if (typeof kind !== "string" || kind.trim() === "") {
-          throw new Error("WASM host id kind is required");
-        }
-        const key = COUNTER_PREFIX + kind;
-        const current = Number(window.localStorage.getItem(key) || "0");
-        if (!Number.isInteger(current) || current < 0) {
-          throw new Error("WASM host id counter is invalid: " + kind);
-        }
-        const next = current + 1;
-        window.localStorage.setItem(key, String(next));
-        return kind + "-" + next;
-      },
     };
   }
 
@@ -81,10 +64,7 @@
     const remove = [];
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = window.localStorage.key(index);
-      if (
-        key &&
-        (key.startsWith(STORAGE_PREFIX) || key.startsWith(COUNTER_PREFIX))
-      ) {
+      if (key && key.startsWith(STORAGE_PREFIX)) {
         remove.push(key);
       }
     }
