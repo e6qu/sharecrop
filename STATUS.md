@@ -53,7 +53,21 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-moderationtriage` — bridge the **moderation-triage**
+Active task: `task/wasi-bridge-privacy` — bridge the **privacy** RuntimeState
+service (fourth and last codegen-friendly infra service; 6 methods, 3 result
+unions). `RecordSensitiveFieldAccess` takes a `submission.Submission`
+(→ `extraImports`), but the store reads only the submission's ID and each
+sensitive field's Path, so the wire carries a minimal submission (documented).
+`Resolve` takes two strings → generator disambiguation. `appmux.Stores` gained a
+`Privacy` field; dual-run-verified (create/list/resolve/record-access/retention)
+and route tests pass; full integration suite run locally (no contamination).
+**Four of six infra services bridged.** Remaining: the two that don't fit the
+codegen — **rate limiter** (`Allow(key) bool`, no ctx) and **MCP session
+persistence** (multi-return tuples) — as hand-written bridges or host-side, then
+the production cutover of `cmd/sharecrop serve`. Nothing about the native server
+or browser demo changes.
+
+Earlier: `task/wasi-bridge-moderationtriage` bridged the **moderation-triage**
 RuntimeState service (third of six infra services). Its `RecordOpen` takes an
 `audit.Event` (a third package → `extraImports`), but both the memory and db
 stores read only the event's `ID` and `CreatedAt`, so the wire carries just those

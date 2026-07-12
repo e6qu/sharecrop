@@ -24,6 +24,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/platformadminbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/privacybridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/savedqueueviewbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
@@ -64,6 +65,7 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	savedQueueViewStore := db.NewSavedQueueViewStore(pool)
 	platformAdminStore := db.NewPlatformAdminStore(pool, bootstrapAdmins())
 	moderationTriageStore := db.NewModerationTriageStore(pool)
+	privacyStore := db.NewPrivacyStore(pool)
 
 	return func(ctx context.Context, method string, args []byte) ([]byte, error) {
 		store, _, _ := strings.Cut(method, ".")
@@ -94,6 +96,8 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 			return platformadminbridge.Dispatch(ctx, platformAdminStore, method, args)
 		case "moderationtriage":
 			return moderationtriagebridge.Dispatch(ctx, moderationTriageStore, method, args)
+		case "privacy":
+			return privacybridge.Dispatch(ctx, privacyStore, method, args)
 		default:
 			return nil, fmt.Errorf("no bridge for method %q", method)
 		}

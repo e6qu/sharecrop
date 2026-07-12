@@ -35,6 +35,7 @@ func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
 		SavedQueueViews:  db.NewSavedQueueViewStore(pool),
 		PlatformAdmins:   db.NewPlatformAdminStore(pool, map[string]bool{}),
 		ModerationTriage: db.NewModerationTriageStore(pool),
+		Privacy:          db.NewPrivacyStore(pool),
 	}
 }
 
