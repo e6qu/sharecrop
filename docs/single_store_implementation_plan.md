@@ -105,6 +105,27 @@ a small forked exportable memdb VFS (read the page buffer back out) → snapshot
 to IndexedDB via `syscall/js`; or accept demo-resets-on-reload. Decided in the
 demo-cutover phase (Px). Not a feasibility blocker.
 
+## Pm dialect — de-risked concretely
+
+Using `ncruces/go-sqlite3` with the default `_timefmt` (read = auto-detect,
+write = RFC3339Nano):
+
+- **Timestamps (the crux):** ncruces auto-decodes a text column into `time.Time`
+  **iff the column's declared type is time-ish** (`timestamptz`, `timestamp`,
+  `datetime`, `date`) — a `text` column does not decode. Roundtrip of a Go
+  `time.Time` is exact. So the SQLite DDL **keeps `timestamptz`** (SQLite accepts
+  arbitrary type names) rather than mapping it to `text`. `now()` translates to
+  `strftime('%Y-%m-%dT%H:%M:%fZ','now')` so DB-side and Go-provided timestamps
+  share one RFC3339 format and sort consistently.
+- **DDL translation:** `uuid`/`jsonb`/`json` → `text`; keep `timestamptz`;
+  `default now()` → `default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))`; keep
+  `references` / `check` / indexes (FK enforcement left off — pragma default).
+- **Statement translation:** `now()` → the strftime form; strip `::text` /
+  `::jsonb` casts; strip `for update` (SQLite is single-writer); `jsonb_agg` /
+  `jsonb_build_object` → `json_group_array` / `json_object` (submissions only).
+- Already handled by the shared handle: `$N` placeholders, `NamedArgs`
+  (→ `sql.Named`), `ErrNoRows` (← `sql.ErrNoRows`).
+
 ## Phased program (one PR at a time, prod stays green throughout)
 
 - **P0 — abstraction + pilot store.** Add the `Querier/Tx/Rows` interfaces + pgx
