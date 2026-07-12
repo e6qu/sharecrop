@@ -8,20 +8,19 @@ import (
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ModerationTriageStore struct {
-	pool *pgxpool.Pool
+	db Querier
 }
 
 func NewModerationTriageStore(pool *pgxpool.Pool) ModerationTriageStore {
-	return ModerationTriageStore{pool: pool}
+	return ModerationTriageStore{db: NewPGX(pool)}
 }
 
 func (store ModerationTriageStore) RecordOpen(ctx context.Context, event audit.Event) httpserver.ModerationTriageMutationResult {
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		insert into moderation_report_triage (report_audit_event_id, state, resolution_note, created_at, updated_at)
 		values ($1, 'open', '', $2, $2)
 	`, event.ID.String(), event.CreatedAt)
@@ -40,12 +39,12 @@ func (store ModerationTriageStore) List(ctx context.Context, ids []core.AuditEve
 		var updatedBy string
 		var createdAt time.Time
 		var updatedAt time.Time
-		if err := store.pool.QueryRow(ctx, `
+		if err := store.db.QueryRow(ctx, `
 			select report_audit_event_id::text, state, resolution_note, coalesce(updated_by_user_id::text, ''), created_at, updated_at
 			from moderation_report_triage
 			where report_audit_event_id = $1
 		`, id.String()).Scan(&rawID, &state, &note, &updatedBy, &createdAt, &updatedAt); err != nil {
-			if err == pgx.ErrNoRows {
+			if err == ErrNoRows {
 				return httpserver.ModerationTriageListRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "moderation report triage state was not found")}
 			}
 			return httpserver.ModerationTriageListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan moderation report triage failed")}
@@ -71,13 +70,13 @@ func (store ModerationTriageStore) Update(ctx context.Context, actor core.UserID
 	var updatedBy string
 	var createdAt time.Time
 	var updatedAt time.Time
-	if err := store.pool.QueryRow(ctx, `
+	if err := store.db.QueryRow(ctx, `
 		update moderation_report_triage
 		set state = $2, resolution_note = $3, updated_by_user_id = $4, updated_at = now()
 		where report_audit_event_id = $1
 		returning report_audit_event_id::text, state, resolution_note, coalesce(updated_by_user_id::text, ''), created_at, updated_at
 	`, reportID.String(), state, strings.TrimSpace(note), actor.String()).Scan(&rawID, &storedState, &storedNote, &updatedBy, &createdAt, &updatedAt); err != nil {
-		if err == pgx.ErrNoRows {
+		if err == ErrNoRows {
 			return httpserver.ModerationTriageMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "moderation report was not found")}
 		}
 		return httpserver.ModerationTriageMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update moderation report triage failed")}

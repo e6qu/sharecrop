@@ -6,20 +6,19 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AuditStore struct {
-	pool *pgxpool.Pool
+	db Querier
 }
 
 func NewAuditStore(pool *pgxpool.Pool) AuditStore {
-	return AuditStore{pool: pool}
+	return AuditStore{db: NewPGX(pool)}
 }
 
 func (store AuditStore) Record(ctx context.Context, event audit.Event) audit.RecordResult {
-	_, err := store.pool.Exec(ctx, `
+	_, err := store.db.Exec(ctx, `
 		insert into audit_events (id, actor_user_id, action, subject_kind, subject_id, metadata_json, created_at)
 		values ($1, $2, $3, $4, $5, $6::jsonb, $7)
 	`, event.ID.String(), event.ActorUserID.String(), event.Action.String(), event.Subject.Kind, event.Subject.ID, event.Metadata.JSON, event.CreatedAt)
@@ -37,12 +36,12 @@ func (store AuditStore) Get(ctx context.Context, id core.AuditEventID) audit.Get
 	var subjectID string
 	var metadataJSON string
 	var createdAt time.Time
-	if err := store.pool.QueryRow(ctx, `
+	if err := store.db.QueryRow(ctx, `
 		select id::text, actor_user_id::text, action, subject_kind, subject_id, metadata_json::text, created_at
 		from audit_events
 		where id = $1
 	`, id.String()).Scan(&rawID, &rawActorID, &action, &subjectKind, &subjectID, &metadataJSON, &createdAt); err != nil {
-		if err == pgx.ErrNoRows {
+		if err == ErrNoRows {
 			return audit.GetRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "audit event was not found")}
 		}
 		return audit.GetRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "get audit event failed")}
@@ -57,7 +56,7 @@ func (store AuditStore) Get(ctx context.Context, id core.AuditEventID) audit.Get
 
 func (store AuditStore) List(ctx context.Context, filters audit.ListFilters, page core.Page) audit.ListResult {
 	where := ""
-	arguments := pgx.NamedArgs{"limit": page.Limit(), "offset": page.Offset()}
+	arguments := NamedArgs{"limit": page.Limit(), "offset": page.Offset()}
 
 	switch filter := filters.Action.(type) {
 	case audit.ActionEquals:
@@ -84,7 +83,7 @@ func (store AuditStore) List(ctx context.Context, filters audit.ListFilters, pag
 		return audit.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "audit subject id filter is invalid")}
 	}
 
-	rows, err := store.pool.Query(ctx, `
+	rows, err := store.db.Query(ctx, `
 		select id::text, actor_user_id::text, action, subject_kind, subject_id, metadata_json::text, created_at
 		from audit_events
 		`+where+`
@@ -134,7 +133,7 @@ func (auditEventAccepted) auditEventResult() {}
 
 func (auditEventRejected) auditEventResult() {}
 
-func scanAuditEvent(rows pgx.Rows) auditEventResult {
+func scanAuditEvent(rows Rows) auditEventResult {
 	var rawID string
 	var rawActorID string
 	var action string
