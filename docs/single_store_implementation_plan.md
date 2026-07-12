@@ -138,6 +138,28 @@ write = RFC3339Nano):
   fails, stop and reconsider before porting further.
 - **P1…Pn — port each remaining store** off `*pgxpool.Pool`/`pgx.Tx` to the
   abstraction (prod-only, mechanical, green each PR).
+### Pm.2 store-by-store dialect validation (in progress)
+
+SQLite-only round-trip tests (FK off, struct-literal construction in `package
+db`) confirm the risky translations per store:
+
+- **Verified:** notification (now/casts/returning/`$N`→`?N`/timestamp
+  round-trip), audit (`NamedArgs` `@limit`/`@offset`/`@action`), saved-queue-view
+  (`on conflict do update` + `excluded` + inline CHECK enforcement).
+- **json aggregation:** `json_group_array(json_object(...) order by ...)` works
+  (SQLite 3.44+), so `jsonb_agg`/`jsonb_build_object` translate cleanly.
+- **Remaining dialect gaps (submission + a few stores), Pm.2b:**
+  - `ilike` → `like` (SQLite LIKE is case-insensitive for ASCII) — 3 sites.
+  - `X at time zone 'UTC'` → strip; `to_char(X, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
+    → `strftime('%Y-%m-%dT%H:%M:%SZ', X)` — 2 sites (submission sensitive
+    fields).
+  - `array_agg(x)` → `json_group_array(x)` (check scan target) — 4 sites.
+  - `encode(content, 'base64')` — no SQLite builtin; register a custom `encode`
+    scalar via ncruces `CreateFunction` in a connection init hook. This open+
+    register helper must live in a separate ncruces-importing package (not
+    `package db`) so production keeps linking zero ncruces packages.
+  - Then a submission-store SQLite test covering the full aggregation read path.
+
 - **Pm — sqlite adapter + dialect + sqlite migrations + dual-run gate.** Add the
   sqlite adapter and dialect translator; generate/maintain the SQLite migration
   set. A dual-run test (mirroring the existing bridge dual-run harness) asserts
