@@ -19,6 +19,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/mcpsessionbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/moderationtriagebridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
@@ -74,6 +75,8 @@ func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 		return privacybridge.Dispatch(ctx, privacybridge.NewGuestStore(rpc.Invoke), method, args)
 	case "ratelimit":
 		return ratelimitbridge.Dispatch(ctx, ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "ip"), ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "subject"), method, args)
+	case "mcpsession":
+		return mcpsessionbridge.Dispatch(ctx, mcpsessionbridge.NewGuestMCPSessionPersistence(rpc.Invoke), method, args)
 	default:
 		return nil, fmt.Errorf("no bridge for method %q", method)
 	}

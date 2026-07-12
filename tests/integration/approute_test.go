@@ -39,6 +39,7 @@ func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
 		Privacy:            db.NewPrivacyStore(pool),
 		IPRateLimiter:      db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
 		SubjectRateLimiter: db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
+		MCPSessions:        db.NewMCPSessionStore(pool),
 	}
 }
 

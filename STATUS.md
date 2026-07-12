@@ -53,7 +53,24 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-ratelimit` — bridge the **rate limiter** (fifth of
+Active task: `task/wasi-bridge-mcpsession` — bridge **MCP session persistence**,
+the **sixth and last** RuntimeState infra service (hand-written: its methods
+return multi-value tuples - `(bool, error)`, `(string, []byte, error)`,
+`([]string, [][]byte, error)` - which the codegen doesn't model). MCP Streamable
+HTTP sessions and their replay events must be shared across every request, so a
+pooled guest reaches one Postgres store on the host. `internal/wasibridge/mcpsessionbridge`
+carries all 7 methods (per-method args/result structs with the return values +
+an error string). `appmux.Stores` gained an `MCPSessions` field, and `appmux.New`
+wraps it with `httpserver.NewPersistedMCPHTTPSessionStore`. Dual-run-verified
+(create / count / append-event / list-events / touch / close). **With this, ALL
+SIX RuntimeState infra services are bridged - appmux no longer relies on any
+in-memory RuntimeState state, so the production cutover is unblocked.** **Next
+and final**: move `cmd/sharecrop serve` onto the WASI host (embed the app-guest
+wasm, serve via `rpc.Pool` + `httpbridge.Handler` + `storehost.Dispatcher`), so
+production runs the same compiled WASM artifact as the demo. Nothing about the
+native server or browser demo changes.
+
+Earlier: `task/wasi-bridge-ratelimit` bridged the **rate limiter** (fifth of
 six infra services; the first HAND-WRITTEN bridge, not codegen: `Allow(key) bool`
 has no ctx and a bare bool return, which the generator doesn't model).
 `internal/wasibridge/ratelimitbridge` has a `GuestRateLimiter` (implements

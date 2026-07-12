@@ -20,6 +20,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/mcpsessionbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/moderationtriagebridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
@@ -70,6 +71,7 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	privacyStore := db.NewPrivacyStore(pool)
 	ipRateLimiter := db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec)
 	subjectRateLimiter := db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec)
+	mcpSessionStore := db.NewMCPSessionStore(pool)
 
 	return func(ctx context.Context, method string, args []byte) ([]byte, error) {
 		store, _, _ := strings.Cut(method, ".")
@@ -104,6 +106,8 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 			return privacybridge.Dispatch(ctx, privacyStore, method, args)
 		case "ratelimit":
 			return ratelimitbridge.Dispatch(ctx, ipRateLimiter, subjectRateLimiter, method, args)
+		case "mcpsession":
+			return mcpsessionbridge.Dispatch(ctx, mcpSessionStore, method, args)
 		default:
 			return nil, fmt.Errorf("no bridge for method %q", method)
 		}

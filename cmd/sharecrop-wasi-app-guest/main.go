@@ -24,6 +24,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/mcpsessionbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/moderationtriagebridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/notificationbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
@@ -76,5 +77,6 @@ func buildMux() (http.Handler, error) {
 		Privacy:            privacybridge.NewGuestStore(rpc.Invoke),
 		IPRateLimiter:      ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "ip"),
 		SubjectRateLimiter: ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "subject"),
+		MCPSessions:        mcpsessionbridge.NewGuestMCPSessionPersistence(rpc.Invoke),
 	}), nil
 }
