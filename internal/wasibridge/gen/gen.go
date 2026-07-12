@@ -86,6 +86,7 @@ func Targets() []Target {
 		{Key: "savedqueueview", SourceDir: "internal/http", OutputPath: "internal/wasibridge/savedqueueviewbridge/bridge_gen.go"},
 		{Key: "platformadmin", SourceDir: "internal/http", OutputPath: "internal/wasibridge/platformadminbridge/bridge_gen.go"},
 		{Key: "moderationtriage", SourceDir: "internal/http", OutputPath: "internal/wasibridge/moderationtriagebridge/bridge_gen.go"},
+		{Key: "privacy", SourceDir: "internal/http", OutputPath: "internal/wasibridge/privacybridge/bridge_gen.go"},
 	}
 }
 
@@ -425,6 +426,28 @@ var specs = map[string]storeSpec{
 		resultCodecs: map[string]resultCodec{
 			"httpserver.ModerationTriageMutationResult": {goType: "httpserver.ModerationTriageMutationResult", wireType: "recordResultWire", encodeFn: "encodeMutationResult", decodeFn: "decodeMutationResult", rejectedType: "httpserver.ModerationTriageMutationRejected"},
 			"httpserver.ModerationTriageListResult":     {goType: "httpserver.ModerationTriageListResult", wireType: "recordsResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "httpserver.ModerationTriageListRejected"},
+		},
+	},
+	// privacy bridges the last codegen-friendly internal/http RuntimeState service.
+	// RecordSensitiveFieldAccess takes a submission.Submission (a third package, so
+	// extraImports), and Resolve takes two strings which the generator disambiguates.
+	"privacy": {
+		bridgePackage: "privacybridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/http",
+		domainPackage: "httpserver",
+		interfaceName: "PrivacyService",
+		wirePrefix:    "privacy",
+		extraImports:  []string{"github.com/e6qu/sharecrop/internal/submission"},
+		argCodecs: map[string]argCodec{
+			"core.UserID":           userIDArg(),
+			"core.Page":             pageArg(),
+			"string":                {field: "Text", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
+			"submission.Submission": {field: "Submission", goType: "submission.Submission", wireType: "submissionWire", encodeFn: "encodeSubmission", decodeFn: "decodeSubmission"},
+		},
+		resultCodecs: map[string]resultCodec{
+			"httpserver.PrivacyMutationResult":  {goType: "httpserver.PrivacyMutationResult", wireType: "recordResultWire", encodeFn: "encodeMutationResult", decodeFn: "decodeMutationResult", rejectedType: "httpserver.PrivacyRequestMutationRejected"},
+			"httpserver.PrivacyListResult":      {goType: "httpserver.PrivacyListResult", wireType: "recordsResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "httpserver.PrivacyRequestListRejected"},
+			"httpserver.PrivacyRetentionResult": {goType: "httpserver.PrivacyRetentionResult", wireType: "retentionResultWire", encodeFn: "encodeRetentionResult", decodeFn: "decodeRetentionResult", rejectedType: "httpserver.PrivacyRetentionRejected"},
 		},
 	},
 }

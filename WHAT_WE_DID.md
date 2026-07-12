@@ -1,5 +1,27 @@
 # What We Did
 
+The `task/wasi-bridge-privacy` branch bridges the **privacy** RuntimeState
+service - the fourth and last of the codegen-friendly infra services, and the
+largest (6 methods, 3 result unions). Like moderation-triage it takes a
+cross-package type - `RecordSensitiveFieldAccess(ctx, UserID, submission.Submission)`
+- so the spec sets `extraImports` for internal/submission, and `Resolve(ctx,
+string, string)` gets the two-string disambiguation. And like moderation it uses
+a minimal codec for the heavy cross-package type: the store reads only the
+submission's ID and each sensitive field's Path (it records one access event per
+field), so the wire carries `{id, sensitive_field_paths}` and rebuilds a minimal
+submission rather than duplicating submissionbridge's full codec - documented,
+and the dual-run test would catch it if the store read more. `appmux.Stores`
+gained a `Privacy` field overriding the in-memory default. Dual-run-verified
+across all six methods (create / list-for-requester / resolve / record-access /
+run-retention), with scoped-not-global list assertions so nothing contaminates
+the shared db-checks database, and the full integration suite was run locally to
+confirm. Four of six infra services are now bridged; the last two - the rate
+limiter (`Allow(key) bool`, no ctx) and MCP session persistence (multi-return
+tuples) - don't fit the codegen and are next. All gates green. Nothing about the
+native server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-moderationtriage` branch bridges the **moderation-triage**
 RuntimeState service - the third of the six the cutover needs. It exercises two
 generator features at once: `RecordOpen(ctx, audit.Event)` takes a type from a

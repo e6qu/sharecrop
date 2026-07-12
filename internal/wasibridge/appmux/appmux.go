@@ -45,6 +45,7 @@ type Stores struct {
 	SavedQueueViews  httpserver.SavedQueueViewService
 	PlatformAdmins   httpserver.PlatformAdminService
 	ModerationTriage httpserver.ModerationTriageService
+	Privacy          httpserver.PrivacyService
 }
 
 // New builds the full app mux over the given access-token secret and stores.
@@ -73,6 +74,7 @@ func New(secret auth.AccessTokenSecret, stores Stores) http.Handler {
 	runtime.SavedQueueViews = stores.SavedQueueViews
 	runtime.PlatformAdmins = stores.PlatformAdmins
 	runtime.ModerationTriage = stores.ModerationTriage
+	runtime.PrivacyService = stores.Privacy
 
 	return httpserver.NewWithRuntimeState(
 		fstest.MapFS{},

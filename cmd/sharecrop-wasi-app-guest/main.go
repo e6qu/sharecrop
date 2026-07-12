@@ -29,6 +29,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/platformadminbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/privacybridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/savedqueueviewbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
@@ -71,5 +72,6 @@ func buildMux() (http.Handler, error) {
 		SavedQueueViews:  savedqueueviewbridge.NewGuestStore(rpc.Invoke),
 		PlatformAdmins:   platformadminbridge.NewGuestStore(rpc.Invoke),
 		ModerationTriage: moderationtriagebridge.NewGuestStore(rpc.Invoke),
+		Privacy:          privacybridge.NewGuestStore(rpc.Invoke),
 	}), nil
 }
