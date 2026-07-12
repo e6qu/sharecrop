@@ -84,6 +84,7 @@ func Targets() []Target {
 		{Key: "org", SourceDir: "internal/org", OutputPath: "internal/wasibridge/orgbridge/bridge_gen.go"},
 		{Key: "task", SourceDir: "internal/task", OutputPath: "internal/wasibridge/taskbridge/bridge_gen.go"},
 		{Key: "savedqueueview", SourceDir: "internal/http", OutputPath: "internal/wasibridge/savedqueueviewbridge/bridge_gen.go"},
+		{Key: "platformadmin", SourceDir: "internal/http", OutputPath: "internal/wasibridge/platformadminbridge/bridge_gen.go"},
 	}
 }
 
@@ -383,6 +384,24 @@ var specs = map[string]storeSpec{
 		resultCodecs: map[string]resultCodec{
 			"httpserver.SavedQueueViewsListResult":    {goType: "httpserver.SavedQueueViewsListResult", wireType: "viewsResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "httpserver.SavedQueueViewsListRejected"},
 			"httpserver.SavedQueueViewMutationResult": {goType: "httpserver.SavedQueueViewMutationResult", wireType: "viewResultWire", encodeFn: "encodeMutationResult", decodeFn: "decodeMutationResult", rejectedType: "httpserver.SavedQueueViewSaveRejected"},
+		},
+	},
+	// platformadmin bridges another internal/http RuntimeState service. Grant has
+	// two core.UserID arguments, so the generator suffixes the repeated field.
+	"platformadmin": {
+		bridgePackage: "platformadminbridge",
+		domainImport:  "github.com/e6qu/sharecrop/internal/http",
+		domainPackage: "httpserver",
+		interfaceName: "PlatformAdminService",
+		wirePrefix:    "platformadmin",
+		argCodecs: map[string]argCodec{
+			"core.UserID": userIDArg(),
+			"core.Page":   pageArg(),
+		},
+		resultCodecs: map[string]resultCodec{
+			"httpserver.PlatformAdminCheckResult":    {goType: "httpserver.PlatformAdminCheckResult", wireType: "checkResultWire", encodeFn: "encodeCheckResult", decodeFn: "decodeCheckResult", rejectedType: "httpserver.PlatformAdminDenied"},
+			"httpserver.PlatformAdminListResult":     {goType: "httpserver.PlatformAdminListResult", wireType: "recordsResultWire", encodeFn: "encodeListResult", decodeFn: "decodeListResult", rejectedType: "httpserver.PlatformAdminListRejected"},
+			"httpserver.PlatformAdminMutationResult": {goType: "httpserver.PlatformAdminMutationResult", wireType: "recordResultWire", encodeFn: "encodeMutationResult", decodeFn: "decodeMutationResult", rejectedType: "httpserver.PlatformAdminMutationRejected"},
 		},
 	},
 }
