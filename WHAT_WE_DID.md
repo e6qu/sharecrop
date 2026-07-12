@@ -1,5 +1,34 @@
 # What We Did
 
+The `task/wasi-bridge-savedqueueview` branch begins bridging the **RuntimeState
+infra services** so a faithful production cutover is possible. The prior work
+bridged the ten domain stores and wired the full mux into a pooled guest, but the
+mux also needs six RuntimeState services (rate limiters, MCP sessions, saved
+queue views, privacy, platform admins, moderation triage) that `cmd/sharecrop
+serve` backs with **db stores** while `appmux` used **in-memory** versions. Under
+pooling that means per-instance state (inconsistent rate limits, unfindable MCP
+sessions, etc.) - a regression. So these must be bridged too. This branch does
+the first, `SavedQueueViewService`, and establishes the pattern: the bridge
+codegen now targets an interface in `internal/http` (package `httpserver`) rather
+than a domain package - `gen.Targets()` points at `internal/http`, the spec's
+`interfaceName` is `SavedQueueViewService`, and the generated `GuestStore`
+implements `httpserver.SavedQueueViewService` (which the db store already
+implements, so the bridge just carries it across the boundary). `appmux.Stores`
+gained a `SavedQueueViews` field, so `appmux.New` overrides the in-memory default
+with the bridged store; the guest supplies the GuestStore, the tests supply
+`db.NewSavedQueueViewStore`. It is dual-run-verified and route-verified
+(`GET /api/saved-queue-views` byte-identical through the guest, reading a view
+seeded directly in Postgres). The route-test setup that four tests were copying
+was extracted into shared `serveRouteBothWays` + `assertBridgeMatchesNative`
+helpers (jscpd would otherwise flag the duplication). Four of the six infra
+services (saved-queue-view, privacy, platform-admin, moderation-triage) fit this
+codegen recipe; the other two don't - the rate limiter (`Allow(key) bool`, no ctx)
+and MCP session persistence (multi-return tuples like `(bool, error)`) - and will
+need hand-written bridges or host-side placement. All gates green. Nothing about
+the native server or browser demo changed.
+
+---
+
 The `task/wasi-instance-pool` branch adds **instance pooling** to the WASI app
 host, resolving the open perf question from the spike (finding #8: is one fresh
 instance per HTTP request viable, or does it need pooling?). The guest was a

@@ -13,9 +13,52 @@ import (
 	"testing/fstest"
 
 	httpserver "github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
+	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// serveRouteBothWays runs the same request through the native mux (over the db
+// stores) and through the full-graph app guest (over the same db pool via the
+// store host), returning both responses so a route test can assert they match.
+// It centralizes the guest setup every route test shares.
+func serveRouteBothWays(t *testing.T, ctx context.Context, pool *pgxpool.Pool, request func() *http.Request) (bridged, direct httpbridge.Response) {
+	t.Helper()
+	secret := requireAccessTokenSecret(t, appRouteSecret)
+	direct = serveDirect(appmux.New(secret, appmuxStores(pool)), request())
+
+	guestWASM, err := compileWASIGuest(t, "github.com/e6qu/sharecrop/cmd/sharecrop-wasi-app-guest")
+	if err != nil {
+		t.Fatalf("compile app guest: %v", err)
+	}
+	host, err := rpc.NewHost(ctx, guestWASM, storehost.Dispatcher(pool))
+	if err != nil {
+		t.Fatalf("new host: %v", err)
+	}
+	host.WithGuestEnv(map[string]string{"SHARECROP_ACCESS_TOKEN_SECRET": appRouteSecret})
+	t.Cleanup(func() { _ = host.Close(ctx) })
+	return serveThroughBridge(t, ctx, host, request()), direct
+}
+
+// assertBridgeMatchesNative checks the guest's response is 200 and byte-identical
+// to the native mux's.
+func assertBridgeMatchesNative(t *testing.T, bridged, direct httpbridge.Response) {
+	t.Helper()
+	if direct.Status != http.StatusOK {
+		t.Fatalf("native status = %d, want 200 (body %q)", direct.Status, direct.Body)
+	}
+	if bridged.Status != direct.Status {
+		t.Errorf("status: bridge %d, direct %d", bridged.Status, direct.Status)
+	}
+	if bridged.Header.Get("Content-Type") != direct.Header.Get("Content-Type") {
+		t.Errorf("content-type: bridge %q, direct %q", bridged.Header.Get("Content-Type"), direct.Header.Get("Content-Type"))
+	}
+	if string(bridged.Body) != string(direct.Body) {
+		t.Errorf("body: bridge %q, direct %q", bridged.Body, direct.Body)
+	}
+}
 
 // TestHTTPBridgeByteIdentical is the Phase 4 checkpoint: a request handled by
 // the real internal/http mux running inside a compiled wasip1 guest produces a

@@ -53,7 +53,27 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-instance-pool` — **instance pooling** for the WASI app
+Active task: `task/wasi-bridge-savedqueueview` — bridge the first of the **six
+RuntimeState infra services** so the pooled mux shares one Postgres store instead
+of a per-instance in-memory copy. `cmd/sharecrop serve` backs these six (rate
+limiters, MCP sessions, saved queue views, privacy, platform admins, moderation
+triage) with db stores; `appmux` had them all in-memory, which under pooling
+means per-instance state — a regression. This bridges `SavedQueueViewService`
+(the codegen now targets an `internal/http` interface, package `httpserver`; the
+db store already implements it, so the bridge just carries it to the host).
+`appmux.Stores` gained a `SavedQueueViews` field, overriding the in-memory
+default; `savedqueueviewbridge` is dual-run-verified
+(`tests/integration/savedqueueviewbridge_store_test.go`) and route-verified
+(`GET /api/saved-queue-views` byte-identical through the guest). The route-test
+harness was de-duplicated into shared `serveRouteBothWays` +
+`assertBridgeMatchesNative` helpers. **Next**: bridge the other codegen-friendly
+infra services (privacy, platform admin, moderation triage), then the two that
+don't fit the codegen (rate limiter - no ctx/bool returns; MCP session
+persistence - multi-return tuples) as hand-written bridges or host-side, then the
+production cutover of `cmd/sharecrop serve`. Nothing about the native server or
+browser demo changes.
+
+Earlier: `task/wasi-instance-pool` added **instance pooling** for the WASI app
 host. The guest was a wasip1 *command* (ran `main()` once per unit of work and
 exited), so each HTTP request paid the ~2-3ms guest-startup floor. Command
 instances can't be reused, and the Phase-1 findings proved a *shared* reactor

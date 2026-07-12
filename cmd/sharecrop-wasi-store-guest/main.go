@@ -23,6 +23,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
+	"github.com/e6qu/sharecrop/internal/wasibridge/savedqueueviewbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/taskbridge"
 )
@@ -59,6 +60,8 @@ func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 		return submissionbridge.Dispatch(ctx, submissionbridge.NewGuestStore(rpc.Invoke), method, args)
 	case "task":
 		return taskbridge.Dispatch(ctx, taskbridge.NewGuestStore(rpc.Invoke), method, args)
+	case "savedqueueview":
+		return savedqueueviewbridge.Dispatch(ctx, savedqueueviewbridge.NewGuestStore(rpc.Invoke), method, args)
 	default:
 		return nil, fmt.Errorf("no bridge for method %q", method)
 	}

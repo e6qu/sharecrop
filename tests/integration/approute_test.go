@@ -14,8 +14,6 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
 	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
-	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
-	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,16 +22,17 @@ import (
 // domain service backed by a real Postgres store.
 func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
 	return appmux.Stores{
-		Auth:          db.NewAuthStore(pool),
-		Notification:  db.NewNotificationStore(pool),
-		Organization:  db.NewOrgStore(pool),
-		Task:          db.NewTaskStore(pool),
-		Submission:    db.NewSubmissionStore(pool),
-		Ledger:        db.NewLedgerStore(pool),
-		Agent:         db.NewAgentStore(pool),
-		OrgCredential: db.NewOrgCredentialStore(pool),
-		Assets:        db.NewCollectibleStore(pool),
-		Audit:         db.NewAuditStore(pool),
+		Auth:            db.NewAuthStore(pool),
+		Notification:    db.NewNotificationStore(pool),
+		Organization:    db.NewOrgStore(pool),
+		Task:            db.NewTaskStore(pool),
+		Submission:      db.NewSubmissionStore(pool),
+		Ledger:          db.NewLedgerStore(pool),
+		Agent:           db.NewAgentStore(pool),
+		OrgCredential:   db.NewOrgCredentialStore(pool),
+		Assets:          db.NewCollectibleStore(pool),
+		Audit:           db.NewAuditStore(pool),
+		SavedQueueViews: db.NewSavedQueueViewStore(pool),
 	}
 }
 
@@ -56,40 +55,8 @@ func TestAppRouteEndToEndThroughGuest(t *testing.T) {
 	seeded := seedNotification(t, ctx, notificationStore, recipient, actor)
 	token := mintAccessToken(t, appRouteSecret, recipient)
 
-	secret := requireAccessTokenSecret(t, appRouteSecret)
-
-	// Native: the same mux the guest builds, over the real db stores, in-process.
-	nativeMux := appmux.New(secret, appmuxStores(pool))
-	direct := serveDirect(nativeMux, authedRequest(token))
-
-	// Bridge: the app guest, with every store dispatched to the same db pool and
-	// the secret handed to the guest via WASI env.
-	guestWASM, err := compileWASIGuest(t, "github.com/e6qu/sharecrop/cmd/sharecrop-wasi-app-guest")
-	if err != nil {
-		t.Fatalf("compile app guest: %v", err)
-	}
-	host, err := rpc.NewHost(ctx, guestWASM, storehost.Dispatcher(pool))
-	if err != nil {
-		t.Fatalf("new host: %v", err)
-	}
-	host.WithGuestEnv(map[string]string{"SHARECROP_ACCESS_TOKEN_SECRET": appRouteSecret})
-	t.Cleanup(func() { _ = host.Close(ctx) })
-
-	bridged := serveThroughBridge(t, ctx, host, authedRequest(token))
-
-	if direct.Status != http.StatusOK {
-		t.Fatalf("native status = %d, want 200 (body %q)", direct.Status, direct.Body)
-	}
-	if bridged.Status != direct.Status {
-		t.Errorf("status: bridge %d, direct %d", bridged.Status, direct.Status)
-	}
-	if bridged.Header.Get("Content-Type") != direct.Header.Get("Content-Type") {
-		t.Errorf("content-type: bridge %q, direct %q",
-			bridged.Header.Get("Content-Type"), direct.Header.Get("Content-Type"))
-	}
-	if string(bridged.Body) != string(direct.Body) {
-		t.Errorf("body: bridge %q, direct %q", bridged.Body, direct.Body)
-	}
+	bridged, direct := serveRouteBothWays(t, ctx, pool, func() *http.Request { return authedRequest(token) })
+	assertBridgeMatchesNative(t, bridged, direct)
 	// The bridge actually read the seeded row, not an empty list.
 	if !strings.Contains(string(bridged.Body), seeded.ID.String()) {
 		t.Errorf("bridge body did not contain the seeded notification %s: %q", seeded.ID, bridged.Body)

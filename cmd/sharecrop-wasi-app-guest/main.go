@@ -28,6 +28,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/orgcredbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
+	"github.com/e6qu/sharecrop/internal/wasibridge/savedqueueviewbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/taskbridge"
 )
@@ -55,15 +56,16 @@ func buildMux() (http.Handler, error) {
 		return nil, fmt.Errorf("SHARECROP_ACCESS_TOKEN_SECRET is missing or invalid")
 	}
 	return appmux.New(secret.Value, appmux.Stores{
-		Auth:          authbridge.NewGuestStore(rpc.Invoke),
-		Notification:  notificationbridge.NewGuestStore(rpc.Invoke),
-		Organization:  orgbridge.NewGuestStore(rpc.Invoke),
-		Task:          taskbridge.NewGuestStore(rpc.Invoke),
-		Submission:    submissionbridge.NewGuestStore(rpc.Invoke),
-		Ledger:        ledgerbridge.NewGuestStore(rpc.Invoke),
-		Agent:         agentbridge.NewGuestStore(rpc.Invoke),
-		OrgCredential: orgcredbridge.NewGuestStore(rpc.Invoke),
-		Assets:        assetsbridge.NewGuestStore(rpc.Invoke),
-		Audit:         auditbridge.NewGuestStore(rpc.Invoke),
+		Auth:            authbridge.NewGuestStore(rpc.Invoke),
+		Notification:    notificationbridge.NewGuestStore(rpc.Invoke),
+		Organization:    orgbridge.NewGuestStore(rpc.Invoke),
+		Task:            taskbridge.NewGuestStore(rpc.Invoke),
+		Submission:      submissionbridge.NewGuestStore(rpc.Invoke),
+		Ledger:          ledgerbridge.NewGuestStore(rpc.Invoke),
+		Agent:           agentbridge.NewGuestStore(rpc.Invoke),
+		OrgCredential:   orgcredbridge.NewGuestStore(rpc.Invoke),
+		Assets:          assetsbridge.NewGuestStore(rpc.Invoke),
+		Audit:           auditbridge.NewGuestStore(rpc.Invoke),
+		SavedQueueViews: savedqueueviewbridge.NewGuestStore(rpc.Invoke),
 	}), nil
 }
