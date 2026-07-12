@@ -1,5 +1,29 @@
 # What We Did
 
+The `task/wasi-bridge-mcpsession` branch bridges **MCP session persistence** -
+the sixth and **last** RuntimeState infra service. Like the rate limiter it is
+hand-written, because its methods return multi-value tuples (`(bool, error)`,
+`(string, []byte, error)`, `([]string, [][]byte, error)`) that the code generator
+(built for a single union result) doesn't model. `internal/wasibridge/mcpsessionbridge`
+has a `GuestMCPSessionPersistence` that implements `httpserver.MCPSessionPersistence`
+by RPCing each of the seven methods, and a `Dispatch` that routes back to the real
+store; each method has a small args struct and a result struct carrying the return
+values plus an error string (payloads cross as base64 via JSON's `[]byte` support).
+MCP Streamable HTTP sessions and their replay events must be shared across every
+request - a per-instance in-memory copy would strand a session on whichever pooled
+instance created it - so this is exactly the kind of state that has to be bridged.
+`appmux.Stores` gained an `MCPSessions` field, and `appmux.New` wraps it with
+`httpserver.NewPersistedMCPHTTPSessionStore` (the same wrapper the native server
+uses). Dual-run-verified across the whole lifecycle: create, count-for-subject,
+append-event, list-events (with the replayed payload), touch, close, and
+count-after-close - all against a unique session id and subject so nothing
+contaminates the shared db-checks database. **This completes the RuntimeState
+bridging: appmux now overrides every in-memory default, so a pooled guest shares
+all state through Postgres, and the production cutover is unblocked.** All gates
+green. Nothing about the native server or browser demo changed.
+
+---
+
 The `task/wasi-bridge-ratelimit` branch bridges the **rate limiter** - the fifth
 of the six infra services, and the first that is **hand-written** rather than
 generated. `RateLimiter.Allow(key) bool` takes no context and returns a bare

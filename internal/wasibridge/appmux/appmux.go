@@ -48,6 +48,7 @@ type Stores struct {
 	Privacy            httpserver.PrivacyService
 	IPRateLimiter      httpserver.RateLimiter
 	SubjectRateLimiter httpserver.RateLimiter
+	MCPSessions        httpserver.MCPSessionPersistence
 }
 
 // New builds the full app mux over the given access-token secret and stores.
@@ -79,6 +80,7 @@ func New(secret auth.AccessTokenSecret, stores Stores) http.Handler {
 	runtime.PrivacyService = stores.Privacy
 	runtime.IPRateLimiter = stores.IPRateLimiter
 	runtime.SubjectRateLimiter = stores.SubjectRateLimiter
+	runtime.MCPSessions = httpserver.NewPersistedMCPHTTPSessionStore(stores.MCPSessions)
 
 	return httpserver.NewWithRuntimeState(
 		fstest.MapFS{},
