@@ -1,13 +1,18 @@
 // Package rpc is the generic method-keyed transport for the WASI hosting
-// bridge. Where the Phase 2 spike wired one store method by hand, this carries
-// each store call as (method name, JSON args) -> (JSON result), so a generated
-// bridge can drive every method on a store over the same channel.
+// bridge. It carries each store call as (method name, JSON args) -> (JSON
+// result), so a generated bridge can drive every method on a store over the
+// same channel, and it carries each unit of work (a store method for the store
+// guest, an HTTP request for the app guest) the same way.
 //
-// The guest writes a "call" frame to its stdout for each store operation and
-// reads the host's reply from its stdin; when its unit of work is done it writes
-// a "result" frame. The host services calls against the real store and captures
-// the result. As in Phase 2, each unit of work runs in one fresh guest instance
-// driven by a single goroutine, so the stream is strictly request/response.
+// The channel is plain WASI stdin/stdout. On stdout the guest writes "call"
+// frames (a store operation the host must service) and, when a unit of work is
+// done, a "result" frame. On stdin the host writes "work" frames (the next unit
+// of work), "reply" frames (the answer to a store call), and a "shutdown" frame
+// (no more work - exit). The guest loops over work frames until shutdown, so one
+// instance can serve many units of work in sequence (see rpc.Pool); the host
+// side keeps the stream strictly request/response, driven for each instance by a
+// single goroutine, which is the concurrency-safe shape from the Phase 1
+// findings.
 package rpc
 
 import (
@@ -20,21 +25,27 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/wire"
 )
 
-// callFrame is what the guest writes to the host. A "call" carries a store
+// guestFrame is what the guest writes to the host. A "call" carries a store
 // method invocation the host must service; a "result" carries the guest's final
-// answer for its unit of work. Args and Result are raw JSON so the transport
-// never has to know a payload's shape.
-type callFrame struct {
+// answer for the current unit of work (Result on success, Error when the guest's
+// own handler failed). Args and Result are raw JSON so the transport never has
+// to know a payload's shape.
+type guestFrame struct {
 	Kind   string          `json:"kind"`
 	Method string          `json:"method,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
 	Result json.RawMessage `json:"result,omitempty"`
+	Error  string          `json:"error,omitempty"`
 }
 
-// replyFrame is the host's answer to a call: the serialized result, or a
-// transport-level error string when the host could not service the call at all
-// (a domain rejection is carried inside Result, not here).
-type replyFrame struct {
+// hostFrame is what the host writes to the guest. A "work" starts the next unit
+// of work; a "reply" answers a store call (Result on success, Error for a
+// transport-level failure - a domain rejection is carried inside Result); a
+// "shutdown" tells the guest's loop to exit.
+type hostFrame struct {
+	Kind   string          `json:"kind"`
+	Method string          `json:"method,omitempty"`
+	Args   json.RawMessage `json:"args,omitempty"`
 	Result json.RawMessage `json:"result,omitempty"`
 	Error  string          `json:"error,omitempty"`
 }
@@ -56,12 +67,15 @@ func Invoke(method string, args []byte) ([]byte, error) {
 }
 
 func invoke(out io.Writer, in io.Reader, method string, args []byte) ([]byte, error) {
-	if err := writeCallFrame(out, callFrame{Kind: "call", Method: method, Args: rawOrNull(args)}); err != nil {
+	if err := writeGuestFrame(out, guestFrame{Kind: "call", Method: method, Args: rawOrNull(args)}); err != nil {
 		return nil, err
 	}
-	reply, err := readReplyFrame(in)
+	reply, err := readHostFrame(in)
 	if err != nil {
 		return nil, err
+	}
+	if reply.Kind != "reply" {
+		return nil, fmt.Errorf("expected a reply frame, got %q", reply.Kind)
 	}
 	if reply.Error != "" {
 		return nil, errors.New(reply.Error)
@@ -69,57 +83,76 @@ func invoke(out io.Writer, in io.Reader, method string, args []byte) ([]byte, er
 	return reply.Result, nil
 }
 
-// ReportResult writes the guest's final result for its unit of work, which the
-// host captures as the return value of the call it kicked off.
-func ReportResult(result []byte) error {
-	return writeCallFrame(os.Stdout, callFrame{Kind: "result", Result: rawOrNull(result)})
-}
-
-// UnitOfWork reads the (method, args) the host handed this guest instance as
-// program arguments when it instantiated the module.
-func UnitOfWork() (string, []byte, error) {
-	if len(os.Args) < 3 {
-		return "", nil, fmt.Errorf("guest expected method and args arguments, got %d", len(os.Args)-1)
+// Serve runs the guest's unit-of-work loop: read a "work" frame, hand its
+// (method, args) to handle, write the result (or the handler's error) back as a
+// "result" frame, and repeat until the host sends "shutdown" or closes the
+// channel. One instance therefore serves many units of work in
+// sequence, which is what lets the host pool and reuse instances.
+func Serve(handle func(method string, args []byte) ([]byte, error)) error {
+	for {
+		frame, err := readHostFrame(os.Stdin)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		switch frame.Kind {
+		case "shutdown":
+			return nil
+		case "work":
+			result, handleErr := handle(frame.Method, frame.Args)
+			out := guestFrame{Kind: "result"}
+			if handleErr != nil {
+				out.Error = handleErr.Error()
+			} else {
+				out.Result = rawOrNull(result)
+			}
+			if err := writeGuestFrame(os.Stdout, out); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unexpected host frame %q", frame.Kind)
+		}
 	}
-	return os.Args[1], []byte(os.Args[2]), nil
 }
 
-func writeCallFrame(w io.Writer, frame callFrame) error {
+func writeGuestFrame(w io.Writer, frame guestFrame) error {
 	payload, err := json.Marshal(frame)
 	if err != nil {
-		return fmt.Errorf("marshal call frame: %w", err)
+		return fmt.Errorf("marshal guest frame: %w", err)
 	}
 	return wire.WriteFrame(w, payload)
 }
 
-func readCallFrame(r io.Reader) (callFrame, error) {
-	var frame callFrame
+func readGuestFrame(r io.Reader) (guestFrame, error) {
+	var frame guestFrame
 	payload, err := wire.ReadFrame(r)
 	if err != nil {
 		return frame, err
 	}
 	if err := json.Unmarshal(payload, &frame); err != nil {
-		return frame, fmt.Errorf("unmarshal call frame: %w", err)
+		return frame, fmt.Errorf("unmarshal guest frame: %w", err)
 	}
 	return frame, nil
 }
 
-func writeReplyFrame(w io.Writer, frame replyFrame) error {
+func writeHostFrame(w io.Writer, frame hostFrame) error {
 	payload, err := json.Marshal(frame)
 	if err != nil {
-		return fmt.Errorf("marshal reply frame: %w", err)
+		return fmt.Errorf("marshal host frame: %w", err)
 	}
 	return wire.WriteFrame(w, payload)
 }
 
-func readReplyFrame(r io.Reader) (replyFrame, error) {
-	var frame replyFrame
+func readHostFrame(r io.Reader) (hostFrame, error) {
+	var frame hostFrame
 	payload, err := wire.ReadFrame(r)
 	if err != nil {
 		return frame, err
 	}
 	if err := json.Unmarshal(payload, &frame); err != nil {
-		return frame, fmt.Errorf("unmarshal reply frame: %w", err)
+		return frame, fmt.Errorf("unmarshal host frame: %w", err)
 	}
 	return frame, nil
 }

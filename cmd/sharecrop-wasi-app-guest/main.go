@@ -33,24 +33,17 @@ import (
 )
 
 func main() {
-	_, args, err := rpc.UnitOfWork()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-
+	// Build the mux and its service graph once per instance, not per request, so
+	// a pooled instance amortizes the wiring across every unit of work it serves.
 	mux, err := buildMux()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	response, err := httpbridge.Serve(mux, args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if err := rpc.ReportResult(response); err != nil {
+	if err := rpc.Serve(func(_ string, args []byte) ([]byte, error) {
+		return httpbridge.Serve(mux, args)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -2,9 +2,11 @@
 
 // Command sharecrop-wasi-app-host is the production-shaped host: a real
 // net/http.Server that serves authenticated, store-touching routes by running
-// the app guest (the real internal/http mux) once per request, with the guest's
-// store calls dispatched to real Postgres. It ties the Phase 3 store bridge and
-// the Phase 4 HTTP hosting together.
+// the app guest (the real internal/http mux), with the guest's store calls
+// dispatched to real Postgres. A pool of reused guest instances serves requests
+// (each instance pays the guest startup cost once, then handles unit after
+// unit), sized by SHARECROP_WASI_POOL_SIZE (default: GOMAXPROCS). It ties the
+// store bridge and the HTTP hosting together.
 //
 // Usage:
 //
@@ -23,12 +25,27 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
+	"strconv"
 
 	"github.com/e6qu/sharecrop/internal/db"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
 )
+
+// guestPoolSize is how many guest instances the pool keeps warm, from
+// SHARECROP_WASI_POOL_SIZE (a positive integer) or GOMAXPROCS by default. It
+// bounds how many requests can run guest code at once; store queries beyond that
+// still queue on the shared Postgres pool.
+func guestPoolSize() int {
+	if raw := os.Getenv("SHARECROP_WASI_POOL_SIZE"); raw != "" {
+		if size, err := strconv.Atoi(raw); err == nil && size > 0 {
+			return size
+		}
+	}
+	return runtime.GOMAXPROCS(0)
+}
 
 func main() {
 	guestPath := flag.String("guest", "app-guest.wasm", "path to the compiled wasip1 app guest module")
@@ -64,14 +81,14 @@ func run(guestPath, addr string) error {
 		return fmt.Errorf("read guest module: %w", err)
 	}
 
-	host, err := rpc.NewHost(ctx, guestWASM, storehost.Dispatcher(pool))
+	guestPool, err := rpc.NewPool(ctx, guestWASM, storehost.Dispatcher(pool), guestPoolSize())
 	if err != nil {
-		return fmt.Errorf("build host: %w", err)
+		return fmt.Errorf("build guest pool: %w", err)
 	}
-	host.WithGuestEnv(map[string]string{"SHARECROP_ACCESS_TOKEN_SECRET": secret})
-	defer host.Close(ctx)
+	guestPool.WithGuestEnv(map[string]string{"SHARECROP_ACCESS_TOKEN_SECRET": secret})
+	defer guestPool.Close(ctx)
 
-	server := &http.Server{Addr: addr, Handler: httpbridge.Handler(host)}
-	log.Printf("listening on %s - each request runs a fresh wasm guest against Postgres", addr)
+	server := &http.Server{Addr: addr, Handler: httpbridge.Handler(guestPool)}
+	log.Printf("listening on %s - a pool of %d reused wasm guests serves requests against Postgres", addr, guestPoolSize())
 	return server.ListenAndServe()
 }

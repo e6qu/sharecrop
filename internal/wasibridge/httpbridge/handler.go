@@ -8,17 +8,18 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 )
 
-// Handler turns a host into an http.Handler: each request is serialized, run
-// through a fresh guest instance (which may make store calls back over the same
-// unit of work), and its serialized response written out. Both the Phase 4
-// health host and the app host use it, so they cannot drift in how they bridge
-// a request.
-func Handler(host *rpc.Host) http.Handler {
-	return bridgeHandler{host: host}
+// Handler turns a caller into an http.Handler: each request is serialized, run
+// through a guest instance (which may make store calls back over the same unit
+// of work), and its serialized response written out. The caller is an
+// rpc.Caller, so the same handler drives either a fresh instance per request
+// (*rpc.Host, used by tests) or a reused instance from a pool (*rpc.Pool, used
+// by the production host) with no drift in how a request is bridged.
+func Handler(caller rpc.Caller) http.Handler {
+	return bridgeHandler{caller: caller}
 }
 
 type bridgeHandler struct {
-	host *rpc.Host
+	caller rpc.Caller
 }
 
 func (h bridgeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +28,7 @@ func (h bridgeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	responseBytes, err := h.host.Call(r.Context(), "http.handle", requestBytes)
+	responseBytes, err := h.caller.Call(r.Context(), "http.handle", requestBytes)
 	if err != nil {
 		http.Error(w, "bridge error: "+err.Error(), http.StatusBadGateway)
 		return

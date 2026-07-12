@@ -20,19 +20,10 @@ import (
 )
 
 func main() {
-	_, args, err := rpc.UnitOfWork()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-
 	mux := httpserver.New(fstest.MapFS{}, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	response, err := httpbridge.Serve(mux, args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if err := rpc.ReportResult(response); err != nil {
+	if err := rpc.Serve(func(_ string, args []byte) ([]byte, error) {
+		return httpbridge.Serve(mux, args)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

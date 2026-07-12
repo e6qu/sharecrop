@@ -518,9 +518,30 @@ The spike is done; this tracks the follow-up implementation effort as it lands.
   real `internal/db` stores - the assembled mux is identical either way. A third
   route test (`GET /api/credits/balance`, backed by the ledger service) proves a
   service beyond auth/notification runs byte-identically through the guest and
-  returns the real signup-grant balance. **Remaining before a production cutover:
-  weigh instance pooling against the ~2-3ms fresh-instance-per-request floor,
-  then move `cmd/sharecrop serve` onto the WASI host.**
+  returns the real signup-grant balance.
+- **Instance pooling now takes the guest-startup cost off the request hot path.**
+  Finding #8's open question (is one fresh instance per HTTP request viable, or
+  does it need pooling?) is resolved by pooling. The guest was a wasip1 *command*
+  (ran `main()` once per unit of work and exited), so each request paid the
+  ~2-3ms startup floor and command instances can't be reused; and finding #5
+  proved a *shared* reactor instance corrupts state. The design that threads the
+  needle: the guest's `main()` loops over units of work read from stdin as "work"
+  frames (via `rpc.Serve`), staying alive between them, and the host keeps a pool
+  of such instances (`rpc.Pool`) and checks one out per unit of work. Safety is
+  unchanged from finding #6 - each instance is driven by exactly one goroutine
+  and touched by no other: a per-instance `session` has a runner goroutine (owns
+  the wazero instance) and a driver goroutine (owns both pipe ends, so the
+  two-write framing never interleaves), and request goroutines reach the driver
+  only over Go channels. Pooling adds no shared-instance concurrency; concurrency
+  comes from having several sessions. `Host.Call` (fresh instance per call, used
+  by the dual-run/route tests) and `Pool.Call` sit on the same `session`;
+  `httpbridge.Handler` takes an `rpc.Caller` (either); the production app host
+  pools by `SHARECROP_WASI_POOL_SIZE` (default GOMAXPROCS) and builds each mux
+  once per instance, not per request. Two concurrency tests prove no cross-talk
+  under load (144 store units through 4 reused instances; 16 concurrent HTTP
+  requests through the pooled app host), each unit seeing only its own data.
+  **Remaining: move `cmd/sharecrop serve` itself onto the WASI host (the
+  production cutover).**
 
 ## Non-goals for this spike
 

@@ -1,5 +1,39 @@
 # What We Did
 
+The `task/wasi-instance-pool` branch adds **instance pooling** to the WASI app
+host, resolving the open perf question from the spike (finding #8: is one fresh
+instance per HTTP request viable, or does it need pooling?). The guest was a
+wasip1 *command* - it ran `main()` once per unit of work and exited - so every
+HTTP request paid the ~2-3ms guest-startup floor (Go runtime init inside wasm),
+and command instances can't be reused. The Phase-1 findings had also proved that
+a *shared* reactor instance (two goroutines touching one instance) corrupts
+state. The design that threads that needle, now implemented: the guest's
+`main()` loops over units of work read from stdin as "work" frames (via a new
+`rpc.Serve` helper), staying alive between them so one instance serves many
+units; the host keeps a pool of such instances (`rpc.Pool`) and checks one out
+per unit of work. Safety is preserved because each instance is still driven by
+exactly one goroutine and touched by no other: a per-instance `session` runs a
+runner goroutine (the only one that touches the wazero instance) and a driver
+goroutine (the only one that reads the guest's stdout and writes its stdin, so
+the two-write frame encoding can never interleave); request goroutines reach the
+driver only over Go channels. Pooling therefore adds zero shared-instance
+concurrency - concurrency comes from having several independent sessions, one
+checked out per in-flight unit. The unit-of-work now arrives over stdin ("work"
+frames) instead of argv, so both `Host.Call` (fresh instance per call, still used
+by every store dual-run and route test) and the new `Pool.Call` sit on the same
+`session`; `httpbridge.Handler` takes an `rpc.Caller` so it drives either. The
+production `cmd/sharecrop-wasi-app-host` now uses a pool sized by
+`SHARECROP_WASI_POOL_SIZE` (default GOMAXPROCS) and builds each guest's mux +
+service graph once per instance rather than per request. Two new integration
+tests are the safety proof: 24 recipients x 6 rounds = 144 concurrent store
+units through a pool of 4 reused instances, and 16 concurrent authenticated HTTP
+requests through the pooled app host - every unit sees exactly its own data, no
+cross-talk, no crash. The full integration suite (all ten store dual-runs, the
+route tests, both pool tests) passes on the refactored transport. All gates
+green. Nothing about the native server or browser demo changed.
+
+---
+
 The `task/wasi-appmux-full-graph` branch is the first step of the host-wiring
 phase that follows store-bridging: it wires the **full production mux** into the
 WASI app guest. Until now `internal/wasibridge/appmux` only wired the auth +
