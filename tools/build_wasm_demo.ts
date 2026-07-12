@@ -49,6 +49,18 @@ async function buildWasm(): Promise<void> {
   }
 }
 
+async function generateSeedSnapshot(): Promise<void> {
+  const command = new Deno.Command("go", {
+    args: ["run", "./cmd/gen-seed-snapshot"],
+  });
+  const output = await command.output();
+  if (!output.success) {
+    const stderr = new TextDecoder().decode(output.stderr);
+    throw new Error(`seed snapshot generation failed: ${stderr}`);
+  }
+}
+
 await buildWasm();
 await copyWasmExec(await goRoot());
+await generateSeedSnapshot();
 console.log("built site/demo/sharecrop-wasm-backend.wasm");
