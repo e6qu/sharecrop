@@ -53,7 +53,23 @@ The WASI hosting **spike is complete** (all four phases; see
 [docs/wasi_production_hosting_spike_plan.md](./docs/wasi_production_hosting_spike_plan.md)).
 The follow-up **implementation effort** has started.
 
-Active task: `task/wasi-bridge-mcpsession` — bridge **MCP session persistence**,
+Active task: `task/wasi-cutover` — **the production cutover, and the end of the
+WASI hosting effort.** `cmd/sharecrop serve` can now serve production through the
+WASI guest: when `SHARECROP_WASI_GUEST` points at a compiled app-guest wasm
+(`make wasi-app-guest`), serve pools that guest (`rpc.Pool`, sized by
+`SHARECROP_WASI_POOL_SIZE`, default GOMAXPROCS) and dispatches its store calls to
+Postgres via `storehost`; the dynamic routes (`/api/`, `/mcp`, `/healthz`) run in
+the guest and static assets + the SPA shell are served host-side. Unset, serve
+keeps the native in-process mux, so the cutover is opt-in and reversible.
+Verified with an integration test (host static + guest dynamic both correct) and
+a live smoke test of the real `serve` command (`/healthz` 200 through the guest
+pool against Postgres, `/` 200 from host static). **This closes the deviation the
+STATUS "one backend" section named: production can now run the same compiled WASM
+artifact as the browser demo - one backend, one artifact, two storage adapters.**
+Follow-ups (not blocking): flip the WASI path to the default once proven in
+staging; retire `internal/wasmdemo` once the browser demo shares more.
+
+Earlier: `task/wasi-bridge-mcpsession` bridged **MCP session persistence**,
 the **sixth and last** RuntimeState infra service (hand-written: its methods
 return multi-value tuples - `(bool, error)`, `(string, []byte, error)`,
 `([]string, [][]byte, error)` - which the codegen doesn't model). MCP Streamable
