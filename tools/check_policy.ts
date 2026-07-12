@@ -14,6 +14,7 @@ const boundarySuffixes: string[] = [
   // scan-destination signatures are unavoidably weakly typed. This is the one
   // seam between the typed domain layer and the driver interfaces.
   "/internal/db/handle.go",
+  "/internal/db/handle_sqlite.go",
 ];
 
 const weakWildcardToken = "a" + "ny";
