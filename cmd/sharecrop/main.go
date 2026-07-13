@@ -431,9 +431,15 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 	if err != nil {
 		return nil, nil, fmt.Errorf("build guest pool: %w", err)
 	}
+	// The guest runs internal/http's newServer, which reads request-shaping
+	// config straight from the environment, so every such variable must be
+	// forwarded or the guest silently falls back to defaults (e.g. account
+	// token delivery would ignore an operator's setting and always log). Keep
+	// this in sync with the os.Getenv reads in httpserver.newServer.
 	guestPool.WithGuestEnv(map[string]string{
-		"SHARECROP_ACCESS_TOKEN_SECRET": cfg.AccessTokenSecret(),
-		"SHARECROP_INSECURE_COOKIES":    os.Getenv("SHARECROP_INSECURE_COOKIES"),
+		"SHARECROP_ACCESS_TOKEN_SECRET":    cfg.AccessTokenSecret(),
+		"SHARECROP_INSECURE_COOKIES":       os.Getenv("SHARECROP_INSECURE_COOKIES"),
+		"SHARECROP_ACCOUNT_TOKEN_DELIVERY": os.Getenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY"),
 	})
 	guest := httpbridge.Handler(guestPool)
 
