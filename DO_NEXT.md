@@ -9,9 +9,13 @@ continuity files if task scope changes.
    delivers SSE across replicas by DB polling and returns a bounded response over
    the WASI bridge (which cannot stream); a streaming transport would let it push.
 
-2. **Stand up the AWS deployment.** Fill the `REPLACE_*` placeholders in
-   `deploy/ecs/*.task-definition.json`, provision the ALB + Aurora Serverless v2 +
-   RDS Proxy, and run the first release. See [docs/deployment.md](./docs/deployment.md).
+2. **Stand up the AWS deployment.** The Terraform in `deploy/terraform/` provisions
+   the ALB + ECS Fargate service + Aurora Serverless v2 + RDS Proxy + secrets/IAM
+   into an existing VPC — fill `terraform.tfvars` (region, image, vpc/subnets),
+   `terraform apply`, run the migrate task, and point DNS at the ALB. Then cut the
+   first `feat`/`fix` release so the image publishes to ghcr. Requires
+   GitHub-hosted arm64 runners for the release build. See
+   [docs/deployment.md](./docs/deployment.md).
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are
    added, and keep running it against both SQL engines and the real backend as

@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars and fill in for your account.
+
+region = "us-east-1"
+
+# The multi-arch image manifest published by the Release workflow.
+image = "ghcr.io/e6qu/sharecrop:v1.4.0"
+
+# Only for a PRIVATE ghcr package: a Secrets Manager secret holding
+# {"username":"<gh-user>","password":"<ghcr-token>"}. Omit for a public image.
+# image_pull_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:sharecrop/ghcr-pull-XXXXXX"
+
+# Deploy into an existing VPC.
+vpc_id            = "vpc-0123456789abcdef0"
+public_subnet_ids = ["subnet-aaaa1111", "subnet-bbbb2222"] # ALB (>= 2 AZs)
+task_subnet_ids   = ["subnet-cccc3333", "subnet-dddd4444"] # tasks + Aurora + RDS Proxy
+
+# If task_subnet_ids are private (with a NAT gateway), keep this false. If they
+# are public subnets, set it true so tasks can pull the image.
+assign_public_ip = false
+
+# Set an ACM cert to serve HTTPS (recommended for anything public).
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/XXXXXXXX"
+
+desired_count = 2
+
+# Scale-to-zero Aurora Serverless v2 (min_capacity = 0) needs a supported engine
+# version; bump aurora_engine_version if your region rejects it.
+aurora_min_capacity = 0
+aurora_max_capacity = 4

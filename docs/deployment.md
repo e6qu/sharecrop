@@ -97,8 +97,12 @@ emulated builds.
 
 ## ECS Fargate
 
-Task definitions are in `deploy/ecs/` (arm64 `runtimePlatform`). Replace the
-`REPLACE_*` placeholders (account, region, roles, registry, tag, secret ARNs).
+The whole stack — ALB, the ECS Fargate service (arm64), Aurora Serverless v2 +
+RDS Proxy, secrets, and IAM — is provisioned by the Terraform in
+[`deploy/terraform/`](../deploy/terraform/) (deploys into an existing VPC; see its
+README). The standalone JSON task definitions in `deploy/ecs/` (arm64
+`runtimePlatform`, `REPLACE_*` placeholders for account, region, roles, registry,
+tag, and secret ARNs) remain as a reference for a non-Terraform deploy.
 
 - **`sharecrop-serve.task-definition.json`** — the stateless service. Run it as
   an ECS Service with the desired replica count behind an Application Load
