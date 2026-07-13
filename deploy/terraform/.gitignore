@@ -1,0 +1,8 @@
+# Terraform working files (never commit provider binaries, state, or real vars).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+crash.log
+# The provider lock file (.terraform.lock.hcl) IS committed for reproducibility.
