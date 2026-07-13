@@ -52,6 +52,11 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	if len(args) > 1 && args[1] == "generate" {
 		return runGenerate(args[2:], stdout, logger)
 	}
+	// wasi-precompile is a build-time step that populates the wazero cache; it
+	// needs no database or runtime config, so it runs before LoadConfig.
+	if len(args) > 1 && args[1] == "wasi-precompile" {
+		return runWASIPrecompile(ctx, args[2:], logger)
+	}
 
 	cfgResult := app.LoadConfig()
 	cfg, loaded := cfgResult.(app.ConfigLoaded)
@@ -377,13 +382,20 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		}
 		logger.Warn("no app guest embedded; serving the native in-process mux (build with `make build` for WASI hosting)")
 	default:
+		guestBuildStart := time.Now()
 		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles)
 		if err != nil {
 			logger.Error("build wasi guest host", "error", err)
 			return 1
 		}
 		defer closeGuest()
-		logger.Info("serving dynamic routes through the WASI guest pool", "guest", guestSource, "pool_size", wasiPoolSize())
+		// guest_compile is the module-preparation time. It is small (tens of ms)
+		// when a baked wazero cache is hit and large (~seconds) when the guest is
+		// compiled at startup, so it surfaces whether SHARECROP_WAZERO_CACHE_DIR
+		// actually took effect.
+		logger.Info("serving dynamic routes through the WASI guest pool",
+			"guest", guestSource, "pool_size", wasiPoolSize(),
+			"wazero_cache", wazeroCacheSource(), "guest_compile", time.Since(guestBuildStart))
 		handler = wasiHandler
 	}
 
@@ -427,7 +439,12 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 // dispatched back to the host's Postgres pool via storehost. The returned func
 // tears the guest pool down.
 func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS) (http.Handler, func(), error) {
-	guestPool, err := rpc.NewPool(ctx, guestWASM, storehost.Dispatcher(pool), wasiPoolSize())
+	// SHARECROP_WAZERO_CACHE_DIR points at a pre-populated wazero compilation
+	// cache (baked into the container by the wasi-precompile build step) so the
+	// guest's machine code is loaded rather than compiled at startup. Unset falls
+	// back to compiling the module on boot.
+	cacheDir := os.Getenv("SHARECROP_WAZERO_CACHE_DIR")
+	guestPool, err := rpc.NewPoolWithCache(ctx, guestWASM, storehost.Dispatcher(pool), wasiPoolSize(), cacheDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build guest pool: %w", err)
 	}
@@ -488,4 +505,44 @@ func wasiPoolSize() int {
 		}
 	}
 	return runtime.GOMAXPROCS(0)
+}
+
+// wazeroCacheSource labels where serve looks for a baked wazero compilation
+// cache, for the startup log.
+func wazeroCacheSource() string {
+	if dir := os.Getenv("SHARECROP_WAZERO_CACHE_DIR"); dir != "" {
+		return dir
+	}
+	return "none"
+}
+
+// runWASIPrecompile compiles the embedded app guest into a wazero compilation
+// cache directory so a later serve loads its machine code instead of compiling
+// the module at startup. It is a build-time step (no database or config needed),
+// run inside the container build on the same binary and CPU serve will use.
+func runWASIPrecompile(ctx context.Context, args []string, logger *slog.Logger) int {
+	cacheDir := os.Getenv("SHARECROP_WAZERO_CACHE_DIR")
+	if len(args) >= 1 && args[0] != "" {
+		cacheDir = args[0]
+	}
+	if cacheDir == "" {
+		logger.Error("wasi-precompile requires a cache directory (argument or SHARECROP_WAZERO_CACHE_DIR)")
+		return 2
+	}
+	guestWASM, source, err := resolveGuestModule()
+	if err != nil {
+		logger.Error("resolve guest module", "error", err)
+		return 1
+	}
+	if len(guestWASM) == 0 {
+		logger.Error("no app guest to precompile; build it with `make wasi-app-guest` first")
+		return 1
+	}
+	start := time.Now()
+	if err := rpc.PrecompileGuest(ctx, guestWASM, cacheDir); err != nil {
+		logger.Error("precompile guest", "error", err)
+		return 1
+	}
+	logger.Info("precompiled app guest into wazero cache", "guest", source, "cache_dir", cacheDir, "elapsed", time.Since(start))
+	return 0
 }

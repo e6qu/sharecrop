@@ -192,7 +192,7 @@ type Host struct {
 
 // NewHost compiles the guest WASM once and binds it to a dispatcher.
 func NewHost(ctx context.Context, guestWASM []byte, dispatch Dispatcher) (*Host, error) {
-	runtime, compiled, err := compileGuest(ctx, guestWASM)
+	runtime, compiled, err := compileGuest(ctx, guestWASM, "")
 	if err != nil {
 		return nil, err
 	}
@@ -226,8 +226,36 @@ func (h *Host) Call(ctx context.Context, method string, args []byte) ([]byte, er
 	return result, nil
 }
 
-func compileGuest(ctx context.Context, guestWASM []byte) (wazero.Runtime, wazero.CompiledModule, error) {
-	runtime := wazero.NewRuntime(ctx)
+// PrecompileGuest compiles guestWASM into the on-disk wazero cache at cacheDir,
+// then tears the runtime down. A later NewPoolWithCache pointed at the same
+// cacheDir loads the machine code from it instead of compiling the module at
+// startup, so serve does no build on boot. Run this at container-build time on
+// the same binary and CPU architecture the server will run on.
+func PrecompileGuest(ctx context.Context, guestWASM []byte, cacheDir string) error {
+	runtime, _, err := compileGuest(ctx, guestWASM, cacheDir)
+	if err != nil {
+		return err
+	}
+	return runtime.Close(ctx)
+}
+
+// compileGuest builds the runtime and compiles the guest module. When cacheDir
+// is non-empty the runtime uses an on-disk wazero compilation cache at that
+// path: a build step can pre-compile the guest into it (see the wasi-precompile
+// command) so serve reuses the baked machine code instead of compiling the ~11
+// MB module at startup (~1.7s cold vs ~0.07s warm). The cache is keyed by the
+// wazero version, the module, and the host CPU, so the pre-compile must run on
+// the same binary and architecture the server runs on.
+func compileGuest(ctx context.Context, guestWASM []byte, cacheDir string) (wazero.Runtime, wazero.CompiledModule, error) {
+	config := wazero.NewRuntimeConfig()
+	if cacheDir != "" {
+		cache, err := wazero.NewCompilationCacheWithDir(cacheDir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("open wazero compilation cache %q: %w", cacheDir, err)
+		}
+		config = config.WithCompilationCache(cache)
+	}
+	runtime := wazero.NewRuntimeWithConfig(ctx, config)
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, runtime); err != nil {
 		_ = runtime.Close(ctx)
 		return nil, nil, fmt.Errorf("instantiate wasi: %w", err)

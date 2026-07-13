@@ -34,10 +34,19 @@ type Pool struct {
 // Close, to tear them all down); the per-call context passed to Call bounds only
 // that unit's store queries.
 func NewPool(poolCtx context.Context, guestWASM []byte, dispatch Dispatcher, size int) (*Pool, error) {
+	return NewPoolWithCache(poolCtx, guestWASM, dispatch, size, "")
+}
+
+// NewPoolWithCache is NewPool with an on-disk wazero compilation cache. When
+// cacheDir is non-empty and pre-populated (see the wasi-precompile command), the
+// guest's machine code is loaded from it instead of being compiled at startup,
+// so serve does no build on boot. cacheDir must have been populated by the same
+// binary on the same CPU architecture.
+func NewPoolWithCache(poolCtx context.Context, guestWASM []byte, dispatch Dispatcher, size int, cacheDir string) (*Pool, error) {
 	if size < 1 {
 		size = 1
 	}
-	runtime, compiled, err := compileGuest(poolCtx, guestWASM)
+	runtime, compiled, err := compileGuest(poolCtx, guestWASM, cacheDir)
 	if err != nil {
 		return nil, err
 	}
