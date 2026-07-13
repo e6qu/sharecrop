@@ -202,8 +202,18 @@ Container images are multi-arch and follow this naming standard:
   services run on it.
 - `foo:bar-amd64` — the per-arch image for amd64.
 
-Build both per-arch images and assemble the manifest with
-`tools/build_container.sh <image:tag>`.
+Build a per-arch image with `tools/build_container.sh <image:tag> <arch>` and
+assemble the manifest with `tools/build_container.sh <image:tag> manifest`.
+
+On every merge to `main`, the Release workflow (`.github/workflows/release.yml`)
+computes the next version from **conventional commits** since the last tag
+(`tools/next_version.sh`: `feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING
+CHANGE` → major), and when there is a release-worthy change it builds the
+multi-arch image, publishes it to the **GitHub Container Registry**
+(`ghcr.io/<owner>/<repo>:<version>`, no `:latest`), and tags the release.
+Because merges squash to the PR title, **PR titles must follow the
+conventional-commit format** (e.g. `feat: …`, `fix(scope): …`) for versioning to
+work.
 
 ## Task Workflow
 

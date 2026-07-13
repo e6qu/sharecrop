@@ -76,6 +76,25 @@ The frontend assets embedded into the binary are the committed `web/static/*`.
 Run `make frontend` before a release build if the UI changed, the same as for
 `make build`.
 
+### Releases (CI)
+
+`.github/workflows/release.yml` runs on every merge to `main`:
+
+1. Compute the next version from conventional commits since the last tag
+   (`tools/next_version.sh`). No release-worthy commit (only `chore`/`docs`/… )
+   → nothing is built.
+2. Build each arch on a native runner (arm64 on `ubuntu-24.04-arm`, amd64 on
+   `ubuntu-24.04`) and push the per-arch images to the GitHub Container Registry.
+3. Assemble the manifest, then create the git tag and GitHub release.
+
+Images are published to `ghcr.io/<owner>/<repo>:<version>` (e.g.
+`ghcr.io/e6qu/sharecrop:v1.4.0`) with per-arch `…-arm64`/`…-amd64` tags. There is
+**no `:latest`** — deployments pin an explicit version. Because merges squash to
+the PR title, PR titles must follow the conventional-commit format for the
+version to bump (`feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING CHANGE` →
+major). Native arm64 runners are required; without them, switch the matrix to
+emulated builds.
+
 ## ECS Fargate
 
 Task definitions are in `deploy/ecs/` (arm64 `runtimePlatform`). Replace the
