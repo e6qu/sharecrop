@@ -13,8 +13,17 @@ import (
 )
 
 // MaxFrameBytes bounds a single frame so a corrupt or hostile length prefix
-// cannot make the reader allocate without limit.
-const MaxFrameBytes = 1 << 20
+// cannot make the reader allocate without limit. It must comfortably exceed the
+// largest real payload the bridge carries: an HTTP request or response is one
+// frame, its body is base64-encoded inside the frame's JSON (~4/3 inflation),
+// and the app accepts request bodies up to 2 MiB (internal/http maxRequestBody)
+// with attachments up to 500 KiB each (internal/attachment MaxBytes, up to
+// MaxCount per item). A 1 MiB limit sat *below* the 2 MiB request limit, so a
+// perfectly valid multi-attachment task - which the native mux accepts - failed
+// under the guest with a 502. 16 MiB covers a max request and a single item with
+// its attachments with wide headroom while still bounding allocation. (Callers
+// paginate list responses, so an unbounded aggregate is not framed at once.)
+const MaxFrameBytes = 16 << 20
 
 // WriteFrame writes payload with a 4-byte big-endian length prefix.
 func WriteFrame(w io.Writer, payload []byte) error {
