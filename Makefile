@@ -1,9 +1,16 @@
 APP := bin/sharecrop
 
-.PHONY: build check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts check-wasi-bridge check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet wasi-app-guest wasi-bridge
+.PHONY: build container check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts check-wasi-bridge check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet wasi-app-guest wasi-bridge
 
 build: frontend wasi-app-guest
 	go build -o $(APP) ./cmd/sharecrop
+
+# container builds the multi-arch backend image (manifest + per-arch tags) via
+# tools/build_container.sh. Pass IMAGE=<repo:tag>; refresh web/static with
+# `make frontend` first if the UI changed. See docs/deployment.md.
+container:
+	test -n "$(IMAGE)"
+	tools/build_container.sh $(IMAGE)
 
 # wasi-app-guest compiles the app guest to a wasip1 module and writes it to the
 # embed path, so `build` bakes it into the sharecrop binary. WASI hosting is the

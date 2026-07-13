@@ -1,0 +1,21 @@
+# Keep the build context small so image builds are fast. The image build only
+# needs Go source, go.mod/sum, the committed frontend assets (web/static), and
+# the migrations directory; everything below is either a local toolchain, a
+# generated artifact, or test scaffolding.
+.git
+.github
+.cache
+.gocache
+bin
+node_modules
+elm-stuff
+web/elm/elm-stuff
+elm019
+test-results
+playwright-report
+site/demo/sharecrop-wasm-backend.wasm
+site/demo/wasm_exec.js
+site/demo/seed-snapshot.b64
+**/*_test.go
+tests
+*.log
