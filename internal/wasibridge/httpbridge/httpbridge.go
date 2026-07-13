@@ -19,12 +19,17 @@ import (
 )
 
 // Request is the wire form of an incoming HTTP request. Header is the standard
-// canonicalized map; Body is the full request body (base64 in JSON).
+// canonicalized map; Body is the full request body (base64 in JSON). RemoteAddr
+// carries the direct peer address so the guest's IP rate limiter keys on the
+// real client rather than the httptest recorder's placeholder - without it every
+// request would share one bucket and a burst from one caller would rate-limit
+// every unauthenticated endpoint for everyone.
 type Request struct {
-	Method string      `json:"method"`
-	Target string      `json:"target"`
-	Header http.Header `json:"header,omitempty"`
-	Body   []byte      `json:"body,omitempty"`
+	Method     string      `json:"method"`
+	Target     string      `json:"target"`
+	RemoteAddr string      `json:"remote_addr,omitempty"`
+	Header     http.Header `json:"header,omitempty"`
+	Body       []byte      `json:"body,omitempty"`
 }
 
 // Response is the wire form of the handler's response.
@@ -42,10 +47,11 @@ func EncodeRequest(r *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("read request body: %w", err)
 	}
 	return json.Marshal(Request{
-		Method: r.Method,
-		Target: r.URL.RequestURI(),
-		Header: r.Header,
-		Body:   body,
+		Method:     r.Method,
+		Target:     r.URL.RequestURI(),
+		RemoteAddr: r.RemoteAddr,
+		Header:     r.Header,
+		Body:       body,
 	})
 }
 
@@ -63,6 +69,11 @@ func Serve(handler http.Handler, requestBytes []byte) ([]byte, error) {
 	// the caller's so the handler sees exactly what arrived at the host.
 	if request.Header != nil {
 		httpRequest.Header = request.Header
+	}
+	// httptest.NewRequest hardcodes RemoteAddr to a placeholder; use the real
+	// peer address the host observed so per-IP rate limiting keys correctly.
+	if request.RemoteAddr != "" {
+		httpRequest.RemoteAddr = request.RemoteAddr
 	}
 
 	recorder := httptest.NewRecorder()
