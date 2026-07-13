@@ -66,7 +66,14 @@ func Serve(handler http.Handler, requestBytes []byte) ([]byte, error) {
 	}
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httpRequest)
+	// Hand the handler a writer that does NOT implement http.Flusher. This
+	// transport buffers the whole response and returns it as one unit of work,
+	// so it genuinely cannot stream: a handler that trusts a Flusher and then
+	// blocks writing an open stream (the MCP SSE endpoint does exactly this)
+	// would never return, wedging this guest instance forever - a few such
+	// requests would exhaust the pool and hang the server. Presenting an honest
+	// non-streaming writer makes such handlers fall back to a bounded response.
+	handler.ServeHTTP(nonFlushingWriter{recorder: recorder}, httpRequest)
 	result := recorder.Result()
 	body, err := io.ReadAll(result.Body)
 	if err != nil {
@@ -79,6 +86,20 @@ func Serve(handler http.Handler, requestBytes []byte) ([]byte, error) {
 		Body:   body,
 	})
 }
+
+// nonFlushingWriter delegates to an httptest.ResponseRecorder (preserving its
+// exact capture semantics) while deliberately not promoting the recorder's
+// Flush method, so it satisfies http.ResponseWriter but not http.Flusher. See
+// the note in Serve for why the bridge must not look flushable.
+type nonFlushingWriter struct {
+	recorder *httptest.ResponseRecorder
+}
+
+func (w nonFlushingWriter) Header() http.Header { return w.recorder.Header() }
+
+func (w nonFlushingWriter) Write(p []byte) (int, error) { return w.recorder.Write(p) }
+
+func (w nonFlushingWriter) WriteHeader(status int) { w.recorder.WriteHeader(status) }
 
 // WriteResponse writes a serialized response to a ResponseWriter (host side).
 func WriteResponse(w http.ResponseWriter, responseBytes []byte) error {
