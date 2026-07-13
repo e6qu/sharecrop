@@ -1,0 +1,86 @@
+name: Release
+
+# On every merge to main, compute the next version from conventional commits and,
+# when there is a release-worthy change, build and publish the multi-arch backend
+# image to the GitHub Container Registry, then tag the release. No :latest tag -
+# deployments pin an explicit version.
+on:
+  push:
+    branches: [main]
+
+# Serialize releases so two merges cannot race on the version/tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the version tag + create the GitHub release
+  packages: write # push images to ghcr.io
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0 # full history + tags for conventional-commit versioning
+      - id: compute
+        run: |
+          version="$(tools/next_version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if [ -n "${version}" ]; then
+            echo "release version: ${version}"
+          else
+            echo "no release-worthy commits since the last tag; skipping the image build"
+          fi
+
+  build:
+    needs: version
+    if: needs.version.outputs.version != ''
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - arch: amd64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+      # A docker-container builder is required to push directly from buildx.
+      - run: docker buildx create --use --name sharecrop-ci
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push ${{ matrix.arch }} image
+        run: tools/build_container.sh "ghcr.io/${{ github.repository }}:${{ needs.version.outputs.version }}" "${{ matrix.arch }}"
+
+  manifest:
+    needs: [version, build]
+    if: needs.version.outputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Assemble the multi-arch manifest
+        run: tools/build_container.sh "ghcr.io/${{ github.repository }}:${{ needs.version.outputs.version }}" manifest
+
+  release:
+    needs: [version, manifest]
+    if: needs.version.outputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Tag the release and publish notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ needs.version.outputs.version }}"
+          git tag "${version}"
+          git push origin "${version}"
+          gh release create "${version}" --title "${version}" --generate-notes
