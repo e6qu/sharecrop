@@ -1,5 +1,11 @@
 # WASM Backend Target
 
+> **Status: completed / historical — superseded.** This describes the old
+> `internal/wasmdemo` browser-storage architecture, which is deleted. The browser
+> demo now runs `internal/db` over in-browser SQLite (ncruces), and production is
+> the WASI guest pool — not the `js/wasm` request-adapter path described here. For
+> current state see [README.md](../README.md) and [deployment.md](./deployment.md).
+
 The deployed static demo runs a backend compiled from the Go codebase to a WASM
 binary. WASM is also a first-class production execution target for the Go
 backend when the host supplies explicit runtime adapters. The Go/WASM backend

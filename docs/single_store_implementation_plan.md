@@ -1,5 +1,11 @@
 # Single store implementation: retire `internal/wasmdemo`
 
+> **Status: completed / historical.** This migration is done — `internal/wasmdemo`
+> is deleted and `internal/db` is the single engine-neutral store (Postgres in
+> production, ncruces SQLite in the browser demo). Kept for history; for current
+> state see [README.md](../README.md), [STATUS.md](../STATUS.md), and
+> [deployment.md](./deployment.md).
+
 ## Goal
 
 The browser demo should be **seeded with data but otherwise run the same

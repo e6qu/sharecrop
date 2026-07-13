@@ -61,8 +61,12 @@ Specific rules:
 - Do not start a new task branch while the previous task pull request remains open.
 - After a task pull request is merged, sync local `main` with `origin/main`.
 - Create the next task branch from synced `origin/main`.
-- CI should run only for pull requests targeting `main`.
-- CI should not run on direct pushes to `main` or on bare branch pushes.
+- The test CI (`.github/workflows/ci.yml`) should run only for pull requests
+  targeting `main`, not on direct pushes to `main` or on bare branch pushes.
+- The Release workflow (`.github/workflows/release.yml`) is the exception: it
+  runs on merge to `main` to build and publish the container image and tag the
+  release. It does not re-run the test suite. See
+  [docs/deployment.md](./docs/deployment.md).
 
 ## Documentation Style
 

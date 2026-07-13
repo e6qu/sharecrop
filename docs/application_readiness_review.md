@@ -120,17 +120,20 @@ support surfaces are absent.
    - Result: product flows exist, but production email delivery needs an
      SMTP/provider adapter before public operation.
 
-5. **Operations are single-process.**
+5. **Operations are stateless and multi-replica.**
    - Runtime config includes address, database URL, migrations dir, access-token
-     secret, admin ids, cookie mode, and account-token delivery mode.
-   - There is Docker Compose for local Postgres, a systemd service template, and
-     an operator runbook.
+     secret, admin ids, cookie mode, account-token delivery mode, and the WASI
+     mode / wazero cache dir.
+   - Production deploys as slim multi-arch (arm64) containers on ECS Fargate,
+     published to ghcr; there is also Docker Compose for local Postgres and a
+     systemd template. See [deployment.md](./deployment.md).
    - Production `serve` wires Postgres-backed rate-limit buckets, persisted
-     MCP HTTP session identity, and persisted MCP replay events; only live
-     SSE subscriber channels are process-local.
-   - Result: one process can be operated, and most runtime state is already
-     Postgres-backed; cross-process MCP/SSE fan-out remains design work
-     before horizontal scaling.
+     MCP HTTP session identity, and persisted MCP replay events; SSE subscribers
+     deliver by polling the replay table.
+   - Result: `serve` is stateless and runs as multiple replicas behind a load
+     balancer; the only process-local state (rate-limit buckets) is
+     defense-in-depth. Real-time cross-replica SSE push would still want an
+     HTTP/2 streaming transport (see DO_NEXT.md); polling covers correctness.
 
 6. **Docs are still partial.**
    - `README.md` is local-command oriented.
@@ -156,8 +159,8 @@ support surfaces are absent.
 Implemented:
 
 - Static site and real-Elm demo exist.
-- Demo uses the compiled Go/WASM backend path with explicit browser host
-  adapters and seeded workflows.
+- Demo runs the real backend as `js/wasm` over in-browser SQLite (the single
+  `internal/db` store, a different SQL engine), seeded on boot.
 - Demo has reset and hash routing.
 
 Missing or partial:
@@ -167,12 +170,10 @@ Missing or partial:
 - The docs page covers the core lifecycle and MCP quickstart, and links to the
   repository API reference, MCP reference, operator runbook, and agent-side
   scheduling recipe.
-- The demo runs the real `internal/http` mux and real domain services, but
-  over browser-storage-backed stores instead of Postgres, with host-supplied
-  storage/clock/id adapters. It is single-actor by nature (one JS thread per
-  browser tab) and its non-persistent `RuntimeState` fields reset on page
-  reload. See
-  [wasm_demo_backend_spike.md](./wasm_demo_backend_spike.md).
+- The demo runs the real `internal/http` mux and real domain services over
+  in-browser SQLite (ncruces) instead of Postgres — the same `internal/db` store,
+  a different SQL engine, persisted to browser storage via SQLite snapshots. It is
+  single-actor by nature (one JS thread per browser tab).
 
 ### Authentication And User Account
 
@@ -412,8 +413,8 @@ Missing or partial:
 5. Keep adding explicit WASM host-storage boundaries and handlers only where
    they can fail loudly without fallback stores.
 6. Add provider email delivery only if account setup stops being admin-driven.
-7. Non-browser adapter docs and measurement commands exist
-   (`docs/wasm_demo_backend_spike.md`, `deno task measure:wasm`). Keep hardening
-   the production WASM host path toward a persistent-storage, verified-actor,
-   cryptographically-random non-browser host, and keep parity tests current as
-   API surfaces change.
+7. The production non-browser WASM host is shipped: `cmd/sharecrop serve` hosts
+   the app as a `wasip1` guest under a wazero pool, with state in Postgres, real
+   randomness and clock, and per-client rate limiting, deployed as a container on
+   ECS Fargate (see [deployment.md](./deployment.md)). Keep parity tests current
+   as API surfaces change.
