@@ -32,29 +32,45 @@ architecture can be pulled or promoted directly.
 
 ### Building
 
-```sh
-# Push both per-arch images and assemble the manifest:
-tools/build_container.sh sharecrop:1.4.0
-#   -> sharecrop:1.4.0-arm64, sharecrop:1.4.0-amd64, sharecrop:1.4.0 (manifest)
+Each arch is built where the freshly built binary can execute (see "no build on
+startup" below), so build the per-arch images first, then assemble the manifest:
 
-# Local single-arch build for testing (arm64, loaded into the local docker):
+```sh
+# Per-arch build + push (run each on a native runner of that arch; CI does this
+# in an arm64/amd64 matrix):
+tools/build_container.sh ghcr.io/e6qu/sharecrop:1.4.0 arm64   # -> :1.4.0-arm64
+tools/build_container.sh ghcr.io/e6qu/sharecrop:1.4.0 amd64   # -> :1.4.0-amd64
+
+# Assemble the multi-arch manifest from the per-arch images:
+tools/build_container.sh ghcr.io/e6qu/sharecrop:1.4.0 manifest  # -> :1.4.0
+
+# Local single-arch build for testing (host arch, loaded into the local docker):
 PUSH=false tools/build_container.sh sharecrop:dev
 ```
 
-The build is fast to load and fast to build:
+Properties:
 
-- **Small image.** The runtime is `distroless/static` plus one static
-  (CGO-free) binary — no shell, no libc, ~30 MB total. Quick to pull, small
-  attack surface.
-- **No emulation.** The `Dockerfile` builds the arch-independent parts (the
-  `wasip1` guest, which is wasm; the committed `web/static` frontend) once on the
-  native build platform and only cross-compiles the final host binary per arch,
-  so a multi-arch build does not pay QEMU costs.
-- **Slow-cold-start note.** wazero compiles the ~12 MB embedded guest at process
-  start, so a fresh task takes a moment to become ready (a one-time cost per task
-  on long-lived Fargate tasks). For faster task launch, enable
+- **No build on startup.** Everything is baked at build time: the frontend
+  (embedded in the binary), the `wasip1` guest, and — via a `wasi-precompile`
+  build step — the guest's **wazero AOT machine-code cache**. `serve` loads the
+  compiled guest from the cache (`SHARECROP_WAZERO_CACHE_DIR=/wazero-cache`, set
+  in the image) instead of compiling the ~11 MB module on boot: startup module
+  prep drops from ~1.7 s to ~0.08 s. The `guest_compile` field in the startup log
+  surfaces whether the cache was hit; a slow value means it fell back to
+  compiling (e.g. a stale cache). The cache key is `wazero-<version>-<arch>-linux`
+  — portable across CPUs of the same arch, so an arm64 image's cache hits on any
+  arm64 Fargate host.
+- **Slim image.** The runtime is `distroless/static` plus one static (CGO-free)
+  binary — no shell, no libc. The baked wazero cache adds ~45 MB (the machine
+  code for the whole app), for a ~77 MB image; that is the deliberate cost of
+  doing no compilation at startup. It still pulls quickly (registry layers are
+  compressed) and has a small attack surface. For even faster task launch, enable
   [SOCI](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/container-considerations.html)
   lazy image loading on the cluster.
+- **Native per arch.** Baking the cache means running the just-built binary, and
+  the cache is CPU-arch-specific, so each arch is built natively (a matching
+  runner) rather than cross-compiled. Building the non-native arch locally still
+  works but runs the whole build under emulation.
 
 The frontend assets embedded into the binary are the committed `web/static/*`.
 Run `make frontend` before a release build if the UI changed, the same as for
@@ -82,6 +98,7 @@ Task definitions are in `deploy/ecs/` (arm64 `runtimePlatform`). Replace the
 | `SHARECROP_ACCESS_TOKEN_SECRET` | Secrets Manager           | 32-byte access-token signing secret.              |
 | `SHARECROP_HTTP_ADDR`           | image default `:8080`     | Listen address.                                   |
 | `SHARECROP_MIGRATIONS_DIR`      | image default `/migrations` | Baked into the image.                           |
+| `SHARECROP_WAZERO_CACHE_DIR`    | image default `/wazero-cache` | Baked AOT cache; leave as-is. Unset would make the guest compile at startup. |
 | `SHARECROP_WASI_POOL_SIZE`      | optional                  | Guest pool size; defaults to GOMAXPROCS (task vCPUs). |
 | `SHARECROP_INSECURE_COOKIES`    | optional                  | Leave unset in production (cookies stay Secure).  |
 | `SHARECROP_ACCOUNT_TOKEN_DELIVERY` | optional               | Defaults to `log` (fail-closed).                  |
