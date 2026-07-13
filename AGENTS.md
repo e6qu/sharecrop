@@ -187,6 +187,24 @@ When the UI changes:
 - Record skipped screenshot checks in [BUGS.md](./BUGS.md) with the reason.
 - Add or update Playwright tests as the UI matures and workflows stabilize.
 
+## Deployment & Container Images
+
+The backend runs the same wasm app as the browser demo, hosted server-side
+through the WASI guest pool (`cmd/sharecrop serve`), as **stateless replicas on
+ECS Fargate (arm64) behind a load balancer**, with all state in Postgres. The
+browser demo is `js/wasm`; the backend is the `wasip1` guest under wazero. See
+[docs/deployment.md](./docs/deployment.md) for the full setup.
+
+Container images are multi-arch and follow this naming standard:
+
+- `foo:bar` — the multi-arch manifest list (what deployments reference).
+- `foo:bar-arm64` — the per-arch image; arm64 is the **primary** target and the
+  services run on it.
+- `foo:bar-amd64` — the per-arch image for amd64.
+
+Build both per-arch images and assemble the manifest with
+`tools/build_container.sh <image:tag>`.
+
 ## Task Workflow
 
 For each task:
