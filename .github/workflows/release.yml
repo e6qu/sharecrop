@@ -1,9 +1,9 @@
 name: Release
 
-# On every merge to main, compute the next version from conventional commits and,
-# when there is a release-worthy change, build and publish the multi-arch backend
-# image to the GitHub Container Registry, then tag the release. No :latest tag -
-# deployments pin an explicit version.
+# On every merge to main, compute the next version from conventional commits
+# (patch by default; feat -> minor; !/BREAKING -> major), build and publish the
+# multi-arch backend image to the GitHub Container Registry, tag the release, and
+# prune old images to the newest 25. No :latest tag - deployments pin a version.
 on:
   push:
     branches: [main]
@@ -29,16 +29,15 @@ jobs:
       - id: compute
         run: |
           version="$(tools/next_version.sh)"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          if [ -n "${version}" ]; then
-            echo "release version: ${version}"
-          else
-            echo "no release-worthy commits since the last tag; skipping the image build"
+          if [ -z "${version}" ]; then
+            echo "next_version.sh produced no version (unexpected)" >&2
+            exit 1
           fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release version: ${version}"
 
   build:
     needs: version
-    if: needs.version.outputs.version != ''
     strategy:
       fail-fast: true
       matrix:
@@ -59,7 +58,6 @@ jobs:
 
   manifest:
     needs: [version, build]
-    if: needs.version.outputs.version != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.0
@@ -70,7 +68,6 @@ jobs:
 
   release:
     needs: [version, manifest]
-    if: needs.version.outputs.version != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.0
@@ -84,3 +81,17 @@ jobs:
           git tag "${version}"
           git push origin "${version}"
           gh release create "${version}" --title "${version}" --generate-notes
+
+  # Best-effort: keep the registry from growing without bound. Runs after the new
+  # image is published so it counts toward the newest 25 kept releases. A failure
+  # (e.g. token scope) must not fail the release.
+  prune:
+    needs: [version, manifest]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Prune old images (keep newest 25)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/prune_ghcr_versions.sh "${{ github.repository_owner }}" "${{ github.event.repository.name }}" 25
