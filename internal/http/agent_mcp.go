@@ -623,9 +623,17 @@ func (server Server) mcpStream(w http.ResponseWriter, r *http.Request) {
 	for index := range events {
 		writeSSEEvent(w, events[index])
 	}
-	if flusher, matched := w.(http.Flusher); matched {
-		flusher.Flush()
+	flusher, canStream := w.(http.Flusher)
+	if !canStream {
+		// The transport cannot stream - it buffers the whole response and
+		// returns it as one unit (the WASI guest bridge). Blocking here to wait
+		// for live events would never return and would pin the worker forever,
+		// so send the replayed events and stop. The client's EventSource
+		// reconnects with Last-Event-ID and picks up later events, turning
+		// server push into short polling over a transport that cannot do better.
+		return
 	}
+	flusher.Flush()
 	for {
 		select {
 		case event, open := <-liveEvents:
@@ -633,9 +641,7 @@ func (server Server) mcpStream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			writeSSEEvent(w, event)
-			if flusher, matched := w.(http.Flusher); matched {
-				flusher.Flush()
-			}
+			flusher.Flush()
 		case <-r.Context().Done():
 			return
 		}
