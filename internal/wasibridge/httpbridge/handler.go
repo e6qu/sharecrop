@@ -3,10 +3,18 @@
 package httpbridge
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 )
+
+// maxBridgeRequestBodyBytes bounds the request body the host buffers before
+// framing it for the guest. The guest enforces the same request-body limit, but
+// the host reads the whole body first (to serialize it), so without this cap an
+// oversized request would let the host allocate without limit before the guest
+// ever sees it. Keep in sync with internal/http's maxRequestBodyBytes.
+const maxBridgeRequestBodyBytes = 2 << 20
 
 // Handler turns a caller into an http.Handler: each request is serialized, run
 // through a guest instance (which may make store calls back over the same unit
@@ -23,8 +31,14 @@ type bridgeHandler struct {
 }
 
 func (h bridgeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBridgeRequestBodyBytes)
 	requestBytes, err := EncodeRequest(r)
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
