@@ -19,15 +19,19 @@ import (
 )
 
 // Request is the wire form of an incoming HTTP request. Header is the standard
-// canonicalized map; Body is the full request body (base64 in JSON). RemoteAddr
-// carries the direct peer address so the guest's IP rate limiter keys on the
-// real client rather than the httptest recorder's placeholder - without it every
-// request would share one bucket and a burst from one caller would rate-limit
-// every unauthenticated endpoint for everyone.
+// canonicalized map; Body is the full request body (base64 in JSON).
+//
+// RemoteAddr and Host are carried explicitly because the guest rebuilds the
+// request with httptest.NewRequest, which fills them with placeholders, and Go
+// keeps neither in the header map: RemoteAddr feeds per-IP rate limiting (see
+// the note in Serve) and Host feeds the MCP origin check (Origin must match the
+// request host), so dropping them breaks rate limiting and rejects same-origin
+// MCP requests under the guest.
 type Request struct {
 	Method     string      `json:"method"`
 	Target     string      `json:"target"`
 	RemoteAddr string      `json:"remote_addr,omitempty"`
+	Host       string      `json:"host,omitempty"`
 	Header     http.Header `json:"header,omitempty"`
 	Body       []byte      `json:"body,omitempty"`
 }
@@ -50,6 +54,7 @@ func EncodeRequest(r *http.Request) ([]byte, error) {
 		Method:     r.Method,
 		Target:     r.URL.RequestURI(),
 		RemoteAddr: r.RemoteAddr,
+		Host:       r.Host,
 		Header:     r.Header,
 		Body:       body,
 	})
@@ -74,6 +79,11 @@ func Serve(handler http.Handler, requestBytes []byte) ([]byte, error) {
 	// peer address the host observed so per-IP rate limiting keys correctly.
 	if request.RemoteAddr != "" {
 		httpRequest.RemoteAddr = request.RemoteAddr
+	}
+	// Likewise it hardcodes Host to "example.com"; use the real host so the MCP
+	// origin check (Origin host must equal r.Host) accepts same-origin requests.
+	if request.Host != "" {
+		httpRequest.Host = request.Host
 	}
 
 	recorder := httptest.NewRecorder()
