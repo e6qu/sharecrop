@@ -78,22 +78,25 @@ Run `make frontend` before a release build if the UI changed, the same as for
 
 ### Releases (CI)
 
-`.github/workflows/release.yml` runs on every merge to `main`:
+`.github/workflows/release.yml` builds and publishes on **every** merge to
+`main`:
 
 1. Compute the next version from conventional commits since the last tag
-   (`tools/next_version.sh`). No release-worthy commit (only `chore`/`docs`/… )
-   → nothing is built.
+   (`tools/next_version.sh`): **patch by default**, `feat` → minor, `!`/`BREAKING
+   CHANGE` → major. Every merge bumps at least a patch, so every merge builds.
 2. Build each arch on a native runner (arm64 on `ubuntu-24.04-arm`, amd64 on
    `ubuntu-24.04`) and push the per-arch images to the GitHub Container Registry.
-3. Assemble the manifest, then create the git tag and GitHub release.
+3. Assemble the manifest, create the git tag and GitHub release, and prune old
+   images to the newest 25 release versions (`tools/prune_ghcr_versions.sh`,
+   best-effort).
 
 Images are published to `ghcr.io/<owner>/<repo>:<version>` (e.g.
 `ghcr.io/e6qu/sharecrop:v1.4.0`) with per-arch `…-arm64`/`…-amd64` tags. There is
 **no `:latest`** — deployments pin an explicit version. Because merges squash to
-the PR title, PR titles must follow the conventional-commit format for the
-version to bump (`feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING CHANGE` →
-major). Native arm64 runners are required; without them, switch the matrix to
-emulated builds.
+the PR title, PR titles should follow the conventional-commit format so
+`feat`/breaking changes bump the right component (anything else is a patch).
+Native arm64 runners are required; without them, switch the matrix to emulated
+builds.
 
 ## ECS Fargate
 

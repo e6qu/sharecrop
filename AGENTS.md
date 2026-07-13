@@ -209,15 +209,16 @@ Container images are multi-arch and follow this naming standard:
 Build a per-arch image with `tools/build_container.sh <image:tag> <arch>` and
 assemble the manifest with `tools/build_container.sh <image:tag> manifest`.
 
-On every merge to `main`, the Release workflow (`.github/workflows/release.yml`)
-computes the next version from **conventional commits** since the last tag
-(`tools/next_version.sh`: `feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING
-CHANGE` → major), and when there is a release-worthy change it builds the
-multi-arch image, publishes it to the **GitHub Container Registry**
-(`ghcr.io/<owner>/<repo>:<version>`, no `:latest`), and tags the release.
-Because merges squash to the PR title, **PR titles must follow the
-conventional-commit format** (e.g. `feat: …`, `fix(scope): …`) for versioning to
-work.
+**Every** merge to `main` builds and publishes an image. The Release workflow
+(`.github/workflows/release.yml`) computes the next version from **conventional
+commits** since the last tag (`tools/next_version.sh`: **patch by default**;
+`feat` → minor; `!`/`BREAKING CHANGE` → major), builds the multi-arch image,
+publishes it to the **GitHub Container Registry** (`ghcr.io/<owner>/<repo>:<version>`,
+no `:latest`), tags the release, and prunes old images to the newest 25
+(`tools/prune_ghcr_versions.sh`). Because merges squash to the PR title, **PR
+titles should follow the conventional-commit format** (e.g. `feat: …`,
+`fix(scope): …`) so `feat`/breaking changes bump the right component; anything
+else is a patch.
 
 ## Task Workflow
 

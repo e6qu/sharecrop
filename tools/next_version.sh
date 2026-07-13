@@ -2,17 +2,16 @@
 set -euo pipefail
 
 # Computes the next release version from conventional commits since the latest
-# vMAJOR.MINOR.PATCH tag and prints it as "vX.Y.Z" on stdout, or prints nothing
-# when no commit since that tag warrants a release. Bump rules (conventional
-# commits, https://www.conventionalcommits.org):
+# vMAJOR.MINOR.PATCH tag and prints it as "vX.Y.Z" on stdout. Every merge to main
+# builds, so this always bumps at least a patch. Bump rules (conventional commits,
+# https://www.conventionalcommits.org):
 #
 #   - a "!" after the type/scope (e.g. feat!:) or a "BREAKING CHANGE" footer -> major
-#   - feat            -> minor
-#   - fix | perf      -> patch
-#   - anything else (chore, docs, refactor, test, ci, build, style, ...) -> no release
+#   - feat                                        -> minor
+#   - anything else (fix, perf, chore, docs, ...) -> patch (the default)
 #
-# Because merges squash to the PR title (see AGENTS.md), PR titles must follow the
-# conventional-commit format for this to bump correctly.
+# Because merges squash to the PR title (see AGENTS.md), PR titles should follow
+# the conventional-commit format so feat/breaking changes bump the right part.
 
 latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1 || true)"
 if [[ -z "$latest" ]]; then
@@ -33,17 +32,16 @@ patch="${rest#*.}"
 # rather than the shell processing them.
 re_breaking='^[a-z]+(\(.+\))?!:'
 re_feat='^feat(\(.+\))?:'
-re_fix='^(fix|perf)(\(.+\))?:'
 
-bump="none"
+# Default to a patch bump so every merge builds; feat and breaking changes raise
+# it to minor/major.
+bump="patch"
 while IFS= read -r line; do
   if [[ "$line" =~ $re_breaking ]] || [[ "$line" == *"BREAKING CHANGE"* ]]; then
     bump="major"
     break
   elif [[ "$line" =~ $re_feat ]]; then
     [[ "$bump" != "major" ]] && bump="minor"
-  elif [[ "$line" =~ $re_fix ]]; then
-    [[ "$bump" == "none" ]] && bump="patch"
   fi
 done < <(git log "$range" --format='%s%n%b')
 
@@ -51,5 +49,4 @@ case "$bump" in
   major) echo "v$((major + 1)).0.0" ;;
   minor) echo "v${major}.$((minor + 1)).0" ;;
   patch) echo "v${major}.${minor}.$((patch + 1))" ;;
-  none) : ;;
 esac
