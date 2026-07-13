@@ -1,5 +1,11 @@
 # WASI Production Hosting Spike — Plan
 
+> **Status: completed / historical.** The spike and the full production cutover
+> are done: WASI hosting is the production **default** (`SHARECROP_WASI_MODE=native`
+> opts out), and `internal/wasmdemo` is deleted. Kept for history; for current
+> state see [README.md](../README.md), [STATUS.md](../STATUS.md), and
+> [deployment.md](./deployment.md).
+
 ## Goal
 
 Replace `cmd/sharecrop`'s native production server with a single WASM

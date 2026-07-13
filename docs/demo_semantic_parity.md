@@ -1,5 +1,11 @@
 # Demo Semantic Parity
 
+> **Status: partially superseded.** The parity *suites* (scenario-parity, pages
+> routing) still run in CI, but the backend-architecture framing below predates
+> the single-store cutover: the browser demo now runs `internal/db` over in-browser
+> SQLite, not the `internal/wasmdemo` host-adapter path, and the production host is
+> the WASI guest pool. See [deployment.md](./deployment.md) for current state.
+
 The static demo now defaults to the compiled Go/WASM backend path. The browser
 loads the real Elm client, `wasm-host.js`, Go's `wasm_exec.js`, and
 `sharecrop-wasm-backend.wasm`; `/api/*` requests are handled by the exported Go

@@ -100,30 +100,16 @@ Known risks:
   replacement coverage against the real, deployed WASM backend. No equivalent
   exists for the removed route-drift-detection test (real REST routes vs. a
   mock's route table) against the WASM dispatch path — a known, accepted gap.
-- Go/WASM is a first-class backend execution target, not only a demo mechanism.
-  `cmd/sharecrop-wasm` compiles the real `internal/http` mux and the real
-  domain services to `js/wasm`; `internal/wasmdemo` provides
-  browser-storage-backed `Store` implementations for all 9 domain packages
-  (`browserstore_*.go`) plus the seed routine — it no longer classifies or
-  handles requests itself. A Deno WASM runner
-  (`tools/wasm_runtime_loader.ts`) loads a compiled Go `.wasm` artifact,
-  verifies required exports, configures explicit host adapters (storage,
-  clock, id source), and runs the shared scenario parity suite through the
-  exported request handler with real bearer tokens; the mux resolves
-  identity from the bearer token, not the host. `deno task measure:wasm`
-  reports artifact size, startup time, host-process memory, and request
-  latency against a compiled artifact; see
-  [docs/wasm_demo_backend_spike.md](./docs/wasm_demo_backend_spike.md) for a
-  baseline. Remaining WASM risk is a genuine production non-browser host:
-  the reference host is in-memory (unpersisted across restarts), uses a
-  fixed clock, and its `nextID` counter yields sequential
-  submission/comment/reservation ids (ledger entry ids are generated in Go
-  as real UUIDs); none of that is safe to reuse for a production non-browser
-  deployment, and no such deployment target exists yet to build a production
-  host against. Continued parity expansion as API surfaces change also
-  remains ongoing work. JavaScript reimplementations, generated fake
-  backends, and fallback stores are not valid substitutes for the compiled
-  Go WASM binary.
+- Wasm is the production backend, not only a demo mechanism: `cmd/sharecrop serve`
+  hosts the real `internal/http` mux + domain services as a `wasip1` guest under a
+  wazero pool, bridging store calls to Postgres. The earlier risk — no persistent
+  production non-browser host (the old reference host was in-memory, fixed-clock,
+  sequential-id) — is resolved: production is the WASI guest pool on ECS Fargate,
+  state in Postgres, with real randomness/clock and a baked AOT cache (no startup
+  compile). See [docs/deployment.md](./docs/deployment.md). Ongoing work: continued
+  scenario-parity expansion as API surfaces change. Known gap (still open): there
+  is no route-drift-detection test (real REST routes vs. a mock's route table) for
+  the WASM dispatch path, noted above.
 
 - The default test/demo HTTP constructor still uses in-memory rate-limit
   buckets, audit events, notifications, and MCP sessions. Production `serve`

@@ -1,5 +1,23 @@
 # What We Did
 
+WASI hosting became the **production default** and the backend was containerized
+for ECS Fargate. The app guest is now embedded in the `sharecrop` binary
+(`internal/wasiguest`, built by `make wasi-app-guest` as part of `make build`), so
+`serve` hosts through the WASI guest pool by default; `SHARECROP_WASI_MODE=native`
+opts out. (This supersedes the "opt-in via `SHARECROP_WASI_GUEST`" framing in the
+cutover entry below — that variable still overrides the embedded guest, but the
+default flipped.) The production-default WASI path was then hardened: real
+`crypto/rand` and wall clock in the guest, per-client IP rate limiting and the MCP
+origin check restored by carrying `RemoteAddr`/`Host` across the request bridge, a
+fixed MCP SSE pool-exhaustion denial of service, forwarded request-shaping env,
+and a bridge frame limit raised above the request-body limit with the host body
+read bounded. The backend was then packaged as a slim multi-arch (arm64) container
+on distroless with a baked wazero AOT cache so it does no compile at startup, a
+`ghcr` release workflow (conventional-commit versions, no `:latest`), and ECS
+Fargate task definitions. Running production on the same wasm app as the demo is
+therefore done, not a "tracked goal." See
+[docs/deployment.md](./docs/deployment.md).
+
 The `task/wasi-cutover` branch is the **production cutover - the end of the WASI
 hosting effort**. `cmd/sharecrop serve` can now serve production by running the
 compiled app guest, so production and the browser demo run the same WASM

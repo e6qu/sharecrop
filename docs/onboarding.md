@@ -79,3 +79,4 @@ their own organizations by email.
 - [MCP reference](./mcp_reference.md)
 - [Agent scheduling](./agent_scheduling.md)
 - [Operations runbook](./operations_runbook.md)
+- [Deployment](./deployment.md) (container image, ECS Fargate, release workflow)

@@ -3,6 +3,11 @@
 Sharecrop is a coordination layer for requested work, submissions, validation,
 scoped access, and rewards.
 
+One application, built for two runtimes from the same source: the **browser
+demo** runs it as `js/wasm` over in-browser SQLite, and the **backend** runs the
+same app server-side through a WASI guest pool over Postgres, deployed as
+stateless containers on ECS Fargate (see [docs/deployment.md](./docs/deployment.md)).
+
 See:
 
 - [PLAN.md](./PLAN.md)
@@ -10,6 +15,7 @@ See:
 - [STATUS.md](./STATUS.md)
 - [DO_NEXT.md](./DO_NEXT.md)
 - [BUGS.md](./BUGS.md)
+- [docs/deployment.md](./docs/deployment.md)
 - [docs/operations_runbook.md](./docs/operations_runbook.md)
 - [docs/api_reference.md](./docs/api_reference.md)
 - [docs/openapi.json](./docs/openapi.json) (generated; run `make openapi` to

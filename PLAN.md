@@ -40,7 +40,9 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
   be compiled from Go code with explicit host adapters for storage, clock,
   identity/session, networking/request handling, and other runtime boundaries.
   JavaScript reimplementations, generated fake backends, and fallback stores are
-  not acceptable substitutes.
+  not acceptable substitutes. This is realized: production hosts the app as a
+  `wasip1` guest under a wazero pool, and the browser demo runs the same app as
+  `js/wasm`. See [docs/deployment.md](./docs/deployment.md).
 - Standard library `net/http`; no `chi` or larger web framework initially.
 - Go `embed` for compiled frontend assets and static files.
 - No type-ignore comments or intentional lint/type-safety escapes in application code.
@@ -53,7 +55,8 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - `pgx` for PostgreSQL access.
 - Use `sqlc` for typed query generation where it does not compromise the domain model.
 - Domain models remain separate from generated DB row types.
-- SQLite is appropriate for local agent cache, not for the central server truth.
+- SQLite (via ncruces) is the browser demo's store engine; PostgreSQL remains the
+  central server source of truth. SQLite is not used for the server.
 - DuckDB may be useful later for analytics/export workflows, not OLTP.
 
 ### Frontend
@@ -102,7 +105,8 @@ Rules:
 
 Segregation boundaries:
 
-- `internal/db`: contains `pgx` and generated `sqlc` access.
+- `internal/db`: the single engine-neutral store implementation; `pgx` is confined
+  here (in `handle.go`), serving PostgreSQL in production and SQLite in the demo.
 - `internal/auth`: contains JWT and Argon2id library usage.
 - `internal/core/id`: contains UUID library usage.
 - `internal/schema`: contains local Sharecrop schema parsing and validation.
@@ -1170,7 +1174,7 @@ web/
 Package intent:
 
 - `internal/core`: foundational strong types, result/option helpers, domain errors.
-- `internal/db`: database connection, transactions, generated query wrappers.
+- `internal/db`: the engine-neutral store implementation (PostgreSQL and SQLite), transactions, and query execution behind a small handle abstraction.
 - `internal/tasks`: task domain model and services.
 - `internal/submissions`: submission domain model and services.
 - `internal/ledger`: credit accounts, ledger entries, escrow, payout.
@@ -1712,7 +1716,7 @@ Acceptance checks:
 
 ## Current Roadmap
 
-The numbered pull-request roadmap in this plan is fully implemented and merged into `main`, including every section below (reservation foundations, requester ergonomics, review outcomes, reward bundles, and MCP Streamable HTTP). The sections are kept as a record of the agreed scope and defaults. Later work is tracked in [DO_NEXT.md](./DO_NEXT.md), [STATUS.md](./STATUS.md), and [WHAT_WE_DID.md](./WHAT_WE_DID.md), not by extending this roadmap.
+The numbered pull-request roadmap in this plan is fully implemented and merged into `main`, including every section below (reservation foundations, requester ergonomics, review outcomes, reward bundles, and MCP Streamable HTTP). The sections are kept as a record of the agreed scope and defaults. Later work is tracked in [DO_NEXT.md](./DO_NEXT.md), [STATUS.md](./STATUS.md), and [WHAT_WE_DID.md](./WHAT_WE_DID.md), not by extending this roadmap. The runtime and deployment model is documented in [docs/deployment.md](./docs/deployment.md).
 
 ### Reservation, Approval, And Discovery Availability Foundations
 
