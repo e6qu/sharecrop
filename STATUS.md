@@ -34,6 +34,9 @@
   record without reconstructing provider-specific values.
 - **Monitoring integration:** Terraform exposes the actual CloudWatch Logs group
   used by serve tasks, including its provider-generated suffix.
+- **Provider compatibility:** The deployment module requires HashiCorp AWS
+  provider 6.x, matching the shared `dev` environment and the other deployed
+  service modules.
 
 ## State
 

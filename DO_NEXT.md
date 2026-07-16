@@ -15,7 +15,8 @@ continuity files if task scope changes.
    Amazon Elastic Container Service cluster, fill the remaining deployment
    coordinates, run `terraform apply`, run the migration task, and point DNS at
    the ALB. Then cut the first `feat`/`fix` release so the image publishes to
-   ghcr. Requires GitHub-hosted arm64 runners for the release build. See
+   ghcr. The module now uses the HashiCorp AWS provider 6.x required by the
+   shared environment. Requires GitHub-hosted arm64 runners for the release build. See
    [docs/deployment.md](./docs/deployment.md).
    Use `alb_dns_name` and `alb_zone_id` for the Route 53 alias record, and
    `serve_log_group_name` when enrolling the deployed app in monitoring.
