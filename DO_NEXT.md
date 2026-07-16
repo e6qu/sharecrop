@@ -17,7 +17,8 @@ continuity files if task scope changes.
    the ALB. Then cut the first `feat`/`fix` release so the image publishes to
    ghcr. Requires GitHub-hosted arm64 runners for the release build. See
    [docs/deployment.md](./docs/deployment.md).
-   Use `alb_dns_name` and `alb_zone_id` for the Route 53 alias record.
+   Use `alb_dns_name` and `alb_zone_id` for the Route 53 alias record, and
+   `serve_log_group_name` when enrolling the deployed app in monitoring.
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are
    added, and keep running it against both SQL engines and the real backend as
