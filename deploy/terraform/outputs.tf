@@ -40,12 +40,7 @@ output "run_migrate_command" {
   )
 }
 
-output "database_endpoint" {
-  description = "Private Amazon RDS for PostgreSQL endpoint the app connects to."
-  value       = aws_db_instance.this.address
-}
-
-output "database_url_secret_arn" {
-  description = "Secrets Manager ARN of the assembled DATABASE_URL."
-  value       = aws_secretsmanager_secret.database_url.arn
+output "service_security_group_id" {
+  description = "Security group attached to Sharecrop Amazon ECS tasks."
+  value       = aws_security_group.service.id
 }

@@ -1,11 +1,3 @@
-# Generated secrets. The DATABASE_URL secret is assembled in database.tf once the
-# Amazon RDS for PostgreSQL instance exists.
-
-resource "random_password" "database" {
-  length  = 32
-  special = false # keep it URL-safe for DATABASE_URL and RDS
-}
-
 resource "random_password" "access_token" {
   length  = 64
   special = false

@@ -34,7 +34,7 @@ resource "aws_cloudwatch_log_group" "migrate" {
 locals {
   # Injected into every container as `secrets`.
   secrets = concat([
-    { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn },
+    { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
     { name = "SHARECROP_ACCESS_TOKEN_SECRET", valueFrom = aws_secretsmanager_secret.access_token.arn },
   ], var.shauth_oidc_client_secret_arn == "" ? [] : [{ name = "SHARECROP_SHAUTH_CLIENT_SECRET", valueFrom = var.shauth_oidc_client_secret_arn }])
 
@@ -147,7 +147,6 @@ resource "aws_ecs_service" "serve" {
 
   depends_on = [
     aws_lb_listener.http,
-    aws_secretsmanager_secret_version.database_url,
     aws_secretsmanager_secret_version.access_token,
   ]
   tags = local.tags
