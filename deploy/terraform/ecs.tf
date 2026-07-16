@@ -145,6 +145,10 @@ resource "aws_ecs_service" "serve" {
     container_port   = 8080
   }
 
-  depends_on = [aws_lb_listener.http]
-  tags       = local.tags
+  depends_on = [
+    aws_lb_listener.http,
+    aws_secretsmanager_secret_version.database_url,
+    aws_secretsmanager_secret_version.access_token,
+  ]
+  tags = local.tags
 }

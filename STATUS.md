@@ -21,7 +21,8 @@
     calls to Postgres via `storehost`. `SHARECROP_WASI_MODE=native` runs the
     in-process mux instead; a binary built without the guest runs native.
 - **Deployment:** a slim multi-arch container (arm64 primary) on AWS ECS Fargate,
-  stateless behind a load balancer with state in Postgres. The guest's machine
+  stateless behind a load balancer with state in single-AZ Amazon RDS for
+  PostgreSQL. The guest's machine
   code is baked into the image as a wazero AOT cache, so the server does no
   compile at startup. Images publish to the GitHub Container Registry on merge,
   versioned by conventional commits (no `:latest`). See
@@ -70,5 +71,6 @@ Terraform validation, and WASI bridge generation checks.
 
 ## Blocking issues
 
-None. GitHub Pages `deploy-pages` occasionally fails transiently after a merge
-and clears on retry; it is not caused by repository code.
+The dev environment required its Terraform consumer to update to the
+single-AZ Amazon RDS for PostgreSQL module revision before Sharecrop could
+start.

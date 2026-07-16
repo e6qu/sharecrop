@@ -1,4 +1,4 @@
-# Security groups: internet -> ALB -> serve tasks -> RDS Proxy -> Aurora.
+# Security groups: internet -> ALB -> serve tasks -> Amazon RDS for PostgreSQL.
 
 resource "aws_security_group" "alb" {
   name_prefix = "${var.name}-alb-"
@@ -59,41 +59,14 @@ resource "aws_vpc_security_group_ingress_rule" "service_from_alb" {
 
 resource "aws_vpc_security_group_egress_rule" "service_all" {
   security_group_id = aws_security_group.service.id
-  description       = "All egress (image pull, RDS Proxy, AWS APIs)"
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
-resource "aws_security_group" "rds_proxy" {
-  name_prefix = "${var.name}-rdsproxy-"
-  description = "RDS Proxy"
-  vpc_id      = var.vpc_id
-  tags        = local.tags
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_service" {
-  security_group_id            = aws_security_group.rds_proxy.id
-  description                  = "Postgres from serve tasks"
-  ip_protocol                  = "tcp"
-  from_port                    = 5432
-  to_port                      = 5432
-  referenced_security_group_id = aws_security_group.service.id
-}
-
-resource "aws_vpc_security_group_egress_rule" "rds_proxy_all" {
-  security_group_id = aws_security_group.rds_proxy.id
-  description       = "All egress"
+  description       = "All egress (image pull, Amazon RDS, AWS APIs)"
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }
 
 resource "aws_security_group" "database" {
   name_prefix = "${var.name}-db-"
-  description = "Aurora cluster"
+  description = "Amazon RDS for PostgreSQL"
   vpc_id      = var.vpc_id
   tags        = local.tags
 
@@ -102,13 +75,13 @@ resource "aws_security_group" "database" {
   }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "database_from_proxy" {
+resource "aws_vpc_security_group_ingress_rule" "database_from_service" {
   security_group_id            = aws_security_group.database.id
-  description                  = "Postgres from RDS Proxy"
+  description                  = "PostgreSQL from serve tasks"
   ip_protocol                  = "tcp"
   from_port                    = 5432
   to_port                      = 5432
-  referenced_security_group_id = aws_security_group.rds_proxy.id
+  referenced_security_group_id = aws_security_group.service.id
 }
 
 resource "aws_vpc_security_group_egress_rule" "database_all" {

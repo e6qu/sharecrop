@@ -10,7 +10,7 @@ continuity files if task scope changes.
    the WASI bridge (which cannot stream); a streaming transport would let it push.
 
 2. **Stand up the AWS deployment.** The Terraform in `deploy/terraform/` provisions
-   the ALB + ECS Fargate service + Aurora Serverless v2 + RDS Proxy + secrets/IAM
+   the ALB + ECS Fargate service + single-AZ Amazon RDS for PostgreSQL + secrets/IAM
    into an existing VPC. Set `existing_ecs_cluster_arn` to the shared `dev`
    Amazon Elastic Container Service cluster, fill the remaining deployment
    coordinates, run `terraform apply`, run the migration task, and point DNS at

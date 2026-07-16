@@ -40,9 +40,9 @@ output "run_migrate_command" {
   )
 }
 
-output "rds_proxy_endpoint" {
-  description = "RDS Proxy endpoint the app connects to."
-  value       = aws_db_proxy.this.endpoint
+output "database_endpoint" {
+  description = "Private Amazon RDS for PostgreSQL endpoint the app connects to."
+  value       = aws_db_instance.this.address
 }
 
 output "database_url_secret_arn" {
