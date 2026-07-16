@@ -1,4 +1,4 @@
-# Security groups: internet -> ALB -> serve tasks -> Amazon RDS for PostgreSQL.
+# Security groups: internet -> Application Load Balancer -> serve tasks.
 
 resource "aws_security_group" "alb" {
   name_prefix = "${var.name}-alb-"
@@ -59,34 +59,7 @@ resource "aws_vpc_security_group_ingress_rule" "service_from_alb" {
 
 resource "aws_vpc_security_group_egress_rule" "service_all" {
   security_group_id = aws_security_group.service.id
-  description       = "All egress (image pull, Amazon RDS, AWS APIs)"
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
-resource "aws_security_group" "database" {
-  name_prefix = "${var.name}-db-"
-  description = "Amazon RDS for PostgreSQL"
-  vpc_id      = var.vpc_id
-  tags        = local.tags
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_vpc_security_group_ingress_rule" "database_from_service" {
-  security_group_id            = aws_security_group.database.id
-  description                  = "PostgreSQL from serve tasks"
-  ip_protocol                  = "tcp"
-  from_port                    = 5432
-  to_port                      = 5432
-  referenced_security_group_id = aws_security_group.service.id
-}
-
-resource "aws_vpc_security_group_egress_rule" "database_all" {
-  security_group_id = aws_security_group.database.id
-  description       = "All egress"
+  description       = "All egress (image pull, PostgreSQL, AWS APIs)"
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }
