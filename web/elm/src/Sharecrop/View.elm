@@ -72,6 +72,7 @@ authView model =
             , div [ Html.Attributes.class "flex gap-3" ]
                 ([ Ui.primaryButton [ type_ "submit", testId "login" ] "Log in"
                  , Ui.secondaryButton [ type_ "button", onClick RegisterClicked, testId "register" ] "Register"
+                 , Ui.secondaryLink [ testId "shauth-login" ] "/api/auth/shauth" "Continue with Shauth"
                  ]
                     -- Guest sessions only work against the demo backend; the
                     -- real API rejects the guest subject on every data route, so

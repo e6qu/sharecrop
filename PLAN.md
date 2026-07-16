@@ -80,6 +80,9 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Opaque rotating refresh tokens stored server-side as hashes.
 - Refresh token reuse should revoke the token family.
 - Browser auth should use secure, HttpOnly cookies.
+- Shauth OpenID Connect is an additional browser sign-in provider. External
+  identities are keyed by verified issuer and subject; new external identities
+  never attach themselves to an existing password account based only on email.
 - Agent credentials are separate from user session auth.
 - Task/capability tokens are opaque random tokens linked server-side to tasks, scopes, and optional subjects.
 

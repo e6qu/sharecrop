@@ -6464,3 +6464,16 @@ The `task/runtime-audit-team-dashboard` branch verification was performed:
   passed.
 - `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e`
   passed.
+# Shauth OpenID Connect sign-in
+
+Sharecrop accepted Shauth as an additional browser identity provider while
+preserving local password sign-in and first-party rotating sessions. The server
+used discovery, authorization-code exchange with PKCE, nonce and state checks,
+signature/audience validation, and an authenticated short-lived transaction
+cookie. It persisted only the verified issuer/subject relationship, rejected
+implicit linking to existing password accounts by email, and returned the
+browser to the normal refresh-cookie session bootstrap. The ECS deployment
+accepted the confidential-client coordinates from AWS Secrets Manager and
+validated complete HTTPS configuration before startup. The database and WASI
+bridge carried external identities through the same production path as native
+hosting.

@@ -28,6 +28,7 @@ data "aws_iam_policy_document" "execution_secrets" {
       aws_secretsmanager_secret.database_url.arn,
       aws_secretsmanager_secret.access_token.arn,
       var.image_pull_secret_arn,
+      var.shauth_oidc_client_secret_arn,
     ])
   }
 }

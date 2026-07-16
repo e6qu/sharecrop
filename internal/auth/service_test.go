@@ -151,6 +151,37 @@ func TestServiceCreatesGuestSession(t *testing.T) {
 	}
 }
 
+func TestServiceCreatesAndReusesExternalIdentitySession(t *testing.T) {
+	service := acceptedService(t, newMemoryStore())
+	email := acceptedEmail(t, "oidc@example.com")
+	first := service.LoginExternal(context.Background(), "https://auth.dev.e6qu.dev/realms/dev", "sha-subject", email)
+	firstAccepted, ok := first.(ExternalLoginAccepted)
+	if !ok {
+		t.Fatalf("first external login = %T, want ExternalLoginAccepted", first)
+	}
+	second := service.LoginExternal(context.Background(), "https://auth.dev.e6qu.dev/realms/dev", "sha-subject", email)
+	secondAccepted, ok := second.(ExternalLoginAccepted)
+	if !ok {
+		t.Fatalf("second external login = %T, want ExternalLoginAccepted", second)
+	}
+	if secondAccepted.Subject.ID != firstAccepted.Subject.ID {
+		t.Fatalf("external identity user = %q, want %q", secondAccepted.Subject.ID.String(), firstAccepted.Subject.ID.String())
+	}
+}
+
+func TestServiceDoesNotLinkExternalIdentityToPasswordEmail(t *testing.T) {
+	store := newMemoryStore()
+	service := acceptedService(t, store)
+	email := acceptedEmail(t, "local@example.com")
+	if _, ok := service.Register(context.Background(), email, acceptedPassword(t, "correct horse battery staple")).(RegisterAccepted); !ok {
+		t.Fatal("local registration failed")
+	}
+	result := service.LoginExternal(context.Background(), "https://auth.dev.e6qu.dev/realms/dev", "different-subject", email)
+	if _, ok := result.(ExternalLoginRejected); !ok {
+		t.Fatalf("external login = %T, want ExternalLoginRejected", result)
+	}
+}
+
 type fixedClock struct{}
 
 func (fixedClock) Now() time.Time {
@@ -213,6 +244,7 @@ func countJWTSeparators(token string) int {
 
 type memoryStore struct {
 	credentialsByEmail map[string]CredentialRecord
+	externalByKey      map[string]core.UserID
 	refreshByHash      map[string]RefreshTokenRecord
 	consumedByHash     map[string]RefreshTokenRecord
 	guestsByID         map[string]core.GuestID
@@ -230,11 +262,29 @@ type storedAccountToken struct {
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
 		credentialsByEmail: make(map[string]CredentialRecord),
+		externalByKey:      make(map[string]core.UserID),
 		refreshByHash:      make(map[string]RefreshTokenRecord),
 		consumedByHash:     make(map[string]RefreshTokenRecord),
 		guestsByID:         make(map[string]core.GuestID),
 		accountTokens:      make(map[string]storedAccountToken),
 	}
+}
+
+func (store *memoryStore) FindOrCreateExternalIdentity(_ context.Context, identity ExternalIdentity, email EmailAddress) ExternalIdentityResult {
+	key := identity.Issuer + "\x00" + identity.Subject
+	if id, ok := store.externalByKey[key]; ok {
+		return ExternalIdentityFound{UserID: id}
+	}
+	if _, exists := store.credentialsByEmail[email.String()]; exists {
+		return ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "email address is already associated with another account")}
+	}
+	created := core.NewUserID()
+	id, ok := created.(core.UserIDCreated)
+	if !ok {
+		return ExternalIdentityRejected{Reason: created.(core.UserIDRejected).Reason}
+	}
+	store.externalByKey[key] = id.Value
+	return ExternalIdentityFound{UserID: id.Value}
 }
 
 func (store *memoryStore) CreateUserCredential(_ context.Context, id core.UserID, email EmailAddress, passwordHash PasswordHash) StoreUserResult {

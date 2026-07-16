@@ -147,6 +147,7 @@ var specs = map[string]storeSpec{
 			"core.Page":               pageArg(),
 			"core.GuestID":            {field: "GuestID", goType: "core.GuestID", wireType: "string", encodeFn: "corewire.EncodeGuestID", decodeFn: "corewire.DecodeGuestID"},
 			"string":                  {field: "Query", goType: "string", wireType: "string", encodeFn: "corewire.EncodeString", decodeFn: "corewire.DecodeString"},
+			"auth.ExternalIdentity":   {field: "Identity", goType: "auth.ExternalIdentity", wireType: "externalIdentityWire", encodeFn: "encodeExternalIdentity", decodeFn: "decodeExternalIdentity"},
 			"time.Time":               {field: "Now", goType: "time.Time", wireType: "string", encodeFn: "corewire.EncodeTime", decodeFn: "corewire.DecodeTime"},
 			"auth.EmailAddress":       {field: "Email", goType: "auth.EmailAddress", wireType: "string", encodeFn: "encodeEmail", decodeFn: "decodeEmail"},
 			"auth.PasswordHash":       {field: "PasswordHash", goType: "auth.PasswordHash", wireType: "string", encodeFn: "encodePasswordHash", decodeFn: "decodePasswordHash"},
@@ -157,6 +158,7 @@ var specs = map[string]storeSpec{
 			"auth.AccountTokenHash":   {field: "Hash", goType: "auth.AccountTokenHash", wireType: "string", encodeFn: "encodeAccountTokenHash", decodeFn: "decodeAccountTokenHash"},
 		},
 		resultCodecs: map[string]resultCodec{
+			"auth.ExternalIdentityResult":    {goType: "auth.ExternalIdentityResult", wireType: "externalIdentityResultWire", encodeFn: "encodeExternalIdentityResult", decodeFn: "decodeExternalIdentityResult", rejectedType: "auth.ExternalIdentityRejected"},
 			"auth.StoreUserResult":           {goType: "auth.StoreUserResult", wireType: "acceptedRejectedWire", encodeFn: "encodeStoreUserResult", decodeFn: "decodeStoreUserResult", rejectedType: "auth.StoreUserRejected"},
 			"auth.CredentialLookupResult":    {goType: "auth.CredentialLookupResult", wireType: "credentialLookupResultWire", encodeFn: "encodeCredentialLookupResult", decodeFn: "decodeCredentialLookupResult", rejectedType: "auth.CredentialLookupRejected"},
 			"auth.UserDirectoryResult":       {goType: "auth.UserDirectoryResult", wireType: "userDirectoryResultWire", encodeFn: "encodeUserDirectoryResult", decodeFn: "decodeUserDirectoryResult", rejectedType: "auth.UserDirectoryRejected"},

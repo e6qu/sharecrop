@@ -1348,6 +1348,42 @@
         }
       }
     },
+    "/api/auth/shauth": {
+      "get": {
+        "operationId": "shauthLogin",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/shauth/callback": {
+      "get": {
+        "operationId": "shauthCallback",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/collectibles": {
       "get": {
         "operationId": "listCollectibles",

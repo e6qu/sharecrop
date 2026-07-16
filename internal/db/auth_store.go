@@ -58,6 +58,53 @@ func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID,
 	return auth.StoreUserAccepted{}
 }
 
+func (store AuthStore) FindOrCreateExternalIdentity(ctx context.Context, identity auth.ExternalIdentity, email auth.EmailAddress) auth.ExternalIdentityResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin external identity transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var rawID string
+	err = tx.QueryRow(ctx, "select user_id::text from external_identities where issuer = $1 and subject = $2", identity.Issuer, identity.Subject).Scan(&rawID)
+	if errors.Is(err, ErrNoRows) {
+		created := core.NewUserID()
+		value, ok := created.(core.UserIDCreated)
+		if !ok {
+			return auth.ExternalIdentityRejected{Reason: created.(core.UserIDRejected).Reason}
+		}
+		createdUser, err := tx.Exec(ctx, "insert into users (id, email) values ($1, $2) on conflict (email) do nothing", value.Value.String(), email.String())
+		if err != nil {
+			return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "create external user failed")}
+		}
+		if createdUser != 1 {
+			return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "email address is already associated with another account")}
+		}
+		rawID = value.Value.String()
+		_, err = tx.Exec(ctx, "insert into external_identities (issuer, subject, user_id) values ($1, $2, $3)", identity.Issuer, identity.Subject, rawID)
+		if err != nil {
+			return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "link external identity failed")}
+		}
+	} else if err != nil {
+		return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "load external identity failed")}
+	}
+	var status string
+	if err := tx.QueryRow(ctx, "select status from users where id = $1", rawID).Scan(&status); err != nil {
+		return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "load external user status failed")}
+	}
+	if status != "active" {
+		return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "external user is not active")}
+	}
+	id := core.ParseUserID(rawID)
+	parsed, ok := id.(core.UserIDCreated)
+	if !ok {
+		return auth.ExternalIdentityRejected{Reason: id.(core.UserIDRejected).Reason}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit external identity failed")}
+	}
+	return auth.ExternalIdentityFound{UserID: parsed.Value}
+}
+
 func (store AuthStore) FindCredentialByEmail(ctx context.Context, email auth.EmailAddress) auth.CredentialLookupResult {
 	row := store.db.QueryRow(ctx, `
 		select users.id::text, users.email, password_credentials.password_hash, users.status
