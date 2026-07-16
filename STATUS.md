@@ -32,6 +32,8 @@
 - **DNS integration:** Terraform exposes the Application Load Balancer DNS name
   and canonical hosted-zone ID so an environment can create a Route 53 alias
   record without reconstructing provider-specific values.
+- **Monitoring integration:** Terraform exposes the actual CloudWatch Logs group
+  used by serve tasks, including its provider-generated suffix.
 
 ## State
 

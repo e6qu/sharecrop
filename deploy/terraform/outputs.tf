@@ -18,6 +18,11 @@ output "ecs_service_name" {
   value       = aws_ecs_service.serve.name
 }
 
+output "serve_log_group_name" {
+  description = "CloudWatch Logs group receiving Sharecrop serve-task logs."
+  value       = aws_cloudwatch_log_group.serve.name
+}
+
 output "migrate_task_definition" {
   description = "Family of the one-off migration task. Run it before the first deploy and on every schema change."
   value       = aws_ecs_task_definition.migrate.family

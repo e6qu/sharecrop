@@ -1,5 +1,9 @@
 # What We Did
 
+Terraform exposed the provider-created CloudWatch Logs group name used by
+Sharecrop serve tasks. Environment monitoring and Shauth managed-app enrollment
+can now reference the actual log group rather than predicting its suffix.
+
 Terraform exposed the Application Load Balancer canonical hosted-zone ID beside
 its DNS name. Environment Terraform can now create a Route 53 alias record for
 Sharecrop without depending on an implicit or reconstructed zone ID.
