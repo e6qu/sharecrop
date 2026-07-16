@@ -5,7 +5,7 @@ output "alb_dns_name" {
 
 output "ecs_cluster_name" {
   description = "ECS cluster name."
-  value       = aws_ecs_cluster.this.name
+  value       = local.ecs_cluster_name
 }
 
 output "ecs_service_name" {
@@ -22,7 +22,7 @@ output "run_migrate_command" {
   description = "Example command to run the one-off migration task."
   value = format(
     "aws ecs run-task --cluster %s --task-definition %s --launch-type FARGATE --network-configuration 'awsvpcConfiguration={subnets=[%s],securityGroups=[%s],assignPublicIp=%s}'",
-    aws_ecs_cluster.this.name,
+    local.ecs_cluster_name,
     aws_ecs_task_definition.migrate.family,
     join(",", var.task_subnet_ids),
     aws_security_group.service.id,

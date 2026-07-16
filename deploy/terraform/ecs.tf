@@ -1,6 +1,22 @@
+locals {
+  uses_existing_ecs_cluster = var.existing_ecs_cluster_arn != ""
+  existing_ecs_cluster_name = local.uses_existing_ecs_cluster ? element(reverse(split("/", var.existing_ecs_cluster_arn)), 0) : ""
+}
+
+data "aws_ecs_cluster" "existing" {
+  count        = local.uses_existing_ecs_cluster ? 1 : 0
+  cluster_name = local.existing_ecs_cluster_name
+}
+
 resource "aws_ecs_cluster" "this" {
-  name = var.name
-  tags = local.tags
+  count = local.uses_existing_ecs_cluster ? 0 : 1
+  name  = var.name
+  tags  = local.tags
+}
+
+locals {
+  ecs_cluster_arn  = local.uses_existing_ecs_cluster ? data.aws_ecs_cluster.existing[0].arn : aws_ecs_cluster.this[0].arn
+  ecs_cluster_name = local.uses_existing_ecs_cluster ? data.aws_ecs_cluster.existing[0].cluster_name : aws_ecs_cluster.this[0].name
 }
 
 resource "aws_cloudwatch_log_group" "serve" {
@@ -108,7 +124,7 @@ resource "aws_ecs_task_definition" "migrate" {
 
 resource "aws_ecs_service" "serve" {
   name            = "${var.name}-serve"
-  cluster         = aws_ecs_cluster.this.id
+  cluster         = local.ecs_cluster_arn
   task_definition = aws_ecs_task_definition.serve.arn
   desired_count   = var.desired_count
   launch_type     = "FARGATE"

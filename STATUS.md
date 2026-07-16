@@ -26,6 +26,9 @@
   compile at startup. Images publish to the GitHub Container Registry on merge,
   versioned by conventional commits (no `:latest`). See
   [docs/deployment.md](./docs/deployment.md).
+- **Shared environment deployment:** Terraform accepts an existing Amazon
+  Elastic Container Service cluster ARN, so the service can run in the shared
+  `dev` cluster without creating another cluster or network path.
 
 ## State
 
