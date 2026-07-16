@@ -11,8 +11,10 @@ provide the VPC and subnet ids); it does not create networking.
 - **ALB** (public) → target group health-checked on `/healthz` → the serve
   service. Plain HTTP on `:80`, or HTTPS on `:443` (+ 80→443 redirect) when
   `certificate_arn` is set.
-- **ECS**: a cluster, the `sharecrop-serve` service (`desired_count` replicas,
-  arm64), and a one-off `sharecrop-migrate` task definition (`migrate up`).
+- **ECS**: either a dedicated cluster or the supplied shared Amazon Elastic
+  Container Service cluster, the `sharecrop-serve` service (`desired_count`
+  replicas, arm64), and a one-off `sharecrop-migrate` task definition
+  (`migrate up`).
 - **Database**: an Aurora Serverless v2 PostgreSQL cluster (scale-to-zero when
   `aurora_min_capacity = 0`) fronted by RDS Proxy for pooling.
 - **Secrets**: a generated `SHARECROP_ACCESS_TOKEN_SECRET`, the database
@@ -48,6 +50,9 @@ migrate task first if the release includes migrations.
 - **Egress:** tasks must reach the internet to pull the image. Use private
   `task_subnet_ids` with a NAT gateway (`assign_public_ip = false`), or public
   subnets with `assign_public_ip = true`.
+- **Shared cluster:** set `existing_ecs_cluster_arn` to use an existing Amazon
+  Elastic Container Service cluster. Leave it unset to create a dedicated
+  cluster.
 - **Scale-to-zero:** `aurora_min_capacity = 0` requires an engine version that
   supports it; bump `aurora_engine_version` if your region rejects it.
 - The `deploy/ecs/*.task-definition.json` files are standalone references for a

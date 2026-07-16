@@ -47,6 +47,17 @@ variable "vpc_id" {
   type        = string
 }
 
+variable "existing_ecs_cluster_arn" {
+  description = "Optional Amazon Elastic Container Service cluster ARN. When set, Sharecrop uses that existing cluster instead of creating one."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.existing_ecs_cluster_arn == "" || can(regex("^arn:[^:]+:ecs:[^:]+:[0-9]+:cluster/.+", var.existing_ecs_cluster_arn))
+    error_message = "existing_ecs_cluster_arn must be empty or an Amazon Elastic Container Service cluster ARN."
+  }
+}
+
 variable "public_subnet_ids" {
   description = "Public subnets for the internet-facing load balancer (>= 2 AZs)."
   type        = list(string)

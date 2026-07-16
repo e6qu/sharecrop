@@ -1,5 +1,11 @@
 # What We Did
 
+Terraform deployment accepted an existing Amazon Elastic Container Service
+cluster ARN. The Sharecrop service and migration command used that cluster when
+configured, while the dedicated-cluster default remained available. This allowed
+the `dev` deployment to share its one ECS cluster without creating another
+cluster or network path.
+
 WASI hosting became the **production default** and the backend was containerized
 for ECS Fargate. The app guest is now embedded in the `sharecrop` binary
 (`internal/wasiguest`, built by `make wasi-app-guest` as part of `make build`), so
