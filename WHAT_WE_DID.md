@@ -6488,6 +6488,20 @@ The `task/runtime-audit-team-dashboard` branch verification was performed:
   passed.
 - `DATABASE_URL=postgres://sharecrop:sharecrop@localhost:15432/sharecrop?sslmode=disable SHARECROP_MIGRATIONS_DIR=/Users/zardoz/projects/sharecrop/migrations SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 go test -tags http_e2e ./tests/http_e2e`
   passed.
+# Single-AZ Amazon RDS PostgreSQL deployment
+
+The ECS deployment module used one private, single-AZ Amazon RDS for
+PostgreSQL `db.t4g.micro` instance instead of Aurora Serverless v2 and Amazon
+RDS Proxy. The database accepted connections only from the Sharecrop ECS
+service security group. The service waited for generated database and access
+token secret versions before it was created, so ECS never launched a task with
+an empty `DATABASE_URL` secret. The module kept encrypted gp3 storage,
+one-day backups, private networking, and TLS-required PostgreSQL URLs.
+
+The module passed `terraform init -backend=false`, `terraform validate`, and a
+read-only plan using the real dev VPC, ECS cluster, certificate, and Shauth
+secret coordinates.
+
 # Shauth OpenID Connect sign-in
 
 Sharecrop accepted Shauth as an additional browser identity provider while

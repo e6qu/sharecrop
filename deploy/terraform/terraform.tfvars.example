@@ -12,7 +12,7 @@ image = "ghcr.io/e6qu/sharecrop:v1.4.0"
 # Deploy into an existing VPC.
 vpc_id            = "vpc-0123456789abcdef0"
 public_subnet_ids = ["subnet-aaaa1111", "subnet-bbbb2222"] # ALB (>= 2 AZs)
-task_subnet_ids   = ["subnet-cccc3333", "subnet-dddd4444"] # tasks + Aurora + RDS Proxy
+task_subnet_ids   = ["subnet-cccc3333", "subnet-dddd4444"] # ECS tasks + Amazon RDS
 
 # If task_subnet_ids are private (with a NAT gateway), keep this false. If they
 # are public subnets, set it true so tasks can pull the image.
@@ -23,7 +23,9 @@ assign_public_ip = false
 
 desired_count = 2
 
-# Scale-to-zero Aurora Serverless v2 (min_capacity = 0) needs a supported engine
-# version; bump aurora_engine_version if your region rejects it.
-aurora_min_capacity = 0
-aurora_max_capacity = 4
+# Single-AZ Amazon RDS PostgreSQL. db.t4g.micro is arm64 and is the smallest
+# class available in eu-west-1.
+postgres_engine_version               = "18.3"
+postgres_instance_class               = "db.t4g.micro"
+postgres_allocated_storage_gib        = 20
+postgres_max_allocated_storage_gib    = 100

@@ -2,7 +2,7 @@
 
 Provisions the production backend from [docs/deployment.md](../../docs/deployment.md):
 an internet-facing ALB, an ECS Fargate service (arm64) running the container
-image, Aurora Serverless v2 (PostgreSQL) behind RDS Proxy, and the Secrets
+image, single-AZ Amazon RDS for PostgreSQL, and the Secrets
 Manager entries the service reads. It deploys into an **existing VPC** (you
 provide the VPC and subnet ids); it does not create networking.
 
@@ -16,12 +16,12 @@ provide the VPC and subnet ids); it does not create networking.
   Container Service cluster, the `sharecrop-serve` service (`desired_count`
   replicas, arm64), and a one-off `sharecrop-migrate` task definition
   (`migrate up`).
-- **Database**: an Aurora Serverless v2 PostgreSQL cluster (scale-to-zero when
-  `aurora_min_capacity = 0`) fronted by RDS Proxy for pooling.
-- **Secrets**: a generated `SHARECROP_ACCESS_TOKEN_SECRET`, the database
-  credentials, and the assembled `DATABASE_URL` (pointing at the RDS Proxy,
-  `sslmode=require`) — injected into the task as `secrets`.
-- **IAM + security groups** wiring internet → ALB → tasks → RDS Proxy → Aurora.
+- **Database**: a single-AZ Amazon RDS for PostgreSQL instance on arm64
+  `db.t4g.micro`, reachable only from the ECS service security group.
+- **Secrets**: generated `SHARECROP_ACCESS_TOKEN_SECRET` and `DATABASE_URL`
+  (`sslmode=require`) values, injected into the task as ECS secrets.
+- **IAM + security groups** wiring internet → ALB → tasks → Amazon RDS for
+  PostgreSQL.
 
 ## Usage
 
@@ -56,7 +56,8 @@ migrate task first if the release includes migrations.
 - **Shared cluster:** set `existing_ecs_cluster_arn` to use an existing Amazon
   Elastic Container Service cluster. Leave it unset to create a dedicated
   cluster.
-- **Scale-to-zero:** `aurora_min_capacity = 0` requires an engine version that
-  supports it; bump `aurora_engine_version` if your region rejects it.
+- **Database capacity:** `postgres_instance_class` defaults to the smallest
+  arm64 class available in eu-west-1. Amazon RDS starts continuously; configure
+  storage through `postgres_allocated_storage_gib` and its autoscaling maximum.
 - The `deploy/ecs/*.task-definition.json` files are standalone references for a
   non-Terraform deploy; this module defines its own task definitions.

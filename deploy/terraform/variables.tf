@@ -64,7 +64,7 @@ variable "public_subnet_ids" {
 }
 
 variable "task_subnet_ids" {
-  description = "Subnets for the ECS tasks, RDS Proxy, and Aurora. Use private subnets with a NAT gateway (so tasks can pull the image); or public subnets with assign_public_ip = true."
+  description = "Subnets for the ECS tasks and Amazon RDS for PostgreSQL. Use private subnets with a NAT gateway (so tasks can pull the image); or public subnets with assign_public_ip = true."
   type        = list(string)
 }
 
@@ -112,33 +112,39 @@ variable "memory" {
 
 # Database.
 variable "database_name" {
-  description = "Aurora database name."
+  description = "PostgreSQL database name."
   type        = string
   default     = "sharecrop"
 }
 
 variable "database_username" {
-  description = "Aurora master username."
+  description = "PostgreSQL master username."
   type        = string
   default     = "sharecrop"
 }
 
-variable "aurora_min_capacity" {
-  description = "Aurora Serverless v2 minimum ACUs. 0 enables scale-to-zero (requires a supported engine version)."
-  type        = number
-  default     = 0
-}
-
-variable "aurora_max_capacity" {
-  description = "Aurora Serverless v2 maximum ACUs."
-  type        = number
-  default     = 4
-}
-
-variable "aurora_engine_version" {
-  description = "Aurora PostgreSQL engine version. Use a version that supports 0 minimum ACUs for scale-to-zero."
+variable "postgres_engine_version" {
+  description = "Amazon RDS for PostgreSQL engine version."
   type        = string
-  default     = "16.4"
+  default     = "18.3"
+}
+
+variable "postgres_instance_class" {
+  description = "Amazon RDS DB instance class. db.t4g.micro is the smallest arm64 class available in eu-west-1."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "postgres_allocated_storage_gib" {
+  description = "Initial gp3 storage in GiB for the Amazon RDS PostgreSQL instance."
+  type        = number
+  default     = 20
+}
+
+variable "postgres_max_allocated_storage_gib" {
+  description = "Maximum gp3 storage in GiB allowed by Amazon RDS storage autoscaling."
+  type        = number
+  default     = 100
 }
 
 variable "tags" {
