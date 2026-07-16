@@ -1,5 +1,10 @@
 # What We Did
 
+The ECS deployment module now requires HashiCorp AWS provider 6.x. Its lockfile
+was regenerated with provider 6.55.0 and `terraform validate` passed, allowing
+the module to compose with the shared `dev` environment and its other service
+modules.
+
 Terraform exposed the provider-created CloudWatch Logs group name used by
 Sharecrop serve tasks. Environment monitoring and Shauth managed-app enrollment
 can now reference the actual log group rather than predicting its suffix.
