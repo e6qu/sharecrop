@@ -21,7 +21,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_https" {
-  count             = var.certificate_arn == null ? 0 : 1
+  count             = var.enable_https ? 1 : 0
   security_group_id = aws_security_group.alb.id
   description       = "HTTPS from the internet"
   ip_protocol       = "tcp"

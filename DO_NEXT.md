@@ -18,7 +18,8 @@ continuity files if task scope changes.
    ghcr. The module now uses the HashiCorp AWS provider 6.x required by the
    shared environment. Requires GitHub-hosted arm64 runners for the release build. See
    [docs/deployment.md](./docs/deployment.md).
-   Use `alb_dns_name` and `alb_zone_id` for the Route 53 alias record, and
+   Set `enable_https = true` when its ACM certificate is provisioned in the
+   same apply. Use `alb_dns_name` and `alb_zone_id` for the Route 53 alias record, and
    `serve_log_group_name` when enrolling the deployed app in monitoring.
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are

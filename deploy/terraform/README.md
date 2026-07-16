@@ -10,7 +10,8 @@ provide the VPC and subnet ids); it does not create networking.
 
 - **ALB** (public) → target group health-checked on `/healthz` → the serve
   service. Plain HTTP on `:80`, or HTTPS on `:443` (+ 80→443 redirect) when
-  `certificate_arn` is set.
+  `enable_https = true` and `certificate_arn` is supplied. Set
+  `enable_https` explicitly when the certificate is created in the same apply.
 - **ECS**: either a dedicated cluster or the supplied shared Amazon Elastic
   Container Service cluster, the `sharecrop-serve` service (`desired_count`
   replicas, arm64), and a one-off `sharecrop-migrate` task definition
