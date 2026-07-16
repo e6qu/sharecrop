@@ -3,6 +3,11 @@ output "alb_dns_name" {
   value       = aws_lb.this.dns_name
 }
 
+output "alb_zone_id" {
+  description = "Canonical hosted-zone ID of the Application Load Balancer, for a Route 53 alias record."
+  value       = aws_lb.this.zone_id
+}
+
 output "ecs_cluster_name" {
   description = "ECS cluster name."
   value       = local.ecs_cluster_name

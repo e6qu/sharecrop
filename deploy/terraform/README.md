@@ -35,6 +35,7 @@ eval "$(terraform output -raw run_migrate_command)"
 
 # Point your domain at the load balancer:
 terraform output alb_dns_name
+# Use `alb_zone_id` with the DNS name when creating a Route 53 alias record.
 ```
 
 Deploying a new version = the [Release workflow](../../.github/workflows/release.yml)

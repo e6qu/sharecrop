@@ -29,6 +29,9 @@
 - **Shared environment deployment:** Terraform accepts an existing Amazon
   Elastic Container Service cluster ARN, so the service can run in the shared
   `dev` cluster without creating another cluster or network path.
+- **DNS integration:** Terraform exposes the Application Load Balancer DNS name
+  and canonical hosted-zone ID so an environment can create a Route 53 alias
+  record without reconstructing provider-specific values.
 
 ## State
 
