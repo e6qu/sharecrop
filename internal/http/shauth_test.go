@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,7 +20,11 @@ func TestSHAUTHTransactionIsAuthenticated(t *testing.T) {
 	if got != want {
 		t.Fatalf("transaction = %#v, want %#v", got, want)
 	}
-	if _, err := config.decodeTransaction(encoded[:len(encoded)-1] + "A"); err == nil {
+	parts := strings.Split(encoded, ".")
+	if len(parts) != 2 {
+		t.Fatalf("encoded transaction = %q", encoded)
+	}
+	if _, err := config.decodeTransaction(parts[0] + "." + strings.Repeat("A", len(parts[1]))); err == nil {
 		t.Fatal("tampered transaction was accepted")
 	}
 }
