@@ -1,5 +1,9 @@
 # What We Did
 
+Terraform exposed the Application Load Balancer canonical hosted-zone ID beside
+its DNS name. Environment Terraform can now create a Route 53 alias record for
+Sharecrop without depending on an implicit or reconstructed zone ID.
+
 Terraform deployment accepted an existing Amazon Elastic Container Service
 cluster ARN. The Sharecrop service and migration command used that cluster when
 configured, while the dedicated-cluster default remained available. This allowed
