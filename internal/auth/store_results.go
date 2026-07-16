@@ -16,6 +16,21 @@ func (StoreUserAccepted) storeUserResult() {}
 
 func (StoreUserRejected) storeUserResult() {}
 
+type ExternalIdentityResult interface{ externalIdentityResult() }
+
+// ExternalIdentity is the stable issuer/subject pair from a verified OpenID
+// Connect ID token. It is deliberately independent of mutable profile claims.
+type ExternalIdentity struct {
+	Issuer  string
+	Subject string
+}
+
+type ExternalIdentityFound struct{ UserID core.UserID }
+type ExternalIdentityRejected struct{ Reason core.DomainError }
+
+func (ExternalIdentityFound) externalIdentityResult()    {}
+func (ExternalIdentityRejected) externalIdentityResult() {}
+
 type CredentialLookupResult interface {
 	credentialLookupResult()
 }

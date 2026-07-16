@@ -1,7 +1,7 @@
 module Sharecrop.Ui exposing (..)
 
-import Html exposing (Attribute, Html, button, h1, h2, h3, input, label, p, pre, span, text, textarea)
-import Html.Attributes exposing (attribute, class, type_)
+import Html exposing (Attribute, Html, a, button, h1, h2, h3, input, label, p, pre, span, text, textarea)
+import Html.Attributes exposing (attribute, class, href, type_)
 import Html.Events exposing (onClick)
 
 
@@ -184,6 +184,11 @@ primaryButton attrs labelText =
 secondaryButton : List (Attribute msg) -> String -> Html msg
 secondaryButton attrs labelText =
     button (class secondaryButtonClass :: attrs) [ text labelText ]
+
+
+secondaryLink : List (Attribute msg) -> String -> String -> Html msg
+secondaryLink attrs destination labelText =
+    a (class secondaryButtonClass :: href destination :: attrs) [ text labelText ]
 
 
 dangerButton : List (Attribute msg) -> String -> Html msg

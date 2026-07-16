@@ -19433,6 +19433,29 @@ var $author$project$Sharecrop$Ui$secondaryButton = F2(
 					$elm$html$Html$text(labelText)
 				]));
 	});
+var $elm$html$Html$a = _VirtualDom_node('a');
+var $elm$html$Html$Attributes$href = function (url) {
+	return A2(
+		$elm$html$Html$Attributes$stringProperty,
+		'href',
+		_VirtualDom_noJavaScriptUri(url));
+};
+var $author$project$Sharecrop$Ui$secondaryLink = F3(
+	function (attrs, destination, labelText) {
+		return A2(
+			$elm$html$Html$a,
+			A2(
+				$elm$core$List$cons,
+				$elm$html$Html$Attributes$class($author$project$Sharecrop$Ui$secondaryButtonClass),
+				A2(
+					$elm$core$List$cons,
+					$elm$html$Html$Attributes$href(destination),
+					attrs)),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(labelText)
+				]));
+	});
 var $author$project$Sharecrop$Ui$successText = F2(
 	function (identifier, message) {
 		return A2(
@@ -19531,7 +19554,15 @@ var $author$project$Sharecrop$View$authView = function (model) {
 											$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$RegisterClicked),
 											$author$project$Sharecrop$Ui$testId('register')
 										]),
-									'Register')
+									'Register'),
+									A3(
+									$author$project$Sharecrop$Ui$secondaryLink,
+									_List_fromArray(
+										[
+											$author$project$Sharecrop$Ui$testId('shauth-login')
+										]),
+									'/api/auth/shauth',
+									'Continue with Shauth')
 								]),
 							model.demo ? _List_fromArray(
 								[
@@ -19646,13 +19677,6 @@ var $author$project$Sharecrop$Types$ToggleNavMenu = function (a) {
 	return {$: 'ToggleNavMenu', a: a};
 };
 var $elm$html$Html$nav = _VirtualDom_node('nav');
-var $elm$html$Html$a = _VirtualDom_node('a');
-var $elm$html$Html$Attributes$href = function (url) {
-	return A2(
-		$elm$html$Html$Attributes$stringProperty,
-		'href',
-		_VirtualDom_noJavaScriptUri(url));
-};
 var $author$project$Sharecrop$Types$pageToPath = function (page) {
 	switch (page.$) {
 		case 'OverviewPage':

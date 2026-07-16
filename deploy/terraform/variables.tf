@@ -20,6 +20,27 @@ variable "image_pull_secret_arn" {
   default     = null
 }
 
+variable "shauth_oidc_issuer" {
+  description = "Shauth HTTPS OpenID Connect issuer. Set every Shauth coordinate together."
+  type        = string
+  default     = ""
+}
+variable "shauth_oidc_client_id" {
+  description = "Shauth confidential client ID."
+  type        = string
+  default     = ""
+}
+variable "shauth_oidc_client_secret_arn" {
+  description = "AWS Secrets Manager ARN containing the Shauth confidential-client secret."
+  type        = string
+  default     = ""
+}
+variable "public_url" {
+  description = "Canonical HTTPS public URL used for OIDC callbacks, e.g. https://sharecrop.dev.e6qu.dev."
+  type        = string
+  default     = ""
+}
+
 # Networking: deploy into an existing VPC.
 variable "vpc_id" {
   description = "VPC to deploy into."

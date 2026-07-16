@@ -31,6 +31,7 @@ type healthResponse struct {
 type AuthService interface {
 	Register(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.RegisterResult
 	Login(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.LoginResult
+	LoginExternal(context.Context, string, string, auth.EmailAddress) auth.ExternalLoginResult
 	Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult
 	Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult
 	CreateGuest(context.Context) auth.GuestResult
@@ -195,6 +196,7 @@ type Server struct {
 	savedQueueViews      SavedQueueViewService
 	privacyService       PrivacyService
 	moderationTriage     ModerationTriageService
+	shauth               shauthConfig
 }
 
 type RuntimeState struct {
@@ -251,6 +253,10 @@ func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVeri
 }
 
 func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService, runtime RuntimeState) http.Handler {
+	shauth := shauthConfigFromEnv()
+	if err := shauth.validate(); err != nil {
+		panic(err)
+	}
 	server := Server{
 		staticFiles:          staticFiles,
 		authService:          authService,
@@ -276,11 +282,14 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		privacyService:      runtime.PrivacyService,
 		platformAdmins:      runtime.PlatformAdmins,
 		moderationTriage:    runtime.ModerationTriage,
+		shauth:              shauth,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("POST /api/auth/register", server.register)
 	mux.HandleFunc("POST /api/auth/login", server.login)
+	mux.HandleFunc("GET /api/auth/shauth", server.shauthLogin)
+	mux.HandleFunc("GET /api/auth/shauth/callback", server.shauthCallback)
 	mux.HandleFunc("POST /api/auth/refresh", server.refresh)
 	mux.HandleFunc("POST /api/auth/logout", server.logout)
 	mux.HandleFunc("POST /api/auth/guest", server.guest)

@@ -29,6 +29,14 @@
 
 ## State
 
+Shauth is an additional browser identity provider. A verified OpenID Connect
+issuer/subject pair is persisted independently from mutable profile claims and
+receives the same rotating Sharecrop session as a local login. Local passwords
+and first-party tokens remain available. Existing password accounts are never
+linked to a new external identity merely because their email addresses match.
+The callback uses PKCE, nonce/state validation, an authenticated short-lived
+transaction cookie, and an HTTPS-only issuer/public URL configuration.
+
 Both the single-store-implementation program and the WASI-production-hosting
 program are complete. Recent work hardened the production-default WASI path:
 real randomness and clock in the guest, per-client rate limiting and MCP origin
@@ -43,7 +51,8 @@ slimmed the image, and added the ghcr release workflow.
 PR CI runs format/contract/policy/type checks, Go unit and integration tests,
 HTTP end-to-end tests, shared scenario parity against both SQL engines, and
 Playwright browser tests. The Release workflow builds and publishes the image on
-merge. All green on `main`.
+merge. The Shauth integration passed the frontend build, complete Go suite,
+Terraform validation, and WASI bridge generation checks.
 
 ## Blocking issues
 

@@ -51,6 +51,7 @@ func (continueRefreshFamily) refreshFamilySelection() {}
 
 type Store interface {
 	CreateUserCredential(context.Context, core.UserID, EmailAddress, PasswordHash) StoreUserResult
+	FindOrCreateExternalIdentity(context.Context, ExternalIdentity, EmailAddress) ExternalIdentityResult
 	FindCredentialByEmail(context.Context, EmailAddress) CredentialLookupResult
 	FindCredentialByUserID(context.Context, core.UserID) CredentialLookupResult
 	ListUsers(context.Context, string, core.Page) UserDirectoryResult
@@ -63,6 +64,36 @@ type Store interface {
 	RevokeRefreshFamily(context.Context, RefreshTokenHash) RevokeRefreshFamilyResult
 	StoreAccountToken(context.Context, core.UserID, AccountTokenKind, AccountToken) AccountTokenStoreResult
 	ConsumeAccountToken(context.Context, AccountTokenKind, AccountTokenHash, time.Time) AccountTokenConsumeResult
+}
+
+type ExternalLoginResult interface{ externalLoginResult() }
+type ExternalLoginAccepted struct {
+	Subject      UserSubject
+	AccessToken  AccessToken
+	RefreshToken RefreshTokenPlain
+}
+type ExternalLoginRejected struct{ Reason core.DomainError }
+
+func (ExternalLoginAccepted) externalLoginResult() {}
+func (ExternalLoginRejected) externalLoginResult() {}
+
+// LoginExternal turns a verified OpenID Connect identity into the same
+// first-party rotating session issued after password login.
+func (service Service) LoginExternal(ctx context.Context, issuer, subject string, email EmailAddress) ExternalLoginResult {
+	if issuer == "" || subject == "" {
+		return ExternalLoginRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "external identity is incomplete")}
+	}
+	identity := service.store.FindOrCreateExternalIdentity(ctx, ExternalIdentity{Issuer: issuer, Subject: subject}, email)
+	found, ok := identity.(ExternalIdentityFound)
+	if !ok {
+		return ExternalLoginRejected{Reason: identity.(ExternalIdentityRejected).Reason}
+	}
+	session := service.issueUserSession(ctx, found.UserID, newRefreshFamily{})
+	accepted, ok := session.(UserSessionIssued)
+	if !ok {
+		return ExternalLoginRejected{Reason: session.(UserSessionRejected).Reason}
+	}
+	return ExternalLoginAccepted{Subject: accepted.Subject, AccessToken: accepted.AccessToken, RefreshToken: accepted.RefreshToken}
 }
 
 type RevokeRefreshFamilyResult interface {

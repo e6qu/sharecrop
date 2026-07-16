@@ -15,25 +15,31 @@ import (
 
 // Method names namespace each auth.Store method on the wire.
 const (
-	methodCreateUserCredential   = "auth.CreateUserCredential"
-	methodFindCredentialByEmail  = "auth.FindCredentialByEmail"
-	methodFindCredentialByUserID = "auth.FindCredentialByUserID"
-	methodListUsers              = "auth.ListUsers"
-	methodUpdateUserEmail        = "auth.UpdateUserEmail"
-	methodUpdatePassword         = "auth.UpdatePassword"
-	methodDeactivateUser         = "auth.DeactivateUser"
-	methodCreateGuestSubject     = "auth.CreateGuestSubject"
-	methodStoreRefreshToken      = "auth.StoreRefreshToken"
-	methodConsumeRefreshToken    = "auth.ConsumeRefreshToken"
-	methodRevokeRefreshFamily    = "auth.RevokeRefreshFamily"
-	methodStoreAccountToken      = "auth.StoreAccountToken"
-	methodConsumeAccountToken    = "auth.ConsumeAccountToken"
+	methodCreateUserCredential         = "auth.CreateUserCredential"
+	methodFindOrCreateExternalIdentity = "auth.FindOrCreateExternalIdentity"
+	methodFindCredentialByEmail        = "auth.FindCredentialByEmail"
+	methodFindCredentialByUserID       = "auth.FindCredentialByUserID"
+	methodListUsers                    = "auth.ListUsers"
+	methodUpdateUserEmail              = "auth.UpdateUserEmail"
+	methodUpdatePassword               = "auth.UpdatePassword"
+	methodDeactivateUser               = "auth.DeactivateUser"
+	methodCreateGuestSubject           = "auth.CreateGuestSubject"
+	methodStoreRefreshToken            = "auth.StoreRefreshToken"
+	methodConsumeRefreshToken          = "auth.ConsumeRefreshToken"
+	methodRevokeRefreshFamily          = "auth.RevokeRefreshFamily"
+	methodStoreAccountToken            = "auth.StoreAccountToken"
+	methodConsumeAccountToken          = "auth.ConsumeAccountToken"
 )
 
 type createUserCredentialArgs struct {
 	UserID       string `json:"userid"`
 	Email        string `json:"email"`
 	PasswordHash string `json:"passwordhash"`
+}
+
+type findOrCreateExternalIdentityArgs struct {
+	Identity externalIdentityWire `json:"identity"`
+	Email    string               `json:"email"`
 }
 
 type findCredentialByEmailArgs struct {
@@ -115,6 +121,20 @@ func Dispatch(ctx context.Context, store auth.Store, method string, args []byte)
 			return nil, err
 		}
 		return json.Marshal(encodeStoreUserResult(store.CreateUserCredential(ctx, argUserID, argEmail, argPasswordHash)))
+	case methodFindOrCreateExternalIdentity:
+		var decoded findOrCreateExternalIdentityArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("auth bridge: decode FindOrCreateExternalIdentity args: %w", err)
+		}
+		argIdentity, err := decodeExternalIdentity(decoded.Identity)
+		if err != nil {
+			return nil, err
+		}
+		argEmail, err := decodeEmail(decoded.Email)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeExternalIdentityResult(store.FindOrCreateExternalIdentity(ctx, argIdentity, argEmail)))
 	case methodFindCredentialByEmail:
 		var decoded findCredentialByEmailArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -304,6 +324,26 @@ func (g GuestStore) CreateUserCredential(ctx context.Context, argUserID core.Use
 	result, err := decodeStoreUserResult(wire)
 	if err != nil {
 		return auth.StoreUserRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) FindOrCreateExternalIdentity(ctx context.Context, argIdentity auth.ExternalIdentity, argEmail auth.EmailAddress) auth.ExternalIdentityResult {
+	args, err := json.Marshal(findOrCreateExternalIdentityArgs{Identity: encodeExternalIdentity(argIdentity), Email: encodeEmail(argEmail)})
+	if err != nil {
+		return auth.ExternalIdentityRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodFindOrCreateExternalIdentity, args)
+	if err != nil {
+		return auth.ExternalIdentityRejected{Reason: guestError(err)}
+	}
+	var wire externalIdentityResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return auth.ExternalIdentityRejected{Reason: guestError(err)}
+	}
+	result, err := decodeExternalIdentityResult(wire)
+	if err != nil {
+		return auth.ExternalIdentityRejected{Reason: guestError(err)}
 	}
 	return result
 }

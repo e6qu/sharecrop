@@ -74,6 +74,22 @@ func decodeAccountTokenPlain(raw string) (auth.AccountTokenPlain, error) {
 	return accepted.Value, nil
 }
 
+type externalIdentityWire struct {
+	Issuer  string `json:"issuer"`
+	Subject string `json:"subject"`
+}
+
+func encodeExternalIdentity(value auth.ExternalIdentity) externalIdentityWire {
+	return externalIdentityWire{Issuer: value.Issuer, Subject: value.Subject}
+}
+
+func decodeExternalIdentity(value externalIdentityWire) (auth.ExternalIdentity, error) {
+	if value.Issuer == "" || value.Subject == "" {
+		return auth.ExternalIdentity{}, fmt.Errorf("external identity issuer and subject are required")
+	}
+	return auth.ExternalIdentity{Issuer: value.Issuer, Subject: value.Subject}, nil
+}
+
 // ---- auth.Subject (a three-variant union) ----
 
 type subjectWire struct {
@@ -126,6 +142,33 @@ type credentialRecordWire struct {
 	Email        string `json:"email"`
 	PasswordHash string `json:"password_hash"`
 	Status       string `json:"status"`
+}
+
+type externalIdentityResultWire struct {
+	Kind   string `json:"kind"`
+	UserID string `json:"user_id,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+func encodeExternalIdentityResult(result auth.ExternalIdentityResult) externalIdentityResultWire {
+	switch typed := result.(type) {
+	case auth.ExternalIdentityFound:
+		return externalIdentityResultWire{Kind: "found", UserID: corewire.EncodeUserID(typed.UserID)}
+	case auth.ExternalIdentityRejected:
+		return externalIdentityResultWire{Kind: "rejected", Error: typed.Reason.Description()}
+	default:
+		return externalIdentityResultWire{Kind: "rejected", Error: "unknown external identity result"}
+	}
+}
+func decodeExternalIdentityResult(wire externalIdentityResultWire) (auth.ExternalIdentityResult, error) {
+	if wire.Kind == "found" {
+		id, err := corewire.DecodeUserID(wire.UserID)
+		if err != nil {
+			return auth.ExternalIdentityRejected{Reason: guestError(err)}, err
+		}
+		return auth.ExternalIdentityFound{UserID: id}, nil
+	}
+	return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, wire.Error)}, nil
 }
 
 func encodeCredentialRecord(record auth.CredentialRecord) credentialRecordWire {

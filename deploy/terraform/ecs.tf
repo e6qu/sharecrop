@@ -17,10 +17,10 @@ resource "aws_cloudwatch_log_group" "migrate" {
 
 locals {
   # Injected into every container as `secrets`.
-  secrets = [
+  secrets = concat([
     { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn },
     { name = "SHARECROP_ACCESS_TOKEN_SECRET", valueFrom = aws_secretsmanager_secret.access_token.arn },
-  ]
+  ], var.shauth_oidc_client_secret_arn == "" ? [] : [{ name = "SHARECROP_SHAUTH_CLIENT_SECRET", valueFrom = var.shauth_oidc_client_secret_arn }])
 
   # Private-image pull credentials, only when an image pull secret is configured.
   repository_credentials = var.image_pull_secret_arn == null ? {} : {
@@ -33,7 +33,7 @@ locals {
     essential    = true
     command      = ["serve"]
     portMappings = [{ containerPort = 8080, protocol = "tcp" }]
-    environment  = [{ name = "SHARECROP_HTTP_ADDR", value = ":8080" }]
+    environment  = concat([{ name = "SHARECROP_HTTP_ADDR", value = ":8080" }], var.shauth_oidc_issuer == "" ? [] : [{ name = "SHARECROP_SHAUTH_ISSUER", value = var.shauth_oidc_issuer }, { name = "SHARECROP_SHAUTH_CLIENT_ID", value = var.shauth_oidc_client_id }, { name = "SHARECROP_PUBLIC_URL", value = var.public_url }])
     secrets      = local.secrets
     logConfiguration = {
       logDriver = "awslogs"
@@ -80,6 +80,12 @@ resource "aws_ecs_task_definition" "serve" {
 
   container_definitions = jsonencode([local.serve_container])
   tags                  = local.tags
+  lifecycle {
+    precondition {
+      condition     = (var.shauth_oidc_issuer == "" && var.shauth_oidc_client_id == "" && var.shauth_oidc_client_secret_arn == "" && var.public_url == "") || (var.shauth_oidc_issuer != "" && var.shauth_oidc_client_id != "" && var.shauth_oidc_client_secret_arn != "" && var.public_url != "")
+      error_message = "All Shauth OIDC coordinates and public_url must be configured together."
+    }
+  }
 }
 
 resource "aws_ecs_task_definition" "migrate" {

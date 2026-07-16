@@ -629,6 +629,11 @@ func (testAuth) Login(context.Context, auth.EmailAddress, auth.PasswordSecret) a
 	}
 }
 
+func (testAuth) LoginExternal(context.Context, string, string, auth.EmailAddress) auth.ExternalLoginResult {
+	id := core.NewUserID().(core.UserIDCreated).Value
+	return auth.ExternalLoginAccepted{Subject: auth.UserSubject{ID: id}, AccessToken: testAccessToken(), RefreshToken: testRefreshToken()}
+}
+
 func (testAuth) Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult {
 	return auth.LogoutDone{}
 }
