@@ -60,6 +60,10 @@ func (healthAuthService) Login(context.Context, auth.EmailAddress, auth.Password
 	return auth.LoginRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthAuthService) LoginExternal(context.Context, string, string, auth.EmailAddress) auth.ExternalLoginResult {
+	return auth.ExternalLoginRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthAuthService) Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult {
 	return auth.RefreshRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
