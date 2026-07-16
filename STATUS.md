@@ -37,6 +37,9 @@
 - **Provider compatibility:** The deployment module requires HashiCorp AWS
   provider 6.x, matching the shared `dev` environment and the other deployed
   service modules.
+- **ACM composition:** HTTPS listener creation is controlled by an explicit,
+  plan-known `enable_https` input, so an environment can provision its ACM
+  certificate and the Sharecrop service in one Terraform apply.
 
 ## State
 

@@ -1,5 +1,10 @@
 # What We Did
 
+HTTPS listener creation now uses the explicit, plan-known `enable_https` input
+instead of deriving resource counts from an ACM certificate ARN. Environments
+can create a certificate and its listener in one Terraform apply without an
+unknown-count graph error; the module validates that HTTPS has a certificate.
+
 The ECS deployment module now requires HashiCorp AWS provider 6.x. Its lockfile
 was regenerated with provider 6.55.0 and `terraform validate` passed, allowing
 the module to compose with the shared `dev` environment and its other service

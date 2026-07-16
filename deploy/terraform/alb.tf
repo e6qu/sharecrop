@@ -29,15 +29,15 @@ resource "aws_lb_target_group" "this" {
   }
 }
 
-# HTTP listener. With a certificate it redirects to HTTPS; without one it serves
-# traffic directly (put a cert in front for anything public).
+# HTTP listener. HTTPS creation is explicitly plan-known so the certificate may
+# be created in the same apply.
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
   protocol          = "HTTP"
 
   dynamic "default_action" {
-    for_each = var.certificate_arn == null ? [1] : []
+    for_each = var.enable_https ? [] : [1]
     content {
       type             = "forward"
       target_group_arn = aws_lb_target_group.this.arn
@@ -45,7 +45,7 @@ resource "aws_lb_listener" "http" {
   }
 
   dynamic "default_action" {
-    for_each = var.certificate_arn == null ? [] : [1]
+    for_each = var.enable_https ? [1] : []
     content {
       type = "redirect"
       redirect {
@@ -58,7 +58,7 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_lb_listener" "https" {
-  count             = var.certificate_arn == null ? 0 : 1
+  count             = var.enable_https ? 1 : 0
   load_balancer_arn = aws_lb.this.arn
   port              = 443
   protocol          = "HTTPS"

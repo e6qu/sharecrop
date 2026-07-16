@@ -75,9 +75,20 @@ variable "assign_public_ip" {
 }
 
 variable "certificate_arn" {
-  description = "Optional ACM certificate ARN. When set, the ALB serves HTTPS on 443 and redirects 80 -> 443; when null, it serves plain HTTP on 80."
+  description = "ACM certificate ARN used by the HTTPS listener when enable_https is true."
   type        = string
   default     = null
+}
+
+variable "enable_https" {
+  description = "Whether to create the HTTPS listener and redirect HTTP to HTTPS. This must be known while Terraform plans, so callers provisioning a certificate in the same apply set it explicitly."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_https || var.certificate_arn != null
+    error_message = "certificate_arn must be set when enable_https is true."
+  }
 }
 
 # Compute.
