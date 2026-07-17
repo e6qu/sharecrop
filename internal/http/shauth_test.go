@@ -1,6 +1,9 @@
 package httpserver
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +29,25 @@ func TestSHAUTHTransactionIsAuthenticated(t *testing.T) {
 	}
 	if _, err := config.decodeTransaction(parts[0] + "." + strings.Repeat("A", len(parts[1]))); err == nil {
 		t.Fatal("tampered transaction was accepted")
+	}
+}
+
+func TestSHAUTHLogoutReturnsIssuerFrontChannelURL(t *testing.T) {
+	server := Server{shauth: shauthConfig{issuer: "https://auth.dev.e6qu.dev", clientID: "sharecrop", clientSecret: "test-client-secret", publicURL: "https://sharecrop.dev.e6qu.dev"}}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	response := httptest.NewRecorder()
+
+	server.logout(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("logout status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body logoutResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode logout response: %v", err)
+	}
+	if want := "https://auth.dev.e6qu.dev/oauth2/sessions/logout"; body.LogoutURL != want {
+		t.Fatalf("logout URL = %q, want %q", body.LogoutURL, want)
 	}
 }
 

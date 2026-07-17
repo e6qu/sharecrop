@@ -762,8 +762,13 @@ postLogout =
     Http.post
         { url = "/api/auth/logout"
         , body = Http.emptyBody
-        , expect = expectWhateverWithServerError LogoutReceived
+        , expect = expectJsonWithServerError LogoutReceived logoutURLDecoder
         }
+
+
+logoutURLDecoder : Decode.Decoder String
+logoutURLDecoder =
+    Decode.field "logout_url" Decode.string
 
 
 authRequestBody : Model -> Encode.Value

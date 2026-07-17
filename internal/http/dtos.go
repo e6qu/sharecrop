@@ -12,6 +12,12 @@ type authResponse struct {
 	Role        string `json:"role"`
 }
 
+type logoutResponse struct {
+	LogoutURL string `json:"logout_url"`
+}
+
+func (logoutResponse) writableResponse() {}
+
 type accountTokenResponse struct {
 	Token string `json:"token"`
 }

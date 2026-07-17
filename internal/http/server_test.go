@@ -148,8 +148,8 @@ func TestLogoutClearsRefreshCookie(t *testing.T) {
 
 	testHandler().ServeHTTP(response, request)
 
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
 	for _, cookie := range response.Result().Cookies() {
 		if cookie.Name == "sharecrop_refresh_token" {

@@ -111,7 +111,11 @@ func (server Server) logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	server.clearRefreshCookie(w)
-	w.WriteHeader(http.StatusNoContent)
+	logoutURL := ""
+	if server.shauth.enabled() {
+		logoutURL = server.shauth.issuer + "/oauth2/sessions/logout"
+	}
+	writeJSON(w, http.StatusOK, logoutResponse{LogoutURL: logoutURL})
 }
 
 func (server Server) guest(w http.ResponseWriter, r *http.Request) {

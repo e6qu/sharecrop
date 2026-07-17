@@ -460,7 +460,7 @@ type Msg
     | RevokeOrgCredentialClicked String
     | OrgCredentialRevoked (Result Http.Error Agent.OrgCredentialResponse)
     | LogoutClicked
-    | LogoutReceived (Result Http.Error ())
+    | LogoutReceived (Result Http.Error String)
     | DiscoveryIncludeReservedChanged Bool
     | DiscoveryQueryChanged String
     | PreviousDiscoveryPageClicked
