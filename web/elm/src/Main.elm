@@ -1177,11 +1177,18 @@ update msg model =
 
         LogoutClicked ->
             ( { model | session = LoggedOut, email = "", password = "" }
-            , Cmd.batch [ Api.postLogout, Nav.pushUrl model.key "#/" ]
+            , Api.postLogout
             )
 
-        LogoutReceived _ ->
-            ( model, Cmd.none )
+        LogoutReceived (Ok logoutURL) ->
+            if logoutURL == "" then
+                ( model, Nav.pushUrl model.key "#/" )
+
+            else
+                ( model, Nav.load logoutURL )
+
+        LogoutReceived (Err _) ->
+            ( model, Nav.pushUrl model.key "#/" )
 
         DiscoveryIncludeReservedChanged value ->
             Api.withSession model

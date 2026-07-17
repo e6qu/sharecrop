@@ -1144,7 +1144,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "logout_url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "logout_url"
+                  ]
                 }
               }
             }

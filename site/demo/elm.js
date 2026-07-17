@@ -10796,10 +10796,11 @@ var $author$project$Sharecrop$Api$postGuest = $elm$http$Http$post(
 var $author$project$Sharecrop$Types$LogoutReceived = function (a) {
 	return {$: 'LogoutReceived', a: a};
 };
+var $author$project$Sharecrop$Api$logoutURLDecoder = A2($elm$json$Json$Decode$field, 'logout_url', $elm$json$Json$Decode$string);
 var $author$project$Sharecrop$Api$postLogout = $elm$http$Http$post(
 	{
 		body: $elm$http$Http$emptyBody,
-		expect: $author$project$Sharecrop$Api$expectWhateverWithServerError($author$project$Sharecrop$Types$LogoutReceived),
+		expect: A2($author$project$Sharecrop$Api$expectJsonWithServerError, $author$project$Sharecrop$Types$LogoutReceived, $author$project$Sharecrop$Api$logoutURLDecoder),
 		url: '/api/auth/logout'
 	});
 var $author$project$Sharecrop$Types$OpenTaskReceived = function (a) {
@@ -14676,14 +14677,20 @@ var $author$project$Main$update = F2(
 					_Utils_update(
 						model,
 						{email: '', password: '', session: $author$project$Sharecrop$Types$LoggedOut}),
-					$elm$core$Platform$Cmd$batch(
-						_List_fromArray(
-							[
-								$author$project$Sharecrop$Api$postLogout,
-								A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/')
-							])));
+					$author$project$Sharecrop$Api$postLogout);
 			case 'LogoutReceived':
-				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				if (msg.a.$ === 'Ok') {
+					var logoutURL = msg.a.a;
+					return (logoutURL === '') ? _Utils_Tuple2(
+						model,
+						A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/')) : _Utils_Tuple2(
+						model,
+						$elm$browser$Browser$Navigation$load(logoutURL));
+				} else {
+					return _Utils_Tuple2(
+						model,
+						A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/'));
+				}
 			case 'DiscoveryIncludeReservedChanged':
 				var value = msg.a;
 				return A2(
