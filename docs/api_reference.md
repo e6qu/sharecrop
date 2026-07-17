@@ -4,14 +4,14 @@ This reference lists the stable application routes used by the Elm UI, external 
 
 All protected routes require `Authorization: Bearer <access_token>` unless the route is explicitly public. Browser sessions also use the refresh-token cookie for `/api/auth/refresh`.
 
-[docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Request/response body schemas are derived from the actual Go DTO struct each handler decodes/writes, resolved through `internal/openapi`'s `go/ast`-based analysis of `internal/http`; a route whose handler does not match one of the standard decode/write patterns (raw MCP JSON-RPC passthrough, or a route with no real DTO such as `logout`/`healthz`) gets a generic `{"type": "object"}` (or empty) placeholder rather than a guess. As of this writing 102/109 responses and 41/63 request bodies resolve to a typed schema. This document remains the source for prose per-route request/response descriptions where the generated schema is generic. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
+[docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Request/response body schemas are derived from the actual Go DTO struct each handler decodes/writes, resolved through `internal/openapi`'s `go/ast`-based analysis of `internal/http`; a route whose handler does not match one of the standard decode/write patterns (raw MCP JSON-RPC passthrough or `healthz`) gets a generic `{"type": "object"}` (or empty) placeholder rather than a guess. This document remains the source for prose per-route request/response descriptions where the generated schema is generic. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
 
 ## Authentication
 
 - `POST /api/auth/register`: create an account with `email` and `password`.
 - `POST /api/auth/login`: exchange email/password for an access token.
 - `POST /api/auth/refresh`: rotate a refresh-token cookie and issue a new access token.
-- `POST /api/auth/logout`: revoke the current refresh token.
+- `POST /api/auth/logout`: revoke the current refresh token and return `logout_url`; when Shauth is configured, the browser must navigate to that Ory Hydra front-channel logout URL to clear the identity-provider session.
 - `POST /api/auth/guest`: create a guest browser session.
 
 ## Account

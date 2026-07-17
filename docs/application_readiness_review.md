@@ -143,8 +143,7 @@ support surfaces are absent.
    - A generated OpenAPI document (`docs/openapi.json`, `make openapi`) exists
      with an accurate method/path/operationId/bearer-auth inventory parsed from
      `internal/http/server.go`. Request/response body schemas are derived from
-     the actual Go DTO struct each handler decodes/writes (102/109 responses,
-     41/63 request bodies as of this writing); a handler outside the standard
+     the actual Go DTO struct each handler decodes/writes; a handler outside the standard
      decode/write patterns gets a generic placeholder rather than a guess. It is
      browsable on the deployed docs site at `/docs/openapi.html` (raw document
      at `/docs/openapi.json`).

@@ -130,7 +130,16 @@ func TestLogoutRevokesSession(t *testing.T) {
 		t.Fatalf("post logout: %v", err)
 	}
 	defer logoutResponse.Body.Close()
-	assertStatus(t, logoutResponse, http.StatusNoContent)
+	assertStatus(t, logoutResponse, http.StatusOK)
+	var logoutBody struct {
+		LogoutURL string `json:"logout_url"`
+	}
+	if err := json.NewDecoder(logoutResponse.Body).Decode(&logoutBody); err != nil {
+		t.Fatalf("decode logout response: %v", err)
+	}
+	if logoutBody.LogoutURL != "" {
+		t.Fatalf("local logout URL = %q, want empty", logoutBody.LogoutURL)
+	}
 
 	refreshResponse := postRefresh(t, server, cookie)
 	defer refreshResponse.Body.Close()
