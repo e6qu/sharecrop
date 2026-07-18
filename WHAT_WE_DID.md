@@ -6527,3 +6527,13 @@ environment continued to receive its request-shaping runtime configuration,
 including platform administrator configuration. The command-package test
 verified the complete guest runtime environment mapping, and the Go test suite
 passed.
+
+# Shauth application entry
+
+When Shauth is configured, the production application shell required the
+Sharecrop refresh-session cookie. A visitor without that cookie was redirected
+to the Shauth authorization route, while the authorization callback established
+the cookie before returning to the application shell. This made direct entry
+and the link rendered by the Shauth Apps catalog use the same OpenID Connect
+flow. Command-package tests covered both the unauthenticated redirect and the
+post-callback shell response; the full Go suite and formatting check passed.

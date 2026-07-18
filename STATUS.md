@@ -54,7 +54,9 @@ transaction cookie, and an HTTPS-only issuer/public URL configuration. In the
 production WASI deployment, the Shauth authorization and callback routes run
 on the native host boundary because OpenID Connect discovery and token exchange
 require outbound HTTPS; the rest of the application remains hosted by the WASI
-guest pool.
+guest pool. When Shauth is configured, application entry routes require the
+Sharecrop refresh-session cookie and redirect a new visitor to Shauth, so an
+Apps-catalog launch and a direct application URL start the same identity flow.
 
 Both the single-store-implementation program and the WASI-production-hosting
 program are complete. Recent work hardened the production-default WASI path:

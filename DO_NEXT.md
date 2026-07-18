@@ -13,7 +13,8 @@ continuity files if task scope changes.
    provisions the ECS Fargate service and its single-AZ Amazon RDS for
    PostgreSQL dependencies in an existing VPC. Keep image and module pins in
    the environment current, run migrations before an image requires them, and
-   verify the deployed Shauth sign-in route after every authentication change.
+   verify both direct entry and the Shauth Apps-catalog launch after every
+   authentication change.
    See [docs/deployment.md](./docs/deployment.md).
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are
