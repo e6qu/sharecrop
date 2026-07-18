@@ -50,6 +50,17 @@ func shauthConfigFromEnv() shauthConfig {
 	return shauthConfig{issuer: strings.TrimRight(os.Getenv("SHARECROP_SHAUTH_ISSUER"), "/"), clientID: os.Getenv("SHARECROP_SHAUTH_CLIENT_ID"), clientSecret: os.Getenv("SHARECROP_SHAUTH_CLIENT_SECRET"), publicURL: strings.TrimRight(os.Getenv("SHARECROP_PUBLIC_URL"), "/")}
 }
 
+func (c shauthConfig) oauthConfig(endpoint oauth2.Endpoint) oauth2.Config {
+	endpoint.AuthStyle = oauth2.AuthStyleInParams
+	return oauth2.Config{
+		ClientID:     c.clientID,
+		ClientSecret: c.clientSecret,
+		Endpoint:     endpoint,
+		RedirectURL:  c.publicURL + "/api/auth/shauth/callback",
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "offline_access"},
+	}
+}
+
 type shauthTransaction struct {
 	State    string `json:"s"`
 	Nonce    string `json:"n"`
@@ -131,7 +142,7 @@ func (server Server) shauthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "sharecrop_shauth_tx", Value: encoded, Path: "/api/auth/shauth", HttpOnly: true, Secure: server.secureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600})
-	config := oauth2.Config{ClientID: server.shauth.clientID, ClientSecret: server.shauth.clientSecret, Endpoint: provider.Endpoint(), RedirectURL: server.shauth.publicURL + "/api/auth/shauth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email", "offline_access"}}
+	config := server.shauth.oauthConfig(provider.Endpoint())
 	http.Redirect(w, r, config.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), http.StatusFound)
 }
 func (server Server) shauthCallback(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +166,7 @@ func (server Server) shauthCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 502, "Shauth discovery failed")
 		return
 	}
-	config := oauth2.Config{ClientID: server.shauth.clientID, ClientSecret: server.shauth.clientSecret, Endpoint: provider.Endpoint(), RedirectURL: server.shauth.publicURL + "/api/auth/shauth/callback"}
+	config := server.shauth.oauthConfig(provider.Endpoint())
 	tokens, err := config.Exchange(r.Context(), r.URL.Query().Get("code"), oauth2.VerifierOption(tx.Verifier))
 	if err != nil {
 		writeError(w, 401, "Shauth code exchange failed")

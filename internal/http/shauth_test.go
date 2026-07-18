@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/oauth2"
 )
 
 func TestSHAUTHTransactionIsAuthenticated(t *testing.T) {
@@ -66,5 +68,20 @@ func TestSHAUTHConfigRequiresCompleteHTTPSCoordinates(t *testing.T) {
 	}
 	if err := (shauthConfig{issuer: "https://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "https://sharecrop.dev.e6qu.dev"}).validate(); err != nil {
 		t.Fatalf("valid config: %v", err)
+	}
+}
+
+func TestSHAUTHOAuthConfigUsesClientSecretPost(t *testing.T) {
+	config := shauthConfig{
+		clientID:     "sharecrop",
+		clientSecret: "secret",
+		publicURL:    "https://sharecrop.dev.e6qu.dev",
+	}.oauthConfig(oauth2.Endpoint{AuthURL: "https://auth.dev.e6qu.dev/oauth2/auth", TokenURL: "https://auth.dev.e6qu.dev/oauth2/token"})
+
+	if config.Endpoint.AuthStyle != oauth2.AuthStyleInParams {
+		t.Fatalf("token endpoint auth style = %v, want client_secret_post", config.Endpoint.AuthStyle)
+	}
+	if config.RedirectURL != "https://sharecrop.dev.e6qu.dev/api/auth/shauth/callback" {
+		t.Fatalf("redirect URL = %q", config.RedirectURL)
 	}
 }
