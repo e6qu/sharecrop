@@ -383,7 +383,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		logger.Warn("no app guest embedded; serving the native in-process mux (build with `make build` for WASI hosting)")
 	default:
 		guestBuildStart := time.Now()
-		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles)
+		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles, nativeHandler)
 		if err != nil {
 			logger.Error("build wasi guest host", "error", err)
 			return 1
@@ -438,7 +438,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 // (the guest carries no static files). Every store call the guest makes is
 // dispatched back to the host's Postgres pool via storehost. The returned func
 // tears the guest pool down.
-func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS) (http.Handler, func(), error) {
+func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS, nativeHandler http.Handler) (http.Handler, func(), error) {
 	// SHARECROP_WAZERO_CACHE_DIR points at a pre-populated wazero compilation
 	// cache (baked into the container by the wasi-precompile build step) so the
 	// guest's machine code is loaded rather than compiled at startup. Unset falls
@@ -449,18 +449,18 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 		return nil, nil, fmt.Errorf("build guest pool: %w", err)
 	}
 	// The guest runs internal/http's newServer, which reads request-shaping
-	// config straight from the environment, so every such variable must be
-	// forwarded or the guest silently falls back to defaults (e.g. account
-	// token delivery would ignore an operator's setting and always log). Keep
-	// this in sync with the os.Getenv reads in httpserver.newServer.
-	guestPool.WithGuestEnv(map[string]string{
-		"SHARECROP_ACCESS_TOKEN_SECRET":    cfg.AccessTokenSecret(),
-		"SHARECROP_INSECURE_COOKIES":       os.Getenv("SHARECROP_INSECURE_COOKIES"),
-		"SHARECROP_ACCOUNT_TOKEN_DELIVERY": os.Getenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY"),
-	})
+	// config straight from the environment. Keep this in sync with the guest's
+	// local runtime configuration. The Shauth routes remain on the host because
+	// the wasip1 guest has no outbound HTTP capability for OpenID Connect
+	// discovery and token exchange.
+	guestPool.WithGuestEnv(wasiGuestEnvironment(cfg))
 	guest := httpbridge.Handler(guestPool)
 
 	mux := http.NewServeMux()
+	// Shauth discovery and token exchange use the host network boundary. The
+	// remaining application routes continue through the real WASI guest.
+	mux.Handle("GET /api/auth/shauth", nativeHandler)
+	mux.Handle("GET /api/auth/shauth/callback", nativeHandler)
 	// Dynamic routes run in the guest.
 	mux.Handle("/api/", guest)
 	mux.Handle("/mcp", guest)
@@ -479,6 +479,15 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 	})
 
 	return mux, func() { _ = guestPool.Close(context.Background()) }, nil
+}
+
+func wasiGuestEnvironment(cfg app.Config) map[string]string {
+	return map[string]string{
+		"SHARECROP_ACCESS_TOKEN_SECRET":    cfg.AccessTokenSecret(),
+		"SHARECROP_INSECURE_COOKIES":       os.Getenv("SHARECROP_INSECURE_COOKIES"),
+		"SHARECROP_ACCOUNT_TOKEN_DELIVERY": os.Getenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY"),
+		"SHARECROP_ADMIN_USER_IDS":         os.Getenv("SHARECROP_ADMIN_USER_IDS"),
+	}
 }
 
 // resolveGuestModule returns the app guest wasm to run: an external module when

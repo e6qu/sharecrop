@@ -50,7 +50,11 @@ receives the same rotating Sharecrop session as a local login. Local passwords
 and first-party tokens remain available. Existing password accounts are never
 linked to a new external identity merely because their email addresses match.
 The callback uses PKCE, nonce/state validation, an authenticated short-lived
-transaction cookie, and an HTTPS-only issuer/public URL configuration.
+transaction cookie, and an HTTPS-only issuer/public URL configuration. In the
+production WASI deployment, the Shauth authorization and callback routes run
+on the native host boundary because OpenID Connect discovery and token exchange
+require outbound HTTPS; the rest of the application remains hosted by the WASI
+guest pool.
 
 Both the single-store-implementation program and the WASI-production-hosting
 program are complete. Recent work hardened the production-default WASI path:
@@ -71,6 +75,4 @@ Terraform validation, and WASI bridge generation checks.
 
 ## Blocking issues
 
-The dev environment required its Terraform consumer to update to the
-single-AZ Amazon RDS for PostgreSQL module revision before Sharecrop could
-start.
+None.
