@@ -9,18 +9,12 @@ continuity files if task scope changes.
    delivers SSE across replicas by DB polling and returns a bounded response over
    the WASI bridge (which cannot stream); a streaming transport would let it push.
 
-2. **Stand up the AWS deployment.** The Terraform in `deploy/terraform/` provisions
-   the ALB + ECS Fargate service + single-AZ Amazon RDS for PostgreSQL + secrets/IAM
-   into an existing VPC. Set `existing_ecs_cluster_arn` to the shared `dev`
-   Amazon Elastic Container Service cluster, fill the remaining deployment
-   coordinates, run `terraform apply`, run the migration task, and point DNS at
-   the ALB. Then cut the first `feat`/`fix` release so the image publishes to
-   ghcr. The module now uses the HashiCorp AWS provider 6.x required by the
-   shared environment. Requires GitHub-hosted arm64 runners for the release build. See
-   [docs/deployment.md](./docs/deployment.md).
-   Set `enable_https = true` when its ACM certificate is provisioned in the
-   same apply. Use `alb_dns_name` and `alb_zone_id` for the Route 53 alias record, and
-   `serve_log_group_name` when enrolling the deployed app in monitoring.
+2. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
+   provisions the ECS Fargate service and its single-AZ Amazon RDS for
+   PostgreSQL dependencies in an existing VPC. Keep image and module pins in
+   the environment current, run migrations before an image requires them, and
+   verify the deployed Shauth sign-in route after every authentication change.
+   See [docs/deployment.md](./docs/deployment.md).
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are
    added, and keep running it against both SQL engines and the real backend as

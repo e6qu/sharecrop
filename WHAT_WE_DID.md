@@ -6515,3 +6515,15 @@ accepted the confidential-client coordinates from AWS Secrets Manager and
 validated complete HTTPS configuration before startup. The database and WASI
 bridge carried external identities through the same production path as native
 hosting.
+
+# Shauth host-boundary routing in the WASI deployment
+
+The production WASI cutover routed Shauth authorization and callback requests
+through the native HTTP handler while retaining the WASI guest pool for the
+rest of the application. This kept OpenID Connect discovery and token exchange
+on the host network boundary, which has outbound HTTPS capability, and avoided
+placing the confidential client secret in the guest environment. The guest
+environment continued to receive its request-shaping runtime configuration,
+including platform administrator configuration. The command-package test
+verified the complete guest runtime environment mapping, and the Go test suite
+passed.
