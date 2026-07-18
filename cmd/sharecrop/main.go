@@ -383,7 +383,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		logger.Warn("no app guest embedded; serving the native in-process mux (build with `make build` for WASI hosting)")
 	default:
 		guestBuildStart := time.Now()
-		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles, nativeHandler)
+		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles, nativeHandler, shauthConfigured())
 		if err != nil {
 			logger.Error("build wasi guest host", "error", err)
 			return 1
@@ -438,7 +438,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 // (the guest carries no static files). Every store call the guest makes is
 // dispatched back to the host's Postgres pool via storehost. The returned func
 // tears the guest pool down.
-func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS, nativeHandler http.Handler) (http.Handler, func(), error) {
+func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS, nativeHandler http.Handler, requireShauthSession bool) (http.Handler, func(), error) {
 	// SHARECROP_WAZERO_CACHE_DIR points at a pre-populated wazero compilation
 	// cache (baked into the container by the wasi-precompile build step) so the
 	// guest's machine code is loaded rather than compiled at startup. Unset falls
@@ -467,7 +467,33 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 	mux.Handle("/healthz", guest)
 	// Static assets and the SPA shell are served from the host's embedded files.
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/", applicationShell(staticFiles, requireShauthSession))
+
+	return mux, func() { _ = guestPool.Close(context.Background()) }, nil
+}
+
+func shauthConfigured() bool {
+	for _, name := range []string{
+		"SHARECROP_SHAUTH_ISSUER",
+		"SHARECROP_SHAUTH_CLIENT_ID",
+		"SHARECROP_SHAUTH_CLIENT_SECRET",
+		"SHARECROP_PUBLIC_URL",
+	} {
+		if os.Getenv(name) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func applicationShell(staticFiles fs.FS, requireShauthSession bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requireShauthSession {
+			if _, err := r.Cookie("sharecrop_refresh_token"); err != nil {
+				http.Redirect(w, r, "/api/auth/shauth", http.StatusFound)
+				return
+			}
+		}
 		data, err := fs.ReadFile(staticFiles, "index.html")
 		if err != nil {
 			http.Error(w, "index not found", http.StatusInternalServerError)
@@ -477,8 +503,6 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(data)
 	})
-
-	return mux, func() { _ = guestPool.Close(context.Background()) }, nil
 }
 
 func wasiGuestEnvironment(cfg app.Config) map[string]string {

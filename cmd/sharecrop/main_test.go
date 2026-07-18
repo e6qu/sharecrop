@@ -1,7 +1,10 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"testing/fstest"
 
 	"github.com/e6qu/sharecrop/internal/app"
 )
@@ -37,4 +40,33 @@ func TestWASIGuestEnvironmentForwardsHTTPRuntimeConfiguration(t *testing.T) {
 			t.Errorf("wasiGuestEnvironment()[%q] = %q, want %q", key, got[key], value)
 		}
 	}
+}
+
+func TestApplicationShellRequiresShauthSessionWhenConfigured(t *testing.T) {
+	staticFiles := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("Sharecrop shell")}}
+	handler := applicationShell(staticFiles, true)
+
+	t.Run("redirects a new visitor to Shauth", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "https://sharecrop.example.test/", nil))
+		if response.Code != http.StatusFound {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusFound)
+		}
+		if location := response.Header().Get("Location"); location != "/api/auth/shauth" {
+			t.Errorf("Location = %q, want %q", location, "/api/auth/shauth")
+		}
+	})
+
+	t.Run("serves the application after the OIDC callback sets the refresh cookie", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodGet, "https://sharecrop.example.test/", nil)
+		request.AddCookie(&http.Cookie{Name: "sharecrop_refresh_token", Value: "opaque-refresh-token"})
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+		}
+		if body := response.Body.String(); body != "Sharecrop shell" {
+			t.Errorf("body = %q, want application shell", body)
+		}
+	})
 }
