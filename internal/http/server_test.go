@@ -638,6 +638,10 @@ func (testAuth) Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResul
 	return auth.LogoutDone{}
 }
 
+func (testAuth) LogoutExternalIdentity(context.Context, string, string) auth.LogoutResult {
+	return auth.LogoutDone{}
+}
+
 func (testAuth) Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult {
 	idResult := core.NewUserID()
 	idCreated := idResult.(core.UserIDCreated)

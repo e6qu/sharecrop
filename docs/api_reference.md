@@ -12,6 +12,7 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/auth/login`: exchange email/password for an access token.
 - `POST /api/auth/refresh`: rotate a refresh-token cookie and issue a new access token.
 - `POST /api/auth/logout`: revoke the current refresh token and return `logout_url`; when Shauth is configured, the browser must navigate to that Ory Hydra front-channel logout URL to clear the identity-provider session.
+- `POST /api/auth/shauth/backchannel-logout`: accept a signed OpenID Connect `logout_token` from Shauth, validate its issuer, audience, signature, event, `sid`, `sub`, `iat`, and `jti` claims, and revoke every local refresh-token family for that external identity.
 - `POST /api/auth/guest`: create a guest browser session.
 
 ## Account

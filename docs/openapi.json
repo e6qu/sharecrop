@@ -1374,6 +1374,33 @@
         }
       }
     },
+    "/api/auth/shauth/backchannel-logout": {
+      "post": {
+        "operationId": "shauthBackchannelLogout",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/shauth/callback": {
       "get": {
         "operationId": "shauthCallback",

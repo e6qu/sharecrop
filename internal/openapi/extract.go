@@ -17,12 +17,13 @@ import (
 // best-effort basis; either is empty when the handler does not match one of
 // the standard decode/write patterns.
 type Route struct {
-	Method       string
-	Path         string
-	OperationID  string
-	RequiresAuth bool
-	RequestType  string
-	ResponseType string
+	Method           string
+	Path             string
+	OperationID      string
+	RequiresAuth     bool
+	RequestMediaType string
+	RequestType      string
+	ResponseType     string
 }
 
 type ExtractResult interface {
@@ -73,6 +74,7 @@ func Extract(sources map[string][]byte) ExtractResult {
 	}
 
 	authGatedFuncs := collectAuthGatedFuncs(files)
+	formBodyFuncs := collectFormBodyFuncs(files)
 	requestTypeByFunc, responseTypeByFunc := resolveDTOTypes(files)
 	structs := collectStructShapes(files)
 
@@ -84,6 +86,9 @@ func Extract(sources map[string][]byte) ExtractResult {
 				return ExtractionRejected{Reason: "duplicate route registration for " + key}
 			}
 			route.RequiresAuth = authGatedFuncs[route.OperationID]
+			if formBodyFuncs[route.OperationID] {
+				route.RequestMediaType = "application/x-www-form-urlencoded"
+			}
 			route.RequestType = requestTypeByFunc[route.OperationID]
 			route.ResponseType = responseTypeByFunc[route.OperationID]
 			routesByKey[key] = route
@@ -104,6 +109,31 @@ func Extract(sources map[string][]byte) ExtractResult {
 		return routes[i].Method < routes[j].Method
 	})
 	return Extracted{Routes: routes, Structs: structs}
+}
+
+func collectFormBodyFuncs(files map[string]*ast.File) map[string]bool {
+	result := map[string]bool{}
+	for _, file := range files {
+		for _, declaration := range file.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Body == nil {
+				continue
+			}
+			ast.Inspect(function.Body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				selector, ok := call.Fun.(*ast.SelectorExpr)
+				if ok && (selector.Sel.Name == "ParseForm" || selector.Sel.Name == "FormValue" || selector.Sel.Name == "PostFormValue") {
+					result[function.Name.Name] = true
+					return false
+				}
+				return true
+			})
+		}
+	}
+	return result
 }
 
 func routesInFile(file *ast.File) []Route {

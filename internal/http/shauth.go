@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -18,6 +19,8 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"golang.org/x/oauth2"
 )
+
+const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logout"
 
 type shauthConfig struct{ issuer, clientID, clientSecret, publicURL string }
 
@@ -204,4 +207,54 @@ func (server Server) shauthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	server.setRefreshCookie(w, login.RefreshToken)
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+type backchannelLogoutClaims struct {
+	Events   map[string]json.RawMessage `json:"events"`
+	IssuedAt int64                      `json:"iat"`
+	JWTID    string                     `json:"jti"`
+	Nonce    string                     `json:"nonce"`
+	SID      string                     `json:"sid"`
+}
+
+func (server Server) verifyBackchannelLogout(ctx context.Context, raw string) (*oidc.IDToken, backchannelLogoutClaims, error) {
+	provider, err := oidc.NewProvider(ctx, server.shauth.issuer)
+	if err != nil {
+		return nil, backchannelLogoutClaims{}, fmt.Errorf("discover Shauth: %w", err)
+	}
+	token, err := provider.Verifier(&oidc.Config{ClientID: server.shauth.clientID}).Verify(ctx, raw)
+	if err != nil {
+		return nil, backchannelLogoutClaims{}, fmt.Errorf("verify logout token: %w", err)
+	}
+	var claims backchannelLogoutClaims
+	if err := token.Claims(&claims); err != nil {
+		return nil, backchannelLogoutClaims{}, fmt.Errorf("decode logout token: %w", err)
+	}
+	_, eventPresent := claims.Events[backchannelLogoutEvent]
+	if token.Subject == "" || claims.SID == "" || claims.IssuedAt == 0 || claims.JWTID == "" || claims.Nonce != "" || !eventPresent {
+		return nil, backchannelLogoutClaims{}, fmt.Errorf("logout token claims are invalid")
+	}
+	return token, claims, nil
+}
+
+func (server Server) shauthBackchannelLogout(w http.ResponseWriter, r *http.Request) {
+	if !server.shauth.enabled() {
+		writeError(w, http.StatusServiceUnavailable, "Shauth sign-in is not configured")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, "logout token is invalid")
+		return
+	}
+	token, _, err := server.verifyBackchannelLogout(r.Context(), strings.TrimSpace(r.Form.Get("logout_token")))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "logout token is invalid")
+		return
+	}
+	result := server.authService.LogoutExternalIdentity(r.Context(), token.Issuer, token.Subject)
+	if _, ok := result.(auth.LogoutDone); !ok {
+		writeError(w, http.StatusInternalServerError, "logout could not be completed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

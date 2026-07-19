@@ -93,9 +93,13 @@ func Generate(routes []Route, structs map[string]StructShape) Document {
 			operation.Security = &noSecurity
 		}
 		if requestBodyMethod(route.Method) {
+			mediaType := route.RequestMediaType
+			if mediaType == "" {
+				mediaType = "application/json"
+			}
 			operation.RequestBody = &RequestBody{
 				Content: map[string]MediaType{
-					"application/json": {Schema: schemaFor(route.RequestType, structs)},
+					mediaType: {Schema: schemaFor(route.RequestType, structs)},
 				},
 			}
 		}

@@ -6549,3 +6549,19 @@ the cookie before returning to the application shell. This made direct entry
 and the link rendered by the Shauth Apps catalog use the same OpenID Connect
 flow. Command-package tests covered both the unauthenticated redirect and the
 post-callback shell response; the full Go suite and formatting check passed.
+
+# Shauth back-channel logout and repeatable PostgreSQL qualification
+
+Sharecrop accepted the standard Shauth back-channel logout notification at
+`/api/auth/shauth/backchannel-logout`. The handler verified the signed token
+against discovery keys and the configured audience, rejected missing session
+identifiers and prohibited nonce claims, resolved the verified issuer/subject,
+and revoked every active local refresh-token family for the identity. The
+mutation crossed the generated WASI store bridge, so native and production
+WASI hosting used the same durable PostgreSQL behavior.
+
+The WASI integration scenarios generated unique registration addresses. The
+complete PostgreSQL suite therefore passed when repeated against its dedicated
+database instead of colliding with users created by an earlier run. The API
+generator detected form-parsing handlers and documented the logout token as an
+`application/x-www-form-urlencoded` request.

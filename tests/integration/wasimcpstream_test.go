@@ -67,7 +67,7 @@ func TestGuestPoolSSEDoesNotExhaustPool(t *testing.T) {
 	}
 
 	registerResp := do("POST", "/api/auth/register", "", "", "",
-		`{"email":"mcp-sse@example.com","password":"correct horse battery staple"}`)
+		fmt.Sprintf(`{"email":%q,"password":"correct horse battery staple"}`, uniqueIntegrationEmail(t, "mcp-sse")))
 	if registerResp.StatusCode != http.StatusCreated {
 		t.Fatalf("register: status %d, want 201", registerResp.StatusCode)
 	}

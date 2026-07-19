@@ -66,7 +66,7 @@ func TestGuestPoolServesMCPAcrossInstances(t *testing.T) {
 
 	// Register an account and issue an agent credential MCP authenticates with.
 	registerResp := do("POST", "/api/auth/register", "", "",
-		`{"email":"mcp-pool@example.com","password":"correct horse battery staple"}`)
+		fmt.Sprintf(`{"email":%q,"password":"correct horse battery staple"}`, uniqueIntegrationEmail(t, "mcp-pool")))
 	if registerResp.StatusCode != http.StatusCreated {
 		t.Fatalf("register: status %d, want 201", registerResp.StatusCode)
 	}

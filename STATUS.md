@@ -58,6 +58,14 @@ guest pool. When Shauth is configured, application entry routes require the
 Sharecrop refresh-session cookie and redirect a new visitor to Shauth, so an
 Apps-catalog launch and a direct application URL start the same identity flow.
 
+Shauth back-channel logout validated signed logout tokens through provider
+discovery, required the standard logout event and session/identity claims, and
+revoked every active Sharecrop refresh-token family associated with the
+verified issuer/subject. The endpoint was
+`/api/auth/shauth/backchannel-logout`. PostgreSQL integration registrations
+used unique addresses, so the complete suite remained repeatable on its
+dedicated database instead of failing after an earlier run left real users.
+
 The migration command loaded only its database URL and migration directory, so
 the one-off ECS migration task did not depend on HTTP or access-token runtime
 configuration. The server and MCP transports verified that every migration
@@ -84,6 +92,9 @@ Terraform validation, and WASI bridge generation checks. Migration
 configuration and current-schema checks passed unit and PostgreSQL integration
 tests. Direct entry and Shauth Apps-catalog launch both completed the live
 OpenID Connect callback and established a Sharecrop browser session.
+Signed logout-token tests covered successful global local-session revocation,
+missing `sid`, and prohibited `nonce` claims. The complete PostgreSQL
+integration suite also passed on a database containing prior test data.
 
 ## Blocking issues
 

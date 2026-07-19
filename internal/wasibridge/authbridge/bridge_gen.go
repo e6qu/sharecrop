@@ -15,20 +15,21 @@ import (
 
 // Method names namespace each auth.Store method on the wire.
 const (
-	methodCreateUserCredential         = "auth.CreateUserCredential"
-	methodFindOrCreateExternalIdentity = "auth.FindOrCreateExternalIdentity"
-	methodFindCredentialByEmail        = "auth.FindCredentialByEmail"
-	methodFindCredentialByUserID       = "auth.FindCredentialByUserID"
-	methodListUsers                    = "auth.ListUsers"
-	methodUpdateUserEmail              = "auth.UpdateUserEmail"
-	methodUpdatePassword               = "auth.UpdatePassword"
-	methodDeactivateUser               = "auth.DeactivateUser"
-	methodCreateGuestSubject           = "auth.CreateGuestSubject"
-	methodStoreRefreshToken            = "auth.StoreRefreshToken"
-	methodConsumeRefreshToken          = "auth.ConsumeRefreshToken"
-	methodRevokeRefreshFamily          = "auth.RevokeRefreshFamily"
-	methodStoreAccountToken            = "auth.StoreAccountToken"
-	methodConsumeAccountToken          = "auth.ConsumeAccountToken"
+	methodCreateUserCredential           = "auth.CreateUserCredential"
+	methodFindOrCreateExternalIdentity   = "auth.FindOrCreateExternalIdentity"
+	methodFindCredentialByEmail          = "auth.FindCredentialByEmail"
+	methodFindCredentialByUserID         = "auth.FindCredentialByUserID"
+	methodListUsers                      = "auth.ListUsers"
+	methodUpdateUserEmail                = "auth.UpdateUserEmail"
+	methodUpdatePassword                 = "auth.UpdatePassword"
+	methodDeactivateUser                 = "auth.DeactivateUser"
+	methodCreateGuestSubject             = "auth.CreateGuestSubject"
+	methodStoreRefreshToken              = "auth.StoreRefreshToken"
+	methodConsumeRefreshToken            = "auth.ConsumeRefreshToken"
+	methodRevokeRefreshFamily            = "auth.RevokeRefreshFamily"
+	methodRevokeExternalIdentitySessions = "auth.RevokeExternalIdentitySessions"
+	methodStoreAccountToken              = "auth.StoreAccountToken"
+	methodConsumeAccountToken            = "auth.ConsumeAccountToken"
 )
 
 type createUserCredentialArgs struct {
@@ -84,6 +85,10 @@ type consumeRefreshTokenArgs struct {
 
 type revokeRefreshFamilyArgs struct {
 	Hash string `json:"hash"`
+}
+
+type revokeExternalIdentitySessionsArgs struct {
+	Identity externalIdentityWire `json:"identity"`
 }
 
 type storeAccountTokenArgs struct {
@@ -251,6 +256,16 @@ func Dispatch(ctx context.Context, store auth.Store, method string, args []byte)
 			return nil, err
 		}
 		return json.Marshal(encodeRevokeRefreshFamilyResult(store.RevokeRefreshFamily(ctx, argHash)))
+	case methodRevokeExternalIdentitySessions:
+		var decoded revokeExternalIdentitySessionsArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("auth bridge: decode RevokeExternalIdentitySessions args: %w", err)
+		}
+		argIdentity, err := decodeExternalIdentity(decoded.Identity)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeRevokeRefreshFamilyResult(store.RevokeExternalIdentitySessions(ctx, argIdentity)))
 	case methodStoreAccountToken:
 		var decoded storeAccountTokenArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -534,6 +549,26 @@ func (g GuestStore) RevokeRefreshFamily(ctx context.Context, argHash auth.Refres
 		return auth.RevokeRefreshFamilyRejected{Reason: guestError(err)}
 	}
 	raw, err := g.invoke(methodRevokeRefreshFamily, args)
+	if err != nil {
+		return auth.RevokeRefreshFamilyRejected{Reason: guestError(err)}
+	}
+	var wire acceptedRejectedWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return auth.RevokeRefreshFamilyRejected{Reason: guestError(err)}
+	}
+	result, err := decodeRevokeRefreshFamilyResult(wire)
+	if err != nil {
+		return auth.RevokeRefreshFamilyRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) RevokeExternalIdentitySessions(ctx context.Context, argIdentity auth.ExternalIdentity) auth.RevokeRefreshFamilyResult {
+	args, err := json.Marshal(revokeExternalIdentitySessionsArgs{Identity: encodeExternalIdentity(argIdentity)})
+	if err != nil {
+		return auth.RevokeRefreshFamilyRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodRevokeExternalIdentitySessions, args)
 	if err != nil {
 		return auth.RevokeRefreshFamilyRejected{Reason: guestError(err)}
 	}

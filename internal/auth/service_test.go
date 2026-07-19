@@ -169,6 +169,26 @@ func TestServiceCreatesAndReusesExternalIdentitySession(t *testing.T) {
 	}
 }
 
+func TestExternalIdentityLogoutRevokesEveryLocalSession(t *testing.T) {
+	service := acceptedService(t, newMemoryStore())
+	issuer := "https://auth.dev.e6qu.dev/"
+	subject := "sha-subject"
+	email := acceptedEmail(t, "oidc@example.com")
+	first := service.LoginExternal(context.Background(), issuer, subject, email).(ExternalLoginAccepted)
+	second := service.LoginExternal(context.Background(), issuer, subject, email).(ExternalLoginAccepted)
+
+	result := service.LogoutExternalIdentity(context.Background(), issuer, subject)
+	if _, ok := result.(LogoutDone); !ok {
+		t.Fatalf("logout = %T, want LogoutDone", result)
+	}
+	for _, token := range []RefreshTokenPlain{first.RefreshToken, second.RefreshToken} {
+		result := service.Refresh(context.Background(), token)
+		if _, ok := result.(RefreshAccepted); ok {
+			t.Fatalf("revoked refresh token was accepted")
+		}
+	}
+}
+
 func TestServiceDoesNotLinkExternalIdentityToPasswordEmail(t *testing.T) {
 	store := newMemoryStore()
 	service := acceptedService(t, store)
@@ -413,6 +433,19 @@ func (store *memoryStore) RevokeRefreshFamily(_ context.Context, hash RefreshTok
 			if active.FamilyID.String() == record.FamilyID.String() {
 				delete(store.refreshByHash, storedHash)
 			}
+		}
+	}
+	return RefreshFamilyRevoked{}
+}
+
+func (store *memoryStore) RevokeExternalIdentitySessions(_ context.Context, identity ExternalIdentity) RevokeRefreshFamilyResult {
+	id, exists := store.externalByKey[identity.Issuer+"\x00"+identity.Subject]
+	if !exists {
+		return RefreshFamilyRevoked{}
+	}
+	for hash, record := range store.refreshByHash {
+		if subject, ok := record.Subject.(UserSubject); ok && subject.ID.String() == id.String() {
+			delete(store.refreshByHash, hash)
 		}
 	}
 	return RefreshFamilyRevoked{}

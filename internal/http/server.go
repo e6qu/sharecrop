@@ -34,6 +34,7 @@ type AuthService interface {
 	LoginExternal(context.Context, string, string, auth.EmailAddress) auth.ExternalLoginResult
 	Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult
 	Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult
+	LogoutExternalIdentity(context.Context, string, string) auth.LogoutResult
 	CreateGuest(context.Context) auth.GuestResult
 	ListUsers(context.Context, string, core.Page) auth.UserDirectoryResult
 	RequestEmailVerification(context.Context, core.UserID) auth.AccountTokenIssueResult
@@ -290,6 +291,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/auth/login", server.login)
 	mux.HandleFunc("GET /api/auth/shauth", server.shauthLogin)
 	mux.HandleFunc("GET /api/auth/shauth/callback", server.shauthCallback)
+	mux.HandleFunc("POST /api/auth/shauth/backchannel-logout", server.shauthBackchannelLogout)
 	mux.HandleFunc("POST /api/auth/refresh", server.refresh)
 	mux.HandleFunc("POST /api/auth/logout", server.logout)
 	mux.HandleFunc("POST /api/auth/guest", server.guest)

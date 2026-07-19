@@ -15,7 +15,11 @@ continuity files if task scope changes.
    the environment current, run migrations before an image requires them, and
    verify both direct entry and the Shauth Apps-catalog launch after every
    authentication change. The migration task used database-only configuration,
-   and serve/MCP refused to start against a schema older than the image.
+   and serve/MCP refused to start against a schema older than the image. Keep
+   the Shauth confidential client registered with
+   `https://sharecrop.dev.e6qu.dev/api/auth/shauth/backchannel-logout` as its
+   back-channel logout URI and `https://sharecrop.dev.e6qu.dev/` as its allowed
+   post-logout redirect URI.
    See [docs/deployment.md](./docs/deployment.md).
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are

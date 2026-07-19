@@ -5,6 +5,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -45,7 +46,7 @@ func TestGuestPoolUsesRealWallClock(t *testing.T) {
 	guest := httpbridge.Handler(guestPool)
 
 	// Register an account through the guest and keep its access token.
-	registerBody := `{"email":"guest-clock@example.com","password":"correct horse battery staple"}`
+	registerBody := fmt.Sprintf(`{"email":%q,"password":"correct horse battery staple"}`, uniqueIntegrationEmail(t, "guest-clock"))
 	registerReq := httptest.NewRequest("POST", "/api/auth/register", strings.NewReader(registerBody))
 	registerReq.Header.Set("Content-Type", "application/json")
 	registerRec := httptest.NewRecorder()
