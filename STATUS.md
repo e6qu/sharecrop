@@ -65,6 +65,8 @@ verified issuer/subject. The endpoint was
 `/api/auth/shauth/backchannel-logout`. PostgreSQL integration registrations
 used unique addresses, so the complete suite remained repeatable on its
 dedicated database instead of failing after an earlier run left real users.
+The logout verifier cached provider discovery and its remote key set, while
+the key set retained normal signing-key rotation behavior.
 
 The migration command loaded only its database URL and migration directory, so
 the one-off ECS migration task did not depend on HTTP or access-token runtime

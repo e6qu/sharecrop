@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -22,7 +23,15 @@ import (
 
 const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logout"
 
-type shauthConfig struct{ issuer, clientID, clientSecret, publicURL string }
+type shauthConfig struct {
+	issuer, clientID, clientSecret, publicURL string
+	logoutVerifier                            *cachedLogoutVerifier
+}
+
+type cachedLogoutVerifier struct {
+	mu       sync.Mutex
+	verifier *oidc.IDTokenVerifier
+}
 
 func (c shauthConfig) enabled() bool {
 	return c.issuer != "" && c.clientID != "" && c.clientSecret != "" && c.publicURL != ""
@@ -50,7 +59,7 @@ func (c shauthConfig) validate() error {
 	return nil
 }
 func shauthConfigFromEnv() shauthConfig {
-	return shauthConfig{issuer: strings.TrimRight(os.Getenv("SHARECROP_SHAUTH_ISSUER"), "/"), clientID: os.Getenv("SHARECROP_SHAUTH_CLIENT_ID"), clientSecret: os.Getenv("SHARECROP_SHAUTH_CLIENT_SECRET"), publicURL: strings.TrimRight(os.Getenv("SHARECROP_PUBLIC_URL"), "/")}
+	return shauthConfig{issuer: strings.TrimRight(os.Getenv("SHARECROP_SHAUTH_ISSUER"), "/"), clientID: os.Getenv("SHARECROP_SHAUTH_CLIENT_ID"), clientSecret: os.Getenv("SHARECROP_SHAUTH_CLIENT_SECRET"), publicURL: strings.TrimRight(os.Getenv("SHARECROP_PUBLIC_URL"), "/"), logoutVerifier: &cachedLogoutVerifier{}}
 }
 
 func (c shauthConfig) oauthConfig(endpoint oauth2.Endpoint) oauth2.Config {
@@ -218,11 +227,23 @@ type backchannelLogoutClaims struct {
 }
 
 func (server Server) verifyBackchannelLogout(ctx context.Context, raw string) (*oidc.IDToken, backchannelLogoutClaims, error) {
-	provider, err := oidc.NewProvider(ctx, server.shauth.issuer)
-	if err != nil {
-		return nil, backchannelLogoutClaims{}, fmt.Errorf("discover Shauth: %w", err)
+	cache := server.shauth.logoutVerifier
+	if cache == nil {
+		cache = &cachedLogoutVerifier{}
 	}
-	token, err := provider.Verifier(&oidc.Config{ClientID: server.shauth.clientID}).Verify(ctx, raw)
+	cache.mu.Lock()
+	verifier := cache.verifier
+	if verifier == nil {
+		provider, err := oidc.NewProvider(ctx, server.shauth.issuer)
+		if err != nil {
+			cache.mu.Unlock()
+			return nil, backchannelLogoutClaims{}, fmt.Errorf("discover Shauth: %w", err)
+		}
+		verifier = provider.Verifier(&oidc.Config{ClientID: server.shauth.clientID})
+		cache.verifier = verifier
+	}
+	cache.mu.Unlock()
+	token, err := verifier.Verify(ctx, raw)
 	if err != nil {
 		return nil, backchannelLogoutClaims{}, fmt.Errorf("verify logout token: %w", err)
 	}

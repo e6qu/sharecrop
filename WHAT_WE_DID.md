@@ -6559,6 +6559,9 @@ identifiers and prohibited nonce claims, resolved the verified issuer/subject,
 and revoked every active local refresh-token family for the identity. The
 mutation crossed the generated WASI store bridge, so native and production
 WASI hosting used the same durable PostgreSQL behavior.
+Provider discovery and the remote key-set verifier were cached for subsequent
+logout notifications, avoiding one discovery request per notification while
+retaining signing-key rotation.
 
 The WASI integration scenarios generated unique registration addresses. The
 complete PostgreSQL suite therefore passed when repeated against its dedicated

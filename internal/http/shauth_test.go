@@ -48,11 +48,13 @@ func TestSHAUTHBackchannelLogoutVerifiesTokenAndRevokesIdentitySessions(t *testi
 		t.Fatal(err)
 	}
 	const keyID = "logout-key"
+	discoveryRequests := 0
 	var issuer *httptest.Server
 	issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
+			discoveryRequests++
 			_ = json.NewEncoder(w).Encode(map[string]string{"issuer": issuer.URL, "authorization_endpoint": issuer.URL + "/oauth2/auth", "token_endpoint": issuer.URL + "/oauth2/token", "jwks_uri": issuer.URL + "/.well-known/jwks.json"})
 		case "/.well-known/jwks.json":
 			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: keyID, Algorithm: string(jose.RS256), Use: "sig"}}})
@@ -72,7 +74,7 @@ func TestSHAUTHBackchannelLogoutVerifiesTokenAndRevokesIdentitySessions(t *testi
 		t.Fatal(err)
 	}
 	authService := &recordingExternalLogoutAuth{}
-	server := Server{authService: authService, shauth: shauthConfig{issuer: issuer.URL, clientID: "sharecrop", clientSecret: "secret", publicURL: "https://sharecrop.example.test"}}
+	server := Server{authService: authService, shauth: shauthConfig{issuer: issuer.URL, clientID: "sharecrop", clientSecret: "secret", publicURL: "https://sharecrop.example.test", logoutVerifier: &cachedLogoutVerifier{}}}
 	if _, _, err := server.verifyBackchannelLogout(context.Background(), raw); err != nil {
 		t.Fatalf("verify logout token: %v", err)
 	}
@@ -103,6 +105,9 @@ func TestSHAUTHBackchannelLogoutVerifiesTokenAndRevokesIdentitySessions(t *testi
 				t.Fatal("invalid logout token was accepted")
 			}
 		})
+	}
+	if discoveryRequests != 1 {
+		t.Fatalf("discovery requests = %d, want one cached verifier", discoveryRequests)
 	}
 }
 
