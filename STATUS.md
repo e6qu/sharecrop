@@ -58,6 +58,13 @@ guest pool. When Shauth is configured, application entry routes require the
 Sharecrop refresh-session cookie and redirect a new visitor to Shauth, so an
 Apps-catalog launch and a direct application URL start the same identity flow.
 
+The migration command loaded only its database URL and migration directory, so
+the one-off ECS migration task did not depend on HTTP or access-token runtime
+configuration. The server and MCP transports verified that every migration
+baked into the image had been applied before serving requests, preventing a
+partially migrated database from presenting a healthy application whose
+authentication callback failed later.
+
 Both the single-store-implementation program and the WASI-production-hosting
 program are complete. Recent work hardened the production-default WASI path:
 real randomness and clock in the guest, per-client rate limiting and MCP origin
@@ -73,7 +80,10 @@ PR CI runs format/contract/policy/type checks, Go unit and integration tests,
 HTTP end-to-end tests, shared scenario parity against both SQL engines, and
 Playwright browser tests. The Release workflow builds and publishes the image on
 merge. The Shauth integration passed the frontend build, complete Go suite,
-Terraform validation, and WASI bridge generation checks.
+Terraform validation, and WASI bridge generation checks. Migration
+configuration and current-schema checks passed unit and PostgreSQL integration
+tests. Direct entry and Shauth Apps-catalog launch both completed the live
+OpenID Connect callback and established a Sharecrop browser session.
 
 ## Blocking issues
 

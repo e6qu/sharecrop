@@ -36,3 +36,32 @@ func TestParseConfigLoadsExplicitValues(t *testing.T) {
 		t.Fatalf("access token secret = %q, want explicit value", loaded.Value.AccessTokenSecret())
 	}
 }
+
+func TestParseMigrationConfigRequiresOnlyDatabaseAndMigrations(t *testing.T) {
+	result := ParseMigrationConfig(MigrationEnvValues{
+		DatabaseURL:   "postgres://example",
+		MigrationsDir: "migrations",
+	})
+	loaded, matched := result.(MigrationConfigLoaded)
+	if !matched {
+		t.Fatalf("result = %T, want MigrationConfigLoaded", result)
+	}
+	if loaded.Value.DatabaseURL() != "postgres://example" || loaded.Value.MigrationsDir() != "migrations" {
+		t.Fatalf("migration config = %#v", loaded.Value)
+	}
+}
+
+func TestParseMigrationConfigRejectsMissingDatabaseOrMigrations(t *testing.T) {
+	for name, values := range map[string]MigrationEnvValues{
+		"database":   {MigrationsDir: "migrations"},
+		"migrations": {DatabaseURL: "postgres://example"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if result := ParseMigrationConfig(values); result == nil {
+				t.Fatal("result is nil")
+			} else if _, rejected := result.(MigrationConfigRejected); !rejected {
+				t.Fatalf("result = %T, want MigrationConfigRejected", result)
+			}
+		})
+	}
+}

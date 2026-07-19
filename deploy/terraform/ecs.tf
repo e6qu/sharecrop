@@ -66,8 +66,6 @@ locals {
     image     = var.image
     essential = true
     command   = ["migrate", "up"]
-    # migrate only needs the database; the access-token secret is harmless but
-    # omitted to keep the one-off task minimal.
     secrets = [local.secrets[0]]
     logConfiguration = {
       logDriver = "awslogs"

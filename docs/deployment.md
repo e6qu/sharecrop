@@ -114,13 +114,15 @@ tag, and secret ARNs) remain as a reference for a non-Terraform deploy.
 - **`sharecrop-migrate.task-definition.json`** — a one-off task that runs
   `sharecrop migrate up`. `serve` does **not** auto-migrate (so replicas never
   race on schema changes); run this task once as part of a deploy, before
-  rolling the service, or as a CodeDeploy/pipeline step.
+  rolling the service, or as a CodeDeploy/pipeline step. The migration process
+  requires only `DATABASE_URL` and the image-provided migrations directory; it
+  does not require HTTP or token-signing configuration.
 
 ### Configuration
 
 | Variable                        | Source                    | Notes                                             |
 | ------------------------------- | ------------------------- | ------------------------------------------------- |
-| `DATABASE_URL`                  | Secrets Manager           | Postgres DSN. Point at **RDS Proxy** so many replicas share a bounded connection pool. |
+| `DATABASE_URL`                  | Secrets Manager           | PostgreSQL DSN for Sharecrop's dedicated database. |
 | `SHARECROP_ACCESS_TOKEN_SECRET` | Secrets Manager           | 32-byte access-token signing secret.              |
 | `SHARECROP_HTTP_ADDR`           | image default `:8080`     | Listen address.                                   |
 | `SHARECROP_MIGRATIONS_DIR`      | image default `/migrations` | Baked into the image.                           |
@@ -131,8 +133,9 @@ tag, and secret ARNs) remain as a reference for a non-Terraform deploy.
 
 ### Database
 
-A stateless replica fleet needs a shared database, so use **Aurora
-PostgreSQL** (Serverless v2 idles cheaply and can scale to zero) fronted by
-**RDS Proxy** — Fargate tasks come and go and RDS Proxy keeps the backend
-connection count bounded. Run the `sharecrop-migrate` task against it before the
-first `serve` rollout and on every schema change.
+A stateless replica fleet needs a shared PostgreSQL database. The Terraform
+module accepts the tenant-specific database URL secret managed by the shared
+`fck-rds` service; another PostgreSQL deployment can supply the same coordinate.
+Run the `sharecrop-migrate` task before the first `serve` rollout and on every
+schema change. Serve and MCP processes refuse to start while a migration baked
+into their image is absent from the database.

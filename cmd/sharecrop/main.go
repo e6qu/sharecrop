@@ -57,6 +57,16 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	if len(args) > 1 && args[1] == "wasi-precompile" {
 		return runWASIPrecompile(ctx, args[2:], logger)
 	}
+	if len(args) > 1 && args[1] == "migrate" {
+		cfgResult := app.LoadMigrationConfig()
+		cfg, loaded := cfgResult.(app.MigrationConfigLoaded)
+		if !loaded {
+			rejected := cfgResult.(app.MigrationConfigRejected)
+			logger.Error("load migration config", "reason", rejected.Reason)
+			return 2
+		}
+		return runMigrate(ctx, args[2:], cfg.Value, stdout, logger)
+	}
 
 	cfgResult := app.LoadConfig()
 	cfg, loaded := cfgResult.(app.ConfigLoaded)
@@ -68,8 +78,6 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 
 	if len(args) > 1 {
 		switch args[1] {
-		case "migrate":
-			return runMigrate(ctx, args[2:], cfg.Value, stdout, logger)
 		case "serve":
 			return runServe(ctx, cfg.Value, logger)
 		case "mcp":
@@ -200,7 +208,7 @@ func readGoPackageSources(dir string) (map[string][]byte, error) {
 	return sources, nil
 }
 
-func runMigrate(ctx context.Context, args []string, cfg app.Config, stdout io.Writer, logger *slog.Logger) int {
+func runMigrate(ctx context.Context, args []string, cfg app.MigrationConfig, stdout io.Writer, logger *slog.Logger) int {
 	if len(args) != 1 || args[0] != "up" {
 		_, _ = fmt.Fprintln(stdout, "usage: sharecrop migrate up")
 		return 2
@@ -231,6 +239,10 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 		return 1
 	}
 	defer pool.Close()
+	if err := db.VerifyMigrationsCurrent(ctx, pool, cfg.MigrationsDir()); err != nil {
+		logger.Error("verify database migrations", "error", err)
+		return 1
+	}
 
 	agentService := agent.NewService(db.NewAgentStore(pool))
 	orgCredentialService := orgcred.NewService(db.NewOrgCredentialStore(pool))
@@ -327,6 +339,10 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		return 1
 	}
 	defer pool.Close()
+	if err := db.VerifyMigrationsCurrent(ctx, pool, cfg.MigrationsDir()); err != nil {
+		logger.Error("verify database migrations", "error", err)
+		return 1
+	}
 
 	authServiceResult := auth.NewService(db.NewAuthStore(pool), tokenSecret.Value, auth.SystemClock{})
 	authService, authServiceMatched := authServiceResult.(auth.ServiceCreated)

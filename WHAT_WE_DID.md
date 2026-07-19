@@ -1,5 +1,17 @@
 # What We Did
 
+The production migration path was repaired after the deployed one-off task
+failed before touching PostgreSQL because process-wide configuration required
+an unrelated access-token secret. `sharecrop migrate up` now loaded a dedicated
+database-only configuration, while serve and MCP verified that all migrations
+baked into the image were present in `schema_migrations` before starting. The
+missing external-identity migration was applied to the development database,
+and real browser checks completed both direct Sharecrop entry and launch from
+the Shauth Apps catalog through consent, callback, and application-session
+creation.
+
+---
+
 HTTPS listener creation now uses the explicit, plan-known `enable_https` input
 instead of deriving resource counts from an ACM certificate ARN. Environments
 can create a certificate and its listener in one Terraform apply without an

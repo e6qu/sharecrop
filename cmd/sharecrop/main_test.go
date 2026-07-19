@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +10,24 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/app"
 )
+
+func TestMigrateCommandDoesNotRequireHTTPOrAccessTokenConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.test/sharecrop")
+	t.Setenv("SHARECROP_MIGRATIONS_DIR", "migrations")
+	t.Setenv("SHARECROP_HTTP_ADDR", "")
+	t.Setenv("SHARECROP_ACCESS_TOKEN_SECRET", "")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if status := run(context.Background(), []string{"sharecrop", "migrate", "down"}, &stdout, &stderr); status != 2 {
+		t.Fatalf("status = %d, want 2", status)
+	}
+	if stdout.String() != "usage: sharecrop migrate up\n" {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, migration loaded unrelated runtime configuration", stderr.String())
+	}
+}
 
 func TestWASIGuestEnvironmentForwardsHTTPRuntimeConfiguration(t *testing.T) {
 	t.Setenv("SHARECROP_INSECURE_COOKIES", "true")
