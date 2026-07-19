@@ -5,6 +5,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -61,7 +62,7 @@ func TestGuestMCPOriginCheckUsesRealHost(t *testing.T) {
 	}
 
 	registerResp := do("POST", "/api/auth/register", "", host, "",
-		`{"email":"mcp-origin@example.com","password":"correct horse battery staple"}`)
+		fmt.Sprintf(`{"email":%q,"password":"correct horse battery staple"}`, uniqueIntegrationEmail(t, "mcp-origin")))
 	if registerResp.StatusCode != http.StatusCreated {
 		t.Fatalf("register: status %d, want 201", registerResp.StatusCode)
 	}

@@ -13,6 +13,3 @@ import _ "embed"
 
 //go:embed app-guest.wasm
 var Guest []byte
-
-// Embedded reports whether a real guest (not the empty placeholder) is embedded.
-func Embedded() bool { return len(Guest) > 0 }

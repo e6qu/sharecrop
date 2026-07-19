@@ -68,8 +68,7 @@ func TestGuestHonorsAccountTokenDeliveryEnv(t *testing.T) {
 			return rec.Result()
 		}
 
-		email := "token-delivery-" + t.Name() + "@example.com"
-		email = strings.ReplaceAll(email, "/", "-")
+		email := uniqueIntegrationEmail(t, "token-delivery")
 		registerResp := do("POST", "/api/auth/register", "",
 			`{"email":"`+email+`","password":"correct horse battery staple"}`)
 		if registerResp.StatusCode != http.StatusCreated {

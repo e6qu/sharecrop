@@ -14,7 +14,14 @@ continuity files if task scope changes.
    PostgreSQL dependencies in an existing VPC. Keep image and module pins in
    the environment current, run migrations before an image requires them, and
    verify both direct entry and the Shauth Apps-catalog launch after every
-   authentication change.
+   authentication change. The migration task used database-only configuration,
+   and serve/MCP refused to start against a schema older than the image. Keep
+   the Shauth confidential client registered with
+   `https://sharecrop.dev.e6qu.dev/api/auth/shauth/backchannel-logout` as its
+   Back-Channel Logout URI and
+   `https://sharecrop.dev.e6qu.dev/api/auth/signed-out` as its allowed
+   post-logout redirect URI. Keep the authorization callback registered as
+   `https://sharecrop.dev.e6qu.dev/api/auth/shauth/callback`.
    See [docs/deployment.md](./docs/deployment.md).
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are

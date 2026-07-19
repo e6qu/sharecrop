@@ -39,6 +39,29 @@ func TestGenerateOmitsRequestBodyForGetAndDelete(t *testing.T) {
 	}
 }
 
+func TestGenerateUsesExtractedFormMediaType(t *testing.T) {
+	document := Generate([]Route{{Method: "POST", Path: "/logout", OperationID: "logout", RequestMediaType: "application/x-www-form-urlencoded"}}, nil)
+	content := document.Paths["/logout"]["post"].RequestBody.Content
+	if _, ok := content["application/x-www-form-urlencoded"]; !ok {
+		t.Fatalf("request content = %#v", content)
+	}
+	if _, ok := content["application/json"]; ok {
+		t.Fatalf("form route was documented as JSON: %#v", content)
+	}
+}
+
+func TestGenerateUsesExtractedResponseMediaType(t *testing.T) {
+	document := Generate([]Route{{Method: "GET", Path: "/signed-out", OperationID: "signedOut", ResponseMediaType: "text/html"}}, nil)
+	content := document.Paths["/signed-out"]["get"].Responses["default"].Content
+	media, ok := content["text/html"]
+	if !ok || media.Schema.Type != "string" {
+		t.Fatalf("response content = %#v", content)
+	}
+	if _, ok := content["application/json"]; ok {
+		t.Fatalf("HTML route was documented as JSON: %#v", content)
+	}
+}
+
 func TestGenerateJSONDistinguishesPublicFromDefaultSecurity(t *testing.T) {
 	document := Generate([]Route{
 		{Method: "POST", Path: "/api/auth/login", OperationID: "login", RequiresAuth: false},

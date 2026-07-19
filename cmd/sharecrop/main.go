@@ -57,6 +57,16 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	if len(args) > 1 && args[1] == "wasi-precompile" {
 		return runWASIPrecompile(ctx, args[2:], logger)
 	}
+	if len(args) > 1 && args[1] == "migrate" {
+		cfgResult := app.LoadMigrationConfig()
+		cfg, loaded := cfgResult.(app.MigrationConfigLoaded)
+		if !loaded {
+			rejected := cfgResult.(app.MigrationConfigRejected)
+			logger.Error("load migration config", "reason", rejected.Reason)
+			return 2
+		}
+		return runMigrate(ctx, args[2:], cfg.Value, stdout, logger)
+	}
 
 	cfgResult := app.LoadConfig()
 	cfg, loaded := cfgResult.(app.ConfigLoaded)
@@ -68,8 +78,6 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 
 	if len(args) > 1 {
 		switch args[1] {
-		case "migrate":
-			return runMigrate(ctx, args[2:], cfg.Value, stdout, logger)
 		case "serve":
 			return runServe(ctx, cfg.Value, logger)
 		case "mcp":
@@ -200,7 +208,7 @@ func readGoPackageSources(dir string) (map[string][]byte, error) {
 	return sources, nil
 }
 
-func runMigrate(ctx context.Context, args []string, cfg app.Config, stdout io.Writer, logger *slog.Logger) int {
+func runMigrate(ctx context.Context, args []string, cfg app.MigrationConfig, stdout io.Writer, logger *slog.Logger) int {
 	if len(args) != 1 || args[0] != "up" {
 		_, _ = fmt.Fprintln(stdout, "usage: sharecrop migrate up")
 		return 2
@@ -231,6 +239,10 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 		return 1
 	}
 	defer pool.Close()
+	if err := db.VerifyMigrationsCurrent(ctx, pool, cfg.MigrationsDir()); err != nil {
+		logger.Error("verify database migrations", "error", err)
+		return 1
+	}
 
 	agentService := agent.NewService(db.NewAgentStore(pool))
 	orgCredentialService := orgcred.NewService(db.NewOrgCredentialStore(pool))
@@ -327,6 +339,10 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		return 1
 	}
 	defer pool.Close()
+	if err := db.VerifyMigrationsCurrent(ctx, pool, cfg.MigrationsDir()); err != nil {
+		logger.Error("verify database migrations", "error", err)
+		return 1
+	}
 
 	authServiceResult := auth.NewService(db.NewAuthStore(pool), tokenSecret.Value, auth.SystemClock{})
 	authService, authServiceMatched := authServiceResult.(auth.ServiceCreated)
@@ -358,6 +374,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		PrivacyService:      db.NewPrivacyStore(pool),
 		PlatformAdmins:      db.NewPlatformAdminStore(pool, bootstrapAdmins),
 		ModerationTriage:    db.NewModerationTriageStore(pool),
+		OIDCSessions:        db.NewOpenIDConnectSessionStore(db.NewPGX(pool)),
 	})
 
 	// WASI hosting is the default: production runs the same WASM artifact as the
@@ -458,9 +475,9 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 
 	mux := http.NewServeMux()
 	// Shauth discovery and token exchange use the host network boundary. The
-	// remaining application routes continue through the real WASI guest.
-	mux.Handle("GET /api/auth/shauth", nativeHandler)
-	mux.Handle("GET /api/auth/shauth/callback", nativeHandler)
+	// logout routes also stay host-side so every replica shares the durable
+	// OpenID Connect session and replay records in PostgreSQL.
+	registerShauthHostBoundary(mux, nativeHandler)
 	// Dynamic routes run in the guest.
 	mux.Handle("/api/", guest)
 	mux.Handle("/mcp", guest)
@@ -470,6 +487,14 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 	mux.Handle("/", applicationShell(staticFiles, requireShauthSession))
 
 	return mux, func() { _ = guestPool.Close(context.Background()) }, nil
+}
+
+func registerShauthHostBoundary(mux *http.ServeMux, nativeHandler http.Handler) {
+	mux.Handle("GET /api/auth/shauth", nativeHandler)
+	mux.Handle("GET /api/auth/shauth/callback", nativeHandler)
+	mux.Handle("POST /api/auth/shauth/backchannel-logout", nativeHandler)
+	mux.Handle("POST /api/auth/logout", nativeHandler)
+	mux.Handle("GET /api/auth/signed-out", nativeHandler)
 }
 
 func shauthConfigured() bool {

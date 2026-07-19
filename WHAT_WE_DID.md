@@ -1,5 +1,17 @@
 # What We Did
 
+The production migration path was repaired after the deployed one-off task
+failed before touching PostgreSQL because process-wide configuration required
+an unrelated access-token secret. `sharecrop migrate up` now loaded a dedicated
+database-only configuration, while serve and MCP verified that all migrations
+baked into the image were present in `schema_migrations` before starting. The
+missing external-identity migration was applied to the development database,
+and real browser checks completed both direct Sharecrop entry and launch from
+the Shauth Apps catalog through consent, callback, and application-session
+creation.
+
+---
+
 HTTPS listener creation now uses the explicit, plan-known `enable_https` input
 instead of deriving resource counts from an ACM certificate ARN. Environments
 can create a certificate and its listener in one Terraform apply without an
@@ -6537,3 +6549,29 @@ the cookie before returning to the application shell. This made direct entry
 and the link rendered by the Shauth Apps catalog use the same OpenID Connect
 flow. Command-package tests covered both the unauthenticated redirect and the
 post-callback shell response; the full Go suite and formatting check passed.
+
+# Durable Shauth single sign-on and logout protocol
+
+Sharecrop retained the exact OpenID Connect issuer, provider-signed ID token,
+optional session ID, discovered end-session endpoint, client ID, and exact
+post-logout redirect against the refresh-token family in PostgreSQL. Browser
+logout failed closed until the local refresh family was revoked, then returned
+an RP-Initiated Logout URL with the ID-token hint and a static signed-out
+landing on the application origin. The discovered logout endpoint was bound to
+the configured issuer origin, and the landing revoked a residual local refresh
+family without silently authenticating again. The Elm application kept the
+authenticated view and showed an error when logout failed instead of presenting
+a false signed-out state.
+
+Back-Channel Logout accepted either the standard session ID or subject claim
+and committed replay-token claiming and refresh-family revocation in one
+database transaction. Replay state therefore survived restarts and was shared
+across replicas. Provider discovery and its remote key-set verifier were cached
+while retaining signing-key rotation. The production WASI host boundary handled
+authorization, callback, logout, Back-Channel Logout, and the signed-out landing
+while the remaining API continued through the guest pool.
+
+The API generator detected form request bodies and handler response media types,
+so it documented the logout token as `application/x-www-form-urlencoded` and
+the signed-out landing as `text/html`. The WASI bridge no longer carried the
+obsolete non-atomic external-identity logout method.

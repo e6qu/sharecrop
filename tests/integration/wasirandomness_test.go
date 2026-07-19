@@ -51,6 +51,8 @@ func TestGuestPoolDrawsUniqueRandomnessPerInstance(t *testing.T) {
 	guest := httpbridge.Handler(guestPool)
 
 	const registrations = 16
+	runID := uniqueIntegrationEmail(t, "randomness")
+	runID = strings.TrimSuffix(runID, "@example.com")
 
 	type outcome struct {
 		status       int
@@ -64,8 +66,8 @@ func TestGuestPoolDrawsUniqueRandomnessPerInstance(t *testing.T) {
 		go func(index int) {
 			defer wg.Done()
 			body := fmt.Sprintf(
-				`{"email":"randomness-%d@example.com","password":"correct horse battery staple"}`,
-				index,
+				`{"email":"%s-%d@example.com","password":"correct horse battery staple"}`,
+				runID, index,
 			)
 			req := httptest.NewRequest("POST", "/api/auth/register", strings.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")

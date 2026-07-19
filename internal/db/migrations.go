@@ -11,19 +11,10 @@ import (
 )
 
 func MigrateUp(ctx context.Context, pool *pgxpool.Pool, migrationsDir string) error {
-	entries, err := os.ReadDir(migrationsDir)
+	names, err := migrationNames(migrationsDir)
 	if err != nil {
 		return err
 	}
-
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
-			continue
-		}
-		names = append(names, entry.Name())
-	}
-	sort.Strings(names)
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -66,4 +57,49 @@ func MigrateUp(ctx context.Context, pool *pgxpool.Pool, migrationsDir string) er
 	}
 
 	return tx.Commit(ctx)
+}
+
+func VerifyMigrationsCurrent(ctx context.Context, pool *pgxpool.Pool, migrationsDir string) error {
+	names, err := migrationNames(migrationsDir)
+	if err != nil {
+		return err
+	}
+	rows, err := pool.Query(ctx, "select name from schema_migrations")
+	if err != nil {
+		return fmt.Errorf("read applied database migrations: %w", err)
+	}
+	defer rows.Close()
+	applied := make(map[string]struct{}, len(names))
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return fmt.Errorf("scan applied database migration: %w", err)
+		}
+		applied[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read applied database migrations: %w", err)
+	}
+	for _, name := range names {
+		if _, ok := applied[name]; !ok {
+			return fmt.Errorf("database schema is missing migration %s", name)
+		}
+	}
+	return nil
+}
+
+func migrationNames(migrationsDir string) ([]string, error) {
+	entries, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+			continue
+		}
+		names = append(names, entry.Name())
+	}
+	sort.Strings(names)
+	return names, nil
 }

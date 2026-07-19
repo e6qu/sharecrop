@@ -36,7 +36,7 @@ variable "shauth_oidc_client_secret_arn" {
   default     = ""
 }
 variable "public_url" {
-  description = "Canonical HTTPS public URL used for OIDC callbacks, e.g. https://sharecrop.dev.e6qu.dev."
+  description = "Canonical HTTPS public origin used to derive the OpenID Connect callback, Back-Channel Logout, and post-logout redirect URLs, e.g. https://sharecrop.dev.e6qu.dev."
   type        = string
   default     = ""
 }

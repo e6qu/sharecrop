@@ -1176,19 +1176,23 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgCredentialMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         LogoutClicked ->
-            ( { model | session = LoggedOut, email = "", password = "" }
+            ( { model | authError = Nothing }
             , Api.postLogout
             )
 
         LogoutReceived (Ok logoutURL) ->
             if logoutURL == "" then
-                ( model, Nav.pushUrl model.key "#/" )
+                ( { model | session = LoggedOut, email = "", password = "", authError = Nothing }
+                , Nav.pushUrl model.key "#/"
+                )
 
             else
-                ( model, Nav.load logoutURL )
+                ( { model | session = LoggedOut, email = "", password = "", authError = Nothing }
+                , Nav.load logoutURL
+                )
 
-        LogoutReceived (Err _) ->
-            ( model, Nav.pushUrl model.key "#/" )
+        LogoutReceived (Err error) ->
+            ( { model | authError = Just ("Sign out failed: " ++ httpErrorLabel error) }, Cmd.none )
 
         DiscoveryIncludeReservedChanged value ->
             Api.withSession model

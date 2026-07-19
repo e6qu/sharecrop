@@ -14,7 +14,7 @@ import (
 
 // openSQLiteWithSchema opens an ncruces SQLite database and applies the real
 // Postgres migrations translated to the SQLite dialect. This exercises the DDL
-// translation against all 34 migration files.
+// translation against every migration file.
 func openSQLiteWithSchema(t *testing.T) *sql.DB {
 	t.Helper()
 	handle, err := sqlitex.Open("file:" + t.TempDir() + "/demo.db?_pragma=foreign_keys(off)")

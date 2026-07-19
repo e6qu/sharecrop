@@ -85,7 +85,7 @@ func Generate(routes []Route, structs map[string]StructShape) Document {
 		operation := Operation{
 			OperationID: route.OperationID,
 			Responses: map[string]Response{
-				"default": responseFor(route.ResponseType, structs),
+				"default": responseFor(route.ResponseMediaType, route.ResponseType, structs),
 			},
 		}
 		if !route.RequiresAuth {
@@ -93,9 +93,13 @@ func Generate(routes []Route, structs map[string]StructShape) Document {
 			operation.Security = &noSecurity
 		}
 		if requestBodyMethod(route.Method) {
+			mediaType := route.RequestMediaType
+			if mediaType == "" {
+				mediaType = "application/json"
+			}
 			operation.RequestBody = &RequestBody{
 				Content: map[string]MediaType{
-					"application/json": {Schema: schemaFor(route.RequestType, structs)},
+					mediaType: {Schema: schemaFor(route.RequestType, structs)},
 				},
 			}
 		}
@@ -134,11 +138,18 @@ func requestBodyMethod(method string) bool {
 	return method == "POST" || method == "PUT" || method == "PATCH"
 }
 
-func responseFor(typeName string, structs map[string]StructShape) Response {
+func responseFor(mediaType, typeName string, structs map[string]StructShape) Response {
+	if mediaType == "" {
+		mediaType = "application/json"
+	}
+	schema := schemaFor(typeName, structs)
+	if mediaType != "application/json" {
+		schema = Schema{Type: "string"}
+	}
 	return Response{
 		Description: "response",
 		Content: map[string]MediaType{
-			"application/json": {Schema: schemaFor(typeName, structs)},
+			mediaType: {Schema: schema},
 		},
 	}
 }

@@ -121,6 +121,36 @@ func TestExtractIsSortedByPathThenMethod(t *testing.T) {
 	}
 }
 
+func TestExtractRecognizesFormEncodedHandler(t *testing.T) {
+	result := Extract(map[string][]byte{"server.go": []byte(`package httpserver
+import "net/http"
+func routes(mux *http.ServeMux) { mux.HandleFunc("POST /logout", logout) }
+func logout(w http.ResponseWriter, r *http.Request) { _ = r.ParseForm() }
+`)})
+	extracted, ok := result.(Extracted)
+	if !ok {
+		t.Fatalf("extract = %#v", result)
+	}
+	if len(extracted.Routes) != 1 || extracted.Routes[0].RequestMediaType != "application/x-www-form-urlencoded" {
+		t.Fatalf("routes = %#v", extracted.Routes)
+	}
+}
+
+func TestExtractRecognizesHandlerResponseMediaType(t *testing.T) {
+	result := Extract(map[string][]byte{"server.go": []byte(`package httpserver
+import "net/http"
+func routes(mux *http.ServeMux) { mux.HandleFunc("GET /signed-out", signedOut) }
+func signedOut(w http.ResponseWriter, _ *http.Request) { w.Header().Set("Content-Type", "text/html; charset=utf-8") }
+`)})
+	extracted, ok := result.(Extracted)
+	if !ok {
+		t.Fatalf("extract = %#v", result)
+	}
+	if len(extracted.Routes) != 1 || extracted.Routes[0].ResponseMediaType != "text/html" {
+		t.Fatalf("routes = %#v", extracted.Routes)
+	}
+}
+
 func TestExtractRejectsInvalidSource(t *testing.T) {
 	result := Extract(map[string][]byte{"broken.go": []byte("not valid go")})
 	if _, rejected := result.(ExtractionRejected); !rejected {

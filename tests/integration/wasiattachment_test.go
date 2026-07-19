@@ -57,7 +57,7 @@ func TestGuestCarriesLargeAttachmentFrames(t *testing.T) {
 	}
 
 	registerResp := do("POST", "/api/auth/register", "",
-		`{"email":"large-attach@example.com","password":"correct horse battery staple"}`)
+		fmt.Sprintf(`{"email":%q,"password":"correct horse battery staple"}`, uniqueIntegrationEmail(t, "large-attach")))
 	if registerResp.StatusCode != http.StatusCreated {
 		t.Fatalf("register: status %d, want 201", registerResp.StatusCode)
 	}

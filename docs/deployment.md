@@ -100,8 +100,8 @@ builds.
 
 ## ECS Fargate
 
-The whole stack — ALB, the ECS Fargate service (arm64), Aurora Serverless v2 +
-RDS Proxy, secrets, and IAM — is provisioned by the Terraform in
+The whole stack — ALB, the ECS Fargate service (arm64), the tenant-specific
+connection to the shared fck-rds PostgreSQL service, secrets, and IAM — is provisioned by the Terraform in
 [`deploy/terraform/`](../deploy/terraform/) (deploys into an existing VPC; see its
 README). The standalone JSON task definitions in `deploy/ecs/` (arm64
 `runtimePlatform`, `REPLACE_*` placeholders for account, region, roles, registry,
@@ -114,13 +114,15 @@ tag, and secret ARNs) remain as a reference for a non-Terraform deploy.
 - **`sharecrop-migrate.task-definition.json`** — a one-off task that runs
   `sharecrop migrate up`. `serve` does **not** auto-migrate (so replicas never
   race on schema changes); run this task once as part of a deploy, before
-  rolling the service, or as a CodeDeploy/pipeline step.
+  rolling the service, or as a CodeDeploy/pipeline step. The migration process
+  requires only `DATABASE_URL` and the image-provided migrations directory; it
+  does not require HTTP or token-signing configuration.
 
 ### Configuration
 
 | Variable                        | Source                    | Notes                                             |
 | ------------------------------- | ------------------------- | ------------------------------------------------- |
-| `DATABASE_URL`                  | Secrets Manager           | Postgres DSN. Point at **RDS Proxy** so many replicas share a bounded connection pool. |
+| `DATABASE_URL`                  | Secrets Manager           | PostgreSQL DSN for Sharecrop's dedicated database. |
 | `SHARECROP_ACCESS_TOKEN_SECRET` | Secrets Manager           | 32-byte access-token signing secret.              |
 | `SHARECROP_HTTP_ADDR`           | image default `:8080`     | Listen address.                                   |
 | `SHARECROP_MIGRATIONS_DIR`      | image default `/migrations` | Baked into the image.                           |
@@ -128,11 +130,30 @@ tag, and secret ARNs) remain as a reference for a non-Terraform deploy.
 | `SHARECROP_WASI_POOL_SIZE`      | optional                  | Guest pool size; defaults to GOMAXPROCS (task vCPUs). |
 | `SHARECROP_INSECURE_COOKIES`    | optional                  | Leave unset in production (cookies stay Secure).  |
 | `SHARECROP_ACCOUNT_TOKEN_DELIVERY` | optional               | Defaults to `log` (fail-closed).                  |
+| `SHARECROP_SHAUTH_ISSUER`       | task configuration        | Exact HTTPS OpenID Connect issuer, including any trailing slash. |
+| `SHARECROP_SHAUTH_CLIENT_ID`    | task configuration        | Sharecrop's confidential Shauth client ID.       |
+| `SHARECROP_SHAUTH_CLIENT_SECRET` | Secrets Manager          | Sharecrop's confidential Shauth client secret.   |
+| `SHARECROP_PUBLIC_URL`          | task configuration        | Exact public HTTPS origin; derives callback and logout URLs. |
+
+Shauth configuration is all-or-nothing. Register these exact client endpoints,
+derived from `SHARECROP_PUBLIC_URL`:
+
+- callback: `/api/auth/shauth/callback`
+- Back-Channel Logout: `/api/auth/shauth/backchannel-logout`
+- post-logout redirect: `/api/auth/signed-out`
+
+RP-Initiated Logout uses the issuer's discovered `end_session_endpoint` only
+when it is on the configured issuer origin. The
+provider-signed ID token and session identifier are retained in PostgreSQL,
+not in the browser cookie. Back-Channel Logout replay claims and refresh-family
+revocation are committed in one database transaction, so every replica and a
+restarted service observe the same logout state.
 
 ### Database
 
-A stateless replica fleet needs a shared database, so use **Aurora
-PostgreSQL** (Serverless v2 idles cheaply and can scale to zero) fronted by
-**RDS Proxy** — Fargate tasks come and go and RDS Proxy keeps the backend
-connection count bounded. Run the `sharecrop-migrate` task against it before the
-first `serve` rollout and on every schema change.
+A stateless replica fleet needs a shared PostgreSQL database. The Terraform
+module accepts the tenant-specific database URL secret managed by the shared
+`fck-rds` service; another PostgreSQL deployment can supply the same coordinate.
+Run the `sharecrop-migrate` task before the first `serve` rollout and on every
+schema change. Serve and MCP processes refuse to start while a migration baked
+into their image is absent from the database.
