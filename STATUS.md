@@ -95,6 +95,8 @@ OpenID Connect callback and established a Sharecrop browser session.
 Signed logout-token tests covered successful global local-session revocation,
 missing `sid`, and prohibited `nonce` claims. The complete PostgreSQL
 integration suite also passed on a database containing prior test data.
+The HTTP end-to-end health harness implemented the complete authentication
+service contract, and the tagged HTTP suite passed against PostgreSQL.
 
 ## Blocking issues
 

@@ -6565,3 +6565,8 @@ complete PostgreSQL suite therefore passed when repeated against its dedicated
 database instead of colliding with users created by an earlier run. The API
 generator detected form-parsing handlers and documented the logout token as an
 `application/x-www-form-urlencoded` request.
+
+The tagged HTTP end-to-end health harness implemented the external-identity
+logout method added to the production authentication boundary. The complete
+`http_e2e` package compiled and passed against PostgreSQL instead of failing in
+CI at interface conformance.

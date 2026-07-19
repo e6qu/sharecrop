@@ -72,6 +72,10 @@ func (healthAuthService) Logout(context.Context, auth.RefreshTokenPlain) auth.Lo
 	return auth.LogoutDone{}
 }
 
+func (healthAuthService) LogoutExternalIdentity(context.Context, string, string) auth.LogoutResult {
+	return auth.LogoutDone{}
+}
+
 func (healthAuthService) CreateGuest(context.Context) auth.GuestResult {
 	return auth.GuestRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
