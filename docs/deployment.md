@@ -100,8 +100,8 @@ builds.
 
 ## ECS Fargate
 
-The whole stack — ALB, the ECS Fargate service (arm64), Aurora Serverless v2 +
-RDS Proxy, secrets, and IAM — is provisioned by the Terraform in
+The whole stack — ALB, the ECS Fargate service (arm64), the tenant-specific
+connection to the shared fck-rds PostgreSQL service, secrets, and IAM — is provisioned by the Terraform in
 [`deploy/terraform/`](../deploy/terraform/) (deploys into an existing VPC; see its
 README). The standalone JSON task definitions in `deploy/ecs/` (arm64
 `runtimePlatform`, `REPLACE_*` placeholders for account, region, roles, registry,
@@ -130,6 +130,24 @@ tag, and secret ARNs) remain as a reference for a non-Terraform deploy.
 | `SHARECROP_WASI_POOL_SIZE`      | optional                  | Guest pool size; defaults to GOMAXPROCS (task vCPUs). |
 | `SHARECROP_INSECURE_COOKIES`    | optional                  | Leave unset in production (cookies stay Secure).  |
 | `SHARECROP_ACCOUNT_TOKEN_DELIVERY` | optional               | Defaults to `log` (fail-closed).                  |
+| `SHARECROP_SHAUTH_ISSUER`       | task configuration        | Exact HTTPS OpenID Connect issuer, including any trailing slash. |
+| `SHARECROP_SHAUTH_CLIENT_ID`    | task configuration        | Sharecrop's confidential Shauth client ID.       |
+| `SHARECROP_SHAUTH_CLIENT_SECRET` | Secrets Manager          | Sharecrop's confidential Shauth client secret.   |
+| `SHARECROP_PUBLIC_URL`          | task configuration        | Exact public HTTPS origin; derives callback and logout URLs. |
+
+Shauth configuration is all-or-nothing. Register these exact client endpoints,
+derived from `SHARECROP_PUBLIC_URL`:
+
+- callback: `/api/auth/shauth/callback`
+- Back-Channel Logout: `/api/auth/shauth/backchannel-logout`
+- post-logout redirect: `/api/auth/signed-out`
+
+RP-Initiated Logout uses the issuer's discovered `end_session_endpoint` only
+when it is on the configured issuer origin. The
+provider-signed ID token and session identifier are retained in PostgreSQL,
+not in the browser cookie. Back-Channel Logout replay claims and refresh-family
+revocation are committed in one database transaction, so every replica and a
+restarted service observe the same logout state.
 
 ### Database
 

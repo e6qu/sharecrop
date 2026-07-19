@@ -113,6 +113,7 @@ loggedInView : Model -> LoggedInModel -> Html Msg
 loggedInView model state =
     div [ Html.Attributes.class "space-y-6" ]
         [ navBar model.demo state.page state.subjectId state.isAdmin state.openNavMenu
+        , maybeError model.authError "logout-error"
 
         -- Keyed by route so navigating away and back always rebuilds the page
         -- fresh: without a key, Elm's virtual DOM can match two structurally

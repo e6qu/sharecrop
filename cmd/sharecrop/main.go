@@ -374,6 +374,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		PrivacyService:      db.NewPrivacyStore(pool),
 		PlatformAdmins:      db.NewPlatformAdminStore(pool, bootstrapAdmins),
 		ModerationTriage:    db.NewModerationTriageStore(pool),
+		OIDCSessions:        db.NewOpenIDConnectSessionStore(db.NewPGX(pool)),
 	})
 
 	// WASI hosting is the default: production runs the same WASM artifact as the
@@ -474,9 +475,9 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 
 	mux := http.NewServeMux()
 	// Shauth discovery and token exchange use the host network boundary. The
-	// remaining application routes continue through the real WASI guest.
-	mux.Handle("GET /api/auth/shauth", nativeHandler)
-	mux.Handle("GET /api/auth/shauth/callback", nativeHandler)
+	// logout routes also stay host-side so every replica shares the durable
+	// OpenID Connect session and replay records in PostgreSQL.
+	registerShauthHostBoundary(mux, nativeHandler)
 	// Dynamic routes run in the guest.
 	mux.Handle("/api/", guest)
 	mux.Handle("/mcp", guest)
@@ -486,6 +487,14 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 	mux.Handle("/", applicationShell(staticFiles, requireShauthSession))
 
 	return mux, func() { _ = guestPool.Close(context.Background()) }, nil
+}
+
+func registerShauthHostBoundary(mux *http.ServeMux, nativeHandler http.Handler) {
+	mux.Handle("GET /api/auth/shauth", nativeHandler)
+	mux.Handle("GET /api/auth/shauth/callback", nativeHandler)
+	mux.Handle("POST /api/auth/shauth/backchannel-logout", nativeHandler)
+	mux.Handle("POST /api/auth/logout", nativeHandler)
+	mux.Handle("GET /api/auth/signed-out", nativeHandler)
 }
 
 func shauthConfigured() bool {

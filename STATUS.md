@@ -50,23 +50,27 @@ receives the same rotating Sharecrop session as a local login. Local passwords
 and first-party tokens remain available. Existing password accounts are never
 linked to a new external identity merely because their email addresses match.
 The callback uses PKCE, nonce/state validation, an authenticated short-lived
-transaction cookie, and an HTTPS-only issuer/public URL configuration. In the
-production WASI deployment, the Shauth authorization and callback routes run
-on the native host boundary because OpenID Connect discovery and token exchange
-require outbound HTTPS; the rest of the application remains hosted by the WASI
-guest pool. When Shauth is configured, application entry routes require the
+transaction cookie, and exact HTTPS issuer/public URL coordinates. It retains
+the provider-signed ID token and optional `sid` in PostgreSQL for
+RP-Initiated Logout without exposing them in the browser cookie. In the
+production WASI deployment, Shauth authorization, callback, logout,
+Back-Channel Logout, and signed-out routes run on the native host boundary
+because OpenID Connect discovery and token exchange require outbound HTTPS and
+logout state is shared by every replica; the rest of the application remains
+hosted by the WASI guest pool. When Shauth is configured, application entry routes require the
 Sharecrop refresh-session cookie and redirect a new visitor to Shauth, so an
 Apps-catalog launch and a direct application URL start the same identity flow.
 
-Shauth back-channel logout validated signed logout tokens through provider
-discovery, required the standard logout event and session/identity claims, and
-revoked every active Sharecrop refresh-token family associated with the
-verified issuer/subject. The endpoint was
-`/api/auth/shauth/backchannel-logout`. PostgreSQL integration registrations
-used unique addresses, so the complete suite remained repeatable on its
-dedicated database instead of failing after an earlier run left real users.
-The logout verifier cached provider discovery and its remote key set, while
-the key set retained normal signing-key rotation behavior.
+Shauth Back-Channel Logout validated the exact issuer, audience, signature,
+expiry, standard logout event, prohibited `nonce`, freshness, and either `sid`
+or `sub`. PostgreSQL atomically claimed each logout-token `jti` and revoked the
+matching active refresh-token families, so replay protection survived process
+and replica changes. Browser logout revoked the local refresh family before
+returning the issuer-origin end-session URL with the provider-signed ID token
+hint and exact `/api/auth/signed-out` redirect. The signed-out landing revoked
+any residual local refresh family and did not restart authentication. The
+logout verifier cached provider discovery and its remote key set while retaining
+normal signing-key rotation behavior.
 
 The migration command loaded only its database URL and migration directory, so
 the one-off ECS migration task did not depend on HTTP or access-token runtime

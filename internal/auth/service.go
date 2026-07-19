@@ -62,7 +62,6 @@ type Store interface {
 	StoreRefreshToken(context.Context, RefreshTokenRecord) StoreRefreshTokenResult
 	ConsumeRefreshToken(context.Context, RefreshTokenHash, time.Time) ConsumeRefreshTokenResult
 	RevokeRefreshFamily(context.Context, RefreshTokenHash) RevokeRefreshFamilyResult
-	RevokeExternalIdentitySessions(context.Context, ExternalIdentity) RevokeRefreshFamilyResult
 	StoreAccountToken(context.Context, core.UserID, AccountTokenKind, AccountToken) AccountTokenStoreResult
 	ConsumeAccountToken(context.Context, AccountTokenKind, AccountTokenHash, time.Time) AccountTokenConsumeResult
 }
@@ -128,20 +127,6 @@ func (LogoutRejected) logoutResult() {}
 // unknown or already-revoked token is a no-op.
 func (service Service) Logout(ctx context.Context, refreshToken RefreshTokenPlain) LogoutResult {
 	result := service.store.RevokeRefreshFamily(ctx, HashRefreshToken(refreshToken))
-	if _, done := result.(RefreshFamilyRevoked); !done {
-		return LogoutRejected{Reason: result.(RevokeRefreshFamilyRejected).Reason}
-	}
-	return LogoutDone{}
-}
-
-// LogoutExternalIdentity revokes every local refresh-token family issued to a
-// verified external identity. OpenID Connect back-channel logout uses this to
-// terminate every Sharecrop session for the provider subject.
-func (service Service) LogoutExternalIdentity(ctx context.Context, issuer, subject string) LogoutResult {
-	if issuer == "" || subject == "" {
-		return LogoutRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "external identity is incomplete")}
-	}
-	result := service.store.RevokeExternalIdentitySessions(ctx, ExternalIdentity{Issuer: issuer, Subject: subject})
 	if _, done := result.(RefreshFamilyRevoked); !done {
 		return LogoutRejected{Reason: result.(RevokeRefreshFamilyRejected).Reason}
 	}

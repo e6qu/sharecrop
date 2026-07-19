@@ -2,7 +2,9 @@ package httpserver
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -103,20 +105,93 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) logout(w http.ResponseWriter, r *http.Request) {
-	// Revoke the session family server-side (not just clear the cookie) so the
-	// refresh token cannot resume the session if it was captured.
+	logoutURL := ""
+	if server.shauth.enabled() {
+		if r.Header.Get("Origin") != server.shauth.publicURL || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+			writeError(w, http.StatusForbidden, "cross-origin logout denied")
+			return
+		}
+	}
+	var refreshToken auth.RefreshTokenPlain
+	hasRefreshToken := false
 	if cookie, err := r.Cookie("sharecrop_refresh_token"); err == nil && cookie.Value != "" {
-		if parsed, matched := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted); matched {
-			server.authService.Logout(r.Context(), parsed.Value)
+		parsed, matched := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted)
+		if !matched {
+			writeError(w, http.StatusUnauthorized, "refresh token is invalid")
+			return
+		}
+		refreshToken = parsed.Value
+		hasRefreshToken = true
+	}
+	if server.shauth.enabled() {
+		endpoint := ""
+		idTokenHint := ""
+		if hasRefreshToken {
+			sessionResult := server.oidcSessions.FindOpenIDConnectSession(r.Context(), auth.HashRefreshToken(refreshToken))
+			switch session := sessionResult.(type) {
+			case auth.OpenIDConnectSessionFound:
+				if session.Session.Provider != "shauth" || session.Session.Issuer != server.shauth.issuer || session.Session.ClientID != server.shauth.clientID || session.Session.PostLogoutRedirectURI != server.shauth.postLogoutRedirectURI() {
+					writeError(w, http.StatusServiceUnavailable, "OpenID Connect logout session coordinates are invalid")
+					return
+				}
+				endpoint = session.Session.EndSessionEndpoint
+				idTokenHint = session.Session.RawIDToken
+			case auth.OpenIDConnectSessionNotFound:
+				_, _, discoveredEndpoint, discoveryErr := server.shauth.discoveredProvider(r.Context())
+				if discoveryErr != nil {
+					writeError(w, http.StatusBadGateway, "Shauth discovery failed")
+					return
+				}
+				endpoint = discoveredEndpoint
+			default:
+				writeError(w, http.StatusServiceUnavailable, "OpenID Connect logout session is unavailable")
+				return
+			}
+		} else {
+			_, _, discoveredEndpoint, discoveryErr := server.shauth.discoveredProvider(r.Context())
+			if discoveryErr != nil {
+				writeError(w, http.StatusBadGateway, "Shauth discovery failed")
+				return
+			}
+			endpoint = discoveredEndpoint
+		}
+		var err error
+		logoutURL, err = server.shauth.logoutURL(endpoint, idTokenHint)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "Shauth logout endpoint is unavailable")
+			return
+		}
+	}
+	if hasRefreshToken {
+		if _, ok := server.authService.Logout(r.Context(), refreshToken).(auth.LogoutDone); !ok {
+			writeError(w, http.StatusServiceUnavailable, "Sharecrop session could not be revoked")
+			return
 		}
 	}
 	server.clearRefreshCookie(w)
-	logoutURL := ""
-	if server.shauth.enabled() {
-		logoutURL = server.shauth.issuer + "/oauth2/sessions/logout"
-	}
 	writeJSON(w, http.StatusOK, logoutResponse{LogoutURL: logoutURL})
 }
+
+func (c shauthConfig) logoutURL(rawEndpoint, idTokenHint string) (string, error) {
+	endpoint, err := url.Parse(rawEndpoint)
+	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Fragment != "" {
+		return "", errInvalidLogoutEndpoint
+	}
+	issuer, err := url.Parse(c.issuer)
+	if err != nil || !sameURLOrigin(issuer, endpoint) {
+		return "", errInvalidLogoutEndpoint
+	}
+	query := endpoint.Query()
+	query.Set("client_id", c.clientID)
+	if idTokenHint != "" {
+		query.Set("id_token_hint", idTokenHint)
+	}
+	query.Set("post_logout_redirect_uri", c.postLogoutRedirectURI())
+	endpoint.RawQuery = query.Encode()
+	return endpoint.String(), nil
+}
+
+var errInvalidLogoutEndpoint = errors.New("invalid OpenID Connect end-session endpoint")
 
 func (server Server) guest(w http.ResponseWriter, r *http.Request) {
 	if !server.allowByIP(w, r) {

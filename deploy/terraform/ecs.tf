@@ -66,7 +66,7 @@ locals {
     image     = var.image
     essential = true
     command   = ["migrate", "up"]
-    secrets = [local.secrets[0]]
+    secrets   = [local.secrets[0]]
     logConfiguration = {
       logDriver = "awslogs"
       options = {

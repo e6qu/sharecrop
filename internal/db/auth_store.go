@@ -312,20 +312,6 @@ func (store AuthStore) RevokeRefreshFamily(ctx context.Context, hash auth.Refres
 	return auth.RefreshFamilyRevoked{}
 }
 
-func (store AuthStore) RevokeExternalIdentitySessions(ctx context.Context, identity auth.ExternalIdentity) auth.RevokeRefreshFamilyResult {
-	_, err := store.db.Exec(ctx, `
-		update refresh_tokens set status = 'revoked'
-		where status = 'active'
-		and user_id = (
-			select user_id from external_identities where issuer = $1 and subject = $2
-		)
-	`, identity.Issuer, identity.Subject)
-	if err != nil {
-		return auth.RevokeRefreshFamilyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke external identity sessions failed")}
-	}
-	return auth.RefreshFamilyRevoked{}
-}
-
 func (store AuthStore) StoreRefreshToken(ctx context.Context, record auth.RefreshTokenRecord) auth.StoreRefreshTokenResult {
 	subjectKind := ""
 	userID := ""

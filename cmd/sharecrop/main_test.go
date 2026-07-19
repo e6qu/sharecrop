@@ -90,3 +90,28 @@ func TestApplicationShellRequiresShauthSessionWhenConfigured(t *testing.T) {
 		}
 	})
 }
+
+func TestShauthSSORoutesStayOnNativeHostBoundary(t *testing.T) {
+	mux := http.NewServeMux()
+	registerShauthHostBoundary(mux, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Sharecrop-Boundary", "native")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Sharecrop-Boundary", "guest")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/api/auth/shauth"},
+		{http.MethodGet, "/api/auth/shauth/callback"},
+		{http.MethodPost, "/api/auth/shauth/backchannel-logout"},
+		{http.MethodPost, "/api/auth/logout"},
+		{http.MethodGet, "/api/auth/signed-out"},
+	} {
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, httptest.NewRequest(route.method, route.path, nil))
+		if got := response.Header().Get("X-Sharecrop-Boundary"); got != "native" {
+			t.Errorf("%s %s boundary = %q, want native", route.method, route.path, got)
+		}
+	}
+}

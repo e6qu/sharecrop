@@ -50,6 +50,18 @@ func TestGenerateUsesExtractedFormMediaType(t *testing.T) {
 	}
 }
 
+func TestGenerateUsesExtractedResponseMediaType(t *testing.T) {
+	document := Generate([]Route{{Method: "GET", Path: "/signed-out", OperationID: "signedOut", ResponseMediaType: "text/html"}}, nil)
+	content := document.Paths["/signed-out"]["get"].Responses["default"].Content
+	media, ok := content["text/html"]
+	if !ok || media.Schema.Type != "string" {
+		t.Fatalf("response content = %#v", content)
+	}
+	if _, ok := content["application/json"]; ok {
+		t.Fatalf("HTML route was documented as JSON: %#v", content)
+	}
+}
+
 func TestGenerateJSONDistinguishesPublicFromDefaultSecurity(t *testing.T) {
 	document := Generate([]Route{
 		{Method: "POST", Path: "/api/auth/login", OperationID: "login", RequiresAuth: false},

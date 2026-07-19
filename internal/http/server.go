@@ -34,7 +34,6 @@ type AuthService interface {
 	LoginExternal(context.Context, string, string, auth.EmailAddress) auth.ExternalLoginResult
 	Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult
 	Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult
-	LogoutExternalIdentity(context.Context, string, string) auth.LogoutResult
 	CreateGuest(context.Context) auth.GuestResult
 	ListUsers(context.Context, string, core.Page) auth.UserDirectoryResult
 	RequestEmailVerification(context.Context, core.UserID) auth.AccountTokenIssueResult
@@ -198,6 +197,7 @@ type Server struct {
 	privacyService       PrivacyService
 	moderationTriage     ModerationTriageService
 	shauth               shauthConfig
+	oidcSessions         auth.OpenIDConnectSessionStore
 }
 
 type RuntimeState struct {
@@ -210,6 +210,7 @@ type RuntimeState struct {
 	PrivacyService      PrivacyService
 	PlatformAdmins      PlatformAdminService
 	ModerationTriage    ModerationTriageService
+	OIDCSessions        auth.OpenIDConnectSessionStore
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
@@ -238,6 +239,7 @@ func DefaultRuntimeState(bootstrapAdmins map[string]bool) RuntimeState {
 		PrivacyService:      newMemoryPrivacyService(),
 		PlatformAdmins:      newMemoryPlatformAdminService(bootstrapAdmins),
 		ModerationTriage:    newMemoryModerationTriageService(),
+		OIDCSessions:        newMemoryOpenIDConnectSessionStore(),
 	}
 }
 
@@ -247,8 +249,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 }
 
 func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService, runtime RuntimeState) http.Handler {
-	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil {
-		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, saved queue views, privacy service, platform admin service, and moderation triage service")
+	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil || runtime.OIDCSessions == nil {
+		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, saved queue views, privacy service, platform admin service, moderation triage service, and OpenID Connect session storage")
 	}
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, runtime)
 }
@@ -283,6 +285,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		privacyService:      runtime.PrivacyService,
 		platformAdmins:      runtime.PlatformAdmins,
 		moderationTriage:    runtime.ModerationTriage,
+		oidcSessions:        runtime.OIDCSessions,
 		shauth:              shauth,
 	}
 	mux := http.NewServeMux()
@@ -292,6 +295,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("GET /api/auth/shauth", server.shauthLogin)
 	mux.HandleFunc("GET /api/auth/shauth/callback", server.shauthCallback)
 	mux.HandleFunc("POST /api/auth/shauth/backchannel-logout", server.shauthBackchannelLogout)
+	mux.HandleFunc("GET /api/auth/signed-out", server.shauthSignedOut)
 	mux.HandleFunc("POST /api/auth/refresh", server.refresh)
 	mux.HandleFunc("POST /api/auth/logout", server.logout)
 	mux.HandleFunc("POST /api/auth/guest", server.guest)

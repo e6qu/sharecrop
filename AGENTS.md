@@ -41,6 +41,29 @@ After a task:
 
 The continuity files should be useful to someone who starts from a fresh session and needs to understand what exists, what changed, what is broken, and what to do next.
 
+## Remote State Is Authoritative
+
+Before editing, fetch the current `origin/main` and the remote head of any open
+pull request being continued. Compare those commits with the local branch and
+dirty worktree deliberately. Never assume that a local checkout is current, and
+never discard uncommitted work while reconciling it with remote state. Rebase a
+task branch onto the freshly fetched `origin/main` before pushing it.
+
+## Announce External Dependencies
+
+Tell the user before introducing any new external library, image, service, or
+hosted dependency. State what it would do and why the existing project code and
+dependencies are insufficient, then wait for the user's direction. Do not hide
+an external dependency inside deployment configuration or generated output.
+
+## Fix Every Observed Defect
+
+Apply the Boy Scout rule to the whole product. A failing test, warning, broken
+UI path, suspicious log, deployment defect, or documentation mismatch must be
+fixed in the current work or recorded with concrete evidence in `BUGS.md` when
+a real external blocker prevents the fix. Never dismiss a defect as unrelated;
+investigate the shared assumptions and integration boundaries first.
+
 Specific rules:
 
 - Continuity files are updated before and after each task, not necessarily every commit.

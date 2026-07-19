@@ -11,8 +11,11 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/auth/register`: create an account with `email` and `password`.
 - `POST /api/auth/login`: exchange email/password for an access token.
 - `POST /api/auth/refresh`: rotate a refresh-token cookie and issue a new access token.
-- `POST /api/auth/logout`: revoke the current refresh token and return `logout_url`; when Shauth is configured, the browser must navigate to that Ory Hydra front-channel logout URL to clear the identity-provider session.
-- `POST /api/auth/shauth/backchannel-logout`: accept a signed OpenID Connect `logout_token` from Shauth, validate its issuer, audience, signature, event, `sid`, `sub`, `iat`, and `jti` claims, and revoke every local refresh-token family for that external identity.
+- `GET /api/auth/shauth`: start Authorization Code Flow with PKCE against the configured Shauth issuer.
+- `GET /api/auth/shauth/callback`: verify the Shauth response, retain the provider-signed session coordinates server-side, and establish the rotating Sharecrop refresh-token session.
+- `POST /api/auth/logout`: revoke the current Sharecrop refresh-token family and return a provider-discovered RP-Initiated Logout URL. The browser navigates to that URL to end the shared Shauth session.
+- `GET /api/auth/signed-out`: receive the OpenID Provider's post-logout redirect, revoke any residual Sharecrop refresh-token family, clear the cookie, and show a static signed-out page without automatically starting a new login.
+- `POST /api/auth/shauth/backchannel-logout`: accept a signed OpenID Connect `logout_token` from Shauth, validate its exact issuer, audience, signature, expiry, event, `iat`, `jti`, prohibited `nonce`, and either `sid` or `sub`, then atomically revoke the matching refresh-token families and record the token against replay.
 - `POST /api/auth/guest`: create a guest browser session.
 
 ## Account

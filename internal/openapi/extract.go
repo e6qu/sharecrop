@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -17,13 +18,14 @@ import (
 // best-effort basis; either is empty when the handler does not match one of
 // the standard decode/write patterns.
 type Route struct {
-	Method           string
-	Path             string
-	OperationID      string
-	RequiresAuth     bool
-	RequestMediaType string
-	RequestType      string
-	ResponseType     string
+	Method            string
+	Path              string
+	OperationID       string
+	RequiresAuth      bool
+	RequestMediaType  string
+	ResponseMediaType string
+	RequestType       string
+	ResponseType      string
 }
 
 type ExtractResult interface {
@@ -75,6 +77,7 @@ func Extract(sources map[string][]byte) ExtractResult {
 
 	authGatedFuncs := collectAuthGatedFuncs(files)
 	formBodyFuncs := collectFormBodyFuncs(files)
+	responseMediaTypes := collectResponseMediaTypes(files)
 	requestTypeByFunc, responseTypeByFunc := resolveDTOTypes(files)
 	structs := collectStructShapes(files)
 
@@ -89,6 +92,7 @@ func Extract(sources map[string][]byte) ExtractResult {
 			if formBodyFuncs[route.OperationID] {
 				route.RequestMediaType = "application/x-www-form-urlencoded"
 			}
+			route.ResponseMediaType = responseMediaTypes[route.OperationID]
 			route.RequestType = requestTypeByFunc[route.OperationID]
 			route.ResponseType = responseTypeByFunc[route.OperationID]
 			routesByKey[key] = route
@@ -109,6 +113,46 @@ func Extract(sources map[string][]byte) ExtractResult {
 		return routes[i].Method < routes[j].Method
 	})
 	return Extracted{Routes: routes, Structs: structs}
+}
+
+func collectResponseMediaTypes(files map[string]*ast.File) map[string]string {
+	result := map[string]string{}
+	for _, file := range files {
+		for _, declaration := range file.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Body == nil {
+				continue
+			}
+			ast.Inspect(function.Body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok || len(call.Args) != 2 {
+					return true
+				}
+				selector, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || selector.Sel.Name != "Set" {
+					return true
+				}
+				header, headerOK := stringLiteral(call.Args[0])
+				value, valueOK := stringLiteral(call.Args[1])
+				if !headerOK || !valueOK || !strings.EqualFold(header, "Content-Type") {
+					return true
+				}
+				mediaType, _, _ := strings.Cut(value, ";")
+				result[function.Name.Name] = strings.TrimSpace(mediaType)
+				return false
+			})
+		}
+	}
+	return result
+}
+
+func stringLiteral(expression ast.Expr) (string, bool) {
+	literal, ok := expression.(*ast.BasicLit)
+	if !ok || literal.Kind != token.STRING || len(literal.Value) < 2 {
+		return "", false
+	}
+	value, err := strconv.Unquote(literal.Value)
+	return value, err == nil
 }
 
 func collectFormBodyFuncs(files map[string]*ast.File) map[string]bool {

@@ -14676,20 +14676,30 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{email: '', password: '', session: $author$project$Sharecrop$Types$LoggedOut}),
+						{authError: $elm$core$Maybe$Nothing}),
 					$author$project$Sharecrop$Api$postLogout);
 			case 'LogoutReceived':
 				if (msg.a.$ === 'Ok') {
 					var logoutURL = msg.a.a;
 					return (logoutURL === '') ? _Utils_Tuple2(
-						model,
+						_Utils_update(
+							model,
+							{authError: $elm$core$Maybe$Nothing, email: '', password: '', session: $author$project$Sharecrop$Types$LoggedOut}),
 						A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/')) : _Utils_Tuple2(
-						model,
+						_Utils_update(
+							model,
+							{authError: $elm$core$Maybe$Nothing, email: '', password: '', session: $author$project$Sharecrop$Types$LoggedOut}),
 						$elm$browser$Browser$Navigation$load(logoutURL));
 				} else {
+					var error = msg.a.a;
 					return _Utils_Tuple2(
-						model,
-						A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/'));
+						_Utils_update(
+							model,
+							{
+								authError: $elm$core$Maybe$Just(
+									'Sign out failed: ' + $author$project$Sharecrop$Labels$httpErrorLabel(error))
+							}),
+						$elm$core$Platform$Cmd$none);
 				}
 			case 'DiscoveryIncludeReservedChanged':
 				var value = msg.a;
@@ -30706,6 +30716,7 @@ var $author$project$Sharecrop$View$loggedInView = F2(
 			_List_fromArray(
 				[
 					A5($author$project$Sharecrop$View$navBar, model.demo, state.page, state.subjectId, state.isAdmin, state.openNavMenu),
+					A2($author$project$Sharecrop$View$maybeError, model.authError, 'logout-error'),
 					A3(
 					$elm$html$Html$Keyed$node,
 					'div',

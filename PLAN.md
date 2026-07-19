@@ -83,6 +83,9 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Shauth OpenID Connect is an additional browser sign-in provider. External
   identities are keyed by verified issuer and subject; new external identities
   never attach themselves to an existing password account based only on email.
+- Shauth sessions retain the provider-signed ID token and optional session ID
+  server-side for RP-Initiated Logout. Signed Back-Channel Logout revokes
+  matching refresh-token families atomically and stores replay claims durably.
 - Agent credentials are separate from user session auth.
 - Task/capability tokens are opaque random tokens linked server-side to tasks, scopes, and optional subjects.
 
