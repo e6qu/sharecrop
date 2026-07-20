@@ -1,0 +1,23 @@
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:56432:5432"
+  shauth:
+    ports: !override
+      - "127.0.0.1:58080:8080"
+  hydra:
+    ports: !override
+      - "127.0.0.1:58444:4444"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  backchannel-forwarder:
+    image: gcr.io/distroless/static-debian12:nonroot@sha256:aef9602f8710ec12bde19d593fed1f76c708531bb7aba205110f1029786ead7b
+    network_mode: "service:hydra"
+    depends_on:
+      hydra:
+        condition: service_started
+    user: "65532:65532"
+    volumes:
+      - "${SHARECROP_BACKCHANNEL_FORWARDER}:/backchannel-forwarder:ro"
+    entrypoint: ["/backchannel-forwarder"]
+    command: ["127.0.0.1:29382=host.docker.internal:29382"]

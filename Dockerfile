@@ -38,8 +38,8 @@ RUN /out/sharecrop wasi-precompile /wazero-cache
 
 # Minimal, non-root runtime. distroless/static carries only CA certificates
 # (needed for TLS to Postgres/RDS) and tzdata, and is selected per target arch
-# automatically. There is no shell or curl: liveness/readiness is an external ALB
-# health check against /healthz (see docs/deployment.md).
+# automatically. There is no shell or curl: the binary's `healthcheck` command
+# probes the running server for the Amazon ECS container health check.
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/sharecrop /usr/local/bin/sharecrop
 # The cache is written by root in the build stage; the runtime runs as the

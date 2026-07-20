@@ -10,18 +10,25 @@ continuity files if task scope changes.
    the WASI bridge (which cannot stream); a streaming transport would let it push.
 
 2. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
-   provisions the ECS Fargate service and its single-AZ Amazon RDS for
-   PostgreSQL dependencies in an existing VPC. Keep image and module pins in
-   the environment current, run migrations before an image requires them, and
-   verify both direct entry and the Shauth Apps-catalog launch after every
-   authentication change. The migration task used database-only configuration,
-   and serve/MCP refused to start against a schema older than the image. Keep
+   provisions private Amazon ECS Fargate tasks and an Amazon API Gateway HTTP
+   API private integration through AWS Cloud Map in an existing VPC. Keep the
+   API route throttles, access logs, container health checks, private task
+   addressing, image and module pins current. Keep Sharecrop in its distinct
+   database inside the shared PostgreSQL service, run migrations before an
+   image requires them, and verify both direct entry and the Shauth Apps-catalog
+   launch after every authentication change. The migration task used
+   database-only configuration, and serve/MCP refused to start against a schema
+   older than the image. Keep
    the Shauth confidential client registered with
    `https://sharecrop.dev.e6qu.dev/api/auth/shauth/backchannel-logout` as its
    Back-Channel Logout URI and
    `https://sharecrop.dev.e6qu.dev/api/auth/signed-out` as its allowed
    post-logout redirect URI. Keep the authorization callback registered as
    `https://sharecrop.dev.e6qu.dev/api/auth/shauth/callback`.
+   Keep Front-Channel Logout registered as
+   `https://sharecrop.dev.e6qu.dev/api/auth/shauth/frontchannel-logout`.
+   Keep environment image pins on the immutable 12-character commit-SHA generic
+   manifest published by the release workflow.
    See [docs/deployment.md](./docs/deployment.md).
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are
@@ -55,6 +62,7 @@ Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
 - Hardening of the production-default WASI path (randomness, clock, MCP SSE
   pool-exhaustion DoS, request-bridge fidelity for rate limiting and the MCP origin
   check, payload/frame size limits).
-- Containerization for ECS Fargate: slim multi-arch (arm64) image with a baked
-  wazero AOT cache (no build on startup) and a ghcr release workflow versioned by
-  conventional commits. See [docs/deployment.md](./docs/deployment.md).
+- Containerization for ECS Fargate: slim multi-architecture (arm64) image with a
+  baked wazero AOT cache (no build on startup) and an immutable commit-SHA
+  GitHub Container Registry release workflow. See
+  [docs/deployment.md](./docs/deployment.md).

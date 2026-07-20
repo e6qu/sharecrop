@@ -19,6 +19,18 @@
       "portMappings": [
         { "containerPort": 8080, "protocol": "tcp" }
       ],
+      "healthCheck": {
+        "command": [
+          "CMD",
+          "/usr/local/bin/sharecrop",
+          "healthcheck",
+          "http://127.0.0.1:8080/healthz"
+        ],
+        "interval": 15,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
       "environment": [
         { "name": "SHARECROP_HTTP_ADDR", "value": ":8080" }
       ],

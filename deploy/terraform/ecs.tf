@@ -49,8 +49,15 @@ locals {
     essential    = true
     command      = ["serve"]
     portMappings = [{ containerPort = 8080, protocol = "tcp" }]
-    environment  = concat([{ name = "SHARECROP_HTTP_ADDR", value = ":8080" }], var.shauth_oidc_issuer == "" ? [] : [{ name = "SHARECROP_SHAUTH_ISSUER", value = var.shauth_oidc_issuer }, { name = "SHARECROP_SHAUTH_CLIENT_ID", value = var.shauth_oidc_client_id }, { name = "SHARECROP_PUBLIC_URL", value = var.public_url }])
-    secrets      = local.secrets
+    healthCheck = {
+      command     = ["CMD", "/usr/local/bin/sharecrop", "healthcheck", "http://127.0.0.1:8080/healthz"]
+      interval    = 15
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
+    environment = concat([{ name = "SHARECROP_HTTP_ADDR", value = ":8080" }], var.shauth_oidc_issuer == "" ? [] : [{ name = "SHARECROP_SHAUTH_ISSUER", value = var.shauth_oidc_issuer }, { name = "SHARECROP_SHAUTH_CLIENT_ID", value = var.shauth_oidc_client_id }, { name = "SHARECROP_PUBLIC_URL", value = var.public_url }])
+    secrets     = local.secrets
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -99,6 +106,10 @@ resource "aws_ecs_task_definition" "serve" {
       condition     = (var.shauth_oidc_issuer == "" && var.shauth_oidc_client_id == "" && var.shauth_oidc_client_secret_arn == "" && var.public_url == "") || (var.shauth_oidc_issuer != "" && var.shauth_oidc_client_id != "" && var.shauth_oidc_client_secret_arn != "" && var.public_url != "")
       error_message = "All Shauth OIDC coordinates and public_url must be configured together."
     }
+    precondition {
+      condition     = var.public_url == "" || var.public_url == "https://${var.domain_name}"
+      error_message = "public_url must equal the HTTPS Amazon API Gateway custom-domain origin."
+    }
   }
 }
 
@@ -121,11 +132,17 @@ resource "aws_ecs_task_definition" "migrate" {
 }
 
 resource "aws_ecs_service" "serve" {
-  name            = "${var.name}-serve"
-  cluster         = local.ecs_cluster_arn
-  task_definition = aws_ecs_task_definition.serve.arn
-  desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+  name                  = "${var.name}-serve"
+  cluster               = local.ecs_cluster_arn
+  task_definition       = aws_ecs_task_definition.serve.arn
+  desired_count         = var.desired_count
+  launch_type           = "FARGATE"
+  wait_for_steady_state = true
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 
   # Give a fresh task time to pass health checks (the guest pool warms from the
   # baked cache, so this is generous).
@@ -134,17 +151,16 @@ resource "aws_ecs_service" "serve" {
   network_configuration {
     subnets          = var.task_subnet_ids
     security_groups  = [aws_security_group.service.id]
-    assign_public_ip = var.assign_public_ip
+    assign_public_ip = false
   }
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.this.arn
-    container_name   = "sharecrop"
-    container_port   = 8080
+  service_registries {
+    registry_arn   = aws_service_discovery_service.this.arn
+    container_name = "sharecrop"
+    container_port = 8080
   }
 
   depends_on = [
-    aws_lb_listener.http,
     aws_secretsmanager_secret_version.access_token,
   ]
   tags = local.tags

@@ -2,30 +2,35 @@
 
 region = "us-east-1"
 
-# The multi-arch image manifest published by the Release workflow.
-image = "ghcr.io/e6qu/sharecrop:v1.4.0"
+# The immutable multi-architecture image manifest published by the Release workflow.
+image = "ghcr.io/e6qu/sharecrop:0123456789ab"
 
 # Only for a PRIVATE ghcr package: a Secrets Manager secret holding
 # {"username":"<gh-user>","password":"<ghcr-token>"}. Omit for a public image.
 # image_pull_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:sharecrop/ghcr-pull-XXXXXX"
 
 # Deploy into an existing VPC.
-vpc_id            = "vpc-0123456789abcdef0"
-public_subnet_ids = ["subnet-aaaa1111", "subnet-bbbb2222"] # ALB (>= 2 AZs)
-task_subnet_ids   = ["subnet-cccc3333", "subnet-dddd4444"] # ECS tasks + Amazon RDS
+vpc_id          = "vpc-0123456789abcdef0"
+task_subnet_ids = ["subnet-cccc3333", "subnet-dddd4444"] # private Amazon ECS tasks + Amazon API Gateway VPC Link
 
-# If task_subnet_ids are private (with a NAT gateway), keep this false. If they
-# are public subnets, set it true so tasks can pull the image.
-assign_public_ip = false
+database_url_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:sharecrop/database-url-XXXXXX"
 
-# Set an ACM cert to serve HTTPS (recommended for anything public).
-# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/XXXXXXXX"
+# Regional custom domain. The caller provisions and validates the AWS
+# Certificate Manager certificate, then creates the Route 53 alias from the
+# module's api_gateway_domain_name and api_gateway_hosted_zone_id outputs.
+domain_name     = "sharecrop.example.com"
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/XXXXXXXX"
+
+# Bounded public ingress defaults. Raise only after reviewing application and
+# database capacity.
+api_throttling_burst_limit = 50
+api_throttling_rate_limit  = 25
 
 desired_count = 2
 
-# Single-AZ Amazon RDS PostgreSQL. db.t4g.micro is arm64 and is the smallest
-# class available in eu-west-1.
-postgres_engine_version               = "18.3"
-postgres_instance_class               = "db.t4g.micro"
-postgres_allocated_storage_gib        = 20
-postgres_max_allocated_storage_gib    = 100
+# Supply all Shauth coordinates together, or omit all four for a local-account
+# deployment.
+# shauth_oidc_issuer            = "https://auth.example.com"
+# shauth_oidc_client_id         = "sharecrop"
+# shauth_oidc_client_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:sharecrop/oidc-client-XXXXXX"
+# public_url                    = "https://sharecrop.example.com"

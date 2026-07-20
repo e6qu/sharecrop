@@ -57,6 +57,12 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	if len(args) > 1 && args[1] == "wasi-precompile" {
 		return runWASIPrecompile(ctx, args[2:], logger)
 	}
+	// healthcheck is the Amazon ECS container-health probe. It deliberately runs
+	// before application configuration is loaded so it tests the already-running
+	// server instead of trying to establish a second PostgreSQL connection.
+	if len(args) > 1 && args[1] == "healthcheck" {
+		return runHealthCheck(ctx, args[2:], logger)
+	}
 	if len(args) > 1 && args[1] == "migrate" {
 		cfgResult := app.LoadMigrationConfig()
 		cfg, loaded := cfgResult.(app.MigrationConfigLoaded)
@@ -89,6 +95,31 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	}
 
 	return runServe(ctx, cfg.Value, logger)
+}
+
+func runHealthCheck(ctx context.Context, args []string, logger *slog.Logger) int {
+	if len(args) != 1 {
+		logger.Error("health check", "reason", "usage: sharecrop healthcheck <url>")
+		return 2
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, args[0], nil)
+	if err != nil {
+		logger.Error("health check", "error", err)
+		return 2
+	}
+	client := &http.Client{Timeout: 4 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		logger.Error("health check", "error", err)
+		return 1
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		logger.Error("health check", "status", response.StatusCode)
+		return 1
+	}
+	return 0
 }
 
 func runGenerate(args []string, stdout io.Writer, logger *slog.Logger) int {
@@ -400,7 +431,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		logger.Warn("no app guest embedded; serving the native in-process mux (build with `make build` for WASI hosting)")
 	default:
 		guestBuildStart := time.Now()
-		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles, nativeHandler, shauthConfigured())
+		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles, nativeHandler, authService.Value, shauthConfigured())
 		if err != nil {
 			logger.Error("build wasi guest host", "error", err)
 			return 1
@@ -455,7 +486,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 // (the guest carries no static files). Every store call the guest makes is
 // dispatched back to the host's Postgres pool via storehost. The returned func
 // tears the guest pool down.
-func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS, nativeHandler http.Handler, requireShauthSession bool) (http.Handler, func(), error) {
+func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config, pool *pgxpool.Pool, staticFiles fs.FS, nativeHandler http.Handler, authService auth.Service, requireShauthSession bool) (http.Handler, func(), error) {
 	// SHARECROP_WAZERO_CACHE_DIR points at a pre-populated wazero compilation
 	// cache (baked into the container by the wasi-precompile build step) so the
 	// guest's machine code is loaded rather than compiled at startup. Unset falls
@@ -484,7 +515,7 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 	mux.Handle("/healthz", guest)
 	// Static assets and the SPA shell are served from the host's embedded files.
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
-	mux.Handle("/", applicationShell(staticFiles, requireShauthSession))
+	mux.Handle("/", applicationShell(staticFiles, authService, requireShauthSession))
 
 	return mux, func() { _ = guestPool.Close(context.Background()) }, nil
 }
@@ -492,6 +523,7 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 func registerShauthHostBoundary(mux *http.ServeMux, nativeHandler http.Handler) {
 	mux.Handle("GET /api/auth/shauth", nativeHandler)
 	mux.Handle("GET /api/auth/shauth/callback", nativeHandler)
+	mux.Handle("GET /api/auth/shauth/frontchannel-logout", nativeHandler)
 	mux.Handle("POST /api/auth/shauth/backchannel-logout", nativeHandler)
 	mux.Handle("POST /api/auth/logout", nativeHandler)
 	mux.Handle("GET /api/auth/signed-out", nativeHandler)
@@ -511,15 +543,39 @@ func shauthConfigured() bool {
 	return true
 }
 
-func applicationShell(staticFiles fs.FS, requireShauthSession bool) http.Handler {
+type browserSessionService interface {
+	ValidateSession(context.Context, auth.RefreshTokenPlain) auth.ValidateRefreshTokenResult
+}
+
+func applicationShell(staticFiles fs.FS, authService browserSessionService, requireShauthSession bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if requireShauthSession {
-			if _, err := r.Cookie("sharecrop_refresh_token"); err != nil {
+			cookie, err := r.Cookie("sharecrop_refresh_token")
+			var refreshToken auth.RefreshTokenPlain
+			parsedOK := false
+			if err == nil {
+				parsed, ok := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted)
+				if ok {
+					refreshToken = parsed.Value
+					parsedOK = true
+				}
+			}
+			if err != nil || !parsedOK {
 				http.Redirect(w, r, "/api/auth/shauth", http.StatusFound)
 				return
 			}
+			switch authService.ValidateSession(r.Context(), refreshToken).(type) {
+			case auth.RefreshTokenActive:
+			case auth.RefreshTokenInactive:
+				clearRefreshCookieAtHost(w)
+				http.Redirect(w, r, "/api/auth/shauth", http.StatusFound)
+				return
+			default:
+				http.Error(w, "Sharecrop session could not be validated", http.StatusServiceUnavailable)
+				return
+			}
 		}
-		data, err := fs.ReadFile(staticFiles, "index.html")
+		data, err := web.ApplicationShell(staticFiles, requireShauthSession)
 		if err != nil {
 			http.Error(w, "index not found", http.StatusInternalServerError)
 			return
@@ -530,12 +586,24 @@ func applicationShell(staticFiles fs.FS, requireShauthSession bool) http.Handler
 	})
 }
 
+func clearRefreshCookieAtHost(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name: "sharecrop_refresh_token", Path: "/", MaxAge: -1, HttpOnly: true,
+		Secure: os.Getenv("SHARECROP_INSECURE_COOKIES") != "true", SameSite: http.SameSiteLaxMode,
+	})
+}
+
 func wasiGuestEnvironment(cfg app.Config) map[string]string {
+	requireBrowserSession := "false"
+	if shauthConfigured() {
+		requireBrowserSession = "true"
+	}
 	return map[string]string{
-		"SHARECROP_ACCESS_TOKEN_SECRET":    cfg.AccessTokenSecret(),
-		"SHARECROP_INSECURE_COOKIES":       os.Getenv("SHARECROP_INSECURE_COOKIES"),
-		"SHARECROP_ACCOUNT_TOKEN_DELIVERY": os.Getenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY"),
-		"SHARECROP_ADMIN_USER_IDS":         os.Getenv("SHARECROP_ADMIN_USER_IDS"),
+		"SHARECROP_ACCESS_TOKEN_SECRET":     cfg.AccessTokenSecret(),
+		"SHARECROP_INSECURE_COOKIES":        os.Getenv("SHARECROP_INSECURE_COOKIES"),
+		"SHARECROP_ACCOUNT_TOKEN_DELIVERY":  os.Getenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY"),
+		"SHARECROP_ADMIN_USER_IDS":          os.Getenv("SHARECROP_ADMIN_USER_IDS"),
+		"SHARECROP_REQUIRE_BROWSER_SESSION": requireBrowserSession,
 	}
 }
 

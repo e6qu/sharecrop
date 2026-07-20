@@ -380,6 +380,33 @@ func decodeStoreRefreshTokenResult(wire acceptedRejectedWire) (auth.StoreRefresh
 	}
 }
 
+func encodeValidateRefreshTokenResult(result auth.ValidateRefreshTokenResult) acceptedRejectedWire {
+	switch typed := result.(type) {
+	case auth.RefreshTokenActive:
+		return acceptedRejectedWire{Variant: "active"}
+	case auth.RefreshTokenInactive:
+		return acceptedRejectedWire{Variant: "inactive"}
+	case auth.ValidateRefreshTokenRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return acceptedRejectedWire{Variant: "rejected", Error: &reason}
+	default:
+		return acceptedRejectedWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown auth result %T", result))}
+	}
+}
+
+func decodeValidateRefreshTokenResult(wire acceptedRejectedWire) (auth.ValidateRefreshTokenResult, error) {
+	switch wire.Variant {
+	case "active":
+		return auth.RefreshTokenActive{}, nil
+	case "inactive":
+		return auth.RefreshTokenInactive{}, nil
+	case "rejected":
+		return auth.ValidateRefreshTokenRejected{Reason: decodeReason(wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown validate refresh token result variant %q", wire.Variant)
+	}
+}
+
 func encodeAccountTokenStoreResult(result auth.AccountTokenStoreResult) acceptedRejectedWire {
 	switch typed := result.(type) {
 	case auth.AccountTokenStored:

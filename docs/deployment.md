@@ -7,13 +7,15 @@ Sharecrop ships as one application built for two runtimes from the same source:
 - **Backend** — the same app hosted server-side through the WASI guest pool
   (`cmd/sharecrop serve`, which embeds the `wasip1` app guest and runs it under
   the wazero runtime), with all state in Postgres. Deployed as **stateless
-  replicas on ECS Fargate (arm64) behind a load balancer**.
+  replicas on Amazon ECS Fargate (arm64) in private subnets, reached through an
+  Amazon API Gateway HTTP API private integration and AWS Cloud Map**.
 
 The backend is stateless: every durable thing (tasks, submissions, ledger,
 audit, notifications, MCP sessions) lives in Postgres, SSE is delivered by DB
 polling, and the only per-process state (in-memory rate-limit buckets) is
 defense-in-depth, not correctness. So replicas scale horizontally with no
-affinity — the load balancer can round-robin freely.
+affinity — Amazon API Gateway can distribute requests across the healthy task
+instances returned by AWS Cloud Map.
 
 ## Container image standard
 
@@ -38,11 +40,11 @@ startup" below), so build the per-arch images first, then assemble the manifest:
 ```sh
 # Per-arch build + push (run each on a native runner of that arch; CI does this
 # in an arm64/amd64 matrix):
-tools/build_container.sh ghcr.io/e6qu/sharecrop:1.4.0 arm64   # -> :1.4.0-arm64
-tools/build_container.sh ghcr.io/e6qu/sharecrop:1.4.0 amd64   # -> :1.4.0-amd64
+tools/build_container.sh ghcr.io/e6qu/sharecrop:0123456789ab arm64   # -> :0123456789ab-arm64
+tools/build_container.sh ghcr.io/e6qu/sharecrop:0123456789ab amd64   # -> :0123456789ab-amd64
 
 # Assemble the multi-arch manifest from the per-arch images:
-tools/build_container.sh ghcr.io/e6qu/sharecrop:1.4.0 manifest  # -> :1.4.0
+tools/build_container.sh ghcr.io/e6qu/sharecrop:0123456789ab manifest  # -> :0123456789ab
 
 # Local single-arch build for testing (host arch, loaded into the local docker):
 PUSH=false tools/build_container.sh sharecrop:dev
@@ -81,36 +83,42 @@ Run `make frontend` before a release build if the UI changed, the same as for
 `.github/workflows/release.yml` builds and publishes on **every** merge to
 `main`:
 
-1. Compute the next version from conventional commits since the last tag
-   (`tools/next_version.sh`): **patch by default**, `feat` → minor, `!`/`BREAKING
-   CHANGE` → major. Every merge bumps at least a patch, so every merge builds.
-2. Build each arch on a native runner (arm64 on `ubuntu-24.04-arm`, amd64 on
-   `ubuntu-24.04`) and push the per-arch images to the GitHub Container Registry.
-3. Assemble the manifest, create the git tag and GitHub release, and prune old
-   images to the newest 25 release versions (`tools/prune_ghcr_versions.sh`,
-   best-effort).
+1. Derive the immutable tag from the first 12 lowercase hexadecimal characters
+   of the merged commit SHA.
+2. Build each architecture on a native runner (arm64 on `ubuntu-24.04-arm`,
+   amd64 on `ubuntu-24.04`) and push direct, single-platform OCI image manifests
+   to the GitHub Container Registry. Provenance and SBOM attestations are
+   disabled so an architecture tag never becomes an image index.
+3. Assemble the generic OCI image index, verify that it contains exactly Linux
+   amd64 and Linux arm64, and prune package versions outside the newest 20
+   commit-SHA releases (`tools/prune_ghcr_versions.sh`). A shape or retention
+   failure fails the workflow.
 
-Images are published to `ghcr.io/<owner>/<repo>:<version>` (e.g.
-`ghcr.io/e6qu/sharecrop:v1.4.0`) with per-arch `…-arm64`/`…-amd64` tags. There is
-**no `:latest`** — deployments pin an explicit version. Because merges squash to
-the PR title, PR titles should follow the conventional-commit format so
-`feat`/breaking changes bump the right component (anything else is a patch).
-Native arm64 runners are required; without them, switch the matrix to emulated
-builds.
+Images are published to `ghcr.io/<owner>/<repo>:<sha12>` (for example,
+`ghcr.io/e6qu/sharecrop:0123456789ab`) with direct per-architecture
+`<sha12>-arm64` and `<sha12>-amd64` tags. The workflow emits no `latest`, `main`,
+or semantic-version tags. Deployments pin the immutable generic tag. Native
+arm64 runners are required; without them, the release does not publish.
 
-## ECS Fargate
+## Amazon ECS Fargate
 
-The whole stack — ALB, the ECS Fargate service (arm64), the tenant-specific
-connection to the shared fck-rds PostgreSQL service, secrets, and IAM — is provisioned by the Terraform in
-[`deploy/terraform/`](../deploy/terraform/) (deploys into an existing VPC; see its
-README). The standalone JSON task definitions in `deploy/ecs/` (arm64
-`runtimePlatform`, `REPLACE_*` placeholders for account, region, roles, registry,
-tag, and secret ARNs) remain as a reference for a non-Terraform deploy.
+The whole stack — an Amazon API Gateway HTTP API, its VPC Link and AWS Cloud Map
+private integration, the Amazon ECS Fargate service (arm64), the tenant-specific
+connection to the shared fck-rds PostgreSQL service, secrets, and IAM — is
+provisioned by the Terraform in [`deploy/terraform/`](../deploy/terraform/)
+(deploys into an existing VPC; see its README). It creates no Application Load
+Balancer or Network Load Balancer. The standalone JSON task definitions in
+`deploy/ecs/` (arm64 `runtimePlatform`, `REPLACE_*` placeholders for account,
+region, roles, registry, tag, and secret ARNs) remain as a reference for a
+non-Terraform deploy.
 
 - **`sharecrop-serve.task-definition.json`** — the stateless service. Run it as
-  an ECS Service with the desired replica count behind an Application Load
-  Balancer. Target-group health check: `GET /healthz` (the image is distroless,
-  so there is no in-container curl — health checking is external, via the ALB).
+  an Amazon ECS service with the desired replica count. The Terraform module
+  registers each task's address and port in AWS Cloud Map, and Amazon API
+  Gateway uses `DiscoverInstances` over its VPC Link. The container health
+  check runs `sharecrop healthcheck http://127.0.0.1:8080/healthz`; Amazon ECS
+  publishes that health to AWS Cloud Map, so unhealthy tasks are excluded from
+  request routing without an in-container shell or curl.
 - **`sharecrop-migrate.task-definition.json`** — a one-off task that runs
   `sharecrop migrate up`. `serve` does **not** auto-migrate (so replicas never
   race on schema changes); run this task once as part of a deploy, before
@@ -139,21 +147,28 @@ Shauth configuration is all-or-nothing. Register these exact client endpoints,
 derived from `SHARECROP_PUBLIC_URL`:
 
 - callback: `/api/auth/shauth/callback`
+- Front-Channel Logout: `/api/auth/shauth/frontchannel-logout`
 - Back-Channel Logout: `/api/auth/shauth/backchannel-logout`
 - post-logout redirect: `/api/auth/signed-out`
 
 RP-Initiated Logout uses the issuer's discovered `end_session_endpoint` only
 when it is on the configured issuer origin. The
 provider-signed ID token and session identifier are retained in PostgreSQL,
-not in the browser cookie. Back-Channel Logout replay claims and refresh-family
-revocation are committed in one database transaction, so every replica and a
-restarted service observe the same logout state.
+not in the browser cookie. Front-Channel Logout correlates the exact issuer,
+client, and provider session identifier. Back-Channel Logout replay claims and
+refresh-family revocation are committed in one database transaction, so every
+replica and a restarted service observe the same logout state. Shauth-managed
+browser entry hides local password and reset controls; deployments without
+Shauth retain those local account flows.
 
 ### Database
 
 A stateless replica fleet needs a shared PostgreSQL database. The Terraform
 module accepts the tenant-specific database URL secret managed by the shared
 `fck-rds` service; another PostgreSQL deployment can supply the same coordinate.
+Sharecrop must have its own database inside a shared PostgreSQL instance; it
+must not share Shauth's, Ory Hydra's, or another application's migration
+database.
 Run the `sharecrop-migrate` task before the first `serve` rollout and on every
 schema change. Serve and MCP processes refuse to start while a migration baked
 into their image is absent from the database.

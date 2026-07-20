@@ -25,6 +25,7 @@ const (
 	methodDeactivateUser               = "auth.DeactivateUser"
 	methodCreateGuestSubject           = "auth.CreateGuestSubject"
 	methodStoreRefreshToken            = "auth.StoreRefreshToken"
+	methodValidateRefreshToken         = "auth.ValidateRefreshToken"
 	methodConsumeRefreshToken          = "auth.ConsumeRefreshToken"
 	methodRevokeRefreshFamily          = "auth.RevokeRefreshFamily"
 	methodStoreAccountToken            = "auth.StoreAccountToken"
@@ -75,6 +76,11 @@ type createGuestSubjectArgs struct {
 
 type storeRefreshTokenArgs struct {
 	Record refreshTokenRecordWire `json:"record"`
+}
+
+type validateRefreshTokenArgs struct {
+	Hash string `json:"hash"`
+	Now  string `json:"now"`
 }
 
 type consumeRefreshTokenArgs struct {
@@ -227,6 +233,20 @@ func Dispatch(ctx context.Context, store auth.Store, method string, args []byte)
 			return nil, err
 		}
 		return json.Marshal(encodeStoreRefreshTokenResult(store.StoreRefreshToken(ctx, argRecord)))
+	case methodValidateRefreshToken:
+		var decoded validateRefreshTokenArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("auth bridge: decode ValidateRefreshToken args: %w", err)
+		}
+		argHash, err := decodeRefreshTokenHash(decoded.Hash)
+		if err != nil {
+			return nil, err
+		}
+		argNow, err := corewire.DecodeTime(decoded.Now)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeValidateRefreshTokenResult(store.ValidateRefreshToken(ctx, argHash, argNow)))
 	case methodConsumeRefreshToken:
 		var decoded consumeRefreshTokenArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -504,6 +524,26 @@ func (g GuestStore) StoreRefreshToken(ctx context.Context, argRecord auth.Refres
 	result, err := decodeStoreRefreshTokenResult(wire)
 	if err != nil {
 		return auth.StoreRefreshTokenRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) ValidateRefreshToken(ctx context.Context, argHash auth.RefreshTokenHash, argNow time.Time) auth.ValidateRefreshTokenResult {
+	args, err := json.Marshal(validateRefreshTokenArgs{Hash: encodeRefreshTokenHash(argHash), Now: corewire.EncodeTime(argNow)})
+	if err != nil {
+		return auth.ValidateRefreshTokenRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodValidateRefreshToken, args)
+	if err != nil {
+		return auth.ValidateRefreshTokenRejected{Reason: guestError(err)}
+	}
+	var wire acceptedRejectedWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return auth.ValidateRefreshTokenRejected{Reason: guestError(err)}
+	}
+	result, err := decodeValidateRefreshTokenResult(wire)
+	if err != nil {
+		return auth.ValidateRefreshTokenRejected{Reason: guestError(err)}
 	}
 	return result
 }

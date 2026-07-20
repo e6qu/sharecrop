@@ -1,11 +1,14 @@
 # Bugs
 
-Confirmed defects:
-
-- None known.
+Confirmed defects: None.
 
 Test gaps:
 
+- Repository CI validates and policy-checks the Amazon API Gateway, VPC Link,
+  AWS Cloud Map, and private Amazon ECS Terraform graph but does not create AWS
+  resources. The environment repository owns the real plan/apply and live
+  custom-domain, health-routing, and Shauth browser checks for each immutable
+  module/image pin.
 - `docs/openapi.json` (`make openapi`/`make check-openapi`, `internal/openapi`)
   has an accurate method/path/operationId/bearer-auth inventory generated from
   `internal/http/server.go`'s route table and local call graph. Request/

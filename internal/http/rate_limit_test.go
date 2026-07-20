@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -42,6 +43,24 @@ func TestRateLimiterIsolatesKeys(t *testing.T) {
 	}
 	if !limiter.Allow("b") {
 		t.Fatalf("a different key must not share key a's bucket")
+	}
+}
+
+func TestAuthenticationRateLimitIsolatesOperationsForOneClient(t *testing.T) {
+	server := Server{ipRateLimiter: newRateLimiter(1, 1)}
+	login := httptest.NewRequest("POST", "/api/auth/login", nil)
+	login.RemoteAddr = "192.0.2.10:1234"
+	if !server.allowByIP(httptest.NewRecorder(), login) {
+		t.Fatal("first login should be allowed")
+	}
+	if server.allowByIP(httptest.NewRecorder(), login) {
+		t.Fatal("second login should exhaust the login bucket")
+	}
+
+	register := httptest.NewRequest("POST", "/api/auth/register", nil)
+	register.RemoteAddr = login.RemoteAddr
+	if !server.allowByIP(httptest.NewRecorder(), register) {
+		t.Fatal("an exhausted login bucket must not deny registration")
 	}
 }
 

@@ -1,9 +1,7 @@
 name: Release
 
-# On every merge to main, compute the next version from conventional commits
-# (patch by default; feat -> minor; !/BREAKING -> major), build and publish the
-# multi-arch backend image to the GitHub Container Registry, tag the release, and
-# prune old images to the newest 25. No :latest tag - deployments pin a version.
+# Every main commit publishes exactly one immutable 12-character commit-SHA tag,
+# its two direct architecture images, and no mutable branch or latest tags.
 on:
   push:
     branches: [main]
@@ -14,30 +12,29 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # push the version tag + create the GitHub release
+  contents: read
   packages: write # push images to ghcr.io
 
 jobs:
-  version:
+  metadata:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.compute.outputs.version }}
+      tag: ${{ steps.revision.outputs.tag }}
     steps:
-      - uses: actions/checkout@v7.0.0
-        with:
-          fetch-depth: 0 # full history + tags for conventional-commit versioning
-      - id: compute
+      - id: revision
+        env:
+          REVISION: ${{ github.sha }}
         run: |
-          version="$(tools/next_version.sh)"
-          if [ -z "${version}" ]; then
-            echo "next_version.sh produced no version (unexpected)" >&2
+          tag="${REVISION:0:12}"
+          if [[ ! "$tag" =~ ^[0-9a-f]{12}$ ]]; then
+            echo "invalid immutable image tag: $tag" >&2
             exit 1
           fi
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "release version: ${version}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release image tag: $tag"
 
   build:
-    needs: version
+    needs: metadata
     strategy:
       fail-fast: true
       matrix:
@@ -54,44 +51,24 @@ jobs:
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Build and push ${{ matrix.arch }} image
-        run: tools/build_container.sh "ghcr.io/${{ github.repository }}:${{ needs.version.outputs.version }}" "${{ matrix.arch }}"
+        run: tools/build_container.sh "ghcr.io/${{ github.repository }}:${{ needs.metadata.outputs.tag }}" "${{ matrix.arch }}"
 
   manifest:
-    needs: [version, build]
+    needs: [metadata, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.0
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Assemble the multi-arch manifest
-        run: tools/build_container.sh "ghcr.io/${{ github.repository }}:${{ needs.version.outputs.version }}" manifest
+      - name: Assemble and verify the multi-architecture manifest
+        run: tools/build_container.sh "ghcr.io/${{ github.repository }}:${{ needs.metadata.outputs.tag }}" manifest
 
-  release:
-    needs: [version, manifest]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.0
-        with:
-          fetch-depth: 0
-      - name: Tag the release and publish notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          version="${{ needs.version.outputs.version }}"
-          git tag "${version}"
-          git push origin "${version}"
-          gh release create "${version}" --title "${version}" --generate-notes
-
-  # Best-effort: keep the registry from growing without bound. Runs after the new
-  # image is published so it counts toward the newest 25 kept releases. A failure
-  # (e.g. token scope) must not fail the release.
   prune:
-    needs: [version, manifest]
+    needs: [metadata, manifest]
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7.0.0
-      - name: Prune old images (keep newest 25)
+      - name: Prune old images (keep newest 20)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: tools/prune_ghcr_versions.sh "${{ github.repository_owner }}" "${{ github.event.repository.name }}" 25
+        run: tools/prune_ghcr_versions.sh "${{ github.repository_owner }}" "${{ github.event.repository.name }}" 20

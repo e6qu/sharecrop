@@ -1,6 +1,6 @@
 APP := bin/sharecrop
 
-.PHONY: build container check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-ts check-wasi-bridge check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet wasi-app-guest wasi-bridge
+.PHONY: build container check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-release-contract check-ts check-wasi-bridge check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-shauth e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet wasi-app-guest wasi-bridge
 
 build: frontend wasi-app-guest
 	go build -o $(APP) ./cmd/sharecrop
@@ -52,6 +52,9 @@ check-format:
 check-policy:
 	deno task check:policy
 
+check-release-contract:
+	./tools/test_release_contract.sh
+
 check-ts:
 	deno task check:ts
 
@@ -65,7 +68,7 @@ check-wasm-scenario-parity:
 	deno task wasm:demo:build
 	deno task check:scenario-parity:wasm -- --wasm site/demo/sharecrop-wasm-backend.wasm
 
-ci: check-format check-contracts check-openapi check-policy check-ts check-copy-paste check-dead-code check-wasi-bridge lint vet test frontend build test-integration test-http e2e-ui check-wasm-scenario-parity
+ci: check-format check-contracts check-openapi check-policy check-release-contract check-ts check-copy-paste check-dead-code check-wasi-bridge lint vet test frontend build test-integration test-http e2e-ui check-wasm-scenario-parity
 
 css:
 	deno task css:build
@@ -82,6 +85,9 @@ docker-down:
 e2e-ui:
 	deno task wasm:demo:build
 	deno task e2e:ui
+
+e2e-shauth:
+	./tools/run_shauth_sso_e2e.sh
 
 elm:
 	test -n "$(ELM_BIN)"

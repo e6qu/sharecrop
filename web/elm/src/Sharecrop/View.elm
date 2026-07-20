@@ -65,7 +65,14 @@ authView model =
         -- pressing Enter in a reset field submits the reset request rather than
         -- attempting a login. Each reset field is bound to the reset action
         -- that makes sense for it.
-        [ form [ Html.Attributes.class "space-y-4", onSubmit LoginClicked ]
+        (if model.shauth then
+            [ p [ Html.Attributes.class "text-slate-600" ] [ text "Continue through Shauth to use your organization identity." ]
+            , Ui.secondaryLink [ testId "shauth-login" ] "/api/auth/shauth" "Continue with Shauth"
+            , maybeError model.authError "auth-error"
+            ]
+
+         else
+            [ form [ Html.Attributes.class "space-y-4", onSubmit LoginClicked ]
             [ p [ Html.Attributes.class "text-slate-600" ] [ text "Sign in or create an account to view your credit ledger and set up agents." ]
             , Ui.textInput [ type_ "email", placeholder "Email", value model.email, onInput EmailChanged, testId "email" ]
             , Ui.textInput [ type_ "password", placeholder "Password", value model.password, onInput PasswordChanged, testId "password" ]
@@ -106,7 +113,8 @@ authView model =
 
             Nothing ->
                 text ""
-        ]
+            ]
+        )
 
 
 loggedInView : Model -> LoggedInModel -> Html Msg

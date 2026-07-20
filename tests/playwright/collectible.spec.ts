@@ -20,8 +20,12 @@ async function registerLoginAndCreateTask(
   const registerResponse = await request.post("/api/auth/register", {
     data: { email, password },
   });
-  expect(registerResponse.ok()).toBeTruthy();
-  const registerBody = (await registerResponse.json()) as AuthBody;
+  const registerText = await registerResponse.text();
+  expect(
+    registerResponse.ok(),
+    `register ${email} failed with ${registerResponse.status()}: ${registerText}`,
+  ).toBeTruthy();
+  const registerBody = JSON.parse(registerText) as AuthBody;
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },

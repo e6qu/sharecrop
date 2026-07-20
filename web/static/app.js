@@ -6193,7 +6193,8 @@ var $author$project$Main$initialModel = F3(
 			resetPassword: '',
 			resetToken: '',
 			route: $author$project$Main$pageFromUrl(url),
-			session: $author$project$Sharecrop$Types$LoggedOut
+			session: $author$project$Sharecrop$Types$LoggedOut,
+			shauth: flags.shauth
 		};
 	});
 var $elm$core$Platform$Sub$batch = _Platform_batch;
@@ -13242,7 +13243,9 @@ var $author$project$Main$update = F2(
 									A3($author$project$Sharecrop$Api$routeLoadCmd, response.accessToken, response.subjectID, model.route)
 								])));
 				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					return model.shauth ? _Utils_Tuple2(
+						model,
+						$elm$browser$Browser$Navigation$load('/api/auth/shauth')) : _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				}
 			case 'SessionRefreshTick':
 				return _Utils_Tuple2(model, $author$project$Sharecrop$Api$postSessionRefresh);
@@ -13260,7 +13263,11 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					return _Utils_Tuple2(
+					return model.shauth ? _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{authError: $elm$core$Maybe$Nothing, session: $author$project$Sharecrop$Types$LoggedOut}),
+						$elm$browser$Browser$Navigation$load('/api/auth/shauth')) : _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
@@ -14697,9 +14704,10 @@ var $author$project$Main$update = F2(
 							model,
 							{
 								authError: $elm$core$Maybe$Just(
-									'Sign out failed: ' + $author$project$Sharecrop$Labels$httpErrorLabel(error))
+									'Sharecrop signed out, but global sign out failed: ' + $author$project$Sharecrop$Labels$httpErrorLabel(error)),
+								session: $author$project$Sharecrop$Types$LoggedOut
 							}),
-						$elm$core$Platform$Cmd$none);
+						A2($elm$browser$Browser$Navigation$pushUrl, model.key, '#/'));
 				}
 			case 'DiscoveryIncludeReservedChanged':
 				var value = msg.a;
@@ -19507,7 +19515,28 @@ var $author$project$Sharecrop$View$authView = function (model) {
 			[
 				$elm$html$Html$Attributes$class('space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm')
 			]),
-		_List_fromArray(
+		model.shauth ? _List_fromArray(
+			[
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-slate-600')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Continue through Shauth to use your organization identity.')
+					])),
+				A3(
+				$author$project$Sharecrop$Ui$secondaryLink,
+				_List_fromArray(
+					[
+						$author$project$Sharecrop$Ui$testId('shauth-login')
+					]),
+				'/api/auth/shauth',
+				'Continue with Shauth'),
+				A2($author$project$Sharecrop$View$maybeError, model.authError, 'auth-error')
+			]) : _List_fromArray(
 			[
 				A2(
 				$elm$html$Html$form,
@@ -30799,13 +30828,18 @@ var $author$project$Main$main = $elm$browser$Browser$application(
 _Platform_export({'Main':{'init':$author$project$Main$main(
 	A2(
 		$elm$json$Json$Decode$andThen,
-		function (origin) {
+		function (shauth) {
 			return A2(
 				$elm$json$Json$Decode$andThen,
-				function (demo) {
-					return $elm$json$Json$Decode$succeed(
-						{demo: demo, origin: origin});
+				function (origin) {
+					return A2(
+						$elm$json$Json$Decode$andThen,
+						function (demo) {
+							return $elm$json$Json$Decode$succeed(
+								{demo: demo, origin: origin, shauth: shauth});
+						},
+						A2($elm$json$Json$Decode$field, 'demo', $elm$json$Json$Decode$bool));
 				},
-				A2($elm$json$Json$Decode$field, 'demo', $elm$json$Json$Decode$bool));
+				A2($elm$json$Json$Decode$field, 'origin', $elm$json$Json$Decode$string));
 		},
-		A2($elm$json$Json$Decode$field, 'origin', $elm$json$Json$Decode$string)))(0)}});}(this));
+		A2($elm$json$Json$Decode$field, 'shauth', $elm$json$Json$Decode$bool)))(0)}});}(this));

@@ -31,6 +31,13 @@ func TestOpenIDConnectSessionStorePersistsAtomicLogoutReplay(t *testing.T) {
 	if !ok || found.Session.RawIDToken != session.RawIDToken || found.Session.Issuer != session.Issuer || found.Session.PostLogoutRedirectURI != session.PostLogoutRedirectURI {
 		t.Fatalf("stored OpenID Connect session = %#v", found)
 	}
+	if _, ok := firstStore.ApplyFrontchannelLogout(ctx, auth.OpenIDConnectFrontchannelLogout{Provider: "shauth", Issuer: session.Issuer, ClientID: session.ClientID, SID: session.SID}).(auth.FrontchannelLogoutApplied); !ok {
+		t.Fatal("Front-Channel Logout was not applied")
+	}
+	assertRefreshTokenStatus(t, handle, firstToken.Hash, "revoked")
+	if _, err := handle.Exec(ctx, "update refresh_tokens set status = 'active' where token_hash = $1", firstToken.Hash.String()); err != nil {
+		t.Fatal(err)
+	}
 
 	now := time.Now()
 	claim := auth.OpenIDConnectLogoutClaim{

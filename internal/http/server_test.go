@@ -648,6 +648,10 @@ func (testAuth) Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshRes
 	}
 }
 
+func (testAuth) ValidateSession(context.Context, auth.RefreshTokenPlain) auth.ValidateRefreshTokenResult {
+	return auth.RefreshTokenActive{}
+}
+
 func (testAuth) CreateGuest(context.Context) auth.GuestResult {
 	idResult := core.NewGuestID()
 	idCreated := idResult.(core.GuestIDCreated)
@@ -692,6 +696,19 @@ func (testAuth) DeactivateAccount(context.Context, core.UserID) auth.AccountActi
 
 func (testVerifier) Verify(auth.AccessToken) auth.SubjectVerifyResult {
 	return auth.SubjectVerified{Value: auth.UserSubject{ID: stableTestUserID}}
+}
+
+func TestShauthProtectedAPIsRequireTheActiveBrowserSession(t *testing.T) {
+	server := Server{authService: testAuth{}, subjectVerifier: testVerifier{}, requireBrowserSession: true}
+	request := httptest.NewRequest(http.MethodGet, "/api/credits/balance", nil)
+	request.Header.Set("Authorization", "Bearer "+testAccessToken().String())
+	if _, accepted := server.requireUserSubject(request).(userSubjectAccepted); accepted {
+		t.Fatal("bearer token without a Sharecrop browser session was accepted")
+	}
+	request.AddCookie(&http.Cookie{Name: "sharecrop_refresh_token", Value: testRefreshToken().String()})
+	if _, accepted := server.requireUserSubject(request).(userSubjectAccepted); !accepted {
+		t.Fatal("active browser session with a valid bearer token was rejected")
+	}
 }
 
 func (testOrganizationService) CreateOrganization(_ context.Context, actor auth.UserSubject, name org.OrganizationName) org.CreateOrganizationResult {

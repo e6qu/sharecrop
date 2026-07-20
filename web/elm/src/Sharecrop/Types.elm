@@ -24,7 +24,7 @@ import Url exposing (Url)
 
 
 type alias Flags =
-    { origin : String, demo : Bool }
+    { origin : String, demo : Bool, shauth : Bool }
 
 
 type Session
@@ -353,6 +353,7 @@ type alias PublicTaskDetail =
 type alias Model =
     { origin : String
     , demo : Bool
+    , shauth : Bool
     , key : Nav.Key
     , route : Page
     , email : String

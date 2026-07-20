@@ -10,7 +10,7 @@ variable "region" {
 }
 
 variable "image" {
-  description = "Container image reference to run (the multi-arch manifest), e.g. ghcr.io/e6qu/sharecrop:v1.4.0. Fargate pulls the arm64 variant."
+  description = "Immutable container image reference to run (the multi-architecture manifest), e.g. ghcr.io/e6qu/sharecrop:0123456789ab. AWS Fargate pulls the arm64 variant."
   type        = string
 }
 
@@ -58,36 +58,55 @@ variable "existing_ecs_cluster_arn" {
   }
 }
 
-variable "public_subnet_ids" {
-  description = "Public subnets for the internet-facing load balancer (>= 2 AZs)."
-  type        = list(string)
-}
-
 variable "task_subnet_ids" {
-  description = "Subnets for the ECS tasks. Use private subnets with a NAT gateway (so tasks can pull the image); or public subnets with assign_public_ip = true."
+  description = "Private subnets for the Amazon ECS tasks and Amazon API Gateway VPC Link. Use subnets with outbound registry access through the environment's NAT path."
   type        = list(string)
-}
 
-variable "assign_public_ip" {
-  description = "Give ECS tasks a public IP (required only if task_subnet_ids are public subnets without a NAT gateway)."
-  type        = bool
-  default     = false
+  validation {
+    condition     = length(var.task_subnet_ids) >= 2
+    error_message = "task_subnet_ids must contain at least two private subnets."
+  }
 }
 
 variable "certificate_arn" {
-  description = "ACM certificate ARN used by the HTTPS listener when enable_https is true."
+  description = "AWS Certificate Manager certificate ARN for the regional Amazon API Gateway custom domain."
   type        = string
-  default     = null
-}
-
-variable "enable_https" {
-  description = "Whether to create the HTTPS listener and redirect HTTP to HTTPS. This must be known while Terraform plans, so callers provisioning a certificate in the same apply set it explicitly."
-  type        = bool
-  default     = false
 
   validation {
-    condition     = !var.enable_https || var.certificate_arn != null
-    error_message = "certificate_arn must be set when enable_https is true."
+    condition     = can(regex("^arn:[^:]+:acm:[^:]+:[0-9]+:certificate/.+", var.certificate_arn))
+    error_message = "certificate_arn must be an AWS Certificate Manager certificate ARN."
+  }
+}
+
+variable "domain_name" {
+  description = "Public DNS name bound to the regional Amazon API Gateway HTTP API, e.g. sharecrop.dev.e6qu.dev."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$", var.domain_name))
+    error_message = "domain_name must be a lowercase DNS name."
+  }
+}
+
+variable "api_throttling_burst_limit" {
+  description = "Maximum burst requests admitted by the Amazon API Gateway default route."
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.api_throttling_burst_limit >= 1 && floor(var.api_throttling_burst_limit) == var.api_throttling_burst_limit
+    error_message = "api_throttling_burst_limit must be a positive integer."
+  }
+}
+
+variable "api_throttling_rate_limit" {
+  description = "Steady requests per second admitted by the Amazon API Gateway default route."
+  type        = number
+  default     = 25
+
+  validation {
+    condition     = var.api_throttling_rate_limit > 0
+    error_message = "api_throttling_rate_limit must be greater than zero."
   }
 }
 

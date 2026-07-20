@@ -151,6 +151,21 @@ func TestServiceCreatesGuestSession(t *testing.T) {
 	}
 }
 
+func TestSessionValidationTracksRefreshFamilyRevocation(t *testing.T) {
+	service := acceptedService(t, newMemoryStore())
+	email := acceptedEmail(t, "session-validation@example.com")
+	registered := service.Register(context.Background(), email, acceptedPassword(t, "correct horse battery staple")).(RegisterAccepted)
+	if _, active := service.ValidateSession(context.Background(), registered.RefreshToken).(RefreshTokenActive); !active {
+		t.Fatal("new refresh session was not active")
+	}
+	if _, done := service.Logout(context.Background(), registered.RefreshToken).(LogoutDone); !done {
+		t.Fatal("logout did not revoke refresh family")
+	}
+	if _, inactive := service.ValidateSession(context.Background(), registered.RefreshToken).(RefreshTokenInactive); !inactive {
+		t.Fatal("revoked refresh session remained active")
+	}
+}
+
 func TestServiceCreatesAndReusesExternalIdentitySession(t *testing.T) {
 	service := acceptedService(t, newMemoryStore())
 	email := acceptedEmail(t, "oidc@example.com")
@@ -384,6 +399,14 @@ func (store *memoryStore) CreateGuestSubject(_ context.Context, id core.GuestID)
 func (store *memoryStore) StoreRefreshToken(_ context.Context, record RefreshTokenRecord) StoreRefreshTokenResult {
 	store.refreshByHash[record.Hash.String()] = record
 	return StoreRefreshTokenAccepted{}
+}
+
+func (store *memoryStore) ValidateRefreshToken(_ context.Context, hash RefreshTokenHash, now time.Time) ValidateRefreshTokenResult {
+	record, found := store.refreshByHash[hash.String()]
+	if !found || !record.ExpiresAt.After(now) {
+		return RefreshTokenInactive{}
+	}
+	return RefreshTokenActive{}
 }
 
 func (store *memoryStore) StoreAccountToken(_ context.Context, id core.UserID, kind AccountTokenKind, token AccountToken) AccountTokenStoreResult {

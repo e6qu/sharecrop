@@ -71,7 +71,11 @@ run_scenario_parity() {
   "$@" > "$log" 2>&1 &
   local pid=$!
 
-  local origin="http://127.0.0.1${SHARECROP_HTTP_ADDR}"
+  local origin="$SHARECROP_HTTP_ADDR"
+  if [[ "$origin" == :* ]]; then
+    origin="127.0.0.1${origin}"
+  fi
+  origin="http://${origin}"
   local ready=0
   # The WASI guest pool takes longer to warm than the native mux, so allow a
   # generous readiness budget.

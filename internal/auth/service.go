@@ -60,6 +60,7 @@ type Store interface {
 	DeactivateUser(context.Context, core.UserID) AccountMutationResult
 	CreateGuestSubject(context.Context, core.GuestID) StoreGuestResult
 	StoreRefreshToken(context.Context, RefreshTokenRecord) StoreRefreshTokenResult
+	ValidateRefreshToken(context.Context, RefreshTokenHash, time.Time) ValidateRefreshTokenResult
 	ConsumeRefreshToken(context.Context, RefreshTokenHash, time.Time) ConsumeRefreshTokenResult
 	RevokeRefreshFamily(context.Context, RefreshTokenHash) RevokeRefreshFamilyResult
 	StoreAccountToken(context.Context, core.UserID, AccountTokenKind, AccountToken) AccountTokenStoreResult
@@ -131,6 +132,10 @@ func (service Service) Logout(ctx context.Context, refreshToken RefreshTokenPlai
 		return LogoutRejected{Reason: result.(RevokeRefreshFamilyRejected).Reason}
 	}
 	return LogoutDone{}
+}
+
+func (service Service) ValidateSession(ctx context.Context, refreshToken RefreshTokenPlain) ValidateRefreshTokenResult {
+	return service.store.ValidateRefreshToken(ctx, HashRefreshToken(refreshToken), service.clock.Now())
 }
 
 type Service struct {

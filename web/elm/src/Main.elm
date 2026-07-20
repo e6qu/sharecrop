@@ -61,6 +61,7 @@ initialModel : Flags -> Nav.Key -> Url -> Model
 initialModel flags key url =
     { origin = flags.origin
     , demo = flags.demo
+    , shauth = flags.shauth
     , key = key
     , route = pageFromUrl url
     , email = ""
@@ -711,7 +712,11 @@ update msg model =
             )
 
         RefreshReceived (Err _) ->
-            ( model, Cmd.none )
+            if model.shauth then
+                ( model, Nav.load "/api/auth/shauth" )
+
+            else
+                ( model, Cmd.none )
 
         SessionRefreshTick _ ->
             ( model, Api.postSessionRefresh )
@@ -726,9 +731,15 @@ update msg model =
             -- The refresh cookie is gone or revoked: the session is over.
             -- Land on the auth screen with an explanation instead of letting
             -- every later click fail into fake empty states.
-            ( { model | session = LoggedOut, authError = Just "Your session expired. Log in again." }
-            , Nav.pushUrl model.key "#/"
-            )
+            if model.shauth then
+                ( { model | session = LoggedOut, authError = Nothing }
+                , Nav.load "/api/auth/shauth"
+                )
+
+            else
+                ( { model | session = LoggedOut, authError = Just "Your session expired. Log in again." }
+                , Nav.pushUrl model.key "#/"
+                )
 
         PasswordResetEmailChanged value ->
             ( { model | resetEmail = value }, Cmd.none )
@@ -1192,7 +1203,9 @@ update msg model =
                 )
 
         LogoutReceived (Err error) ->
-            ( { model | authError = Just ("Sign out failed: " ++ httpErrorLabel error) }, Cmd.none )
+            ( { model | session = LoggedOut, authError = Just ("Sharecrop signed out, but global sign out failed: " ++ httpErrorLabel error) }
+            , Nav.pushUrl model.key "#/"
+            )
 
         DiscoveryIncludeReservedChanged value ->
             Api.withSession model
