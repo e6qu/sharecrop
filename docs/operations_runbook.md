@@ -30,8 +30,11 @@ and the database setup — is in [deployment.md](./deployment.md). In short:
 
 1. A merge to `main` builds and publishes the immutable 12-character commit-SHA
    image to the GitHub Container Registry (`.github/workflows/release.yml`).
-2. Run the one-off `sharecrop migrate up` task against the database.
-3. Roll the `sharecrop-serve` ECS service to the new image tag.
+2. Apply the Terraform module. Its one-time EventBridge Scheduler schedule
+   starts the AWS Step Functions deployment workflow.
+3. Confirm the workflow succeeded. It waits for the standalone Amazon ECS
+   migration task (`sharecrop migrate up`) before it rolls the
+   `sharecrop-serve` service.
 
 For a single-host / non-container deployment, the binary from `make build` plus
 [sharecrop.service](../deploy/systemd/sharecrop.service) still works (copy the

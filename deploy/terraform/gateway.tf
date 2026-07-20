@@ -24,10 +24,21 @@ resource "aws_service_discovery_service" "this" {
 }
 
 resource "aws_apigatewayv2_vpc_link" "this" {
+  count = var.create_api_gateway_vpc_link ? 1 : 0
+
   name               = var.name
   subnet_ids         = var.task_subnet_ids
-  security_group_ids = [aws_security_group.api_gateway_vpc_link.id]
+  security_group_ids = [aws_security_group.api_gateway_vpc_link[0].id]
   tags               = local.tags
+}
+
+locals {
+  api_gateway_vpc_link_id = var.create_api_gateway_vpc_link ? aws_apigatewayv2_vpc_link.this[0].id : var.existing_api_gateway_vpc_link_id
+  api_gateway_vpc_link_security_groups = var.create_api_gateway_vpc_link ? {
+    managed = aws_security_group.api_gateway_vpc_link[0].id
+    } : {
+    shared = var.existing_api_gateway_vpc_link_security_group_id
+  }
 }
 
 resource "aws_apigatewayv2_api" "this" {
@@ -35,6 +46,24 @@ resource "aws_apigatewayv2_api" "this" {
   protocol_type                = "HTTP"
   disable_execute_api_endpoint = true
   tags                         = local.tags
+
+  lifecycle {
+    precondition {
+      condition = !var.create_api_gateway_vpc_link || (
+        var.existing_api_gateway_vpc_link_id == "" &&
+        var.existing_api_gateway_vpc_link_security_group_id == ""
+      )
+      error_message = "Dedicated VPC Link mode rejects existing_api_gateway_vpc_link_id and existing_api_gateway_vpc_link_security_group_id."
+    }
+
+    precondition {
+      condition = var.create_api_gateway_vpc_link || (
+        var.existing_api_gateway_vpc_link_id != "" &&
+        var.existing_api_gateway_vpc_link_security_group_id != ""
+      )
+      error_message = "Shared VPC Link mode requires both existing_api_gateway_vpc_link_id and existing_api_gateway_vpc_link_security_group_id."
+    }
+  }
 }
 
 resource "aws_apigatewayv2_integration" "this" {
@@ -43,7 +72,7 @@ resource "aws_apigatewayv2_integration" "this" {
   integration_uri        = aws_service_discovery_service.this.arn
   integration_method     = "ANY"
   connection_type        = "VPC_LINK"
-  connection_id          = aws_apigatewayv2_vpc_link.this.id
+  connection_id          = local.api_gateway_vpc_link_id
   payload_format_version = "1.0"
   timeout_milliseconds   = 30000
 
@@ -90,6 +119,8 @@ resource "aws_apigatewayv2_stage" "this" {
   }
 
   tags = local.tags
+
+  depends_on = [aws_apigatewayv2_route.this]
 }
 
 resource "aws_apigatewayv2_domain_name" "this" {

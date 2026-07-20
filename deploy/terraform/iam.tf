@@ -11,7 +11,7 @@ data "aws_iam_policy_document" "ecs_assume" {
 # Execution role: pulls the image, writes logs, and reads the secrets injected
 # into the container.
 resource "aws_iam_role" "execution" {
-  name_prefix        = "${var.name}-exec-"
+  name               = "${var.name}-exec"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
   tags               = local.tags
 }
@@ -41,7 +41,7 @@ resource "aws_iam_role_policy" "execution_secrets" {
 # Task role: the app makes no AWS API calls at runtime (the database is reached
 # over the connection string), so this stays empty; it exists for future use.
 resource "aws_iam_role" "task" {
-  name_prefix        = "${var.name}-task-"
+  name               = "${var.name}-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
   tags               = local.tags
 }

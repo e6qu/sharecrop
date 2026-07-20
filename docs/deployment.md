@@ -121,12 +121,15 @@ non-Terraform deploy.
   check runs `sharecrop healthcheck http://127.0.0.1:8080/healthz`; Amazon ECS
   publishes that health to AWS Cloud Map, so unhealthy tasks are excluded from
   request routing without an in-container shell or curl.
-- **`sharecrop-migrate.task-definition.json`** — a one-off task that runs
-  `sharecrop migrate up`. `serve` does **not** auto-migrate (so replicas never
-  race on schema changes); run this task once as part of a deploy, before
-  rolling the service, or as a CodeDeploy/pipeline step. The migration process
-  requires only `DATABASE_URL` and the image-provided migrations directory; it
-  does not require HTTP or token-signing configuration.
+- **`sharecrop-migrate.task-definition.json`** — a standalone task that runs
+  `sharecrop migrate up`. `serve` does **not** auto-migrate. The Terraform
+  module schedules an AWS Step Functions workflow that waits for this
+  standalone Amazon ECS task before it calls `UpdateService`; a failed task
+  cannot roll the application service. The migration process requires only
+  `DATABASE_URL` and the image-provided migrations directory; it does not
+  require HTTP or token-signing configuration. PostgreSQL advisory transaction
+  locking serializes duplicate cloud delivery, and the migration ledger keeps
+  every SQL file at exactly one application.
 
 ### Configuration
 
@@ -171,6 +174,7 @@ module accepts the tenant-specific database URL secret managed by the shared
 Sharecrop must have its own database inside a shared PostgreSQL instance; it
 must not share Shauth's, Ory Hydra's, or another application's migration
 database.
-Run the `sharecrop-migrate` task before the first `serve` rollout and on every
-schema change. Serve and MCP processes refuse to start while a migration baked
-into their image is absent from the database.
+The Terraform deployment workflow runs the `sharecrop-migrate` task before the
+first `serve` rollout and every later workflow change. Serve and MCP processes
+refuse to start while a migration baked into their image is absent from the
+database.

@@ -1304,6 +1304,13 @@ Still open, and dormant by product decision:
 - Go module path: `github.com/e6qu/sharecrop`.
 - Local development uses Docker Compose for PostgreSQL.
 - Application config is driven by `DATABASE_URL`.
+- Amazon ECS service rollouts are controlled by an AWS Step Functions workflow
+  that waits for the standalone database migration task before updating the
+  service; Terraform never rolls the application service ahead of migrations.
+- Shared environments may set a plan-known ownership boolean to reuse an
+  existing Amazon API Gateway VPC Link and its paired security group, including
+  resource-derived IDs that remain unknown until apply. Standalone deployments
+  create a dedicated link by default.
 - Task runner is `make`.
 - Frontend tool runner is Deno, not npm.
 - Elm compiler and Tailwind are invoked through Deno-managed tooling or pinned local tooling without npm.

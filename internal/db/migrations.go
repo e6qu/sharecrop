@@ -24,6 +24,18 @@ func MigrateUp(ctx context.Context, pool *pgxpool.Pool, migrationsDir string) er
 		_ = tx.Rollback(ctx)
 	}()
 
+	// A deployment can be delivered more than once by the cloud control plane.
+	// Serialize migrators for this Sharecrop database so every SQL file is
+	// applied by one transaction while later deliveries observe its ledger row.
+	if _, err := tx.Exec(ctx, `
+		select pg_advisory_xact_lock(
+			hashtext(current_database()),
+			hashtext('sharecrop-schema-migrations')
+		)
+	`); err != nil {
+		return fmt.Errorf("lock database migrations: %w", err)
+	}
+
 	_, err = tx.Exec(ctx, `
 		create table if not exists schema_migrations (
 			name text primary key,
