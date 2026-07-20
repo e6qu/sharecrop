@@ -24,6 +24,38 @@ import (
 
 const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logout"
 
+const shauthSignedOutDocument = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#6f2dbd" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#171124" media="(prefers-color-scheme: dark)">
+  <title>Signed out · Sharecrop</title>
+  <style>
+    :root{color-scheme:light dark;--bg:#fff8ec;--surface:#fff;--text:#251b35;--muted:#695d73;--border:#e1cfe8;--brand:#6f2dbd;--brand-strong:#55208f;--accent:#dc267f;--focus:#0759c7;--shadow:0 1.5rem 4rem rgba(78,39,96,.18);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    *{box-sizing:border-box}body{min-width:320px;min-height:100vh;margin:0;display:grid;place-items:center;padding:1.5rem;background:radial-gradient(circle at 15% 5%,#ffe076 0,transparent 24rem),radial-gradient(circle at 90% 90%,#ff9ecb 0,transparent 28rem),var(--bg);color:var(--text)}
+    main{width:min(100%,31rem);padding:clamp(1.5rem,6vw,2.5rem);border:1px solid var(--border);border-radius:1.25rem;background:var(--surface);box-shadow:var(--shadow)}
+    .brand{display:flex;align-items:center;gap:.7rem;margin:0 0 2rem;font-weight:850;letter-spacing:-.025em}.brand-mark{display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:.85rem;background:linear-gradient(135deg,var(--brand),var(--accent));color:#fff;box-shadow:0 .5rem 1.2rem rgba(111,45,189,.3)}
+    .eyebrow{margin:0 0 .45rem;color:var(--accent);font-size:.8rem;font-weight:850;letter-spacing:.09em;text-transform:uppercase}h1{margin:0 0 .75rem;font-size:clamp(2rem,8vw,3.25rem);line-height:1.05;letter-spacing:-.045em}p{margin:0;color:var(--muted)}
+    .actions{margin-top:1.75rem}.button{display:inline-flex;min-height:3rem;align-items:center;justify-content:center;padding:.7rem 1.1rem;border-radius:.75rem;background:var(--brand);color:#fff;font-weight:800;text-decoration:none;box-shadow:0 .6rem 1.4rem rgba(111,45,189,.25)}.button:hover{background:var(--brand-strong)}.button:focus-visible{outline:3px solid var(--focus);outline-offset:4px}
+    @media(prefers-color-scheme:dark){:root{--bg:#171124;--surface:#251d35;--text:#faf6ff;--muted:#cfc4d8;--border:#564666;--brand:#b77cff;--brand-strong:#9d5fea;--accent:#ff83bd;--focus:#ffd166;--shadow:0 1.5rem 4rem rgba(0,0,0,.38)}body{background:radial-gradient(circle at 15% 5%,#503013 0,transparent 24rem),radial-gradient(circle at 90% 90%,#521f43 0,transparent 28rem),var(--bg)}.button{color:#1c1028}}
+    @media(forced-colors:active){.brand-mark,.button{border:2px solid ButtonText;box-shadow:none}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+  </style>
+</head>
+<body>
+  <main aria-labelledby="signed-out-title" aria-describedby="signed-out-description">
+    <p class="brand"><span class="brand-mark" aria-hidden="true">S</span><span>Sharecrop</span></p>
+    <p class="eyebrow">Session ended</p>
+    <h1 id="signed-out-title">You are signed out</h1>
+    <p id="signed-out-description">Your Sharecrop session and the shared Shauth single sign-on session ended. Sign in again when you are ready.</p>
+    <p class="actions"><a class="button" href="/api/auth/shauth">Sign in with Shauth</a></p>
+  </main>
+</body>
+</html>`
+
 type shauthConfig struct {
 	issuer, clientID, clientSecret, publicURL string
 	allowInsecure                             bool
@@ -403,5 +435,5 @@ func (server Server) shauthSignedOut(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Signed out · Sharecrop</title><style>:root{font:16px system-ui,sans-serif;color-scheme:light dark}body{min-height:100vh;margin:0;display:grid;place-items:center;background:#f6f8fa;color:#1f2328}main{width:min(28rem,calc(100% - 3rem));padding:2rem;border:1px solid #d0d7de;border-radius:1rem;background:#fff;box-shadow:0 1rem 3rem #1f23281f}h1{margin-top:0}a{display:inline-block;padding:.7rem 1rem;border-radius:.5rem;background:#1f883d;color:#fff;font-weight:700;text-decoration:none}a:focus-visible{outline:3px solid #0969da;outline-offset:3px}@media(prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}main{background:#161b22;border-color:#30363d}a{background:#238636}}</style></head><body><main><h1>You are signed out</h1><p>The sign-out flow ended this Sharecrop browser session.</p><a href="/api/auth/shauth">Sign in again</a></main></body></html>`))
+	_, _ = w.Write([]byte(shauthSignedOutDocument))
 }

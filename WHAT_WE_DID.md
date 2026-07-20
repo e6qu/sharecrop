@@ -6700,3 +6700,23 @@ the release count, complete architecture triplets, recognized tags, and maximum
 version count. The deterministic fixture covered each invalid shape. The
 historical Sharecrop package was cleaned from 59 versions, including 56
 untagged versions, to its current complete three-version release.
+
+# Shauth signed-out recovery contract
+
+Sharecrop's relying-party logout returned to a branded, accessible application
+page instead of restarting OpenID Connect or leaving recovery implicit. The
+page stayed stable across reloads, adapted to light, dark, forced-color, and
+reduced-motion preferences, and exposed an explicit same-origin `Sign in with
+Shauth` control. Its content security policy prohibited external resources and
+the handler continued to fail closed until any retained local refresh family
+was revoked.
+
+The real browser contract used Sharecrop's production WASI binary with Shauth
+commit `470f7890ce6f0391bca3e4f6ce4ef8a17f1c7933`, Ory Hydra v26.2.0, and an
+isolated PostgreSQL database. It covered Apps-catalog launch, direct launch,
+silent SSO, relying-party logout, app-local reload and recovery,
+provider-initiated global logout, retained access-token rejection, retained
+refresh-token rejection, and direct-entry fail-closed behavior. The suite also
+rendered distinct light and dark pages. Sharecrop's CI checkout and local
+contract runner pinned the same Shauth commit, eliminating a stale provider
+contract mismatch.

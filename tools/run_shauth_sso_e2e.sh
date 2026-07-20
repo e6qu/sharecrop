@@ -7,13 +7,12 @@ root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
 shauth_source=${SHAUTH_SOURCE_DIR:?SHAUTH_SOURCE_DIR must point to the Shauth checkout under test}
-expected_shauth_commit=${SHAUTH_EXPECTED_COMMIT:-15302f47330fd531536e366b2befc1d370ed7e0d}
+expected_shauth_commit=${SHAUTH_EXPECTED_COMMIT:-470f7890ce6f0391bca3e4f6ce4ef8a17f1c7933}
 actual_shauth_commit=$(git -C "$shauth_source" rev-parse HEAD)
 if [ "$actual_shauth_commit" != "$expected_shauth_commit" ]; then
 	printf 'Shauth checkout is %s; expected %s\n' "$actual_shauth_commit" "$expected_shauth_commit" >&2
 	exit 1
 fi
-
 compose_project=sharecrop-shauth-e2e
 compose_file=$shauth_source/compose.yaml
 compose_override=$root/tests/shauth-compose.override.yaml
