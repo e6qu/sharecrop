@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Builds the sharecrop backend container image following the repo standard:
 #
-#   manifest (multi-arch index) : <image>            e.g. ghcr.io/e6qu/sharecrop:1.4.0
+#   manifest (multi-arch index) : <image>            e.g. ghcr.io/e6qu/sharecrop:0123456789ab
 #   per-arch image              : <image>-arm64      (primary, Graviton)
 #   per-arch image              : <image>-amd64
 #
@@ -29,7 +29,7 @@ fi
 
 image="$1"
 if [[ "$image" != *:* ]]; then
-  echo "image reference must include a tag, e.g. ghcr.io/e6qu/sharecrop:1.4.0" >&2
+  echo "image reference must include a tag, e.g. ghcr.io/e6qu/sharecrop:0123456789ab" >&2
   exit 2
 fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -45,6 +45,7 @@ host_arch() {
 if [[ "${2:-}" == "manifest" ]]; then
   echo "assembling multi-arch manifest ${image} from the per-arch images"
   docker buildx imagetools create --tag "${image}" "${image}-arm64" "${image}-amd64"
+  "$repo_root/tools/verify_container_shape.sh" "${image}" manifest
   echo "done: manifest ${image} -> ${image}-arm64, ${image}-amd64"
   exit 0
 fi
@@ -58,9 +59,9 @@ if [[ "$arch" != "$(host_arch)" ]]; then
   echo "warning: building ${arch} on a $(host_arch) host runs the whole build under emulation (slow)" >&2
 fi
 
-output="--push"
+output=(--output "type=registry,oci-mediatypes=true")
 if [[ "${PUSH:-true}" != "true" ]]; then
-  output="--load"
+  output=(--load)
   echo "PUSH=false: loading ${image}-${arch} into the local docker (not pushing)"
 fi
 
@@ -68,6 +69,17 @@ echo "building ${image}-${arch} (linux/${arch})"
 docker buildx build \
   --platform "linux/${arch}" \
   --tag "${image}-${arch}" \
-  $output \
+  --provenance=false \
+  --sbom=false \
+  "${output[@]}" \
   "$repo_root"
+if [[ "${PUSH:-true}" == "true" ]]; then
+  "$repo_root/tools/verify_container_shape.sh" "${image}" "$arch"
+else
+  actual_platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "${image}-${arch}")"
+  if [[ "$actual_platform" != "linux/${arch}" ]]; then
+    echo "loaded ${image}-${arch} has platform ${actual_platform}, expected linux/${arch}" >&2
+    exit 1
+  fi
+fi
 echo "done: ${image}-${arch}"

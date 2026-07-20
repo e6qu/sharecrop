@@ -2,16 +2,21 @@
 set -euo pipefail
 
 # Prunes old container image versions from the GitHub Container Registry, keeping
-# only the most recent N release versions (vMAJOR.MINOR.PATCH) and their per-arch
-# (-arm64 / -amd64) images. Best-effort: it needs `gh` authenticated with a token
-# that has packages write/delete on the package, and it is safe to run repeatedly.
+# only the most recent N immutable 12-character commit-SHA releases and their
+# per-architecture (-arm64 / -amd64) images. It needs `gh` authenticated with a
+# token that has packages write/delete on the package.
 #
 # Usage: tools/prune_ghcr_versions.sh <owner> <package> [keep]
-#   keep defaults to 25.
+#   keep defaults to 20.
 
 owner="${1:?usage: prune_ghcr_versions.sh <owner> <package> [keep]}"
 package="${2:?usage: prune_ghcr_versions.sh <owner> <package> [keep]}"
-keep="${3:-25}"
+keep="${3:-20}"
+
+if [[ ! "$keep" =~ ^[1-9][0-9]*$ ]]; then
+  echo "keep must be a positive integer (got ${keep})" >&2
+  exit 2
+fi
 
 owner_type="$(gh api "/users/${owner}" --jq .type)"
 case "$owner_type" in
@@ -23,13 +28,15 @@ case "$owner_type" in
     ;;
 esac
 
-versions="$(gh api --paginate "$base")"
+versions_file="$(mktemp)"
+trap 'rm -f "$versions_file"' EXIT
+gh api --paginate "${base}?per_page=100" | jq -s 'add' > "$versions_file"
 
-# Select the ids to delete: sort the release-tagged versions newest-first, drop
-# the newest $keep, then take the release tags of the rest plus their
-# -arm64/-amd64 siblings, and emit every version id carrying one of those tags.
+# Select the ids to delete: keep the newest $keep commit-SHA roots and their
+# architecture siblings, then emit every other tagged package version. Untagged
+# child manifests are left for GitHub Container Registry garbage collection.
 # See tools/prune_ghcr_versions_selection.jq for the standalone, tested filter.
-ids="$(printf '%s' "$versions" | jq -r --argjson keep "$keep" -f "$(dirname "${BASH_SOURCE[0]}")/prune_ghcr_versions_selection.jq")"
+ids="$(jq -r --argjson keep "$keep" -f "$(dirname "${BASH_SOURCE[0]}")/prune_ghcr_versions_selection.jq" "$versions_file")"
 
 count=0
 for id in $ids; do

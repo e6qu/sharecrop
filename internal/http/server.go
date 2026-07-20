@@ -22,6 +22,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
+	"github.com/e6qu/sharecrop/web"
 )
 
 type healthResponse struct {
@@ -33,6 +34,7 @@ type AuthService interface {
 	Login(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.LoginResult
 	LoginExternal(context.Context, string, string, auth.EmailAddress) auth.ExternalLoginResult
 	Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult
+	ValidateSession(context.Context, auth.RefreshTokenPlain) auth.ValidateRefreshTokenResult
 	Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult
 	CreateGuest(context.Context) auth.GuestResult
 	ListUsers(context.Context, string, core.Page) auth.UserDirectoryResult
@@ -174,30 +176,31 @@ type ModerationTriageService interface {
 }
 
 type Server struct {
-	staticFiles          fs.FS
-	authService          AuthService
-	subjectVerifier      SubjectVerifier
-	organizationService  OrganizationService
-	taskService          TaskService
-	submissionService    SubmissionService
-	ledgerService        LedgerService
-	agentService         AgentService
-	orgCredentialService OrgCredentialService
-	assetService         AssetService
-	mcpServer            mcp.Server
-	mcpSessions          *mcpHTTPSessionStore
-	secureCookies        bool
-	ipRateLimiter        RateLimiter
-	subjectRateLimiter   RateLimiter
-	platformAdmins       PlatformAdminService
-	accountTokens        accountTokenDelivery
-	auditService         AuditService
-	notificationService  NotificationService
-	savedQueueViews      SavedQueueViewService
-	privacyService       PrivacyService
-	moderationTriage     ModerationTriageService
-	shauth               shauthConfig
-	oidcSessions         auth.OpenIDConnectSessionStore
+	staticFiles           fs.FS
+	authService           AuthService
+	subjectVerifier       SubjectVerifier
+	organizationService   OrganizationService
+	taskService           TaskService
+	submissionService     SubmissionService
+	ledgerService         LedgerService
+	agentService          AgentService
+	orgCredentialService  OrgCredentialService
+	assetService          AssetService
+	mcpServer             mcp.Server
+	mcpSessions           *mcpHTTPSessionStore
+	secureCookies         bool
+	ipRateLimiter         RateLimiter
+	subjectRateLimiter    RateLimiter
+	platformAdmins        PlatformAdminService
+	accountTokens         accountTokenDelivery
+	auditService          AuditService
+	notificationService   NotificationService
+	savedQueueViews       SavedQueueViewService
+	privacyService        PrivacyService
+	moderationTriage      ModerationTriageService
+	shauth                shauthConfig
+	requireBrowserSession bool
+	oidcSessions          auth.OpenIDConnectSessionStore
 }
 
 type RuntimeState struct {
@@ -275,18 +278,19 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		mcpSessions:          runtime.MCPSessions,
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
-		secureCookies:       os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
-		ipRateLimiter:       runtime.IPRateLimiter,
-		subjectRateLimiter:  runtime.SubjectRateLimiter,
-		accountTokens:       newAccountTokenDeliveryFromEnv(),
-		auditService:        runtime.AuditService,
-		notificationService: runtime.NotificationService,
-		savedQueueViews:     runtime.SavedQueueViews,
-		privacyService:      runtime.PrivacyService,
-		platformAdmins:      runtime.PlatformAdmins,
-		moderationTriage:    runtime.ModerationTriage,
-		oidcSessions:        runtime.OIDCSessions,
-		shauth:              shauth,
+		secureCookies:         os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
+		ipRateLimiter:         runtime.IPRateLimiter,
+		subjectRateLimiter:    runtime.SubjectRateLimiter,
+		accountTokens:         newAccountTokenDeliveryFromEnv(),
+		auditService:          runtime.AuditService,
+		notificationService:   runtime.NotificationService,
+		savedQueueViews:       runtime.SavedQueueViews,
+		privacyService:        runtime.PrivacyService,
+		platformAdmins:        runtime.PlatformAdmins,
+		moderationTriage:      runtime.ModerationTriage,
+		oidcSessions:          runtime.OIDCSessions,
+		shauth:                shauth,
+		requireBrowserSession: shauth.enabled() || os.Getenv("SHARECROP_REQUIRE_BROWSER_SESSION") == "true",
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
@@ -294,6 +298,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/auth/login", server.login)
 	mux.HandleFunc("GET /api/auth/shauth", server.shauthLogin)
 	mux.HandleFunc("GET /api/auth/shauth/callback", server.shauthCallback)
+	mux.HandleFunc("GET /api/auth/shauth/frontchannel-logout", server.shauthFrontchannelLogout)
 	mux.HandleFunc("POST /api/auth/shauth/backchannel-logout", server.shauthBackchannelLogout)
 	mux.HandleFunc("GET /api/auth/signed-out", server.shauthSignedOut)
 	mux.HandleFunc("POST /api/auth/refresh", server.refresh)
@@ -401,7 +406,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("GET /mcp", server.mcpStream)
 	mux.HandleFunc("DELETE /mcp", server.mcpDeleteSession)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
-	mux.HandleFunc("GET /", index(staticFiles))
+	mux.HandleFunc("GET /", server.index)
 	return withRequestBodyLimit(mux)
 }
 
@@ -431,24 +436,25 @@ func health(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(healthResponse{Status: "ok"})
 }
 
-func index(staticFiles fs.FS) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// The browser app is a single-page application served from the same
-		// shell for every in-app route, so deep links and refreshes load the
-		// app. Unmatched API paths still return 404 rather than the shell.
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			http.NotFound(w, r)
-			return
-		}
-		data, err := fs.ReadFile(staticFiles, "index.html")
-		if err != nil {
-			http.Error(w, "index not found", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(data)
+func (server Server) index(w http.ResponseWriter, r *http.Request) {
+	// The browser app is a single-page application served from the same
+	// shell for every in-app route, so deep links and refreshes load the
+	// app. Unmatched API paths still return 404 rather than the shell.
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		http.NotFound(w, r)
+		return
 	}
+	if server.requireBrowserSession && !server.requireActiveBrowserSession(w, r) {
+		return
+	}
+	data, err := web.ApplicationShell(server.staticFiles, server.shauth.enabled())
+	if err != nil {
+		http.Error(w, "index not found", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 func (balanceResponse) writableResponse() {}
@@ -622,6 +628,19 @@ func (server Server) requireWorkerSubject(r *http.Request, scope agent.Scope, ta
 }
 
 func (server Server) requireUserSubject(r *http.Request) userSubjectResult {
+	if server.requireBrowserSession {
+		cookie, err := r.Cookie("sharecrop_refresh_token")
+		if err != nil || cookie.Value == "" {
+			return userSubjectRejected{reason: "active Sharecrop browser session is required"}
+		}
+		parsed, ok := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted)
+		if !ok {
+			return userSubjectRejected{reason: "active Sharecrop browser session is required"}
+		}
+		if _, active := server.authService.ValidateSession(r.Context(), parsed.Value).(auth.RefreshTokenActive); !active {
+			return userSubjectRejected{reason: "active Sharecrop browser session is required"}
+		}
+	}
 	rawHeader := r.Header.Get("Authorization")
 	rawToken, matched := strings.CutPrefix(rawHeader, "Bearer ")
 	if !matched {
@@ -1079,7 +1098,7 @@ func authResponseForSubject(subject auth.Subject, accessToken auth.AccessToken) 
 // allowByIP rate-limits an unauthenticated endpoint by client IP. It writes a
 // 429 and returns false when the caller should stop.
 func (server Server) allowByIP(w http.ResponseWriter, r *http.Request) bool {
-	if !server.ipRateLimiter.Allow(clientIP(r)) {
+	if !server.ipRateLimiter.Allow(r.URL.Path + ":" + clientIP(r)) {
 		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
 		return false
 	}

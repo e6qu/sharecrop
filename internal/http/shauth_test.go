@@ -89,7 +89,7 @@ func TestSHAUTHBackchannelLogoutVerifiesTokenAndRevokesIdentitySessions(t *testi
 	claims := logoutTokenFixture{
 		Issuer: issuer.URL, Audience: "sharecrop", Subject: "sha-subject", SID: "sha-session",
 		IssuedAt: now.Unix(), Expires: now.Add(time.Minute).Unix(), JWTID: "logout-id",
-		Events: map[string]json.RawMessage{backchannelLogoutEvent: json.RawMessage(`{"extension":true}`), "https://example.test/event": json.RawMessage(`{}`)},
+		Events: map[string]json.RawMessage{backchannelLogoutEvent: json.RawMessage(`{}`), "https://example.test/event": json.RawMessage(`{}`)},
 	}
 	raw, err := jwt.Signed(signer).Claims(claims).Serialize()
 	if err != nil {
@@ -124,6 +124,9 @@ func TestSHAUTHBackchannelLogoutVerifiesTokenAndRevokesIdentitySessions(t *testi
 		"null nonce":  func(value *logoutTokenFixture) { value.Nonce = json.RawMessage(`null`) },
 		"event array": func(value *logoutTokenFixture) {
 			value.Events = map[string]json.RawMessage{backchannelLogoutEvent: json.RawMessage(`[]`)}
+		},
+		"nonempty event": func(value *logoutTokenFixture) {
+			value.Events = map[string]json.RawMessage{backchannelLogoutEvent: json.RawMessage(`{"reason":"logout"}`)}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -321,6 +324,62 @@ func TestSHAUTHLogoutUsesIDTokenHintAndExactSignedOutLanding(t *testing.T) {
 	}
 }
 
+func TestSHAUTHLogoutRevokesLocallyBeforeProviderDiscoveryFailure(t *testing.T) {
+	provider := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "discovery unavailable", http.StatusServiceUnavailable)
+	}))
+	defer provider.Close()
+	recorder := &recordingLogoutAuth{}
+	server := Server{
+		authService: recorder, oidcSessions: newMemoryOpenIDConnectSessionStore(),
+		shauth: shauthConfig{issuer: provider.URL, clientID: "sharecrop", clientSecret: "secret", publicURL: "https://sharecrop.example.test", provider: &cachedShauthProvider{}},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	request.Header.Set("Origin", "https://sharecrop.example.test")
+	request.AddCookie(&http.Cookie{Name: "sharecrop_refresh_token", Value: testRefreshToken().String()})
+	request = request.WithContext(oidc.ClientContext(request.Context(), provider.Client()))
+	response := httptest.NewRecorder()
+	server.logout(response, request)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("logout = %d, want 502: %s", response.Code, response.Body.String())
+	}
+	if recorder.calls != 1 {
+		t.Fatalf("local revocations = %d, want 1", recorder.calls)
+	}
+	if cookies := response.Result().Cookies(); len(cookies) != 1 || cookies[0].Name != "sharecrop_refresh_token" || cookies[0].MaxAge >= 0 {
+		t.Fatalf("provider failure did not clear local cookie: %#v", cookies)
+	}
+}
+
+func TestSHAUTHFrontchannelLogoutRequiresTrustedIssuerAndSessionID(t *testing.T) {
+	sessions := newMemoryOpenIDConnectSessionStore()
+	hash := auth.HashRefreshToken(testRefreshToken())
+	session := auth.OpenIDConnectSession{Provider: "shauth", Issuer: "https://auth.example.test", ClientID: "sharecrop", SID: "provider-session"}
+	sessions.StoreOpenIDConnectSession(context.Background(), hash, session)
+	server := Server{oidcSessions: sessions, shauth: shauthConfig{issuer: session.Issuer, clientID: session.ClientID, clientSecret: "secret", publicURL: "https://sharecrop.example.test"}}
+
+	untrusted := httptest.NewRecorder()
+	server.shauthFrontchannelLogout(untrusted, httptest.NewRequest(http.MethodGet, "/api/auth/shauth/frontchannel-logout?iss=https%3A%2F%2Fattacker.example&sid=provider-session", nil))
+	if untrusted.Code != http.StatusOK {
+		t.Fatalf("untrusted front-channel response = %d", untrusted.Code)
+	}
+	if _, found := sessions.FindOpenIDConnectSession(context.Background(), hash).(auth.OpenIDConnectSessionFound); !found {
+		t.Fatal("untrusted front-channel request revoked the session")
+	}
+
+	trusted := httptest.NewRecorder()
+	server.shauthFrontchannelLogout(trusted, httptest.NewRequest(http.MethodGet, "/api/auth/shauth/frontchannel-logout?iss=https%3A%2F%2Fauth.example.test&sid=provider-session", nil))
+	if trusted.Code != http.StatusOK {
+		t.Fatalf("trusted front-channel response = %d: %s", trusted.Code, trusted.Body.String())
+	}
+	if _, found := sessions.FindOpenIDConnectSession(context.Background(), hash).(auth.OpenIDConnectSessionNotFound); !found {
+		t.Fatal("trusted front-channel request retained the session")
+	}
+	if trusted.Header().Get("Cache-Control") != "no-store" || !strings.Contains(trusted.Header().Get("Content-Security-Policy"), "https://auth.example.test") {
+		t.Fatalf("front-channel security headers = %#v", trusted.Header())
+	}
+}
+
 func TestSHAUTHSignedOutLandingDoesNotStartAuthentication(t *testing.T) {
 	recorder := &recordingLogoutAuth{}
 	server := Server{authService: recorder}
@@ -432,6 +491,12 @@ func TestSHAUTHConfigRequiresCompleteHTTPSCoordinates(t *testing.T) {
 	}
 	if err := (shauthConfig{issuer: "https://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "https://sharecrop.dev.e6qu.dev"}).validate(); err != nil {
 		t.Fatalf("valid config: %v", err)
+	}
+	if err := (shauthConfig{issuer: "http://localhost:8080", clientID: "client", clientSecret: "secret", publicURL: "http://127.0.0.1:29180", allowInsecure: true}).validate(); err != nil {
+		t.Fatalf("explicit loopback development config: %v", err)
+	}
+	if err := (shauthConfig{issuer: "http://auth.example.test", clientID: "client", clientSecret: "secret", publicURL: "http://sharecrop.example.test", allowInsecure: true}).validate(); err == nil {
+		t.Fatal("non-loopback insecure config was accepted")
 	}
 }
 

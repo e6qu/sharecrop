@@ -1,7 +1,8 @@
 # Operations Runbook
 
-Sharecrop runs as stateless, multi-replica containers behind a load balancer,
-with all state in PostgreSQL. Production is deployed on AWS ECS Fargate; the full
+Sharecrop runs as stateless, multi-replica containers in private subnets, with
+all state in PostgreSQL. Production is deployed on Amazon ECS Fargate behind an
+Amazon API Gateway HTTP API private integration and AWS Cloud Map; the full
 deployment reference is [deployment.md](./deployment.md).
 
 ## Required Configuration
@@ -27,8 +28,8 @@ Production runs as a container on ECS Fargate. The full procedure — the slim
 multi-arch (arm64) image, the ghcr release workflow, the ECS task definitions,
 and the database setup — is in [deployment.md](./deployment.md). In short:
 
-1. A merge to `main` builds and publishes the versioned image to ghcr and tags
-   the release (`.github/workflows/release.yml`).
+1. A merge to `main` builds and publishes the immutable 12-character commit-SHA
+   image to the GitHub Container Registry (`.github/workflows/release.yml`).
 2. Run the one-off `sharecrop migrate up` task against the database.
 3. Roll the `sharecrop-serve` ECS service to the new image tag.
 
@@ -76,6 +77,6 @@ The audit endpoint supports optional `action`, `subject_kind`, and `subject_id` 
 
 The database includes `audit_events`, `rate_limit_buckets`, and `mcp_http_sessions` tables as the operations-state schema foundation.
 
-Production `serve` (`cmd/sharecrop`) wires Postgres-backed rate-limit buckets, persisted MCP HTTP session identity, and persisted MCP replay events against those tables (migrations `000024_operations_foundation.sql` and `000026_mcp_http_events.sql`), along with Postgres-backed audit events, notifications, saved queue views, privacy requests, platform admins, and moderation triage. This makes `serve` stateless, so it scales horizontally as multiple replicas behind a load balancer: MCP sessions and replay events are shared through Postgres, and SSE subscribers deliver by polling the replay table (the WASI-hosted backend returns a bounded response rather than holding a stream open). Real-time cross-replica SSE push would still want an HTTP/2 streaming transport or pub/sub (see DO_NEXT.md); polling covers correctness today. The only process-local state is the per-process rate-limit buckets, which are defense-in-depth, not correctness. The in-memory defaults apply only to the test/demo HTTP constructor, not to `serve`.
+Production `serve` (`cmd/sharecrop`) wires Postgres-backed rate-limit buckets, persisted MCP HTTP session identity, and persisted MCP replay events against those tables (migrations `000024_operations_foundation.sql` and `000026_mcp_http_events.sql`), along with Postgres-backed audit events, notifications, saved queue views, privacy requests, platform admins, and moderation triage. This makes `serve` stateless, so it scales horizontally across the task instances discovered through AWS Cloud Map: MCP sessions and replay events are shared through Postgres, and SSE subscribers deliver by polling the replay table (the WASI-hosted backend returns a bounded response rather than holding a stream open). Real-time cross-replica SSE push would still want an HTTP/2 streaming transport or pub/sub (see DO_NEXT.md); polling covers correctness today. The only process-local state is the per-process rate-limit buckets, which are defense-in-depth, not correctness. The in-memory defaults apply only to the test/demo HTTP constructor, not to `serve`.
 
 Sharecrop rewards are internal-only: Sharecrop credits and admin-minted Sharecrop collectibles. User/org/per-project tokens, external wallets, and crypto integrations are not part of the operating model.

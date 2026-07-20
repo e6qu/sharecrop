@@ -218,9 +218,10 @@ When the UI changes:
 
 The backend runs the same wasm app as the browser demo, hosted server-side
 through the WASI guest pool (`cmd/sharecrop serve`), as **stateless replicas on
-ECS Fargate (arm64) behind a load balancer**, with all state in Postgres. The
-browser demo is `js/wasm`; the backend is the `wasip1` guest under wazero. See
-[docs/deployment.md](./docs/deployment.md) for the full setup.
+Amazon ECS Fargate (arm64) in private subnets, discovered through AWS Cloud Map
+by an Amazon API Gateway HTTP API private integration**, with all state in
+Postgres. The browser demo is `js/wasm`; the backend is the `wasip1` guest under
+wazero. See [docs/deployment.md](./docs/deployment.md) for the full setup.
 
 Container images are multi-arch and follow this naming standard:
 
@@ -233,15 +234,13 @@ Build a per-arch image with `tools/build_container.sh <image:tag> <arch>` and
 assemble the manifest with `tools/build_container.sh <image:tag> manifest`.
 
 **Every** merge to `main` builds and publishes an image. The Release workflow
-(`.github/workflows/release.yml`) computes the next version from **conventional
-commits** since the last tag (`tools/next_version.sh`: **patch by default**;
-`feat` → minor; `!`/`BREAKING CHANGE` → major), builds the multi-arch image,
-publishes it to the **GitHub Container Registry** (`ghcr.io/<owner>/<repo>:<version>`,
-no `:latest`), tags the release, and prunes old images to the newest 25
-(`tools/prune_ghcr_versions.sh`). Because merges squash to the PR title, **PR
-titles should follow the conventional-commit format** (e.g. `feat: …`,
-`fix(scope): …`) so `feat`/breaking changes bump the right component; anything
-else is a patch.
+(`.github/workflows/release.yml`) uses the merged commit's immutable
+12-character short SHA, builds direct Linux arm64 and Linux amd64 images on
+native runners, assembles the generic two-platform manifest, and publishes it to
+the **GitHub Container Registry** as `ghcr.io/<owner>/<repo>:<sha12>` with
+`<sha12>-arm64` and `<sha12>-amd64` architecture tags. It publishes no `latest`,
+`main`, or semantic-version tags. Registry-shape checks run after publication,
+and `tools/prune_ghcr_versions.sh` retains the newest 20 releases.
 
 ## Task Workflow
 

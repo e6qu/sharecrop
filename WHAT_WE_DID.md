@@ -12,10 +12,28 @@ creation.
 
 ---
 
-HTTPS listener creation now uses the explicit, plan-known `enable_https` input
-instead of deriving resource counts from an ACM certificate ARN. Environments
-can create a certificate and its listener in one Terraform apply without an
-unknown-count graph error; the module validates that HTTPS has a certificate.
+The deployment stopped provisioning an Application Load Balancer. An Amazon API
+Gateway HTTP API used a VPC Link and AWS Cloud Map SRV service to reach healthy
+Amazon ECS Fargate tasks directly in private subnets. Tasks received no public
+IP addresses, and their HTTP security group admitted only the VPC Link security
+group. The unmanaged execute-api endpoint was disabled; the regional custom
+domain remained TLS-only. The default route applied explicit burst/rate
+throttles, detailed metrics, and structured access logs.
+
+The distroless container gained a real `sharecrop healthcheck` command, and both
+Terraform and the standalone task-definition reference used it to probe the
+running `/healthz` endpoint. Amazon ECS published container health to AWS Cloud
+Map so Amazon API Gateway excluded unhealthy instances. Command tests exercised
+successful and unhealthy real loopback HTTP endpoints without loading unrelated
+application configuration. Terraform waited for the Amazon ECS service to reach
+steady state, and the deployment circuit breaker rolled back an unhealthy
+rollout.
+
+The project policy gate rejected load-balancer Terraform resources, public task
+IP assignment, and incomplete Amazon API Gateway/AWS Cloud Map private ingress.
+The module exposed the custom-domain target, hosted-zone ID, access-log group,
+service log group, task security group, and migration command for environment
+composition and monitoring.
 
 The ECS deployment module now requires HashiCorp AWS provider 6.x. Its lockfile
 was regenerated with provider 6.55.0 and `terraform validate` passed, allowing
@@ -25,10 +43,6 @@ modules.
 Terraform exposed the provider-created CloudWatch Logs group name used by
 Sharecrop serve tasks. Environment monitoring and Shauth managed-app enrollment
 can now reference the actual log group rather than predicting its suffix.
-
-Terraform exposed the Application Load Balancer canonical hosted-zone ID beside
-its DNS name. Environment Terraform can now create a Route 53 alias record for
-Sharecrop without depending on an implicit or reconstructed zone ID.
 
 Terraform deployment accepted an existing Amazon Elastic Container Service
 cluster ARN. The Sharecrop service and migration command used that cluster when
@@ -49,7 +63,8 @@ fixed MCP SSE pool-exhaustion denial of service, forwarded request-shaping env,
 and a bridge frame limit raised above the request-body limit with the host body
 read bounded. The backend was then packaged as a slim multi-arch (arm64) container
 on distroless with a baked wazero AOT cache so it does no compile at startup, a
-`ghcr` release workflow (conventional-commit versions, no `:latest`), and ECS
+GitHub Container Registry release workflow (immutable commit-SHA versions, no
+mutable tags), and ECS
 Fargate task definitions. Running production on the same wasm app as the demo is
 therefore done, not a "tracked goal." See
 [docs/deployment.md](./docs/deployment.md).
@@ -6575,3 +6590,47 @@ The API generator detected form request bodies and handler response media types,
 so it documented the logout token as `application/x-www-form-urlencoded` and
 the signed-out landing as `text/html`. The WASI bridge no longer carried the
 obsolete non-atomic external-identity logout method.
+
+# Shauth relying-party contract verification
+
+Sharecrop implemented the Shauth relying-party contract across direct entry and
+Apps-catalog launch. The browser used one existing Shauth session without a
+second login or consent, provisioned users by immutable OpenID Connect
+issuer/subject identity, displayed the resulting account, and returned logout
+to Sharecrop's own signed-out page. Configured browser deployments hid local
+registration, password-reset, and access-token entry without removing the
+first-party credential APIs.
+
+The application rejected revoked refresh-token families at both the shell and
+protected browser API boundary, including requests carrying an older access
+token. Logout revoked locally before provider discovery and supported
+RP-Initiated, Front-Channel, and Back-Channel Logout against the same durable
+PostgreSQL session relationships. Exact issuer, audience, signature, expiry,
+event, replay, nonce, session-ID, and subject rules remained enforced. Optional
+profile claims were not promoted into identity keys or mandatory protocol
+claims.
+
+A real browser contract suite ran Sharecrop's production WASI binary with
+Shauth, Ory Hydra v26.2.0, and PostgreSQL 17.5. It covered both entry paths,
+automatic SSO, callback provisioning, account identity, app-local return after
+logout, provider-session termination, stale-token rejection, and subsequent
+entry. The general Playwright suite passed all 62 cases with retries disabled.
+Authentication rate limits were separated by operation and client IP, and the
+test harness derived non-default server coordinates consistently, eliminating
+the retries that had hidden cross-flow starvation and port mismatches. The SSO
+browser contract waited for the application's initial API fan-out before
+cross-origin navigation, so expected navigation cancellation could not mask a
+real browser request failure. The
+platform-administrator integration test asserted its own identities instead of
+the global row count, so repeated runs against a persistent PostgreSQL database
+verified lifecycle behavior without requiring an empty database.
+
+# Immutable multi-architecture container publication
+
+Every merge published one immutable 12-character commit-SHA tag and direct
+`-arm64` and `-amd64` architecture tags. Architecture builds disabled provenance
+and SBOM attestations, and the publisher rejected an architecture tag unless it
+was a direct OCI image manifest for the requested Linux architecture. The
+generic tag was rejected unless it was an OCI image index containing exactly
+Linux amd64 and Linux arm64. Release retention was a required gate that kept the
+newest 20 commit-SHA releases and their architecture siblings.

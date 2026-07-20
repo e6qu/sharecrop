@@ -60,6 +60,20 @@ func (store OpenIDConnectSessionStore) FindOpenIDConnectSession(ctx context.Cont
 	return auth.OpenIDConnectSessionFound{Session: session}
 }
 
+func (store OpenIDConnectSessionStore) ApplyFrontchannelLogout(ctx context.Context, claim auth.OpenIDConnectFrontchannelLogout) auth.FrontchannelLogoutResult {
+	_, err := store.db.Exec(ctx, `
+		update refresh_tokens set status = 'revoked'
+		where status = 'active' and family_id in (
+			select family_id from oidc_sessions
+			where provider = $1 and issuer = $2 and client_id = $3 and sid = $4
+		)
+	`, claim.Provider, claim.Issuer, claim.ClientID, claim.SID)
+	if err != nil {
+		return auth.FrontchannelLogoutRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "revoke Front-Channel Logout sessions failed")}
+	}
+	return auth.FrontchannelLogoutApplied{}
+}
+
 func (store OpenIDConnectSessionStore) ApplyBackchannelLogout(ctx context.Context, claim auth.OpenIDConnectLogoutClaim, now time.Time) auth.BackchannelLogoutResult {
 	tx, err := store.db.Begin(ctx)
 	if err != nil {

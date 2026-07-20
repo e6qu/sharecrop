@@ -1,11 +1,16 @@
-output "alb_dns_name" {
-  description = "Public DNS name of the load balancer (point your domain's DNS at this)."
-  value       = aws_lb.this.dns_name
+output "api_gateway_domain_name" {
+  description = "Regional Amazon API Gateway target domain for the public Route 53 alias."
+  value       = aws_apigatewayv2_domain_name.this.domain_name_configuration[0].target_domain_name
 }
 
-output "alb_zone_id" {
-  description = "Canonical hosted-zone ID of the Application Load Balancer, for a Route 53 alias record."
-  value       = aws_lb.this.zone_id
+output "api_gateway_hosted_zone_id" {
+  description = "Regional Amazon API Gateway hosted-zone ID for the public Route 53 alias."
+  value       = aws_apigatewayv2_domain_name.this.domain_name_configuration[0].hosted_zone_id
+}
+
+output "api_gateway_access_log_group_name" {
+  description = "CloudWatch Logs group receiving Amazon API Gateway access logs."
+  value       = aws_cloudwatch_log_group.api_access.name
 }
 
 output "ecs_cluster_name" {
@@ -36,7 +41,7 @@ output "run_migrate_command" {
     aws_ecs_task_definition.migrate.family,
     join(",", var.task_subnet_ids),
     aws_security_group.service.id,
-    var.assign_public_ip ? "ENABLED" : "DISABLED",
+    "DISABLED",
   )
 }
 

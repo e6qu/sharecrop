@@ -20,29 +20,51 @@
     `make build`) and hosts it under a wazero runtime, dispatching its store
     calls to Postgres via `storehost`. `SHARECROP_WASI_MODE=native` runs the
     in-process mux instead; a binary built without the guest runs native.
-- **Deployment:** a slim multi-arch container (arm64 primary) on AWS ECS Fargate,
-  stateless behind a load balancer with state in single-AZ Amazon RDS for
-  PostgreSQL. The guest's machine
-  code is baked into the image as a wazero AOT cache, so the server does no
-  compile at startup. Images publish to the GitHub Container Registry on merge,
-  versioned by conventional commits (no `:latest`). See
+- **Deployment:** a slim multi-architecture container (arm64 primary) on Amazon
+  ECS Fargate in private subnets, reached by an Amazon API Gateway HTTP API
+  through a VPC Link and AWS Cloud Map, with state in Sharecrop's distinct
+  database inside the shared PostgreSQL service. No Application Load Balancer
+  or Network Load Balancer is provisioned. The guest's machine code is baked
+  into the image as a wazero AOT cache, so the server does no
+  compile at startup. Every merge publishes an immutable 12-character commit-SHA
+  manifest to the GitHub Container Registry, with direct arm64 and amd64 image
+  tags and no mutable or semantic-version tags. The newest 20 releases are
+  retained. See
   [docs/deployment.md](./docs/deployment.md).
 - **Shared environment deployment:** Terraform accepts an existing Amazon
   Elastic Container Service cluster ARN, so the service can run in the shared
   `dev` cluster without creating another cluster or network path.
-- **DNS integration:** Terraform exposes the Application Load Balancer DNS name
-  and canonical hosted-zone ID so an environment can create a Route 53 alias
-  record without reconstructing provider-specific values.
+- **DNS integration:** Terraform configures the regional Amazon API Gateway
+  custom domain and exposes its target domain and hosted-zone ID so an
+  environment can create the exact Route 53 alias.
 - **Monitoring integration:** Terraform exposes the actual CloudWatch Logs group
-  used by serve tasks, including its provider-generated suffix.
+  used by serve tasks and the Amazon API Gateway access-log group. Detailed
+  route metrics and bounded burst/rate throttles are enabled.
 - **Provider compatibility:** The deployment module requires HashiCorp AWS
   provider 6.x, matching the shared `dev` environment and the other deployed
   service modules.
-- **ACM composition:** HTTPS listener creation is controlled by an explicit,
-  plan-known `enable_https` input, so an environment can provision its ACM
-  certificate and the Sharecrop service in one Terraform apply.
+- **Health routing:** the distroless container's binary probes the real
+  `/healthz` endpoint. Amazon ECS publishes task and container health to AWS
+  Cloud Map, and Amazon API Gateway routes only to healthy discovered tasks.
+  Terraform waits for steady state and unhealthy deployments roll back.
 
 ## State
+
+The deployment used private Amazon ECS Fargate tasks without public IP
+addresses. Amazon API Gateway reached them through a VPC Link and discovered
+their address and port from AWS Cloud Map SRV registrations. The public
+execute-api endpoint was disabled, the custom domain was TLS-only, and the
+default route applied explicit throttles, access logs, and detailed metrics.
+Security-group rules admitted the HTTP port only from the VPC Link. A policy
+gate rejected any Application Load Balancer, Network Load Balancer, public task
+IP, or missing private-ingress resource from the Terraform module.
+
+The active task audited and repaired Sharecrop's complete Shauth relying-party
+contract. Its acceptance boundary covered direct entry and Apps-catalog launch,
+automatic SSO, external-identity provisioning, authenticated user identity,
+fail-closed protected resources, app-local signed-out return, and coordinated
+RP-Initiated, Front-Channel, and Back-Channel Logout against real Shauth, Ory
+Hydra, and PostgreSQL.
 
 Shauth is an additional browser identity provider. A verified OpenID Connect
 issuer/subject pair is persisted independently from mutable profile claims and
@@ -70,7 +92,17 @@ returning the issuer-origin end-session URL with the provider-signed ID token
 hint and exact `/api/auth/signed-out` redirect. The signed-out landing revoked
 any residual local refresh family and did not restart authentication. The
 logout verifier cached provider discovery and its remote key set while retaining
-normal signing-key rotation behavior.
+normal signing-key rotation behavior. Shauth Front-Channel Logout also revoked
+the exact issuer/session-ID relationship and returned a non-cacheable,
+frame-safe completion document.
+
+When Shauth was configured, the browser hid local registration, password reset,
+and token entry, while programmatic first-party credentials remained supported.
+The application shell and protected browser API rejected revoked refresh-token
+families even when a previously minted access token was still present. External
+identity provisioning used the immutable issuer/subject pair; Shauth's optional
+email-verification claim was not treated as mandatory or used to link an
+existing account.
 
 The migration command loaded only its database URL and migration directory, so
 the one-off ECS migration task did not depend on HTTP or access-token runtime
@@ -93,16 +125,25 @@ slimmed the image, and added the ghcr release workflow.
 PR CI runs format/contract/policy/type checks, Go unit and integration tests,
 HTTP end-to-end tests, shared scenario parity against both SQL engines, and
 Playwright browser tests. The Release workflow builds and publishes the image on
-merge. The Shauth integration passed the frontend build, complete Go suite,
-Terraform validation, and WASI bridge generation checks. Migration
-configuration and current-schema checks passed unit and PostgreSQL integration
-tests. Direct entry and Shauth Apps-catalog launch both completed the live
-OpenID Connect callback and established a Sharecrop browser session.
-Signed logout-token tests covered successful global local-session revocation,
-missing `sid`, and prohibited `nonce` claims. The complete PostgreSQL
-integration suite also passed on a database containing prior test data.
-The HTTP end-to-end health harness implemented the complete authentication
-service contract, and the tagged HTTP suite passed against PostgreSQL.
+merge. The Shauth integration passed the frontend build, full Go suite,
+WASI bridge generation checks, PostgreSQL integration and HTTP suites, and
+native/WASI scenario parity. A real browser suite against Shauth commit
+`15302f47330fd531536e366b2befc1d370ed7e0d`, Ory Hydra v26.2.0, PostgreSQL
+17.5, and the production WASI binary passed direct entry, Apps-catalog entry,
+automatic SSO, identity provisioning, account display, app-local logout,
+provider-session termination, old-token rejection, and return entry without a
+second login or consent. All 62 general browser cases passed with retries
+disabled; the two previously timing-sensitive paths also passed ten focused
+stress iterations without retries. Authentication-operation rate limits were
+isolated per path and client IP so registration or recovery traffic could not
+starve login traffic for users behind the same NAT.
+The release publisher verified that each architecture tag was a direct OCI
+image manifest and that the generic tag contained exactly Linux amd64 and Linux
+arm64 before retaining the newest 20 commit-SHA releases.
+The Sharecrop command suite, generation checks, policy checks, release contract,
+TypeScript checks, WASI bridge checks, lint, vet, Go/Deno tests, Terraform
+formatting, and provider-backed Terraform validation passed after the private
+ingress replacement.
 
 ## Blocking issues
 

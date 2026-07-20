@@ -338,6 +338,21 @@ func (store AuthStore) StoreRefreshToken(ctx context.Context, record auth.Refres
 	return auth.StoreRefreshTokenAccepted{}
 }
 
+func (store AuthStore) ValidateRefreshToken(ctx context.Context, hash auth.RefreshTokenHash, now time.Time) auth.ValidateRefreshTokenResult {
+	var active int
+	err := store.db.QueryRow(ctx, `
+		select 1 from refresh_tokens
+		where token_hash = $1 and status = 'active' and expires_at > $2
+	`, hash.String(), now).Scan(&active)
+	if errors.Is(err, ErrNoRows) {
+		return auth.RefreshTokenInactive{}
+	}
+	if err != nil {
+		return auth.ValidateRefreshTokenRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "validate refresh token failed")}
+	}
+	return auth.RefreshTokenActive{}
+}
+
 func (store AuthStore) StoreAccountToken(ctx context.Context, userID core.UserID, kind auth.AccountTokenKind, token auth.AccountToken) auth.AccountTokenStoreResult {
 	tx, err := store.db.Begin(ctx)
 	if err != nil {

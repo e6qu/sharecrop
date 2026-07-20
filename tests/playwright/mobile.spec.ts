@@ -5,7 +5,7 @@ import process from "node:process";
 // The demo (real Elm client + compiled Go/WASM backend path) is served by the
 // static webServer in playwright.config.ts. It boots into a seeded account.
 const demoOrigin = process.env.SHARECROP_PLAYWRIGHT_DEMO_ORIGIN ??
-  "http://127.0.0.1:29181";
+  `http://127.0.0.1:${process.env.SHARECROP_PLAYWRIGHT_DEMO_PORT ?? "29181"}`;
 
 test.use({ viewport: { width: 375, height: 667 } });
 

@@ -2,7 +2,7 @@
 
 This reference lists the stable application routes used by the Elm UI, external HTTP clients, and shared scenario tests.
 
-All protected routes require `Authorization: Bearer <access_token>` unless the route is explicitly public. Browser sessions also use the refresh-token cookie for `/api/auth/refresh`.
+All protected routes require `Authorization: Bearer <access_token>` unless the route is explicitly public. Browser sessions also use the refresh-token cookie for `/api/auth/refresh`. When Shauth is configured, a user access token is accepted only alongside its active Sharecrop browser-session cookie; RP-Initiated, Front-Channel, and Back-Channel Logout therefore fail closed immediately instead of leaving the SPA usable until the access token expires. Agent and organization credentials remain independent non-browser credentials.
 
 [docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Request/response body schemas are derived from the actual Go DTO struct each handler decodes/writes, resolved through `internal/openapi`'s `go/ast`-based analysis of `internal/http`; a route whose handler does not match one of the standard decode/write patterns (raw MCP JSON-RPC passthrough or `healthz`) gets a generic `{"type": "object"}` (or empty) placeholder rather than a guess. This document remains the source for prose per-route request/response descriptions where the generated schema is generic. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
 
@@ -14,6 +14,7 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `GET /api/auth/shauth`: start Authorization Code Flow with PKCE against the configured Shauth issuer.
 - `GET /api/auth/shauth/callback`: verify the Shauth response, retain the provider-signed session coordinates server-side, and establish the rotating Sharecrop refresh-token session.
 - `POST /api/auth/logout`: revoke the current Sharecrop refresh-token family and return a provider-discovered RP-Initiated Logout URL. The browser navigates to that URL to end the shared Shauth session.
+- `GET /api/auth/shauth/frontchannel-logout`: accept Shauth's issuer-bound Front-Channel Logout notification, revoke every local refresh-token family correlated by the provider session ID, and return an embeddable no-content document with an issuer-only `frame-ancestors` policy.
 - `GET /api/auth/signed-out`: receive the OpenID Provider's post-logout redirect, revoke any residual Sharecrop refresh-token family, clear the cookie, and show a static signed-out page without automatically starting a new login.
 - `POST /api/auth/shauth/backchannel-logout`: accept a signed OpenID Connect `logout_token` from Shauth, validate its exact issuer, audience, signature, expiry, event, `iat`, `jti`, prohibited `nonce`, and either `sid` or `sub`, then atomically revoke the matching refresh-token families and record the token against replay.
 - `POST /api/auth/guest`: create a guest browser session.

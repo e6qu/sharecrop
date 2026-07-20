@@ -121,8 +121,18 @@ func TestPlatformAdminStorePersistsLifecycle(t *testing.T) {
 	if !listedMatched {
 		t.Fatalf("list platform admins rejected: %T", listResult)
 	}
-	if len(listed.Values) != 2 {
-		t.Fatalf("platform admin count = %d, want 2", len(listed.Values))
+	foundBootstrap := false
+	foundTarget := false
+	for _, value := range listed.Values {
+		if value.UserID == bootstrap && value.Source == "bootstrap" {
+			foundBootstrap = true
+		}
+		if value.UserID == target && value.Source == "granted" {
+			foundTarget = true
+		}
+	}
+	if !foundBootstrap || !foundTarget {
+		t.Fatalf("platform admins omitted test records: bootstrap=%t target=%t", foundBootstrap, foundTarget)
 	}
 
 	revokeResult := store.Revoke(context.Background(), target)

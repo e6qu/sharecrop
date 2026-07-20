@@ -49,6 +49,7 @@ async function loginViaUi(page: Page, email: string): Promise<void> {
   await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("login").click();
+  await expect(page.getByTestId("balance")).toBeVisible({ timeout: 15000 });
 }
 
 async function openTaskFromDiscovery(

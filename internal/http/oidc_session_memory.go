@@ -58,3 +58,14 @@ func (store *memoryOpenIDConnectSessionStore) ApplyBackchannelLogout(_ context.C
 	}
 	return auth.BackchannelLogoutApplied{}
 }
+
+func (store *memoryOpenIDConnectSessionStore) ApplyFrontchannelLogout(_ context.Context, claim auth.OpenIDConnectFrontchannelLogout) auth.FrontchannelLogoutResult {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	for hash, session := range store.sessions {
+		if session.Provider == claim.Provider && session.Issuer == claim.Issuer && session.ClientID == claim.ClientID && session.SID == claim.SID {
+			delete(store.sessions, hash)
+		}
+	}
+	return auth.FrontchannelLogoutApplied{}
+}

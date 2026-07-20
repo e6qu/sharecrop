@@ -7,7 +7,7 @@ import { fillDetailResponse } from "./helpers.ts";
 // backend path. It is hosted by the static webServer in playwright.config.ts
 // because Browser.application needs a real HTTP origin.
 const demoOrigin = process.env.SHARECROP_PLAYWRIGHT_DEMO_ORIGIN ??
-  "http://127.0.0.1:29181";
+  `http://127.0.0.1:${process.env.SHARECROP_PLAYWRIGHT_DEMO_PORT ?? "29181"}`;
 
 test("demo boots the real Elm client against the Go/WASM backend with seeded tasks", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);

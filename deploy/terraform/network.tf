@@ -1,8 +1,8 @@
-# Security groups: internet -> Application Load Balancer -> serve tasks.
+# Security groups: Amazon API Gateway VPC Link -> private serve tasks.
 
-resource "aws_security_group" "alb" {
-  name_prefix = "${var.name}-alb-"
-  description = "Internet-facing load balancer"
+resource "aws_security_group" "api_gateway_vpc_link" {
+  name_prefix = "${var.name}-api-link-"
+  description = "Amazon API Gateway VPC Link"
   vpc_id      = var.vpc_id
   tags        = local.tags
 
@@ -11,30 +11,13 @@ resource "aws_security_group" "alb" {
   }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "alb_http" {
-  security_group_id = aws_security_group.alb.id
-  description       = "HTTP from the internet"
-  ip_protocol       = "tcp"
-  from_port         = 80
-  to_port           = 80
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
-resource "aws_vpc_security_group_ingress_rule" "alb_https" {
-  count             = var.enable_https ? 1 : 0
-  security_group_id = aws_security_group.alb.id
-  description       = "HTTPS from the internet"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
-resource "aws_vpc_security_group_egress_rule" "alb_all" {
-  security_group_id = aws_security_group.alb.id
-  description       = "All egress"
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
+resource "aws_vpc_security_group_egress_rule" "api_gateway_to_service" {
+  security_group_id            = aws_security_group.api_gateway_vpc_link.id
+  description                  = "Sharecrop HTTP traffic to private tasks"
+  ip_protocol                  = "tcp"
+  from_port                    = 8080
+  to_port                      = 8080
+  referenced_security_group_id = aws_security_group.service.id
 }
 
 resource "aws_security_group" "service" {
@@ -48,13 +31,13 @@ resource "aws_security_group" "service" {
   }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "service_from_alb" {
+resource "aws_vpc_security_group_ingress_rule" "service_from_api_gateway" {
   security_group_id            = aws_security_group.service.id
-  description                  = "App port from the load balancer"
+  description                  = "Application traffic from Amazon API Gateway VPC Link"
   ip_protocol                  = "tcp"
   from_port                    = 8080
   to_port                      = 8080
-  referenced_security_group_id = aws_security_group.alb.id
+  referenced_security_group_id = aws_security_group.api_gateway_vpc_link.id
 }
 
 resource "aws_vpc_security_group_egress_rule" "service_all" {

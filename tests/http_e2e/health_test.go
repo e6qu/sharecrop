@@ -68,6 +68,10 @@ func (healthAuthService) Refresh(context.Context, auth.RefreshTokenPlain) auth.R
 	return auth.RefreshRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthAuthService) ValidateSession(context.Context, auth.RefreshTokenPlain) auth.ValidateRefreshTokenResult {
+	return auth.RefreshTokenInactive{}
+}
+
 func (healthAuthService) Logout(context.Context, auth.RefreshTokenPlain) auth.LogoutResult {
 	return auth.LogoutDone{}
 }

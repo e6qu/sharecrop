@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,6 +26,7 @@ const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logo
 
 type shauthConfig struct {
 	issuer, clientID, clientSecret, publicURL string
+	allowInsecure                             bool
 	provider                                  *cachedShauthProvider
 }
 
@@ -57,17 +59,31 @@ func (c shauthConfig) validate() error {
 		return fmt.Errorf("all SHARECROP_SHAUTH_* and SHARECROP_PUBLIC_URL values must be configured together")
 	}
 	issuer, err := url.Parse(c.issuer)
-	if err != nil || issuer.Scheme != "https" || issuer.Host == "" || issuer.User != nil || issuer.RawQuery != "" || issuer.Fragment != "" {
-		return fmt.Errorf("Shauth issuer must be an absolute HTTPS issuer URL")
+	if err != nil || !c.validOIDCCoordinate(issuer) || issuer.User != nil || issuer.RawQuery != "" || issuer.Fragment != "" {
+		return fmt.Errorf("Shauth issuer must be an absolute HTTPS URL, or an HTTP loopback URL when insecure cookies are explicitly enabled")
 	}
 	publicURL, err := url.Parse(c.publicURL)
-	if err != nil || publicURL.Scheme != "https" || publicURL.Host == "" || publicURL.User != nil || (publicURL.Path != "" && publicURL.Path != "/") || publicURL.RawQuery != "" || publicURL.Fragment != "" {
-		return fmt.Errorf("Sharecrop public URL must be an absolute HTTPS origin")
+	if err != nil || !c.validOIDCCoordinate(publicURL) || publicURL.User != nil || (publicURL.Path != "" && publicURL.Path != "/") || publicURL.RawQuery != "" || publicURL.Fragment != "" {
+		return fmt.Errorf("Sharecrop public URL must be an absolute HTTPS origin, or an HTTP loopback origin when insecure cookies are explicitly enabled")
 	}
 	return nil
 }
 func shauthConfigFromEnv() shauthConfig {
-	return shauthConfig{issuer: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_ISSUER")), clientID: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_CLIENT_ID")), clientSecret: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_CLIENT_SECRET")), publicURL: strings.TrimRight(strings.TrimSpace(os.Getenv("SHARECROP_PUBLIC_URL")), "/"), provider: &cachedShauthProvider{}}
+	return shauthConfig{issuer: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_ISSUER")), clientID: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_CLIENT_ID")), clientSecret: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_CLIENT_SECRET")), publicURL: strings.TrimRight(strings.TrimSpace(os.Getenv("SHARECROP_PUBLIC_URL")), "/"), allowInsecure: os.Getenv("SHARECROP_INSECURE_COOKIES") == "true", provider: &cachedShauthProvider{}}
+}
+
+func (c shauthConfig) validOIDCCoordinate(value *url.URL) bool {
+	if value == nil || value.Host == "" {
+		return false
+	}
+	if value.Scheme == "https" {
+		return true
+	}
+	if !c.allowInsecure || value.Scheme != "http" {
+		return false
+	}
+	host := value.Hostname()
+	return strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
 }
 
 func (c shauthConfig) postLogoutRedirectURI() string {
@@ -93,8 +109,8 @@ func (c shauthConfig) discoveredProvider(ctx context.Context) (*oidc.Provider, *
 		return nil, nil, "", fmt.Errorf("decode Shauth discovery metadata: %w", err)
 	}
 	endpoint, err := url.Parse(metadata.EndSessionEndpoint)
-	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil {
-		return nil, nil, "", fmt.Errorf("Shauth discovery omitted a valid HTTPS end_session_endpoint")
+	if err != nil || !c.validOIDCCoordinate(endpoint) || endpoint.User != nil {
+		return nil, nil, "", fmt.Errorf("Shauth discovery omitted a valid end_session_endpoint")
 	}
 	issuer, err := url.Parse(c.issuer)
 	if err != nil || !sameURLOrigin(issuer, endpoint) {
@@ -278,6 +294,30 @@ func (server Server) shauthCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+func (server Server) shauthFrontchannelLogout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	frameAncestor := "'none'"
+	if issuer, err := url.Parse(server.shauth.issuer); err == nil && server.shauth.validOIDCCoordinate(issuer) {
+		frameAncestor = issuer.Scheme + "://" + issuer.Host
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors "+frameAncestor)
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	issuer := r.URL.Query().Get("iss")
+	sid := r.URL.Query().Get("sid")
+	if server.shauth.enabled() && issuer == server.shauth.issuer && sid != "" {
+		result := server.oidcSessions.ApplyFrontchannelLogout(r.Context(), auth.OpenIDConnectFrontchannelLogout{
+			Provider: "shauth", Issuer: issuer, ClientID: server.shauth.clientID, SID: sid,
+		})
+		if _, ok := result.(auth.FrontchannelLogoutApplied); !ok {
+			writeError(w, http.StatusServiceUnavailable, "logout could not be completed")
+			return
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Signed out</title></head><body></body></html>"))
+}
+
 type backchannelLogoutClaims struct {
 	Events   map[string]json.RawMessage `json:"events"`
 	IssuedAt int64                      `json:"iat"`
@@ -305,7 +345,7 @@ func (server Server) verifyBackchannelLogout(ctx context.Context, raw string) (*
 		return nil, backchannelLogoutClaims{}, fmt.Errorf("logout token claims are invalid")
 	}
 	var eventObject map[string]json.RawMessage
-	if err := json.Unmarshal(event, &eventObject); err != nil || eventObject == nil {
+	if err := json.Unmarshal(event, &eventObject); err != nil || eventObject == nil || len(eventObject) != 0 {
 		return nil, backchannelLogoutClaims{}, fmt.Errorf("logout token event is invalid")
 	}
 	now := time.Now()

@@ -101,6 +101,24 @@ func (StoreRefreshTokenAccepted) storeRefreshTokenResult() {}
 
 func (StoreRefreshTokenRejected) storeRefreshTokenResult() {}
 
+type ValidateRefreshTokenResult interface {
+	validateRefreshTokenResult()
+}
+
+type RefreshTokenActive struct{}
+
+type RefreshTokenInactive struct{}
+
+type ValidateRefreshTokenRejected struct {
+	Reason core.DomainError
+}
+
+func (RefreshTokenActive) validateRefreshTokenResult() {}
+
+func (RefreshTokenInactive) validateRefreshTokenResult() {}
+
+func (ValidateRefreshTokenRejected) validateRefreshTokenResult() {}
+
 type ConsumeRefreshTokenResult interface {
 	consumeRefreshTokenResult()
 }

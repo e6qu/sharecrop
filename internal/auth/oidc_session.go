@@ -32,6 +32,13 @@ type OpenIDConnectLogoutClaim struct {
 	Subject   string
 }
 
+type OpenIDConnectFrontchannelLogout struct {
+	Provider string
+	Issuer   string
+	ClientID string
+	SID      string
+}
+
 type StoreOpenIDConnectSessionResult interface{ storeOpenIDConnectSessionResult() }
 type OpenIDConnectSessionStored struct{}
 type StoreOpenIDConnectSessionRejected struct{ Reason core.DomainError }
@@ -57,8 +64,16 @@ func (BackchannelLogoutApplied) backchannelLogoutResult()  {}
 func (BackchannelLogoutReplay) backchannelLogoutResult()   {}
 func (BackchannelLogoutRejected) backchannelLogoutResult() {}
 
+type FrontchannelLogoutResult interface{ frontchannelLogoutResult() }
+type FrontchannelLogoutApplied struct{}
+type FrontchannelLogoutRejected struct{ Reason core.DomainError }
+
+func (FrontchannelLogoutApplied) frontchannelLogoutResult()  {}
+func (FrontchannelLogoutRejected) frontchannelLogoutResult() {}
+
 type OpenIDConnectSessionStore interface {
 	StoreOpenIDConnectSession(context.Context, RefreshTokenHash, OpenIDConnectSession) StoreOpenIDConnectSessionResult
 	FindOpenIDConnectSession(context.Context, RefreshTokenHash) FindOpenIDConnectSessionResult
+	ApplyFrontchannelLogout(context.Context, OpenIDConnectFrontchannelLogout) FrontchannelLogoutResult
 	ApplyBackchannelLogout(context.Context, OpenIDConnectLogoutClaim, time.Time) BackchannelLogoutResult
 }

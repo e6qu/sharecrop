@@ -105,6 +105,7 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) logout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	logoutURL := ""
 	if server.shauth.enabled() {
 		if r.Header.Get("Origin") != server.shauth.publicURL || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
@@ -123,31 +124,39 @@ func (server Server) logout(w http.ResponseWriter, r *http.Request) {
 		refreshToken = parsed.Value
 		hasRefreshToken = true
 	}
+	endpoint := ""
+	idTokenHint := ""
+	coordinateError := ""
 	if server.shauth.enabled() {
-		endpoint := ""
-		idTokenHint := ""
 		if hasRefreshToken {
 			sessionResult := server.oidcSessions.FindOpenIDConnectSession(r.Context(), auth.HashRefreshToken(refreshToken))
 			switch session := sessionResult.(type) {
 			case auth.OpenIDConnectSessionFound:
 				if session.Session.Provider != "shauth" || session.Session.Issuer != server.shauth.issuer || session.Session.ClientID != server.shauth.clientID || session.Session.PostLogoutRedirectURI != server.shauth.postLogoutRedirectURI() {
-					writeError(w, http.StatusServiceUnavailable, "OpenID Connect logout session coordinates are invalid")
-					return
+					coordinateError = "OpenID Connect logout session coordinates are invalid"
+					break
 				}
 				endpoint = session.Session.EndSessionEndpoint
 				idTokenHint = session.Session.RawIDToken
 			case auth.OpenIDConnectSessionNotFound:
-				_, _, discoveredEndpoint, discoveryErr := server.shauth.discoveredProvider(r.Context())
-				if discoveryErr != nil {
-					writeError(w, http.StatusBadGateway, "Shauth discovery failed")
-					return
-				}
-				endpoint = discoveredEndpoint
 			default:
-				writeError(w, http.StatusServiceUnavailable, "OpenID Connect logout session is unavailable")
-				return
+				coordinateError = "OpenID Connect logout session is unavailable"
 			}
-		} else {
+		}
+	}
+	if hasRefreshToken {
+		if _, ok := server.authService.Logout(r.Context(), refreshToken).(auth.LogoutDone); !ok {
+			writeError(w, http.StatusServiceUnavailable, "Sharecrop session could not be revoked")
+			return
+		}
+	}
+	server.clearRefreshCookie(w)
+	if coordinateError != "" {
+		writeError(w, http.StatusServiceUnavailable, coordinateError)
+		return
+	}
+	if server.shauth.enabled() {
+		if endpoint == "" {
 			_, _, discoveredEndpoint, discoveryErr := server.shauth.discoveredProvider(r.Context())
 			if discoveryErr != nil {
 				writeError(w, http.StatusBadGateway, "Shauth discovery failed")
@@ -162,19 +171,37 @@ func (server Server) logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if hasRefreshToken {
-		if _, ok := server.authService.Logout(r.Context(), refreshToken).(auth.LogoutDone); !ok {
-			writeError(w, http.StatusServiceUnavailable, "Sharecrop session could not be revoked")
-			return
-		}
-	}
-	server.clearRefreshCookie(w)
 	writeJSON(w, http.StatusOK, logoutResponse{LogoutURL: logoutURL})
+}
+
+func (server Server) requireActiveBrowserSession(w http.ResponseWriter, r *http.Request) bool {
+	cookie, err := r.Cookie("sharecrop_refresh_token")
+	if err != nil || cookie.Value == "" {
+		http.Redirect(w, r, "/api/auth/shauth", http.StatusFound)
+		return false
+	}
+	parsed, ok := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted)
+	if !ok {
+		server.clearRefreshCookie(w)
+		http.Redirect(w, r, "/api/auth/shauth", http.StatusFound)
+		return false
+	}
+	switch server.authService.ValidateSession(r.Context(), parsed.Value).(type) {
+	case auth.RefreshTokenActive:
+		return true
+	case auth.RefreshTokenInactive:
+		server.clearRefreshCookie(w)
+		http.Redirect(w, r, "/api/auth/shauth", http.StatusFound)
+		return false
+	default:
+		writeError(w, http.StatusServiceUnavailable, "Sharecrop session could not be validated")
+		return false
+	}
 }
 
 func (c shauthConfig) logoutURL(rawEndpoint, idTokenHint string) (string, error) {
 	endpoint, err := url.Parse(rawEndpoint)
-	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Fragment != "" {
+	if err != nil || !c.validOIDCCoordinate(endpoint) || endpoint.User != nil || endpoint.Fragment != "" {
 		return "", errInvalidLogoutEndpoint
 	}
 	issuer, err := url.Parse(c.issuer)

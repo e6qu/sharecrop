@@ -1419,6 +1419,24 @@
         }
       }
     },
+    "/api/auth/shauth/frontchannel-logout": {
+      "get": {
+        "operationId": "shauthFrontchannelLogout",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/signed-out": {
       "get": {
         "operationId": "shauthSignedOut",
