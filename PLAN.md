@@ -86,6 +86,11 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Shauth sessions retain the provider-signed ID token and optional session ID
   server-side for RP-Initiated Logout. Signed Back-Channel Logout revokes
   matching refresh-token families atomically and stores replay claims durably.
+- Relying-party logout returns to an app-local, reload-safe signed-out page.
+  That page never starts authentication automatically and exposes one explicit
+  same-origin `Sign in with Shauth` recovery control in accessible light and
+  dark presentations. Provider-initiated logout invalidates the same local
+  session and access-token family.
 - Agent credentials are separate from user session auth.
 - Task/capability tokens are opaque random tokens linked server-side to tasks, scopes, and optional subjects.
 

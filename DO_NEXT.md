@@ -56,6 +56,10 @@ UI minors queue:
 
 Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
 
+- The Shauth relying-party recovery boundary: an accessible branded
+  light/dark app-local signed-out page, explicit same-origin recovery, and a
+  real PostgreSQL/Ory Hydra/browser matrix for catalog and direct SSO,
+  relying-party and provider logout, reload, and retained-credential rejection.
 - The single-store-implementation program: one engine-neutral store (`internal/db`,
   Postgres + SQLite), `internal/wasmdemo` deleted, the browser demo runs the real
   backend over in-browser SQLite.

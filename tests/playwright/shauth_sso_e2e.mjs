@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { chromium } from "playwright";
+import { chromium, request as playwrightRequest } from "playwright";
 
 const issuer = requiredEnvironment("SHARECROP_SHAUTH_E2E_ISSUER");
 const application = requiredEnvironment("SHARECROP_SHAUTH_E2E_APPLICATION");
 const password = requiredEnvironment("SHAUTH_BOOTSTRAP_ADMIN_PASSWORD");
+const screenshotDirectory = Deno.env.get(
+  "SHARECROP_SHAUTH_E2E_SCREENSHOT_DIR",
+);
 
 const browser = await chromium.launch({ headless: true });
 try {
@@ -90,6 +93,30 @@ try {
     browserErrors,
   );
   await page.getByRole("heading", { name: "You are signed out" }).waitFor();
+  const recovery = page.getByRole("link", { name: "Sign in with Shauth" });
+  await recovery.waitFor();
+  assert.equal(await recovery.getAttribute("href"), "/api/auth/shauth");
+  const lightBackground = await signedOutThemeBackground(page, "light");
+  if (screenshotDirectory) {
+    await Deno.mkdir(screenshotDirectory, { recursive: true });
+    await page.screenshot({
+      path: `${screenshotDirectory}/sharecrop-signed-out-light.png`,
+      fullPage: true,
+    });
+  }
+  const darkBackground = await signedOutThemeBackground(page, "dark");
+  assert.notEqual(
+    darkBackground,
+    lightBackground,
+    "signed-out light and dark themes rendered the same background",
+  );
+  if (screenshotDirectory) {
+    await page.screenshot({
+      path: `${screenshotDirectory}/sharecrop-signed-out-dark.png`,
+      fullPage: true,
+    });
+  }
+  await page.emulateMedia({ colorScheme: "light" });
   assert.equal(
     frontChannelLogoutSeen,
     true,
@@ -108,14 +135,17 @@ try {
     "a signed-out browser retained API access",
   );
 
-  await page.goto(`${issuer}/apps`);
-  await page.waitForURL((url) =>
-    url.origin === issuer && url.pathname === "/login"
+  // The application-owned page is a stable local destination: reload does not
+  // restart OIDC, while its explicit same-origin control performs exact
+  // recovery through Shauth when the user chooses to sign in again.
+  await page.reload();
+  await waitForExactURL(
+    page,
+    `${application}/api/auth/signed-out`,
+    navigationTrace,
+    browserErrors,
   );
-
-  // Direct launch: Sharecrop must redirect the signed-out browser to Shauth,
-  // and successful provider authentication must return to Sharecrop itself.
-  await page.goto(`${application}/`);
+  await page.getByRole("link", { name: "Sign in with Shauth" }).click();
   await page.waitForURL((url) =>
     url.origin === issuer && url.pathname === "/login"
   );
@@ -127,8 +157,71 @@ try {
   await page.waitForLoadState("networkidle");
   await page.waitForURL(`${application}/`);
   assert.equal(await page.getByTestId("shauth-login").count(), 0);
+
+  const providerLogoutRefresh = await context.request.post(
+    `${application}/api/auth/refresh`,
+  );
+  assert.equal(providerLogoutRefresh.status(), 200);
+  const providerLogoutSession = await providerLogoutRefresh.json();
+  assert.ok(providerLogoutSession.access_token);
+  const retainedRefreshCookie = (await context.cookies(application)).find(
+    (cookie) => cookie.name === "sharecrop_refresh_token",
+  );
+  assert.ok(
+    retainedRefreshCookie?.value,
+    "Sharecrop refresh cookie is missing",
+  );
+
+  // Provider launch remains silent while the Shauth session is active.
   await page.goto(`${issuer}/apps`);
   await page.waitForURL(`${issuer}/apps`);
+
+  // Provider-initiated logout is global: Shauth ends its own browser session,
+  // notifies Sharecrop, and Sharecrop rejects both retained API and refresh
+  // credentials. A direct launch then reaches Shauth's login page rather than
+  // failing open into the application shell.
+  await page.getByRole("link", { name: "Sign out", exact: true }).click();
+  await page.waitForURL(`${issuer}/logout`);
+  await page.getByRole("button", { name: "Sign out everywhere" }).click();
+  await page.waitForURL(`${issuer}/`);
+
+  const providerStaleAccess = await context.request.get(
+    `${application}/api/credits/balance`,
+    {
+      headers: {
+        authorization: `Bearer ${providerLogoutSession.access_token}`,
+      },
+    },
+  );
+  assert.equal(
+    providerStaleAccess.status(),
+    401,
+    "provider logout retained Sharecrop API access",
+  );
+
+  const retainedSessionRequest = await playwrightRequest.newContext({
+    extraHTTPHeaders: {
+      cookie: `sharecrop_refresh_token=${retainedRefreshCookie.value}`,
+    },
+  });
+  try {
+    const retainedRefresh = await retainedSessionRequest.post(
+      `${application}/api/auth/refresh`,
+    );
+    assert.equal(
+      retainedRefresh.status(),
+      401,
+      "provider logout retained a Sharecrop refresh session",
+    );
+  } finally {
+    await retainedSessionRequest.dispose();
+  }
+
+  await page.goto(`${application}/`);
+  await page.waitForURL((url) =>
+    url.origin === issuer && url.pathname === "/login"
+  );
+  assert.equal(page.url().includes("consent_challenge="), false);
 
   assert.deepEqual(browserErrors, [], navigationTrace.join("\n"));
 } finally {
@@ -175,4 +268,11 @@ async function waitForApplication(page, trace, errors) {
     );
     throw error;
   }
+}
+
+async function signedOutThemeBackground(page, colorScheme) {
+  await page.emulateMedia({ colorScheme });
+  return await page.locator("body").evaluate((body) =>
+    getComputedStyle(body).backgroundColor
+  );
 }

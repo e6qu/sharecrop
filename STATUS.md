@@ -73,12 +73,13 @@ selected VPC Link. A policy gate rejected any Application Load Balancer,
 Network Load Balancer, public task IP, or incomplete private-ingress resource
 from the Terraform module.
 
-The active task audited and repaired Sharecrop's complete Shauth relying-party
-contract. Its acceptance boundary covered direct entry and Apps-catalog launch,
-automatic SSO, external-identity provisioning, authenticated user identity,
-fail-closed protected resources, app-local signed-out return, and coordinated
-RP-Initiated, Front-Channel, and Back-Channel Logout against real Shauth, Ory
-Hydra, and PostgreSQL.
+The latest work audited and repaired Sharecrop's Shauth signed-out recovery
+boundary. It covered direct entry and Apps-catalog launch, automatic SSO,
+external-identity provisioning, authenticated user identity, fail-closed
+protected resources, app-local signed-out return and reload, explicit
+same-origin Shauth re-entry, coordinated RP-Initiated, Front-Channel, and
+Back-Channel Logout, and rejection of retained credentials against real Shauth,
+Ory Hydra, and PostgreSQL.
 
 Shauth is an additional browser identity provider. A verified OpenID Connect
 issuer/subject pair is persisted independently from mutable profile claims and
@@ -104,8 +105,10 @@ matching active refresh-token families, so replay protection survived process
 and replica changes. Browser logout revoked the local refresh family before
 returning the issuer-origin end-session URL with the provider-signed ID token
 hint and exact `/api/auth/signed-out` redirect. The signed-out landing revoked
-any residual local refresh family and did not restart authentication. The
-logout verifier cached provider discovery and its remote key set while retaining
+any residual local refresh family and did not restart authentication. It
+rendered a branded, accessible light/dark Sharecrop page whose explicit
+same-origin `Sign in with Shauth` control was stable across reloads. The logout
+verifier cached provider discovery and its remote key set while retaining
 normal signing-key rotation behavior. Shauth Front-Channel Logout also revoked
 the exact issuer/session-ID relationship and returned a non-cacheable,
 frame-safe completion document.
@@ -144,15 +147,17 @@ Playwright browser tests. The Release workflow builds and publishes the image on
 merge. The Shauth integration passed the frontend build, full Go suite,
 WASI bridge generation checks, PostgreSQL integration and HTTP suites, and
 native/WASI scenario parity. A real browser suite against Shauth commit
-`15302f47330fd531536e366b2befc1d370ed7e0d`, Ory Hydra v26.2.0, PostgreSQL
+`470f7890ce6f0391bca3e4f6ce4ef8a17f1c7933`, Ory Hydra v26.2.0, PostgreSQL
 17.5, and the production WASI binary passed direct entry, Apps-catalog entry,
-automatic SSO, identity provisioning, account display, app-local logout,
-provider-session termination, old-token rejection, and return entry without a
-second login or consent. All 62 general browser cases passed with retries
-disabled; the three previously timing-sensitive paths also passed ten focused
-stress iterations without retries. Authentication-operation rate limits were
-isolated per path and client IP so registration or recovery traffic could not
-starve login traffic for users behind the same NAT.
+automatic SSO, identity provisioning, account display, app-local logout and
+reload, explicit local recovery, provider-initiated logout, rejection of
+retained access and refresh credentials, and direct-entry fail-closed behavior.
+It also rendered and checked distinct light and dark signed-out themes. All 62
+general browser cases passed with retries disabled; the three previously
+timing-sensitive paths also passed ten focused stress iterations without
+retries. Authentication-operation rate limits were isolated per path and
+client IP so registration or recovery traffic could not starve login traffic
+for users behind the same NAT.
 The release publisher verified that each architecture tag was a direct OCI
 image manifest and that the generic tag contained exactly Linux amd64 and Linux
 arm64 before retaining the newest 20 complete commit-SHA releases. The

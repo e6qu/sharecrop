@@ -390,10 +390,26 @@ func TestSHAUTHSignedOutLandingDoesNotStartAuthentication(t *testing.T) {
 	if response.Code != http.StatusOK || response.Header().Get("Location") != "" {
 		t.Fatalf("signed-out landing = %d location=%q", response.Code, response.Header().Get("Location"))
 	}
-	if response.Header().Get("Content-Security-Policy") == "" || response.Header().Get("Referrer-Policy") != "no-referrer" {
+	if response.Header().Get("Content-Security-Policy") == "" || response.Header().Get("Referrer-Policy") != "no-referrer" || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("signed-out security headers = %#v", response.Header())
 	}
-	if !strings.Contains(response.Body.String(), "You are signed out") || strings.Contains(response.Body.String(), "window.location") {
+	body := response.Body.String()
+	for _, required := range []string{
+		`<html lang="en">`,
+		`<meta name="color-scheme" content="light dark">`,
+		`<main aria-labelledby="signed-out-title" aria-describedby="signed-out-description">`,
+		`<span>Sharecrop</span>`,
+		`<h1 id="signed-out-title">You are signed out</h1>`,
+		`<a class="button" href="/api/auth/shauth">Sign in with Shauth</a>`,
+		`@media(prefers-color-scheme:dark)`,
+		`@media(forced-colors:active)`,
+		`@media(prefers-reduced-motion:reduce)`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("signed-out landing omitted %q: %s", required, body)
+		}
+	}
+	if strings.Contains(body, "window.location") || strings.Contains(body, "http://") || strings.Contains(body, "https://") {
 		t.Fatalf("signed-out landing body was not static: %s", response.Body.String())
 	}
 	if recorder.calls != 1 {
@@ -407,6 +423,15 @@ func TestSHAUTHSignedOutLandingDoesNotStartAuthentication(t *testing.T) {
 	}
 	if !cleared {
 		t.Fatal("signed-out landing did not clear the refresh cookie")
+	}
+
+	reload := httptest.NewRecorder()
+	server.shauthSignedOut(reload, httptest.NewRequest(http.MethodGet, "/api/auth/signed-out", nil))
+	if reload.Code != http.StatusOK || reload.Body.String() != body {
+		t.Fatalf("reloaded signed-out landing = %d body matches=%t", reload.Code, reload.Body.String() == body)
+	}
+	if recorder.calls != 1 {
+		t.Fatalf("reload without a retained cookie caused %d total revocations, want 1", recorder.calls)
 	}
 }
 

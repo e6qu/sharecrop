@@ -163,7 +163,7 @@ jobs:
         uses: actions/checkout@v7.0.0
         with:
           repository: e6qu/shauth
-          ref: 15302f47330fd531536e366b2befc1d370ed7e0d
+          ref: 470f7890ce6f0391bca3e4f6ce4ef8a17f1c7933
           path: .test-deps/shauth
       - uses: actions/setup-go@v6.4.0
         with:
