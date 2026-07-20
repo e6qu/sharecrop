@@ -18,12 +18,14 @@ cat > "$fixture" <<'JSON'
   {"id":303,"created_at":"2026-07-20T00:59:00Z","metadata":{"container":{"tags":["cccccccccccc-amd64"]}}},
   {"id":401,"created_at":"2026-07-19T23:00:00Z","metadata":{"container":{"tags":["v0.3.5"]}}},
   {"id":402,"created_at":"2026-07-19T22:00:00Z","metadata":{"container":{"tags":["main"]}}},
-  {"id":403,"created_at":"2026-07-19T21:00:00Z","metadata":{"container":{"tags":[]}}}
+  {"id":403,"created_at":"2026-07-19T21:00:00Z","metadata":{"container":{"tags":[]}}},
+  {"id":404,"created_at":"2026-07-20T04:00:00Z","metadata":{"container":{"tags":["dddddddddddd"]}}},
+  {"id":405,"created_at":"2026-07-20T03:30:00Z","metadata":{"container":{"tags":["aaaaaaaaaaaa","latest"]}}}
 ]
 JSON
 
 actual="$(jq -r --argjson keep 2 -f "$root/tools/prune_ghcr_versions_selection.jq" "$fixture" | sort -n)"
-expected="$(printf '301\n302\n303\n401\n402')"
+expected="$(printf '301\n302\n303\n401\n402\n403\n404\n405')"
 if [[ "$actual" != "$expected" ]]; then
   echo "unexpected GitHub Container Registry retention selection" >&2
   diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") >&2

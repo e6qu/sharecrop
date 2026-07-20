@@ -91,8 +91,10 @@ Run `make frontend` before a release build if the UI changed, the same as for
    disabled so an architecture tag never becomes an image index.
 3. Assemble the generic OCI image index, verify that it contains exactly Linux
    amd64 and Linux arm64, and prune package versions outside the newest 20
-   commit-SHA releases (`tools/prune_ghcr_versions.sh`). A shape or retention
-   failure fails the workflow.
+   complete commit-SHA releases (`tools/prune_ghcr_versions.sh`). The retention
+   gate also deletes untagged, incomplete, mixed-tag, and unrecognized versions,
+   then re-reads the package and verifies the postcondition. A shape or
+   retention failure fails the workflow.
 
 Images are published to `ghcr.io/<owner>/<repo>:<sha12>` (for example,
 `ghcr.io/e6qu/sharecrop:0123456789ab`) with direct per-architecture

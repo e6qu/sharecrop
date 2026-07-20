@@ -1,14 +1,33 @@
-# Given a GitHub Container Registry package-versions array and $keep, emit the ids
-# of tagged versions outside the newest $keep immutable commit-SHA releases. A
-# release is tagged with exactly 12 lowercase hexadecimal characters; its direct
-# per-architecture images append -arm64 and -amd64.
-def is_release_tag: test("^[0-9a-f]{12}$");
-def release_tags: [.metadata.container.tags[]? | select(is_release_tag)];
+# Keep the newest complete immutable releases and their two architecture-specific
+# images. Untagged versions, incomplete releases, and versions containing any
+# other tag are obsolete.
 
-(map(select((release_tags | length) > 0)) | sort_by(.created_at) | reverse | .[:$keep]) as $releases
-| ($releases | map(release_tags[]) | map(., . + "-arm64", . + "-amd64") | unique) as $kept_tags
-| map(
-    select((.metadata.container.tags // [] | length) > 0)
-    | select(all(.metadata.container.tags[]?; . as $tag | $kept_tags | index($tag) == null))
+([ .[].metadata.container.tags[]? ] | unique) as $all_tags
+| ([ .[] as $version
+     | ($version.metadata.container.tags // [])[]
+     | select(test("^[0-9a-f]{12}$"))
+     | {tag: ., created_at: $version.created_at}
+   ]
+   | unique_by(.tag)
+   | map(select(
+       .tag as $tag
+       | ($all_tags | index($tag + "-amd64")) != null
+         and ($all_tags | index($tag + "-arm64")) != null
+     ))
+   | sort_by(.created_at)
+   | reverse
+   | .[:$keep]
+   | map(.tag)
+  ) as $release_tags
+| ($release_tags
+   | map(., . + "-amd64", . + "-arm64")
+   | unique
+  ) as $keep_tags
+| .[]
+| . as $version
+| ($version.metadata.container.tags // []) as $tags
+| select(
+    ($tags | length) == 0
+    or any($tags[]; . as $tag | $keep_tags | index($tag) == null)
   )
-| .[].id
+| $version.id
