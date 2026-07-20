@@ -47,7 +47,7 @@ check-wasi-bridge:
 
 check-format:
 	test -z "$$(gofmt -l cmd internal tests web | grep -E '\\.go$$')"
-	deno fmt --check deno.json tools tests
+	deno fmt --check --ignore=tests/terraform/shared-vpc-link-wrapper/.terraform deno.json tools tests
 
 check-policy:
 	deno task check:policy
@@ -95,7 +95,7 @@ elm:
 
 fmt:
 	gofmt -w cmd internal tests web
-	deno fmt deno.json tools tests
+	deno fmt --ignore=tests/terraform/shared-vpc-link-wrapper/.terraform deno.json tools tests
 
 frontend: contracts
 	test -n "$(ELM_BIN)"

@@ -33,8 +33,18 @@
   deleted. See
   [docs/deployment.md](./docs/deployment.md).
 - **Shared environment deployment:** Terraform accepts an existing Amazon
-  Elastic Container Service cluster ARN, so the service can run in the shared
-  `dev` cluster without creating another cluster or network path.
+  Elastic Container Service cluster ARN and an existing Amazon API Gateway VPC
+  Link ID, so the service can run in the shared `dev` cluster and reuse its
+  private network path. A plan-known ownership boolean selected dedicated or
+  shared mode; shared mode required the paired link and security-group IDs,
+  including when both came from unknown-until-apply wrapper resources. The
+  standalone defaults still create both resources.
+- **Ordered deployment:** an AWS Step Functions workflow runs the standalone
+  migration task synchronously and updates the Amazon ECS service only after
+  migration success. A one-time Amazon EventBridge Scheduler schedule starts
+  each changed workflow. PostgreSQL advisory transaction locking and the
+  migration ledger make duplicate cloud delivery safe and apply each SQL file
+  once.
 - **DNS integration:** Terraform configures the regional Amazon API Gateway
   custom domain and exposes its target domain and hosted-zone ID so an
   environment can create the exact Route 53 alias.
@@ -56,9 +66,12 @@ addresses. Amazon API Gateway reached them through a VPC Link and discovered
 their address and port from AWS Cloud Map SRV registrations. The public
 execute-api endpoint was disabled, the custom domain was TLS-only, and the
 default route applied explicit throttles, access logs, and detailed metrics.
-Security-group rules admitted the HTTP port only from the VPC Link. A policy
-gate rejected any Application Load Balancer, Network Load Balancer, public task
-IP, or missing private-ingress resource from the Terraform module.
+The `$default` route forwarded the unchanged request path, and its auto-deploy
+stage depended on that route so a partial apply could not publish a route-less
+custom domain. Security-group rules admitted the HTTP port only from the
+selected VPC Link. A policy gate rejected any Application Load Balancer,
+Network Load Balancer, public task IP, or incomplete private-ingress resource
+from the Terraform module.
 
 The active task audited and repaired Sharecrop's complete Shauth relying-party
 contract. Its acceptance boundary covered direct entry and Apps-catalog launch,
@@ -106,11 +119,13 @@ email-verification claim was not treated as mandatory or used to link an
 existing account.
 
 The migration command loaded only its database URL and migration directory, so
-the one-off ECS migration task did not depend on HTTP or access-token runtime
-configuration. The server and MCP transports verified that every migration
-baked into the image had been applied before serving requests, preventing a
-partially migrated database from presenting a healthy application whose
-authentication callback failed later.
+the standalone Amazon ECS migration task did not depend on HTTP or access-token
+runtime configuration. AWS Step Functions waited for that task before rolling
+the service and then waited for the target task definition to be the sole
+completed deployment. The server and MCP transports verified that every
+migration baked into the image had been applied before serving requests,
+preventing a partially migrated database from presenting a healthy application
+whose authentication callback failed later.
 
 Both the single-store-implementation program and the WASI-production-hosting
 program are complete. Recent work hardened the production-default WASI path:
@@ -134,7 +149,7 @@ native/WASI scenario parity. A real browser suite against Shauth commit
 automatic SSO, identity provisioning, account display, app-local logout,
 provider-session termination, old-token rejection, and return entry without a
 second login or consent. All 62 general browser cases passed with retries
-disabled; the two previously timing-sensitive paths also passed ten focused
+disabled; the three previously timing-sensitive paths also passed ten focused
 stress iterations without retries. Authentication-operation rate limits were
 isolated per path and client IP so registration or recovery traffic could not
 starve login traffic for users behind the same NAT.
@@ -148,6 +163,13 @@ The Sharecrop command suite, generation checks, policy checks, release contract,
 TypeScript checks, WASI bridge checks, lint, vet, Go/Deno tests, Terraform
 formatting, and provider-backed Terraform validation passed after the private
 ingress replacement.
+The ordered deployment contract passed no-mock Deno checks, concurrent migration
+execution passed against real PostgreSQL, and provider-backed plans against the
+real development VPC covered the dedicated path, the existing-link path, and an
+environment wrapper whose resource-derived link coordinates were unknown until
+apply. Terraform working directories were repository-ignored and excluded from
+the Deno formatter, so initializing the provider-backed wrapper could not stage
+provider binaries or make the source-format gate inspect generated metadata.
 
 ## Blocking issues
 

@@ -132,10 +132,13 @@ resource "aws_ecs_task_definition" "migrate" {
 }
 
 resource "aws_ecs_service" "serve" {
-  name                  = "${var.name}-serve"
-  cluster               = local.ecs_cluster_arn
-  task_definition       = aws_ecs_task_definition.serve.arn
-  desired_count         = var.desired_count
+  name            = "${var.name}-serve"
+  cluster         = local.ecs_cluster_arn
+  task_definition = aws_ecs_task_definition.serve.arn
+  # The deployment state machine changes both fields only after the matching
+  # standalone migration task exits successfully. Terraform owns the service
+  # shell; AWS Step Functions owns each ordered application rollout.
+  desired_count         = 0
   launch_type           = "FARGATE"
   wait_for_steady_state = true
 
@@ -163,5 +166,13 @@ resource "aws_ecs_service" "serve" {
   depends_on = [
     aws_secretsmanager_secret_version.access_token,
   ]
+
+  lifecycle {
+    ignore_changes = [
+      desired_count,
+      task_definition,
+    ]
+  }
+
   tags = local.tags
 }

@@ -13,6 +13,12 @@ image = "ghcr.io/e6qu/sharecrop:0123456789ab"
 vpc_id          = "vpc-0123456789abcdef0"
 task_subnet_ids = ["subnet-cccc3333", "subnet-dddd4444"] # private Amazon ECS tasks + Amazon API Gateway VPC Link
 
+# Reuse an environment-owned Amazon API Gateway Version 2 VPC Link, or keep the
+# default true to create a dedicated link. Shared mode requires both IDs.
+# create_api_gateway_vpc_link                     = false
+# existing_api_gateway_vpc_link_id                = "a1b2c3"
+# existing_api_gateway_vpc_link_security_group_id = "sg-0123456789abcdef0"
+
 database_url_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:sharecrop/database-url-XXXXXX"
 
 # Regional custom domain. The caller provisions and validates the AWS
@@ -27,6 +33,9 @@ api_throttling_burst_limit = 50
 api_throttling_rate_limit  = 25
 
 desired_count = 2
+
+# Maximum time for migration plus the Amazon ECS rollout.
+deployment_timeout_seconds = 1800
 
 # Supply all Shauth coordinates together, or omit all four for a local-account
 # deployment.

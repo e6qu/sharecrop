@@ -1,0 +1,11 @@
+region = "eu-west-1"
+name   = "sharecrop-wrapper-test"
+image  = "ghcr.io/e6qu/sharecrop:0123456789ab"
+
+vpc_id                  = "vpc-0123456789abcdef0"
+task_subnet_ids          = ["subnet-cccc3333", "subnet-dddd4444"]
+existing_ecs_cluster_arn = "arn:aws:ecs:eu-west-1:123456789012:cluster/dev"
+
+certificate_arn         = "arn:aws:acm:eu-west-1:123456789012:certificate/XXXXXXXX"
+domain_name             = "sharecrop-wrapper-test.example.com"
+database_url_secret_arn = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:sharecrop-wrapper-test/database"

@@ -52,6 +52,11 @@ async function loginViaUi(page: Page, email: string): Promise<void> {
   await expect(page.getByTestId("balance")).toBeVisible({ timeout: 15000 });
 }
 
+async function logoutViaUi(page: Page): Promise<void> {
+  await page.getByTestId("logout").click();
+  await expect(page.getByTestId("email")).toBeVisible();
+}
+
 async function openTaskFromDiscovery(
   page: Page,
   email: string,
@@ -112,7 +117,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
 
   // Owner reviews and accepts the submission through the UI.
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toHaveText("80 credits");
   await page.getByTestId("nav-account-menu").click();
@@ -190,7 +195,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
 
   const worker = await registerViaApi(request, "reservation-ui-worker");
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await loginViaUi(page, worker.email);
   await page.getByTestId("nav-tasks").click();
   const workerRow = page.getByTestId("discovery-task-row").filter({
@@ -225,7 +230,7 @@ test("requesters configure reservations and workers include reserved tasks", asy
   const other = await registerViaApi(request, "reservation-ui-other");
   await page.getByTestId("detail-back").click();
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await loginViaUi(page, other.email);
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-filters").click();
@@ -262,7 +267,7 @@ test("a worker cancels their own active reservation", async ({ page, request }) 
 
   const worker = await registerViaApi(request, "reservation-cancel-worker");
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await loginViaUi(page, worker.email);
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
@@ -394,7 +399,7 @@ test("an owner approves a worker's reservation request from the task detail page
 
   const worker = await registerViaApi(request, "reservation-approve-worker");
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await loginViaUi(page, worker.email);
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
@@ -409,7 +414,7 @@ test("an owner approves a worker's reservation request from the task detail page
   // previously there was no way to do this through the browser at all.
   await page.getByTestId("detail-back").click();
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await loginViaUi(page, owner.email);
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
@@ -916,7 +921,7 @@ test("requesters set a task's assignee scope to a team", async ({ page, request 
   // A worker viewing the task sees the organization-team assignee scope.
   const worker = await registerViaApi(request, "assignee-worker");
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await loginViaUi(page, worker.email);
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
@@ -1318,7 +1323,7 @@ test("owner and worker exchange comments on a submission", async ({ page, reques
 
   // Owner opens the submission and starts a comment thread on it.
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await loginViaUi(page, owner.email);
   await expect(page.getByTestId("balance")).toBeVisible();
   await page.getByTestId("nav-tasks").click();
@@ -1454,7 +1459,7 @@ test("an owner tips a collectible on accept through the review form", async ({ p
 
   // Owner accepts with the collectible selected as a tip.
   await page.getByTestId("nav-account-menu").click();
-  await page.getByTestId("logout").click();
+  await logoutViaUi(page);
   await openTaskFromDiscovery(page, owner.email, title);
   await expect(page.getByTestId("submission-row")).toHaveCount(1);
   await page.getByTestId("review-tip-collectible").selectOption(tip.id);

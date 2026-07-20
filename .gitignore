@@ -3,6 +3,7 @@ bin/
 .gocache/
 elm-stuff/
 node_modules/
+.terraform/
 test-results/
 playwright-report/
 site/demo/sharecrop-wasm-backend.wasm

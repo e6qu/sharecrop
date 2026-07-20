@@ -1,6 +1,14 @@
 # Bugs
 
-Confirmed defects: None.
+Confirmed defects: 1.
+
+- The live `sharecrop.dev.e6qu.dev` Amazon API Gateway HTTP API
+  (`kcmm553xk8`) returned the gateway's JSON 404 because its route and
+  integration lists were empty after the environment exhausted the dedicated
+  VPC Link path. The Sharecrop module accepted explicit paired shared-link
+  coordinates behind a plan-known ownership boolean and enforced the complete
+  `$default` integration, route, stage, and mapping graph; the development
+  environment still had to consume and apply that module version.
 
 Test gaps:
 

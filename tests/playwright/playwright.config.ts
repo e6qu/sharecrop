@@ -10,13 +10,10 @@ const demoOrigin = `http://127.0.0.1:${demoPort}`;
 
 export default defineConfig({
   testDir: ".",
-  // Each test boots a real SQLite-backed backend in WebAssembly (a 17MB module),
-  // restoring a pre-generated seed snapshot rather than re-running the seed. Even
-  // so, many simultaneous boots contend for CPU (wasm compile + hashing), so cap
-  // the workers conservatively, allow assertions longer than the 5s default, and
-  // give the rare stalled boot extra retries.
+  // Keep local and CI concurrency equal so the browser contract has one
+  // deterministic execution mode. A failure is reported on its first run.
   workers: 2,
-  retries: 3,
+  retries: 0,
   expect: { timeout: 15_000 },
   use: {
     baseURL: apiOrigin,

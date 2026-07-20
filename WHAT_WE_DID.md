@@ -1,6 +1,62 @@
 # What We Did
 
-The production migration path was repaired after the deployed one-off task
+Terraform gained an AWS-native ordered deployment workflow. A one-time Amazon
+EventBridge Scheduler schedule started AWS Step Functions, which waited for the
+standalone Amazon ECS migration task to succeed before updating the application
+service and then waited for the target task definition to become its sole
+completed deployment. Terraform retained ownership of the service shell but no
+longer rolled its task definition or desired count ahead of database migration.
+The generated manual migration command was removed.
+
+The migration runner acquired a PostgreSQL advisory transaction lock before it
+read or changed the migration ledger. Duplicate cloud delivery therefore
+serialized at the database boundary, and a real concurrent PostgreSQL
+integration test proved that each SQL migration ran once. No-mock deployment
+contract tests and the policy gate enforced migration-before-rollout ordering
+and rejected local-exec, remote-exec, `null_resource`, and `terraform_data`
+orchestration.
+
+The Terraform module used an explicit plan-known ownership boolean for its
+Amazon API Gateway VPC Link. Dedicated mode rejected external coordinates;
+shared mode required paired link and security-group IDs. All resource counts
+and stable `for_each` keys depended only on the ownership boolean, so an
+environment wrapper could pass IDs from resources that remained unknown until
+apply. Provider-backed plans against the real development VPC passed for the
+dedicated, existing-link, and resource-derived wrapper compositions.
+Terraform working directories were repository-ignored and excluded from the
+Deno formatter, preserving the source-only formatting contract after the
+provider-backed wrapper had been initialized locally.
+Platform-specific browser seed code moved
+behind its `js && wasm` build constraint, so host dead-code analysis covered
+only code that could execute on the host.
+
+The browser suite stopped retrying failed cases. Its account-switch helper
+waited for logout to finish and the login form to become stable before starting
+the next login, removing the DOM replacement race that retries had hidden. The
+affected reservation flow passed ten consecutive real-browser runs, and all 62
+browser cases passed once with retries disabled.
+
+The Amazon API Gateway auto-deploy stage depended explicitly on the complete
+`$default` route, whose private HTTP proxy preserved the request path. The
+deployment contract and policy gate required the integration, route, stage, and
+custom-domain mapping together, preventing a partial route-less gateway from
+presenting the application domain as a JSON 404.
+
+The live failure was traced without changing application routing: Amazon API
+Gateway HTTP API `kcmm553xk8` had a working custom-domain mapping but empty
+integration and route lists, and both `/` and `/healthz` returned the gateway's
+own `{"message":"Not Found"}` response. Local HTTP and browser tests already
+proved that the Sharecrop handler served `/`; the repair therefore stayed at
+the deployment boundary and reused the existing shared VPC Link.
+
+Terraform IAM roles used stable exact names instead of provider-appended random
+suffixes. This removed the shorter `name_prefix` constraint discovered by a
+provider-backed plan while keeping names unique to the module's application
+name.
+
+---
+
+The production migration path was repaired after the deployed standalone task
 failed before touching PostgreSQL because process-wide configuration required
 an unrelated access-token secret. `sharecrop migrate up` now loaded a dedicated
 database-only configuration, while serve and MCP verified that all migrations

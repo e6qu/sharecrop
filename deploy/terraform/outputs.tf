@@ -29,20 +29,18 @@ output "serve_log_group_name" {
 }
 
 output "migrate_task_definition" {
-  description = "Family of the one-off migration task. Run it before the first deploy and on every schema change."
+  description = "Family of the standalone migration task run by the ordered deployment workflow."
   value       = aws_ecs_task_definition.migrate.family
 }
 
-output "run_migrate_command" {
-  description = "Example command to run the one-off migration task."
-  value = format(
-    "aws ecs run-task --cluster %s --task-definition %s --launch-type FARGATE --network-configuration 'awsvpcConfiguration={subnets=[%s],securityGroups=[%s],assignPublicIp=%s}'",
-    local.ecs_cluster_name,
-    aws_ecs_task_definition.migrate.family,
-    join(",", var.task_subnet_ids),
-    aws_security_group.service.id,
-    "DISABLED",
-  )
+output "deployment_state_machine_arn" {
+  description = "AWS Step Functions state machine that migrates the database before rolling the Amazon ECS service."
+  value       = aws_sfn_state_machine.deploy.arn
+}
+
+output "deployment_schedule_arn" {
+  description = "One-time Amazon EventBridge Scheduler schedule for the current ordered deployment."
+  value       = aws_scheduler_schedule.deploy.arn
 }
 
 output "service_security_group_id" {

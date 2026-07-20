@@ -2,6 +2,11 @@ variable "name" {
   description = "Name prefix for all resources."
   type        = string
   default     = "sharecrop"
+
+  validation {
+    condition     = length(var.name) <= 54 && can(regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", var.name))
+    error_message = "name must be at most 54 lowercase alphanumeric or hyphen characters, without a leading or trailing hyphen."
+  }
 }
 
 variable "region" {
@@ -55,6 +60,34 @@ variable "existing_ecs_cluster_arn" {
   validation {
     condition     = var.existing_ecs_cluster_arn == "" || can(regex("^arn:[^:]+:ecs:[^:]+:[0-9]+:cluster/.+", var.existing_ecs_cluster_arn))
     error_message = "existing_ecs_cluster_arn must be empty or an Amazon Elastic Container Service cluster ARN."
+  }
+}
+
+variable "create_api_gateway_vpc_link" {
+  description = "Whether this module creates a dedicated Amazon API Gateway Version 2 VPC Link. Set false only when supplying both shared-link coordinates."
+  type        = bool
+  default     = true
+}
+
+variable "existing_api_gateway_vpc_link_id" {
+  description = "Existing shared Amazon API Gateway Version 2 VPC Link ID. Required with its security group ID when create_api_gateway_vpc_link is false."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.existing_api_gateway_vpc_link_id == "" || can(regex("^[a-z0-9]+$", var.existing_api_gateway_vpc_link_id))
+    error_message = "existing_api_gateway_vpc_link_id must be empty or an Amazon API Gateway Version 2 VPC Link ID."
+  }
+}
+
+variable "existing_api_gateway_vpc_link_security_group_id" {
+  description = "Security group ID attached to the existing shared Amazon API Gateway Version 2 VPC Link. Required when create_api_gateway_vpc_link is false."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.existing_api_gateway_vpc_link_security_group_id == "" || can(regex("^sg-[0-9a-f]+$", var.existing_api_gateway_vpc_link_security_group_id))
+    error_message = "existing_api_gateway_vpc_link_security_group_id must be empty or an Amazon EC2 security group ID."
   }
 }
 
@@ -115,6 +148,17 @@ variable "desired_count" {
   description = "Number of serve replicas."
   type        = number
   default     = 2
+}
+
+variable "deployment_timeout_seconds" {
+  description = "Maximum time for the ordered migration and Amazon ECS service rollout workflow."
+  type        = number
+  default     = 1800
+
+  validation {
+    condition     = var.deployment_timeout_seconds >= 300 && floor(var.deployment_timeout_seconds) == var.deployment_timeout_seconds
+    error_message = "deployment_timeout_seconds must be an integer of at least 300 seconds."
+  }
 }
 
 variable "cpu" {

@@ -31,6 +31,9 @@ async function collectFiles(directory: string, files: string[]): Promise<void> {
   for await (const entry of Deno.readDir(directory)) {
     const path = `${directory}/${entry.name}`;
     if (entry.isDirectory) {
+      if (entry.name === ".terraform") {
+        continue;
+      }
       await collectFiles(path, files);
       continue;
     }
@@ -148,6 +151,10 @@ for (const path of files) {
     continue;
   }
 
+  if (!path.endsWith(".go") && !path.endsWith(".ts")) {
+    continue;
+  }
+
   const source = await Deno.readTextFile(path);
   if (path.endsWith(".go")) {
     checkGo(path, source, violations);
@@ -191,7 +198,13 @@ for (
   const requiredResource of [
     "aws_apigatewayv2_vpc_link",
     "aws_apigatewayv2_api",
+    "aws_apigatewayv2_integration",
+    "aws_apigatewayv2_route",
+    "aws_apigatewayv2_stage",
+    "aws_apigatewayv2_api_mapping",
+    "aws_scheduler_schedule",
     "aws_service_discovery_service",
+    "aws_sfn_state_machine",
   ]
 ) {
   const declaration = new RegExp(
@@ -206,10 +219,57 @@ for (
 }
 
 for (
+  const forbiddenOrchestrator of [
+    "null_resource",
+    "terraform_data",
+    'provisioner "local-exec"',
+    'provisioner "remote-exec"',
+  ]
+) {
+  if (deploymentTerraform.includes(forbiddenOrchestrator)) {
+    violations.push({
+      path: "deploy/terraform",
+      message:
+        `deployment orchestration must use real AWS control-plane resources, not ${forbiddenOrchestrator}`,
+    });
+  }
+}
+
+const migrationTask = deploymentTerraform.indexOf(
+  'Resource = "arn:aws:states:::ecs:runTask.sync"',
+);
+const serviceRollout = deploymentTerraform.indexOf(
+  'Resource = "arn:aws:states:::aws-sdk:ecs:updateService"',
+);
+if (migrationTask < 0 || serviceRollout <= migrationTask) {
+  violations.push({
+    path: "deploy/terraform",
+    message:
+      "the AWS Step Functions workflow must wait for the standalone migration task before it updates the Amazon ECS service",
+  });
+}
+
+for (
   const [pattern, message] of [
     [
       /connection_type\s*=\s*"VPC_LINK"/,
       "Amazon API Gateway integration must use a VPC Link",
+    ],
+    [
+      /count\s*=\s*var\.create_api_gateway_vpc_link\s*\?\s*1\s*:\s*0/,
+      "Amazon API Gateway VPC Link ownership must use the explicit plan-known boolean",
+    ],
+    [
+      /shared\s*=\s*var\.existing_api_gateway_vpc_link_security_group_id/,
+      "shared Amazon API Gateway VPC Link mode must use a stable security-group key",
+    ],
+    [
+      /Dedicated VPC Link mode rejects existing_api_gateway_vpc_link_id and existing_api_gateway_vpc_link_security_group_id/,
+      "dedicated Amazon API Gateway VPC Link mode must reject external coordinates",
+    ],
+    [
+      /Shared VPC Link mode requires both existing_api_gateway_vpc_link_id and existing_api_gateway_vpc_link_security_group_id/,
+      "shared Amazon API Gateway VPC Link mode must require paired coordinates",
     ],
     [
       /integration_uri\s*=\s*aws_service_discovery_service\./,
@@ -232,6 +292,14 @@ for (
       "Amazon API Gateway's unmanaged execute-api endpoint must stay disabled",
     ],
     [
+      /route_key\s*=\s*"\$default"/,
+      "Amazon API Gateway must publish the application root through its default route",
+    ],
+    [
+      /depends_on\s*=\s*\[aws_apigatewayv2_route\.this\]/,
+      "Amazon API Gateway must create its auto-deploy stage after the default route",
+    ],
+    [
       /deployment_circuit_breaker\s*\{[\s\S]*?enable\s*=\s*true[\s\S]*?rollback\s*=\s*true[\s\S]*?\}/,
       "Amazon ECS service must roll back an unhealthy deployment",
     ],
@@ -244,6 +312,14 @@ for (
   if (!pattern.test(deploymentTerraform)) {
     violations.push({ path: "deploy/terraform", message });
   }
+}
+
+if (/data\s+"aws_apigatewayv2_vpc_link"/.test(deploymentTerraform)) {
+  violations.push({
+    path: "deploy/terraform",
+    message:
+      "resource-derived shared VPC Link coordinates must not use a plan-time data lookup",
+  });
 }
 
 if (!/assign_public_ip\s*=\s*false/.test(deploymentTerraform)) {

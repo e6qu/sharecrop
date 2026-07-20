@@ -14,11 +14,11 @@ continuity files if task scope changes.
    API private integration through AWS Cloud Map in an existing VPC. Keep the
    API route throttles, access logs, container health checks, private task
    addressing, image and module pins current. Keep Sharecrop in its distinct
-   database inside the shared PostgreSQL service, run migrations before an
-   image requires them, and verify both direct entry and the Shauth Apps-catalog
-   launch after every authentication change. The migration task used
-   database-only configuration, and serve/MCP refused to start against a schema
-   older than the image. Keep
+   database inside the shared PostgreSQL service, keep the AWS Step Functions
+   workflow running the standalone migration task before every service rollout,
+   and verify both direct entry and the Shauth Apps-catalog launch after every
+   authentication change. The migration task used database-only configuration,
+   and serve/MCP refused to start against a schema older than the image. Keep
    the Shauth confidential client registered with
    `https://sharecrop.dev.e6qu.dev/api/auth/shauth/backchannel-logout` as its
    Back-Channel Logout URI and
