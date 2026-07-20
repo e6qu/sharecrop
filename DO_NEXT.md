@@ -28,7 +28,9 @@ continuity files if task scope changes.
    Keep Front-Channel Logout registered as
    `https://sharecrop.dev.e6qu.dev/api/auth/shauth/frontchannel-logout`.
    Keep environment image pins on the immutable 12-character commit-SHA generic
-   manifest published by the release workflow.
+   manifest published by the release workflow. Keep the package retention gate
+   deleting untagged, incomplete, mixed-tag, unrecognized, and older versions
+   while preserving at most 20 complete release triplets.
    See [docs/deployment.md](./docs/deployment.md).
 
 3. Keep expanding shared scenario parity as new user-visible API surfaces are

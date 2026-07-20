@@ -6634,3 +6634,13 @@ was a direct OCI image manifest for the requested Linux architecture. The
 generic tag was rejected unless it was an OCI image index containing exactly
 Linux amd64 and Linux arm64. Release retention was a required gate that kept the
 newest 20 commit-SHA releases and their architecture siblings.
+
+# GitHub Container Registry retention postcondition
+
+The release retention gate kept only the newest 20 complete immutable releases
+and their direct arm64 and amd64 images. It deleted every untagged, incomplete,
+mixed-tag, unrecognized, and older version, then re-read the package to verify
+the release count, complete architecture triplets, recognized tags, and maximum
+version count. The deterministic fixture covered each invalid shape. The
+historical Sharecrop package was cleaned from 59 versions, including 56
+untagged versions, to its current complete three-version release.

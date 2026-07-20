@@ -28,8 +28,9 @@
   into the image as a wazero AOT cache, so the server does no
   compile at startup. Every merge publishes an immutable 12-character commit-SHA
   manifest to the GitHub Container Registry, with direct arm64 and amd64 image
-  tags and no mutable or semantic-version tags. The newest 20 releases are
-  retained. See
+  tags and no mutable or semantic-version tags. The newest 20 complete releases
+  are retained; untagged, incomplete, mixed-tag, and unrecognized versions are
+  deleted. See
   [docs/deployment.md](./docs/deployment.md).
 - **Shared environment deployment:** Terraform accepts an existing Amazon
   Elastic Container Service cluster ARN, so the service can run in the shared
@@ -139,7 +140,10 @@ isolated per path and client IP so registration or recovery traffic could not
 starve login traffic for users behind the same NAT.
 The release publisher verified that each architecture tag was a direct OCI
 image manifest and that the generic tag contained exactly Linux amd64 and Linux
-arm64 before retaining the newest 20 commit-SHA releases.
+arm64 before retaining the newest 20 complete commit-SHA releases. The
+retention gate deleted untagged, incomplete, mixed-tag, unrecognized, and old
+versions and verified the package postcondition. The historical Sharecrop
+package was cleaned to the current complete three-version release.
 The Sharecrop command suite, generation checks, policy checks, release contract,
 TypeScript checks, WASI bridge checks, lint, vet, Go/Deno tests, Terraform
 formatting, and provider-backed Terraform validation passed after the private

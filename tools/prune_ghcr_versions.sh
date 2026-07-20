@@ -29,12 +29,13 @@ case "$owner_type" in
 esac
 
 versions_file="$(mktemp)"
-trap 'rm -f "$versions_file"' EXIT
+remaining_versions_file="$(mktemp)"
+trap 'rm -f "$versions_file" "$remaining_versions_file"' EXIT
 gh api --paginate "${base}?per_page=100" | jq -s 'add' > "$versions_file"
 
-# Select the ids to delete: keep the newest $keep commit-SHA roots and their
-# architecture siblings, then emit every other tagged package version. Untagged
-# child manifests are left for GitHub Container Registry garbage collection.
+# Select the ids to delete: keep the newest $keep complete commit-SHA roots and
+# their architecture siblings, then emit every untagged, incomplete, mixed-tag,
+# unrecognized, or older package version.
 # See tools/prune_ghcr_versions_selection.jq for the standalone, tested filter.
 ids="$(jq -r --argjson keep "$keep" -f "$(dirname "${BASH_SOURCE[0]}")/prune_ghcr_versions_selection.jq" "$versions_file")"
 
@@ -44,4 +45,43 @@ for id in $ids; do
     count=$((count + 1))
   fi
 done
-echo "pruned ${count} image version(s); kept the newest ${keep} release(s)"
+
+gh api --paginate "${base}?per_page=100" | jq -s 'add' > "$remaining_versions_file"
+
+remaining_releases="$(jq '[.[].metadata.container.tags[]? | select(test("^[0-9a-f]{12}$"))] | unique | length' "$remaining_versions_file")"
+if ((remaining_releases > keep)); then
+  echo "retained ${remaining_releases} releases; expected at most ${keep}" >&2
+  exit 1
+fi
+
+remaining_unrecognized="$(jq '[.[] | select(
+  (.metadata.container.tags | length) == 0
+  or any(.metadata.container.tags[]; test("^[0-9a-f]{12}(-(amd64|arm64))?$"; "i") | not)
+)] | length' "$remaining_versions_file")"
+if ((remaining_unrecognized > 0)); then
+  echo "retained ${remaining_unrecognized} untagged or non-release package version(s)" >&2
+  exit 1
+fi
+
+remaining_incomplete="$(jq '[.[].metadata.container.tags[]?] as $tags
+  | [ $tags[]
+      | select(test("^[0-9a-f]{12}$"))
+      | . as $tag
+      | select(
+          ($tags | index($tag + "-amd64")) == null
+          or ($tags | index($tag + "-arm64")) == null
+        )
+    ] | unique | length' "$remaining_versions_file")"
+if ((remaining_incomplete > 0)); then
+  echo "retained ${remaining_incomplete} incomplete immutable release(s)" >&2
+  exit 1
+fi
+
+remaining_versions="$(jq 'length' "$remaining_versions_file")"
+maximum_versions=$((keep * 3))
+if ((remaining_versions > maximum_versions)); then
+  echo "retained ${remaining_versions} package versions; expected at most ${maximum_versions}" >&2
+  exit 1
+fi
+
+echo "pruned ${count} image version(s); retained ${remaining_releases} immutable release(s) across ${remaining_versions} package version(s)"
