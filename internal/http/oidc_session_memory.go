@@ -25,6 +25,24 @@ func (store *memoryOpenIDConnectSessionStore) StoreOpenIDConnectSession(_ contex
 	return auth.OpenIDConnectSessionStored{}
 }
 
+// RotateOpenIDConnectSession moves the session onto the replacement token.
+// This store addresses sessions by individual refresh token, so rotation is
+// what keeps it equivalent to the durable store, which addresses them by
+// refresh-token family and survives a refresh inherently.
+func (store *memoryOpenIDConnectSessionStore) RotateOpenIDConnectSession(_ context.Context, previous, next auth.RefreshTokenHash) auth.RotateOpenIDConnectSessionResult {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	session, found := store.sessions[previous.String()]
+	if !found {
+		return auth.OpenIDConnectSessionNotRotated{}
+	}
+	if previous.String() != next.String() {
+		delete(store.sessions, previous.String())
+		store.sessions[next.String()] = session
+	}
+	return auth.OpenIDConnectSessionRotated{Session: session}
+}
+
 func (store *memoryOpenIDConnectSessionStore) FindOpenIDConnectSession(_ context.Context, hash auth.RefreshTokenHash) auth.FindOpenIDConnectSessionResult {
 	store.mu.Lock()
 	defer store.mu.Unlock()

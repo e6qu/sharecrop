@@ -3,7 +3,7 @@ module Sharecrop.View exposing (..)
 import Browser
 import Html exposing (Html, a, button, div, form, h3, label, main_, nav, option, p, select, span, table, tbody, td, text, th, thead, tr)
 import Html.Keyed
-import Html.Attributes exposing (checked, disabled, href, placeholder, selected, type_, value)
+import Html.Attributes exposing (attribute, checked, disabled, href, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Dict
 import Json.Decode as Decode
@@ -120,7 +120,7 @@ authView model =
 loggedInView : Model -> LoggedInModel -> Html Msg
 loggedInView model state =
     div [ Html.Attributes.class "space-y-6" ]
-        [ navBar model.demo state.page state.subjectId state.isAdmin state.openNavMenu
+        [ navBar model.demo state.page state.subjectId state.username state.isAdmin state.openNavMenu
         , maybeError model.authError "logout-error"
 
         -- Keyed by route so navigating away and back always rebuilds the page
@@ -141,8 +141,8 @@ the whole bar reads as one row instead of a wall of buttons. Every existing
 `nav-*` link keeps its exact `data-testid`, so moving a link doesn't change
 how a test finds it — only whether a surrounding menu needs opening first.
 -}
-navBar : Bool -> Page -> String -> Bool -> Maybe String -> Html Msg
-navBar demo current subjectId isAdmin openNavMenu =
+navBar : Bool -> Page -> String -> String -> Bool -> Maybe String -> Html Msg
+navBar demo current subjectId username isAdmin openNavMenu =
     let
         isCurrent target =
             pageToPath current == pageToPath target
@@ -172,6 +172,7 @@ navBar demo current subjectId isAdmin openNavMenu =
             (isMenuOpen "nav-manage-menu")
             (ToggleNavMenu "nav-manage-menu")
             "Manage"
+            Nothing
             [ navLink current FundingPage "funding" "Funding"
             , navLink current CollectiblesPage "collectibles" "Collectibles"
             , navLink current AgentsPage "agents" "Agents"
@@ -182,7 +183,18 @@ navBar demo current subjectId isAdmin openNavMenu =
             accountMenuActive
             (isMenuOpen "nav-account-menu")
             (ToggleNavMenu "nav-account-menu")
-            "Account"
+            (if String.isEmpty username then
+                "Account"
+
+             else
+                username
+            )
+            (if String.isEmpty username then
+                Nothing
+
+             else
+                Just username
+            )
             (navLink current (UserDetailPage subjectId) "profile" "Profile"
                 :: navLink current InboxPage "inbox" "Inbox"
                 :: (if isAdmin then
@@ -191,7 +203,7 @@ navBar demo current subjectId isAdmin openNavMenu =
                     else
                         []
                    )
-                ++ [ Ui.secondaryButton [ type_ "button", onClick LogoutClicked, testId "logout" ] "Log out" ]
+                ++ [ Ui.secondaryButton [ type_ "button", onClick LogoutClicked, testId "logout", attribute "data-shauth-sign-out" "" ] "Log out" ]
                 ++ (if demo then
                         [ Ui.secondaryButton [ type_ "button", onClick ResetDemoClicked, testId "reset-demo" ] "Reset demo" ]
 

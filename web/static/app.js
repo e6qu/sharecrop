@@ -6202,11 +6202,11 @@ var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
 var $author$project$Sharecrop$Types$RefreshReceived = function (a) {
 	return {$: 'RefreshReceived', a: a};
 };
-var $author$project$Sharecrop$Generated$Auth$AuthResponse = F4(
-	function (subjectKind, subjectID, accessToken, role) {
-		return {accessToken: accessToken, role: role, subjectID: subjectID, subjectKind: subjectKind};
+var $author$project$Sharecrop$Generated$Auth$AuthResponse = F5(
+	function (subjectKind, subjectID, accessToken, role, username) {
+		return {accessToken: accessToken, role: role, subjectID: subjectID, subjectKind: subjectKind, username: username};
 	});
-var $elm$json$Json$Decode$map4 = _Json_map4;
+var $elm$json$Json$Decode$map5 = _Json_map5;
 var $elm$json$Json$Decode$string = _Json_decodeString;
 var $author$project$Sharecrop$Generated$Auth$SubjectKindGuest = {$: 'SubjectKindGuest'};
 var $author$project$Sharecrop$Generated$Auth$SubjectKindUser = {$: 'SubjectKindUser'};
@@ -6224,13 +6224,14 @@ var $author$project$Sharecrop$Generated$Auth$subjectKindDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $author$project$Sharecrop$Generated$Auth$authResponseDecoder = A5(
-	$elm$json$Json$Decode$map4,
+var $author$project$Sharecrop$Generated$Auth$authResponseDecoder = A6(
+	$elm$json$Json$Decode$map5,
 	$author$project$Sharecrop$Generated$Auth$AuthResponse,
 	A2($elm$json$Json$Decode$field, 'subject_kind', $author$project$Sharecrop$Generated$Auth$subjectKindDecoder),
 	A2($elm$json$Json$Decode$field, 'subject_id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'access_token', $elm$json$Json$Decode$string),
-	A2($elm$json$Json$Decode$field, 'role', $elm$json$Json$Decode$string));
+	A2($elm$json$Json$Decode$field, 'role', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'username', $elm$json$Json$Decode$string));
 var $elm$http$Http$BadStatus_ = F2(
 	function (a, b) {
 		return {$: 'BadStatus_', a: a, b: b};
@@ -7040,7 +7041,6 @@ var $author$project$Sharecrop$Generated$TaskSeries$SeriesCommentResponse = F5(
 	function (id, seriesID, authorUserID, body, createdAt) {
 		return {authorUserID: authorUserID, body: body, createdAt: createdAt, id: id, seriesID: seriesID};
 	});
-var $elm$json$Json$Decode$map5 = _Json_map5;
 var $author$project$Sharecrop$Generated$TaskSeries$seriesCommentResponseDecoder = A6(
 	$elm$json$Json$Decode$map5,
 	$author$project$Sharecrop$Generated$TaskSeries$SeriesCommentResponse,
@@ -8213,6 +8213,7 @@ var $author$project$Sharecrop$Generated$Task$TaskAttachmentResponse = F4(
 	function (name, contentType, sizeBytes, dataURL) {
 		return {contentType: contentType, dataURL: dataURL, name: name, sizeBytes: sizeBytes};
 	});
+var $elm$json$Json$Decode$map4 = _Json_map4;
 var $author$project$Sharecrop$Generated$Task$taskAttachmentResponseDecoder = A5(
 	$elm$json$Json$Decode$map4,
 	$author$project$Sharecrop$Generated$Task$TaskAttachmentResponse,
@@ -10331,7 +10332,8 @@ var $author$project$Main$emptyLoggedIn = function (response) {
 		userProfileError: $elm$core$Maybe$Nothing,
 		userSubmissions: _List_Nil,
 		userSubmissionsOffset: 0,
-		userWork: _List_Nil
+		userWork: _List_Nil,
+		username: response.username
 	};
 };
 var $author$project$Main$loggedInForPage = F2(
@@ -13259,7 +13261,7 @@ var $author$project$Main$update = F2(
 							function (state) {
 								return _Utils_update(
 									state,
-									{accessToken: response.accessToken, isAdmin: response.role === 'admin', subjectId: response.subjectID});
+									{accessToken: response.accessToken, isAdmin: response.role === 'admin', subjectId: response.subjectID, username: response.username});
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
@@ -19790,8 +19792,8 @@ var $author$project$Sharecrop$View$navLink = F4(
 					$elm$html$Html$text(labelText)
 				]));
 	});
-var $author$project$Sharecrop$Ui$navMenu = F7(
-	function (identifier, alignRight, isActive, isOpen, onToggle, triggerText, children) {
+var $author$project$Sharecrop$Ui$navMenu = F8(
+	function (identifier, alignRight, isActive, isOpen, onToggle, triggerText, identityMarker, children) {
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
@@ -19802,19 +19804,31 @@ var $author$project$Sharecrop$Ui$navMenu = F7(
 				$elm$core$List$cons,
 				A2(
 					$elm$html$Html$button,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$type_('button'),
-							$elm$html$Html$Events$onClick(onToggle),
-							A2(
-							$elm$html$Html$Attributes$attribute,
-							'aria-expanded',
-							isOpen ? 'true' : 'false'),
-							A2($elm$html$Html$Attributes$attribute, 'aria-haspopup', 'true'),
-							$elm$html$Html$Attributes$class(
-							(isActive ? $author$project$Sharecrop$Ui$primaryButtonClass : $author$project$Sharecrop$Ui$secondaryButtonClass) + ' select-none'),
-							$author$project$Sharecrop$Ui$testId(identifier)
-						]),
+					_Utils_ap(
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('button'),
+								$elm$html$Html$Events$onClick(onToggle),
+								A2(
+								$elm$html$Html$Attributes$attribute,
+								'aria-expanded',
+								isOpen ? 'true' : 'false'),
+								A2($elm$html$Html$Attributes$attribute, 'aria-haspopup', 'true'),
+								$elm$html$Html$Attributes$class(
+								(isActive ? $author$project$Sharecrop$Ui$primaryButtonClass : $author$project$Sharecrop$Ui$secondaryButtonClass) + ' select-none'),
+								$author$project$Sharecrop$Ui$testId(identifier)
+							]),
+						function () {
+							if (identityMarker.$ === 'Just') {
+								var username = identityMarker.a;
+								return _List_fromArray(
+									[
+										A2($elm$html$Html$Attributes$attribute, 'data-shauth-user', username)
+									]);
+							} else {
+								return _List_Nil;
+							}
+						}()),
 					_List_fromArray(
 						[
 							$elm$html$Html$text(triggerText + ' \u25BE')
@@ -19831,8 +19845,8 @@ var $author$project$Sharecrop$Ui$navMenu = F7(
 						children)
 					]) : _List_Nil));
 	});
-var $author$project$Sharecrop$View$navBar = F5(
-	function (demo, current, subjectId, isAdmin, openNavMenu) {
+var $author$project$Sharecrop$View$navBar = F6(
+	function (demo, current, subjectId, username, isAdmin, openNavMenu) {
 		var isMenuOpen = function (identifier) {
 			return _Utils_eq(
 				openNavMenu,
@@ -19858,7 +19872,7 @@ var $author$project$Sharecrop$View$navBar = F5(
 				[
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OverviewPage, 'overview', 'Overview'),
 					A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$TasksPage, 'tasks', 'Tasks'),
-					A7(
+					A8(
 					$author$project$Sharecrop$Ui$navMenu,
 					'nav-manage-menu',
 					true,
@@ -19866,6 +19880,7 @@ var $author$project$Sharecrop$View$navBar = F5(
 					isMenuOpen('nav-manage-menu'),
 					$author$project$Sharecrop$Types$ToggleNavMenu('nav-manage-menu'),
 					'Manage',
+					$elm$core$Maybe$Nothing,
 					_List_fromArray(
 						[
 							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$FundingPage, 'funding', 'Funding'),
@@ -19873,14 +19888,15 @@ var $author$project$Sharecrop$View$navBar = F5(
 							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$AgentsPage, 'agents', 'Agents'),
 							A4($author$project$Sharecrop$View$navLink, current, $author$project$Sharecrop$Types$OrganizationsPage, 'organizations', 'Organizations')
 						])),
-					A7(
+					A8(
 					$author$project$Sharecrop$Ui$navMenu,
 					'nav-account-menu',
 					true,
 					accountMenuActive,
 					isMenuOpen('nav-account-menu'),
 					$author$project$Sharecrop$Types$ToggleNavMenu('nav-account-menu'),
-					'Account',
+					$elm$core$String$isEmpty(username) ? 'Account' : username,
+					$elm$core$String$isEmpty(username) ? $elm$core$Maybe$Nothing : $elm$core$Maybe$Just(username),
 					A2(
 						$elm$core$List$cons,
 						A4(
@@ -19906,7 +19922,8 @@ var $author$project$Sharecrop$View$navBar = F5(
 												[
 													$elm$html$Html$Attributes$type_('button'),
 													$elm$html$Html$Events$onClick($author$project$Sharecrop$Types$LogoutClicked),
-													$author$project$Sharecrop$Ui$testId('logout')
+													$author$project$Sharecrop$Ui$testId('logout'),
+													A2($elm$html$Html$Attributes$attribute, 'data-shauth-sign-out', '')
 												]),
 											'Log out')
 										]),
@@ -30744,7 +30761,7 @@ var $author$project$Sharecrop$View$loggedInView = F2(
 				]),
 			_List_fromArray(
 				[
-					A5($author$project$Sharecrop$View$navBar, model.demo, state.page, state.subjectId, state.isAdmin, state.openNavMenu),
+					A6($author$project$Sharecrop$View$navBar, model.demo, state.page, state.subjectId, state.username, state.isAdmin, state.openNavMenu),
 					A2($author$project$Sharecrop$View$maybeError, model.authError, 'logout-error'),
 					A3(
 					$elm$html$Html$Keyed$node,
