@@ -1051,13 +1051,17 @@
                     },
                     "subject_kind": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
                     }
                   },
                   "required": [
                     "subject_kind",
                     "subject_id",
                     "access_token",
-                    "role"
+                    "role",
+                    "username"
                   ]
                 }
               }
@@ -1110,13 +1114,17 @@
                     },
                     "subject_kind": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
                     }
                   },
                   "required": [
                     "subject_kind",
                     "subject_id",
                     "access_token",
-                    "role"
+                    "role",
+                    "username"
                   ]
                 }
               }
@@ -1282,13 +1290,17 @@
                     },
                     "subject_kind": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
                     }
                   },
                   "required": [
                     "subject_kind",
                     "subject_id",
                     "access_token",
-                    "role"
+                    "role",
+                    "username"
                   ]
                 }
               }
@@ -1341,13 +1353,17 @@
                     },
                     "subject_kind": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
                     }
                   },
                   "required": [
                     "subject_kind",
                     "subject_id",
                     "access_token",
-                    "role"
+                    "role",
+                    "username"
                   ]
                 }
               }
