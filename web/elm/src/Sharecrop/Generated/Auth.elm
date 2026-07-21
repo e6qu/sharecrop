@@ -40,15 +40,17 @@ type alias AuthResponse =
     , subjectID : String
     , accessToken : String
     , role : String
+    , username : String
     }
 
 authResponseDecoder : Decoder AuthResponse
 authResponseDecoder =
-    Decode.map4 AuthResponse
+    Decode.map5 AuthResponse
         (Decode.field "subject_kind" subjectKindDecoder)
         (Decode.field "subject_id" Decode.string)
         (Decode.field "access_token" Decode.string)
         (Decode.field "role" Decode.string)
+        (Decode.field "username" Decode.string)
 
 authResponseEncoder : AuthResponse -> Encode.Value
 authResponseEncoder authResponse =
@@ -57,4 +59,5 @@ authResponseEncoder authResponse =
         , ( "subject_id", Encode.string authResponse.subjectID )
         , ( "access_token", Encode.string authResponse.accessToken )
         , ( "role", Encode.string authResponse.role )
+        , ( "username", Encode.string authResponse.username )
         ]

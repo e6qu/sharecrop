@@ -113,6 +113,7 @@ type alias Wallet =
 type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
+    , username : String
     , isAdmin : Bool
     , page : Page
     , openNavMenu : Maybe String

@@ -62,6 +62,20 @@ func (store OpenIDConnectSessionStore) FindOpenIDConnectSession(ctx context.Cont
 	return auth.OpenIDConnectSessionFound{Session: session}
 }
 
+// RotateOpenIDConnectSession confirms the invariant rather than performing a
+// move: rows are addressed by refresh-token family, and refreshing continues
+// the family, so the replacement token already resolves to the same session.
+func (store OpenIDConnectSessionStore) RotateOpenIDConnectSession(ctx context.Context, _, next auth.RefreshTokenHash) auth.RotateOpenIDConnectSessionResult {
+	switch found := store.FindOpenIDConnectSession(ctx, next).(type) {
+	case auth.OpenIDConnectSessionFound:
+		return auth.OpenIDConnectSessionRotated{Session: found.Session}
+	case auth.OpenIDConnectSessionNotFound:
+		return auth.OpenIDConnectSessionNotRotated{}
+	default:
+		return auth.RotateOpenIDConnectSessionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "confirm OpenID Connect session rotation failed")}
+	}
+}
+
 func (store OpenIDConnectSessionStore) ApplyFrontchannelLogout(ctx context.Context, claim auth.OpenIDConnectFrontchannelLogout) auth.FrontchannelLogoutResult {
 	_, err := store.db.Exec(ctx, `
 		update refresh_tokens set status = 'revoked'

@@ -87,13 +87,17 @@ and a native details element has no way for Elm to close it again once
 that navigation completes — left open, its floating panel would sit over
 the new page and intercept clicks on whatever is underneath it. The caller
 is expected to reset the open menu to `Nothing` on every route change.
+
+`identityMarker`, when present, publishes the signed-in username on the
+trigger so post-deployment qualification can find the identity and open the
+menu to reach the real sign-out control inside it.
 -}
-navMenu : String -> Bool -> Bool -> Bool -> msg -> String -> List (Html msg) -> Html msg
-navMenu identifier alignRight isActive isOpen onToggle triggerText children =
+navMenu : String -> Bool -> Bool -> Bool -> msg -> String -> Maybe String -> List (Html msg) -> Html msg
+navMenu identifier alignRight isActive isOpen onToggle triggerText identityMarker children =
     Html.div [ class "relative inline-block" ]
         (button
-            [ type_ "button"
-            , onClick onToggle
+            ([ type_ "button"
+             , onClick onToggle
             , attribute "aria-expanded"
                 (if isOpen then
                     "true"
@@ -111,8 +115,16 @@ navMenu identifier alignRight isActive isOpen onToggle triggerText children =
                  )
                     ++ " select-none"
                 )
-            , testId identifier
-            ]
+             , testId identifier
+             ]
+                ++ (case identityMarker of
+                        Just username ->
+                            [ attribute "data-shauth-user" username ]
+
+                        Nothing ->
+                            []
+                   )
+            )
             [ text (triggerText ++ " \u{25BE}") ]
             :: (if isOpen then
                     [ Html.div

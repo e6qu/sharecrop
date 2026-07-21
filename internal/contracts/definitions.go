@@ -382,6 +382,7 @@ func authModule() Module {
 					{Name: NewElmValueName("subjectID"), JSONName: NewJSONFieldName("subject_id"), Type: StringRef{}},
 					{Name: NewElmValueName("accessToken"), JSONName: NewJSONFieldName("access_token"), Type: StringRef{}},
 					{Name: NewElmValueName("role"), JSONName: NewJSONFieldName("role"), Type: StringRef{}},
+					{Name: NewElmValueName("username"), JSONName: NewJSONFieldName("username"), Type: StringRef{}},
 				},
 			},
 		},

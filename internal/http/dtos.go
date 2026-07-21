@@ -10,6 +10,9 @@ type authResponse struct {
 	SubjectID   string `json:"subject_id"`
 	AccessToken string `json:"access_token"`
 	Role        string `json:"role"`
+	// Username is the identity the provider asserted, shown in the application
+	// shell. Empty for a session that did not come from the provider.
+	Username string `json:"username"`
 }
 
 type logoutResponse struct {

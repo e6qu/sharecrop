@@ -10,8 +10,8 @@ import (
 // the generated Elm contracts drift.
 
 func TestAuthResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(authResponse{SubjectKind: "user", SubjectID: "subject-1", AccessToken: "token-1", Role: "member"})
-	assertWireShape(t, encoded, err, `{"subject_kind":"user","subject_id":"subject-1","access_token":"token-1","role":"member"}`)
+	encoded, err := json.Marshal(authResponse{SubjectKind: "user", SubjectID: "subject-1", AccessToken: "token-1", Role: "member", Username: "ada"})
+	assertWireShape(t, encoded, err, `{"subject_kind":"user","subject_id":"subject-1","access_token":"token-1","role":"member","username":"ada"}`)
 }
 
 func TestAuthRequestWireShape(t *testing.T) {

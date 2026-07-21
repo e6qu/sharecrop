@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -311,6 +312,52 @@ func TestSHAUTHLogoutReturnsIssuerFrontChannelURL(t *testing.T) {
 	}
 	if parsed.Scheme+"://"+parsed.Host+parsed.Path != "https://auth.dev.e6qu.dev/oauth2/sessions/logout" || parsed.Query().Get("client_id") != "sharecrop" || parsed.Query().Get("post_logout_redirect_uri") != "https://sharecrop.dev.e6qu.dev/auth/shauth/logout/complete" {
 		t.Fatalf("logout URL = %q", body.LogoutURL)
+	}
+}
+
+// Refreshing consumes the browser's refresh token and issues a new one. The
+// provider session has to follow it, or the end-session coordinates and the
+// signed-in username both become unreachable for the rest of the session while
+// everything still looks signed in.
+func TestOpenIDConnectSessionSurvivesRepeatedRefreshTokenRotation(t *testing.T) {
+	sessions := newMemoryOpenIDConnectSessionStore()
+	first := auth.HashRefreshToken(testRefreshToken())
+	sessions.StoreOpenIDConnectSession(context.Background(), first, auth.OpenIDConnectSession{
+		Provider: "shauth", Issuer: "https://auth.dev.e6qu.dev/", Subject: "subject-1", SID: "sid-1",
+		Username: "ada", RawIDToken: "signed.id.token", ClientID: "sharecrop",
+		EndSessionEndpoint:    "https://auth.dev.e6qu.dev/oauth2/logout",
+		PostLogoutRedirectURI: "https://sharecrop.dev.e6qu.dev/auth/shauth/logout/complete",
+		ExpiresAt:             time.Now().Add(time.Hour),
+	})
+
+	hashOf := func(raw string) auth.RefreshTokenHash {
+		return auth.HashRefreshToken(auth.ParseRefreshTokenPlain(raw).(auth.RefreshTokenPlainAccepted).Value)
+	}
+
+	previous := first
+	for generation := 1; generation <= 3; generation++ {
+		next := hashOf(fmt.Sprintf("test-refresh-token-generation-%d", generation))
+		rotated, ok := sessions.RotateOpenIDConnectSession(context.Background(), previous, next).(auth.OpenIDConnectSessionRotated)
+		if !ok {
+			t.Fatalf("generation %d: session was not carried across the rotation", generation)
+		}
+		if rotated.Session.Username != "ada" {
+			t.Fatalf("generation %d: username = %q", generation, rotated.Session.Username)
+		}
+		if _, stale := sessions.FindOpenIDConnectSession(context.Background(), previous).(auth.OpenIDConnectSessionFound); stale {
+			t.Fatalf("generation %d: the retired refresh token still resolved to the session", generation)
+		}
+		found, reachable := sessions.FindOpenIDConnectSession(context.Background(), next).(auth.OpenIDConnectSessionFound)
+		if !reachable || found.Session.EndSessionEndpoint == "" {
+			t.Fatalf("generation %d: session was not reachable by the replacement token", generation)
+		}
+		previous = next
+	}
+
+	// A browser session that never came from the provider has nothing to carry.
+	guest := hashOf("guest-refresh-token")
+	if _, rotated := sessions.RotateOpenIDConnectSession(context.Background(), guest, guest).(auth.OpenIDConnectSessionNotRotated); !rotated {
+		t.Fatal("a session with no provider record should report nothing to rotate")
 	}
 }
 

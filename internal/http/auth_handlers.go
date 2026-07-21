@@ -100,8 +100,22 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, rejected.reason)
 		return
 	}
+	// Refreshing replaces the browser's refresh token, so the provider session
+	// has to follow it or both the end-session coordinates and the signed-in
+	// username become unreachable for the rest of the browser session.
+	response := responseAccepted.response
+	switch rotated := server.oidcSessions.RotateOpenIDConnectSession(r.Context(), auth.HashRefreshToken(tokenAccepted.Value), auth.HashRefreshToken(accepted.RefreshToken)).(type) {
+	case auth.OpenIDConnectSessionRotated:
+		response.Username = rotated.Session.Username
+	case auth.OpenIDConnectSessionNotRotated:
+		// A session that never came from the provider (a guest) has no
+		// provider username, and correctly reports none.
+	default:
+		writeError(w, http.StatusServiceUnavailable, "Sharecrop OpenID Connect session could not be carried across the refresh")
+		return
+	}
 
-	server.writeAuthResponse(w, http.StatusOK, responseAccepted.response)
+	server.writeAuthResponse(w, http.StatusOK, response)
 }
 
 func (server Server) logout(w http.ResponseWriter, r *http.Request) {

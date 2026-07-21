@@ -79,6 +79,7 @@ emptyLoggedIn : Auth.AuthResponse -> LoggedInModel
 emptyLoggedIn response =
     { accessToken = response.accessToken
     , subjectId = response.subjectID
+    , username = response.username
     , isAdmin = response.role == "admin"
     , page = OverviewPage
     , openNavMenu = Nothing
@@ -725,7 +726,7 @@ update msg model =
             -- Swap only the rotated token (and any changed role) into the
             -- existing state: rebuilding the page here would wipe whatever
             -- the user is in the middle of typing.
-            ( Api.updateLoggedIn model (\state -> { state | accessToken = response.accessToken, subjectId = response.subjectID, isAdmin = response.role == "admin" }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | accessToken = response.accessToken, subjectId = response.subjectID, username = response.username, isAdmin = response.role == "admin" }), Cmd.none )
 
         SessionRefreshed (Err _) ->
             -- The refresh cookie is gone or revoked: the session is over.
