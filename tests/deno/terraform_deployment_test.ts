@@ -181,3 +181,21 @@ Deno.test("Terraform uses stable IAM role names without provider-appended prefix
     );
   }
 });
+
+Deno.test("Terraform binds Shauth validation to the exact immutable release", async () => {
+  const variables = await read("deploy/terraform/variables.tf");
+  const ecs = await read("deploy/terraform/ecs.tf");
+
+  assertMatch(
+    variables,
+    /variable "release_revision"[\s\S]*?condition\s*=\s*can\(regex\("\^\(\[0-9a-f\]\{12,64\}\|sha256:\[0-9a-f\]\{64\}\)\$", var\.release_revision\)\)/,
+  );
+  assertMatch(
+    ecs,
+    /name\s*=\s*"SHARECROP_RELEASE_REVISION", value\s*=\s*var\.release_revision/,
+  );
+  assertMatch(
+    ecs,
+    /condition\s*=\s*endswith\(var\.image, ":\$\{var\.release_revision\}"\) \|\| \(startswith\(var\.release_revision, "sha256:"\) && endswith\(var\.image, "@\$\{var\.release_revision\}"\)\)/,
+  );
+});

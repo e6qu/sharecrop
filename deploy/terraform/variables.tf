@@ -19,6 +19,16 @@ variable "image" {
   type        = string
 }
 
+variable "release_revision" {
+  description = "Immutable Sharecrop release revision exposed to Shauth validation, matching the deployed image release."
+  type        = string
+
+  validation {
+    condition     = can(regex("^([0-9a-f]{12,64}|sha256:[0-9a-f]{64})$", var.release_revision))
+    error_message = "release_revision must be a 12-64 character lowercase hexadecimal commit or sha256 digest."
+  }
+}
+
 variable "image_pull_secret_arn" {
   description = "Optional Secrets Manager ARN holding {\"username\",\"password\"} for pulling a PRIVATE ghcr image. Leave null for a public image."
   type        = string

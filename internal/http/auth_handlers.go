@@ -105,12 +105,20 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server Server) logout(w http.ResponseWriter, r *http.Request) {
+	logoutURL, ok := server.completeBrowserLogout(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, logoutResponse{LogoutURL: logoutURL})
+}
+
+func (server Server) completeBrowserLogout(w http.ResponseWriter, r *http.Request) (string, bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	logoutURL := ""
 	if server.shauth.enabled() {
 		if r.Header.Get("Origin") != server.shauth.publicURL || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 			writeError(w, http.StatusForbidden, "cross-origin logout denied")
-			return
+			return "", false
 		}
 	}
 	var refreshToken auth.RefreshTokenPlain
@@ -119,7 +127,7 @@ func (server Server) logout(w http.ResponseWriter, r *http.Request) {
 		parsed, matched := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted)
 		if !matched {
 			writeError(w, http.StatusUnauthorized, "refresh token is invalid")
-			return
+			return "", false
 		}
 		refreshToken = parsed.Value
 		hasRefreshToken = true
@@ -132,7 +140,7 @@ func (server Server) logout(w http.ResponseWriter, r *http.Request) {
 			sessionResult := server.oidcSessions.FindOpenIDConnectSession(r.Context(), auth.HashRefreshToken(refreshToken))
 			switch session := sessionResult.(type) {
 			case auth.OpenIDConnectSessionFound:
-				if session.Session.Provider != "shauth" || session.Session.Issuer != server.shauth.issuer || session.Session.ClientID != server.shauth.clientID || session.Session.PostLogoutRedirectURI != server.shauth.postLogoutRedirectURI() {
+				if session.Session.Provider != "shauth" || session.Session.Issuer != server.shauth.issuer || session.Session.ClientID != server.shauth.clientID || session.Session.PostLogoutRedirectURI != server.shauth.logoutBridgeURI() {
 					coordinateError = "OpenID Connect logout session coordinates are invalid"
 					break
 				}
@@ -147,20 +155,20 @@ func (server Server) logout(w http.ResponseWriter, r *http.Request) {
 	if hasRefreshToken {
 		if _, ok := server.authService.Logout(r.Context(), refreshToken).(auth.LogoutDone); !ok {
 			writeError(w, http.StatusServiceUnavailable, "Sharecrop session could not be revoked")
-			return
+			return "", false
 		}
 	}
 	server.clearRefreshCookie(w)
 	if coordinateError != "" {
 		writeError(w, http.StatusServiceUnavailable, coordinateError)
-		return
+		return "", false
 	}
 	if server.shauth.enabled() {
 		if endpoint == "" {
 			_, _, discoveredEndpoint, discoveryErr := server.shauth.discoveredProvider(r.Context())
 			if discoveryErr != nil {
 				writeError(w, http.StatusBadGateway, "Shauth discovery failed")
-				return
+				return "", false
 			}
 			endpoint = discoveredEndpoint
 		}
@@ -168,10 +176,10 @@ func (server Server) logout(w http.ResponseWriter, r *http.Request) {
 		logoutURL, err = server.shauth.logoutURL(endpoint, idTokenHint)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "Shauth logout endpoint is unavailable")
-			return
+			return "", false
 		}
 	}
-	writeJSON(w, http.StatusOK, logoutResponse{LogoutURL: logoutURL})
+	return logoutURL, true
 }
 
 func (server Server) requireActiveBrowserSession(w http.ResponseWriter, r *http.Request) bool {
@@ -213,7 +221,7 @@ func (c shauthConfig) logoutURL(rawEndpoint, idTokenHint string) (string, error)
 	if idTokenHint != "" {
 		query.Set("id_token_hint", idTokenHint)
 	}
-	query.Set("post_logout_redirect_uri", c.postLogoutRedirectURI())
+	query.Set("post_logout_redirect_uri", c.logoutBridgeURI())
 	endpoint.RawQuery = query.Encode()
 	return endpoint.String(), nil
 }

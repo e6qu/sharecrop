@@ -16,6 +16,7 @@ module "sharecrop" {
   name                                            = var.name
   region                                          = var.region
   image                                           = var.image
+  release_revision                                = var.release_revision
   vpc_id                                          = var.vpc_id
   task_subnet_ids                                 = var.task_subnet_ids
   existing_ecs_cluster_arn                        = var.existing_ecs_cluster_arn

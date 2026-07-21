@@ -18,6 +18,7 @@ permissions:
 jobs:
   metadata:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       tag: ${{ steps.revision.outputs.tag }}
     steps:
@@ -44,6 +45,7 @@ jobs:
           - arch: amd64
             runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.0
       # A docker-container builder is required to push directly from buildx.
@@ -56,6 +58,7 @@ jobs:
   manifest:
     needs: [metadata, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.0
       - name: Log in to GitHub Container Registry
@@ -66,6 +69,7 @@ jobs:
   prune:
     needs: [metadata, manifest]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7.0.0
       - name: Prune old images (keep newest 20)

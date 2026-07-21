@@ -21,6 +21,7 @@ func TestOpenIDConnectSessionStorePersistsAtomicLogoutReplay(t *testing.T) {
 	firstStore := NewOpenIDConnectSessionStore(handle)
 	session := auth.OpenIDConnectSession{
 		Provider: "shauth", Issuer: "https://auth.example.test/", Subject: "subject-1", SID: "sid-1",
+		Username: "sharecrop-user", Email: "sharecrop-user@example.test", Role: "developer",
 		RawIDToken: "signed.id.token", ClientID: "sharecrop", EndSessionEndpoint: "https://auth.example.test/logout",
 		PostLogoutRedirectURI: "https://sharecrop.example.test/api/auth/signed-out", ExpiresAt: time.Now().Add(time.Hour),
 	}
@@ -28,7 +29,7 @@ func TestOpenIDConnectSessionStorePersistsAtomicLogoutReplay(t *testing.T) {
 		t.Fatal("OpenID Connect session was not stored")
 	}
 	found, ok := firstStore.FindOpenIDConnectSession(ctx, firstToken.Hash).(auth.OpenIDConnectSessionFound)
-	if !ok || found.Session.RawIDToken != session.RawIDToken || found.Session.Issuer != session.Issuer || found.Session.PostLogoutRedirectURI != session.PostLogoutRedirectURI {
+	if !ok || found.Session.RawIDToken != session.RawIDToken || found.Session.Issuer != session.Issuer || found.Session.Username != session.Username || found.Session.Email != session.Email || found.Session.Role != session.Role || found.Session.PostLogoutRedirectURI != session.PostLogoutRedirectURI {
 		t.Fatalf("stored OpenID Connect session = %#v", found)
 	}
 	if _, ok := firstStore.ApplyFrontchannelLogout(ctx, auth.OpenIDConnectFrontchannelLogout{Provider: "shauth", Issuer: session.Issuer, ClientID: session.ClientID, SID: session.SID}).(auth.FrontchannelLogoutApplied); !ok {

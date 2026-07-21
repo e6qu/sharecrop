@@ -9,10 +9,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +25,8 @@ import (
 )
 
 const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logout"
+
+var immutableReleaseRevision = regexp.MustCompile(`^([0-9a-f]{12,64}|sha256:[0-9a-f]{64})$`)
 
 const shauthSignedOutDocument = `<!doctype html>
 <html lang="en">
@@ -56,10 +60,36 @@ const shauthSignedOutDocument = `<!doctype html>
 </body>
 </html>`
 
+var shauthValidationTemplate = template.Must(template.New("shauth-validation").Parse(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Session validation · Sharecrop</title>
+  <style>
+    :root{color-scheme:light dark;--bg:#fff8ec;--surface:#fff;--text:#251b35;--muted:#695d73;--border:#e1cfe8;--brand:#6f2dbd;--focus:#0759c7;font:16px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}body{min-width:320px;min-height:100vh;margin:0;display:grid;place-items:center;padding:1.5rem;background:var(--bg);color:var(--text)}main{width:min(100%,38rem);padding:2rem;border:1px solid var(--border);border-radius:1.25rem;background:var(--surface)}h1{margin-top:0}dl{display:grid;grid-template-columns:max-content 1fr;gap:.7rem 1.25rem}dt{color:var(--muted);font-weight:700}dd{margin:0}.button{min-height:3rem;padding:.7rem 1.1rem;border:0;border-radius:.75rem;background:var(--brand);color:#fff;font:inherit;font-weight:800;cursor:pointer}.button:focus-visible{outline:3px solid var(--focus);outline-offset:4px}@media(prefers-color-scheme:dark){:root{--bg:#171124;--surface:#251d35;--text:#faf6ff;--muted:#cfc4d8;--border:#564666;--brand:#b77cff;--focus:#ffd166}.button{color:#1c1028}}@media(forced-colors:active){.button{border:2px solid ButtonText}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+  </style>
+</head>
+<body>
+  <main aria-labelledby="validation-title">
+    <p>Sharecrop · Shauth session</p>
+    <h1 id="validation-title">Authenticated session</h1>
+    <dl>
+      <dt>Username</dt><dd data-testid="validation-username">{{.Username}}</dd>
+      <dt>Email</dt><dd data-testid="validation-email">{{.Email}}</dd>
+      <dt>Role</dt><dd data-testid="validation-role">{{.Role}}</dd>
+      <dt>Release</dt><dd data-testid="validation-release">{{.Release}}</dd>
+    </dl>
+    <form method="post" action="/auth/shauth/logout"><button class="button" type="submit">Sign out</button></form>
+  </main>
+</body>
+</html>`))
+
 type shauthConfig struct {
-	issuer, clientID, clientSecret, publicURL string
-	allowInsecure                             bool
-	provider                                  *cachedShauthProvider
+	issuer, clientID, clientSecret, publicURL, releaseRevision string
+	allowInsecure                                              bool
+	provider                                                   *cachedShauthProvider
 }
 
 type cachedShauthProvider struct {
@@ -90,6 +120,9 @@ func (c shauthConfig) validate() error {
 	if configured != 4 {
 		return fmt.Errorf("all SHARECROP_SHAUTH_* and SHARECROP_PUBLIC_URL values must be configured together")
 	}
+	if !immutableReleaseRevision.MatchString(c.releaseRevision) {
+		return fmt.Errorf("SHARECROP_RELEASE_REVISION must be an immutable lowercase hexadecimal commit or sha256 digest")
+	}
 	issuer, err := url.Parse(c.issuer)
 	if err != nil || !c.validOIDCCoordinate(issuer) || issuer.User != nil || issuer.RawQuery != "" || issuer.Fragment != "" {
 		return fmt.Errorf("Shauth issuer must be an absolute HTTPS URL, or an HTTP loopback URL when insecure cookies are explicitly enabled")
@@ -101,7 +134,7 @@ func (c shauthConfig) validate() error {
 	return nil
 }
 func shauthConfigFromEnv() shauthConfig {
-	return shauthConfig{issuer: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_ISSUER")), clientID: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_CLIENT_ID")), clientSecret: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_CLIENT_SECRET")), publicURL: strings.TrimRight(strings.TrimSpace(os.Getenv("SHARECROP_PUBLIC_URL")), "/"), allowInsecure: os.Getenv("SHARECROP_INSECURE_COOKIES") == "true", provider: &cachedShauthProvider{}}
+	return shauthConfig{issuer: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_ISSUER")), clientID: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_CLIENT_ID")), clientSecret: strings.TrimSpace(os.Getenv("SHARECROP_SHAUTH_CLIENT_SECRET")), publicURL: strings.TrimRight(strings.TrimSpace(os.Getenv("SHARECROP_PUBLIC_URL")), "/"), releaseRevision: strings.TrimSpace(os.Getenv("SHARECROP_RELEASE_REVISION")), allowInsecure: os.Getenv("SHARECROP_INSECURE_COOKIES") == "true", provider: &cachedShauthProvider{}}
 }
 
 func (c shauthConfig) validOIDCCoordinate(value *url.URL) bool {
@@ -118,8 +151,16 @@ func (c shauthConfig) validOIDCCoordinate(value *url.URL) bool {
 	return strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
 }
 
-func (c shauthConfig) postLogoutRedirectURI() string {
-	return c.publicURL + "/api/auth/signed-out"
+func (c shauthConfig) logoutBridgeURI() string {
+	return c.publicURL + "/auth/shauth/logout/complete"
+}
+
+func (c shauthConfig) logoutCompletionURI() (string, error) {
+	issuer, err := url.Parse(c.issuer)
+	if err != nil || !c.validOIDCCoordinate(issuer) || issuer.User != nil {
+		return "", fmt.Errorf("Shauth issuer is invalid")
+	}
+	return (&url.URL{Scheme: issuer.Scheme, Host: issuer.Host, Path: "/oauth/logout/complete"}).String(), nil
 }
 
 func (c shauthConfig) discoveredProvider(ctx context.Context) (*oidc.Provider, *oidc.IDTokenVerifier, string, error) {
@@ -174,6 +215,19 @@ type shauthTransaction struct {
 	Nonce    string `json:"n"`
 	Verifier string `json:"v"`
 	Expires  int64  `json:"e"`
+}
+
+type shauthIdentityClaims struct {
+	Nonce         string `json:"nonce"`
+	Username      string `json:"preferred_username"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Role          string `json:"role"`
+	SID           string `json:"sid"`
+}
+
+func (claims shauthIdentityClaims) valid(expectedNonce, subject string) bool {
+	return claims.Nonce == expectedNonce && subject != "" && claims.Username != "" && claims.Email != "" && claims.EmailVerified && (claims.Role == "developer" || claims.Role == "admin")
 }
 
 func randomSHAUTHValue() (string, error) {
@@ -290,12 +344,8 @@ func (server Server) shauthCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 401, "Shauth ID token verification failed")
 		return
 	}
-	var claims struct {
-		Nonce string `json:"nonce"`
-		Email string `json:"email"`
-		SID   string `json:"sid"`
-	}
-	if token.Claims(&claims) != nil || claims.Nonce != tx.Nonce || token.Subject == "" {
+	var claims shauthIdentityClaims
+	if token.Claims(&claims) != nil || !claims.valid(tx.Nonce, token.Subject) {
 		writeError(w, 401, "Shauth ID token claims were invalid")
 		return
 	}
@@ -313,8 +363,9 @@ func (server Server) shauthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	session := auth.OpenIDConnectSession{
 		Provider: "shauth", Issuer: token.Issuer, Subject: token.Subject, SID: claims.SID,
+		Username: claims.Username, Email: claims.Email, Role: claims.Role,
 		RawIDToken: rawID, ClientID: server.shauth.clientID, EndSessionEndpoint: endSessionEndpoint,
-		PostLogoutRedirectURI: server.shauth.postLogoutRedirectURI(), ExpiresAt: token.Expiry,
+		PostLogoutRedirectURI: server.shauth.logoutBridgeURI(), ExpiresAt: token.Expiry,
 	}
 	stored := server.oidcSessions.StoreOpenIDConnectSession(r.Context(), auth.HashRefreshToken(login.RefreshToken), session)
 	if _, ok := stored.(auth.OpenIDConnectSessionStored); !ok {
@@ -417,6 +468,72 @@ func (server Server) shauthBackchannelLogout(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (server Server) shauthLogoutComplete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	if !server.shauth.enabled() {
+		http.NotFound(w, r)
+		return
+	}
+	completionURI, err := server.shauth.logoutCompletionURI()
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Location", completionURI)
+	w.WriteHeader(http.StatusSeeOther)
+}
+
+func (server Server) shauthValidation(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !server.shauth.enabled() {
+		http.NotFound(w, r)
+		return
+	}
+	cookie, err := r.Cookie("sharecrop_refresh_token")
+	if err != nil || cookie.Value == "" {
+		http.Redirect(w, r, "/api/auth/signed-out", http.StatusSeeOther)
+		return
+	}
+	parsed, accepted := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted)
+	if !accepted {
+		server.clearRefreshCookie(w)
+		http.Redirect(w, r, "/api/auth/signed-out", http.StatusSeeOther)
+		return
+	}
+	if _, active := server.authService.ValidateSession(r.Context(), parsed.Value).(auth.RefreshTokenActive); !active {
+		server.clearRefreshCookie(w)
+		http.Redirect(w, r, "/api/auth/signed-out", http.StatusSeeOther)
+		return
+	}
+	found, ok := server.oidcSessions.FindOpenIDConnectSession(r.Context(), auth.HashRefreshToken(parsed.Value)).(auth.OpenIDConnectSessionFound)
+	if !ok || found.Session.Provider != "shauth" || found.Session.Issuer != server.shauth.issuer || found.Session.ClientID != server.shauth.clientID || found.Session.Username == "" || found.Session.Email == "" || (found.Session.Role != "developer" && found.Session.Role != "admin") {
+		writeError(w, http.StatusServiceUnavailable, "Shauth validation identity is unavailable")
+		return
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_ = shauthValidationTemplate.Execute(w, struct{ Username, Email, Role, Release string }{
+		Username: found.Session.Username,
+		Email:    found.Session.Email,
+		Role:     found.Session.Role,
+		Release:  server.shauth.releaseRevision,
+	})
+}
+
+func (server Server) shauthValidationLogout(w http.ResponseWriter, r *http.Request) {
+	logoutURL, ok := server.completeBrowserLogout(w, r)
+	if !ok {
+		return
+	}
+	if logoutURL == "" {
+		logoutURL = "/api/auth/signed-out"
+	}
+	http.Redirect(w, r, logoutURL, http.StatusSeeOther)
 }
 
 func (server Server) shauthSignedOut(w http.ResponseWriter, r *http.Request) {

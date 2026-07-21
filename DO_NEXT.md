@@ -22,8 +22,14 @@ continuity files if task scope changes.
    the Shauth confidential client registered with
    `https://sharecrop.dev.e6qu.dev/api/auth/shauth/backchannel-logout` as its
    Back-Channel Logout URI and
-   `https://sharecrop.dev.e6qu.dev/api/auth/signed-out` as its allowed
-   post-logout redirect URI. Keep the authorization callback registered as
+   `https://sharecrop.dev.e6qu.dev/auth/shauth/logout/complete` as its allowed
+   post-logout redirect URI, with
+   `https://sharecrop.dev.e6qu.dev/api/auth/signed-out` retained as the
+   application-local signed-out destination Shauth registered for the app.
+   Keep the registered validation URL at
+   `https://sharecrop.dev.e6qu.dev/auth/validation` and bind its expected
+   release revision to the same immutable image revision. Keep the
+   authorization callback registered as
    `https://sharecrop.dev.e6qu.dev/api/auth/shauth/callback`.
    Keep Front-Channel Logout registered as
    `https://sharecrop.dev.e6qu.dev/api/auth/shauth/frontchannel-logout`.
@@ -60,6 +66,10 @@ Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
   light/dark app-local signed-out page, explicit same-origin recovery, and a
   real PostgreSQL/Ory Hydra/browser matrix for catalog and direct SSO,
   relying-party and provider logout, reload, and retained-credential rejection.
+- The Shauth application-owned logout bridge and release-validation boundary:
+  destination-free completion, durable username/email/role identity, exact
+  release reporting, hostile-input checks, and a browser matrix pinned to the
+  released provider commit.
 - The single-store-implementation program: one engine-neutral store (`internal/db`,
   Postgres + SQLite), `internal/wasmdemo` deleted, the browser demo runs the real
   backend over in-browser SQLite.

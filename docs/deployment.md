@@ -147,6 +147,7 @@ non-Terraform deploy.
 | `SHARECROP_SHAUTH_CLIENT_ID`    | task configuration        | Sharecrop's confidential Shauth client ID.       |
 | `SHARECROP_SHAUTH_CLIENT_SECRET` | Secrets Manager          | Sharecrop's confidential Shauth client secret.   |
 | `SHARECROP_PUBLIC_URL`          | task configuration        | Exact public HTTPS origin; derives callback and logout URLs. |
+| `SHARECROP_RELEASE_REVISION`    | task configuration        | Immutable 12–64 character lowercase hexadecimal commit or sha256 image digest exposed by the Shauth validation page. |
 
 Shauth configuration is all-or-nothing. Register these exact client endpoints,
 derived from `SHARECROP_PUBLIC_URL`:
@@ -154,10 +155,19 @@ derived from `SHARECROP_PUBLIC_URL`:
 - callback: `/api/auth/shauth/callback`
 - Front-Channel Logout: `/api/auth/shauth/frontchannel-logout`
 - Back-Channel Logout: `/api/auth/shauth/backchannel-logout`
-- post-logout redirect: `/api/auth/signed-out`
+- post-logout redirect bridge: `/auth/shauth/logout/complete`
+- app-local signed-out URL: `/api/auth/signed-out`
+- authenticated validation URL: `/auth/validation`
 
 RP-Initiated Logout uses the issuer's discovered `end_session_endpoint` only
 when it is on the configured issuer origin. The
+provider returns through Sharecrop's fixed bridge, which ignores request input
+and redirects only to Shauth's issuer-origin `/oauth/logout/complete` endpoint;
+Shauth then completes its one-time correlation and returns to Sharecrop's
+registered signed-out URL. The validation page exposes the verified Shauth
+username, email, role, and immutable release revision for Shauth's serialized
+browser acceptance checks.
+The
 provider-signed ID token and session identifier are retained in PostgreSQL,
 not in the browser cookie. Front-Channel Logout correlates the exact issuer,
 client, and provider session identifier. Back-Channel Logout replay claims and

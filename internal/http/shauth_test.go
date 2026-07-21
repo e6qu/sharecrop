@@ -43,13 +43,16 @@ func (fixture logoutTokenFixture) clone() logoutTokenFixture {
 }
 
 type IDTokenFixture struct {
-	Issuer   string `json:"iss"`
-	Audience string `json:"aud"`
-	Subject  string `json:"sub"`
-	Nonce    string `json:"nonce"`
-	Email    string `json:"email"`
-	IssuedAt int64  `json:"iat"`
-	Expires  int64  `json:"exp"`
+	Issuer        string `json:"iss"`
+	Audience      string `json:"aud"`
+	Subject       string `json:"sub"`
+	Nonce         string `json:"nonce"`
+	Username      string `json:"preferred_username"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Role          string `json:"role"`
+	IssuedAt      int64  `json:"iat"`
+	Expires       int64  `json:"exp"`
 }
 
 type OAuthTokenResponseFixture struct {
@@ -194,6 +197,30 @@ func TestSHAUTHTransactionIsAuthenticated(t *testing.T) {
 	}
 }
 
+func TestSHAUTHIdentityClaimsRequireVerifiedIdentityAndKnownRole(t *testing.T) {
+	valid := shauthIdentityClaims{Nonce: "nonce", Username: "person", Email: "person@example.test", EmailVerified: true, Role: "developer"}
+	if !valid.valid("nonce", "subject") {
+		t.Fatal("valid Shauth identity claims were rejected")
+	}
+	for name, mutate := range map[string]func(*shauthIdentityClaims, *string){
+		"missing subject":  func(_ *shauthIdentityClaims, subject *string) { *subject = "" },
+		"wrong nonce":      func(claims *shauthIdentityClaims, _ *string) { claims.Nonce = "other" },
+		"missing username": func(claims *shauthIdentityClaims, _ *string) { claims.Username = "" },
+		"missing email":    func(claims *shauthIdentityClaims, _ *string) { claims.Email = "" },
+		"unverified email": func(claims *shauthIdentityClaims, _ *string) { claims.EmailVerified = false },
+		"unknown role":     func(claims *shauthIdentityClaims, _ *string) { claims.Role = "owner" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			claims := valid
+			subject := "subject"
+			mutate(&claims, &subject)
+			if claims.valid("nonce", subject) {
+				t.Fatal("invalid Shauth identity claims were accepted")
+			}
+		})
+	}
+}
+
 func TestSHAUTHCallbackRetainsSignedLogoutSessionMetadata(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -225,7 +252,8 @@ func TestSHAUTHCallbackRetainsSignedLogoutSessionMetadata(t *testing.T) {
 			}
 			rawIDToken, err := jwt.Signed(signer).Claims(IDTokenFixture{
 				Issuer: issuer, Audience: "sharecrop", Subject: "subject-1",
-				Nonce: nonce, Email: "person@example.com", IssuedAt: time.Now().Unix(), Expires: time.Now().Add(time.Hour).Unix(),
+				Nonce: nonce, Username: "person", Email: "person@example.com", EmailVerified: true,
+				Role: "developer", IssuedAt: time.Now().Unix(), Expires: time.Now().Add(time.Hour).Unix(),
 			}).Serialize()
 			if err != nil {
 				http.Error(w, "sign ID token", http.StatusInternalServerError)
@@ -257,7 +285,7 @@ func TestSHAUTHCallbackRetainsSignedLogoutSessionMetadata(t *testing.T) {
 	if !ok {
 		t.Fatalf("signed OpenID Connect session was not retained")
 	}
-	if found.Session.Issuer != provider.URL+"/" || found.Session.Subject != "subject-1" || found.Session.SID != "" || found.Session.RawIDToken == "" || found.Session.ClientID != "sharecrop" || found.Session.EndSessionEndpoint != provider.URL+"/oauth2/logout" || found.Session.PostLogoutRedirectURI != "https://sharecrop.example.test/api/auth/signed-out" {
+	if found.Session.Issuer != provider.URL+"/" || found.Session.Subject != "subject-1" || found.Session.SID != "" || found.Session.Username != "person" || found.Session.Email != "person@example.com" || found.Session.Role != "developer" || found.Session.RawIDToken == "" || found.Session.ClientID != "sharecrop" || found.Session.EndSessionEndpoint != provider.URL+"/oauth2/logout" || found.Session.PostLogoutRedirectURI != "https://sharecrop.example.test/auth/shauth/logout/complete" {
 		t.Fatalf("retained session = %#v", found.Session)
 	}
 }
@@ -281,7 +309,7 @@ func TestSHAUTHLogoutReturnsIssuerFrontChannelURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Scheme+"://"+parsed.Host+parsed.Path != "https://auth.dev.e6qu.dev/oauth2/sessions/logout" || parsed.Query().Get("client_id") != "sharecrop" || parsed.Query().Get("post_logout_redirect_uri") != "https://sharecrop.dev.e6qu.dev/api/auth/signed-out" {
+	if parsed.Scheme+"://"+parsed.Host+parsed.Path != "https://auth.dev.e6qu.dev/oauth2/sessions/logout" || parsed.Query().Get("client_id") != "sharecrop" || parsed.Query().Get("post_logout_redirect_uri") != "https://sharecrop.dev.e6qu.dev/auth/shauth/logout/complete" {
 		t.Fatalf("logout URL = %q", body.LogoutURL)
 	}
 }
@@ -291,7 +319,7 @@ func TestSHAUTHLogoutUsesIDTokenHintAndExactSignedOutLanding(t *testing.T) {
 	sessions.StoreOpenIDConnectSession(context.Background(), auth.HashRefreshToken(testRefreshToken()), auth.OpenIDConnectSession{
 		Provider: "shauth", Issuer: "https://auth.dev.e6qu.dev/", Subject: "subject-1", SID: "sid-1",
 		RawIDToken: "signed.id.token", ClientID: "sharecrop", EndSessionEndpoint: "https://auth.dev.e6qu.dev/oauth2/logout",
-		PostLogoutRedirectURI: "https://sharecrop.dev.e6qu.dev/api/auth/signed-out", ExpiresAt: time.Now().Add(time.Hour),
+		PostLogoutRedirectURI: "https://sharecrop.dev.e6qu.dev/auth/shauth/logout/complete", ExpiresAt: time.Now().Add(time.Hour),
 	})
 	server := Server{authService: testAuth{}, oidcSessions: sessions, shauth: shauthConfig{issuer: "https://auth.dev.e6qu.dev/", clientID: "sharecrop", clientSecret: "secret", publicURL: "https://sharecrop.dev.e6qu.dev"}}
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
@@ -310,7 +338,7 @@ func TestSHAUTHLogoutUsesIDTokenHintAndExactSignedOutLanding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Query().Get("id_token_hint") != "signed.id.token" || parsed.Query().Get("client_id") != "sharecrop" || parsed.Query().Get("post_logout_redirect_uri") != "https://sharecrop.dev.e6qu.dev/api/auth/signed-out" {
+	if parsed.Query().Get("id_token_hint") != "signed.id.token" || parsed.Query().Get("client_id") != "sharecrop" || parsed.Query().Get("post_logout_redirect_uri") != "https://sharecrop.dev.e6qu.dev/auth/shauth/logout/complete" {
 		t.Fatalf("RP-Initiated Logout URL = %q", body.LogoutURL)
 	}
 	cleared := false
@@ -378,6 +406,118 @@ func TestSHAUTHFrontchannelLogoutRequiresTrustedIssuerAndSessionID(t *testing.T)
 	if trusted.Header().Get("Cache-Control") != "no-store" || !strings.Contains(trusted.Header().Get("Content-Security-Policy"), "https://auth.example.test") {
 		t.Fatalf("front-channel security headers = %#v", trusted.Header())
 	}
+}
+
+func TestSHAUTHLogoutCompletionBridgeUsesOnlyConfiguredIssuer(t *testing.T) {
+	server := Server{shauth: shauthConfig{
+		issuer:       "https://auth.dev.e6qu.dev/ignored/provider/path?ignored=true#ignored",
+		clientID:     "sharecrop",
+		clientSecret: "secret",
+		publicURL:    "https://sharecrop.dev.e6qu.dev",
+	}}
+	for _, requestTarget := range []string{
+		"/auth/shauth/logout/complete",
+		"/auth/shauth/logout/complete?post_logout_redirect_uri=https%3A%2F%2Fattacker.example%2Fstolen",
+		"/auth/shauth/logout/complete?return_to=%2Fapi%2Fauth%2Fshauth&completion_token=replayed",
+	} {
+		request := httptest.NewRequest(http.MethodGet, requestTarget, nil)
+		response := httptest.NewRecorder()
+		server.shauthLogoutComplete(response, request)
+		if response.Code != http.StatusSeeOther {
+			t.Fatalf("completion bridge %q = %d, want 303", requestTarget, response.Code)
+		}
+		if location := response.Header().Get("Location"); location != "https://auth.dev.e6qu.dev/oauth/logout/complete" {
+			t.Fatalf("completion bridge %q location = %q", requestTarget, location)
+		}
+		if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Referrer-Policy") != "no-referrer" {
+			t.Fatalf("completion bridge %q security headers = %#v", requestTarget, response.Header())
+		}
+	}
+}
+
+func TestSHAUTHLogoutCompletionBridgeIsUnavailableWithoutSHAUTH(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/auth/shauth/logout/complete?return_to=https%3A%2F%2Fattacker.example", nil)
+	response := httptest.NewRecorder()
+	Server{}.shauthLogoutComplete(response, request)
+	if response.Code != http.StatusNotFound || response.Header().Get("Location") != "" {
+		t.Fatalf("unconfigured completion bridge = %d location=%q", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestSHAUTHValidationPublishesVerifiedIdentityAndRelease(t *testing.T) {
+	sessions := newMemoryOpenIDConnectSessionStore()
+	sessions.StoreOpenIDConnectSession(context.Background(), auth.HashRefreshToken(testRefreshToken()), auth.OpenIDConnectSession{
+		Provider: "shauth", Issuer: "https://auth.example.test", ClientID: "sharecrop",
+		Username: "validation-user", Email: "validation@example.test", Role: "developer",
+	})
+	server := Server{
+		authService: testAuth{}, oidcSessions: sessions,
+		shauth: shauthConfig{issuer: "https://auth.example.test", clientID: "sharecrop", clientSecret: "secret", publicURL: "https://sharecrop.example.test", releaseRevision: "0123456789ab"},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/auth/validation", nil)
+	request.AddCookie(&http.Cookie{Name: "sharecrop_refresh_token", Value: testRefreshToken().String()})
+	response := httptest.NewRecorder()
+	server.shauthValidation(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("validation page = %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`data-testid="validation-username">validation-user</dd>`,
+		`data-testid="validation-email">validation@example.test</dd>`,
+		`data-testid="validation-role">developer</dd>`,
+		`data-testid="validation-release">0123456789ab</dd>`,
+		`<form method="post" action="/auth/shauth/logout"><button class="button" type="submit">Sign out</button>`,
+	} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Fatalf("validation page omitted %q: %s", expected, response.Body.String())
+		}
+	}
+	if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Content-Security-Policy") == "" || response.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("validation security headers = %#v", response.Header())
+	}
+}
+
+func TestSHAUTHValidationFailsClosedAtLocalSignedOutPage(t *testing.T) {
+	server := Server{authService: rejectingSessionAuth{}, oidcSessions: newMemoryOpenIDConnectSessionStore(), shauth: shauthConfig{issuer: "https://auth.example.test", clientID: "sharecrop", clientSecret: "secret", publicURL: "https://sharecrop.example.test", releaseRevision: "0123456789ab"}}
+	request := httptest.NewRequest(http.MethodGet, "/auth/validation", nil)
+	request.AddCookie(&http.Cookie{Name: "sharecrop_refresh_token", Value: testRefreshToken().String()})
+	response := httptest.NewRecorder()
+	server.shauthValidation(response, request)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/api/auth/signed-out" {
+		t.Fatalf("inactive validation session = %d location=%q", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestSHAUTHValidationLogoutNavigatesThroughGlobalProviderLogout(t *testing.T) {
+	server := Server{
+		authService: testAuth{}, oidcSessions: newMemoryOpenIDConnectSessionStore(),
+		shauth: shauthConfig{
+			issuer: "https://auth.example.test", clientID: "sharecrop", clientSecret: "secret",
+			publicURL: "https://sharecrop.example.test", releaseRevision: "0123456789ab",
+			provider: &cachedShauthProvider{provider: new(oidc.Provider), endSessionEndpoint: "https://auth.example.test/oauth2/sessions/logout"},
+		},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/auth/shauth/logout", nil)
+	request.Header.Set("Origin", "https://sharecrop.example.test")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	server.shauthValidationLogout(response, request)
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("validation logout = %d: %s", response.Code, response.Body.String())
+	}
+	target, err := url.Parse(response.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Scheme+"://"+target.Host+target.Path != "https://auth.example.test/oauth2/sessions/logout" || target.Query().Get("client_id") != "sharecrop" || target.Query().Get("post_logout_redirect_uri") != "https://sharecrop.example.test/auth/shauth/logout/complete" {
+		t.Fatalf("validation logout target = %q", target)
+	}
+}
+
+type rejectingSessionAuth struct{ testAuth }
+
+func (rejectingSessionAuth) ValidateSession(context.Context, auth.RefreshTokenPlain) auth.ValidateRefreshTokenResult {
+	return auth.RefreshTokenInactive{}
 }
 
 func TestSHAUTHSignedOutLandingDoesNotStartAuthentication(t *testing.T) {
@@ -504,8 +644,9 @@ func TestSHAUTHLogoutFailsClosedWhenLocalSessionCannotBeRevoked(t *testing.T) {
 func TestSHAUTHConfigRequiresCompleteHTTPSCoordinates(t *testing.T) {
 	for _, config := range []shauthConfig{
 		{issuer: "https://auth.dev.e6qu.dev", clientID: "client"},
-		{issuer: "http://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "https://sharecrop.dev.e6qu.dev"},
-		{issuer: "https://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "http://sharecrop.dev.e6qu.dev"},
+		{issuer: "http://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "https://sharecrop.dev.e6qu.dev", releaseRevision: "0123456789ab"},
+		{issuer: "https://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "http://sharecrop.dev.e6qu.dev", releaseRevision: "0123456789ab"},
+		{issuer: "https://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "https://sharecrop.dev.e6qu.dev", releaseRevision: "main"},
 	} {
 		if err := config.validate(); err == nil {
 			t.Fatalf("config %#v was accepted", config)
@@ -514,13 +655,13 @@ func TestSHAUTHConfigRequiresCompleteHTTPSCoordinates(t *testing.T) {
 	if err := (shauthConfig{}).validate(); err != nil {
 		t.Fatalf("disabled config: %v", err)
 	}
-	if err := (shauthConfig{issuer: "https://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "https://sharecrop.dev.e6qu.dev"}).validate(); err != nil {
+	if err := (shauthConfig{issuer: "https://auth.dev.e6qu.dev", clientID: "client", clientSecret: "secret", publicURL: "https://sharecrop.dev.e6qu.dev", releaseRevision: "0123456789ab"}).validate(); err != nil {
 		t.Fatalf("valid config: %v", err)
 	}
-	if err := (shauthConfig{issuer: "http://localhost:8080", clientID: "client", clientSecret: "secret", publicURL: "http://127.0.0.1:29180", allowInsecure: true}).validate(); err != nil {
+	if err := (shauthConfig{issuer: "http://localhost:8080", clientID: "client", clientSecret: "secret", publicURL: "http://127.0.0.1:29180", releaseRevision: "0123456789ab", allowInsecure: true}).validate(); err != nil {
 		t.Fatalf("explicit loopback development config: %v", err)
 	}
-	if err := (shauthConfig{issuer: "http://auth.example.test", clientID: "client", clientSecret: "secret", publicURL: "http://sharecrop.example.test", allowInsecure: true}).validate(); err == nil {
+	if err := (shauthConfig{issuer: "http://auth.example.test", clientID: "client", clientSecret: "secret", publicURL: "http://sharecrop.example.test", releaseRevision: "0123456789ab", allowInsecure: true}).validate(); err == nil {
 		t.Fatal("non-loopback insecure config was accepted")
 	}
 }

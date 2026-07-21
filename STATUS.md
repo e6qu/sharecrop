@@ -73,13 +73,16 @@ selected VPC Link. A policy gate rejected any Application Load Balancer,
 Network Load Balancer, public task IP, or incomplete private-ingress resource
 from the Terraform module.
 
-The latest work audited and repaired Sharecrop's Shauth signed-out recovery
-boundary. It covered direct entry and Apps-catalog launch, automatic SSO,
-external-identity provisioning, authenticated user identity, fail-closed
-protected resources, app-local signed-out return and reload, explicit
-same-origin Shauth re-entry, coordinated RP-Initiated, Front-Channel, and
-Back-Channel Logout, and rejection of retained credentials against real Shauth,
-Ory Hydra, and PostgreSQL.
+The latest work bound Sharecrop to Shauth's application-owned logout-completion
+bridge and release-validation contract. The OpenID Connect session persisted
+the provider username, verified email, and role alongside the immutable
+issuer/subject identity. `/auth/validation` exposed that identity and the exact
+12-character release revision, while `/auth/shauth/logout/complete` accepted no
+caller destination and returned only to Shauth's correlated one-time completion
+endpoint. Direct entry and Apps-catalog launch, automatic SSO, application and
+provider logout, Front-Channel and Back-Channel Logout, hostile bridge input,
+retained-credential rejection, and app-local signed-out recovery passed against
+real Shauth, Ory Hydra, PostgreSQL, and the production WASI binary.
 
 Shauth is an additional browser identity provider. A verified OpenID Connect
 issuer/subject pair is persisted independently from mutable profile claims and
@@ -104,7 +107,10 @@ or `sub`. PostgreSQL atomically claimed each logout-token `jti` and revoked the
 matching active refresh-token families, so replay protection survived process
 and replica changes. Browser logout revoked the local refresh family before
 returning the issuer-origin end-session URL with the provider-signed ID token
-hint and exact `/api/auth/signed-out` redirect. The signed-out landing revoked
+hint and exact `/auth/shauth/logout/complete` redirect. The application bridge
+returned to Shauth's fixed `/oauth/logout/complete` endpoint, where Shauth's
+host-only one-time correlation selected `/api/auth/signed-out`; request query
+parameters never selected a destination. The signed-out landing revoked
 any residual local refresh family and did not restart authentication. It
 rendered a branded, accessible light/dark Sharecrop page whose explicit
 same-origin `Sign in with Shauth` control was stable across reloads. The logout
@@ -147,12 +153,13 @@ Playwright browser tests. The Release workflow builds and publishes the image on
 merge. The Shauth integration passed the frontend build, full Go suite,
 WASI bridge generation checks, PostgreSQL integration and HTTP suites, and
 native/WASI scenario parity. A real browser suite against Shauth commit
-`470f7890ce6f0391bca3e4f6ce4ef8a17f1c7933`, Ory Hydra v26.2.0, PostgreSQL
+`74735a1710fa69d472e7eb27ae95ce317c7c1a3d`, Ory Hydra v26.2.0, PostgreSQL
 17.5, and the production WASI binary passed direct entry, Apps-catalog entry,
 automatic SSO, identity provisioning, account display, app-local logout and
 reload, explicit local recovery, provider-initiated logout, rejection of
 retained access and refresh credentials, and direct-entry fail-closed behavior.
-It also rendered and checked distinct light and dark signed-out themes. All 62
+It also checked the exact username, email, role, and release revision and
+rendered distinct light and dark signed-out themes. All 62
 general browser cases passed with retries disabled; the three previously
 timing-sensitive paths also passed ten focused stress iterations without
 retries. Authentication-operation rate limits were isolated per path and

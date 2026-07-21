@@ -1,6 +1,7 @@
 region = "eu-west-1"
 name   = "sharecrop-wrapper-test"
 image  = "ghcr.io/e6qu/sharecrop:0123456789ab"
+release_revision = "0123456789ab"
 
 vpc_id                  = "vpc-0123456789abcdef0"
 task_subnet_ids          = ["subnet-cccc3333", "subnet-dddd4444"]

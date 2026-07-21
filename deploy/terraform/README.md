@@ -61,6 +61,7 @@ terraform output api_gateway_access_log_group_name
 
 Deploying a new version means setting `image` to the immutable 12-character
 commit-SHA manifest published by the [Release workflow](../../.github/workflows/release.yml)
+and setting `release_revision` to that same commit SHA
 and applying Terraform. Terraform creates a one-time EventBridge Scheduler
 schedule for the changed workflow. AWS Step Functions waits for the standalone
 migration task, updates the Amazon ECS service only on success, and waits for

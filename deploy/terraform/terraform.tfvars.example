@@ -4,6 +4,7 @@ region = "us-east-1"
 
 # The immutable multi-architecture image manifest published by the Release workflow.
 image = "ghcr.io/e6qu/sharecrop:0123456789ab"
+release_revision = "0123456789ab"
 
 # Only for a PRIVATE ghcr package: a Secrets Manager secret holding
 # {"username":"<gh-user>","password":"<ghcr-token>"}. Omit for a public image.

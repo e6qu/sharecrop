@@ -56,7 +56,7 @@ locals {
       retries     = 3
       startPeriod = 60
     }
-    environment = concat([{ name = "SHARECROP_HTTP_ADDR", value = ":8080" }], var.shauth_oidc_issuer == "" ? [] : [{ name = "SHARECROP_SHAUTH_ISSUER", value = var.shauth_oidc_issuer }, { name = "SHARECROP_SHAUTH_CLIENT_ID", value = var.shauth_oidc_client_id }, { name = "SHARECROP_PUBLIC_URL", value = var.public_url }])
+    environment = concat([{ name = "SHARECROP_HTTP_ADDR", value = ":8080" }], var.shauth_oidc_issuer == "" ? [] : [{ name = "SHARECROP_SHAUTH_ISSUER", value = var.shauth_oidc_issuer }, { name = "SHARECROP_SHAUTH_CLIENT_ID", value = var.shauth_oidc_client_id }, { name = "SHARECROP_PUBLIC_URL", value = var.public_url }, { name = "SHARECROP_RELEASE_REVISION", value = var.release_revision }])
     secrets     = local.secrets
     logConfiguration = {
       logDriver = "awslogs"
@@ -109,6 +109,10 @@ resource "aws_ecs_task_definition" "serve" {
     precondition {
       condition     = var.public_url == "" || var.public_url == "https://${var.domain_name}"
       error_message = "public_url must equal the HTTPS Amazon API Gateway custom-domain origin."
+    }
+    precondition {
+      condition     = endswith(var.image, ":${var.release_revision}") || (startswith(var.release_revision, "sha256:") && endswith(var.image, "@${var.release_revision}"))
+      error_message = "release_revision must identify the exact immutable image reference."
     }
   }
 }

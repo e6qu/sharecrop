@@ -27,11 +27,12 @@ func (store OpenIDConnectSessionStore) StoreOpenIDConnectSession(ctx context.Con
 	}
 	_, err = tx.Exec(ctx, `
 		insert into oidc_sessions (
-			family_id, provider, issuer, subject, sid, raw_id_token, client_id,
-			end_session_endpoint, post_logout_redirect_uri, expires_at
-		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, familyID, session.Provider, session.Issuer, session.Subject, session.SID, session.RawIDToken,
-		session.ClientID, session.EndSessionEndpoint, session.PostLogoutRedirectURI, session.ExpiresAt)
+			family_id, provider, issuer, subject, sid, username, email, role,
+			raw_id_token, client_id, end_session_endpoint, post_logout_redirect_uri, expires_at
+		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`, familyID, session.Provider, session.Issuer, session.Subject, session.SID, session.Username,
+		session.Email, session.Role, session.RawIDToken, session.ClientID, session.EndSessionEndpoint,
+		session.PostLogoutRedirectURI, session.ExpiresAt)
 	if err != nil {
 		return auth.StoreOpenIDConnectSessionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "store OpenID Connect session failed")}
 	}
@@ -44,13 +45,14 @@ func (store OpenIDConnectSessionStore) StoreOpenIDConnectSession(ctx context.Con
 func (store OpenIDConnectSessionStore) FindOpenIDConnectSession(ctx context.Context, hash auth.RefreshTokenHash) auth.FindOpenIDConnectSessionResult {
 	var session auth.OpenIDConnectSession
 	err := store.db.QueryRow(ctx, `
-		select s.provider, s.issuer, s.subject, s.sid, s.raw_id_token,
-			s.client_id, s.end_session_endpoint, s.post_logout_redirect_uri, s.expires_at
+		select s.provider, s.issuer, s.subject, s.sid, s.username, s.email, s.role,
+			s.raw_id_token, s.client_id, s.end_session_endpoint, s.post_logout_redirect_uri, s.expires_at
 		from oidc_sessions s
 		join refresh_tokens r on r.family_id = s.family_id
 		where r.token_hash = $1
 	`, hash.String()).Scan(&session.Provider, &session.Issuer, &session.Subject, &session.SID,
-		&session.RawIDToken, &session.ClientID, &session.EndSessionEndpoint, &session.PostLogoutRedirectURI, &session.ExpiresAt)
+		&session.Username, &session.Email, &session.Role, &session.RawIDToken, &session.ClientID,
+		&session.EndSessionEndpoint, &session.PostLogoutRedirectURI, &session.ExpiresAt)
 	if errors.Is(err, ErrNoRows) {
 		return auth.OpenIDConnectSessionNotFound{}
 	}

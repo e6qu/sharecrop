@@ -9360,6 +9360,69 @@
         }
       }
     },
+    "/auth/shauth/logout": {
+      "post": {
+        "operationId": "shauthValidationLogout",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/shauth/logout/complete": {
+      "get": {
+        "operationId": "shauthLogoutComplete",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/validation": {
+      "get": {
+        "operationId": "shauthValidation",
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "operationId": "health",
