@@ -14,8 +14,11 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `GET /api/auth/shauth`: start Authorization Code Flow with PKCE against the configured Shauth issuer.
 - `GET /api/auth/shauth/callback`: verify the Shauth response, retain the provider-signed session coordinates server-side, and establish the rotating Sharecrop refresh-token session.
 - `POST /api/auth/logout`: revoke the current Sharecrop refresh-token family and return a provider-discovered RP-Initiated Logout URL. The browser navigates to that URL to end the shared Shauth session.
+- `GET /auth/shauth/logout/complete`: ignore all request parameters and redirect only to Shauth's issuer-origin logout-completion endpoint so Shauth can consume its one-time correlation before returning to Sharecrop.
+- `GET /auth/validation`: expose the authenticated Shauth username, email, role, and immutable Sharecrop release revision used by Shauth's browser acceptance checks.
+- `POST /auth/shauth/logout`: end the Sharecrop and Shauth sessions from the validation page and navigate through the same global logout flow.
 - `GET /api/auth/shauth/frontchannel-logout`: accept Shauth's issuer-bound Front-Channel Logout notification, revoke every local refresh-token family correlated by the provider session ID, and return an embeddable no-content document with an issuer-only `frame-ancestors` policy.
-- `GET /api/auth/signed-out`: receive the OpenID Provider's post-logout redirect, revoke any residual Sharecrop refresh-token family, clear the cookie, and show a static signed-out page without automatically starting a new login.
+- `GET /api/auth/signed-out`: receive Shauth's final post-logout redirect, revoke any residual Sharecrop refresh-token family, clear the cookie, and show a static signed-out page without automatically starting a new login.
 - `POST /api/auth/shauth/backchannel-logout`: accept a signed OpenID Connect `logout_token` from Shauth, validate its exact issuer, audience, signature, expiry, event, `iat`, `jti`, prohibited `nonce`, and either `sid` or `sub`, then atomically revoke the matching refresh-token families and record the token against replay.
 - `POST /api/auth/guest`: create a guest browser session.
 

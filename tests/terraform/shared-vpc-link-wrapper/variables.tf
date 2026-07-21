@@ -11,6 +11,10 @@ variable "image" {
   type = string
 }
 
+variable "release_revision" {
+  type = string
+}
+
 variable "vpc_id" {
   type = string
 }

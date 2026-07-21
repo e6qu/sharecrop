@@ -525,6 +525,9 @@ func registerShauthHostBoundary(mux *http.ServeMux, nativeHandler http.Handler) 
 	mux.Handle("GET /api/auth/shauth/callback", nativeHandler)
 	mux.Handle("GET /api/auth/shauth/frontchannel-logout", nativeHandler)
 	mux.Handle("POST /api/auth/shauth/backchannel-logout", nativeHandler)
+	mux.Handle("GET /auth/shauth/logout/complete", nativeHandler)
+	mux.Handle("GET /auth/validation", nativeHandler)
+	mux.Handle("POST /auth/shauth/logout", nativeHandler)
 	mux.Handle("POST /api/auth/logout", nativeHandler)
 	mux.Handle("GET /api/auth/signed-out", nativeHandler)
 }
@@ -535,6 +538,7 @@ func shauthConfigured() bool {
 		"SHARECROP_SHAUTH_CLIENT_ID",
 		"SHARECROP_SHAUTH_CLIENT_SECRET",
 		"SHARECROP_PUBLIC_URL",
+		"SHARECROP_RELEASE_REVISION",
 	} {
 		if os.Getenv(name) == "" {
 			return false

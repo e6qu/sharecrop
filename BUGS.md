@@ -7,8 +7,10 @@ Confirmed defects: 1.
   integration lists were empty after the environment exhausted the dedicated
   VPC Link path. The Sharecrop module accepted explicit paired shared-link
   coordinates behind a plan-known ownership boolean and enforced the complete
-  `$default` integration, route, stage, and mapping graph; the development
-  environment still had to consume and apply that module version.
+  `$default` integration, route, stage, and mapping graph. The module also
+  exposed the application-owned logout bridge, validation URL, and immutable
+  release revision required by current Shauth; the development environment
+  still had to consume and apply that module version.
 
 Test gaps:
 

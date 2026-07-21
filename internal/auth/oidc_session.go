@@ -15,6 +15,9 @@ type OpenIDConnectSession struct {
 	Issuer                string
 	Subject               string
 	SID                   string
+	Username              string
+	Email                 string
+	Role                  string
 	RawIDToken            string
 	ClientID              string
 	EndSessionEndpoint    string

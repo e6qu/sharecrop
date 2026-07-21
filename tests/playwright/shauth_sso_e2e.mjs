@@ -81,6 +81,22 @@ try {
   assert.equal(await page.getByTestId("register").count(), 0);
   assert.equal(await page.getByTestId("reset-email").count(), 0);
 
+  await page.goto(`${application}/auth/validation`);
+  await page.getByRole("heading", { name: "Authenticated session" }).waitFor();
+  assert.equal(
+    (await page.getByTestId("validation-username").textContent())?.trim(),
+    "admin",
+  );
+  assert.equal(
+    (await page.getByTestId("validation-role").textContent())?.trim(),
+    "admin",
+  );
+  assert.equal(
+    (await page.getByTestId("validation-release").textContent())?.trim(),
+    "0123456789ab",
+  );
+  await page.goto(`${application}/`);
+
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-profile").click();
   await page.getByText("Account settings").waitFor();
@@ -122,6 +138,21 @@ try {
     true,
     "Shauth did not complete Sharecrop Front-Channel Logout",
   );
+
+  // The application bridge never accepts a destination from the request. A
+  // consumed or missing provider completion correlation ends at Shauth's safe
+  // signed-out page rather than following attacker-controlled input.
+  await page.goto(
+    `${application}/auth/shauth/logout/complete?next=${
+      encodeURIComponent("https://attacker.example/stolen")
+    }&post_logout_redirect_uri=${
+      encodeURIComponent("https://attacker.example/stolen")
+    }&completion_token=replayed`,
+  );
+  await page.waitForURL(`${issuer}/signed-out`);
+  assert.equal(page.url().startsWith("https://attacker.example"), false);
+  await page.goto(`${application}/api/auth/signed-out`);
+  await page.getByRole("heading", { name: "You are signed out" }).waitFor();
 
   const staleAccess = await context.request.get(
     `${application}/api/credits/balance`,
@@ -182,8 +213,13 @@ try {
   // failing open into the application shell.
   await page.getByRole("link", { name: "Sign out", exact: true }).click();
   await page.waitForURL(`${issuer}/logout`);
-  await page.getByRole("button", { name: "Sign out everywhere" }).click();
-  await page.waitForURL(`${issuer}/`);
+  await page.getByRole("button", { name: "Sign out of all apps" }).click();
+  await waitForExactURL(
+    page,
+    `${issuer}/signed-out`,
+    navigationTrace,
+    browserErrors,
+  );
 
   const providerStaleAccess = await context.request.get(
     `${application}/api/credits/balance`,

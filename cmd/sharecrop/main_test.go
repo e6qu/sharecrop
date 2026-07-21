@@ -176,6 +176,9 @@ func TestShauthSSORoutesStayOnNativeHostBoundary(t *testing.T) {
 		{http.MethodGet, "/api/auth/shauth/callback"},
 		{http.MethodGet, "/api/auth/shauth/frontchannel-logout"},
 		{http.MethodPost, "/api/auth/shauth/backchannel-logout"},
+		{http.MethodGet, "/auth/shauth/logout/complete"},
+		{http.MethodGet, "/auth/validation"},
+		{http.MethodPost, "/auth/shauth/logout"},
 		{http.MethodPost, "/api/auth/logout"},
 		{http.MethodGet, "/api/auth/signed-out"},
 	} {

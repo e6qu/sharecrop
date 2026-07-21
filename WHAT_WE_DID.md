@@ -1,5 +1,26 @@
 # What We Did
 
+Sharecrop implemented Shauth's application-owned logout-completion and release
+validation contracts. OpenID Connect sessions persisted the provider username,
+verified email, and role through PostgreSQL migration 36. The authenticated
+`/auth/validation` page reported those claims and the exact immutable release
+revision, and production Terraform required that revision to match the image
+tag. The `/auth/shauth/logout/complete` bridge ignored all request parameters
+and returned only to Shauth's fixed `/oauth/logout/complete` endpoint, leaving
+the final app-local destination in Shauth's host-only one-time correlation.
+
+The browser matrix pinned released Shauth commit
+`74735a1710fa69d472e7eb27ae95ce317c7c1a3d` and exercised real Ory Hydra,
+PostgreSQL, the production WASI binary, Apps-catalog and direct entry, silent
+SSO, identity and release validation, application and provider logout,
+Front-Channel and Back-Channel Logout, hostile bridge queries, app-local
+recovery, and retained-credential rejection. The harness provisioned Shauth's
+separate validator credentials and required the native Elm 0.19.1 compiler.
+Every GitHub Actions job was bounded to 15 minutes, with a repository checker
+and regression tests enforcing that limit.
+
+---
+
 Terraform gained an AWS-native ordered deployment workflow. A one-time Amazon
 EventBridge Scheduler schedule started AWS Step Functions, which waited for the
 standalone Amazon ECS migration task to succeed before updating the application

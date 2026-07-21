@@ -8,6 +8,7 @@ on:
 jobs:
   static:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.0
       - uses: actions/setup-go@v6.4.0
@@ -26,6 +27,8 @@ jobs:
         run: make check-wasi-bridge
       - name: Check project policy
         run: make check-policy
+      - name: Check GitHub Actions job timeouts
+        run: make check-workflow-timeouts
       - name: Check container release contract
         run: make check-release-contract
       - name: Check TypeScript
@@ -37,6 +40,7 @@ jobs:
 
   pre-commit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.0
       - uses: actions/setup-go@v6.4.0
@@ -55,6 +59,7 @@ jobs:
 
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.0
       - uses: actions/setup-go@v6.4.0
@@ -68,6 +73,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       ELM_BIN: /usr/local/bin/elm
     steps:
@@ -89,6 +95,7 @@ jobs:
 
   wasm-scenario-parity:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.0
       - uses: actions/setup-go@v6.4.0
@@ -102,6 +109,7 @@ jobs:
 
   db-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:18.4
@@ -134,6 +142,7 @@ jobs:
 
   playwright:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:18.4
@@ -163,7 +172,7 @@ jobs:
         uses: actions/checkout@v7.0.0
         with:
           repository: e6qu/shauth
-          ref: 470f7890ce6f0391bca3e4f6ce4ef8a17f1c7933
+          ref: 74735a1710fa69d472e7eb27ae95ce317c7c1a3d
           path: .test-deps/shauth
       - uses: actions/setup-go@v6.4.0
         with:

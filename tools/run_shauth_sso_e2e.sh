@@ -3,11 +3,14 @@
 set -eu
 
 unset CDPATH
+unset SHAUTH_VALIDATOR_TOKEN SHAUTH_VALIDATION_STATUS_TOKEN
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
+: "${ELM_BIN:?ELM_BIN must point to the native Elm 0.19.1 compiler}"
+
 shauth_source=${SHAUTH_SOURCE_DIR:?SHAUTH_SOURCE_DIR must point to the Shauth checkout under test}
-expected_shauth_commit=${SHAUTH_EXPECTED_COMMIT:-470f7890ce6f0391bca3e4f6ce4ef8a17f1c7933}
+expected_shauth_commit=${SHAUTH_EXPECTED_COMMIT:-74735a1710fa69d472e7eb27ae95ce317c7c1a3d}
 actual_shauth_commit=$(git -C "$shauth_source" rev-parse HEAD)
 if [ "$actual_shauth_commit" != "$expected_shauth_commit" ]; then
 	printf 'Shauth checkout is %s; expected %s\n' "$actual_shauth_commit" "$expected_shauth_commit" >&2
@@ -48,8 +51,13 @@ export GITHUB_CLIENT_ID=sharecrop-contract-test
 export GITHUB_CLIENT_SECRET=sharecrop-contract-test-secret
 SHAUTH_BOOTSTRAP_ADMIN_PASSWORD=$(random_secret)
 export SHAUTH_BOOTSTRAP_ADMIN_PASSWORD
+SHAUTH_VALIDATOR_TOKEN=$(openssl rand -hex 48)
+export SHAUTH_VALIDATOR_TOKEN
+SHAUTH_VALIDATION_STATUS_TOKEN=$(openssl rand -hex 48)
+export SHAUTH_VALIDATION_STATUS_TOKEN
 sharecrop_client_secret=$(random_secret)
-export SHAUTH_BOOTSTRAP_APPS_JSON="[{\"slug\":\"sharecrop-e2e\",\"name\":\"Sharecrop\",\"description\":\"Sharecrop relying-party contract.\",\"launch_url\":\"${application}/\",\"oidc_client_id\":\"sharecrop-e2e\",\"oidc_client_secret\":\"${sharecrop_client_secret}\",\"redirect_uris\":[\"${application}/api/auth/shauth/callback\"],\"post_logout_redirect_uris\":[\"${application}/api/auth/signed-out\"],\"frontchannel_logout_uri\":\"${application}/api/auth/shauth/frontchannel-logout\",\"backchannel_logout_uri\":\"${application}/api/auth/shauth/backchannel-logout\",\"health_url\":\"${application}/healthz\",\"monitoring_url\":\"\"}]"
+sharecrop_release_revision=0123456789ab
+export SHAUTH_BOOTSTRAP_APPS_JSON="[{\"slug\":\"sharecrop-e2e\",\"name\":\"Sharecrop\",\"description\":\"Sharecrop relying-party contract.\",\"launch_url\":\"${application}/\",\"oidc_client_id\":\"sharecrop-e2e\",\"oidc_client_secret\":\"${sharecrop_client_secret}\",\"redirect_uris\":[\"${application}/api/auth/shauth/callback\"],\"post_logout_redirect_uris\":[\"${application}/auth/shauth/logout/complete\"],\"frontchannel_logout_uri\":\"${application}/api/auth/shauth/frontchannel-logout\",\"backchannel_logout_uri\":\"${application}/api/auth/shauth/backchannel-logout\",\"health_url\":\"${application}/healthz\",\"monitoring_url\":\"\",\"validation_url\":\"${application}/auth/validation\",\"signed_out_url\":\"${application}/api/auth/signed-out\",\"release_revision\":\"${sharecrop_release_revision}\"}]"
 
 sharecrop_pid=
 sharecrop_log=$temporary/sharecrop.log
@@ -100,6 +108,7 @@ export SHARECROP_SHAUTH_ISSUER=$issuer
 export SHARECROP_SHAUTH_CLIENT_ID=sharecrop-e2e
 export SHARECROP_SHAUTH_CLIENT_SECRET="$sharecrop_client_secret"
 export SHARECROP_PUBLIC_URL=$application
+export SHARECROP_RELEASE_REVISION=$sharecrop_release_revision
 
 make build
 ./bin/sharecrop migrate up

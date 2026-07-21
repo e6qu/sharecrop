@@ -1,6 +1,6 @@
 APP := bin/sharecrop
 
-.PHONY: build container check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-release-contract check-ts check-wasi-bridge check-wasm-scenario-parity ci contracts css db-checks docker-down docker-up e2e-shauth e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet wasi-app-guest wasi-bridge
+.PHONY: build container check-contracts check-copy-paste check-dead-code check-format check-openapi check-policy check-release-contract check-ts check-wasi-bridge check-wasm-scenario-parity check-workflow-timeouts ci contracts css db-checks docker-down docker-up e2e-shauth e2e-ui elm fmt frontend lint migrate-up openapi serve test test-deno test-go test-http test-integration vet wasi-app-guest wasi-bridge
 
 build: frontend wasi-app-guest
 	go build -o $(APP) ./cmd/sharecrop
@@ -68,7 +68,11 @@ check-wasm-scenario-parity:
 	deno task wasm:demo:build
 	deno task check:scenario-parity:wasm -- --wasm site/demo/sharecrop-wasm-backend.wasm
 
-ci: check-format check-contracts check-openapi check-policy check-release-contract check-ts check-copy-paste check-dead-code check-wasi-bridge lint vet test frontend build test-integration test-http e2e-ui check-wasm-scenario-parity
+check-workflow-timeouts:
+	./tools/test_workflow_timeouts.sh
+	./tools/check_workflow_timeouts.sh
+
+ci: check-format check-contracts check-openapi check-policy check-release-contract check-ts check-copy-paste check-dead-code check-wasi-bridge check-workflow-timeouts lint vet test frontend build test-integration test-http e2e-ui check-wasm-scenario-parity
 
 css:
 	deno task css:build

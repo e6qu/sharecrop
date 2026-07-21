@@ -1,6 +1,6 @@
 # pre-commit hooks for Sharecrop. Install once with `pre-commit install`;
 # run on demand with `pre-commit run --all-files`. These mirror the dead-code
-# and copy-paste gates enforced in CI. Both scan the whole repository, so they
+# copy-paste, and workflow-timeout gates enforced in CI. They scan the whole repository, so they
 # do not take file arguments.
 repos:
   - repo: local
@@ -14,6 +14,12 @@ repos:
       - id: check-dead-code
         name: check dead code
         entry: go tool deadcode -test ./...
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: check-workflow-timeouts
+        name: check GitHub Actions job timeouts
+        entry: make check-workflow-timeouts
         language: system
         pass_filenames: false
         always_run: true
